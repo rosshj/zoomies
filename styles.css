@@ -26,6 +26,18 @@ body {
   overscroll-behavior: none;
 }
 
+/* Stage is sized/rotated by JS (layoutStage) so the game always presents in
+   landscape. Its transform makes it the containing block for the fixed-
+   positioned canvas, HUD and overlays inside it. */
+#stage {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform-origin: center center;
+  overflow: hidden;
+  background: #0e1320;
+}
+
 #game,
 #game canvas {
   position: fixed;

@@ -61,11 +61,7 @@ export function createScene() {
     scene.add(cloud);
   }
 
-  window.addEventListener("resize", () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  // Sizing is driven by main.js (layoutStage) so it matches the rotated stage.
 
   return { renderer, scene, camera, sun };
 }

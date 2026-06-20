@@ -12,9 +12,14 @@ export class Input {
 
     this._neutralRoll = null;
     this._neutralSamples = 0;
+    this._sign = -1; // steering sign, fixed at calibrate (see calibrate())
     this._haveMotion = false;
     this._keys = {};
     this._keyboardSteering = false;
+
+    // Maps viewport (clientX, clientY) into the rotated stage's local space.
+    // Set by main once the stage layout is known; identity by default.
+    this._stageMapper = (x, y) => ({ x, y });
 
     this._bindSlider();
     this._bindTapZones();
@@ -40,10 +45,20 @@ export class Input {
     return true;
   }
 
-  // Recalibrate the neutral (centre) steering position to the current tilt.
+  setStageMapper(fn) {
+    this._stageMapper = fn;
+  }
+
+  // Recalibrate the neutral (centre) steering position to the current tilt, and
+  // lock the steering sign to the current orientation. The sign is fixed here
+  // (not re-evaluated per motion event) so that if the OS flips orientation
+  // mid-steer, steering stays continuous instead of suddenly inverting.
   calibrate() {
     this._neutralRoll = null; // next motion events re-capture neutral
     this._neutralSamples = 0;
+    const angle =
+      (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
+    this._sign = angle === 270 || angle === -90 ? 1 : -1;
   }
 
   _onMotion(e) {
@@ -73,21 +88,14 @@ export class Input {
       this._neutralSamples++;
     }
 
-    let d = shortArc(roll - this._neutralRoll);
-
-    // Sign so tilting the phone right turns right (depends on which way the
-    // device was rotated into landscape).
-    const angle =
-      (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
-    const sign = angle === 270 || angle === -90 ? 1 : -1;
-    d *= sign;
+    let d = shortArc(roll - this._neutralRoll) * this._sign;
 
     // Auto-centering: while steering only gently (i.e. trying to drive
     // straight), slowly drag neutral toward the current tilt. This absorbs a
     // small miscalibration that would otherwise leak a constant steer and make
     // the kart drift in a slow circle. Real turns (larger tilt) are untouched.
     if (this._neutralSamples >= 8 && Math.abs(d) < 0.12) {
-      this._neutralRoll += sign * d * 0.015;
+      this._neutralRoll += this._sign * d * 0.015;
     }
 
     const MAX = 0.42; // ~24° of tilt for full lock — keeps you clear of the
@@ -109,11 +117,14 @@ export class Input {
     let active = false;
     let raf = null;
 
-    const setFromY = (clientY) => {
+    const setFromPointer = (clientX, clientY) => {
+      // Map both the track centre and the pointer into stage-local space so
+      // the slider works correctly even when the stage is rotated.
       const rect = track.getBoundingClientRect();
-      const center = rect.top + rect.height / 2;
-      const half = rect.height / 2 - 28;
-      let v = (center - clientY) / half;
+      const c = this._stageMapper(rect.left + rect.width / 2, rect.top + rect.height / 2);
+      const p = this._stageMapper(clientX, clientY);
+      const half = track.clientHeight / 2 - 28;
+      let v = (c.y - p.y) / half;
       v = Math.max(-1, Math.min(1, v));
       this.throttle = v;
       thumb.style.top = `${50 - v * 42}%`;
@@ -138,12 +149,12 @@ export class Input {
       raf = requestAnimationFrame(springBack);
     };
 
-    const start = (y) => {
+    const start = (x, y) => {
       active = true;
       if (raf) cancelAnimationFrame(raf), (raf = null);
-      setFromY(y);
+      setFromPointer(x, y);
     };
-    const move = (y) => active && setFromY(y);
+    const move = (x, y) => active && setFromPointer(x, y);
     const end = () => {
       if (!active) return;
       active = false;
@@ -152,9 +163,9 @@ export class Input {
 
     track.addEventListener("pointerdown", (e) => {
       track.setPointerCapture(e.pointerId);
-      start(e.clientY);
+      start(e.clientX, e.clientY);
     });
-    track.addEventListener("pointermove", (e) => move(e.clientY));
+    track.addEventListener("pointermove", (e) => move(e.clientX, e.clientY));
     track.addEventListener("pointerup", end);
     track.addEventListener("pointercancel", end);
   }

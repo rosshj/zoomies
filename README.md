@@ -51,19 +51,21 @@ mobile browsers, so for phone testing use a tunneling tool (e.g. `ngrok`,
 On the first tap of **START RACE**, iOS will ask permission to use motion
 data — accept it, and hold the phone level to set the neutral steering point.
 
-### Locking to landscape (PWA)
+### Staying in landscape
 
-Tilting hard to steer can make the OS rotate the screen. To prevent this:
+Tilting hard to steer is the same motion the OS uses to decide orientation, and
+iOS gives web pages no reliable way to lock it. So instead of fighting it, the
+game **counter-rotates its own UI**: whatever orientation the OS picks, the game
+re-rotates so it always *appears* in landscape, and steering stays continuous
+through the change (the tilt reading is in the device frame, and the neutral
+isn't reset on rotation).
 
-- **Android (Chrome):** handled automatically — the game enters fullscreen and
-  locks orientation to landscape on START.
-- **iOS (Safari):** the web orientation-lock API isn't supported in a normal
-  tab, so **Add to Home Screen** (Share → Add to Home Screen) and launch from
-  the icon. The included `manifest.json` requests fullscreen + landscape, and
-  iOS honors this for home-screen apps. The app icon is a 🐱.
+In addition:
 
-If the screen ever does rotate mid-race, the game automatically recalibrates
-steering so you're not left fighting a stale neutral.
+- **Android (Chrome):** also enters fullscreen and requests a real
+  orientation lock on START.
+- **iOS (Safari):** for the most immersive (full-screen, no Safari chrome)
+  experience, **Add to Home Screen** and launch from the 🐱 icon.
 
 ## How it's built
 

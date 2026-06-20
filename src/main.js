@@ -60,25 +60,59 @@ let countdown = 0;
 let raceTime = 0;
 let countdownCalibrated = false;
 
-// --- Orientation gate ---
-const rotateEl = document.getElementById("rotate");
-function checkOrientation() {
-  const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-  const portrait = window.innerHeight > window.innerWidth;
-  rotateEl.classList.toggle("hidden", !(isTouch && portrait));
-}
-window.addEventListener("resize", checkOrientation);
-window.addEventListener("orientationchange", () => {
-  checkOrientation();
-  // If the OS does rotate us, re-zero steering so the new orientation's
-  // neutral and sign are picked up cleanly instead of fighting the player.
-  input.calibrate();
-});
-checkOrientation();
+// --- Force-landscape stage ---
+// Rather than fight the OS auto-rotate (which iOS won't let web pages disable),
+// we counter-rotate a wrapper so the game always *appears* in landscape no
+// matter which orientation the OS chooses. Steering stays continuous because
+// the gravity reading is in the device frame and we don't re-zero on rotation.
+const stage = document.getElementById("stage");
+let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
 
-// Lock to landscape so tilting hard to steer doesn't trigger an OS rotation.
-// Orientation lock requires fullscreen and is supported on Android Chrome;
-// iOS Safari ignores it (we recover via the orientationchange handler above).
+function layoutStage() {
+  const iw = window.innerWidth;
+  const ih = window.innerHeight;
+  const rawAngle =
+    (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
+  const a = ((rawAngle % 360) + 360) % 360;
+
+  // Only counter-rotate when the viewport is actually portrait (e.g. the OS
+  // rotated us because the player over-tilted). A landscape viewport is already
+  // correct in either landscape, so leave it alone — this also avoids wrongly
+  // rotating desktop monitors, which report angle 0 while being landscape.
+  const portrait = ih > iw;
+  const rot = portrait ? (a === 180 ? 270 : 90) : 0;
+  const W = Math.max(iw, ih);
+  const H = Math.min(iw, ih);
+  stageState = { iw, ih, W, H, rot };
+
+  stage.style.width = W + "px";
+  stage.style.height = H + "px";
+  stage.style.left = (iw - W) / 2 + "px";
+  stage.style.top = (ih - H) / 2 + "px";
+  stage.style.transform = `rotate(${rot}deg)`;
+
+  renderer.setSize(W, H);
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+}
+
+// Inverse of the stage transform: viewport point -> stage-local point.
+function stageToLocal(clientX, clientY) {
+  const { iw, ih, W, H, rot } = stageState;
+  const dx = clientX - iw / 2;
+  const dy = clientY - ih / 2;
+  const r = (-rot * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return { x: dx * cos - dy * sin + W / 2, y: dx * sin + dy * cos + H / 2 };
+}
+
+input.setStageMapper(stageToLocal);
+window.addEventListener("resize", layoutStage);
+window.addEventListener("orientationchange", layoutStage);
+layoutStage();
+
+// On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
   try {
     if (screen.orientation && screen.orientation.lock) {

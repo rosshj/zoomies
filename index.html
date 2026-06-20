@@ -29,6 +29,9 @@
   </script>
 </head>
 <body>
+  <!-- Everything lives inside #stage, which we counter-rotate so the game
+       always presents in landscape no matter how the OS orients the page. -->
+  <div id="stage">
   <!-- WebGL canvas mount -->
   <div id="game"></div>
 
@@ -104,6 +107,8 @@
       <button id="restart-btn">RACE AGAIN</button>
     </div>
   </div>
+
+  </div><!-- /#stage -->
 
   <script type="module" src="./src/main.js"></script>
 </body>
