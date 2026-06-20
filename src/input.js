@@ -79,7 +79,7 @@ export class Input {
     // device was rotated into landscape).
     const angle =
       (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
-    const sign = angle === 270 || angle === -90 ? -1 : 1;
+    const sign = angle === 270 || angle === -90 ? 1 : -1;
     d *= sign;
 
     // Auto-centering: while steering only gently (i.e. trying to drive
