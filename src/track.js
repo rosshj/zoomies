@@ -1,34 +1,37 @@
 import * as THREE from "three";
 
-// A closed race track built from a smooth Catmull-Rom loop (flat, y≈0).
-// Provides the road mesh, barrier walls, start/finish line and helpers for
-// projecting a world position onto the track (lap timing, AI, containment).
+// A closed race track built from a smooth 3D Catmull-Rom loop. The curve now
+// carries elevation (y), so the road climbs and dips. Provides the road mesh,
+// barrier walls, start/finish line and helpers for projecting a world position
+// onto the track (lap timing, AI, containment, ground height).
 export class Track {
   constructor() {
     this.width = 22;
     this.halfWidth = this.width / 2;
 
-    // Control points (x, z) shaping a long, flowing closed circuit.
+    // Control points (x, z, y) — a long, flowing circuit that turns both ways
+    // and rolls up and down hills.
     const pts = [
-      [0, -190],
-      [110, -175],
-      [200, -110],
-      [225, -10],
-      [195, 95],
-      [120, 160],
-      [20, 195],
-      [-90, 180],
-      [-185, 120],
-      [-235, 25],
-      [-210, -90],
-      [-110, -175],
-    ].map(([x, z]) => new THREE.Vector3(x, 0, z));
+      [0, -210, 0],
+      [130, -205, 6],
+      [235, -140, 26],
+      [275, -25, 36],
+      [225, 95, 20],
+      [140, 180, 4],
+      [35, 220, 2],
+      [-85, 215, 16],
+      [-195, 165, 32],
+      [-280, 45, 38],
+      [-250, -85, 16],
+      [-160, -195, 4],
+      [-65, -228, 0],
+    ].map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
     this.length = this.curve.getLength();
 
     // Precompute samples for fast nearest-point lookups.
-    this.samples = 900;
+    this.samples = 1000;
     this._pts = [];
     this._tans = [];
     for (let i = 0; i < this.samples; i++) {
@@ -37,14 +40,16 @@ export class Track {
       this._tans.push(this.curve.getTangentAt(t));
     }
 
-    // Coarse point list (xz) for cheap distance queries used by scenery.
+    // Coarse point list for cheap distance/height queries used by scenery.
     this._coarse = [];
-    for (let i = 0; i < this.samples; i += 4) {
-      this._coarse.push(this._pts[i]);
-    }
+    for (let i = 0; i < this.samples; i += 4) this._coarse.push(this._pts[i]);
 
     this.group = new THREE.Group();
     this._buildRoad();
+  }
+
+  _sideAt(i) {
+    return new THREE.Vector3().crossVectors(this._tans[i], new THREE.Vector3(0, 1, 0)).normalize();
   }
 
   _buildRoad() {
@@ -52,19 +57,16 @@ export class Track {
     const positions = [];
     const uvs = [];
     const indices = [];
-    const up = new THREE.Vector3(0, 1, 0);
 
     for (let i = 0; i <= div; i++) {
       const idx = i % div;
       const p = this._pts[idx];
-      const tan = this._tans[idx];
-      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
-
+      const side = this._sideAt(idx);
       const left = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
       const right = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
 
-      positions.push(left.x, 0.02, left.z);
-      positions.push(right.x, 0.02, right.z);
+      positions.push(left.x, left.y + 0.02, left.z);
+      positions.push(right.x, right.y + 0.02, right.z);
       uvs.push(0, i * 0.1);
       uvs.push(1, i * 0.1);
 
@@ -94,29 +96,23 @@ export class Track {
     this._buildStartLine();
   }
 
-  // Light run-off strip just outside the road, under the barriers.
   _buildSandTrim() {
     const div = this.samples;
     const positions = [];
     const indices = [];
-    const up = new THREE.Vector3(0, 1, 0);
     const trim = 3.2;
-
     for (let i = 0; i <= div; i++) {
       const idx = i % div;
       const p = this._pts[idx];
-      const tan = this._tans[idx];
-      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+      const side = this._sideAt(idx);
       const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
       const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
       const rIn = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
       const rOut = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth - trim);
-      positions.push(lOut.x, 0.0, lOut.z, lIn.x, 0.0, lIn.z, rIn.x, 0.0, rIn.z, rOut.x, 0.0, rOut.z);
+      positions.push(lOut.x, lOut.y, lOut.z, lIn.x, lIn.y, lIn.z, rIn.x, rIn.y, rIn.z, rOut.x, rOut.y, rOut.z);
       if (i < div) {
         const a = i * 4;
-        // left trim quad
         indices.push(a, a + 1, a + 4, a + 1, a + 5, a + 4);
-        // right trim quad
         indices.push(a + 2, a + 3, a + 6, a + 3, a + 7, a + 6);
       }
     }
@@ -130,17 +126,16 @@ export class Track {
   }
 
   _buildWalls() {
-    const up = new THREE.Vector3(0, 1, 0);
     const wallGeo = new THREE.BoxGeometry(1.2, 1.6, 4.2);
     const matA = new THREE.MeshStandardMaterial({ color: 0xe53935 });
     const matB = new THREE.MeshStandardMaterial({ color: 0xfafafa });
 
-    const step = 5; // post spacing in samples
+    const step = 5;
     const posts = [];
     for (let i = 0; i < this.samples; i += step) {
       const p = this._pts[i];
       const tan = this._tans[i];
-      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+      const side = this._sideAt(i);
       const red = (i / step) % 2 === 0;
       for (const dir of [1, -1]) {
         const pos = new THREE.Vector3().copy(p).addScaledVector(side, dir * (this.halfWidth + 1.6));
@@ -156,9 +151,8 @@ export class Track {
       inst.castShadow = true;
       inst.receiveShadow = true;
       subset.forEach((q, i) => {
-        dummy.position.set(q.pos.x, 0.8, q.pos.z);
-        dummy.lookAt(q.pos.x + q.tan.x, 0.8, q.pos.z + q.tan.z);
-        dummy.scale.set(1, 1, 1);
+        dummy.position.set(q.pos.x, q.pos.y + 0.8, q.pos.z);
+        dummy.lookAt(q.pos.x + q.tan.x, q.pos.y + 0.8, q.pos.z + q.tan.z);
         dummy.updateMatrix();
         inst.setMatrixAt(i, dummy.matrix);
       });
@@ -170,16 +164,15 @@ export class Track {
   _buildCenterLine() {
     const dashGeo = new THREE.PlaneGeometry(0.5, 4);
     const dashMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.8 });
-    const dashes = 200;
+    const dashes = 240;
     const inst = new THREE.InstancedMesh(dashGeo, dashMat, dashes);
     const dummy = new THREE.Object3D();
     for (let i = 0; i < dashes; i++) {
       const t = i / dashes;
       const p = this.curve.getPointAt(t);
       const tan = this.curve.getTangentAt(t);
-      dummy.position.set(p.x, 0.04, p.z);
+      dummy.position.set(p.x, p.y + 0.05, p.z);
       dummy.rotation.set(-Math.PI / 2, 0, -Math.atan2(tan.z, tan.x) + Math.PI / 2);
-      dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       inst.setMatrixAt(i, dummy.matrix);
     }
@@ -188,41 +181,33 @@ export class Track {
   }
 
   _buildStartLine() {
-    const up = new THREE.Vector3(0, 1, 0);
     const p = this.curve.getPointAt(0);
     const tan = this.curve.getTangentAt(0);
-    const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+    const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
-    // Checkered strip across the road.
     const cols = 11;
     const cellW = this.width / cols;
     for (let c = 0; c < cols; c++) {
       for (let r = 0; r < 2; r++) {
         const cell = new THREE.Mesh(
           new THREE.PlaneGeometry(cellW, 1.6),
-          new THREE.MeshStandardMaterial({
-            color: (c + r) % 2 === 0 ? 0x111111 : 0xffffff,
-          })
+          new THREE.MeshStandardMaterial({ color: (c + r) % 2 === 0 ? 0x111111 : 0xffffff })
         );
         const offSide = (c + 0.5) * cellW - this.halfWidth;
         const offFwd = (r - 0.5) * 1.7;
-        const pos = new THREE.Vector3()
-          .copy(p)
-          .addScaledVector(side, offSide)
-          .addScaledVector(tan, offFwd);
-        cell.position.set(pos.x, 0.05, pos.z);
+        const pos = new THREE.Vector3().copy(p).addScaledVector(side, offSide).addScaledVector(tan, offFwd);
+        cell.position.set(pos.x, pos.y + 0.06, pos.z);
         cell.rotation.x = -Math.PI / 2;
         cell.rotation.z = -Math.atan2(tan.z, tan.x) + Math.PI / 2;
         this.group.add(cell);
       }
     }
 
-    // Start/finish gantry arch over the line.
     const archMat = new THREE.MeshStandardMaterial({ color: 0x263238 });
     for (const dir of [1, -1]) {
       const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 9, 10), archMat);
       const lp = new THREE.Vector3().copy(p).addScaledVector(side, dir * (this.halfWidth + 1.2));
-      leg.position.set(lp.x, 4.5, lp.z);
+      leg.position.set(lp.x, lp.y + 4.5, lp.z);
       leg.castShadow = true;
       this.group.add(leg);
     }
@@ -230,13 +215,10 @@ export class Track {
       new THREE.BoxGeometry(this.width + 4, 1.6, 1.6),
       new THREE.MeshStandardMaterial({ color: 0xffb300 })
     );
-    beam.position.set(p.x, 9, p.z);
+    beam.position.set(p.x, p.y + 9, p.z);
     beam.rotation.y = -Math.atan2(tan.z, tan.x);
     beam.castShadow = true;
     this.group.add(beam);
-
-    this.startPoint = p;
-    this.startTangent = tan;
   }
 
   getPointAt(t) {
@@ -248,7 +230,7 @@ export class Track {
   }
 
   // Nearest sampled point on the centerline:
-  // { t, point, tangent, side, lateral, distance }.
+  // { t, point, tangent, side, lateral, distance, groundY }.
   project(pos) {
     let best = 0;
     let bestDist = Infinity;
@@ -264,24 +246,32 @@ export class Track {
     const t = best / this.samples;
     const point = this._pts[best];
     const tangent = this._tans[best];
-    const side = new THREE.Vector3().crossVectors(tangent, new THREE.Vector3(0, 1, 0)).normalize();
+    const side = this._sideAt(best);
     const lateral = new THREE.Vector3().subVectors(pos, point).dot(side);
-    return { t, point, tangent, side, lateral, distance: Math.sqrt(bestDist) };
+    return { t, point, tangent, side, lateral, distance: Math.sqrt(bestDist), groundY: point.y };
   }
 
-  // Smallest XZ distance from a point to the centerline (coarse, for scenery).
-  distanceToCenter(x, z) {
+  // Nearest XZ distance + that point's height (coarse, for scenery).
+  groundInfo(x, z) {
     let best = Infinity;
+    let y = 0;
     for (const p of this._coarse) {
       const dx = p.x - x;
       const dz = p.z - z;
       const d = dx * dx + dz * dz;
-      if (d < best) best = d;
+      if (d < best) {
+        best = d;
+        y = p.y;
+      }
     }
-    return Math.sqrt(best);
+    return { dist: Math.sqrt(best), y };
   }
 
-  // World position + heading for a starting grid slot.
+  distanceToCenter(x, z) {
+    return this.groundInfo(x, z).dist;
+  }
+
+  // World position + heading for a starting grid slot (on the road surface).
   gridSlot(index) {
     const back = 8 + Math.floor(index / 2) * 8;
     const lateral = (index % 2 === 0 ? -1 : 1) * 5;

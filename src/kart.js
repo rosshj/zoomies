@@ -25,19 +25,27 @@ export class Kart {
     this.steerInput = 0;
     this.throttleInput = 0;
 
-    // Vertical (jump)
-    this.y = 0;
+    // Vertical (jump) + terrain following
+    this.y = 0; // jump height above the road
     this.vy = 0;
     this.airborne = false;
+    this.groundY = 0; // road surface height under the kart
+    this.slopePitch = 0;
 
     // Spinout
     this.spinTimer = 0;
     this.spinDir = 1;
+    this.spinVel = new THREE.Vector3(); // carries inertia while spinning out
+
+    // Bumper-car knockback (decaying positional impulse)
+    this.knock = new THREE.Vector3();
+    this.mass = isPlayer ? 1.35 : 1.0;
 
     // Drift (hop into a corner to slide + charge a mini-turbo)
     this.drifting = false;
     this.driftDir = 0;
     this.driftCharge = 0;
+    this.driftGrace = 0; // window after a hop in which a drift can start
 
     // Boost (drift mini-turbo and the fart boost button)
     this.boostTimer = 0;
@@ -79,9 +87,12 @@ export class Kart {
     this.position.copy(position);
     this.heading = heading;
     this.speed = 0;
+    this.knock.set(0, 0, 0);
     const proj = track.project(this.position);
     this.prevT = proj.t;
     this.trackT = proj.t;
+    this.groundY = proj.groundY;
+    this.position.y = this.groundY;
     this.lap = -1;
     this.totalProgress = -1 + proj.t;
     this._syncMesh();
@@ -91,6 +102,7 @@ export class Kart {
     if (!this.airborne && this.spinTimer <= 0) {
       this.vy = 9;
       this.airborne = true;
+      this.driftGrace = 1.0; // turning during/after the hop starts a drift
     }
   }
 
@@ -123,10 +135,17 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
-  spinOut() {
+  // Spin out — but keep the kart's momentum so it slides out realistically
+  // instead of stopping dead. `impactDir` (xz) adds a shove from the hit.
+  spinOut(impactDir = null) {
     if (this.spinTimer > 0) return;
     this.spinTimer = 2.2;
     this.spinDir = Math.random() < 0.5 ? -1 : 1;
+    const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    this.spinVel.copy(fwd).multiplyScalar(Math.max(Math.abs(this.speed), 16));
+    if (impactDir) this.spinVel.addScaledVector(impactDir, 12);
+    this.drifting = false;
+    this.speed = 0;
   }
 
   // Returns a world-space muzzle point + forward direction for hairballs.
@@ -135,7 +154,7 @@ export class Kart {
     const pos = new THREE.Vector3()
       .copy(this.position)
       .addScaledVector(fwd, 3.4)
-      .setY(this.y + 1.2);
+      .setY(this.groundY + this.y + 1.2);
     return { pos, dir: fwd };
   }
 
@@ -152,11 +171,15 @@ export class Kart {
     if (this.fartTimer > 0) this.fartTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
 
+    if (this.driftGrace > 0) this.driftGrace -= dt;
+
     if (this.spinTimer > 0) {
       this.spinTimer -= dt;
-      this.heading += this.spinDir * 9 * dt; // rapid spin
-      this.speed *= 0.85; // skid to a halt
-      this.drifting = false;
+      this.heading += this.spinDir * 8 * dt; // visual spin
+      // Slide out carrying inertia, decaying over time.
+      this.position.addScaledVector(this.spinVel, dt);
+      this.spinVel.multiplyScalar(1 - Math.min(1, 1.4 * dt));
+      this.speed = 0;
       this._integrate(dt, track, false);
       this._syncMesh();
       return;
@@ -189,11 +212,19 @@ export class Kart {
     }
     this.speed = Math.max(-this.maxReverse, this.speed);
 
+    // --- Drift start: easy to initiate within a grace window after a hop ---
+    if (!this.drifting && this.driftGrace > 0 && Math.abs(this.steerInput) > 0.22 && this.speed > 7) {
+      this.drifting = true;
+      this.driftDir = Math.sign(this.steerInput);
+      this.driftCharge = 0;
+      this.driftGrace = 0;
+    }
+
     // --- Drift end conditions ---
     if (this.drifting) {
       this.driftCharge += dt;
       const sameDir = Math.sign(this.steerInput) === this.driftDir;
-      if (!sameDir || Math.abs(this.steerInput) < 0.18 || this.speed < 8) {
+      if (!sameDir || Math.abs(this.steerInput) < 0.12 || this.speed < 6) {
         this.endDrift();
       }
     }
@@ -204,23 +235,18 @@ export class Kart {
     let steer = this.steerInput;
     let turnRate = 1.7; // rad/sec at full
     if (this.drifting) {
-      turnRate = 2.5; // tighter arc while drifting
-      // keep arcing into the corner even if the tilt eases slightly
-      steer = this.driftDir * Math.max(Math.abs(this.steerInput), 0.65);
+      turnRate = 2.0; // a bit tighter while drifting (gentler than before)
+      // bias toward the drift direction, but don't yank — follow the player's
+      // actual tilt, just with a modest floor.
+      steer = this.driftDir * Math.max(Math.abs(this.steerInput), 0.4);
     }
     this.heading += steer * turnRate * speedFactor * dir * dt;
 
     const wasAirborne = this.airborne;
     this._integrate(dt, track, false);
 
-    // Landing from a hop while turning hard starts a drift.
-    if (wasAirborne && !this.airborne && !this.drifting) {
-      if (Math.abs(this.steerInput) > 0.35 && this.speed > 12) {
-        this.drifting = true;
-        this.driftDir = Math.sign(this.steerInput);
-        this.driftCharge = 0;
-      }
-    }
+    // Landing from a hop opens the drift grace window.
+    if (wasAirborne && !this.airborne) this.driftGrace = 0.5;
 
     this._updateLap(track);
     this._syncMesh();
@@ -229,6 +255,12 @@ export class Kart {
   _integrate(dt, track, finishing) {
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.position.addScaledVector(fwd, this.speed * dt);
+
+    // Bumper-car knockback (decaying positional impulse).
+    if (this.knock.lengthSq() > 0.0001) {
+      this.position.addScaledVector(this.knock, dt);
+      this.knock.multiplyScalar(1 - Math.min(1, 4 * dt));
+    }
 
     // Keep the kart contained on the road: clamp it inside the barriers and
     // scrub a little speed when it scrapes the wall.
@@ -239,9 +271,18 @@ export class Kart {
       const correction = Math.sign(proj.lateral) * limit - proj.lateral;
       this.position.addScaledVector(proj.side, correction);
       this.speed *= 1 - Math.min(0.4, 1.6 * dt);
+      this.knock.multiplyScalar(0.5);
     }
 
-    // Vertical / jump physics.
+    // Follow the road surface height; estimate slope for a pitch tilt.
+    this.groundY = proj.groundY;
+    const ahead = track.project(
+      new THREE.Vector3().copy(this.position).addScaledVector(fwd, 6)
+    );
+    this.slopePitch = -(ahead.groundY - this.groundY) / 6;
+    this.position.y = this.groundY;
+
+    // Vertical / jump physics (relative to the road surface).
     if (this.airborne || this.y > 0 || this.vy !== 0) {
       this.vy -= 30 * dt;
       this.y += this.vy * dt;
@@ -279,14 +320,16 @@ export class Kart {
   }
 
   _syncMesh() {
-    this.group.position.set(this.position.x, this.y, this.position.z);
+    this.group.position.set(this.position.x, this.groundY + this.y, this.position.z);
     this.group.rotation.y = this.heading;
 
-    // Lean into turns (harder while drifting) and a slight wheelie on boost.
+    // Pitch with the slope (+ a slight wheelie on boost).
+    this.group.rotation.x = this.slopePitch + (this.fartTimer > 0 ? -0.12 : 0);
+
+    // Lean into turns (harder while drifting).
     const leanInput = this.drifting ? this.driftDir : this.steerInput;
-    const leanAmt = this.drifting ? 0.32 : 0.12;
+    const leanAmt = this.drifting ? 0.26 : 0.12;
     this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
-    this.group.rotation.x = this.fartTimer > 0 ? -0.12 : 0;
 
     // Lift the tail when farting.
     if (this.catTail) this.catTail.rotation.x = this.fartTimer > 0 ? -1.1 : 0;
@@ -296,13 +339,25 @@ export class Kart {
 
   // --- AI driver ---
   driveAI(track) {
-    const lookahead = 0.012 + Math.min(0.05, Math.abs(this.speed) * 0.0007);
+    const speed = Math.abs(this.speed);
+    // Look further ahead the faster we go, and aim for the inside of the
+    // upcoming corner (a simple racing line) rather than the exact centerline.
+    const lookahead = 0.01 + Math.min(0.05, speed * 0.0009);
+    const aheadTan = track.getTangentAt(this.trackT + lookahead);
+    const farTan = track.getTangentAt(this.trackT + lookahead + 0.05);
+    const curve = angleDelta(Math.atan2(farTan.x, farTan.z), Math.atan2(aheadTan.x, aheadTan.z));
+
     const target = track.getPointAt(this.trackT + lookahead);
+    const side = new THREE.Vector3().crossVectors(aheadTan, UP).normalize();
+    // Bias toward the inside of the bend (apex), scaled by sharpness.
+    const apex = Math.max(-1, Math.min(1, curve * 6)) * (track.halfWidth - 3);
+    target.addScaledVector(side, apex);
+
     const desired = Math.atan2(target.x - this.position.x, target.z - this.position.z);
     const diff = angleDelta(desired, this.heading);
+    this.steerInput = Math.max(-1, Math.min(1, diff * 2.6));
 
-    this.steerInput = Math.max(-1, Math.min(1, diff * 2.2));
-    // Ease off the gas in sharp corners.
-    this.throttleInput = Math.max(0.45, 1 - Math.abs(diff) * 0.9);
+    // Brake into sharp corners, full gas on straights.
+    this.throttleInput = Math.max(0.5, 1 - Math.abs(curve) * 5 - Math.abs(diff) * 0.5);
   }
 }

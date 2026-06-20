@@ -8,7 +8,9 @@ import { HUD, ordinal } from "./hud.js";
 import { buildWorld } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 
-const BOOSTS_PER_RACE = 3;
+// Boost recharges over time instead of being a fixed count.
+const BOOST_COST = 0.34; // fraction of the meter spent per boost (~3 when full)
+const BOOST_RECHARGE = 1 / 9; // meter refills fully in ~9s
 
 const TOTAL_LAPS = 3;
 
@@ -30,13 +32,13 @@ const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 const hud = new HUD();
 
-// Boost (fart) charges
-let boostsRemaining = BOOSTS_PER_RACE;
+// Boost (fart) meter — recharges over time.
+let boostMeter = 1;
 const boostBtn = document.getElementById("btn-boost");
-const boostCountEl = document.getElementById("boost-count");
+const boostFill = document.getElementById("boost-fill");
 function updateBoostUI() {
-  boostCountEl.textContent = boostsRemaining;
-  boostBtn.classList.toggle("disabled", boostsRemaining <= 0);
+  boostFill.style.height = `${Math.round(boostMeter * 100)}%`;
+  boostBtn.classList.toggle("disabled", boostMeter < BOOST_COST);
 }
 
 // --- Karts: 1 player + 5 AI rivals ---
@@ -60,6 +62,7 @@ function buildKarts() {
     const slot = track.gridSlot(i);
     kart.placeAt(slot.position, slot.heading, track);
     kart._aiShootTimer = 1 + Math.random() * 3;
+    kart._aiBoostTimer = 4 + Math.random() * 6;
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
@@ -164,7 +167,7 @@ function startRace() {
   document.getElementById("hud").classList.remove("hidden");
 
   buildKarts();
-  boostsRemaining = BOOSTS_PER_RACE;
+  boostMeter = 1;
   updateBoostUI();
   raceTime = 0;
   track.raceTime = 0;
@@ -194,7 +197,10 @@ function updateCamera(dt, snap = false) {
   camera.lookAt(camTarget);
 }
 
-// --- Kart-vs-kart separation ---
+// --- Kart-vs-kart bumper collisions ---
+// Heavier karts (the player) shove lighter ones aside and barely slow down, so
+// you can push your way through traffic. Impulses go into each kart's decaying
+// `knock` velocity for a springy bumper-car feel.
 function resolveCollisions() {
   for (let i = 0; i < karts.length; i++) {
     for (let j = i + 1; j < karts.length; j++) {
@@ -203,19 +209,36 @@ function resolveCollisions() {
       const dx = b.position.x - a.position.x;
       const dz = b.position.z - a.position.z;
       const distSq = dx * dx + dz * dz;
-      const min = 4.2;
-      if (distSq > 0.0001 && distSq < min * min) {
-        const dist = Math.sqrt(distSq);
-        const overlap = (min - dist) / 2;
-        const nx = dx / dist;
-        const nz = dz / dist;
-        a.position.x -= nx * overlap;
-        a.position.z -= nz * overlap;
-        b.position.x += nx * overlap;
-        b.position.z += nz * overlap;
-        a.speed *= 0.92;
-        b.speed *= 0.92;
-      }
+      const min = 4.4;
+      if (distSq <= 0.0001 || distSq >= min * min) continue;
+
+      const dist = Math.sqrt(distSq);
+      const nx = dx / dist;
+      const nz = dz / dist;
+      const overlap = min - dist;
+
+      const ima = 1 / a.mass;
+      const imb = 1 / b.mass;
+      const inv = ima + imb;
+      const sa = ima / inv; // a's share of the push (lighter moves more)
+      const sb = imb / inv;
+
+      // Separate so they don't overlap.
+      a.position.x -= nx * overlap * sa;
+      a.position.z -= nz * overlap * sa;
+      b.position.x += nx * overlap * sb;
+      b.position.z += nz * overlap * sb;
+
+      // Bumper impulse scaled by how fast they're moving.
+      const power = 10 + (Math.abs(a.speed) + Math.abs(b.speed)) * 0.4;
+      a.knock.x -= nx * power * sa;
+      a.knock.z -= nz * power * sa;
+      b.knock.x += nx * power * sb;
+      b.knock.z += nz * power * sb;
+
+      // Only a tiny speed scrub — you keep your momentum through contact.
+      a.speed *= 0.99;
+      b.speed *= 0.99;
     }
   }
 }
@@ -231,15 +254,27 @@ function updatePlacement() {
   order.forEach((k, idx) => (k.place = idx + 1));
 }
 
-// --- AI shooting ---
-function aiShoot(dt) {
+// --- AI actions: shooting + fart boosts + boost trickle ---
+function aiActions(dt) {
   for (const k of karts) {
-    if (k.isPlayer || k.finished || k.spinTimer > 0) continue;
+    if (k.isPlayer) continue;
+    if (k.fartTimer > 0) effects.trickle(k);
+    if (k.finished || k.spinTimer > 0) continue;
+
+    // Use a fart boost periodically, preferably on a straight.
+    k._aiBoostTimer -= dt;
+    if (k._aiBoostTimer <= 0) {
+      k._aiBoostTimer = 6 + Math.random() * 7;
+      if (Math.abs(k.steerInput) < 0.4 && k.speed > 10 && !k.boosting) {
+        k.applyBoost(1.4, 1.2, true);
+        effects.fartBurst(k);
+      }
+    }
+
+    // Fire if someone is just ahead and roughly in front.
     k._aiShootTimer -= dt;
     if (k._aiShootTimer > 0) continue;
     k._aiShootTimer = 2.5 + Math.random() * 4;
-
-    // Fire if someone is just ahead and roughly in front.
     const fwd = new THREE.Vector3(Math.sin(k.heading), 0, Math.cos(k.heading));
     for (const other of karts) {
       if (other === k || other.finished) continue;
@@ -323,13 +358,14 @@ function loop(now) {
       hairballs.spawn(player);
       player.shootCooldown = 0.6;
     }
-    if (input.consumeBoost() && boostsRemaining > 0) {
+    if (input.consumeBoost() && boostMeter >= BOOST_COST) {
       if (player.fartBoost()) {
-        boostsRemaining--;
-        updateBoostUI();
+        boostMeter -= BOOST_COST;
         effects.fartBurst(player);
       }
     }
+    boostMeter = Math.min(1, boostMeter + BOOST_RECHARGE * dt);
+    updateBoostUI();
 
     // Boost trickle + drift sparks for the player.
     if (player.fartTimer > 0) effects.trickle(player);
@@ -338,7 +374,7 @@ function loop(now) {
 
     // AI
     for (const k of karts) if (!k.isPlayer) k.driveAI(track);
-    aiShoot(dt);
+    aiActions(dt);
 
     // Step physics
     for (const k of karts) k.update(dt, track);

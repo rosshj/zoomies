@@ -6,29 +6,32 @@ import * as THREE from "three";
 export function buildWorld(scene, track) {
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
 
-  // Height of the terrain at a world point, flattened to ~0 near the road so
-  // the circuit sits in a level valley.
+  // Big rolling hills.
   const rawHeight = (x, z) =>
-    22 * Math.sin(x * 0.0045 + 0.5) * Math.cos(z * 0.004) +
-    11 * Math.sin(x * 0.011 - 1.2) * Math.cos(z * 0.013 + 0.7) +
-    5 * Math.sin(x * 0.03) * Math.sin(z * 0.025 + 2.1);
+    40 * Math.sin(x * 0.004 + 0.5) * Math.cos(z * 0.0035) +
+    22 * Math.sin(x * 0.011 - 1.2) * Math.cos(z * 0.013 + 0.7) +
+    9 * Math.sin(x * 0.03) * Math.sin(z * 0.025 + 2.1);
 
   const flatten = (d) => {
     const start = roadClear;
-    const end = roadClear + 45;
+    const end = roadClear + 55;
     if (d <= start) return 0;
     if (d >= end) return 1;
     const u = (d - start) / (end - start);
     return u * u * (3 - 2 * u); // smoothstep
   };
 
+  // The track now has elevation, so blend the terrain from the road's height
+  // (right next to the tarmac) out to the big hills, instead of to a flat 0.
   const heightAt = (x, z) => {
-    const f = flatten(track.distanceToCenter(x, z));
-    return f === 0 ? 0 : rawHeight(x, z) * f;
+    const gi = track.groundInfo(x, z);
+    const f = flatten(gi.dist);
+    // Sit just below the road/shoulder near the track to avoid z-fighting.
+    return gi.y * (1 - f) + rawHeight(x, z) * f - 0.25;
   };
 
   buildTerrain(scene, heightAt);
-  buildMountains(scene);
+  buildMountains(scene, heightAt);
   buildTrees(scene, track, heightAt, flatten);
   buildRocks(scene, track, heightAt, flatten);
   buildTown(scene, track, heightAt);
@@ -64,10 +67,10 @@ function buildTerrain(scene, heightAt) {
     pos.setY(i, y);
 
     let c;
-    if (y < 1) c = cGrass.clone().lerp(cGrass2, Math.random() * 0.4);
-    else if (y < 14) c = cGrass2.clone().lerp(cRock, (y - 1) / 13);
-    else if (y < 24) c = cRock.clone();
-    else c = cRock.clone().lerp(cSnow, Math.min(1, (y - 24) / 8));
+    if (y < 3) c = cGrass.clone().lerp(cGrass2, Math.random() * 0.4);
+    else if (y < 32) c = cGrass2.clone().lerp(cRock, (y - 3) / 29);
+    else if (y < 52) c = cRock.clone();
+    else c = cRock.clone().lerp(cSnow, Math.min(1, (y - 52) / 14));
     colors.push(c.r, c.g, c.b);
   }
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -83,21 +86,24 @@ function buildTerrain(scene, heightAt) {
   scene.add(mesh);
 }
 
-function buildMountains(scene) {
+function buildMountains(scene, heightAt) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x6d6253, flatShading: true, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 1 });
-  const count = 16;
+  const count = 18;
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + Math.random() * 0.2;
-    const r = 620 + Math.random() * 120;
-    const h = 120 + Math.random() * 110;
-    const rad = 70 + Math.random() * 50;
+    const r = 640 + Math.random() * 140;
+    const h = 170 + Math.random() * 150;
+    const rad = 90 + Math.random() * 70;
+    const x = Math.cos(a) * r;
+    const z = Math.sin(a) * r;
+    const base = heightAt(x, z) + h / 2 - 30; // bury the base in the terrain
     const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), mat);
-    m.position.set(Math.cos(a) * r, h / 2 - 10, Math.sin(a) * r);
+    m.position.set(x, base, z);
     m.rotation.y = Math.random() * Math.PI;
     scene.add(m);
     const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 7), snow);
-    cap.position.set(m.position.x, h - h * 0.15 - 10, m.position.z);
+    cap.position.set(x, base + h * 0.5 - h * 0.15, z);
     cap.rotation.y = m.rotation.y;
     scene.add(cap);
   }

@@ -18,11 +18,12 @@ laps, and pelt your rivals with hairballs.
 | Reverse | Keep holding **down** once stopped |
 | Jump / Drift | **⬆ button** — hop into a corner while turning to drift |
 | Shoot hairball 🐾 | **🐾 button** (bottom-right) |
-| Boost 💨 | **💨 button** — a turbo cat fart, 3 per race |
+| Boost 💨 | **💨 button** — a turbo cat fart; the meter recharges |
 
 **Drifting:** jump while steering into a corner to start a slide. Hold the
 drift to charge a mini-turbo (sparks turn blue → orange → red); straighten out
-to release the boost. **Boost** gives three big catch-up turbos per race.
+to release the boost. **Boost** is a recharging meter — about three turbos when
+full — so there's always a way to claw back into the race.
 
 Getting hit by a hairball makes a kart **spin out and stop**. First kart to
 finish **3 laps** wins.
