@@ -46,11 +46,12 @@ export class Kart {
     // Shooting cooldown
     this.shootCooldown = 0;
 
-    // Tuning
-    this.maxSpeed = 58 * skill;
-    this.maxReverse = 18;
-    this.accel = 34;
-    this.brake = 60;
+    // Tuning (calmer, less frantic than an all-out racer)
+    this.maxSpeed = 34 * skill;
+    this.maxReverse = 11;
+    this.accel = 20;
+    this.brake = 42;
+    this.radius = 1.8; // half-width for road containment
 
     // Visual
     this.group = new THREE.Group();
@@ -140,9 +141,9 @@ export class Kart {
     this.speed = Math.max(-this.maxReverse, Math.min(this.maxSpeed, this.speed));
 
     // --- Steering --- (less effective at very low speed, reversed in reverse)
-    const speedFactor = Math.min(1, Math.abs(this.speed) / 12);
+    const speedFactor = Math.min(1, Math.abs(this.speed) / 10);
     const dir = this.speed >= 0 ? 1 : -1;
-    const turnRate = 2.0; // rad/sec at full
+    const turnRate = 1.7; // rad/sec at full
     this.heading += this.steerInput * turnRate * speedFactor * dir * dt;
 
     this._integrate(dt, track, false);
@@ -154,11 +155,15 @@ export class Kart {
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.position.addScaledVector(fwd, this.speed * dt);
 
-    // Off-track grass friction.
+    // Keep the kart contained on the road: clamp it inside the barriers and
+    // scrub a little speed when it scrapes the wall.
     const proj = track.project(this.position);
     this._proj = proj;
-    if (Math.abs(proj.lateral) > track.halfWidth + 0.5 && !this.airborne) {
-      this.speed *= 1 - Math.min(0.9, 2.2 * dt);
+    const limit = track.halfWidth - this.radius;
+    if (Math.abs(proj.lateral) > limit) {
+      const correction = Math.sign(proj.lateral) * limit - proj.lateral;
+      this.position.addScaledVector(proj.side, correction);
+      this.speed *= 1 - Math.min(0.4, 1.6 * dt);
     }
 
     // Vertical / jump physics.

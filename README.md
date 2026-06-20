@@ -22,6 +22,11 @@ laps, and pelt your rivals with hairballs.
 Getting hit by a hairball makes a kart **spin out and stop**. First kart to
 finish **3 laps** wins.
 
+Steering reads the phone's gravity/tilt, so hold the device like a steering
+wheel and tilt left/right. If centre drifts, tap **"↺ center steering"** at the
+bottom of the screen to recalibrate neutral. The karts are kept on the road by
+the barriers, so you can't drive off the track.
+
 **On desktop (for testing):** Arrow keys / WASD to drive, `Space` to jump,
 `F` to shoot.
 

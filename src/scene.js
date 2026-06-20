@@ -12,15 +12,15 @@ export function createScene() {
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x87ceeb);
-  scene.fog = new THREE.Fog(0x87ceeb, 180, 420);
+  scene.background = new THREE.Color(0x9fd4ee);
+  scene.fog = new THREE.Fog(0x9fd4ee, 320, 1150);
 
   // Camera (chase cam; positioned each frame by the game loop)
   const camera = new THREE.PerspectiveCamera(
     62,
     window.innerWidth / window.innerHeight,
     0.1,
-    1000
+    2400
   );
   camera.position.set(0, 12, -18);
 
@@ -32,26 +32,18 @@ export function createScene() {
   sun.position.set(60, 120, 40);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const s = 220;
+  const s = 300;
   sun.shadow.camera.left = -s;
   sun.shadow.camera.right = s;
   sun.shadow.camera.top = s;
   sun.shadow.camera.bottom = -s;
   sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 400;
+  sun.shadow.camera.far = 600;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
   scene.add(sun.target);
 
-  // Ground (grass)
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(600, 48),
-    new THREE.MeshStandardMaterial({ color: 0x4f8f44, roughness: 1 })
-  );
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.y = -0.05;
-  ground.receiveShadow = true;
-  scene.add(ground);
+  // The terrain/ground is built by scenery.buildWorld().
 
   // A few clouds for depth
   const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });

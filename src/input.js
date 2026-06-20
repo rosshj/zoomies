@@ -1,69 +1,81 @@
-// Centralised player input: accelerometer steering, the left throttle slider,
-// right-side tap zones (jump / shoot) and a desktop keyboard fallback.
+// Centralised player input: accelerometer steering (via DeviceMotion gravity),
+// the left throttle slider, right-side tap zones (jump / shoot) and a desktop
+// keyboard fallback.
 export class Input {
   constructor() {
-    this.steer = 0; // -1 (left) .. 1 (right)
+    this.steer = 0; // -1 (left) .. 1 (right)   (smoothed)
     this.throttle = 0; // -1 (down/brake/reverse) .. 1 (up/accelerate)
 
+    this._steerTarget = 0;
     this._jumpQueued = false;
     this._shootQueued = false;
 
-    this._tiltNeutral = null;
-    this._tiltRaw = 0;
+    this._neutralRoll = null;
+    this._haveMotion = false;
     this._keys = {};
+    this._keyboardSteering = false;
 
     this._bindSlider();
     this._bindTapZones();
     this._bindKeyboard();
   }
 
-  // Ask for orientation permission (iOS 13+) and start listening.
+  // Ask for motion permission (iOS 13+) and start listening to DeviceMotion.
   async enableMotion() {
+    const DME = window.DeviceMotionEvent;
     const DOE = window.DeviceOrientationEvent;
-    if (DOE && typeof DOE.requestPermission === "function") {
-      try {
-        const res = await DOE.requestPermission();
+    try {
+      if (DME && typeof DME.requestPermission === "function") {
+        const res = await DME.requestPermission();
         if (res !== "granted") return false;
-      } catch (e) {
-        return false;
       }
+      if (DOE && typeof DOE.requestPermission === "function") {
+        await DOE.requestPermission().catch(() => {});
+      }
+    } catch (e) {
+      return false;
     }
-    window.addEventListener("deviceorientation", (e) => this._onOrientation(e), true);
+    window.addEventListener("devicemotion", (e) => this._onMotion(e), true);
     return true;
   }
 
-  // Recalibrate "neutral" to the phone's current tilt.
+  // Recalibrate the neutral (centre) steering position to the current tilt.
   calibrate() {
-    this._tiltNeutral = this._tiltRaw;
+    this._neutralRoll = null; // next motion event re-captures neutral
   }
 
-  _onOrientation(e) {
-    if (e.beta === null && e.gamma === null) return;
+  _onMotion(e) {
+    const g = e.accelerationIncludingGravity;
+    if (!g || g.x === null || g.y === null) return;
+    this._haveMotion = true;
 
-    // Holding the phone in landscape and tilting it left/right like a steering
-    // wheel maps to `gamma` (rotation about the device's long axis). The sign
-    // depends on which way the phone was rotated into landscape.
-    const angle =
-      (screen.orientation && screen.orientation.angle) ??
-      window.orientation ??
-      90;
+    // Roll of the phone within the screen plane. atan2(y, x) tracks the
+    // "steering-wheel" tilt regardless of how far the phone is pitched
+    // back, which makes it robust to how the player holds the device.
+    let roll = Math.atan2(g.y, g.x); // radians
 
-    let tilt;
-    if (angle === 270 || angle === -90) {
-      tilt = -e.gamma;
-    } else {
-      tilt = e.gamma; // 90 (and a sane default)
+    if (this._neutralRoll === null) {
+      this._neutralRoll = roll;
+      return;
     }
-    this._tiltRaw = tilt;
 
-    if (this._tiltNeutral === null) this._tiltNeutral = tilt;
+    let d = roll - this._neutralRoll;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
 
-    const MAX = 35; // degrees of tilt for full lock
-    const DEAD = 3;
-    let v = tilt - this._tiltNeutral;
-    if (Math.abs(v) < DEAD) v = 0;
-    else v = v - Math.sign(v) * DEAD;
-    this.steer = Math.max(-1, Math.min(1, v / MAX));
+    // Sign so that tilting the phone right turns right (depends on which way
+    // the device was rotated into landscape).
+    const angle =
+      (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
+    if (angle === 270 || angle === -90) d = -d;
+
+    const MAX = 0.5; // ~28° of tilt for full lock
+    const DEAD = 0.04;
+    if (Math.abs(d) < DEAD) d = 0;
+    else d -= Math.sign(d) * DEAD;
+
+    this._steerTarget = Math.max(-1, Math.min(1, d / MAX));
+    this._keyboardSteering = false;
   }
 
   _bindSlider() {
@@ -82,7 +94,6 @@ export class Input {
       v = Math.max(-1, Math.min(1, v));
       this.throttle = v;
       thumb.style.top = `${50 - v * 42}%`;
-      // Tint thumb green up / red down.
       if (v > 0.05) thumb.style.background =
         "radial-gradient(circle at 35% 30%, #fff, #4caf50)";
       else if (v < -0.05) thumb.style.background =
@@ -156,14 +167,30 @@ export class Input {
     window.addEventListener("keyup", (e) => (this._keys[e.code] = false));
   }
 
-  // Called once per frame to fold keyboard state into steer/throttle.
-  update() {
+  // Called once per frame: folds keyboard state in and smooths steering.
+  update(dt = 0.016) {
     const k = this._keys;
-    if (k.ArrowLeft || k.KeyA) this.steer = -1;
-    else if (k.ArrowRight || k.KeyD) this.steer = 1;
+
+    if (k.ArrowLeft || k.KeyA) {
+      this._steerTarget = -1;
+      this._keyboardSteering = true;
+    } else if (k.ArrowRight || k.KeyD) {
+      this._steerTarget = 1;
+      this._keyboardSteering = true;
+    } else if (this._keyboardSteering) {
+      this._steerTarget = 0;
+    }
 
     if (k.ArrowUp || k.KeyW) this.throttle = 1;
     else if (k.ArrowDown || k.KeyS) this.throttle = -1;
+
+    // Smooth steering toward target to keep it from feeling twitchy.
+    const rate = Math.min(1, dt * 10);
+    this.steer += (this._steerTarget - this.steer) * rate;
+  }
+
+  get hasMotion() {
+    return this._haveMotion;
   }
 
   consumeJump() {

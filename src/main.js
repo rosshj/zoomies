@@ -5,6 +5,7 @@ import { Kart } from "./kart.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
+import { buildWorld } from "./scenery.js";
 
 const TOTAL_LAPS = 3;
 
@@ -14,6 +15,12 @@ const track = new Track();
 track.totalLaps = TOTAL_LAPS;
 track.raceTime = 0;
 scene.add(track.group);
+
+const world = buildWorld(scene, track);
+
+// Steering indicator + recalibrate button
+const steerDot = document.getElementById("steer-dot");
+document.getElementById("calibrate").addEventListener("click", () => input.calibrate());
 
 const input = new Input();
 const hairballs = new HairballManager(scene);
@@ -198,6 +205,8 @@ function loop(now) {
   last = now;
   dt = Math.min(dt, 0.05); // clamp big frame gaps
 
+  world.update(now / 1000); // drift the balloons
+
   if (state === State.COUNTDOWN) {
     countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
@@ -215,9 +224,10 @@ function loop(now) {
     track.raceTime = raceTime;
 
     // Player controls
-    input.update();
+    input.update(dt);
     player.steerInput = input.steer;
     player.throttleInput = input.throttle;
+    steerDot.style.transform = `translateX(${input.steer * 80}px)`;
     if (input.consumeJump()) player.jump();
     if (input.consumeShoot() && player.shootCooldown <= 0) {
       hairballs.spawn(player);
