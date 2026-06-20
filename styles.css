@@ -394,6 +394,27 @@ kbd {
   background: rgba(255, 179, 0, 0.4);
 }
 
+/* Rear-view mirror frame (the image itself is drawn by WebGL behind it) */
+#mirror-frame {
+  position: absolute;
+  border: 3px solid rgba(255, 255, 255, 0.55);
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), inset 0 0 0 2px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  overflow: hidden;
+}
+
+#mirror-frame span {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: 0 1px 2px #000;
+}
+
 /* Lap toast */
 #toast {
   position: absolute;

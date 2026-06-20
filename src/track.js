@@ -40,9 +40,9 @@ export class Track {
       this._tans.push(this.curve.getTangentAt(t));
     }
 
-    // Coarse point list for cheap distance/height queries used by scenery.
+    // Point list for cheap distance/height queries used by scenery.
     this._coarse = [];
-    for (let i = 0; i < this.samples; i += 4) this._coarse.push(this._pts[i]);
+    for (let i = 0; i < this.samples; i += 2) this._coarse.push(this._pts[i]);
 
     this.group = new THREE.Group();
     this._buildRoad();

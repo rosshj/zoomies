@@ -8,9 +8,8 @@ import { HUD, ordinal } from "./hud.js";
 import { buildWorld } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 
-// Boost recharges over time instead of being a fixed count.
-const BOOST_COST = 0.34; // fraction of the meter spent per boost (~3 when full)
-const BOOST_RECHARGE = 1 / 9; // meter refills fully in ~9s
+// Boost is a single charge that fully depletes when used and slowly refills.
+const BOOST_RECHARGE = 1 / 16; // meter refills fully in ~16s
 
 const TOTAL_LAPS = 3;
 
@@ -22,6 +21,23 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track);
+
+// --- Rear-view mirror ---
+// Render a backward-facing camera into a target, then blit it (flipped, like a
+// real mirror) into a small framed box at the top-center of the screen.
+const rearCamera = new THREE.PerspectiveCamera(74, 2.5, 0.5, 1200);
+const rearRT = new THREE.WebGLRenderTarget(640, 256);
+rearRT.texture.colorSpace = THREE.SRGBColorSpace; // match the main view's colors
+const mirrorScene = new THREE.Scene();
+const mirrorCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const mirrorQuad = new THREE.Mesh(
+  new THREE.PlaneGeometry(2, 2),
+  new THREE.MeshBasicMaterial({ map: rearRT.texture, depthTest: false, depthWrite: false })
+);
+mirrorQuad.scale.x = -1; // horizontal flip => proper mirror
+mirrorScene.add(mirrorQuad);
+const mirrorFrame = document.getElementById("mirror-frame");
+let mirrorRect = { x: 0, y: 0, w: 1, h: 1 };
 
 // Steering indicator + recalibrate button
 const steerDot = document.getElementById("steer-dot");
@@ -38,7 +54,7 @@ const boostBtn = document.getElementById("btn-boost");
 const boostFill = document.getElementById("boost-fill");
 function updateBoostUI() {
   boostFill.style.height = `${Math.round(boostMeter * 100)}%`;
-  boostBtn.classList.toggle("disabled", boostMeter < BOOST_COST);
+  boostBtn.classList.toggle("disabled", boostMeter < 1); // only fire when full
 }
 
 // --- Karts: 1 player + 5 AI rivals ---
@@ -110,6 +126,57 @@ function layoutStage() {
   renderer.setSize(W, H);
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
+
+  // Mirror box: top-center. WebGL viewport y is measured from the bottom.
+  const mw = Math.min(300, W * 0.34);
+  const mh = mw * 0.4;
+  const mleft = (W - mw) / 2;
+  const mtop = 8;
+  mirrorRect = { x: mleft, y: H - mtop - mh, w: mw, h: mh };
+  if (mirrorFrame) {
+    mirrorFrame.style.width = `${mw}px`;
+    mirrorFrame.style.height = `${mh}px`;
+    mirrorFrame.style.left = `${mleft}px`;
+    mirrorFrame.style.top = `${mtop}px`;
+  }
+}
+
+let mirrorTick = 0;
+function renderMirror() {
+  // Re-render the rear view every other frame (still blit every frame, so no
+  // flicker) to keep the second scene render affordable on phones.
+  if (mirrorTick++ % 2 === 0) {
+    const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
+    rearCamera.position
+      .copy(player.position)
+      .addScaledVector(fwd, 1.5)
+      .add(new THREE.Vector3(0, 4.5, 0));
+    rearCamera.lookAt(
+      new THREE.Vector3().copy(player.position).addScaledVector(fwd, -25).setY(player.position.y + 3)
+    );
+
+    renderer.autoClear = true;
+    renderer.setRenderTarget(rearRT);
+    renderer.render(scene, rearCamera);
+    renderer.setRenderTarget(null);
+  }
+
+  // Blit the (flipped) mirror texture into just the mirror box.
+  renderer.autoClear = false;
+  renderer.setViewport(mirrorRect.x, mirrorRect.y, mirrorRect.w, mirrorRect.h);
+  renderer.setScissor(mirrorRect.x, mirrorRect.y, mirrorRect.w, mirrorRect.h);
+  renderer.setScissorTest(true);
+  renderer.render(mirrorScene, mirrorCam);
+  renderer.setScissorTest(false);
+  renderer.autoClear = true;
+  renderer.setViewport(0, 0, stageState.W, stageState.H);
+}
+
+// Render the main view, then overlay the mirror while playing.
+function renderFrame() {
+  renderer.setViewport(0, 0, stageState.W, stageState.H);
+  renderer.render(scene, camera);
+  if (player && state !== State.MENU) renderMirror();
 }
 
 // Inverse of the stage transform: viewport point -> stage-local point.
@@ -340,7 +407,7 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
     }
-    renderer.render(scene, camera);
+    renderFrame();
     return;
   }
 
@@ -358,9 +425,9 @@ function loop(now) {
       hairballs.spawn(player);
       player.shootCooldown = 0.6;
     }
-    if (input.consumeBoost() && boostMeter >= BOOST_COST) {
+    if (input.consumeBoost() && boostMeter >= 1) {
       if (player.fartBoost()) {
-        boostMeter -= BOOST_COST;
+        boostMeter = 0; // fully deplete on use
         effects.fartBurst(player);
       }
     }
@@ -416,7 +483,7 @@ function loop(now) {
     updateCamera(dt);
   }
 
-  renderer.render(scene, camera);
+  renderFrame();
 }
 
 requestAnimationFrame(loop);

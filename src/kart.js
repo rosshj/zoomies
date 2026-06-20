@@ -279,7 +279,8 @@ export class Kart {
     const ahead = track.project(
       new THREE.Vector3().copy(this.position).addScaledVector(fwd, 6)
     );
-    this.slopePitch = -(ahead.groundY - this.groundY) / 6;
+    const targetPitch = -(ahead.groundY - this.groundY) / 6;
+    this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 8 * dt);
     this.position.y = this.groundY;
 
     // Vertical / jump physics (relative to the road surface).

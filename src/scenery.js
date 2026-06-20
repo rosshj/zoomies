@@ -49,7 +49,7 @@ export function buildWorld(scene, track) {
 
 function buildTerrain(scene, heightAt) {
   const SIZE = 1500;
-  const SEG = 150;
+  const SEG = 220;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
 
@@ -79,7 +79,7 @@ function buildTerrain(scene, heightAt) {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
-    flatShading: true,
+    flatShading: false, // smooth-shaded so the hills aren't stepped
   });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.receiveShadow = true;
