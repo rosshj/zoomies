@@ -9,6 +9,7 @@ export class Input {
     this._steerTarget = 0;
     this._jumpQueued = false;
     this._shootQueued = false;
+    this._boostQueued = false;
 
     this._neutralRoll = null;
     this._neutralSamples = 0;
@@ -170,6 +171,7 @@ export class Input {
   _bindTapZones() {
     const jump = document.getElementById("btn-jump");
     const shoot = document.getElementById("btn-shoot");
+    const boost = document.getElementById("btn-boost");
 
     const flash = (el) => {
       el.classList.add("flash");
@@ -188,6 +190,13 @@ export class Input {
         this._shootQueued = true;
         flash(shoot);
       });
+    if (boost)
+      boost.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        if (boost.classList.contains("disabled")) return;
+        this._boostQueued = true;
+        flash(boost);
+      });
   }
 
   _bindKeyboard() {
@@ -196,6 +205,7 @@ export class Input {
       this._keys[e.code] = true;
       if (e.code === "Space") this._jumpQueued = true;
       if (e.code === "KeyF") this._shootQueued = true;
+      if (e.code === "KeyB") this._boostQueued = true;
     });
     window.addEventListener("keyup", (e) => (this._keys[e.code] = false));
   }
@@ -236,5 +246,11 @@ export class Input {
     const s = this._shootQueued;
     this._shootQueued = false;
     return s;
+  }
+
+  consumeBoost() {
+    const b = this._boostQueued;
+    this._boostQueued = false;
+    return b;
   }
 }

@@ -297,6 +297,32 @@ kbd {
   border-color: rgba(144, 202, 249, 0.7);
 }
 
+#btn-boost {
+  position: relative;
+  background: rgba(124, 179, 66, 0.5);
+  border-color: rgba(197, 225, 165, 0.8);
+}
+
+#boost-count {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border-radius: 11px;
+  background: #2e7d32;
+  border: 2px solid #fff;
+  font-size: 13px;
+  font-weight: bold;
+  line-height: 19px;
+  text-align: center;
+}
+
+#btn-boost.disabled {
+  opacity: 0.4;
+}
+
 .action-btn.flash {
   transform: scale(0.9);
   background: var(--accent);

@@ -6,6 +6,9 @@ import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
 import { buildWorld } from "./scenery.js";
+import { EffectsManager } from "./effects.js";
+
+const BOOSTS_PER_RACE = 3;
 
 const TOTAL_LAPS = 3;
 
@@ -24,7 +27,17 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 
 const input = new Input();
 const hairballs = new HairballManager(scene);
+const effects = new EffectsManager(scene);
 const hud = new HUD();
+
+// Boost (fart) charges
+let boostsRemaining = BOOSTS_PER_RACE;
+const boostBtn = document.getElementById("btn-boost");
+const boostCountEl = document.getElementById("boost-count");
+function updateBoostUI() {
+  boostCountEl.textContent = boostsRemaining;
+  boostBtn.classList.toggle("disabled", boostsRemaining <= 0);
+}
 
 // --- Karts: 1 player + 5 AI rivals ---
 const ROSTER = [
@@ -151,6 +164,8 @@ function startRace() {
   document.getElementById("hud").classList.remove("hidden");
 
   buildKarts();
+  boostsRemaining = BOOSTS_PER_RACE;
+  updateBoostUI();
   raceTime = 0;
   track.raceTime = 0;
   countdown = 3.999;
@@ -308,6 +323,18 @@ function loop(now) {
       hairballs.spawn(player);
       player.shootCooldown = 0.6;
     }
+    if (input.consumeBoost() && boostsRemaining > 0) {
+      if (player.fartBoost()) {
+        boostsRemaining--;
+        updateBoostUI();
+        effects.fartBurst(player);
+      }
+    }
+
+    // Boost trickle + drift sparks for the player.
+    if (player.fartTimer > 0) effects.trickle(player);
+    if (player.drifting) effects.driftSparks(player);
+    effects.update(dt);
 
     // AI
     for (const k of karts) if (!k.isPlayer) k.driveAI(track);
@@ -349,6 +376,7 @@ function loop(now) {
   if (state === State.FINISHED) {
     // Let karts coast to a stop and keep the camera alive.
     for (const k of karts) k.update(dt, track);
+    effects.update(dt);
     updateCamera(dt);
   }
 

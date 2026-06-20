@@ -100,8 +100,14 @@ export function createCat(furColor = 0xf0a830) {
   ]);
   const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 20, 0.18, 8), fur);
   tail.castShadow = true;
-  cat.add(tail);
+  // Pivot the tail at its base so it can be "lifted" for the fart boost.
+  const tailPivot = new THREE.Group();
+  tailPivot.position.set(0, 0.6, -0.6);
+  tail.position.set(0, -0.6, 0.6);
+  tailPivot.add(tail);
+  cat.add(tailPivot);
 
+  cat.userData.tail = tailPivot;
   return cat;
 }
 

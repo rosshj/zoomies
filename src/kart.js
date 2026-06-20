@@ -34,6 +34,16 @@ export class Kart {
     this.spinTimer = 0;
     this.spinDir = 1;
 
+    // Drift (hop into a corner to slide + charge a mini-turbo)
+    this.drifting = false;
+    this.driftDir = 0;
+    this.driftCharge = 0;
+
+    // Boost (drift mini-turbo and the fart boost button)
+    this.boostTimer = 0;
+    this.boostSpeed = 0;
+    this.fartTimer = 0; // tail-lift/fart animation timer
+
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
     this.prevT = 0;
@@ -62,6 +72,7 @@ export class Kart {
     cat.scale.setScalar(0.62);
     cat.position.set(0, 0.85, -0.35);
     this.group.add(cat);
+    this.catTail = cat.userData.tail;
   }
 
   placeAt(position, heading, track) {
@@ -78,9 +89,38 @@ export class Kart {
 
   jump() {
     if (!this.airborne && this.spinTimer <= 0) {
-      this.vy = 11;
+      this.vy = 9;
       this.airborne = true;
     }
+  }
+
+  // Apply a temporary speed boost. `mult` is the boosted top speed as a
+  // fraction of maxSpeed; `fart` triggers the tail-lift/fart effect.
+  applyBoost(mult, duration, fart = false) {
+    this.boostSpeed = this.maxSpeed * mult;
+    this.boostTimer = Math.max(this.boostTimer, duration);
+    this.speed = Math.max(this.speed, this.maxSpeed); // instant kick
+    if (fart) this.fartTimer = Math.max(this.fartTimer, duration);
+  }
+
+  // The fart boost button (limited uses are tracked by the caller).
+  fartBoost() {
+    if (this.spinTimer > 0 || this.finished) return false;
+    this.applyBoost(1.6, 1.5, true);
+    return true;
+  }
+
+  // End a drift, awarding a mini-turbo sized by how long it was held.
+  endDrift() {
+    if (!this.drifting) return;
+    this.drifting = false;
+    if (this.driftCharge > 1.5) this.applyBoost(1.35, 1.1);
+    else if (this.driftCharge > 0.8) this.applyBoost(1.18, 0.6);
+    this.driftCharge = 0;
+  }
+
+  get boosting() {
+    return this.boostTimer > 0;
   }
 
   spinOut() {
@@ -109,44 +149,79 @@ export class Kart {
     }
 
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
+    if (this.fartTimer > 0) this.fartTimer -= dt;
+    if (this.boostTimer > 0) this.boostTimer -= dt;
 
     if (this.spinTimer > 0) {
       this.spinTimer -= dt;
       this.heading += this.spinDir * 9 * dt; // rapid spin
       this.speed *= 0.85; // skid to a halt
+      this.drifting = false;
       this._integrate(dt, track, false);
       this._syncMesh();
       return;
     }
 
     // --- Longitudinal ---
+    const boosting = this.boostTimer > 0;
     const th = this.throttleInput;
-    if (th > 0.02) {
+    if (boosting) {
+      this.speed += this.accel * 2.2 * dt; // strong push while boosting
+    } else if (th > 0.02) {
       this.speed += this.accel * th * dt;
     } else if (th < -0.02) {
       if (this.speed > 0.5) {
-        // braking
-        this.speed -= this.brake * -th * dt;
+        this.speed -= this.brake * -th * dt; // braking
         if (this.speed < 0) this.speed = 0;
       } else {
-        // stopped & still holding down -> reverse
-        this.speed -= this.accel * -th * dt;
+        this.speed -= this.accel * -th * dt; // reverse
       }
     } else {
-      // rolling friction / engine braking
-      this.speed *= 1 - Math.min(1, 1.4 * dt);
+      this.speed *= 1 - Math.min(1, 1.4 * dt); // engine braking
       if (Math.abs(this.speed) < 0.05) this.speed = 0;
     }
 
-    this.speed = Math.max(-this.maxReverse, Math.min(this.maxSpeed, this.speed));
+    // Clamp: boosting allows exceeding the normal top speed; afterwards the
+    // extra speed bleeds off gradually rather than snapping down.
+    const upper = boosting ? this.boostSpeed : this.maxSpeed;
+    if (this.speed > upper) {
+      this.speed = boosting ? upper : Math.max(upper, this.speed - 26 * dt);
+    }
+    this.speed = Math.max(-this.maxReverse, this.speed);
+
+    // --- Drift end conditions ---
+    if (this.drifting) {
+      this.driftCharge += dt;
+      const sameDir = Math.sign(this.steerInput) === this.driftDir;
+      if (!sameDir || Math.abs(this.steerInput) < 0.18 || this.speed < 8) {
+        this.endDrift();
+      }
+    }
 
     // --- Steering --- (less effective at very low speed, reversed in reverse)
     const speedFactor = Math.min(1, Math.abs(this.speed) / 10);
     const dir = this.speed >= 0 ? 1 : -1;
-    const turnRate = 1.7; // rad/sec at full
-    this.heading += this.steerInput * turnRate * speedFactor * dir * dt;
+    let steer = this.steerInput;
+    let turnRate = 1.7; // rad/sec at full
+    if (this.drifting) {
+      turnRate = 2.5; // tighter arc while drifting
+      // keep arcing into the corner even if the tilt eases slightly
+      steer = this.driftDir * Math.max(Math.abs(this.steerInput), 0.65);
+    }
+    this.heading += steer * turnRate * speedFactor * dir * dt;
 
+    const wasAirborne = this.airborne;
     this._integrate(dt, track, false);
+
+    // Landing from a hop while turning hard starts a drift.
+    if (wasAirborne && !this.airborne && !this.drifting) {
+      if (Math.abs(this.steerInput) > 0.35 && this.speed > 12) {
+        this.drifting = true;
+        this.driftDir = Math.sign(this.steerInput);
+        this.driftCharge = 0;
+      }
+    }
+
     this._updateLap(track);
     this._syncMesh();
   }
@@ -207,9 +282,14 @@ export class Kart {
     this.group.position.set(this.position.x, this.y, this.position.z);
     this.group.rotation.y = this.heading;
 
-    // Lean into turns and tilt for spinout flair.
-    const lean = -this.steerInput * Math.min(1, Math.abs(this.speed) / 40) * 0.12;
-    this.group.rotation.z = lean;
+    // Lean into turns (harder while drifting) and a slight wheelie on boost.
+    const leanInput = this.drifting ? this.driftDir : this.steerInput;
+    const leanAmt = this.drifting ? 0.32 : 0.12;
+    this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
+    this.group.rotation.x = this.fartTimer > 0 ? -0.12 : 0;
+
+    // Lift the tail when farting.
+    if (this.catTail) this.catTail.rotation.x = this.fartTimer > 0 ? -1.1 : 0;
 
     for (const w of this.wheels) w.rotation.x = this._wheelSpin || 0;
   }
