@@ -7,6 +7,17 @@
     content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
   />
   <title>Zoomies — Cat Kart Racing</title>
+
+  <!-- PWA / home-screen install (locks to landscape when launched from the
+       home screen; on iOS this is the only way to lock orientation). -->
+  <link rel="manifest" href="./manifest.json" />
+  <meta name="theme-color" content="#0e1320" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Zoomies" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+
   <link rel="stylesheet" href="./styles.css" />
   <!-- three.js via import map so modules can `import ... from "three"` -->
   <script type="importmap">
@@ -77,6 +88,10 @@
         <li>First to finish <strong>3 laps</strong> wins!</li>
       </ul>
       <button id="start-btn">START RACE</button>
+      <p class="hint">
+        📲 For the best experience on phones, <strong>Add to Home Screen</strong>
+        and launch from the icon — it locks to landscape and goes full-screen.
+      </p>
       <p class="hint">Desktop: arrow keys to drive, <kbd>Space</kbd> jump, <kbd>F</kbd> shoot.</p>
     </div>
   </div>
