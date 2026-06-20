@@ -86,7 +86,7 @@ function buildKarts() {
 }
 
 // --- Game state ---
-const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3 };
+const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4 };
 let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
@@ -218,6 +218,34 @@ function enterFullscreenLandscape() {
     lockLandscape();
   }
 }
+
+// --- Pause wiring ---
+const pauseOverlay = document.getElementById("pause-overlay");
+function pauseGame() {
+  if (state !== State.RACING) return;
+  state = State.PAUSED;
+  pauseOverlay.classList.remove("hidden");
+}
+function resumeGame() {
+  if (state !== State.PAUSED) return;
+  pauseOverlay.classList.add("hidden");
+  state = State.RACING;
+}
+function toMenu() {
+  pauseOverlay.classList.add("hidden");
+  document.getElementById("hud").classList.add("hidden");
+  document.getElementById("menu").classList.remove("hidden");
+  state = State.MENU;
+}
+document.getElementById("btn-pause").addEventListener("click", pauseGame);
+document.getElementById("resume-btn").addEventListener("click", resumeGame);
+document.getElementById("menu-btn").addEventListener("click", toMenu);
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Escape" || e.code === "KeyP") {
+    if (state === State.RACING) pauseGame();
+    else if (state === State.PAUSED) resumeGame();
+  }
+});
 
 // --- Menu wiring ---
 document.getElementById("start-btn").addEventListener("click", startRace);
@@ -398,6 +426,11 @@ function loop(now) {
   dt = Math.min(dt, 0.05); // clamp big frame gaps
 
   world.update(now / 1000); // drift the balloons
+
+  if (state === State.PAUSED) {
+    renderFrame(); // hold the frozen frame behind the overlay
+    return;
+  }
 
   if (state === State.COUNTDOWN) {
     countdown -= dt;

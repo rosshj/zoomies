@@ -394,6 +394,44 @@ kbd {
   background: rgba(255, 179, 0, 0.4);
 }
 
+/* Pause button (top-left) */
+#btn-pause {
+  position: absolute;
+  top: max(6px, env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  font-size: 18px;
+  color: #fff;
+  background: rgba(16, 22, 38, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  box-shadow: none;
+  pointer-events: auto;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#btn-pause:active {
+  transform: scale(0.92);
+}
+
+/* Secondary (outline) button used on the pause card */
+button.secondary {
+  margin-top: 10px;
+  color: #fff;
+  background: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  box-shadow: none;
+}
+
+button.secondary:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
 /* Rear-view mirror frame (the image itself is drawn by WebGL behind it) */
 #mirror-frame {
   position: absolute;

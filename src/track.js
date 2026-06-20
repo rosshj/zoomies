@@ -54,38 +54,65 @@ export class Track {
 
   _buildRoad() {
     const div = this.samples;
+    const cross = 5; // subdivisions across the road, for color variation
+    const vpr = cross + 1; // vertices per row
     const positions = [];
     const uvs = [];
+    const colors = [];
     const indices = [];
+    const base = new THREE.Color(0x53535b); // asphalt
+    const c = new THREE.Color();
+
+    const hash = (a, b) => {
+      const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
+      return s - Math.floor(s);
+    };
 
     for (let i = 0; i <= div; i++) {
       const idx = i % div;
       const p = this._pts[idx];
       const side = this._sideAt(idx);
-      const left = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
-      const right = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
+      for (let j = 0; j < vpr; j++) {
+        const f = j / cross; // 0..1 across the road
+        const lat = -this.halfWidth + f * this.width;
+        const x = p.x + side.x * lat;
+        const z = p.z + side.z * lat;
+        positions.push(x, p.y + 0.02, z);
+        uvs.push(f, i * 0.1);
 
-      positions.push(left.x, left.y + 0.02, left.z);
-      positions.push(right.x, right.y + 0.02, right.z);
-      uvs.push(0, i * 0.1);
-      uvs.push(1, i * 0.1);
+        // Asphalt tone: smooth patchy variation + fine grain, with two faint
+        // darker "tyre line" bands where karts tend to drive.
+        let shade =
+          1 +
+          0.07 * Math.sin(x * 0.05) * Math.cos(z * 0.045) +
+          0.05 * Math.sin(x * 0.013 + z * 0.017) +
+          (hash(idx, j) - 0.5) * 0.07;
+        const lane = Math.min(Math.abs(f - 0.32), Math.abs(f - 0.68));
+        if (lane < 0.08) shade -= 0.06;
+        c.copy(base).multiplyScalar(shade);
+        colors.push(c.r, c.g, c.b);
+      }
 
       if (i < div) {
-        const a = i * 2;
-        indices.push(a, a + 1, a + 2);
-        indices.push(a + 1, a + 3, a + 2);
+        const row = i * vpr;
+        const next = (i + 1) * vpr;
+        for (let j = 0; j < cross; j++) {
+          indices.push(row + j, next + j, row + j + 1);
+          indices.push(row + j + 1, next + j, next + j + 1);
+        }
       }
     }
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
     const road = new THREE.Mesh(
       geo,
-      new THREE.MeshStandardMaterial({ color: 0x3a3f4a, roughness: 0.95 })
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
     );
     road.receiveShadow = true;
     this.group.add(road);
@@ -166,22 +193,47 @@ export class Track {
   }
 
   _buildCenterLine() {
-    const dashGeo = new THREE.PlaneGeometry(0.5, 4);
-    const dashMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.8 });
-    const dashes = 240;
-    const inst = new THREE.InstancedMesh(dashGeo, dashMat, dashes);
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < dashes; i++) {
-      const t = i / dashes;
+    // Dashes built as quads lying in the road surface (offset a hair along the
+    // surface normal) so they read as painted-on, not raised — important now
+    // that the road pitches over hills.
+    const positions = [];
+    const indices = [];
+    const N = 220;
+    const up = new THREE.Vector3(0, 1, 0);
+    const hl = 1.6; // half-length of a dash
+    const hw = 0.22; // half-width
+    let v = 0;
+    for (let k = 0; k < N; k += 2) {
+      const t = k / N;
       const p = this.curve.getPointAt(t);
-      const tan = this.curve.getTangentAt(t);
-      dummy.position.set(p.x, p.y + 0.05, p.z);
-      dummy.rotation.set(-Math.PI / 2, 0, -Math.atan2(tan.z, tan.x) + Math.PI / 2);
-      dummy.updateMatrix();
-      inst.setMatrixAt(i, dummy.matrix);
+      const tan = this.curve.getTangentAt(t).normalize();
+      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+      const normal = new THREE.Vector3().crossVectors(side, tan).normalize();
+      const o = normal.clone().multiplyScalar(0.03);
+      const corner = (al, aw) =>
+        new THREE.Vector3()
+          .copy(p)
+          .addScaledVector(tan, al)
+          .addScaledVector(side, aw)
+          .add(o);
+      const c0 = corner(-hl, -hw);
+      const c1 = corner(-hl, hw);
+      const c2 = corner(hl, -hw);
+      const c3 = corner(hl, hw);
+      positions.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
+      indices.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
+      v += 4;
     }
-    inst.instanceMatrix.needsUpdate = true;
-    this.group.add(inst);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ color: 0xf4cf3a, roughness: 0.9 })
+    );
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
   }
 
   _buildStartLine() {

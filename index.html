@@ -37,6 +37,9 @@
 
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
+    <!-- Pause (top-left) -->
+    <button id="btn-pause">⏸</button>
+
     <!-- Top-right race info -->
     <div id="info">
       <div id="lap">Lap 1/3</div>
@@ -78,6 +81,15 @@
   <div id="rotate" class="overlay hidden">
     <div class="rotate-icon">📱↻</div>
     <p>Please rotate your phone to <strong>landscape</strong> to play.</p>
+  </div>
+
+  <!-- ===== Pause ===== -->
+  <div id="pause-overlay" class="overlay hidden">
+    <div class="menu-card">
+      <h1>⏸ Paused</h1>
+      <button id="resume-btn">RESUME</button>
+      <button id="menu-btn" class="secondary">MAIN MENU</button>
+    </div>
   </div>
 
   <!-- ===== Start menu ===== -->
