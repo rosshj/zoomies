@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+  />
+  <title>Zoomies — Cat Kart Racing</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <!-- three.js via import map so modules can `import ... from "three"` -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.161.0/build/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- WebGL canvas mount -->
+  <div id="game"></div>
+
+  <!-- ===== HUD ===== -->
+  <div id="hud" class="hidden">
+    <!-- Top-left race info -->
+    <div id="info">
+      <div id="lap">Lap 1/3</div>
+      <div id="place">1st</div>
+      <div id="speed">0 km/h</div>
+      <div id="timer">0:00.0</div>
+    </div>
+
+    <!-- Left throttle slider -->
+    <div id="throttle">
+      <div id="throttle-track">
+        <span class="throttle-label throttle-up">▲ GAS</span>
+        <div id="throttle-thumb"></div>
+        <span class="throttle-label throttle-down">▼ BRAKE / REV</span>
+      </div>
+    </div>
+
+    <!-- Right side tap zones -->
+    <div id="shoot-zone" class="tap-zone">
+      <span>🐾 SHOOT</span>
+    </div>
+    <div id="jump-zone" class="tap-zone">
+      <span>⬆ JUMP</span>
+    </div>
+
+    <!-- Lap toast -->
+    <div id="toast"></div>
+  </div>
+
+  <!-- ===== Rotate-to-landscape gate ===== -->
+  <div id="rotate" class="overlay hidden">
+    <div class="rotate-icon">📱↻</div>
+    <p>Please rotate your phone to <strong>landscape</strong> to play.</p>
+  </div>
+
+  <!-- ===== Start menu ===== -->
+  <div id="menu" class="overlay">
+    <div class="menu-card">
+      <h1>🐱 ZOOMIES</h1>
+      <p class="tagline">Cat Kart Racing</p>
+      <ul class="how-to">
+        <li><strong>Tilt phone</strong> to steer</li>
+        <li><strong>Left slider:</strong> up = gas, down = brake / reverse</li>
+        <li><strong>Tap bottom-right</strong> to jump</li>
+        <li><strong>Tap top-right</strong> to shoot hairballs 🐾</li>
+        <li>First to finish <strong>3 laps</strong> wins!</li>
+      </ul>
+      <button id="start-btn">START RACE</button>
+      <p class="hint">Desktop: arrow keys to drive, <kbd>Space</kbd> jump, <kbd>F</kbd> shoot.</p>
+    </div>
+  </div>
+
+  <!-- ===== Results ===== -->
+  <div id="results" class="overlay hidden">
+    <div class="menu-card">
+      <h1 id="results-title">🏁 Finish!</h1>
+      <ol id="results-list"></ol>
+      <button id="restart-btn">RACE AGAIN</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
