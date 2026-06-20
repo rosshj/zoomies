@@ -90,7 +90,8 @@ export class Input {
       this._neutralRoll += sign * d * 0.015;
     }
 
-    const MAX = 0.6; // ~34° of tilt for full lock
+    const MAX = 0.42; // ~24° of tilt for full lock — keeps you clear of the
+    // angle where the OS may flip orientation (esp. on iOS, which can't lock)
     const DEAD = 0.035;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;

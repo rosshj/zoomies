@@ -68,15 +68,48 @@ function checkOrientation() {
   rotateEl.classList.toggle("hidden", !(isTouch && portrait));
 }
 window.addEventListener("resize", checkOrientation);
-window.addEventListener("orientationchange", checkOrientation);
+window.addEventListener("orientationchange", () => {
+  checkOrientation();
+  // If the OS does rotate us, re-zero steering so the new orientation's
+  // neutral and sign are picked up cleanly instead of fighting the player.
+  input.calibrate();
+});
 checkOrientation();
+
+// Lock to landscape so tilting hard to steer doesn't trigger an OS rotation.
+// Orientation lock requires fullscreen and is supported on Android Chrome;
+// iOS Safari ignores it (we recover via the orientationchange handler above).
+function lockLandscape() {
+  try {
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock("landscape").catch(() => {});
+    }
+  } catch (e) {
+    /* unsupported */
+  }
+}
+function enterFullscreenLandscape() {
+  const el = document.documentElement;
+  const req = el.requestFullscreen || el.webkitRequestFullscreen;
+  try {
+    if (req) {
+      Promise.resolve(req.call(el)).then(lockLandscape, lockLandscape);
+    } else {
+      lockLandscape();
+    }
+  } catch (e) {
+    lockLandscape();
+  }
+}
 
 // --- Menu wiring ---
 document.getElementById("start-btn").addEventListener("click", startRace);
 document.getElementById("restart-btn").addEventListener("click", startRace);
 
-async function startRace() {
-  await input.enableMotion();
+function startRace() {
+  // These need the user-gesture from the click, so fire them synchronously.
+  enterFullscreenLandscape();
+  input.enableMotion();
   input.calibrate();
 
   document.getElementById("menu").classList.add("hidden");
