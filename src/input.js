@@ -11,6 +11,7 @@ export class Input {
     this._shootQueued = false;
 
     this._neutralRoll = null;
+    this._neutralSamples = 0;
     this._haveMotion = false;
     this._keys = {};
     this._keyboardSteering = false;
@@ -41,7 +42,8 @@ export class Input {
 
   // Recalibrate the neutral (centre) steering position to the current tilt.
   calibrate() {
-    this._neutralRoll = null; // next motion event re-captures neutral
+    this._neutralRoll = null; // next motion events re-capture neutral
+    this._neutralSamples = 0;
   }
 
   _onMotion(e) {
@@ -52,29 +54,49 @@ export class Input {
     // Roll of the phone within the screen plane. atan2(y, x) tracks the
     // "steering-wheel" tilt regardless of how far the phone is pitched
     // back, which makes it robust to how the player holds the device.
-    let roll = Math.atan2(g.y, g.x); // radians
+    const roll = Math.atan2(g.y, g.x); // radians
+
+    const shortArc = (a) => {
+      while (a > Math.PI) a -= Math.PI * 2;
+      while (a < -Math.PI) a += Math.PI * 2;
+      return a;
+    };
 
     if (this._neutralRoll === null) {
       this._neutralRoll = roll;
+      this._neutralSamples = 1;
       return;
     }
+    // Stabilise neutral by averaging the first several samples after calibrate.
+    if (this._neutralSamples < 8) {
+      this._neutralRoll += shortArc(roll - this._neutralRoll) / (this._neutralSamples + 1);
+      this._neutralSamples++;
+    }
 
-    let d = roll - this._neutralRoll;
-    while (d > Math.PI) d -= Math.PI * 2;
-    while (d < -Math.PI) d += Math.PI * 2;
+    let d = shortArc(roll - this._neutralRoll);
 
-    // Sign so that tilting the phone right turns right (depends on which way
-    // the device was rotated into landscape).
+    // Sign so tilting the phone right turns right (depends on which way the
+    // device was rotated into landscape).
     const angle =
       (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
-    if (angle === 270 || angle === -90) d = -d;
+    const sign = angle === 270 || angle === -90 ? -1 : 1;
+    d *= sign;
 
-    const MAX = 0.5; // ~28° of tilt for full lock
-    const DEAD = 0.04;
-    if (Math.abs(d) < DEAD) d = 0;
-    else d -= Math.sign(d) * DEAD;
+    // Auto-centering: while steering only gently (i.e. trying to drive
+    // straight), slowly drag neutral toward the current tilt. This absorbs a
+    // small miscalibration that would otherwise leak a constant steer and make
+    // the kart drift in a slow circle. Real turns (larger tilt) are untouched.
+    if (this._neutralSamples >= 8 && Math.abs(d) < 0.12) {
+      this._neutralRoll += sign * d * 0.015;
+    }
 
-    this._steerTarget = Math.max(-1, Math.min(1, d / MAX));
+    const MAX = 0.6; // ~34° of tilt for full lock
+    const DEAD = 0.035;
+    let s = d;
+    if (Math.abs(s) < DEAD) s = 0;
+    else s -= Math.sign(s) * DEAD;
+
+    this._steerTarget = Math.max(-1, Math.min(1, s / MAX));
     this._keyboardSteering = false;
   }
 

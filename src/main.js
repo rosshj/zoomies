@@ -58,6 +58,7 @@ const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3 };
 let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
+let countdownCalibrated = false;
 
 // --- Orientation gate ---
 const rotateEl = document.getElementById("rotate");
@@ -86,6 +87,7 @@ async function startRace() {
   raceTime = 0;
   track.raceTime = 0;
   countdown = 3.999;
+  countdownCalibrated = false;
   state = State.COUNTDOWN;
 }
 
@@ -212,6 +214,12 @@ function loop(now) {
     updateCamera(dt, camPos.lengthSq() === 0);
     const n = Math.ceil(countdown - 1);
     hud.showToast(n > 0 ? `${n}` : "GO!");
+    // Re-zero steering near the end of the countdown, once the player has
+    // settled into their driving grip.
+    if (n === 1 && !countdownCalibrated) {
+      input.calibrate();
+      countdownCalibrated = true;
+    }
     if (countdown <= 0) {
       state = State.RACING;
     }
