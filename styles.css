@@ -170,44 +170,45 @@ kbd {
 
 #info {
   position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  left: 50%;
-  transform: translateX(-50%);
-  text-align: center;
+  top: max(8px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  text-align: right;
   background: var(--panel);
-  padding: 6px 18px;
-  border-radius: 0 0 14px 14px;
-  line-height: 1.25;
+  padding: 5px 12px;
+  border-radius: 12px;
+  line-height: 1.12;
 }
 
 #lap {
-  font-size: 22px;
+  font-size: 16px;
   font-weight: bold;
   color: var(--accent);
 }
 
 #place {
-  font-size: 16px;
+  font-size: 13px;
 }
 
 #speed {
-  font-size: 13px;
+  font-size: 12px;
   opacity: 0.85;
 }
 
 #timer {
-  font-size: 13px;
+  font-size: 12px;
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
 
-/* Throttle slider (left) */
+/* Throttle slider (left). The whole strip is the touch target, so the finger
+   doesn't have to land precisely on the track. Inset generously so it clears
+   the Dynamic Island / status bar whichever edge they land on. */
 #throttle {
   position: absolute;
-  left: max(14px, env(safe-area-inset-left));
-  top: 0;
-  bottom: 0;
-  width: 84px;
+  left: max(46px, calc(env(safe-area-inset-left, 0px) + 18px));
+  top: 12%;
+  bottom: 12%;
+  width: 96px;
   display: flex;
   align-items: center;
   pointer-events: auto;
@@ -256,42 +257,51 @@ kbd {
 .throttle-up { top: -22px; color: #7CFC9A; }
 .throttle-down { bottom: -22px; color: #ff8a7a; }
 
-/* Right tap zones */
-.tap-zone {
+/* Bottom-right round action buttons (shoot + jump) */
+#action-buttons {
   position: absolute;
-  right: 0;
-  width: 38%;
-  height: 50%;
+  right: max(24px, calc(env(safe-area-inset-right, 0px) + 12px));
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.action-btn {
+  pointer-events: auto;
+  width: 78px;
+  height: 78px;
+  border-radius: 50%;
+  font-size: 32px;
+  line-height: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: auto;
-  font-size: 15px;
-  font-weight: bold;
-  letter-spacing: 1px;
-  color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+  background: rgba(16, 22, 38, 0.55);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  padding: 0;
 }
 
-#shoot-zone {
-  top: 0;
-  align-items: flex-start;
-  padding-top: max(48px, env(safe-area-inset-top));
+#btn-shoot {
+  background: rgba(255, 87, 34, 0.5);
+  border-color: rgba(255, 138, 101, 0.7);
 }
 
-#jump-zone {
-  bottom: 0;
-  align-items: flex-end;
-  padding-bottom: max(20px, env(safe-area-inset-bottom));
+#btn-jump {
+  width: 92px;
+  height: 92px;
+  background: rgba(33, 150, 243, 0.45);
+  border-color: rgba(144, 202, 249, 0.7);
 }
 
-.tap-zone.flash span {
-  color: var(--accent);
-  transform: scale(1.4);
+.action-btn.flash {
+  transform: scale(0.9);
+  background: var(--accent);
+  color: #1a1206;
   transition: transform 0.08s;
-}
-
-.tap-zone span {
-  transition: transform 0.2s;
 }
 
 /* Steering indicator */

@@ -88,19 +88,15 @@ export class Input {
       this._neutralSamples++;
     }
 
-    let d = shortArc(roll - this._neutralRoll) * this._sign;
+    const d = shortArc(roll - this._neutralRoll) * this._sign;
 
-    // Auto-centering: while steering only gently (i.e. trying to drive
-    // straight), slowly drag neutral toward the current tilt. This absorbs a
-    // small miscalibration that would otherwise leak a constant steer and make
-    // the kart drift in a slow circle. Real turns (larger tilt) are untouched.
-    if (this._neutralSamples >= 8 && Math.abs(d) < 0.12) {
-      this._neutralRoll += this._sign * d * 0.015;
-    }
-
+    // Note: no auto-recentering. It made "straight" drift over time (a held
+    // gentle turn got absorbed into neutral, so straight became a tilt). The
+    // neutral is set by calibrate() at the start and via the "center steering"
+    // button; a fixed deadzone keeps small jitter from leaking.
     const MAX = 0.42; // ~24° of tilt for full lock — keeps you clear of the
     // angle where the OS may flip orientation (esp. on iOS, which can't lock)
-    const DEAD = 0.035;
+    const DEAD = 0.045;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;
     else s -= Math.sign(s) * DEAD;
@@ -110,9 +106,10 @@ export class Input {
   }
 
   _bindSlider() {
-    const track = document.getElementById("throttle-track");
+    const zone = document.getElementById("throttle"); // wide, forgiving target
+    const track = document.getElementById("throttle-track"); // geometry ref
     const thumb = document.getElementById("throttle-thumb");
-    if (!track) return;
+    if (!track || !zone) return;
 
     let active = false;
     let raf = null;
@@ -161,18 +158,18 @@ export class Input {
       if (!raf) raf = requestAnimationFrame(springBack);
     };
 
-    track.addEventListener("pointerdown", (e) => {
-      track.setPointerCapture(e.pointerId);
+    zone.addEventListener("pointerdown", (e) => {
+      zone.setPointerCapture(e.pointerId);
       start(e.clientX, e.clientY);
     });
-    track.addEventListener("pointermove", (e) => move(e.clientX, e.clientY));
-    track.addEventListener("pointerup", end);
-    track.addEventListener("pointercancel", end);
+    zone.addEventListener("pointermove", (e) => move(e.clientX, e.clientY));
+    zone.addEventListener("pointerup", end);
+    zone.addEventListener("pointercancel", end);
   }
 
   _bindTapZones() {
-    const jump = document.getElementById("jump-zone");
-    const shoot = document.getElementById("shoot-zone");
+    const jump = document.getElementById("btn-jump");
+    const shoot = document.getElementById("btn-shoot");
 
     const flash = (el) => {
       el.classList.add("flash");
@@ -180,12 +177,14 @@ export class Input {
     };
 
     if (jump)
-      jump.addEventListener("pointerdown", () => {
+      jump.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
         this._jumpQueued = true;
         flash(jump);
       });
     if (shoot)
-      shoot.addEventListener("pointerdown", () => {
+      shoot.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
         this._shootQueued = true;
         flash(shoot);
       });
