@@ -78,6 +78,35 @@ export class EffectsManager {
     this.parts.push({ mesh, mat, v, life: 0.3, grow: 0 });
   }
 
+  // White/orange sparks flying off where a kart scrapes a railing.
+  wallSparks(kart) {
+    const n = 3 + Math.floor(Math.random() * 3);
+    const along = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    const base = new THREE.Vector3()
+      .copy(kart.position)
+      .addScaledVector(kart.wallHitDir, kart.radius)
+      .setY(kart.position.y + 0.6);
+    for (let i = 0; i < n; i++) {
+      const hot = Math.random() < 0.5;
+      const mat = new THREE.MeshStandardMaterial({
+        color: hot ? 0xffe082 : 0xff8a3d,
+        emissive: hot ? 0xffd54f : 0xff7020,
+        emissiveIntensity: 1,
+        transparent: true,
+        opacity: 1,
+      });
+      const mesh = new THREE.Mesh(this.sparkGeo, mat);
+      mesh.position.copy(base);
+      const v = along
+        .clone()
+        .multiplyScalar(-(Math.random() * 6))
+        .addScaledVector(kart.wallHitDir, 4 + Math.random() * 6)
+        .add(new THREE.Vector3((Math.random() - 0.5) * 3, 3 + Math.random() * 4, (Math.random() - 0.5) * 3));
+      this.scene.add(mesh);
+      this.parts.push({ mesh, mat, v, life: 0.25 + Math.random() * 0.2, grow: 0 });
+    }
+  }
+
   update(dt) {
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];

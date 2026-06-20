@@ -49,7 +49,7 @@ export function buildWorld(scene, track) {
 
 function buildTerrain(scene, heightAt) {
   const SIZE = 1500;
-  const SEG = 220;
+  const SEG = 256;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
 

@@ -35,11 +35,16 @@ export class Kart {
     // Spinout
     this.spinTimer = 0;
     this.spinDir = 1;
+    this.spinAngVel = 0; // angular velocity (decays) while spinning out
     this.spinVel = new THREE.Vector3(); // carries inertia while spinning out
 
     // Bumper-car knockback (decaying positional impulse)
     this.knock = new THREE.Vector3();
     this.mass = isPlayer ? 1.35 : 1.0;
+
+    // Wall scrape (for spark effects)
+    this.wallHit = false;
+    this.wallHitDir = new THREE.Vector3();
 
     // Drift (hop into a corner to slide + charge a mini-turbo)
     this.drifting = false;
@@ -66,6 +71,7 @@ export class Kart {
 
     // Tuning (calmer, less frantic than an all-out racer)
     this.maxSpeed = 34 * skill;
+    this.baseMaxSpeed = this.maxSpeed; // for AI catch-up scaling
     this.maxReverse = 11;
     this.accel = 20;
     this.brake = 42;
@@ -135,15 +141,17 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
-  // Spin out — but keep the kart's momentum so it slides out realistically
-  // instead of stopping dead. `impactDir` (xz) adds a shove from the hit.
+  // Spin out — keep the kart's momentum so it slides out realistically and
+  // the spin decays, rather than whipping around in place. `impactDir` (xz)
+  // adds a modest shove from the hit.
   spinOut(impactDir = null) {
     if (this.spinTimer > 0) return;
-    this.spinTimer = 2.2;
+    this.spinTimer = 1.4;
     this.spinDir = Math.random() < 0.5 ? -1 : 1;
+    this.spinAngVel = this.spinDir * (4.5 + Math.random() * 1.5);
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
-    this.spinVel.copy(fwd).multiplyScalar(Math.max(Math.abs(this.speed), 16));
-    if (impactDir) this.spinVel.addScaledVector(impactDir, 12);
+    this.spinVel.copy(fwd).multiplyScalar(Math.abs(this.speed)); // real momentum
+    if (impactDir) this.spinVel.addScaledVector(impactDir, 6);
     this.drifting = false;
     this.speed = 0;
   }
@@ -175,10 +183,12 @@ export class Kart {
 
     if (this.spinTimer > 0) {
       this.spinTimer -= dt;
-      this.heading += this.spinDir * 8 * dt; // visual spin
-      // Slide out carrying inertia, decaying over time.
+      // Angular velocity decays (friction) so the spin settles down.
+      this.heading += this.spinAngVel * dt;
+      this.spinAngVel *= 1 - Math.min(1, 1.1 * dt);
+      // Slide out carrying real inertia, decaying with friction.
       this.position.addScaledVector(this.spinVel, dt);
-      this.spinVel.multiplyScalar(1 - Math.min(1, 1.4 * dt));
+      this.spinVel.multiplyScalar(1 - Math.min(1, 1.6 * dt));
       this.speed = 0;
       this._integrate(dt, track, false);
       this._syncMesh();
@@ -272,6 +282,10 @@ export class Kart {
       this.position.addScaledVector(proj.side, correction);
       this.speed *= 1 - Math.min(0.4, 1.6 * dt);
       this.knock.multiplyScalar(0.5);
+      if (Math.abs(this.speed) > 6) {
+        this.wallHit = true;
+        this.wallHitDir.copy(proj.side).multiplyScalar(Math.sign(proj.lateral));
+      }
     }
 
     // Follow the road surface height; estimate slope for a pitch tilt.

@@ -60,11 +60,11 @@ function updateBoostUI() {
 // --- Karts: 1 player + 5 AI rivals ---
 const ROSTER = [
   { name: "You", color: 0xe53935, catColor: 0xf0a830, isPlayer: true, skill: 1.0 },
-  { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 0.97 },
-  { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 0.99 },
-  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 0.95 },
-  { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.0 },
-  { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 0.96 },
+  { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 1.03 },
+  { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 1.05 },
+  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.0 },
+  { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.06 },
+  { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 1.02 },
 ];
 
 let karts = [];
@@ -127,8 +127,8 @@ function layoutStage() {
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
 
-  // Mirror box: top-center. WebGL viewport y is measured from the bottom.
-  const mw = Math.min(300, W * 0.34);
+  // Mirror box: top-center (small). WebGL viewport y is measured from bottom.
+  const mw = Math.min(150, W * 0.17);
   const mh = mw * 0.4;
   const mleft = (W - mw) / 2;
   const mtop = 8;
@@ -321,33 +321,39 @@ function updatePlacement() {
   order.forEach((k, idx) => (k.place = idx + 1));
 }
 
-// --- AI actions: shooting + fart boosts + boost trickle ---
+// --- AI actions: catch-up, shooting + fart boosts ---
 function aiActions(dt) {
   for (const k of karts) {
     if (k.isPlayer) continue;
+
+    // Rubber-band: trailing karts run a little faster, leaders a little slower,
+    // to keep the pack competitive.
+    const gap = player.totalProgress - k.totalProgress;
+    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.06, Math.min(0.16, gap * 0.12)));
+
     if (k.fartTimer > 0) effects.trickle(k);
     if (k.finished || k.spinTimer > 0) continue;
 
-    // Use a fart boost periodically, preferably on a straight.
+    // Use a fart boost often, preferably on a straight (and more if behind).
     k._aiBoostTimer -= dt;
     if (k._aiBoostTimer <= 0) {
-      k._aiBoostTimer = 6 + Math.random() * 7;
-      if (Math.abs(k.steerInput) < 0.4 && k.speed > 10 && !k.boosting) {
-        k.applyBoost(1.4, 1.2, true);
+      k._aiBoostTimer = (gap > 0.02 ? 2.5 : 4.5) + Math.random() * 4;
+      if (Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
+        k.applyBoost(1.45, 1.3, true);
         effects.fartBurst(k);
       }
     }
 
-    // Fire if someone is just ahead and roughly in front.
+    // Fire more often, with a slightly wider/longer reach.
     k._aiShootTimer -= dt;
     if (k._aiShootTimer > 0) continue;
-    k._aiShootTimer = 2.5 + Math.random() * 4;
+    k._aiShootTimer = 1.4 + Math.random() * 2.6;
     const fwd = new THREE.Vector3(Math.sin(k.heading), 0, Math.cos(k.heading));
     for (const other of karts) {
       if (other === k || other.finished) continue;
       const to = new THREE.Vector3().subVectors(other.position, k.position);
       const dist = to.length();
-      if (dist > 4 && dist < 34 && to.normalize().dot(fwd) > 0.9) {
+      if (dist > 3 && dist < 44 && to.normalize().dot(fwd) > 0.82) {
         hairballs.spawn(k);
         break;
       }
@@ -437,7 +443,6 @@ function loop(now) {
     // Boost trickle + drift sparks for the player.
     if (player.fartTimer > 0) effects.trickle(player);
     if (player.drifting) effects.driftSparks(player);
-    effects.update(dt);
 
     // AI
     for (const k of karts) if (!k.isPlayer) k.driveAI(track);
@@ -447,6 +452,14 @@ function loop(now) {
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
     hairballs.update(dt, karts);
+    // Sparks where a kart scraped a railing this frame.
+    for (const k of karts) {
+      if (k.wallHit) {
+        effects.wallSparks(k);
+        k.wallHit = false;
+      }
+    }
+    effects.update(dt);
     updatePlacement();
 
     // Lap toast for the player

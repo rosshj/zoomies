@@ -126,38 +126,42 @@ export class Track {
   }
 
   _buildWalls() {
-    const wallGeo = new THREE.BoxGeometry(1.2, 1.6, 4.2);
-    const matA = new THREE.MeshStandardMaterial({ color: 0xe53935 });
-    const matB = new THREE.MeshStandardMaterial({ color: 0xfafafa });
+    const wallH = 1.6;
+    const off = this.halfWidth + 0.8;
+    const red = new THREE.Color(0xe53935);
+    const white = new THREE.Color(0xfafafa);
 
-    const step = 5;
-    const posts = [];
-    for (let i = 0; i < this.samples; i += step) {
-      const p = this._pts[i];
-      const tan = this._tans[i];
-      const side = this._sideAt(i);
-      const red = (i / step) % 2 === 0;
-      for (const dir of [1, -1]) {
-        const pos = new THREE.Vector3().copy(p).addScaledVector(side, dir * (this.halfWidth + 1.6));
-        posts.push({ pos, tan, red });
+    // Continuous ribbon barriers (no gaps) down each side of the road.
+    for (const dirSign of [1, -1]) {
+      const positions = [];
+      const colors = [];
+      const indices = [];
+      for (let i = 0; i <= this.samples; i++) {
+        const idx = i % this.samples;
+        const p = this._pts[idx];
+        const side = this._sideAt(idx);
+        const base = new THREE.Vector3().copy(p).addScaledVector(side, dirSign * off);
+        positions.push(base.x, base.y, base.z);
+        positions.push(base.x, base.y + wallH, base.z);
+        const c = Math.floor(i / 6) % 2 === 0 ? red : white;
+        colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+        if (i < this.samples) {
+          const a = i * 2;
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
       }
-    }
-
-    const dummy = new THREE.Object3D();
-    for (const mat of [matA, matB]) {
-      const isRed = mat === matA;
-      const subset = posts.filter((q) => q.red === isRed);
-      const inst = new THREE.InstancedMesh(wallGeo, mat, subset.length);
-      inst.castShadow = true;
-      inst.receiveShadow = true;
-      subset.forEach((q, i) => {
-        dummy.position.set(q.pos.x, q.pos.y + 0.8, q.pos.z);
-        dummy.lookAt(q.pos.x + q.tan.x, q.pos.y + 0.8, q.pos.z + q.tan.z);
-        dummy.updateMatrix();
-        inst.setMatrixAt(i, dummy.matrix);
-      });
-      inst.instanceMatrix.needsUpdate = true;
-      this.group.add(inst);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(
+        geo,
+        new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
     }
   }
 
@@ -229,42 +233,71 @@ export class Track {
     return this.curve.getTangentAt(((t % 1) + 1) % 1);
   }
 
-  // Nearest sampled point on the centerline:
-  // { t, point, tangent, side, lateral, distance, groundY }.
-  project(pos) {
+  // Closest point on the polyline `pts` to (x,z), interpolated *along* the
+  // nearest segment so the result (especially height) is continuous — no
+  // stair-stepping as you cross sample boundaries.
+  _projectArr(pts, x, z) {
+    const N = pts.length;
     let best = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < this.samples; i++) {
-      const dx = this._pts[i].x - pos.x;
-      const dz = this._pts[i].z - pos.z;
+    let bestD = Infinity;
+    for (let i = 0; i < N; i++) {
+      const dx = pts[i].x - x;
+      const dz = pts[i].z - z;
       const d = dx * dx + dz * dz;
-      if (d < bestDist) {
-        bestDist = d;
+      if (d < bestD) {
+        bestD = d;
         best = i;
       }
     }
-    const t = best / this.samples;
-    const point = this._pts[best];
-    const tangent = this._tans[best];
-    const side = this._sideAt(best);
-    const lateral = new THREE.Vector3().subVectors(pos, point).dot(side);
-    return { t, point, tangent, side, lateral, distance: Math.sqrt(bestDist), groundY: point.y };
-  }
-
-  // Nearest XZ distance + that point's height (coarse, for scenery).
-  groundInfo(x, z) {
-    let best = Infinity;
-    let y = 0;
-    for (const p of this._coarse) {
-      const dx = p.x - x;
-      const dz = p.z - z;
+    let rDist = Infinity;
+    let ry = pts[best].y;
+    let ri = best;
+    let ru = 0;
+    let cx = pts[best].x;
+    let cz = pts[best].z;
+    for (const di of [-1, 0]) {
+      const a = (best + di + N) % N;
+      const b = (a + 1) % N;
+      const ax = pts[a].x;
+      const az = pts[a].z;
+      const ex = pts[b].x - ax;
+      const ez = pts[b].z - az;
+      const len2 = ex * ex + ez * ez || 1;
+      let u = ((x - ax) * ex + (z - az) * ez) / len2;
+      u = Math.max(0, Math.min(1, u));
+      const px = ax + ex * u;
+      const pz = az + ez * u;
+      const dx = x - px;
+      const dz = z - pz;
       const d = dx * dx + dz * dz;
-      if (d < best) {
-        best = d;
-        y = p.y;
+      if (d < rDist) {
+        rDist = d;
+        ry = pts[a].y + (pts[b].y - pts[a].y) * u;
+        ri = a;
+        ru = u;
+        cx = px;
+        cz = pz;
       }
     }
-    return { dist: Math.sqrt(best), y };
+    return { dist: Math.sqrt(rDist), y: ry, i: ri, u: ru, cx, cz };
+  }
+
+  // Projection onto the centerline with an interpolated ground height:
+  // { t, point, tangent, side, lateral, distance, groundY }.
+  project(pos) {
+    const r = this._projectArr(this._pts, pos.x, pos.z);
+    const t = (r.i + r.u) / this.samples;
+    const point = new THREE.Vector3(r.cx, r.y, r.cz);
+    const tangent = this._tans[r.i];
+    const side = this._sideAt(r.i);
+    const lateral = (pos.x - r.cx) * side.x + (pos.z - r.cz) * side.z;
+    return { t, point, tangent, side, lateral, distance: r.dist, groundY: r.y };
+  }
+
+  // Nearest XZ distance + interpolated height (coarse, for scenery).
+  groundInfo(x, z) {
+    const r = this._projectArr(this._coarse, x, z);
+    return { dist: r.dist, y: r.y };
   }
 
   distanceToCenter(x, z) {
