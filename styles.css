@@ -63,42 +63,78 @@ body {
   align-items: center;
   justify-content: center;
   background: radial-gradient(circle at 50% 30%, #1b2540, #070a12 80%);
-  padding: 16px;
+  padding: 10px;
   text-align: center;
 }
 
 .menu-card {
   background: var(--panel);
   border: 2px solid rgba(255, 179, 0, 0.4);
-  border-radius: 20px;
-  padding: 22px 28px;
-  max-width: 540px;
-  width: 100%;
+  border-radius: 18px;
+  padding: 16px 22px;
+  max-width: min(560px, 96vw);
+  max-height: 94%;
+  overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
+/* Two-column landscape layout for the start screen. */
+.menu-card.wide {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: min(840px, 96vw);
+  text-align: left;
+}
+
+.menu-left {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-right: 24px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.menu-right {
+  flex: 1 1 auto;
+}
+
 h1 {
-  font-size: clamp(28px, 6vw, 46px);
+  font-size: clamp(26px, 4.5vw, 40px);
   letter-spacing: 2px;
   color: var(--accent);
   text-shadow: 0 3px 0 var(--accent-2);
 }
 
 .tagline {
-  margin: 4px 0 14px;
+  margin: 2px 0 12px;
   opacity: 0.8;
   letter-spacing: 4px;
   text-transform: uppercase;
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.how-to-title {
+  color: var(--accent);
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-bottom: 6px;
 }
 
 .how-to {
   list-style: none;
   text-align: left;
-  display: inline-block;
-  margin: 0 auto 18px;
-  line-height: 1.7;
-  font-size: 15px;
+  margin: 0;
+  padding: 0;
+  line-height: 1.45;
+  font-size: 13.5px;
+}
+
+.how-to li {
+  margin-bottom: 3px;
 }
 
 .how-to strong {
@@ -126,9 +162,14 @@ button:active {
 }
 
 .hint {
-  margin-top: 16px;
-  font-size: 12px;
+  margin-top: 10px;
+  font-size: 11px;
   opacity: 0.6;
+  max-width: 220px;
+}
+
+#start-btn {
+  margin-top: 6px;
 }
 
 kbd {
@@ -157,9 +198,9 @@ kbd {
 #results-list {
   text-align: left;
   display: inline-block;
-  margin: 6px auto 18px;
-  line-height: 1.8;
-  font-size: 18px;
+  margin: 6px auto 14px;
+  line-height: 1.5;
+  font-size: 16px;
 }
 
 #results-list .you {
