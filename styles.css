@@ -264,23 +264,23 @@ kbd {
 .throttle-up { top: -22px; color: #7CFC9A; }
 .throttle-down { bottom: -22px; color: #ff8a7a; }
 
-/* Bottom-right round action buttons (shoot + jump) */
+/* Bottom-right action buttons, arranged as a thumb-reachable cluster/fan. */
 #action-buttons {
   position: absolute;
-  right: max(24px, calc(var(--safe-right, 0px) + 12px));
-  bottom: max(20px, calc(var(--safe-bottom, 0px) + 12px));
-  display: flex;
-  align-items: flex-end;
-  gap: 16px;
+  right: max(8px, calc(var(--safe-right, 0px) + 4px));
+  bottom: max(8px, calc(var(--safe-bottom, 0px) + 4px));
+  width: 224px;
+  height: 224px;
   pointer-events: none;
 }
 
 .action-btn {
+  position: absolute;
   pointer-events: auto;
-  width: 78px;
-  height: 78px;
+  width: 66px;
+  height: 66px;
   border-radius: 50%;
-  font-size: 32px;
+  font-size: 27px;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -293,18 +293,25 @@ kbd {
 }
 
 #btn-shoot {
+  right: 104px;
+  bottom: 30px;
   background: rgba(255, 87, 34, 0.5);
   border-color: rgba(255, 138, 101, 0.7);
 }
 
 #btn-jump {
-  width: 92px;
-  height: 92px;
+  right: 8px;
+  bottom: 8px;
+  width: 86px;
+  height: 86px;
+  font-size: 34px;
   background: rgba(33, 150, 243, 0.45);
   border-color: rgba(144, 202, 249, 0.7);
 }
 
 #btn-shield {
+  right: 76px;
+  bottom: 150px;
   background: rgba(33, 120, 180, 0.45);
   border-color: rgba(129, 212, 250, 0.8);
 }
@@ -315,7 +322,8 @@ kbd {
 }
 
 #btn-boost {
-  position: relative;
+  right: 150px;
+  bottom: 108px;
   overflow: hidden;
   background: rgba(40, 60, 30, 0.5);
   border-color: rgba(197, 225, 165, 0.8);
