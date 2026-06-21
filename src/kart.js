@@ -46,11 +46,11 @@ export class Kart {
     this.wallHit = false;
     this.wallHitDir = new THREE.Vector3();
 
-    // Drift (hop into a corner to slide + charge a mini-turbo)
+    // Drift (hold jump while turning to slide + charge a mini-turbo)
     this.drifting = false;
     this.driftDir = 0;
     this.driftCharge = 0;
-    this.driftGrace = 0; // window after a hop in which a drift can start
+    this.driftHeld = false; // jump button held (sustains the drift)
 
     // Boost (drift mini-turbo and the fart boost button)
     this.boostTimer = 0;
@@ -129,7 +129,6 @@ export class Kart {
     if (!this.airborne && this.spinTimer <= 0) {
       this.vy = 9;
       this.airborne = true;
-      this.driftGrace = 1.0; // turning during/after the hop starts a drift
     }
   }
 
@@ -149,14 +148,13 @@ export class Kart {
     return true;
   }
 
-  // End a drift, always awarding at least a small boost (bigger the longer it
-  // was held).
+  // End a drift, awarding a boost that scales with how long it was held (the
+  // longer you hold jump through the corner, the bigger the boost).
   endDrift() {
     if (!this.drifting) return;
     this.drifting = false;
-    if (this.driftCharge > 1.4) this.applyBoost(1.35, 1.0);
-    else if (this.driftCharge > 0.6) this.applyBoost(1.2, 0.7);
-    else this.applyBoost(1.1, 0.4); // small reward for any drift
+    const c = Math.min(this.driftCharge, 3.2);
+    this.applyBoost(1.12 + c * 0.12, 0.4 + c * 0.28);
     this.driftCharge = 0;
   }
 
@@ -207,8 +205,6 @@ export class Kart {
     if (this.fartTimer > 0) this.fartTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
 
-    if (this.driftGrace > 0) this.driftGrace -= dt;
-
     if (this.spinTimer > 0) {
       this.spinTimer -= dt;
       // Angular velocity decays (friction) so the spin settles down.
@@ -252,21 +248,14 @@ export class Kart {
     }
     this.speed = Math.max(-this.maxReverse, this.speed);
 
-    // --- Drift start: easy to initiate within a grace window after a hop ---
-    if (!this.drifting && this.driftGrace > 0 && Math.abs(this.steerInput) > 0.22 && this.speed > 7) {
+    // --- Drift: continues as long as jump is held; release fires the boost ---
+    if (this.drifting) {
+      this.driftCharge += dt;
+      if (!this.driftHeld || this.speed < 6) this.endDrift();
+    } else if (this.driftHeld && !this.airborne && this.speed > 7 && Math.abs(this.steerInput) > 0.25) {
       this.drifting = true;
       this.driftDir = Math.sign(this.steerInput);
       this.driftCharge = 0;
-      this.driftGrace = 0;
-    }
-
-    // --- Drift end conditions ---
-    if (this.drifting) {
-      this.driftCharge += dt;
-      const sameDir = Math.sign(this.steerInput) === this.driftDir;
-      if (!sameDir || Math.abs(this.steerInput) < 0.12 || this.speed < 6) {
-        this.endDrift();
-      }
     }
 
     // --- Steering --- (less effective at very low speed, reversed in reverse)
@@ -276,16 +265,14 @@ export class Kart {
     let turnRate = 1.7; // rad/sec at full
     if (this.drifting) {
       turnRate = 1.9; // a bit tighter while drifting, but controllable
-      // follow the player's actual tilt with a small floor (more controlled)
-      steer = this.driftDir * Math.max(Math.abs(this.steerInput), 0.3);
+      // Commit to the drift direction, but mostly follow the player's tilt so
+      // holding the drift onto a straight doesn't veer (small floor only).
+      const into = Math.sign(this.steerInput) === this.driftDir ? Math.abs(this.steerInput) : 0;
+      steer = this.driftDir * Math.max(into, 0.12);
     }
     this.heading += steer * turnRate * speedFactor * dir * dt;
 
-    const wasAirborne = this.airborne;
     this._integrate(dt, track, false);
-
-    // Landing from a hop opens the drift grace window.
-    if (wasAirborne && !this.airborne) this.driftGrace = 0.5;
 
     // Cat physics signals: cornering intensity + longitudinal acceleration.
     const corner = this.drifting ? this.driftDir * 1.2 : this.steerInput;

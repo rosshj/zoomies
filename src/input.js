@@ -11,6 +11,7 @@ export class Input {
     this._shootQueued = false;
     this._boostQueued = false;
     this.shielding = false; // held, not queued
+    this.jumpHeld = false; // held — sustains a drift
 
     this._neutralRoll = null;
     this._neutralSamples = 0;
@@ -179,12 +180,18 @@ export class Input {
       setTimeout(() => el.classList.remove("flash"), 120);
     };
 
-    if (jump)
+    if (jump) {
       jump.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         this._jumpQueued = true;
+        this.jumpHeld = true;
+        jump.setPointerCapture(e.pointerId);
         flash(jump);
       });
+      const release = () => (this.jumpHeld = false);
+      jump.addEventListener("pointerup", release);
+      jump.addEventListener("pointercancel", release);
+    }
     if (shoot)
       shoot.addEventListener("pointerdown", (e) => {
         e.preventDefault();
@@ -222,13 +229,17 @@ export class Input {
     window.addEventListener("keydown", (e) => {
       if (e.repeat) return;
       this._keys[e.code] = true;
-      if (e.code === "Space") this._jumpQueued = true;
+      if (e.code === "Space") {
+        this._jumpQueued = true;
+        this.jumpHeld = true;
+      }
       if (e.code === "KeyF") this._shootQueued = true;
       if (e.code === "KeyB") this._boostQueued = true;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = true;
     });
     window.addEventListener("keyup", (e) => {
       this._keys[e.code] = false;
+      if (e.code === "Space") this.jumpHeld = false;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = false;
     });
   }

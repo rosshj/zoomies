@@ -495,6 +495,7 @@ function loop(now) {
     player.steerInput = input.steer;
     player.throttleInput = input.throttle;
     player.shielding = input.shielding;
+    player.driftHeld = input.jumpHeld;
     steerDot.style.transform = `translateX(${input.steer * 80}px)`;
     if (input.consumeJump()) player.jump();
     if (input.consumeShoot() && player.shootCooldown <= 0) {
