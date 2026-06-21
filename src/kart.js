@@ -3,6 +3,23 @@ import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+// Soft radial blob used as a contact/grounding shadow under each kart.
+let _shadowTex = null;
+function shadowTexture() {
+  if (_shadowTex) return _shadowTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  g.addColorStop(0, "rgba(0,0,0,0.5)");
+  g.addColorStop(0.6, "rgba(0,0,0,0.25)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _shadowTex = new THREE.CanvasTexture(c);
+  return _shadowTex;
+}
+
 // Smallest signed difference between two angles (radians).
 function angleDelta(a, b) {
   let d = a - b;
@@ -102,6 +119,20 @@ export class Kart {
     this.shieldMesh.position.y = 1.2;
     this.shieldMesh.visible = false;
     this.group.add(this.shieldMesh);
+
+    // Soft contact shadow that stays on the ground (even mid-hop).
+    this.groundShadow = new THREE.Mesh(
+      new THREE.PlaneGeometry(4.8, 3.1),
+      new THREE.MeshBasicMaterial({
+        map: shadowTexture(),
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      })
+    );
+    this.groundShadow.rotation.x = -Math.PI / 2;
+    this.groundShadow.position.y = 0.05;
+    this.group.add(this.groundShadow);
 
     // Cat physics signals (cornering / acceleration), smoothed in update().
     this._prevSpeed = 0;
@@ -372,6 +403,12 @@ export class Kart {
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
     // lifts while farting).
     updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.fartTimer > 0);
+
+    // Contact shadow stays on the ground and shrinks as the kart hops.
+    const air = 1 / (1 + this.y * 0.16);
+    this.groundShadow.position.y = -this.y + 0.05;
+    this.groundShadow.scale.setScalar(air);
+    this.groundShadow.material.opacity = 0.5 * air;
 
     // Shield bubble.
     this.shieldMesh.visible = this.shielding;

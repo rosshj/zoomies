@@ -9,6 +9,9 @@ export function createScene() {
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // Filmic tone mapping for richer, punchier (but still cartoony) color.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -31,10 +34,10 @@ export function createScene() {
   buildSun(scene, sunDir);
 
   // Lights
-  const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5f3a, 0.85);
+  const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5f3a, 1.0);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff1cf, 1.6);
+  const sun = new THREE.DirectionalLight(0xfff1cf, 2.0);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -103,10 +106,9 @@ function buildSky(scene, sunDir) {
 // drive toward it).
 function buildSun(scene, sunDir) {
   const pos = sunDir.clone().multiplyScalar(1900);
-  const core = new THREE.Mesh(
-    new THREE.SphereGeometry(42, 24, 24),
-    new THREE.MeshBasicMaterial({ color: 0xfff6df, fog: false })
-  );
+  const coreMat = new THREE.MeshBasicMaterial({ fog: false, toneMapped: false });
+  coreMat.color.setRGB(2.2, 2.0, 1.5); // over-bright so it blooms
+  const core = new THREE.Mesh(new THREE.SphereGeometry(42, 24, 24), coreMat);
   core.position.copy(pos);
   scene.add(core);
 

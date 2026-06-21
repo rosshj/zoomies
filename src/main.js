@@ -1,4 +1,8 @@
 import * as THREE from "three";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { createScene } from "./scene.js";
 import { Track } from "./track.js";
 import { Kart } from "./kart.js";
@@ -17,6 +21,18 @@ const { renderer, scene, camera } = createScene();
 // The main camera sees everything; the rear-view camera stays on the default
 // layer 0, so heavy scenery placed on layer 1 is skipped in the mirror render.
 camera.layers.enable(1);
+
+// --- Post-processing: bloom + filmic output + MSAA ---
+const _sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+const _composerTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y, {
+  type: THREE.HalfFloatType,
+  samples: 4,
+});
+const composer = new EffectComposer(renderer, _composerTarget);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5, 0.82);
+composer.addPass(bloomPass);
+composer.addPass(new OutputPass());
 
 const track = new Track();
 track.totalLaps = TOTAL_LAPS;
@@ -141,6 +157,8 @@ function layoutStage() {
   renderer.setSize(W, H);
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
+  composer.setPixelRatio(renderer.getPixelRatio());
+  composer.setSize(W, H);
 
   // Mirror box: top-center (small), kept clear of the top safe inset.
   const mw = Math.min(150, W * 0.17);
@@ -208,10 +226,10 @@ function renderMirror() {
   renderer.setViewport(0, 0, stageState.W, stageState.H);
 }
 
-// Render the main view, then overlay the mirror while playing.
+// Render the main view (through the post-processing composer), then overlay the
+// raw rear-view mirror while playing.
 function renderFrame() {
-  renderer.setViewport(0, 0, stageState.W, stageState.H);
-  renderer.render(scene, camera);
+  composer.render();
   if (player && state !== State.MENU) renderMirror();
 }
 
