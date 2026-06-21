@@ -38,9 +38,12 @@ body {
   background: #0e1320;
 }
 
+/* Absolute (not fixed) so they're positioned against the rotated #stage —
+   Safari positions `fixed` elements against the viewport even inside a
+   transformed ancestor, which caused the canvas to be cut off / leave a gap. */
 #game,
 #game canvas {
-  position: fixed;
+  position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
@@ -53,7 +56,7 @@ body {
 
 /* ===== Overlays ===== */
 .overlay {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 50;
   display: flex;
@@ -162,7 +165,7 @@ kbd {
 
 /* ===== HUD ===== */
 #hud {
-  position: fixed;
+  position: absolute;
   inset: 0;
   z-index: 30;
   pointer-events: none;
