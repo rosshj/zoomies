@@ -3,6 +3,9 @@ import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+// Boost meter recharge rate (full in ~16s) — identical for the player and AI.
+export const BOOST_RECHARGE = 1 / 16;
+
 // Soft radial blob used as a contact/grounding shadow under each kart.
 let _shadowTex = null;
 function shadowTexture() {
@@ -73,6 +76,7 @@ export class Kart {
     this.boostTimer = 0;
     this.boostSpeed = 0;
     this.fartTimer = 0; // tail-lift/fart animation timer
+    this.boostMeter = 0; // fart-boost charge, 0..1 (starts empty, recharges)
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -235,6 +239,7 @@ export class Kart {
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.fartTimer > 0) this.fartTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
+    this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
 
     if (this.spinTimer > 0) {
       this.spinTimer -= dt;

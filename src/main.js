@@ -12,8 +12,8 @@ import { HUD, ordinal } from "./hud.js";
 import { buildWorld } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 
-// Boost is a single charge that fully depletes when used and slowly refills.
-const BOOST_RECHARGE = 1 / 16; // meter refills fully in ~16s
+// The boost meter lives on each kart (kart.boostMeter) so the player and AI
+// share identical charge and recharge timing.
 
 const TOTAL_LAPS = 3;
 
@@ -67,13 +67,13 @@ const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 const hud = new HUD();
 
-// Boost (fart) meter — recharges over time.
-let boostMeter = 1;
+// Boost (fart) meter UI reflects the player kart's own meter.
 const boostBtn = document.getElementById("btn-boost");
 const boostFill = document.getElementById("boost-fill");
 function updateBoostUI() {
-  boostFill.style.height = `${Math.round(boostMeter * 100)}%`;
-  boostBtn.classList.toggle("disabled", boostMeter < 1); // only fire when full
+  const m = player ? player.boostMeter : 0;
+  boostFill.style.height = `${Math.round(m * 100)}%`;
+  boostBtn.classList.toggle("disabled", m < 1); // only fire when full
 }
 
 // --- Karts: 1 player + 5 AI rivals ---
@@ -97,7 +97,6 @@ function buildKarts() {
     const slot = track.gridSlot(i);
     kart.placeAt(slot.position, slot.heading, track);
     kart._aiShootTimer = 1 + Math.random() * 3;
-    kart._aiBoostTimer = 4 + Math.random() * 6;
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
@@ -316,8 +315,7 @@ function startRace() {
   document.getElementById("hud").classList.remove("hidden");
 
   buildKarts();
-  boostMeter = 0; // start empty — charges up during the race
-  updateBoostUI();
+  updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
   track.raceTime = 0;
   countdown = 3.999;
@@ -416,12 +414,11 @@ function aiActions(dt) {
     if (k.fartTimer > 0) effects.trickle(k);
     if (k.finished || k.spinTimer > 0) continue;
 
-    // Use a fart boost often, preferably on a straight (and more if behind).
-    k._aiBoostTimer -= dt;
-    if (k._aiBoostTimer <= 0) {
-      k._aiBoostTimer = (gap > 0.02 ? 2.5 : 4.5) + Math.random() * 4;
-      if (Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
-        k.applyBoost(1.45, 1.3, true);
+    // Fire a fart boost only when the meter is full (same as the player), and
+    // preferably on a straight.
+    if (k.boostMeter >= 1 && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
+      if (k.fartBoost()) {
+        k.boostMeter = 0;
         effects.fartBurst(k);
       }
     }
@@ -520,13 +517,12 @@ function loop(now) {
       hairballs.spawn(player);
       player.shootCooldown = 0.6;
     }
-    if (input.consumeBoost() && boostMeter >= 1) {
+    if (input.consumeBoost() && player.boostMeter >= 1) {
       if (player.fartBoost()) {
-        boostMeter = 0; // fully deplete on use
+        player.boostMeter = 0; // fully deplete on use
         effects.fartBurst(player);
       }
     }
-    boostMeter = Math.min(1, boostMeter + BOOST_RECHARGE * dt);
     updateBoostUI();
 
     // Boost trickle + drift sparks/skids for the player.
