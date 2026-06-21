@@ -95,52 +95,42 @@ let countdown = 0;
 let raceTime = 0;
 let countdownCalibrated = false;
 
-// --- Force-landscape stage ---
-// Rather than fight the OS auto-rotate (which iOS won't let web pages disable),
-// we counter-rotate a wrapper so the game always *appears* in landscape no
-// matter which orientation the OS chooses. Steering stays continuous because
-// the gravity reading is in the device frame and we don't re-zero on rotation.
+// --- Stage / orientation ---
+// We render at the true viewport size (no CSS rotation — that caused cutoff and
+// gaps on iOS) and show a "rotate to landscape" prompt when held in portrait.
 const stage = document.getElementById("stage");
+const rotateEl = document.getElementById("rotate");
+const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
 
 function layoutStage() {
   const iw = window.innerWidth;
   const ih = window.innerHeight;
-  const rawAngle =
-    (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
-  const a = ((rawAngle % 360) + 360) % 360;
-
-  // Only counter-rotate when the viewport is actually portrait (e.g. the OS
-  // rotated us because the player over-tilted). A landscape viewport is already
-  // correct in either landscape, so leave it alone — this also avoids wrongly
-  // rotating desktop monitors, which report angle 0 while being landscape.
   const portrait = ih > iw;
-  const rot = portrait ? (a === 180 ? 270 : 90) : 0;
-  const W = Math.max(iw, ih);
-  const H = Math.min(iw, ih);
+  // No forced CSS rotation (it caused cutoff/gaps on iOS). Render at the true
+  // viewport size and prompt to rotate if the phone is held in portrait.
+  const rot = 0;
+  const W = iw;
+  const H = ih;
   stageState = { iw, ih, W, H, rot };
 
-  // Center the W×H box at the viewport center, then rotate — robustly fills
-  // the screen with no gaps regardless of orientation.
+  rotateEl.classList.toggle("hidden", !(portrait && isTouch));
+
+  // Full-viewport stage.
   stage.style.width = W + "px";
   stage.style.height = H + "px";
   stage.style.left = "50%";
   stage.style.top = "50%";
-  stage.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+  stage.style.transform = "translate(-50%, -50%)";
 
-  // Remap the physical safe-area insets into the rotated stage's own frame, and
-  // expose them as CSS vars so the HUD avoids the notch / status bar / home bar
-  // on the correct (visual) edges.
+  // Safe-area insets (no rotation, so they map directly) as CSS vars.
   const vi = readViewportInsets();
-  let st, sr, sb, sl;
-  if (rot === 90) [st, sr, sb, sl] = [vi.right, vi.bottom, vi.left, vi.top];
-  else if (rot === 270) [st, sr, sb, sl] = [vi.left, vi.top, vi.right, vi.bottom];
-  else if (rot === 180) [st, sr, sb, sl] = [vi.bottom, vi.left, vi.top, vi.right];
-  else [st, sr, sb, sl] = [vi.top, vi.right, vi.bottom, vi.left];
-  stage.style.setProperty("--safe-top", `${st}px`);
-  stage.style.setProperty("--safe-right", `${sr}px`);
-  stage.style.setProperty("--safe-bottom", `${sb}px`);
-  stage.style.setProperty("--safe-left", `${sl}px`);
+  stage.style.setProperty("--safe-top", `${vi.top}px`);
+  stage.style.setProperty("--safe-right", `${vi.right}px`);
+  stage.style.setProperty("--safe-bottom", `${vi.bottom}px`);
+  stage.style.setProperty("--safe-left", `${vi.left}px`);
+
+  const st = vi.top;
 
   renderer.setSize(W, H);
   camera.aspect = W / H;

@@ -139,6 +139,10 @@ kbd {
   font-size: 11px;
 }
 
+#rotate {
+  z-index: 100; /* above the menu/HUD so it always takes priority */
+}
+
 .rotate-icon {
   font-size: 64px;
   margin-bottom: 12px;
