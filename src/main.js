@@ -120,22 +120,37 @@ function layoutStage() {
   const H = Math.min(iw, ih);
   stageState = { iw, ih, W, H, rot };
 
+  // Center the W×H box at the viewport center, then rotate — robustly fills
+  // the screen with no gaps regardless of orientation.
   stage.style.width = W + "px";
   stage.style.height = H + "px";
-  stage.style.left = (iw - W) / 2 + "px";
-  stage.style.top = (ih - H) / 2 + "px";
-  stage.style.transform = `rotate(${rot}deg)`;
+  stage.style.left = "50%";
+  stage.style.top = "50%";
+  stage.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+
+  // Remap the physical safe-area insets into the rotated stage's own frame, and
+  // expose them as CSS vars so the HUD avoids the notch / status bar / home bar
+  // on the correct (visual) edges.
+  const vi = readViewportInsets();
+  let st, sr, sb, sl;
+  if (rot === 90) [st, sr, sb, sl] = [vi.right, vi.bottom, vi.left, vi.top];
+  else if (rot === 270) [st, sr, sb, sl] = [vi.left, vi.top, vi.right, vi.bottom];
+  else if (rot === 180) [st, sr, sb, sl] = [vi.bottom, vi.left, vi.top, vi.right];
+  else [st, sr, sb, sl] = [vi.top, vi.right, vi.bottom, vi.left];
+  stage.style.setProperty("--safe-top", `${st}px`);
+  stage.style.setProperty("--safe-right", `${sr}px`);
+  stage.style.setProperty("--safe-bottom", `${sb}px`);
+  stage.style.setProperty("--safe-left", `${sl}px`);
 
   renderer.setSize(W, H);
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
 
-  // Mirror box: top-center (small). WebGL viewport y is measured from bottom.
-  // Inset the rendered region by the frame border so it sits *inside* the frame.
+  // Mirror box: top-center (small), kept clear of the top safe inset.
   const mw = Math.min(150, W * 0.17);
   const mh = mw * 0.4;
   const mleft = (W - mw) / 2;
-  const mtop = 8;
+  const mtop = Math.max(8, st + 4);
   const B = 3; // must match the #mirror-frame border width in CSS
   mirrorRect = { x: mleft + B, y: H - mtop - mh + B, w: mw - 2 * B, h: mh - 2 * B };
   if (mirrorFrame) {
@@ -144,6 +159,26 @@ function layoutStage() {
     mirrorFrame.style.left = `${mleft}px`;
     mirrorFrame.style.top = `${mtop}px`;
   }
+}
+
+// Reads the live safe-area-inset-* values (in px) via a hidden probe element.
+let _safeProbe = null;
+function readViewportInsets() {
+  if (!_safeProbe) {
+    _safeProbe = document.createElement("div");
+    _safeProbe.style.cssText =
+      "position:fixed;top:0;left:0;width:0;height:0;visibility:hidden;pointer-events:none;" +
+      "padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);" +
+      "padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left);";
+    document.body.appendChild(_safeProbe);
+  }
+  const s = getComputedStyle(_safeProbe);
+  return {
+    top: parseFloat(s.paddingTop) || 0,
+    right: parseFloat(s.paddingRight) || 0,
+    bottom: parseFloat(s.paddingBottom) || 0,
+    left: parseFloat(s.paddingLeft) || 0,
+  };
 }
 
 let mirrorTick = 0;

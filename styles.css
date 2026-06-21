@@ -170,8 +170,8 @@ kbd {
 
 #info {
   position: absolute;
-  top: max(8px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+  top: max(8px, var(--safe-top, 0px));
+  right: max(12px, var(--safe-right, 0px));
   text-align: right;
   background: var(--panel);
   padding: 5px 12px;
@@ -205,7 +205,7 @@ kbd {
    the Dynamic Island / status bar whichever edge they land on. */
 #throttle {
   position: absolute;
-  left: max(46px, calc(env(safe-area-inset-left, 0px) + 18px));
+  left: max(46px, calc(var(--safe-left, 0px) + 18px));
   top: 12%;
   bottom: 12%;
   width: 96px;
@@ -260,8 +260,8 @@ kbd {
 /* Bottom-right round action buttons (shoot + jump) */
 #action-buttons {
   position: absolute;
-  right: max(24px, calc(env(safe-area-inset-right, 0px) + 12px));
-  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 12px));
+  right: max(24px, calc(var(--safe-right, 0px) + 12px));
+  bottom: max(20px, calc(var(--safe-bottom, 0px) + 12px));
   display: flex;
   align-items: flex-end;
   gap: 16px;
@@ -335,7 +335,7 @@ kbd {
 /* Steering indicator */
 #steer {
   position: absolute;
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: max(12px, var(--safe-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -394,11 +394,11 @@ kbd {
   background: rgba(255, 179, 0, 0.4);
 }
 
-/* Pause button (bottom-left, clear of the top bar / Dynamic Island) */
+/* Pause button: right side, under the lap/speed box, clear of the top bar */
 #btn-pause {
   position: absolute;
-  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 8px));
-  left: max(10px, calc(env(safe-area-inset-left, 0px) + 6px));
+  top: calc(max(8px, var(--safe-top, 0px)) + 76px);
+  right: max(12px, var(--safe-right, 0px));
   width: 44px;
   height: 44px;
   border-radius: 50%;
