@@ -185,13 +185,13 @@ export function updateCatRig(rig, dt, lat, lon, fart = false) {
     s.v *= Math.max(0, 1 - d * dt);
     s.a += s.v * dt;
   };
-  step(sp.earSway, -lat * 0.5, 95, 13);
-  step(sp.earBack, Math.max(0, lon) * 0.5 + Math.abs(lat) * 0.3, 85, 15);
-  step(sp.whisker, -lat * 0.55, 70, 11);
-  step(sp.tailY, -lat * 1.5, 55, 8);
-  step(sp.tailX, fart ? -1.4 : -Math.max(0, lon) * 0.4, 60, 11);
-  step(sp.headLean, -lat * 0.22, 80, 13);
-  step(sp.headPitch, lon * 0.12, 80, 13);
+  step(sp.earSway, -lat * 0.85, 70, 9);
+  step(sp.earBack, Math.max(0, lon) * 0.7 + Math.abs(lat) * 0.5, 75, 12);
+  step(sp.whisker, -lat * 0.9, 55, 8);
+  step(sp.tailY, -lat * 1.9, 42, 6);
+  step(sp.tailX, fart ? -1.5 : -Math.max(0, lon) * 0.5, 55, 9);
+  step(sp.headLean, -lat * 0.4, 65, 10);
+  step(sp.headPitch, lon * 0.2, 70, 11);
 
   rig.earL.rotation.set(sp.earBack.a, 0, sp.earSway.a);
   rig.earR.rotation.set(sp.earBack.a, 0, sp.earSway.a);

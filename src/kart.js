@@ -88,6 +88,21 @@ export class Kart {
     this.group.add(cat);
     this.catRig = cat.userData.rig;
 
+    // Shield bubble (held protection from hairballs)
+    this.shielding = false;
+    this.shieldMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(3.3, 16, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0x4fc3f7,
+        transparent: true,
+        opacity: 0.28,
+        depthWrite: false,
+      })
+    );
+    this.shieldMesh.position.y = 1.2;
+    this.shieldMesh.visible = false;
+    this.group.add(this.shieldMesh);
+
     // Cat physics signals (cornering / acceleration), smoothed in update().
     this._prevSpeed = 0;
     this._lat = 0;
@@ -134,12 +149,14 @@ export class Kart {
     return true;
   }
 
-  // End a drift, awarding a mini-turbo sized by how long it was held.
+  // End a drift, always awarding at least a small boost (bigger the longer it
+  // was held).
   endDrift() {
     if (!this.drifting) return;
     this.drifting = false;
-    if (this.driftCharge > 1.5) this.applyBoost(1.35, 1.1);
-    else if (this.driftCharge > 0.8) this.applyBoost(1.18, 0.6);
+    if (this.driftCharge > 1.4) this.applyBoost(1.35, 1.0);
+    else if (this.driftCharge > 0.6) this.applyBoost(1.2, 0.7);
+    else this.applyBoost(1.1, 0.4); // small reward for any drift
     this.driftCharge = 0;
   }
 
@@ -258,10 +275,9 @@ export class Kart {
     let steer = this.steerInput;
     let turnRate = 1.7; // rad/sec at full
     if (this.drifting) {
-      turnRate = 2.0; // a bit tighter while drifting (gentler than before)
-      // bias toward the drift direction, but don't yank — follow the player's
-      // actual tilt, just with a modest floor.
-      steer = this.driftDir * Math.max(Math.abs(this.steerInput), 0.4);
+      turnRate = 1.9; // a bit tighter while drifting, but controllable
+      // follow the player's actual tilt with a small floor (more controlled)
+      steer = this.driftDir * Math.max(Math.abs(this.steerInput), 0.3);
     }
     this.heading += steer * turnRate * speedFactor * dir * dt;
 
@@ -272,8 +288,8 @@ export class Kart {
     if (wasAirborne && !this.airborne) this.driftGrace = 0.5;
 
     // Cat physics signals: cornering intensity + longitudinal acceleration.
-    const corner = this.drifting ? this.driftDir : this.steerInput;
-    this._lat = corner * Math.min(1, Math.abs(this.speed) / 18);
+    const corner = this.drifting ? this.driftDir * 1.2 : this.steerInput;
+    this._lat = Math.max(-1.2, Math.min(1.2, corner * Math.min(1, Math.abs(this.speed) / 14)));
     const accel = (this.speed - this._prevSpeed) / Math.max(dt, 0.001);
     this._lon = Math.max(-1, Math.min(1, accel / 45));
     this._prevSpeed = this.speed;
@@ -369,6 +385,13 @@ export class Kart {
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
     // lifts while farting).
     updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.fartTimer > 0);
+
+    // Shield bubble.
+    this.shieldMesh.visible = this.shielding;
+    if (this.shielding) {
+      const s = 1 + Math.sin(performance.now() * 0.01) * 0.04;
+      this.shieldMesh.scale.setScalar(s);
+    }
 
     for (const w of this.wheels) w.rotation.x = this._wheelSpin || 0;
   }

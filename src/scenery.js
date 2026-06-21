@@ -292,10 +292,10 @@ function buildRoadside(scene, track, heightAt) {
 
     for (const dir of [1, -1]) {
       if (town) {
-        if (Math.random() < 0.55 + density * 0.4)
-          place(() => makeBuilding(false, density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
-        if (Math.random() < 0.25 + density * 0.4)
-          place(() => makeBuilding(true, density), halfW + 15 + Math.random() * 9, dir, p, side, true);
+        if (Math.random() < 0.62 + density * 0.32)
+          place(() => makeBuilding(density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
+        if (Math.random() < 0.22 + density * 0.28)
+          place(() => makeBuilding(density), halfW + 13 + Math.random() * 6, dir, p, side, true);
         if (Math.random() < 0.5)
           place(makeStreetProp, halfW + 3.2 + Math.random() * 1.4, dir, p, side, true);
       } else if (Math.random() < 0.4) {
@@ -321,14 +321,14 @@ function windowTexture() {
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#000";
   ctx.fillRect(0, 0, 64, 80);
-  const cols = 6;
-  const rows = 9;
+  const cols = 3; // few, larger windows -> cosy small-town look
+  const rows = 4;
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
       const lit = Math.random();
-      const v = lit < 0.45 ? Math.floor(120 + Math.random() * 135) : 18;
-      ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.85)},${Math.floor(v * 0.5)})`;
-      ctx.fillRect(4 + col * 10, 4 + r * 8, 6, 5);
+      const v = lit < 0.5 ? Math.floor(150 + Math.random() * 105) : 22;
+      ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.82)},${Math.floor(v * 0.45)})`;
+      ctx.fillRect(8 + col * 18, 7 + r * 18, 11, 12);
     }
   }
   const t = new THREE.CanvasTexture(c);
@@ -336,51 +336,119 @@ function windowTexture() {
   return (_windowTex = t);
 }
 
-const BUILDING_PALETTE = [0xc7b9a6, 0xd9a77a, 0xb7c2cf, 0x9fb6a0, 0xcabfb0, 0xb59fb0, 0xd8cbb0];
+const BUILDING_PALETTE = [0xddc9a8, 0xe3b18a, 0xc8d2dc, 0xb6cdb2, 0xe6d9c2, 0xc9aec6, 0xeae0cf, 0xd98c7a];
+const ROOF_PALETTE = [0x8d5a3a, 0x9c4a3a, 0x6d6e5a, 0x55707a, 0x7a5a8a, 0x4a5a6a];
 
-function makeBuilding(tall, density) {
+// A small-town building: 1–2 storeys (rarely 3) with a pitched roof.
+function makeBuilding(density) {
   const g = new THREE.Group();
-  const w = 5 + Math.random() * 4;
-  const d = 5 + Math.random() * 4;
-  let floors = 1 + Math.floor(Math.random() * (tall ? 4 : 2) + density * 2.5);
-  floors = Math.min(floors, tall ? 8 : 4);
-  const h = floors * 3.0;
+  const w = 4 + Math.random() * 3;
+  const d = 4 + Math.random() * 3;
+  let floors = 1;
+  if (Math.random() < 0.4 + density * 0.25) floors = 2;
+  if (floors === 2 && Math.random() < 0.18) floors = 3;
+  const h = floors * 2.7;
 
   const wall = BUILDING_PALETTE[Math.floor(Math.random() * BUILDING_PALETTE.length)];
   const body = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, d),
     new THREE.MeshStandardMaterial({
       color: wall,
-      roughness: 0.92,
-      emissive: 0xffd27a,
+      roughness: 0.94,
+      emissive: 0xffcf86,
       emissiveMap: windowTexture(),
-      emissiveIntensity: 0.9,
+      emissiveIntensity: 0.55,
     })
   );
   body.position.y = h / 2;
   body.receiveShadow = true; // not castShadow: too many to be worth the pass
   g.add(body);
 
-  if (tall) {
-    const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 1.04, 0.7, d * 1.04), mat(0x4a4a52));
-    cap.position.y = h + 0.35;
-    g.add(cap);
-  } else {
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.8, 2.4, 4), mat(0x6d4c41));
-    roof.position.y = h + 1.2;
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    g.add(roof);
-  }
+  const roofH = 1.4 + floors * 0.3;
+  const roof = new THREE.Mesh(
+    new THREE.ConeGeometry(Math.max(w, d) * 0.82, roofH, 4),
+    mat(ROOF_PALETTE[Math.floor(Math.random() * ROOF_PALETTE.length)])
+  );
+  roof.position.y = h + roofH / 2;
+  roof.rotation.y = Math.PI / 4;
+  g.add(roof);
+
+  // Little door.
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.6), mat(0x6b4a2b));
+  door.position.set(0, 0.8, d / 2 + 0.02);
+  g.add(door);
   return g;
 }
 
 function makeStreetProp() {
   const r = Math.random();
-  if (r < 0.45) return makeLamp();
-  if (r < 0.7) return makeBench();
-  if (r < 0.88) return makeHydrant();
+  if (r < 0.26) return makeLamp();
+  if (r < 0.42) return makeBench();
+  if (r < 0.54) return makeHydrant();
+  if (r < 0.7) return makePlanter();
+  if (r < 0.85) return makeMarketStall();
+  if (r < 0.94) return makeSign();
   return makeBush();
+}
+
+function makePlanter() {
+  const g = new THREE.Group();
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.4), mat(0x8d6e3a));
+  box.position.y = 0.3;
+  g.add(box);
+  const m = mat(0x4caf50, { flatShading: true });
+  for (let i = 0; i < 3; i++) {
+    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), m);
+    b.position.set((Math.random() - 0.5) * 0.8, 0.8, (Math.random() - 0.5) * 0.8);
+    g.add(b);
+  }
+  return g;
+}
+
+function makeMarketStall() {
+  const g = new THREE.Group();
+  const wood = mat(0x9c6b3f);
+  const table = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.2, 1.4), wood);
+  table.position.y = 1.0;
+  g.add(table);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1, 0.14), wood);
+      leg.position.set(sx * 1.1, 0.5, sz * 0.55);
+      g.add(leg);
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 2.4, 0.12), wood);
+      post.position.set(sx * 1.2, 1.2, sz * 0.6);
+      g.add(post);
+    }
+  const stripe = Math.random() < 0.5 ? 0xd23a2a : 0x2a7ad2;
+  const canopy = new THREE.Mesh(new THREE.BoxGeometry(3, 0.3, 1.9), mat(stripe));
+  canopy.position.y = 2.5;
+  canopy.castShadow = true;
+  g.add(canopy);
+  // produce
+  for (let i = 0; i < 4; i++) {
+    const c = new THREE.Mesh(
+      new THREE.SphereGeometry(0.2, 8, 8),
+      mat([0xe53935, 0xff9800, 0x8bc34a, 0xffeb3b][i % 4])
+    );
+    c.position.set(-0.9 + i * 0.6, 1.2, 0);
+    g.add(c);
+  }
+  return g;
+}
+
+function makeSign() {
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 2.2, 6), mat(0x5d4037));
+  post.position.y = 1.1;
+  g.add(post);
+  const board = new THREE.Mesh(
+    new THREE.BoxGeometry(1.6, 0.8, 0.1),
+    mat([0x2e7d32, 0xc62828, 0x1565c0, 0xf9a825][Math.floor(Math.random() * 4)])
+  );
+  board.position.y = 1.9;
+  g.add(board);
+  return g;
 }
 
 function makeBench() {

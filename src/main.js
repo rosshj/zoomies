@@ -298,7 +298,7 @@ function startRace() {
   document.getElementById("hud").classList.remove("hidden");
 
   buildKarts();
-  boostMeter = 1;
+  boostMeter = 0; // start empty — charges up during the race
   updateBoostUI();
   raceTime = 0;
   track.raceTime = 0;
@@ -494,6 +494,7 @@ function loop(now) {
     input.update(dt);
     player.steerInput = input.steer;
     player.throttleInput = input.throttle;
+    player.shielding = input.shielding;
     steerDot.style.transform = `translateX(${input.steer * 80}px)`;
     if (input.consumeJump()) player.jump();
     if (input.consumeShoot() && player.shootCooldown <= 0) {
@@ -509,9 +510,12 @@ function loop(now) {
     boostMeter = Math.min(1, boostMeter + BOOST_RECHARGE * dt);
     updateBoostUI();
 
-    // Boost trickle + drift sparks for the player.
+    // Boost trickle + drift sparks/skids for the player.
     if (player.fartTimer > 0) effects.trickle(player);
-    if (player.drifting) effects.driftSparks(player);
+    if (player.drifting) {
+      effects.driftSparks(player);
+      effects.skid(player);
+    }
 
     // AI
     for (const k of karts) if (!k.isPlayer) k.driveAI(track);
@@ -521,12 +525,13 @@ function loop(now) {
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
     hairballs.update(dt, karts);
-    // Sparks where a kart scraped a railing this frame.
+    // Sparks where a kart scraped a railing; skid marks while spinning out.
     for (const k of karts) {
       if (k.wallHit) {
         effects.wallSparks(k);
         k.wallHit = false;
       }
+      if (k.spinTimer > 0) effects.skid(k);
     }
     effects.update(dt);
     updatePlacement();

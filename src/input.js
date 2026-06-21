@@ -10,6 +10,7 @@ export class Input {
     this._jumpQueued = false;
     this._shootQueued = false;
     this._boostQueued = false;
+    this.shielding = false; // held, not queued
 
     this._neutralRoll = null;
     this._neutralSamples = 0;
@@ -197,6 +198,24 @@ export class Input {
         this._boostQueued = true;
         flash(boost);
       });
+
+    // Shield: held (press and hold to stay protected).
+    const shield = document.getElementById("btn-shield");
+    if (shield) {
+      const on = (e) => {
+        e.preventDefault();
+        this.shielding = true;
+        shield.classList.add("active");
+        shield.setPointerCapture(e.pointerId);
+      };
+      const off = () => {
+        this.shielding = false;
+        shield.classList.remove("active");
+      };
+      shield.addEventListener("pointerdown", on);
+      shield.addEventListener("pointerup", off);
+      shield.addEventListener("pointercancel", off);
+    }
   }
 
   _bindKeyboard() {
@@ -206,8 +225,12 @@ export class Input {
       if (e.code === "Space") this._jumpQueued = true;
       if (e.code === "KeyF") this._shootQueued = true;
       if (e.code === "KeyB") this._boostQueued = true;
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = true;
     });
-    window.addEventListener("keyup", (e) => (this._keys[e.code] = false));
+    window.addEventListener("keyup", (e) => {
+      this._keys[e.code] = false;
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = false;
+    });
   }
 
   // Called once per frame: folds keyboard state in and smooths steering.

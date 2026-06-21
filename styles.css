@@ -304,6 +304,16 @@ kbd {
   border-color: rgba(144, 202, 249, 0.7);
 }
 
+#btn-shield {
+  background: rgba(33, 120, 180, 0.45);
+  border-color: rgba(129, 212, 250, 0.8);
+}
+
+#btn-shield.active {
+  background: rgba(79, 195, 247, 0.85);
+  box-shadow: 0 0 16px rgba(79, 195, 247, 0.9);
+}
+
 #btn-boost {
   position: relative;
   overflow: hidden;

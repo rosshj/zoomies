@@ -7,6 +7,46 @@ export class EffectsManager {
     this.parts = [];
     this.puffGeo = new THREE.SphereGeometry(0.6, 7, 6);
     this.sparkGeo = new THREE.SphereGeometry(0.18, 5, 4);
+
+    // Skid marks: a ring buffer of flat quads reused as the trail grows.
+    this.skids = [];
+    this.skidIdx = 0;
+    this.skidMax = 600;
+    this.skidGeo = new THREE.PlaneGeometry(0.45, 1.3);
+    this.skidGeo.rotateX(-Math.PI / 2); // lie flat (length along +Z)
+    this.skidMat = new THREE.MeshBasicMaterial({
+      color: 0x1a1a1a,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
+    });
+    this._lastSkid = new Map();
+  }
+
+  // Lay two tyre marks behind a kart's rear wheels (spaced by distance).
+  skid(kart) {
+    const last = this._lastSkid.get(kart);
+    if (last && last.distanceToSquared(kart.position) < 0.45) return;
+    this._lastSkid.set(kart, kart.position.clone());
+    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    const right = new THREE.Vector3(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    for (const o of [-1.3, 1.3]) {
+      let mesh;
+      if (this.skids.length < this.skidMax) {
+        mesh = new THREE.Mesh(this.skidGeo, this.skidMat);
+        this.scene.add(mesh);
+        this.skids.push(mesh);
+      } else {
+        mesh = this.skids[this.skidIdx];
+        this.skidIdx = (this.skidIdx + 1) % this.skidMax;
+      }
+      const pos = new THREE.Vector3()
+        .copy(kart.position)
+        .addScaledVector(right, o)
+        .addScaledVector(fwd, -1.4);
+      mesh.position.set(pos.x, kart.groundY + 0.05, pos.z);
+      mesh.rotation.y = kart.heading;
+    }
   }
 
   _rear(kart, spread = 0.6) {

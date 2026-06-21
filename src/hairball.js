@@ -44,11 +44,13 @@ export class HairballManager {
           const dz = k.position.z - b.mesh.position.z;
           const dy = k.position.y + k.y + 1 - b.mesh.position.y;
           if (dx * dx + dz * dz + dy * dy < 12) {
-            // Shove the victim in the hairball's travel direction.
-            const dir = new THREE.Vector3(b.vel.x, 0, b.vel.z);
-            if (dir.lengthSq() > 0.0001) dir.normalize();
-            k.spinOut(dir);
-            hit = true;
+            if (!k.shielding) {
+              // Shove the victim in the hairball's travel direction.
+              const dir = new THREE.Vector3(b.vel.x, 0, b.vel.z);
+              if (dir.lengthSq() > 0.0001) dir.normalize();
+              k.spinOut(dir);
+            }
+            hit = true; // shield blocks & destroys the hairball
             break;
           }
         }
