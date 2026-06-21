@@ -1,5 +1,20 @@
 import * as THREE from "three";
 
+// Fine grayscale noise used as the road's bump map (asphalt grain).
+function noiseTexture() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const img = ctx.createImageData(64, 64);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 140 + Math.random() * 115;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(c);
+}
+
 // A closed race track built from a smooth 3D Catmull-Rom loop. The curve now
 // carries elevation (y), so the road climbs and dips. Provides the road mesh,
 // barrier walls, start/finish line and helpers for projecting a world position
@@ -110,9 +125,18 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
+    const bump = noiseTexture();
+    bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
+    bump.repeat.set(6, 6);
+    bump.anisotropy = 8;
     const road = new THREE.Mesh(
       geo,
-      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 })
+      new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        roughness: 0.95,
+        bumpMap: bump,
+        bumpScale: 0.25,
+      })
     );
     road.receiveShadow = true;
     this.group.add(road);

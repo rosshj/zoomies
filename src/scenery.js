@@ -35,16 +35,86 @@ export function buildWorld(scene, track) {
   buildTrees(scene, track, heightAt, flatten);
   buildRocks(scene, track, heightAt, flatten);
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene);
 
   return {
+    grass,
     update(time) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
       }
+      const sh = grass && grass.material.userData.shader;
+      if (sh) sh.uniforms.uTime.value = time;
     },
   };
+}
+
+// Instanced grass blades along the roadside, swaying in the wind.
+function buildGrass(scene, track, heightAt) {
+  const COUNT = 6000;
+  const halfW = track.halfWidth;
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+
+  const blade = new THREE.PlaneGeometry(0.18, 1.0, 1, 1);
+  blade.translate(0, 0.5, 0); // pivot at the base
+  // base darker, tip lighter green
+  const cols = [];
+  const lo = new THREE.Color(0x2f7d32);
+  const hi = new THREE.Color(0x86c560);
+  const p = blade.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const c = lo.clone().lerp(hi, p.getY(i));
+    cols.push(c.r, c.g, c.b);
+  }
+  blade.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    side: THREE.DoubleSide,
+    roughness: 1,
+  });
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = { value: 0 };
+    shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader;
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+       float ph = instanceMatrix[3][0] * 0.15 + instanceMatrix[3][2] * 0.15;
+       transformed.x += sin(uTime * 1.6 + ph) * 0.18 * position.y;
+       transformed.z += cos(uTime * 1.3 + ph) * 0.10 * position.y;`
+    );
+    mat.userData.shader = shader;
+  };
+
+  const mesh = new THREE.InstancedMesh(blade, mat, COUNT);
+  const dummy = new THREE.Object3D();
+  let n = 0;
+  let tries = 0;
+  while (n < COUNT && tries < COUNT * 4) {
+    tries++;
+    const i = Math.floor(Math.random() * N);
+    const pt = track._pts[i];
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const dist = halfW + 2.5 + Math.random() * 34;
+    const x = pt.x + side.x * dir * dist + (Math.random() - 0.5) * 3;
+    const z = pt.z + side.z * dir * dist + (Math.random() - 0.5) * 3;
+    if (track.distanceToCenter(x, z) < halfW + 2) continue;
+    dummy.position.set(x, heightAt(x, z), z);
+    dummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
+    dummy.scale.setScalar(0.7 + Math.random() * 1.1);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(n, dummy.matrix);
+    n++;
+  }
+  mesh.count = n;
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.layers.set(1); // excluded from the rear-view mirror render
+  scene.add(mesh);
+  return mesh;
 }
 
 function buildTerrain(scene, heightAt) {

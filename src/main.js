@@ -3,6 +3,7 @@ import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { createScene } from "./scene.js";
 import { Track } from "./track.js";
 import { Kart } from "./kart.js";
@@ -33,6 +34,29 @@ composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5, 0.82);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
+
+// Vignette + chromatic aberration (aberration ramps up while boosting).
+const fxPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uAberr: { value: 0 },
+    uVignette: { value: 0.5 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uVignette; varying vec2 vUv;
+    void main(){
+      vec2 d = vUv - 0.5;
+      vec3 col;
+      col.r = texture2D(tDiffuse, vUv + d * uAberr).r;
+      col.g = texture2D(tDiffuse, vUv).g;
+      col.b = texture2D(tDiffuse, vUv - d * uAberr).b;
+      float vig = smoothstep(0.85, 0.32, length(d));
+      col *= mix(1.0, vig, uVignette);
+      gl_FragColor = vec4(col, 1.0);
+    }`,
+});
+composer.addPass(fxPass);
 
 const track = new Track();
 track.totalLaps = TOTAL_LAPS;
@@ -248,6 +272,34 @@ window.addEventListener("resize", layoutStage);
 window.addEventListener("orientationchange", layoutStage);
 layoutStage();
 
+// --- Hit feedback (shake + white flash) ---
+const flashEl = document.getElementById("flash");
+function triggerHit() {
+  shakeMag = 1.6;
+  if (flashEl) {
+    flashEl.classList.remove("on");
+    void flashEl.offsetWidth; // restart the CSS flash
+    flashEl.classList.add("on");
+  }
+}
+
+// --- Graphics quality toggle (heavy effects off on Low) ---
+let quality = isTouch ? "low" : "high";
+const qualityBtn = document.getElementById("quality-btn");
+function applyQuality(q) {
+  quality = q;
+  const high = q === "high";
+  bloomPass.enabled = high;
+  fxPass.enabled = high;
+  if (world.grass) world.grass.visible = high;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
+  if (qualityBtn) qualityBtn.textContent = `Graphics: ${high ? "High" : "Low"}`;
+  layoutStage();
+}
+if (qualityBtn)
+  qualityBtn.addEventListener("click", () => applyQuality(quality === "high" ? "low" : "high"));
+applyQuality(quality);
+
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
   try {
@@ -326,6 +378,7 @@ function startRace() {
 // --- Camera follow ---
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
+let shakeMag = 0;
 function updateCamera(dt, snap = false) {
   const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
   const desired = new THREE.Vector3()
@@ -340,7 +393,19 @@ function updateCamera(dt, snap = false) {
   const lerp = snap ? 1 : 1 - Math.pow(0.001, dt);
   camPos.lerp(desired, lerp);
   camTarget.lerp(look, lerp);
+
+  // FOV kick when boosting for a sense of speed.
+  const targetFov = 62 + (player.boosting ? 7 : 0);
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
+  camera.updateProjectionMatrix();
+
+  // Screen shake (decays).
+  shakeMag *= 1 - Math.min(1, 6 * dt);
   camera.position.copy(camPos);
+  if (shakeMag > 0.001) {
+    camera.position.x += (Math.random() - 0.5) * shakeMag;
+    camera.position.y += (Math.random() - 0.5) * shakeMag;
+  }
   camera.lookAt(camTarget);
 }
 
@@ -411,7 +476,7 @@ function aiActions(dt) {
     const gap = player.totalProgress - k.totalProgress;
     k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.06, Math.min(0.16, gap * 0.12)));
 
-    if (k.fartTimer > 0) effects.trickle(k);
+    if (k.boosting) effects.trickle(k);
     if (k.finished || k.spinTimer > 0) continue;
 
     // Fire a fart boost only when the meter is full (same as the player), and
@@ -469,6 +534,7 @@ function formatClock(sec) {
 // --- Main loop ---
 let last = performance.now();
 let prevPlayerLap = -1;
+let prevPlayerSpin = 0;
 
 function loop(now) {
   requestAnimationFrame(loop);
@@ -525,12 +591,15 @@ function loop(now) {
     }
     updateBoostUI();
 
-    // Boost trickle + drift sparks/skids for the player.
-    if (player.fartTimer > 0) effects.trickle(player);
+    // Rainbow boost trail + drift sparks/skids for the player.
+    if (player.boosting) effects.trickle(player);
     if (player.drifting) {
       effects.driftSparks(player);
       effects.skid(player);
     }
+    // Chromatic aberration ramps up with the boost.
+    const aberrTarget = player.boosting ? 0.008 : 0;
+    fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
 
     // AI
     for (const k of karts) if (!k.isPlayer) k.driveAI(track);
@@ -550,6 +619,10 @@ function loop(now) {
     }
     effects.update(dt);
     updatePlacement();
+
+    // Screen shake + flash when the player gets spun out.
+    if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();
+    prevPlayerSpin = player.spinTimer;
 
     // Lap toast for the player
     if (player.lap !== prevPlayerLap && player.lap >= 1 && !player.finished) {

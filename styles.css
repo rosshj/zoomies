@@ -519,6 +519,33 @@ button.secondary:active {
   text-shadow: 0 1px 2px #000;
 }
 
+/* Small secondary button (e.g. graphics toggle on the menu) */
+button.small {
+  font-size: 13px;
+  letter-spacing: 1px;
+  padding: 8px 18px;
+  margin-top: 8px;
+}
+
+/* White hit flash overlay */
+#flash {
+  position: absolute;
+  inset: 0;
+  background: #fff;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+
+#flash.on {
+  animation: hitflash 0.32s ease-out;
+}
+
+@keyframes hitflash {
+  0% { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+
 /* Lap toast */
 #toast {
   position: absolute;

@@ -11,7 +11,7 @@ export function createScene() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Filmic tone mapping for richer, punchier (but still cartoony) color.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
+  renderer.toneMappingExposure = 1.2;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -37,7 +37,7 @@ export function createScene() {
   const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5f3a, 1.0);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xfff1cf, 2.0);
+  const sun = new THREE.DirectionalLight(0xffe6b8, 2.1); // warm, golden-hour
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -69,6 +69,13 @@ export function createScene() {
     cloud.position.set(Math.cos(a) * r, 60 + Math.random() * 50, Math.sin(a) * r);
     scene.add(cloud);
   }
+
+  // Image-based lighting: bake an environment map from the sky/sun so the
+  // karts' paint and chrome pick up soft reflections.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envRT = pmrem.fromScene(scene, 0, 10, 4000);
+  scene.environment = envRT.texture;
+  pmrem.dispose();
 
   // Sizing is driven by main.js (layoutStage) so it matches the rotated stage.
 
