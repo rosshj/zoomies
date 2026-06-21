@@ -255,8 +255,9 @@ function buildTown(scene, track, heightAt) {
 }
 
 // ---- Roadside town & farm zones ----
-// Walk along the track and line the roadside with props. Zones alternate, so
-// you drive through villages and then open farmland.
+// Walk along the track and line the roadside. Town zones are packed (a front
+// row of buildings, a taller back row, and street props), farm zones are open,
+// so you plunge into a busy village and come out into open country.
 function buildRoadside(scene, track, heightAt) {
   const N = track.samples;
   const pts = track._pts;
@@ -264,26 +265,42 @@ function buildRoadside(scene, track, heightAt) {
   const halfW = track.halfWidth;
   const up = new THREE.Vector3(0, 1, 0);
   const spacing = track.length / N;
-  const step = Math.max(1, Math.round(17 / spacing));
+  const step = Math.max(1, Math.round(9 / spacing));
   const zones = 6;
+
+  const place = (builder, dist, dir, p, side, faceRoad) => {
+    const x = p.x + side.x * dir * dist;
+    const z = p.z + side.z * dir * dist;
+    if (track.distanceToCenter(x, z) < halfW + 4) return;
+    const prop = builder();
+    prop.position.set(x, heightAt(x, z), z);
+    prop.rotation.y = faceRoad
+      ? Math.atan2(-side.x * dir, -side.z * dir) + (Math.random() - 0.5) * 0.4
+      : Math.random() * Math.PI * 2;
+    prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
+    scene.add(prop);
+  };
 
   for (let i = 0; i < N; i += step) {
     const t = i / N;
-    const town = Math.floor(t * zones) % 2 === 0;
+    const zf = t * zones;
+    const town = Math.floor(zf) % 2 === 0;
+    const phase = zf - Math.floor(zf); // 0..1 within the zone
+    const density = 0.5 + 0.5 * Math.sin(phase * Math.PI); // denser mid-zone
     const p = pts[i];
     const side = new THREE.Vector3().crossVectors(tans[i], up).normalize();
+
     for (const dir of [1, -1]) {
-      if (Math.random() < 0.4) continue; // leave gaps
-      const dist = halfW + 5 + Math.random() * (town ? 13 : 18);
-      const x = p.x + side.x * dir * dist;
-      const z = p.z + side.z * dir * dist;
-      if (track.distanceToCenter(x, z) < halfW + 4.5) continue; // not over the road
-      const y = heightAt(x, z);
-      const prop = town ? makeTownProp() : makeFarmProp();
-      prop.position.set(x, y, z);
-      prop.rotation.y = Math.random() * Math.PI * 2;
-      prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
-      scene.add(prop);
+      if (town) {
+        if (Math.random() < 0.55 + density * 0.4)
+          place(() => makeBuilding(false, density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
+        if (Math.random() < 0.25 + density * 0.4)
+          place(() => makeBuilding(true, density), halfW + 15 + Math.random() * 9, dir, p, side, true);
+        if (Math.random() < 0.5)
+          place(makeStreetProp, halfW + 3.2 + Math.random() * 1.4, dir, p, side, true);
+      } else if (Math.random() < 0.4) {
+        place(makeFarmProp, halfW + 6 + Math.random() * 18, dir, p, side, false);
+      }
     }
   }
 }
@@ -293,11 +310,113 @@ function mat(color, opts = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
 }
 
-function makeTownProp() {
+// Shared emissive "windows" texture so each building is just 2 meshes but still
+// looks like a lit facade.
+let _windowTex = null;
+function windowTexture() {
+  if (_windowTex) return _windowTex;
+  const c = document.createElement("canvas");
+  c.width = 64;
+  c.height = 80;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#000";
+  ctx.fillRect(0, 0, 64, 80);
+  const cols = 6;
+  const rows = 9;
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      const lit = Math.random();
+      const v = lit < 0.45 ? Math.floor(120 + Math.random() * 135) : 18;
+      ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.85)},${Math.floor(v * 0.5)})`;
+      ctx.fillRect(4 + col * 10, 4 + r * 8, 6, 5);
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return (_windowTex = t);
+}
+
+const BUILDING_PALETTE = [0xc7b9a6, 0xd9a77a, 0xb7c2cf, 0x9fb6a0, 0xcabfb0, 0xb59fb0, 0xd8cbb0];
+
+function makeBuilding(tall, density) {
+  const g = new THREE.Group();
+  const w = 5 + Math.random() * 4;
+  const d = 5 + Math.random() * 4;
+  let floors = 1 + Math.floor(Math.random() * (tall ? 4 : 2) + density * 2.5);
+  floors = Math.min(floors, tall ? 8 : 4);
+  const h = floors * 3.0;
+
+  const wall = BUILDING_PALETTE[Math.floor(Math.random() * BUILDING_PALETTE.length)];
+  const body = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, d),
+    new THREE.MeshStandardMaterial({
+      color: wall,
+      roughness: 0.92,
+      emissive: 0xffd27a,
+      emissiveMap: windowTexture(),
+      emissiveIntensity: 0.9,
+    })
+  );
+  body.position.y = h / 2;
+  body.receiveShadow = true; // not castShadow: too many to be worth the pass
+  g.add(body);
+
+  if (tall) {
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(w * 1.04, 0.7, d * 1.04), mat(0x4a4a52));
+    cap.position.y = h + 0.35;
+    g.add(cap);
+  } else {
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.8, 2.4, 4), mat(0x6d4c41));
+    roof.position.y = h + 1.2;
+    roof.rotation.y = Math.PI / 4;
+    roof.castShadow = true;
+    g.add(roof);
+  }
+  return g;
+}
+
+function makeStreetProp() {
   const r = Math.random();
-  if (r < 0.6) return makeHouse();
-  if (r < 0.8) return makeLamp();
-  return makeFence(0xc9b18b);
+  if (r < 0.45) return makeLamp();
+  if (r < 0.7) return makeBench();
+  if (r < 0.88) return makeHydrant();
+  return makeBush();
+}
+
+function makeBench() {
+  const g = new THREE.Group();
+  const wood = mat(0x8d6e3a);
+  const seat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.7), wood);
+  seat.position.y = 0.6;
+  g.add(seat);
+  const back = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 0.15), wood);
+  back.position.set(0, 1.0, -0.28);
+  g.add(back);
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.6), wood);
+    leg.position.set(sx * 1.0, 0.3, 0);
+    g.add(leg);
+  }
+  return g;
+}
+
+function makeHydrant() {
+  const g = new THREE.Group();
+  const red = mat(0xd23a2a);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.34, 1.1, 8), red);
+  body.position.y = 0.55;
+  body.castShadow = true;
+  g.add(body);
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 8), red);
+  cap.position.y = 1.1;
+  g.add(cap);
+  for (const sx of [-1, 1]) {
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.5, 6), red);
+    arm.rotation.z = Math.PI / 2;
+    arm.position.set(sx * 0.32, 0.7, 0);
+    g.add(arm);
+  }
+  return g;
 }
 
 function makeFarmProp() {

@@ -1,114 +1,204 @@
 import * as THREE from "three";
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
-// origin sits at the seat base. `furColor` tints the fur.
+// origin sits at the seat base. `furColor` tints the fur. The returned group's
+// userData.rig holds pivots (ears, whiskers, tail, head) that updateCatRig()
+// animates with cornering physics.
 export function createCat(furColor = 0xf0a830) {
   const cat = new THREE.Group();
-  const fur = new THREE.MeshStandardMaterial({ color: furColor, roughness: 0.85 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.5 });
+  const baseCol = new THREE.Color(furColor);
+  const fur = new THREE.MeshStandardMaterial({ color: furColor, roughness: 0.8, flatShading: true });
+  const stripeMat = new THREE.MeshStandardMaterial({
+    color: baseCol.clone().multiplyScalar(0.6),
+    roughness: 0.8,
+    flatShading: true,
+  });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5 });
   const pink = new THREE.MeshStandardMaterial({ color: 0xff8fab, roughness: 0.6 });
-  const white = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
-  const green = new THREE.MeshStandardMaterial({
-    color: 0x9ccc65,
-    emissive: 0x33691e,
-    emissiveIntensity: 0.3,
+  const white = new THREE.MeshStandardMaterial({ color: 0xfbfbfb, roughness: 0.5 });
+  const iris = new THREE.MeshStandardMaterial({
+    color: 0x8fd14f,
+    emissive: 0x2e7d32,
+    emissiveIntensity: 0.35,
   });
 
   // Body (sitting torso)
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.85, 0.7, 6, 12), fur);
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 0.75, 6, 14), fur);
   body.position.y = 1.0;
   body.castShadow = true;
   cat.add(body);
 
-  // Chest fluff
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.6, 12, 12), white);
-  chest.position.set(0, 0.85, 0.55);
-  chest.scale.set(1, 1.1, 0.6);
+  // Chest + belly fluff
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 14, 14), white);
+  chest.position.set(0, 0.82, 0.55);
+  chest.scale.set(1, 1.15, 0.62);
   cat.add(chest);
 
-  // Head
-  const head = new THREE.Group();
-  head.position.set(0, 2.05, 0.1);
-  cat.add(head);
-
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 16), fur);
-  skull.scale.set(1, 0.95, 0.95);
-  skull.castShadow = true;
-  head.add(skull);
-
-  // Ears
-  const earGeo = new THREE.ConeGeometry(0.32, 0.55, 5);
-  for (const sx of [-1, 1]) {
-    const ear = new THREE.Mesh(earGeo, fur);
-    ear.position.set(sx * 0.42, 0.6, -0.05);
-    ear.rotation.z = sx * -0.25;
-    head.add(ear);
-    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.32, 5), pink);
-    inner.position.set(sx * 0.42, 0.58, 0.04);
-    inner.rotation.z = sx * -0.25;
-    head.add(inner);
-  }
-
-  // Eyes
-  const eyeGeo = new THREE.SphereGeometry(0.15, 12, 12);
-  const pupilGeo = new THREE.SphereGeometry(0.07, 8, 8);
-  for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(eyeGeo, green);
-    eye.position.set(sx * 0.28, 0.1, 0.6);
-    head.add(eye);
-    const pupil = new THREE.Mesh(pupilGeo, dark);
-    pupil.position.set(sx * 0.28, 0.1, 0.72);
-    pupil.scale.set(0.5, 1, 1);
-    head.add(pupil);
-  }
-
-  // Nose + muzzle
-  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 12), white);
-  muzzle.position.set(0, -0.12, 0.62);
-  muzzle.scale.set(1.1, 0.7, 0.6);
-  head.add(muzzle);
-  const nose = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), pink);
-  nose.position.set(0, -0.02, 0.92);
-  head.add(nose);
-
-  // Whiskers
-  const whiskerMat = new THREE.LineBasicMaterial({ color: 0xffffff });
-  for (const sx of [-1, 1]) {
-    for (const dy of [-0.08, 0.04]) {
-      const g = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(sx * 0.2, -0.1 + dy, 0.85),
-        new THREE.Vector3(sx * 0.9, -0.1 + dy * 2, 0.8),
-      ]);
-      head.add(new THREE.Line(g, whiskerMat));
-    }
+  // Back stripes (tabby)
+  for (let i = 0; i < 3; i++) {
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 0.34), stripeMat);
+    stripe.position.set(0, 1.25 - i * 0.02, -0.4 - i * 0.28);
+    stripe.rotation.x = 0.5;
+    cat.add(stripe);
   }
 
   // Front paws on the wheel
-  const pawGeo = new THREE.SphereGeometry(0.22, 10, 10);
   for (const sx of [-1, 1]) {
-    const paw = new THREE.Mesh(pawGeo, fur);
-    paw.position.set(sx * 0.45, 1.05, 0.85);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.6, 4, 8), fur);
+    arm.position.set(sx * 0.5, 1.05, 0.6);
+    arm.rotation.x = -1.0;
+    cat.add(arm);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), white);
+    paw.position.set(sx * 0.5, 1.2, 0.95);
     cat.add(paw);
   }
 
-  // Tail
+  // --- Head (animated for lean/pitch) ---
+  const head = new THREE.Group();
+  head.position.set(0, 2.05, 0.12);
+  cat.add(head);
+
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.72, 18, 18), fur);
+  skull.scale.set(1.06, 0.96, 0.96);
+  skull.castShadow = true;
+  head.add(skull);
+  // Forehead stripes
+  for (let i = 0; i < 2; i++) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.1), stripeMat);
+    m.position.set((i - 0.5) * 0.34, 0.5, 0.45);
+    head.add(m);
+  }
+  // Cheeks
+  for (const sx of [-1, 1]) {
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.34, 12, 12), white);
+    cheek.position.set(sx * 0.34, -0.16, 0.5);
+    cheek.scale.set(0.9, 0.7, 0.7);
+    head.add(cheek);
+  }
+
+  // Ears on pivots so they can flick/lag
+  const earGeo = new THREE.ConeGeometry(0.33, 0.62, 5);
+  const innerGeo = new THREE.ConeGeometry(0.18, 0.36, 5);
+  const ears = {};
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.44, 0.5, -0.02);
+    head.add(pivot);
+    const ear = new THREE.Mesh(earGeo, fur);
+    ear.position.y = 0.28;
+    ear.rotation.z = sx * -0.22;
+    ear.castShadow = true;
+    pivot.add(ear);
+    const inner = new THREE.Mesh(innerGeo, pink);
+    inner.position.set(0, 0.26, 0.06);
+    inner.rotation.z = sx * -0.22;
+    pivot.add(inner);
+    ears[sx < 0 ? "L" : "R"] = pivot;
+  }
+
+  // Eyes (iris + pupil + shine)
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 14), iris);
+    eye.position.set(sx * 0.3, 0.12, 0.58);
+    eye.scale.set(0.9, 1, 0.7);
+    head.add(eye);
+    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), dark);
+    pupil.position.set(sx * 0.3, 0.12, 0.71);
+    pupil.scale.set(0.45, 1, 1);
+    head.add(pupil);
+    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), white);
+    shine.position.set(sx * 0.34, 0.2, 0.74);
+    head.add(shine);
+  }
+
+  // Muzzle + nose
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.32, 12, 12), white);
+  muzzle.position.set(0, -0.16, 0.64);
+  muzzle.scale.set(1.1, 0.72, 0.62);
+  head.add(muzzle);
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.1, 6), pink);
+  nose.rotation.x = Math.PI;
+  nose.position.set(0, -0.04, 0.92);
+  head.add(nose);
+
+  // Whiskers on pivots (sweep with cornering)
+  const whiskerMat = new THREE.LineBasicMaterial({ color: 0xf0f0f0 });
+  const whiskers = {};
+  for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.18, -0.12, 0.78);
+    head.add(pivot);
+    for (const dy of [-0.08, 0.0, 0.08]) {
+      const g = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, dy * 0.4, 0),
+        new THREE.Vector3(sx * 0.75, dy, 0.05),
+      ]);
+      pivot.add(new THREE.Line(g, whiskerMat));
+    }
+    whiskers[sx < 0 ? "L" : "R"] = pivot;
+  }
+
+  // Tail on a base pivot (sways + lifts)
   const tailCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0.6, -0.6),
-    new THREE.Vector3(0.1, 0.9, -1.1),
-    new THREE.Vector3(0.5, 1.5, -1.0),
-    new THREE.Vector3(0.9, 1.9, -0.5),
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0.05, 0.4, -0.5),
+    new THREE.Vector3(0.35, 1.0, -0.45),
+    new THREE.Vector3(0.7, 1.4, -0.05),
   ]);
-  const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 20, 0.18, 8), fur);
+  const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 24, 0.17, 8), fur);
   tail.castShadow = true;
-  // Pivot the tail at its base so it can be "lifted" for the fart boost.
   const tailPivot = new THREE.Group();
-  tailPivot.position.set(0, 0.6, -0.6);
-  tail.position.set(0, -0.6, 0.6);
+  tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
   cat.add(tailPivot);
 
   cat.userData.tail = tailPivot;
+  cat.userData.rig = {
+    head,
+    earL: ears.L,
+    earR: ears.R,
+    whiskerL: whiskers.L,
+    whiskerR: whiskers.R,
+    tail: tailPivot,
+    springs: {
+      earSway: { a: 0, v: 0 },
+      earBack: { a: 0, v: 0 },
+      whisker: { a: 0, v: 0 },
+      tailY: { a: 0, v: 0 },
+      tailX: { a: 0, v: 0 },
+      headLean: { a: 0, v: 0 },
+      headPitch: { a: 0, v: 0 },
+    },
+  };
   return cat;
+}
+
+// Animates a cat rig with cornering physics. `lat` is the (signed) cornering
+// intensity, `lon` the longitudinal acceleration; both roughly -1..1. The
+// appendages lag and overshoot via simple spring-dampers so they whip around
+// corners and flatten back under acceleration. `fart` lifts the tail.
+export function updateCatRig(rig, dt, lat, lon, fart = false) {
+  if (!rig) return;
+  const sp = rig.springs;
+  const step = (s, target, k, d) => {
+    s.v += (target - s.a) * k * dt;
+    s.v *= Math.max(0, 1 - d * dt);
+    s.a += s.v * dt;
+  };
+  step(sp.earSway, -lat * 0.5, 95, 13);
+  step(sp.earBack, Math.max(0, lon) * 0.5 + Math.abs(lat) * 0.3, 85, 15);
+  step(sp.whisker, -lat * 0.55, 70, 11);
+  step(sp.tailY, -lat * 1.5, 55, 8);
+  step(sp.tailX, fart ? -1.4 : -Math.max(0, lon) * 0.4, 60, 11);
+  step(sp.headLean, -lat * 0.22, 80, 13);
+  step(sp.headPitch, lon * 0.12, 80, 13);
+
+  rig.earL.rotation.set(sp.earBack.a, 0, sp.earSway.a);
+  rig.earR.rotation.set(sp.earBack.a, 0, sp.earSway.a);
+  rig.whiskerL.rotation.y = sp.whisker.a;
+  rig.whiskerR.rotation.y = sp.whisker.a;
+  rig.tail.rotation.set(sp.tailX.a, sp.tailY.a, 0);
+  rig.head.rotation.set(sp.headPitch.a, 0, sp.headLean.a);
 }
 
 // Builds a chunky go-kart. Returns { group, wheels:[...] } so wheels can spin.

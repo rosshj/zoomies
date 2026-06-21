@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { createKartModel, createCat } from "./models.js";
+import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 
@@ -86,7 +86,13 @@ export class Kart {
     cat.scale.setScalar(0.62);
     cat.position.set(0, 0.85, -0.35);
     this.group.add(cat);
-    this.catTail = cat.userData.tail;
+    this.catRig = cat.userData.rig;
+
+    // Cat physics signals (cornering / acceleration), smoothed in update().
+    this._prevSpeed = 0;
+    this._lat = 0;
+    this._lon = 0;
+    this._dt = 0.016;
   }
 
   placeAt(position, heading, track) {
@@ -169,9 +175,12 @@ export class Kart {
   }
 
   update(dt, track) {
+    this._dt = dt;
     if (this.finished) {
       // Coast to a gentle stop after finishing.
       this.speed *= 0.95;
+      this._lat = 0;
+      this._lon = 0;
       this._integrate(dt, track, true);
       this._syncMesh();
       return;
@@ -192,6 +201,8 @@ export class Kart {
       this.position.addScaledVector(this.spinVel, dt);
       this.spinVel.multiplyScalar(1 - Math.min(1, 1.6 * dt));
       this.speed = 0;
+      this._lat = Math.max(-1, Math.min(1, this.spinAngVel * 0.12));
+      this._lon = 0;
       this._integrate(dt, track, false);
       this._syncMesh();
       return;
@@ -259,6 +270,13 @@ export class Kart {
 
     // Landing from a hop opens the drift grace window.
     if (wasAirborne && !this.airborne) this.driftGrace = 0.5;
+
+    // Cat physics signals: cornering intensity + longitudinal acceleration.
+    const corner = this.drifting ? this.driftDir : this.steerInput;
+    this._lat = corner * Math.min(1, Math.abs(this.speed) / 18);
+    const accel = (this.speed - this._prevSpeed) / Math.max(dt, 0.001);
+    this._lon = Math.max(-1, Math.min(1, accel / 45));
+    this._prevSpeed = this.speed;
 
     this._updateLap(track);
     this._syncMesh();
@@ -348,8 +366,9 @@ export class Kart {
     const leanAmt = this.drifting ? 0.26 : 0.12;
     this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
 
-    // Lift the tail when farting.
-    if (this.catTail) this.catTail.rotation.x = this.fartTimer > 0 ? -1.1 : 0;
+    // Drive the cat's ears/whiskers/tail with cornering physics (tail also
+    // lifts while farting).
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.fartTimer > 0);
 
     for (const w of this.wheels) w.rotation.x = this._wheelSpin || 0;
   }
