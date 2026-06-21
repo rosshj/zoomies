@@ -106,31 +106,37 @@ let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
 function layoutStage() {
   const iw = window.innerWidth;
   const ih = window.innerHeight;
+  const rawAngle =
+    (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
+  const a = ((rawAngle % 360) + 360) % 360;
   const portrait = ih > iw;
-  // No forced CSS rotation (it caused cutoff/gaps on iOS). Render at the true
-  // viewport size and prompt to rotate if the phone is held in portrait.
-  const rot = 0;
-  const W = iw;
-  const H = ih;
+
+  // Lock to landscape: when the viewport is portrait, counter-rotate the stage
+  // so the game always presents in landscape. Children are position:absolute so
+  // they rotate/fill with the stage (Safari mis-handles position:fixed here).
+  const rot = portrait ? (a === 180 ? 270 : 90) : 0;
+  const W = Math.max(iw, ih);
+  const H = Math.min(iw, ih);
   stageState = { iw, ih, W, H, rot };
+  rotateEl.classList.add("hidden"); // forced landscape — never prompt
 
-  rotateEl.classList.toggle("hidden", !(portrait && isTouch));
-
-  // Full-viewport stage.
   stage.style.width = W + "px";
   stage.style.height = H + "px";
   stage.style.left = "50%";
   stage.style.top = "50%";
-  stage.style.transform = "translate(-50%, -50%)";
+  stage.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
 
-  // Safe-area insets (no rotation, so they map directly) as CSS vars.
+  // Remap the physical safe-area insets into the rotated stage's frame so the
+  // HUD avoids the notch / home bar on the correct visual edges.
   const vi = readViewportInsets();
-  stage.style.setProperty("--safe-top", `${vi.top}px`);
-  stage.style.setProperty("--safe-right", `${vi.right}px`);
-  stage.style.setProperty("--safe-bottom", `${vi.bottom}px`);
-  stage.style.setProperty("--safe-left", `${vi.left}px`);
-
-  const st = vi.top;
+  let st, sr, sb, sl;
+  if (rot === 90) [st, sr, sb, sl] = [vi.right, vi.bottom, vi.left, vi.top];
+  else if (rot === 270) [st, sr, sb, sl] = [vi.left, vi.top, vi.right, vi.bottom];
+  else [st, sr, sb, sl] = [vi.top, vi.right, vi.bottom, vi.left];
+  stage.style.setProperty("--safe-top", `${st}px`);
+  stage.style.setProperty("--safe-right", `${sr}px`);
+  stage.style.setProperty("--safe-bottom", `${sb}px`);
+  stage.style.setProperty("--safe-left", `${sl}px`);
 
   renderer.setSize(W, H);
   camera.aspect = W / H;
