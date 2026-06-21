@@ -157,12 +157,14 @@ export class Kart {
   }
 
   // Returns a world-space muzzle point + forward direction for hairballs.
+  // The direction follows the kart's slope pitch so shots clear the hill ahead
+  // when climbing instead of burying into it.
   muzzle() {
-    const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
-    const pos = new THREE.Vector3()
-      .copy(this.position)
-      .addScaledVector(fwd, 3.4)
-      .setY(this.groundY + this.y + 1.2);
+    const cp = Math.cos(this.slopePitch);
+    const sp = Math.sin(this.slopePitch);
+    const fwd = new THREE.Vector3(cp * Math.sin(this.heading), -sp, cp * Math.cos(this.heading));
+    const pos = new THREE.Vector3().copy(this.position).addScaledVector(fwd, 3.4);
+    pos.y += this.y + 1.4;
     return { pos, dir: fwd };
   }
 

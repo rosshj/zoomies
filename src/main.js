@@ -14,6 +14,9 @@ const BOOST_RECHARGE = 1 / 16; // meter refills fully in ~16s
 const TOTAL_LAPS = 3;
 
 const { renderer, scene, camera } = createScene();
+// The main camera sees everything; the rear-view camera stays on the default
+// layer 0, so heavy scenery placed on layer 1 is skipped in the mirror render.
+camera.layers.enable(1);
 
 const track = new Track();
 track.totalLaps = TOTAL_LAPS;
@@ -128,11 +131,13 @@ function layoutStage() {
   camera.updateProjectionMatrix();
 
   // Mirror box: top-center (small). WebGL viewport y is measured from bottom.
+  // Inset the rendered region by the frame border so it sits *inside* the frame.
   const mw = Math.min(150, W * 0.17);
   const mh = mw * 0.4;
   const mleft = (W - mw) / 2;
   const mtop = 8;
-  mirrorRect = { x: mleft, y: H - mtop - mh, w: mw, h: mh };
+  const B = 3; // must match the #mirror-frame border width in CSS
+  mirrorRect = { x: mleft + B, y: H - mtop - mh + B, w: mw - 2 * B, h: mh - 2 * B };
   if (mirrorFrame) {
     mirrorFrame.style.width = `${mw}px`;
     mirrorFrame.style.height = `${mh}px`;

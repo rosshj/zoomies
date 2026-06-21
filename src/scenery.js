@@ -34,7 +34,7 @@ export function buildWorld(scene, track) {
   buildMountains(scene, heightAt);
   buildTrees(scene, track, heightAt, flatten);
   buildRocks(scene, track, heightAt, flatten);
-  buildTown(scene, track, heightAt);
+  buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   const balloons = buildBalloons(scene);
 
   return {
@@ -125,7 +125,7 @@ function scatter(count, track, flatten, minFlat, range) {
 }
 
 function buildTrees(scene, track, heightAt, flatten) {
-  const spots = scatter(260, track, flatten, 0.55, 1300)
+  const spots = scatter(170, track, flatten, 0.55, 1300)
     .map((s) => ({ ...s, y: heightAt(s.x, s.z) }))
     .filter((s) => s.y <= 28); // no trees on the snowy peaks
   const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6);
@@ -160,6 +160,8 @@ function buildTrees(scene, track, heightAt, flatten) {
   trunks.instanceMatrix.needsUpdate = true;
   foliage.instanceMatrix.needsUpdate = true;
   if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
+  trunks.layers.set(1); // excluded from the rear-view mirror render
+  foliage.layers.set(1);
   scene.add(trunks);
   scene.add(foliage);
 }
@@ -183,6 +185,7 @@ function buildRocks(scene, track, heightAt, flatten) {
     rocks.setMatrixAt(i, m);
   });
   rocks.instanceMatrix.needsUpdate = true;
+  rocks.layers.set(1); // excluded from the rear-view mirror render
   scene.add(rocks);
 }
 
@@ -249,6 +252,231 @@ function buildTown(scene, track, heightAt) {
     b.rotation.y = Math.random() * Math.PI;
     scene.add(b);
   }
+}
+
+// ---- Roadside town & farm zones ----
+// Walk along the track and line the roadside with props. Zones alternate, so
+// you drive through villages and then open farmland.
+function buildRoadside(scene, track, heightAt) {
+  const N = track.samples;
+  const pts = track._pts;
+  const tans = track._tans;
+  const halfW = track.halfWidth;
+  const up = new THREE.Vector3(0, 1, 0);
+  const spacing = track.length / N;
+  const step = Math.max(1, Math.round(17 / spacing));
+  const zones = 6;
+
+  for (let i = 0; i < N; i += step) {
+    const t = i / N;
+    const town = Math.floor(t * zones) % 2 === 0;
+    const p = pts[i];
+    const side = new THREE.Vector3().crossVectors(tans[i], up).normalize();
+    for (const dir of [1, -1]) {
+      if (Math.random() < 0.4) continue; // leave gaps
+      const dist = halfW + 5 + Math.random() * (town ? 13 : 18);
+      const x = p.x + side.x * dir * dist;
+      const z = p.z + side.z * dir * dist;
+      if (track.distanceToCenter(x, z) < halfW + 4.5) continue; // not over the road
+      const y = heightAt(x, z);
+      const prop = town ? makeTownProp() : makeFarmProp();
+      prop.position.set(x, y, z);
+      prop.rotation.y = Math.random() * Math.PI * 2;
+      prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
+      scene.add(prop);
+    }
+  }
+}
+
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+function mat(color, opts = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
+}
+
+function makeTownProp() {
+  const r = Math.random();
+  if (r < 0.6) return makeHouse();
+  if (r < 0.8) return makeLamp();
+  return makeFence(0xc9b18b);
+}
+
+function makeFarmProp() {
+  const r = Math.random();
+  if (r < 0.22) return makeTree();
+  if (r < 0.42) return makeBush();
+  if (r < 0.56) return makeCow();
+  if (r < 0.7) return makeSheep();
+  if (r < 0.82) return makeHayBale();
+  if (r < 0.92) return makeFence(0x8d6e3a);
+  return makeBarn();
+}
+
+function makeHouse() {
+  const g = new THREE.Group();
+  const palette = [0xd9776a, 0xe0b15a, 0x7aa6c2, 0x9ccc8f, 0xc9bfa8, 0xb98ec2, 0xe8e0d0];
+  const w = 5 + Math.random() * 4;
+  const d = 5 + Math.random() * 4;
+  const floors = 1 + Math.floor(Math.random() * 3);
+  const h = floors * 3.2;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(pick(palette)));
+  body.position.y = h / 2;
+  body.castShadow = body.receiveShadow = true;
+  g.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.8, 2.6, 4), mat(0x6d4c41));
+  roof.position.y = h + 1.3;
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  g.add(roof);
+  const winMat = mat(0xfff2b0, { emissive: 0xffd95e, emissiveIntensity: 0.5 });
+  for (let f = 0; f < floors; f++) {
+    for (const sz of [d / 2 + 0.05, -d / 2 - 0.05]) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.6, 1.3), winMat);
+      win.position.set(0, 1.6 + f * 3.2, sz);
+      if (sz < 0) win.rotation.y = Math.PI;
+      g.add(win);
+    }
+  }
+  return g;
+}
+
+function makeLamp() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 5, 6), mat(0x37474f));
+  pole.position.y = 2.5;
+  pole.castShadow = true;
+  g.add(pole);
+  const head = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 8, 8),
+    mat(0xfff3c4, { emissive: 0xffe082, emissiveIntensity: 0.8 })
+  );
+  head.position.y = 5;
+  g.add(head);
+  return g;
+}
+
+function makeFence(color) {
+  const g = new THREE.Group();
+  const m = mat(color);
+  const len = 6;
+  for (let i = 0; i <= 3; i++) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.4, 0.2), m);
+    post.position.set(-len / 2 + (i / 3) * len, 0.7, 0);
+    g.add(post);
+  }
+  for (const ry of [0.5, 1.05]) {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.16, 0.12), m);
+    rail.position.set(0, ry, 0);
+    g.add(rail);
+  }
+  return g;
+}
+
+function makeTree() {
+  const g = new THREE.Group();
+  const s = 0.9 + Math.random() * 1.2;
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 6), mat(0x6b4a2b));
+  trunk.position.y = 1.5 * s;
+  trunk.scale.setScalar(s);
+  trunk.castShadow = true;
+  g.add(trunk);
+  const fol = new THREE.Mesh(
+    new THREE.ConeGeometry(2.4, 6, 7),
+    mat(0x2e7d32, { flatShading: true })
+  );
+  fol.position.y = 6 * s;
+  fol.scale.setScalar(s);
+  fol.castShadow = true;
+  g.add(fol);
+  return g;
+}
+
+function makeBush() {
+  const g = new THREE.Group();
+  const m = mat(0x4caf50, { flatShading: true });
+  const n = 2 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9 + Math.random() * 0.6, 0), m);
+    b.position.set((Math.random() - 0.5) * 2, 0.7, (Math.random() - 0.5) * 2);
+    b.castShadow = true;
+    g.add(b);
+  }
+  return g;
+}
+
+function makeCow() {
+  const g = new THREE.Group();
+  const white = mat(0xf2f2f2);
+  const dark = mat(0x3a2f2a);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(3, 1.6, 1.5), white);
+  body.position.y = 1.5;
+  body.castShadow = true;
+  g.add(body);
+  const patch = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.62, 1.0), dark);
+  patch.position.set(0.6, 1.5, 0);
+  g.add(patch);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), white);
+  head.position.set(-1.7, 1.7, 0);
+  g.add(head);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.5, 0.3), dark);
+      leg.position.set(sx * 1.1, 0.75, sz * 0.5);
+      g.add(leg);
+    }
+  return g;
+}
+
+function makeSheep() {
+  const g = new THREE.Group();
+  const wool = mat(0xf6f4ef, { flatShading: true });
+  const dark = mat(0x2b2b2b);
+  const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 0), wool);
+  body.position.y = 1.4;
+  body.scale.set(1.3, 1, 1);
+  body.castShadow = true;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.6), dark);
+  head.position.set(-1.4, 1.5, 0);
+  g.add(head);
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), dark);
+      leg.position.set(sx * 0.7, 0.55, sz * 0.45);
+      g.add(leg);
+    }
+  return g;
+}
+
+function makeHayBale() {
+  const bale = new THREE.Mesh(
+    new THREE.CylinderGeometry(1, 1, 1.7, 12),
+    mat(0xd4b15a, { flatShading: true })
+  );
+  bale.rotation.z = Math.PI / 2;
+  bale.position.y = 1;
+  bale.castShadow = true;
+  const g = new THREE.Group();
+  g.add(bale);
+  return g;
+}
+
+function makeBarn() {
+  const g = new THREE.Group();
+  const red = mat(0xa8322a);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(11, 6, 8), red);
+  body.position.y = 3;
+  body.castShadow = body.receiveShadow = true;
+  g.add(body);
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(4.4, 4.4, 8.4, 4, 1, false, 0, Math.PI), mat(0x5a2a24));
+  roof.rotation.z = Math.PI / 2;
+  roof.position.y = 6;
+  roof.scale.set(1, 1.3, 1);
+  roof.castShadow = true;
+  g.add(roof);
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(3, 4), mat(0xe8e0d0));
+  door.position.set(0, 2, 4.02);
+  g.add(door);
+  return g;
 }
 
 function buildBalloons(scene) {
