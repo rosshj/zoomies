@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Builds the world around the track: rolling hills, distant mountains, a small
 // town of buildings, forests, rocks and a few drifting hot-air balloons.
@@ -363,7 +364,7 @@ function buildRoadside(scene, track, heightAt) {
     for (const dir of [1, -1]) {
       if (town) {
         if (Math.random() < 0.62 + density * 0.32)
-          place(() => makeBuilding(density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
+          place(() => makeTownStructure(density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
         if (Math.random() < 0.22 + density * 0.28)
           place(() => makeBuilding(density), halfW + 13 + Math.random() * 6, dir, p, side, true);
         if (Math.random() < 0.5)
@@ -406,47 +407,186 @@ function windowTexture() {
   return (_windowTex = t);
 }
 
-const BUILDING_PALETTE = [0xddc9a8, 0xe3b18a, 0xc8d2dc, 0xb6cdb2, 0xe6d9c2, 0xc9aec6, 0xeae0cf, 0xd98c7a];
-const ROOF_PALETTE = [0x8d5a3a, 0x9c4a3a, 0x6d6e5a, 0x55707a, 0x7a5a8a, 0x4a5a6a];
+const BUILDING_PALETTE = [0xe8d3ad, 0xe7b386, 0xcdd7e0, 0xbcd2b6, 0xece0c8, 0xd4b3cf, 0xf0e6d2, 0xe0907c, 0xb8c79c];
+const ROOF_PALETTE = [0x8d5a3a, 0xa84838, 0x6d6e5a, 0x4f6e78, 0x7a5a8a, 0x3f5566, 0x9c6b33];
+const TRIM_PALETTE = [0xfbf3e3, 0xf2e6cc, 0x5b3a22, 0x3f4a55];
 
-// A small-town building: 1–2 storeys (rarely 3) with a pitched roof.
+// Shared material for all the solid (vertex-coloured) building detail, so a
+// fully detailed building is still only ~2 draw calls.
+const _solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
+
+// Add a positioned geometry to `parts` with a baked vertex colour.
+function part(parts, geo, color) {
+  const c = new THREE.Color(color);
+  const n = geo.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    arr[i * 3] = c.r;
+    arr[i * 3 + 1] = c.g;
+    arr[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+  parts.push(geo);
+}
+
+function bodyMaterial(wall) {
+  return new THREE.MeshStandardMaterial({
+    color: wall,
+    roughness: 0.94,
+    emissive: 0xffcf86,
+    emissiveMap: windowTexture(),
+    emissiveIntensity: 0.5,
+  });
+}
+
+// A detailed small-town / farm building: foundation, trim, varied overhanging
+// roof, chimney, dormer, framed door + awning, sometimes an L-shaped wing.
 function makeBuilding(density) {
   const g = new THREE.Group();
-  const w = 4 + Math.random() * 3;
-  const d = 4 + Math.random() * 3;
+  const w = 4 + Math.random() * 3.5;
+  const d = 4 + Math.random() * 3.5;
   let floors = 1;
-  if (Math.random() < 0.4 + density * 0.25) floors = 2;
-  if (floors === 2 && Math.random() < 0.18) floors = 3;
+  if (Math.random() < 0.45 + density * 0.2) floors = 2;
+  if (floors === 2 && Math.random() < 0.15) floors = 3;
   const h = floors * 2.7;
+  const base = 0.6;
+  const top = base + h;
+  const wall = pick(BUILDING_PALETTE);
+  const roofCol = pick(ROOF_PALETTE);
+  const trim = pick(TRIM_PALETTE);
 
-  const wall = BUILDING_PALETTE[Math.floor(Math.random() * BUILDING_PALETTE.length)];
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({
-      color: wall,
-      roughness: 0.94,
-      emissive: 0xffcf86,
-      emissiveMap: windowTexture(),
-      emissiveIntensity: 0.55,
-    })
-  );
-  body.position.y = h / 2;
-  body.receiveShadow = true; // not castShadow: too many to be worth the pass
+  // Window-lit body (+ optional wing), merged into one emissive mesh.
+  const bodyParts = [new THREE.BoxGeometry(w, h, d).translate(0, base + h / 2, 0)];
+  let wing = null;
+  if (Math.random() < 0.4) {
+    const ww = w * 0.6;
+    const wd = d * 0.62;
+    const wh = h * (floors > 1 ? 0.6 : 0.92);
+    const wx = (w / 2 + ww / 2 - 0.2) * (Math.random() < 0.5 ? 1 : -1);
+    const wz = (Math.random() - 0.5) * d * 0.3;
+    bodyParts.push(new THREE.BoxGeometry(ww, wh, wd).translate(wx, base + wh / 2, wz));
+    wing = { ww, wd, wh, wx, wz };
+  }
+  const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
+  body.receiveShadow = true;
   g.add(body);
 
-  const roofH = 1.4 + floors * 0.3;
-  const roof = new THREE.Mesh(
-    new THREE.ConeGeometry(Math.max(w, d) * 0.82, roofH, 4),
-    mat(ROOF_PALETTE[Math.floor(Math.random() * ROOF_PALETTE.length)])
-  );
-  roof.position.y = h + roofH / 2;
-  roof.rotation.y = Math.PI / 4;
-  g.add(roof);
+  // Everything else: solid vertex-coloured detail.
+  const parts = [];
+  part(parts, new THREE.BoxGeometry(w + 0.5, base, d + 0.5).translate(0, base / 2, 0), 0x5a4f44); // foundation
+  part(parts, new THREE.BoxGeometry(w + 0.12, 0.18, d + 0.12).translate(0, top - 0.1, 0), trim); // eave band
 
-  // Little door.
-  const door = new THREE.Mesh(new THREE.PlaneGeometry(1, 1.6), mat(0x6b4a2b));
-  door.position.set(0, 0.8, d / 2 + 0.02);
-  g.add(door);
+  const flat = Math.random() < 0.25;
+  if (flat) {
+    part(parts, new THREE.BoxGeometry(w + 0.3, 0.5, d + 0.3).translate(0, top + 0.25, 0), roofCol);
+    part(parts, new THREE.BoxGeometry(w + 0.4, 0.5, 0.3).translate(0, top + 0.6, d / 2 + 0.05), trim); // front parapet
+  } else {
+    const roofH = 1.4 + floors * 0.45;
+    const rad = Math.max(w, d) * 0.82 + 0.5;
+    part(parts, new THREE.ConeGeometry(rad, roofH, 4).rotateY(Math.PI / 4).translate(0, top + roofH / 2, 0), roofCol);
+    if (Math.random() < 0.75) {
+      const cx = w * 0.25;
+      const cz = d * 0.2;
+      part(parts, new THREE.BoxGeometry(0.5, 1.6, 0.5).translate(cx, top + roofH * 0.4, cz), 0x8a5a44);
+      part(parts, new THREE.BoxGeometry(0.7, 0.22, 0.7).translate(cx, top + roofH * 0.4 + 0.9, cz), 0x333333);
+    }
+    if (floors >= 2 && Math.random() < 0.5) {
+      part(parts, new THREE.BoxGeometry(1.3, 1.1, 1.0).translate(0, top + 0.35, d / 2 - 0.3), wall);
+      part(parts, new THREE.ConeGeometry(1.1, 0.8, 4).rotateY(Math.PI / 4).translate(0, top + 1.2, d / 2 - 0.3), roofCol);
+    }
+  }
+
+  // Framed door (+ step).
+  const dx = (Math.random() - 0.5) * (w - 2.2);
+  part(parts, new THREE.BoxGeometry(1.4, 2.1, 0.18).translate(dx, base + 1.0, d / 2 + 0.02), trim);
+  part(parts, new THREE.BoxGeometry(0.95, 1.65, 0.12).translate(dx, base + 0.82, d / 2 + 0.12), 0x4a2f1c);
+  part(parts, new THREE.BoxGeometry(1.6, 0.2, 0.7).translate(dx, base, d / 2 + 0.35), 0x7a6b58); // step
+  if (Math.random() < 0.4) {
+    const awn = new THREE.BoxGeometry(2.2, 0.22, 1.1);
+    awn.rotateX(-0.32);
+    awn.translate(dx, base + 2.0, d / 2 + 0.55);
+    part(parts, awn, pick([0xd23a2a, 0x2a7ad2, 0x2e9e4a, 0xe0a52a]));
+  }
+
+  const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.receiveShadow = true;
+  g.add(solid);
+  return g;
+}
+
+// Pick a town structure — mostly houses, occasionally a landmark.
+function makeTownStructure(density) {
+  const r = Math.random();
+  if (r < 0.05) return makeChurch();
+  if (r < 0.09) return makeWaterTower();
+  return makeBuilding(density);
+}
+
+function makeChurch() {
+  const g = new THREE.Group();
+  const wall = 0xeae0cf;
+  const roofCol = 0x4f6e78;
+  const parts = [];
+  const naveH = 6;
+  part(parts, new THREE.BoxGeometry(6, naveH, 9).translate(0, naveH / 2, 0), wall);
+  part(parts, new THREE.ConeGeometry(5, 3, 4).rotateY(Math.PI / 4).translate(0, naveH + 1.5, 0), roofCol);
+  // bell tower
+  const tH = 10;
+  part(parts, new THREE.BoxGeometry(3, tH, 3).translate(0, tH / 2, 5), wall);
+  part(parts, new THREE.ConeGeometry(2.4, 4, 4).rotateY(Math.PI / 4).translate(0, tH + 2, 5), roofCol);
+  // cross
+  part(parts, new THREE.BoxGeometry(0.2, 1.4, 0.2).translate(0, tH + 4.6, 5), 0xf0e6d2);
+  part(parts, new THREE.BoxGeometry(0.9, 0.2, 0.2).translate(0, tH + 4.8, 5), 0xf0e6d2);
+  // door
+  part(parts, new THREE.BoxGeometry(1.4, 2.4, 0.2).translate(0, 1.2, 5 + 1.5), 0x4a2f1c);
+  g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
+  return g;
+}
+
+function makeWaterTower() {
+  const g = new THREE.Group();
+  const parts = [];
+  const legH = 7;
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      part(parts, new THREE.CylinderGeometry(0.25, 0.25, legH, 6).translate(sx * 1.6, legH / 2, sz * 1.6), 0x6b5644);
+    }
+  part(parts, new THREE.CylinderGeometry(2.6, 2.6, 3, 12).translate(0, legH + 1.5, 0), 0xb24a3a);
+  part(parts, new THREE.ConeGeometry(2.8, 1.8, 12).translate(0, legH + 3.9, 0), 0x5a4438);
+  g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
+  return g;
+}
+
+function makeWindmill() {
+  const g = new THREE.Group();
+  const parts = [];
+  const tH = 7;
+  part(parts, new THREE.CylinderGeometry(1.1, 1.8, tH, 10).translate(0, tH / 2, 0), 0xe6dcc6);
+  part(parts, new THREE.ConeGeometry(1.6, 1.6, 10).translate(0, tH + 0.8, 0), 0x7a4a36);
+  g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
+  // sails (a separate spinning-looking cross at the front)
+  const sailMat = mat(0xf4efe2);
+  const hub = new THREE.Group();
+  hub.position.set(0, tH, 1.7);
+  for (let i = 0; i < 4; i++) {
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 0.1), sailMat);
+    blade.position.y = 2;
+    const arm = new THREE.Group();
+    arm.add(blade);
+    arm.rotation.z = (i / 4) * Math.PI * 2;
+    hub.add(arm);
+  }
+  g.add(hub);
+  return g;
+}
+
+function makeSilo() {
+  const g = new THREE.Group();
+  const parts = [];
+  const hH = 8;
+  part(parts, new THREE.CylinderGeometry(1.6, 1.6, hH, 12).translate(0, hH / 2, 0), 0xc9ccd2);
+  part(parts, new THREE.SphereGeometry(1.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, hH, 0), 0x8a9aa6);
+  g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
   return g;
 }
 
@@ -559,13 +699,15 @@ function makeHydrant() {
 
 function makeFarmProp() {
   const r = Math.random();
-  if (r < 0.22) return makeTree();
-  if (r < 0.42) return makeBush();
-  if (r < 0.56) return makeCow();
-  if (r < 0.7) return makeSheep();
-  if (r < 0.82) return makeHayBale();
-  if (r < 0.92) return makeFence(0x8d6e3a);
-  return makeBarn();
+  if (r < 0.2) return makeTree();
+  if (r < 0.38) return makeBush();
+  if (r < 0.5) return makeCow();
+  if (r < 0.62) return makeSheep();
+  if (r < 0.72) return makeHayBale();
+  if (r < 0.8) return makeFence(0x8d6e3a);
+  if (r < 0.88) return makeBarn();
+  if (r < 0.94) return makeWindmill();
+  return makeSilo();
 }
 
 function makeHouse() {
