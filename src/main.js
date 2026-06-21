@@ -35,25 +35,33 @@ const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5,
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
-// Vignette + chromatic aberration (aberration ramps up while boosting).
+// Color grade (saturation + contrast + vignette) and chromatic aberration.
+// Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
+// gated by quality.
 const fxPass = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null },
     uAberr: { value: 0 },
-    uVignette: { value: 0.5 },
+    uVignette: { value: 0.4 },
+    uSat: { value: 1.3 },
+    uContrast: { value: 1.07 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uVignette; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uVignette;
+    uniform float uSat; uniform float uContrast; varying vec2 vUv;
     void main(){
       vec2 d = vUv - 0.5;
       vec3 col;
       col.r = texture2D(tDiffuse, vUv + d * uAberr).r;
       col.g = texture2D(tDiffuse, vUv).g;
       col.b = texture2D(tDiffuse, vUv - d * uAberr).b;
-      float vig = smoothstep(0.85, 0.32, length(d));
+      float l = dot(col, vec3(0.299, 0.587, 0.114));
+      col = mix(vec3(l), col, uSat);          // saturation
+      col = (col - 0.5) * uContrast + 0.5;     // contrast
+      float vig = smoothstep(0.92, 0.34, length(d));
       col *= mix(1.0, vig, uVignette);
-      gl_FragColor = vec4(col, 1.0);
+      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
     }`,
 });
 composer.addPass(fxPass);
@@ -289,8 +297,8 @@ const qualityBtn = document.getElementById("quality-btn");
 function applyQuality(q) {
   quality = q;
   const high = q === "high";
-  bloomPass.enabled = high;
-  fxPass.enabled = high;
+  bloomPass.enabled = high; // bloom (the expensive part) only on High
+  // fxPass (colour grade) stays on at all levels so colours stay vivid.
   if (world.grass) world.grass.visible = high;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
   if (qualityBtn) qualityBtn.textContent = `Graphics: ${high ? "High" : "Low"}`;

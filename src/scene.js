@@ -11,7 +11,7 @@ export function createScene() {
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // Filmic tone mapping for richer, punchier (but still cartoony) color.
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMappingExposure = 1.0;
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -33,11 +33,11 @@ export function createScene() {
   buildSky(scene, sunDir);
   buildSun(scene, sunDir);
 
-  // Lights
-  const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5f3a, 1.0);
+  // Lights — keep ambient lowish so colors stay saturated and shadows read.
+  const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5f3a, 0.55);
   scene.add(hemi);
 
-  const sun = new THREE.DirectionalLight(0xffe6b8, 2.1); // warm, golden-hour
+  const sun = new THREE.DirectionalLight(0xffe6b8, 2.2); // warm, golden-hour
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
