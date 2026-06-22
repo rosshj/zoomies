@@ -20,8 +20,7 @@ const TOTAL_LAPS = 3;
 
 const { renderer, scene, camera } = createScene();
 // The main camera sees everything; the rear-view camera stays on layer 0, so
-// scenery on layer 1 is skipped in the mirror. Grass is on layer 2 (also out of
-// the outline pre-pass, which would otherwise outline every blade).
+// scenery on layer 1 and grass on layer 2 are skipped in the mirror.
 camera.layers.enable(1);
 camera.layers.enable(2);
 
@@ -37,81 +36,10 @@ const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5,
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
-// --- Cartoon outline pass (Phase 2) ---
-// A normal-buffer pre-pass detects silhouette/crease edges; this pass draws a
-// dark line there. High quality only (it costs a second scene render).
-const normalMat = new THREE.MeshNormalMaterial();
-const normalTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y);
-// A depth texture, written by the same pre-pass, lets us key outlines off real
-// depth discontinuities (object silhouettes) rather than every normal wiggle —
-// which is what kept the lines from showing through geometry and scribbling all
-// over distant foliage.
-normalTarget.depthTexture = new THREE.DepthTexture(_sz.x, _sz.y);
-let outlineProps = true; // include the dense roadside props in the outline pass
-let outlineScale = 1; // normal-buffer resolution scale
-const outlinePass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    tNormal: { value: normalTarget.texture },
-    tDepth: { value: normalTarget.depthTexture },
-    uTexel: { value: new THREE.Vector2(1 / _sz.x, 1 / _sz.y) },
-    uThickness: { value: 1.2 },
-    uDepthThresh: { value: 0.025 }, // depth jump, as a fraction of distance
-    uNormalThresh: { value: 0.55 }, // only strong creases
-    cameraNear: { value: camera.near },
-    cameraFar: { value: camera.far },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform sampler2D tNormal; uniform sampler2D tDepth;
-    uniform vec2 uTexel; uniform float uThickness;
-    uniform float uDepthThresh; uniform float uNormalThresh;
-    uniform float cameraNear; uniform float cameraFar;
-    varying vec2 vUv;
-    // View-space distance from the non-linear depth buffer.
-    float linDepth(vec2 uv){
-      float z = texture2D(tDepth, uv).x;
-      float ndc = z * 2.0 - 1.0;
-      return (2.0 * cameraNear * cameraFar) /
-             (cameraFar + cameraNear - ndc * (cameraFar - cameraNear));
-    }
-    void main(){
-      vec3 c = texture2D(tDiffuse, vUv).rgb;
-      vec2 o = uTexel * uThickness;
+// (Cartoon ink outlines were removed: full-scene screen-space outlines smeared
+// on dense procedural geometry and read poorly on mobile. The cel look now comes
+// purely from toon banding + bold colors, which is clean and artifact-free.)
 
-      // --- Silhouette edges: big depth jumps between neighbours ---
-      float dc = linDepth(vUv);
-      float dr = linDepth(vUv + vec2(o.x, 0.0));
-      float dl = linDepth(vUv - vec2(o.x, 0.0));
-      float du = linDepth(vUv + vec2(0.0, o.y));
-      float dd = linDepth(vUv - vec2(0.0, o.y));
-      float depthDiff = abs(dc - dr) + abs(dc - dl) + abs(dc - du) + abs(dc - dd);
-      // The threshold scales with distance (so faraway geometry doesn't scribble)
-      // AND with how square-on the surface is: a road/terrain seen at a grazing
-      // angle has huge per-pixel depth change but isn't an edge, so inflate the
-      // threshold there. True silhouettes still have a far larger jump and fire.
-      vec3 n  = texture2D(tNormal, vUv).rgb;
-      float facing = clamp(abs(n.z * 2.0 - 1.0), 0.12, 1.0);
-      float depthEdge = step(uDepthThresh * dc / facing, depthDiff);
-
-      // --- Crease edges: strong normal changes, only on nearby geometry ---
-      vec3 nr = texture2D(tNormal, vUv + vec2(o.x, 0.0)).rgb;
-      vec3 nl = texture2D(tNormal, vUv - vec2(o.x, 0.0)).rgb;
-      vec3 nu = texture2D(tNormal, vUv + vec2(0.0, o.y)).rgb;
-      vec3 nd = texture2D(tNormal, vUv - vec2(0.0, o.y)).rgb;
-      float ne = distance(n, nr) + distance(n, nl) + distance(n, nu) + distance(n, nd);
-      float near = 1.0 - smoothstep(70.0, 150.0, dc); // fade creases out with distance
-      float normalEdge = step(uNormalThresh, ne) * near;
-
-      float edge = max(depthEdge, normalEdge);
-      gl_FragColor = vec4(mix(c, vec3(0.04, 0.04, 0.06), edge), 1.0);
-    }`,
-});
-composer.addPass(outlinePass);
-// ShaderPass clones the uniforms (cloning the textures too) — repoint tNormal /
-// tDepth at the live buffers so the edge detector actually reads them.
-outlinePass.uniforms.tNormal.value = normalTarget.texture;
-outlinePass.uniforms.tDepth.value = normalTarget.depthTexture;
 
 // Color grade (saturation + contrast + vignette) and chromatic aberration.
 // Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
@@ -305,11 +233,6 @@ function layoutStage() {
   camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(W, H);
-  const dpr = renderer.getPixelRatio();
-  const nw = Math.round(W * dpr * outlineScale);
-  const nh = Math.round(H * dpr * outlineScale);
-  normalTarget.setSize(nw, nh);
-  outlinePass.uniforms.uTexel.value.set(1 / nw, 1 / nh);
 
   // Mirror box: top-center (small), kept clear of the top safe inset.
   const mw = Math.min(150, W * 0.17);
@@ -380,17 +303,6 @@ function renderMirror() {
 // Render the main view (through the post-processing composer), then overlay the
 // raw rear-view mirror while playing.
 function renderFrame() {
-  if (outlinePass.enabled) {
-    camera.layers.disable(2); // never outline grass blades
-    if (!outlineProps) camera.layers.disable(1); // skip dense props on Low
-    scene.overrideMaterial = normalMat;
-    renderer.setRenderTarget(normalTarget);
-    renderer.render(scene, camera);
-    renderer.setRenderTarget(null);
-    scene.overrideMaterial = null;
-    camera.layers.enable(2);
-    if (!outlineProps) camera.layers.enable(1);
-  }
   composer.render();
   if (player && state !== State.MENU) renderMirror();
 }
@@ -429,10 +341,6 @@ function applyQuality(q) {
   quality = q;
   const high = q === "high";
   bloomPass.enabled = high; // bloom (the expensive part) only on High
-  // Outlines stay on for both; on Low they render at reduced res and skip the
-  // dense roadside props to keep the 2nd scene pass cheap.
-  outlineProps = high;
-  outlineScale = high ? 1 : 0.6;
   // fxPass (colour grade) stays on at all levels so colours stay vivid.
   if (world.grass) world.grass.visible = high;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
