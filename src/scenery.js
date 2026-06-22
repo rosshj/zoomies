@@ -83,21 +83,42 @@ export function buildWorld(scene, track) {
     return u * u * (3 - 2 * u); // smoothstep
   };
 
-  // Lakes: pick spots in the infield and carve smooth basins. Their water level
-  // includes the valley rise so they match the surrounding (raised) ground.
-  const lakes = makeLakes(track);
+  // Angular profile of the track's outer radius, so we can tell "outside the
+  // loop" from "inside" (the infield) cheaply. The valley rise is then applied
+  // only on the OUTSIDE — hillsides climb around the road for visibility, while
+  // the infield stays low and flat, which is where the big lake belongs.
+  const ANG_BINS = 360;
+  const angR = new Float32Array(ANG_BINS);
+  for (let i = 0; i < track.samples; i++) {
+    const p = track._pts[i];
+    const a = ((Math.atan2(p.z, p.x) / (Math.PI * 2)) + 1) % 1;
+    const bin = Math.min(ANG_BINS - 1, Math.floor(a * ANG_BINS));
+    const r = Math.hypot(p.x, p.z);
+    if (r > angR[bin]) angR[bin] = r;
+  }
+  for (let b = 0; b < ANG_BINS; b++) {
+    if (angR[b] === 0) angR[b] = angR[(b - 1 + ANG_BINS) % ANG_BINS] || 250;
+  }
+  const isOutside = (x, z) => {
+    const a = ((Math.atan2(z, x) / (Math.PI * 2)) + 1) % 1;
+    return Math.hypot(x, z) > angR[Math.min(ANG_BINS - 1, Math.floor(a * ANG_BINS))];
+  };
+
+  // Uncarved ground height: anchored to the nearest road height, lifted by the
+  // valley rise (outside only) so the surroundings climb into hillsides, plus a
+  // little rolling detail. Used for the terrain and to set lake water levels.
+  const baseHeight = (x, z) => {
+    const gi = track.groundInfo(x, z);
+    const rise = isOutside(x, z) ? valleyRise(gi.dist) : 0;
+    return gi.y - 0.25 + rise + flatten(gi.dist) * detail(x, z);
+  };
+
+  // Lakes: a big one in the open infield (the loop wraps right around it) plus a
+  // couple of smaller ones out on the hills. Their level matches the ground.
+  const lakes = makeLakes(track, baseHeight);
   _inLake = (x, z) => lakes.some((L) => Math.hypot(x - L.x, z - L.z) < L.shoreR);
 
-  // Terrain is anchored to the nearest road height, then lifted by the valley
-  // rise as you move away from the tarmac, with a little rolling detail on top.
-  // This guarantees the ground always climbs into hillsides around the road, so
-  // scenery and landmarks on the slopes stay visible instead of sinking away.
-  const heightAt = (x, z) => {
-    const gi = track.groundInfo(x, z);
-    const f = flatten(gi.dist);
-    const h = gi.y - 0.25 + valleyRise(gi.dist) + f * detail(x, z);
-    return carveLakes(lakes, x, z, h);
-  };
+  const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
 
   buildTerrain(scene, heightAt);
   buildMountains(scene, heightAt, track);
@@ -130,37 +151,30 @@ export function buildWorld(scene, track) {
 }
 
 // ---- Lakes ----
-// Choose a couple of basin centres whose entire footprint clears the track.
-// Each lake has an absolute water `level`. The carve makes a bowl below the
-// waterline, a flat beach plateau at `level` around it (so the flat water plane
-// can't look like it's floating on a slope), then a wide smooth ramp back to
-// the natural hills.
-function makeLakes(track) {
-  // Sit lakes in the big open infield the track loops around. Pull each toward
-  // the centre until its whole footprint clears the road (origin is the most
-  // clear point, so this always converges).
-  const targets = [
-    { x: -70, z: 95 },
-    { x: 105, z: -85 },
+// A big hero lake sits in the open infield so the loop drives right around it,
+// plus a couple of smaller lakes out on the hills for variety. Each carve makes
+// a bowl below the waterline, a flat beach plateau at `level` (so the flat
+// water plane can't look like it's floating on a slope), then a wide ramp back
+// to the surrounding ground. Footprints are verified clear of the road and of
+// each other; any that don't fit are skipped.
+function makeLakes(track, baseHeight) {
+  const specs = [
+    { x: 0, z: -30, waterR: 96, shoreR: 118, blendR: 162, depth: 9 }, // big drive-around lake
+    { x: -430, z: 250, waterR: 40, shoreR: 52, blendR: 82, depth: 7 },
+    { x: 430, z: -380, waterR: 48, shoreR: 62, blendR: 96, depth: 7 },
   ];
-  const need = track.halfWidth + 122; // halfWidth + blend ramp + margin
   const lakes = [];
-  for (const t of targets) {
-    let { x, z } = t;
-    for (let k = 0; k < 12 && track.distanceToCenter(x, z) < need; k++) {
-      x *= 0.85;
-      z *= 0.85;
-    }
-    const gi = track.groundInfo(x, z);
-    if (gi.dist < need) continue;
-    // Match the surrounding raised ground (road height + valley rise).
-    const level = gi.y + valleyRise(gi.dist);
+  for (const s of specs) {
+    const gi = track.groundInfo(s.x, s.z);
+    if (gi.dist < track.halfWidth + s.blendR + 8) continue; // would touch the road
+    if (lakes.some((L) => Math.hypot(s.x - L.x, s.z - L.z) < s.blendR + L.blendR + 6)) continue;
+    const level = baseHeight(s.x, s.z);
     lakes.push({
-      x, z, level,
-      floor: level - 7,
-      waterR: 48, // flat shoreline / water plane radius
-      shoreR: 62, // beach plateau out to here
-      blendR: 96, // ramp to natural terrain by here
+      x: s.x, z: s.z, level,
+      floor: level - s.depth,
+      waterR: s.waterR,
+      shoreR: s.shoreR,
+      blendR: s.blendR,
     });
   }
   return lakes;
@@ -412,7 +426,7 @@ function buildTrees(scene, track, heightAt, flatten) {
 
 // Cone-style trees (meadow/forest/autumn/alpine). One shared cone+trunk geometry;
 // each biome stretches/narrows and recolours via per-instance matrix + colour.
-function buildConeTrees(scene, spots) {
+function buildConeTrees(scene, spots, scaleMul = 1) {
   const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6);
   const foliageGeo = new THREE.ConeGeometry(2.4, 6, 7);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
@@ -429,7 +443,7 @@ function buildConeTrees(scene, spots) {
 
   spots.forEach((spot, i) => {
     const { y, b } = spot;
-    const sc = 0.8 + Math.random() * 1.4;
+    const sc = (0.8 + Math.random() * 1.4) * scaleMul;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
 
     p.set(spot.x, y + 1.5 * sc, spot.z);
@@ -506,11 +520,11 @@ function buildForests(scene, track, heightAt) {
     const p = track._pts[i];
     const here = biomeAt(p.x, p.z);
     if (here.style !== "pine") continue; // forest + alpine get dense woods
-    const reps = here.name === "forest" ? 4 : 2;
+    const reps = here.name === "forest" ? 6 : 3;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     for (let r = 0; r < reps; r++) {
       const dir = Math.random() < 0.5 ? 1 : -1;
-      const dist = halfW + 5 + Math.random() * 95;
+      const dist = halfW + 5 + Math.random() * 115;
       const x = p.x + side.x * dir * dist + (Math.random() - 0.5) * 9;
       const z = p.z + side.z * dir * dist + (Math.random() - 0.5) * 9;
       if (track.distanceToCenter(x, z) < halfW + 4) continue;
@@ -520,7 +534,7 @@ function buildForests(scene, track, heightAt) {
       spots.push({ x, z, y: heightAt(x, z), b });
     }
   }
-  if (spots.length) buildConeTrees(scene, spots);
+  if (spots.length) buildConeTrees(scene, spots, 1.45); // taller, fuller forest trees
 }
 
 // A craggy cliff face to drive alongside: rows of big rock chunks stacked up
@@ -543,7 +557,9 @@ function buildCliffs(scene, track, heightAt) {
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
       for (let row = 0; row < 3; row++) {
-        const off = track.halfWidth + 4 + row * 6 + Math.random() * 3;
+        // Keep the base row well clear of the tarmac (chunks are ~sx wide, so
+        // start far enough out that they don't spill onto the road).
+        const off = track.halfWidth + 15 + row * 8 + Math.random() * 3;
         const x = p.x + side.x * outward * off;
         const z = p.z + side.z * outward * off;
         chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + Math.random() * 10 });
@@ -555,8 +571,8 @@ function buildCliffs(scene, track, heightAt) {
   mesh.castShadow = true;
   chunks.forEach((c, i) => {
     const sy = c.h / 2;
-    const sx = 4 + Math.random() * 4;
-    const sz = 4 + Math.random() * 4;
+    const sx = 3 + Math.random() * 3.5;
+    const sz = 3 + Math.random() * 3.5;
     q.setFromEuler(new THREE.Euler(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5));
     pv.set(c.x, c.base + sy * 0.45, c.z);
     s.set(sx, sy, sz);
