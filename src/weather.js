@@ -6,8 +6,9 @@ import * as THREE from "three";
 export class Weather {
   constructor(scene) {
     this.mode = "none";
-    this.base = "none"; // mood weather (none / rain)
-    this.snow = 0; // alpine snow overlay intensity 0..1 (altitude-driven)
+    this.target = "none"; // desired weather for the player's current biome
+    this.current = "none"; // what's actually showing (crossfades toward target)
+    this.intensity = 0; // 0..1 fade
     this.count = 2600;
     this.box = { w: 150, h: 95, d: 150 };
 
@@ -50,40 +51,38 @@ export class Weather {
     scene.add(this.points);
   }
 
-  // The mood's base weather (clear or rain).
-  setBase(mode) {
-    this.base = mode;
-    this._refresh();
+  // Set the desired weather for where the player is now ("none" / "rain" /
+  // "snow"). The class crossfades to it smoothly: fade the old out, switch, fade
+  // the new in — so weather changes gently as you drive between biomes.
+  setWeather(mode) {
+    this.target = mode;
   }
 
-  // Alpine snow overlay intensity (0..1), driven by the player's altitude so it
-  // fades in/out gradually as you climb into / descend from the snowy pass.
-  setSnow(intensity) {
-    this.snow = Math.max(0, Math.min(1, intensity));
-    this._refresh();
-  }
-
-  _refresh() {
-    if (this.snow > 0.02) {
-      // Snow wins where it's snowing; its opacity fades with intensity.
-      this.mode = "snow";
-      this.points.material = this.snowMat;
-      this.snowMat.opacity = this._snowOpacity * this.snow;
-      this.points.visible = true;
-    } else if (this.base === "rain") {
-      this.mode = "rain";
-      this.points.material = this.rainMat;
-      this.rainMat.opacity = this._rainOpacity;
-      this.points.visible = true;
-    } else {
-      this.mode = "none";
-      this.points.visible = false;
-    }
+  // Current rain intensity (0..1), so the renderer can dim/desaturate for it.
+  get rainAmount() {
+    return this.current === "rain" ? this.intensity : 0;
   }
 
   update(dt, camPos) {
-    if (this.mode === "none") return;
-    const rain = this.mode === "rain";
+    // Crossfade toward the target weather.
+    if (this.current !== this.target) {
+      this.intensity -= dt * 1.6;
+      if (this.intensity <= 0) {
+        this.intensity = 0;
+        this.current = this.target;
+        this.points.material = this.current === "snow" ? this.snowMat : this.rainMat;
+      }
+    } else {
+      const goal = this.current === "none" ? 0 : 1;
+      this.intensity += (goal - this.intensity) * Math.min(1, dt * 1.5);
+    }
+
+    const active = this.current !== "none" && this.intensity > 0.01;
+    this.points.visible = active;
+    if (!active) return;
+
+    const rain = this.current === "rain";
+    this.points.material.opacity = (rain ? this._rainOpacity : this._snowOpacity) * this.intensity;
     const fall = rain ? 95 : 13;
     const { w, h, d } = this.box;
     const t = performance.now() * 0.001;
@@ -93,7 +92,6 @@ export class Weather {
       let x = p[i * 3];
       let z = p[i * 3 + 2];
       if (!rain) {
-        // gentle drift for snow
         x += Math.sin(t * 0.8 + i) * 0.05;
         z += Math.cos(t * 0.6 + i * 1.3) * 0.05;
       } else {

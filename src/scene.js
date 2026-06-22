@@ -30,26 +30,9 @@ export const MOODS = [
     sunCore: [2.8, 1.2, 0.7], sunSize: 74, sunVisible: true,
     cloud: 0xd2b0c8, sat: 1.3, contrast: 1.07,
   },
-  {
-    name: "Overcast", weight: 1, weather: "none",
-    sunDir: [0.3, 0.7, 0.5], sunColor: 0xdfe4ea, sunI: 1.25,
-    skyTop: 0xa6b2be, skyHorizon: 0xd6dce2, skyWarm: 0xd6dce2,
-    hemiSky: 0xd6dce2, hemiGround: 0x55604f, hemiI: 1.05,
-    bg: 0xc2cad2, fog: 0xccd4da, fogNear: 380, fogFar: 1300, exposure: 1.03,
-    sunCore: [1.2, 1.25, 1.3], sunSize: 40, sunVisible: false,
-    cloud: 0xb6bcc2, sat: 1.14, contrast: 1.05,
-  },
-  {
-    name: "Rain", weight: 2, weather: "rain",
-    sunDir: [0.3, 0.66, 0.5], sunColor: 0xccd2da, sunI: 1.1,
-    skyTop: 0x76828e, skyHorizon: 0xa4acb4, skyWarm: 0xa4acb4,
-    hemiSky: 0xb4bcc5, hemiGround: 0x49504a, hemiI: 1.0,
-    bg: 0x969ea6, fog: 0xa2aab2, fogNear: 320, fogFar: 1100, exposure: 1.0,
-    sunCore: [1.1, 1.15, 1.25], sunSize: 38, sunVisible: false,
-    cloud: 0x969ca4, sat: 1.08, contrast: 1.04,
-  },
-  // (Snow is no longer a global mood — it falls only up on the alpine hill,
-  // driven by altitude in the main loop, so the rest of the course stays clear.)
+  // Weather (rain/snow) is no longer a random mood — it's dictated by the biome
+  // you're driving through (wet forest brings rain; the alpine pass brings snow),
+  // handled in the main loop. The moods above are just times of day.
 ];
 
 export function pickMood() {

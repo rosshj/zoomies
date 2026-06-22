@@ -11,7 +11,7 @@ import { Kart } from "./kart.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld } from "./scenery.js";
+import { buildWorld, biomeWeatherAt } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
@@ -21,7 +21,9 @@ const TOTAL_LAPS = 3;
 
 const { renderer, scene, camera, sun, applyMood } = createScene();
 const weather = new Weather(scene);
-let snowMix = 0; // smoothed alpine-snow intensity (0..1), ramped by altitude
+const SNOW_ALTITUDE = 55; // above this (the alpine pass) it snows, regardless of biome
+let moodSat = 1.3; // this race's base saturation (rain desaturates from it)
+let moodExposure = 1.05; // this race's base exposure (rain darkens from it)
 // The main camera sees everything; the rear-view camera stays on layer 0, so
 // scenery on layer 1 and grass on layer 2 are skipped in the mirror.
 camera.layers.enable(1);
@@ -418,13 +420,16 @@ function updateAtmosphere() {
     const off = Math.max(Math.abs(_sunScreen.x), Math.abs(_sunScreen.y));
     vis = _ss(0.02, 0.45, facing) * (1 - _ss(1.0, 2.4, off));
   }
+  // Rain clouds the sun: fade the shafts/flare/backlight as it picks up.
+  const clear = 1 - 0.7 * weather.rainAmount;
+  vis *= clear;
   godrayPass.uniforms.uVis.value = vis;
   flarePass.uniforms.uVis.value = vis;
 
   // View-space light-travel direction + mood sun colour, shared by the backlit
   // grass and the backlit tree foliage.
   _sunViewVec.copy(_sunDir).multiplyScalar(-1).transformDirection(camera.matrixWorldInverse);
-  const sunGlow = sunVisibleMood ? 0.5 : 0;
+  const sunGlow = (sunVisibleMood ? 0.5 : 0) * clear;
   const gsh = world.grass && world.grass.material.userData.shader;
   if (gsh && gsh.uniforms.uSunView) {
     gsh.uniforms.uSunView.value.copy(_sunViewVec);
@@ -574,15 +579,17 @@ function startRace() {
   document.getElementById("results").classList.add("hidden");
   document.getElementById("hud").classList.remove("hidden");
 
-  // Fresh time-of-day / weather each race.
+  // Fresh time of day each race (sky/sun only). Precipitation is no longer
+  // random — it's dictated by the biome you're driving through (see the loop).
   const mood = pickMood();
   applyMood(mood);
-  weather.setBase(mood.weather); // base weather; alpine snow is layered on by altitude
-  snowMix = 0;
+  weather.setWeather("none");
+  moodSat = mood.sat;
   fxPass.uniforms.uSat.value = mood.sat;
   fxPass.uniforms.uContrast.value = mood.contrast;
   // God-rays only when the sun is out; tint them to the mood's sun colour.
   sunVisibleMood = mood.sunVisible;
+  moodExposure = mood.exposure;
   godrayPass.uniforms.uColor.value.set(mood.sunColor);
   hud.showToast(mood.name);
 
@@ -910,12 +917,16 @@ function loop(now) {
     effects.update(dt);
     updatePlacement();
 
-    // Snow fades in as you climb the alpine pass and out as you descend: an
-    // altitude band gives the spatial gradient, and time-smoothing keeps the
-    // transition gentle rather than snapping on/off.
-    const snowTarget = Math.max(0, Math.min(1, (player.groundY - 40) / 26));
-    snowMix += (snowTarget - snowMix) * Math.min(1, dt * 1.4);
-    weather.setSnow(snowMix);
+    // Weather is dictated by where you are: snow up on the alpine pass, the
+    // biome's own precipitation (rain in the wet forest/autumn) elsewhere. The
+    // Weather class crossfades smoothly as you cross between them.
+    const where =
+      player.groundY > SNOW_ALTITUDE ? "snow" : biomeWeatherAt(player.position.x, player.position.z);
+    weather.setWeather(where);
+    // Sell the rain: ease saturation/exposure down a touch as it picks up.
+    const wet = weather.rainAmount;
+    fxPass.uniforms.uSat.value = moodSat * (1 - 0.22 * wet);
+    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet);
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();
