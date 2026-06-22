@@ -9,6 +9,42 @@ const _flutterers = []; // { obj, phase }
 // Set per build: true where a lake basin sits, so scatter/grass/props avoid it.
 let _inLake = () => false;
 
+// ---- Biomes ----
+// Five themed sectors radiating around the map. Since the track loops through
+// every angle, you drive through each biome as you lap. Cheap to evaluate
+// (just atan2), so terrain, trees and grass can all be themed per position.
+const BIOMES = [
+  { name: "meadow", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0 },
+  { name: "forest", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9 },
+  { name: "autumn", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65 },
+  { name: "alpine", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45 },
+  { name: "desert", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12 },
+];
+for (const b of BIOMES) {
+  b.groundCol = new THREE.Color(b.ground);
+  b.ground2Col = new THREE.Color(b.ground2);
+}
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+function biomeAt(x, z) {
+  const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
+  return BIOMES[Math.floor(u * BIOMES.length) % BIOMES.length];
+}
+
+// Ground colour with a short blended seam between sectors (crisp biomes, soft
+// borders). Writes into `out` and returns it.
+function biomeGround(x, z, out) {
+  const n = BIOMES.length;
+  const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
+  const i0 = Math.floor(s) % n;
+  const frac = s - Math.floor(s);
+  const a = BIOMES[i0];
+  const b = BIOMES[(i0 + 1) % n];
+  const w = frac < 0.82 ? 0 : (frac - 0.82) / 0.18;
+  return out.copy(a.groundCol).lerp(b.groundCol, w * w * (3 - 2 * w));
+}
+
 // Builds the world around the track: rolling hills, distant mountains, a small
 // town of buildings, forests, rocks, hero landmarks, hot-air balloons and birds.
 // Returns { grass, update(time) } for the animated bits.
@@ -211,6 +247,7 @@ function buildGrass(scene, track, heightAt) {
 
   const mesh = new THREE.InstancedMesh(blade, mat, COUNT);
   const dummy = new THREE.Object3D();
+  const tint = new THREE.Color();
   let n = 0;
   let tries = 0;
   while (n < COUNT && tries < COUNT * 4) {
@@ -224,15 +261,19 @@ function buildGrass(scene, track, heightAt) {
     const z = pt.z + side.z * dir * dist + (Math.random() - 0.5) * 3;
     if (track.distanceToCenter(x, z) < halfW + 2) continue;
     if (_inLake(x, z)) continue;
+    const biome = biomeAt(x, z);
+    if (Math.random() > biome.grassDensity) continue; // sparse in dry biomes
     dummy.position.set(x, heightAt(x, z), z);
     dummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
     dummy.scale.setScalar(0.7 + Math.random() * 1.1);
     dummy.updateMatrix();
     mesh.setMatrixAt(n, dummy.matrix);
+    mesh.setColorAt(n, tint.set(biome.grassTint)); // tints the blade gradient
     n++;
   }
   mesh.count = n;
   mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.layers.set(2); // own layer: out of the mirror AND the outline pass
   scene.add(mesh);
   return mesh;
@@ -246,10 +287,10 @@ function buildTerrain(scene, heightAt) {
 
   const pos = geo.attributes.position;
   const colors = [];
-  const cGrass = new THREE.Color(0x4f9d3a);
-  const cGrass2 = new THREE.Color(0x3c7a2e);
   const cRock = new THREE.Color(0x7a6f5d);
   const cSnow = new THREE.Color(0xf4f7fb);
+  const base = new THREE.Color();
+  const c = new THREE.Color();
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -257,11 +298,14 @@ function buildTerrain(scene, heightAt) {
     const y = heightAt(x, z);
     pos.setY(i, y);
 
-    let c;
-    if (y < 3) c = cGrass.clone().lerp(cGrass2, Math.random() * 0.4);
-    else if (y < 32) c = cGrass2.clone().lerp(cRock, (y - 3) / 29);
-    else if (y < 52) c = cRock.clone();
-    else c = cRock.clone().lerp(cSnow, Math.min(1, (y - 52) / 14));
+    // Biome ground colour at low/mid elevation, fading to rock then snow up high
+    // so the distant peaks stay rocky/snowy regardless of biome.
+    biomeGround(x, z, base);
+    const b = biomeAt(x, z);
+    base.lerp(b.ground2Col, Math.random() * 0.35); // subtle dappling
+    if (y < 30) c.copy(base);
+    else if (y < 50) c.copy(base).lerp(cRock, (y - 30) / 20);
+    else c.copy(cRock).lerp(cSnow, Math.min(1, (y - 50) / 14));
     colors.push(c.r, c.g, c.b);
   }
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
@@ -316,14 +360,26 @@ function scatter(count, track, flatten, minFlat, range) {
 }
 
 function buildTrees(scene, track, heightAt, flatten) {
-  const spots = scatter(170, track, flatten, 0.55, 1300)
+  // Each candidate spot is tagged with its biome, kept with that biome's tree
+  // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
+  const spots = scatter(230, track, flatten, 0.55, 1300)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
-    .map((s) => ({ ...s, y: heightAt(s.x, s.z) }))
-    .filter((s) => s.y <= 28); // no trees on the snowy peaks
+    .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
+    .filter((s) => s.y <= 30 && Math.random() < s.b.treeDensity);
+
+  const cones = spots.filter((s) => s.b.style !== "cactus");
+  const cacti = spots.filter((s) => s.b.style === "cactus");
+  if (cones.length) buildConeTrees(scene, cones);
+  if (cacti.length) buildCacti(scene, cacti);
+}
+
+// Cone-style trees (meadow/forest/autumn/alpine). One shared cone+trunk geometry;
+// each biome stretches/narrows and recolours via per-instance matrix + colour.
+function buildConeTrees(scene, spots) {
   const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6);
   const foliageGeo = new THREE.ConeGeometry(2.4, 6, 7);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
-  const foliageMat = new THREE.MeshStandardMaterial({ color: 0x2e7d32, roughness: 1, flatShading: true });
+  const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
   const foliage = new THREE.InstancedMesh(foliageGeo, foliageMat, spots.length);
@@ -332,22 +388,27 @@ function buildTrees(scene, track, heightAt, flatten) {
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
-  const foliageColor = new THREE.Color();
+  const col = new THREE.Color();
 
   spots.forEach((spot, i) => {
-    const y = spot.y;
-    const scale = 0.8 + Math.random() * 1.4;
+    const { y, b } = spot;
+    const sc = 0.8 + Math.random() * 1.4;
     q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
 
-    p.set(spot.x, y + 1.5 * scale, spot.z);
-    s.set(scale, scale, scale);
+    p.set(spot.x, y + 1.5 * sc, spot.z);
+    s.set(sc, sc, sc);
     m.compose(p, q, s);
     trunks.setMatrixAt(i, m);
 
-    p.set(spot.x, y + (3 + 3) * scale, spot.z);
+    // Foliage sits on top of the trunk; pines are taller and narrower.
+    p.set(spot.x, y + 3 * sc + 3 * b.sy * sc, spot.z);
+    s.set(b.sx * sc, b.sy * sc, b.sx * sc);
     m.compose(p, q, s);
     foliage.setMatrixAt(i, m);
-    foliage.setColorAt(i, foliageColor.setHSL(0.32, 0.5, 0.3 + Math.random() * 0.18));
+
+    let h = b.foliage[0];
+    if (b.name === "autumn") h += (Math.random() - 0.5) * 0.12; // mix red/orange/gold
+    foliage.setColorAt(i, col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (Math.random() - 0.5) * 0.1, 0.14, 0.6)));
   });
   trunks.instanceMatrix.needsUpdate = true;
   foliage.instanceMatrix.needsUpdate = true;
@@ -356,6 +417,43 @@ function buildTrees(scene, track, heightAt, flatten) {
   foliage.layers.set(1);
   scene.add(trunks);
   scene.add(foliage);
+}
+
+// Desert cacti: a saguaro built once and instanced.
+function buildCacti(scene, spots) {
+  const geo = cactusGeometry();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4f8a4a, roughness: 1, flatShading: true });
+  const cacti = new THREE.InstancedMesh(geo, mat, spots.length);
+  cacti.castShadow = true;
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const s = new THREE.Vector3();
+  const p = new THREE.Vector3();
+  const col = new THREE.Color();
+  spots.forEach((spot, i) => {
+    const sc = 0.9 + Math.random() * 0.9;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
+    p.set(spot.x, spot.y, spot.z);
+    s.set(sc, sc, sc);
+    m.compose(p, q, s);
+    cacti.setMatrixAt(i, m);
+    cacti.setColorAt(i, col.setHSL(0.28, 0.4, 0.34 + Math.random() * 0.12));
+  });
+  cacti.instanceMatrix.needsUpdate = true;
+  if (cacti.instanceColor) cacti.instanceColor.needsUpdate = true;
+  cacti.layers.set(1);
+  scene.add(cacti);
+}
+
+function cactusGeometry() {
+  const parts = [
+    new THREE.CylinderGeometry(0.5, 0.62, 4, 8).translate(0, 2, 0),
+    new THREE.CylinderGeometry(0.28, 0.3, 1.4, 6).rotateZ(Math.PI / 2).translate(-0.9, 2.4, 0),
+    new THREE.CylinderGeometry(0.28, 0.3, 1.3, 6).translate(-1.5, 3.0, 0),
+    new THREE.CylinderGeometry(0.26, 0.28, 1.2, 6).rotateZ(Math.PI / 2).translate(0.8, 1.8, 0),
+    new THREE.CylinderGeometry(0.26, 0.28, 1.1, 6).translate(1.3, 2.3, 0),
+  ];
+  return mergeGeometries(parts);
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
@@ -465,7 +563,7 @@ function buildRoadside(scene, track, heightAt) {
     const z = p.z + side.z * dir * dist;
     if (track.distanceToCenter(x, z) < halfW + 4) return;
     if (_inLake(x, z)) return;
-    const prop = builder();
+    const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
     prop.position.set(x, heightAt(x, z), z);
     prop.rotation.y = faceRoad
       ? Math.atan2(-side.x * dir, -side.z * dir) + (Math.random() - 0.5) * 0.4
@@ -820,17 +918,50 @@ function makeHydrant() {
   return g;
 }
 
-function makeFarmProp() {
+function makeFarmProp(biome) {
+  const b = biome || BIOMES[0];
   const r = Math.random();
-  if (r < 0.2) return makeTree();
-  if (r < 0.38) return makeBush();
+  if (b.style === "cactus") {
+    // Dry country: cacti, rocks and the odd ranch structure.
+    if (r < 0.45) return makeCactusProp();
+    if (r < 0.62) return makeRockProp();
+    if (r < 0.74) return makeFence(0x9c7a4a);
+    if (r < 0.84) return makeHayBale();
+    if (r < 0.93) return makeWindmill();
+    return makeSilo();
+  }
+  if (r < 0.24) return makeTree(b);
+  if (r < 0.4) return makeBush();
   if (r < 0.5) return makeCow();
-  if (r < 0.62) return makeSheep();
-  if (r < 0.72) return makeHayBale();
-  if (r < 0.8) return makeFence(0x8d6e3a);
-  if (r < 0.88) return makeBarn();
-  if (r < 0.94) return makeWindmill();
+  if (r < 0.6) return makeSheep();
+  if (r < 0.7) return makeHayBale();
+  if (r < 0.78) return makeFence(0x8d6e3a);
+  if (r < 0.86) return makeBarn();
+  if (r < 0.93) return makeWindmill();
   return makeSilo();
+}
+
+function makeCactusProp() {
+  const g = new THREE.Group();
+  const c = new THREE.Mesh(cactusGeometry(), mat(0x4f8a4a, { flatShading: true }));
+  c.scale.setScalar(0.9 + Math.random() * 0.8);
+  c.castShadow = true;
+  g.add(c);
+  return g;
+}
+
+function makeRockProp() {
+  const g = new THREE.Group();
+  const m = mat(0x9a8a6a, { flatShading: true });
+  const n = 1 + Math.floor(Math.random() * 3);
+  for (let i = 0; i < n; i++) {
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6 + Math.random() * 1.0, 0), m);
+    r.position.set((Math.random() - 0.5) * 2, 0.4, (Math.random() - 0.5) * 2);
+    r.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+    r.castShadow = true;
+    g.add(r);
+  }
+  return g;
 }
 
 function makeHouse() {
@@ -893,7 +1024,8 @@ function makeFence(color) {
   return g;
 }
 
-function makeTree() {
+function makeTree(biome) {
+  const b = biome || BIOMES[0];
   const g = new THREE.Group();
   const s = 0.9 + Math.random() * 1.2;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 6), mat(0x6b4a2b));
@@ -901,12 +1033,12 @@ function makeTree() {
   trunk.scale.setScalar(s);
   trunk.castShadow = true;
   g.add(trunk);
-  const fol = new THREE.Mesh(
-    new THREE.ConeGeometry(2.4, 6, 7),
-    mat(0x2e7d32, { flatShading: true })
-  );
-  fol.position.y = 6 * s;
-  fol.scale.setScalar(s);
+  let h = b.foliage[0];
+  if (b.name === "autumn") h += (Math.random() - 0.5) * 0.12;
+  const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (Math.random() - 0.5) * 0.1, 0.14, 0.6));
+  const fol = new THREE.Mesh(new THREE.ConeGeometry(2.4, 6, 7), mat(folCol.getHex(), { flatShading: true }));
+  fol.position.y = (3 + 3 * b.sy) * s;
+  fol.scale.set(b.sx * s, b.sy * s, b.sx * s);
   fol.castShadow = true;
   g.add(fol);
   return g;
