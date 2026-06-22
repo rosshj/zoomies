@@ -118,7 +118,9 @@ export function buildWorld(scene, track) {
   // Lakes: a big one in the open infield (the loop wraps right around it) plus a
   // couple of smaller ones out on the hills. Their level matches the ground.
   const lakes = makeLakes(track, baseHeight);
-  _inLake = (x, z) => lakes.some((L) => lakeDist(L, x, z) < L.shoreR);
+  // Clear props out to the full carve (the shore bank), not just the waterline,
+  // so nothing sits on the slope between the road and the lake.
+  _inLake = (x, z) => lakes.some((L) => lakeDist(L, x, z) < L.blendR);
 
   const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
 
@@ -163,17 +165,16 @@ function makeLakes(track, baseHeight) {
   const lakes = [];
 
   // Hero lake: a curved RIBBON that follows the inside of the flat bottom arc,
-  // so it hugs the road's shape instead of bulging in like a circle would. Its
-  // surface sits just below the lowest road height along the arc (so the road
-  // always stays above the shore and never buries the kart), with a short bank
-  // up to the tarmac. _inLake clears props on that side so nothing blocks it.
+  // so it hugs the road's shape instead of bulging in like a circle would. The
+  // shore bank rises back to road height exactly at the barrier, so the road
+  // edge always sits ON the ground (no floating ledge over a dropped slope).
   {
     const N = track.samples;
     const up = new THREE.Vector3(0, 1, 0);
-    const gap = 6;
     const waterR = 46; // half-width of the ribbon
-    const i0 = Math.round(0.93 * N);
-    const i1 = Math.round(1.07 * N);
+    const bankW = 12; // shore slope width: water edge -> road height at the barrier
+    const i0 = Math.round(0.95 * N); // keep to the flat bottom so the bank stays gentle
+    const i1 = Math.round(1.05 * N);
     const spine = [];
     let minY = Infinity;
     for (let i = i0; i <= i1; i += 2) {
@@ -181,7 +182,9 @@ function makeLakes(track, baseHeight) {
       const p = track._pts[idx];
       const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
       const inSign = side.x * p.x + side.z * p.z >= 0 ? -1 : 1; // unit dir toward infield
-      const off = track.halfWidth + gap + waterR; // ribbon centreline offset
+      // Centreline offset: barrier (halfW) + bank + water radius. With this, the
+      // bank ramp (waterR..waterR+bankW) lands exactly on the barrier line.
+      const off = track.halfWidth + bankW + waterR;
       spine.push({
         x: p.x + side.x * inSign * off,
         z: p.z + side.z * inSign * off,
@@ -190,13 +193,13 @@ function makeLakes(track, baseHeight) {
       });
       if (p.y < minY) minY = p.y;
     }
-    const level = minY - 4;
+    const level = minY - 2; // just below the lowest road point along the arc
     lakes.push({
       ribbon: true, spine, level,
       floor: level - 8,
       waterR,
-      shoreR: waterR + 12,
-      blendR: waterR + 30,
+      shoreR: waterR, // no flat beach; the whole bank rises to the road
+      blendR: waterR + bankW, // ramp reaches road height at the barrier
     });
   }
 
