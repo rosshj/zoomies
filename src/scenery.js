@@ -6,6 +6,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 // lighthouse beam) and gentle flutterers (flags).
 const _spinners = []; // { obj, ax:'x'|'y'|'z', speed, phase }
 const _flutterers = []; // { obj, phase }
+// Set per build: true where a lake basin sits, so scatter/grass/props avoid it.
+let _inLake = () => false;
 
 // Builds the world around the track: rolling hills, distant mountains, a small
 // town of buildings, forests, rocks, hero landmarks, hot-air balloons and birds.
@@ -30,13 +32,18 @@ export function buildWorld(scene, track) {
     return u * u * (3 - 2 * u); // smoothstep
   };
 
+  // Lakes: pick low spots well clear of the track and carve smooth basins.
+  const lakes = makeLakes(track, rawHeight);
+  _inLake = (x, z) => lakes.some((L) => Math.hypot(x - L.x, z - L.z) < L.shoreR);
+
   // The track now has elevation, so blend the terrain from the road's height
   // (right next to the tarmac) out to the big hills, instead of to a flat 0.
   const heightAt = (x, z) => {
     const gi = track.groundInfo(x, z);
     const f = flatten(gi.dist);
     // Sit just below the road/shoulder near the track to avoid z-fighting.
-    return gi.y * (1 - f) + rawHeight(x, z) * f - 0.25;
+    const h = gi.y * (1 - f) + rawHeight(x, z) * f - 0.25;
+    return carveLakes(lakes, x, z, h);
   };
 
   buildTerrain(scene, heightAt);
@@ -45,6 +52,7 @@ export function buildWorld(scene, track) {
   buildRocks(scene, track, heightAt, flatten);
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
+  const waters = buildWater(scene, lakes);
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene);
   const flocks = buildBirds(scene);
@@ -59,10 +67,107 @@ export function buildWorld(scene, track) {
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
       for (const fl of flocks) updateFlock(fl, time);
+      for (const w of waters) w.uniforms.uTime.value = time;
       const sh = grass && grass.material.userData.shader;
       if (sh) sh.uniforms.uTime.value = time;
     },
   };
+}
+
+// ---- Lakes ----
+// Choose a couple of basin centres whose entire footprint clears the track.
+// Each lake has an absolute water `level`. The carve makes a bowl below the
+// waterline, a flat beach plateau at `level` around it (so the flat water plane
+// can't look like it's floating on a slope), then a wide smooth ramp back to
+// the natural hills.
+function makeLakes(track, rawHeight) {
+  // Sit lakes in the big open infield the track loops around. Pull each toward
+  // the centre until its whole footprint clears the road (origin is the most
+  // clear point, so this always converges).
+  const targets = [
+    { x: -55, z: 75 },
+    { x: 85, z: -70 },
+  ];
+  const need = track.halfWidth + 105; // halfWidth + blend ramp + margin
+  const lakes = [];
+  for (const t of targets) {
+    let { x, z } = t;
+    for (let k = 0; k < 12 && track.distanceToCenter(x, z) < need; k++) {
+      x *= 0.85;
+      z *= 0.85;
+    }
+    if (track.distanceToCenter(x, z) < need) continue;
+    const level = rawHeight(x, z);
+    lakes.push({
+      x, z, level,
+      floor: level - 6,
+      waterR: 36, // flat shoreline / water plane radius
+      shoreR: 48, // beach plateau out to here
+      blendR: 80, // ramp to natural terrain by here
+    });
+  }
+  return lakes;
+}
+
+function carveLakes(lakes, x, z, h) {
+  for (const L of lakes) {
+    const d = Math.hypot(x - L.x, z - L.z);
+    if (d >= L.blendR) continue;
+    if (d < L.waterR) {
+      const u = d / L.waterR; // 0 centre .. 1 shoreline
+      h = L.floor + (L.level - L.floor) * (u * u); // bowl floor up to water level
+    } else if (d < L.shoreR) {
+      h = L.level; // flat beach at the waterline
+    } else {
+      const u = (d - L.shoreR) / (L.blendR - L.shoreR);
+      const s = u * u * (3 - 2 * u); // smoothstep beach -> natural terrain
+      h = L.level + (h - L.level) * s;
+    }
+  }
+  return h;
+}
+
+// Stylised toon water: flat saturated plane with hard-stepped concentric
+// ripples, a sparkle band, and a foamy shoreline. Animated via uTime.
+function buildWater(scene, lakes) {
+  const mats = [];
+  for (const L of lakes) {
+    const geo = new THREE.CircleGeometry(L.waterR, 56);
+    geo.rotateX(-Math.PI / 2);
+    const matW = new THREE.ShaderMaterial({
+      transparent: true,
+      uniforms: {
+        uTime: { value: 0 },
+        uDeep: { value: new THREE.Color(0x1f6f8c) },
+        uShallow: { value: new THREE.Color(0x57c6d6) },
+        uFoam: { value: new THREE.Color(0xeafcff) },
+      },
+      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform float uTime; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoam;
+        varying vec2 vUv;
+        void main(){
+          vec2 p = vUv - 0.5;
+          float r = length(p) * 2.0;           // 0 centre .. 1 edge
+          float ang = atan(p.y, p.x);
+          // Hard-stepped concentric ripples drifting outward.
+          float ripple = step(0.5, sin(r * 22.0 - uTime * 1.5) * 0.5 + 0.5);
+          // Rotating sparkle near the middle.
+          float glint = step(0.86, sin(ang * 9.0 + uTime * 0.7) * 0.5 + 0.5) * (1.0 - r);
+          vec3 col = mix(uShallow, uDeep, smoothstep(0.0, 1.0, r));
+          col = mix(col, col * 1.22, ripple * 0.35);
+          col = mix(col, uFoam, glint * 0.5);
+          float foam = smoothstep(0.82, 0.99, r);  // shoreline foam ring
+          col = mix(col, uFoam, foam);
+          gl_FragColor = vec4(col, 0.88);
+        }`,
+    });
+    const mesh = new THREE.Mesh(geo, matW);
+    mesh.position.set(L.x, L.level + 0.05, L.z);
+    scene.add(mesh);
+    mats.push(matW);
+  }
+  return mats;
 }
 
 // Instanced grass blades along the roadside, swaying in the wind.
@@ -118,6 +223,7 @@ function buildGrass(scene, track, heightAt) {
     const x = pt.x + side.x * dir * dist + (Math.random() - 0.5) * 3;
     const z = pt.z + side.z * dir * dist + (Math.random() - 0.5) * 3;
     if (track.distanceToCenter(x, z) < halfW + 2) continue;
+    if (_inLake(x, z)) continue;
     dummy.position.set(x, heightAt(x, z), z);
     dummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
     dummy.scale.setScalar(0.7 + Math.random() * 1.1);
@@ -211,6 +317,7 @@ function scatter(count, track, flatten, minFlat, range) {
 
 function buildTrees(scene, track, heightAt, flatten) {
   const spots = scatter(170, track, flatten, 0.55, 1300)
+    .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
     .map((s) => ({ ...s, y: heightAt(s.x, s.z) }))
     .filter((s) => s.y <= 28); // no trees on the snowy peaks
   const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6);
@@ -252,7 +359,7 @@ function buildTrees(scene, track, heightAt, flatten) {
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
-  const spots = scatter(90, track, flatten, 0.4, 1300);
+  const spots = scatter(90, track, flatten, 0.4, 1300).filter((s) => !_inLake(s.x, s.z));
   const geo = new THREE.IcosahedronGeometry(1, 0);
   const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1, flatShading: true });
   const rocks = new THREE.InstancedMesh(geo, mat, spots.length);
@@ -357,6 +464,7 @@ function buildRoadside(scene, track, heightAt) {
     const x = p.x + side.x * dir * dist;
     const z = p.z + side.z * dir * dist;
     if (track.distanceToCenter(x, z) < halfW + 4) return;
+    if (_inLake(x, z)) return;
     const prop = builder();
     prop.position.set(x, heightAt(x, z), z);
     prop.rotation.y = faceRoad
