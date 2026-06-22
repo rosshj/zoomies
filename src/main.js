@@ -83,7 +83,7 @@ const world = buildWorld(scene, track);
 
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
-  const steps = new Uint8Array([85, 180, 255]); // 3 bands; shadow defined but not muddy
+  const steps = new Uint8Array([120, 195, 255]); // 3 bands; shadow lifted so it never crushes to black
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;

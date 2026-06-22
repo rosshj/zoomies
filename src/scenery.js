@@ -159,7 +159,7 @@ export function buildWorld(scene, track) {
 // each other; any that don't fit are skipped.
 function makeLakes(track, baseHeight) {
   const specs = [
-    { x: 0, z: -30, waterR: 96, shoreR: 118, blendR: 162, depth: 9 }, // big drive-around lake
+    { x: 80, z: -120, waterR: 78, shoreR: 98, blendR: 120, depth: 9 }, // big lake where the loop passes closest
     { x: -430, z: 250, waterR: 40, shoreR: 52, blendR: 82, depth: 7 },
     { x: 430, z: -380, waterR: 48, shoreR: 62, blendR: 96, depth: 7 },
   ];
@@ -389,8 +389,8 @@ function buildMountains(scene, heightAt, track) {
       const p = track._pts[i];
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-      const off = 130 + Math.random() * 50;
-      peak(p.x + side.x * outward * off, p.z + side.z * outward * off, 140 + Math.random() * 80, 60 + Math.random() * 30, 18);
+      const off = 165 + Math.random() * 55;
+      peak(p.x + side.x * outward * off, p.z + side.z * outward * off, 120 + Math.random() * 50, 50 + Math.random() * 22, 22);
     }
   }
 }
