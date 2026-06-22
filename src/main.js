@@ -670,7 +670,7 @@ function loop(now) {
     fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
 
     // AI
-    for (const k of karts) if (!k.isPlayer) k.driveAI(track);
+    for (const k of karts) if (!k.isPlayer) k.driveAI(track, dt);
     aiActions(dt);
 
     // Step physics

@@ -86,6 +86,7 @@ export class Kart {
     this.finished = false;
     this.finishTime = 0;
     this.place = 1;
+    this._stuck = 0; // AI: time spent crawling (wall recovery)
 
     // Shooting cooldown
     this.shootCooldown = 0;
@@ -428,26 +429,46 @@ export class Kart {
   }
 
   // --- AI driver ---
-  driveAI(track) {
+  driveAI(track, dt = 0.016) {
     const speed = Math.abs(this.speed);
-    // Look further ahead the faster we go, and aim for the inside of the
-    // upcoming corner (a simple racing line) rather than the exact centerline.
-    const lookahead = 0.01 + Math.min(0.05, speed * 0.0009);
-    const aheadTan = track.getTangentAt(this.trackT + lookahead);
-    const farTan = track.getTangentAt(this.trackT + lookahead + 0.05);
-    const curve = angleDelta(Math.atan2(farTan.x, farTan.z), Math.atan2(aheadTan.x, aheadTan.z));
+    const L = track.length;
+    const wrap = (t) => ((t % 1) + 1) % 1;
 
-    const target = track.getPointAt(this.trackT + lookahead);
-    const side = new THREE.Vector3().crossVectors(aheadTan, UP).normalize();
-    // Bias toward the inside of the bend (apex), scaled by sharpness.
-    const apex = Math.max(-1, Math.min(1, curve * 6)) * (track.halfWidth - 3);
+    // Sharpness of the corner just ahead. Using fixed DISTANCES (not a fixed t)
+    // matters now the track is long — a fixed t-step would reach much further in
+    // world units and make the AI cut across bends into the inside wall.
+    const t0 = track.getTangentAt(wrap(this.trackT + 5 / L));
+    const t1 = track.getTangentAt(wrap(this.trackT + (18 + speed) / L));
+    const curve = angleDelta(Math.atan2(t1.x, t1.z), Math.atan2(t0.x, t0.z));
+    const sharp = Math.min(1, Math.abs(curve) * 6);
+
+    // Aim point a short distance ahead — shorter on sharp corners so we follow
+    // the bend instead of cutting it. A gentle apex only on mild bends.
+    const aimDist = (8 + speed * 0.5) * (1 - 0.5 * sharp);
+    const aT = wrap(this.trackT + aimDist / L);
+    const target = track.getPointAt(aT);
+    const side = new THREE.Vector3().crossVectors(track.getTangentAt(aT), UP).normalize();
+    const apex = Math.sign(curve) * (1 - sharp) * (track.halfWidth - 4);
     target.addScaledVector(side, apex);
 
     const desired = Math.atan2(target.x - this.position.x, target.z - this.position.z);
     const diff = angleDelta(desired, this.heading);
-    this.steerInput = Math.max(-1, Math.min(1, diff * 2.6));
+    this.steerInput = Math.max(-1, Math.min(1, diff * 3.0));
 
-    // Brake into sharp corners, full gas on straights.
-    this.throttleInput = Math.max(0.5, 1 - Math.abs(curve) * 5 - Math.abs(diff) * 0.5);
+    // Full gas on straights, ease right down for sharp corners.
+    this.throttleInput = Math.max(
+      sharp > 0.55 ? 0.18 : 0.5,
+      1 - sharp * 0.9 - Math.min(0.35, Math.abs(diff) * 0.4)
+    );
+
+    // Stuck recovery: if we've been crawling (pinned on a wall) without being
+    // spun out, reverse to peel off it; normal driving then re-aims us.
+    if (speed < 2.5 && this.spinTimer <= 0 && !this.finished) this._stuck += dt;
+    else this._stuck = Math.max(0, this._stuck - 2 * dt);
+    if (this._stuck > 0.6) {
+      this.throttleInput = -1;
+      this.steerInput *= -0.3; // steering inverts in reverse; nudge off the wall
+      if (this._stuck > 1.8) this._stuck = 0; // try forward again
+    }
   }
 }

@@ -100,9 +100,11 @@ export function buildWorld(scene, track) {
   };
 
   buildTerrain(scene, heightAt);
-  buildMountains(scene, heightAt);
+  buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
+  buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
+  buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes);
@@ -138,10 +140,10 @@ function makeLakes(track) {
   // the centre until its whole footprint clears the road (origin is the most
   // clear point, so this always converges).
   const targets = [
-    { x: -55, z: 75 },
-    { x: 85, z: -70 },
+    { x: -70, z: 95 },
+    { x: 105, z: -85 },
   ];
-  const need = track.halfWidth + 105; // halfWidth + blend ramp + margin
+  const need = track.halfWidth + 122; // halfWidth + blend ramp + margin
   const lakes = [];
   for (const t of targets) {
     let { x, z } = t;
@@ -155,10 +157,10 @@ function makeLakes(track) {
     const level = gi.y + valleyRise(gi.dist);
     lakes.push({
       x, z, level,
-      floor: level - 6,
-      waterR: 36, // flat shoreline / water plane radius
-      shoreR: 48, // beach plateau out to here
-      blendR: 80, // ramp to natural terrain by here
+      floor: level - 7,
+      waterR: 48, // flat shoreline / water plane radius
+      shoreR: 62, // beach plateau out to here
+      blendR: 96, // ramp to natural terrain by here
     });
   }
   return lakes;
@@ -340,18 +342,12 @@ function buildTerrain(scene, heightAt) {
   scene.add(mesh);
 }
 
-function buildMountains(scene, heightAt) {
+function buildMountains(scene, heightAt, track) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x6d6253, flatShading: true, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 1 });
-  const count = 24;
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + Math.random() * 0.2;
-    const r = 840 + Math.random() * 160;
-    const h = 170 + Math.random() * 150;
-    const rad = 90 + Math.random() * 70;
-    const x = Math.cos(a) * r;
-    const z = Math.sin(a) * r;
-    const base = heightAt(x, z) + h / 2 - 30; // bury the base in the terrain
+
+  const peak = (x, z, h, rad, bury) => {
+    const base = heightAt(x, z) + h / 2 - bury;
     const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), mat);
     m.position.set(x, base, z);
     m.rotation.y = Math.random() * Math.PI;
@@ -360,6 +356,28 @@ function buildMountains(scene, heightAt) {
     cap.position.set(x, base + h * 0.5 - h * 0.15, z);
     cap.rotation.y = m.rotation.y;
     scene.add(cap);
+  };
+
+  // Distant mountain ring around the whole world.
+  const count = 24;
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + Math.random() * 0.2;
+    const r = 840 + Math.random() * 160;
+    peak(Math.cos(a) * r, Math.sin(a) * r, 170 + Math.random() * 150, 90 + Math.random() * 70, 30);
+  }
+
+  // A few peaks brought in close beside the track, so you race right up against
+  // a mountainside on those stretches.
+  if (track) {
+    const up = new THREE.Vector3(0, 1, 0);
+    for (const tt of [0.24, 0.58, 0.9]) {
+      const i = Math.floor(tt * track.samples);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const off = 130 + Math.random() * 50;
+      peak(p.x + side.x * outward * off, p.z + side.z * outward * off, 140 + Math.random() * 80, 60 + Math.random() * 30, 18);
+    }
   }
 }
 
@@ -473,6 +491,83 @@ function cactusGeometry() {
     new THREE.CylinderGeometry(0.26, 0.28, 1.1, 6).translate(1.3, 2.3, 0),
   ];
   return mergeGeometries(parts);
+}
+
+// Dense woods crowding right up to the road through forest/alpine sectors, so
+// those stretches feel like driving through an actual forest (the general
+// scatter only fills the open distance). Walks the track and packs pines into a
+// band just off the tarmac.
+function buildForests(scene, track, heightAt) {
+  const N = track.samples;
+  const halfW = track.halfWidth;
+  const up = new THREE.Vector3(0, 1, 0);
+  const spots = [];
+  for (let i = 0; i < N; i += 2) {
+    const p = track._pts[i];
+    const here = biomeAt(p.x, p.z);
+    if (here.style !== "pine") continue; // forest + alpine get dense woods
+    const reps = here.name === "forest" ? 4 : 2;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    for (let r = 0; r < reps; r++) {
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      const dist = halfW + 5 + Math.random() * 95;
+      const x = p.x + side.x * dir * dist + (Math.random() - 0.5) * 9;
+      const z = p.z + side.z * dir * dist + (Math.random() - 0.5) * 9;
+      if (track.distanceToCenter(x, z) < halfW + 4) continue;
+      if (_inLake(x, z)) continue;
+      const b = biomeAt(x, z);
+      if (b.style !== "pine") continue;
+      spots.push({ x, z, y: heightAt(x, z), b });
+    }
+  }
+  if (spots.length) buildConeTrees(scene, spots);
+}
+
+// A craggy cliff face to drive alongside: rows of big rock chunks stacked up
+// the outer hillside over one stretch of track.
+function buildCliffs(scene, track, heightAt) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const ranges = [[0.55, 0.67]]; // one cliff stretch on the outer side
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const s = new THREE.Vector3();
+  const pv = new THREE.Vector3();
+  const col = new THREE.Color();
+  const chunks = [];
+  for (const [t0, t1] of ranges) {
+    const i0 = Math.floor(t0 * track.samples);
+    const i1 = Math.floor(t1 * track.samples);
+    for (let i = i0; i <= i1; i += 2) {
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      for (let row = 0; row < 3; row++) {
+        const off = track.halfWidth + 4 + row * 6 + Math.random() * 3;
+        const x = p.x + side.x * outward * off;
+        const z = p.z + side.z * outward * off;
+        chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + Math.random() * 10 });
+      }
+    }
+  }
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8076, roughness: 1, flatShading: true });
+  const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
+  mesh.castShadow = true;
+  chunks.forEach((c, i) => {
+    const sy = c.h / 2;
+    const sx = 4 + Math.random() * 4;
+    const sz = 4 + Math.random() * 4;
+    q.setFromEuler(new THREE.Euler(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5));
+    pv.set(c.x, c.base + sy * 0.45, c.z);
+    s.set(sx, sy, sz);
+    m.compose(pv, q, s);
+    mesh.setMatrixAt(i, m);
+    mesh.setColorAt(i, col.setHSL(0.09, 0.12, 0.42 + Math.random() * 0.12));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.layers.set(1);
+  scene.add(mesh);
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
@@ -602,10 +697,16 @@ function buildRoadside(scene, track, heightAt) {
 
     for (const dir of [1, -1]) {
       if (town) {
+        // Front shops right by the road.
         if (Math.random() < 0.62 + density * 0.32)
           place(() => makeTownStructure(density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
-        if (Math.random() < 0.22 + density * 0.28)
-          place(() => makeBuilding(density), halfW + 13 + Math.random() * 6, dir, p, side, true);
+        // Several rows of houses stacking back up the hillside, thinning with
+        // depth so the town recedes into the hills instead of being a thin strip.
+        const rows = [13, 24, 36, 50, 66];
+        for (let r = 0; r < rows.length; r++) {
+          if (Math.random() < (0.52 + density * 0.4) * (1 - r * 0.15))
+            place(() => makeBuilding(density), halfW + rows[r] + Math.random() * 7, dir, p, side, true);
+        }
         if (Math.random() < 0.5)
           place(makeStreetProp, halfW + 3.2 + Math.random() * 1.4, dir, p, side, true);
       } else if (Math.random() < 0.4) {
