@@ -160,22 +160,23 @@ export function buildWorld(scene, track) {
 function makeLakes(track, baseHeight) {
   const lakes = [];
 
-  // Hero lake: hugs the inside of the flat bottom curve, right beside the road
-  // and AT road height (its level = the road's height there), with a wide flat
-  // shore that reaches the tarmac — so you drive along an open lakeshore with
-  // nothing in the way. Sized from the local clearance so it never hits the road.
+  // Hero lake: hugs the inside of the flat bottom curve, right beside the road.
+  // Its surface sits just below the lowest nearby road height (so the road
+  // always stays ABOVE the shore — otherwise a raised shore buries the kart),
+  // with a short bank up to the tarmac. _inLake clears props on that side so
+  // nothing blocks the view. Sized from local clearance so it never hits the road.
   {
     const cx = 0, cz = -290;
     const gi = track.groundInfo(cx, cz);
-    const waterR = gi.dist - track.halfWidth - 6; // water edge ~5 past the barrier
-    if (waterR > 45) {
+    if (gi.dist > 60) {
+      const level = gi.y - 4; // just below the lowest part of the flat bottom curve
       lakes.push({
         x: cx, z: cz,
-        level: gi.y, // sit level with the road
-        floor: gi.y - 9,
-        waterR,
-        shoreR: gi.dist + 8, // flat shore reaches across to the road
-        blendR: gi.dist + 28,
+        level,
+        floor: level - 8,
+        waterR: gi.dist - 22, // water edge ~6 past the barrier
+        shoreR: gi.dist - 4, // flat shore stops just short of the road
+        blendR: gi.dist + 12, // short bank ramps up to road height at the tarmac
       });
     }
   }
@@ -377,19 +378,24 @@ function buildTerrain(scene, heightAt) {
 }
 
 function buildMountains(scene, heightAt, track) {
-  const mat = new THREE.MeshStandardMaterial({ color: 0x6d6253, flatShading: true, roughness: 1 });
+  const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, flatShading: true, roughness: 1 });
+  const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, flatShading: true, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 1 });
 
   const peak = (x, z, h, rad, bury) => {
+    const desert = biomeAt(x, z).name === "desert";
     const base = heightAt(x, z) + h / 2 - bury;
-    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), mat);
+    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), desert ? rockDesert : rockN);
     m.position.set(x, base, z);
     m.rotation.y = Math.random() * Math.PI;
     scene.add(m);
-    const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 7), snow);
-    cap.position.set(x, base + h * 0.5 - h * 0.15, z);
-    cap.rotation.y = m.rotation.y;
-    scene.add(cap);
+    // No snow caps in the desert — snowy peaks behind cacti look wrong.
+    if (!desert) {
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 7), snow);
+      cap.position.set(x, base + h * 0.5 - h * 0.15, z);
+      cap.rotation.y = m.rotation.y;
+      scene.add(cap);
+    }
   };
 
   // Distant mountain ring around the whole world.

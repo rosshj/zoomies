@@ -342,7 +342,10 @@ const qualityBtn = document.getElementById("quality-btn");
 function applyQuality(q) {
   quality = q;
   const high = q === "high";
-  bloomPass.enabled = high; // bloom (the expensive part) only on High
+  // Bloom is the marquee glow effect, so keep it on at both quality levels
+  // (it was previously gated to High, which is why phones — defaulting to Low —
+  // never showed any blooming). Low just runs at a lower pixel ratio.
+  bloomPass.enabled = true;
   // fxPass (colour grade) stays on at all levels so colours stay vivid.
   if (world.grass) world.grass.visible = high;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));

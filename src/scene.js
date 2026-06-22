@@ -4,7 +4,7 @@ import * as THREE from "three";
 // sky, sun, lights, fog and exposure to match, then rebakes the environment map.
 export const MOODS = [
   {
-    name: "Midday", weight: 4, weather: "none",
+    name: "Midday", weight: 5, weather: "none",
     sunDir: [0.4, 0.82, 0.55], sunColor: 0xfff4e0, sunI: 2.2,
     skyTop: 0x2f72d6, skyHorizon: 0xdff0f7, skyWarm: 0xffe6ad,
     hemiSky: 0xbfe3ff, hemiGround: 0x4a6f46, hemiI: 0.72,
@@ -13,7 +13,7 @@ export const MOODS = [
     cloud: 0xffffff, sat: 1.3, contrast: 1.07,
   },
   {
-    name: "Golden Hour", weight: 3, weather: "none",
+    name: "Golden Hour", weight: 4, weather: "none",
     sunDir: [0.62, 0.4, 0.7], sunColor: 0xffd09a, sunI: 2.4,
     skyTop: 0x3b6fb0, skyHorizon: 0xffd9a8, skyWarm: 0xffbf80,
     hemiSky: 0xffe0c0, hemiGround: 0x5a5036, hemiI: 0.66,
@@ -31,7 +31,7 @@ export const MOODS = [
     cloud: 0xd2b0c8, sat: 1.3, contrast: 1.07,
   },
   {
-    name: "Overcast", weight: 2, weather: "none",
+    name: "Overcast", weight: 1, weather: "none",
     sunDir: [0.3, 0.7, 0.5], sunColor: 0xdfe4ea, sunI: 1.25,
     skyTop: 0xa6b2be, skyHorizon: 0xd6dce2, skyWarm: 0xd6dce2,
     hemiSky: 0xd6dce2, hemiGround: 0x55604f, hemiI: 1.05,
@@ -40,7 +40,7 @@ export const MOODS = [
     cloud: 0xb6bcc2, sat: 1.14, contrast: 1.05,
   },
   {
-    name: "Rain", weight: 3, weather: "rain",
+    name: "Rain", weight: 2, weather: "rain",
     sunDir: [0.3, 0.66, 0.5], sunColor: 0xccd2da, sunI: 1.1,
     skyTop: 0x76828e, skyHorizon: 0xa4acb4, skyWarm: 0xa4acb4,
     hemiSky: 0xb4bcc5, hemiGround: 0x49504a, hemiI: 1.0,
@@ -49,7 +49,7 @@ export const MOODS = [
     cloud: 0x969ca4, sat: 1.08, contrast: 1.04,
   },
   {
-    name: "Snowfall", weight: 3, weather: "snow",
+    name: "Snowfall", weight: 2, weather: "snow",
     sunDir: [0.4, 0.7, 0.55], sunColor: 0xeaf2ff, sunI: 1.5,
     skyTop: 0x9fc0e0, skyHorizon: 0xeaf2fb, skyWarm: 0xf2f7ff,
     hemiSky: 0xdce8f5, hemiGround: 0x96a2ac, hemiI: 1.0,
