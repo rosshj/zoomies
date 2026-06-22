@@ -305,7 +305,7 @@ export class Kart {
       // it. Tilt into the drift to tighten, tilt against it to pull back (and a
       // little past straight) — counter-steering really bites now.
       const rel = this.steerInput * this.driftDir; // +1 into, -1 counter
-      const amount = Math.max(-0.35, 0.3 + rel * 0.7);
+      const amount = Math.max(-0.4, 0.2 + rel * 0.7);
       steer = this.driftDir * amount;
     }
     this.heading += steer * turnRate * speedFactor * dir * dt;

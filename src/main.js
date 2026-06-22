@@ -384,6 +384,8 @@ function startRace() {
   enterFullscreenLandscape();
   input.enableMotion();
   input.calibrate();
+  input.jumpHeld = false; // clear any held state from a previous run
+  input.shielding = false;
 
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");

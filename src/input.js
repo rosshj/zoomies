@@ -93,10 +93,13 @@ export class Input {
 
     const d = shortArc(roll - this._neutralRoll) * this._sign;
 
-    // Note: no auto-recentering. It made "straight" drift over time (a held
-    // gentle turn got absorbed into neutral, so straight became a tilt). The
-    // neutral is set by calibrate() at the start and via the "center steering"
-    // button; a fixed deadzone keeps small jitter from leaking.
+    // Very gentle auto-recenter: only near neutral (so it never fights a real
+    // turn) and very slowly, to soak up a small calibration bias that would
+    // otherwise make the kart curve on its own when you think you're level.
+    if (this._neutralSamples >= 8 && Math.abs(d) < 0.15) {
+      this._neutralRoll += this._sign * d * 0.005;
+    }
+
     const MAX = 0.7; // ~40° of tilt for full lock (need a real tilt to turn hard)
     const DEAD = 0.05;
     let s = d;
