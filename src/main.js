@@ -86,12 +86,15 @@ const outlinePass = new ShaderPass({
       float du = linDepth(vUv + vec2(0.0, o.y));
       float dd = linDepth(vUv - vec2(0.0, o.y));
       float depthDiff = abs(dc - dr) + abs(dc - dl) + abs(dc - du) + abs(dc - dd);
-      // Threshold scales with distance, so a faraway building doesn't scribble
-      // and a near kart still gets a crisp line.
-      float depthEdge = step(uDepthThresh * dc, depthDiff);
+      // The threshold scales with distance (so faraway geometry doesn't scribble)
+      // AND with how square-on the surface is: a road/terrain seen at a grazing
+      // angle has huge per-pixel depth change but isn't an edge, so inflate the
+      // threshold there. True silhouettes still have a far larger jump and fire.
+      vec3 n  = texture2D(tNormal, vUv).rgb;
+      float facing = clamp(abs(n.z * 2.0 - 1.0), 0.12, 1.0);
+      float depthEdge = step(uDepthThresh * dc / facing, depthDiff);
 
       // --- Crease edges: strong normal changes, only on nearby geometry ---
-      vec3 n  = texture2D(tNormal, vUv).rgb;
       vec3 nr = texture2D(tNormal, vUv + vec2(o.x, 0.0)).rgb;
       vec3 nl = texture2D(tNormal, vUv - vec2(o.x, 0.0)).rgb;
       vec3 nu = texture2D(tNormal, vUv + vec2(0.0, o.y)).rgb;
