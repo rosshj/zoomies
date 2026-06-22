@@ -42,6 +42,8 @@ composer.addPass(new OutputPass());
 // dark line there. High quality only (it costs a second scene render).
 const normalMat = new THREE.MeshNormalMaterial();
 const normalTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y);
+let outlineProps = true; // include the dense roadside props in the outline pass
+let outlineScale = 1; // normal-buffer resolution scale
 const outlinePass = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null },
@@ -262,8 +264,10 @@ function layoutStage() {
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(W, H);
   const dpr = renderer.getPixelRatio();
-  normalTarget.setSize(W * dpr, H * dpr);
-  outlinePass.uniforms.uTexel.value.set(1 / (W * dpr), 1 / (H * dpr));
+  const nw = Math.round(W * dpr * outlineScale);
+  const nh = Math.round(H * dpr * outlineScale);
+  normalTarget.setSize(nw, nh);
+  outlinePass.uniforms.uTexel.value.set(1 / nw, 1 / nh);
 
   // Mirror box: top-center (small), kept clear of the top safe inset.
   const mw = Math.min(150, W * 0.17);
@@ -335,13 +339,15 @@ function renderMirror() {
 // raw rear-view mirror while playing.
 function renderFrame() {
   if (outlinePass.enabled) {
-    camera.layers.disable(2); // don't outline grass blades
+    camera.layers.disable(2); // never outline grass blades
+    if (!outlineProps) camera.layers.disable(1); // skip dense props on Low
     scene.overrideMaterial = normalMat;
     renderer.setRenderTarget(normalTarget);
     renderer.render(scene, camera);
     renderer.setRenderTarget(null);
     scene.overrideMaterial = null;
     camera.layers.enable(2);
+    if (!outlineProps) camera.layers.enable(1);
   }
   composer.render();
   if (player && state !== State.MENU) renderMirror();
@@ -381,7 +387,10 @@ function applyQuality(q) {
   quality = q;
   const high = q === "high";
   bloomPass.enabled = high; // bloom (the expensive part) only on High
-  outlinePass.enabled = high; // outline needs a 2nd scene render — High only
+  // Outlines stay on for both; on Low they render at reduced res and skip the
+  // dense roadside props to keep the 2nd scene pass cheap.
+  outlineProps = high;
+  outlineScale = high ? 1 : 0.6;
   // fxPass (colour grade) stays on at all levels so colours stay vivid.
   if (world.grass) world.grass.visible = high;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
