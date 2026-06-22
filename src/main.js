@@ -73,6 +73,42 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track);
 
+// --- Cel shading: convert lit (standard) materials to banded toon shading ---
+function makeToonGradient() {
+  const steps = new Uint8Array([85, 150, 205, 255]); // 4 brightness bands
+  const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
+}
+const TOON_GRADIENT = makeToonGradient();
+function toToon(m) {
+  if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
+  return new THREE.MeshToonMaterial({
+    color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
+    map: m.map || null,
+    gradientMap: TOON_GRADIENT,
+    vertexColors: m.vertexColors,
+    transparent: m.transparent,
+    opacity: m.opacity,
+    side: m.side,
+    emissive: m.emissive ? m.emissive.clone() : new THREE.Color(0x000000),
+    emissiveMap: m.emissiveMap || null,
+    emissiveIntensity: m.emissiveIntensity,
+    bumpMap: m.bumpMap || null,
+    bumpScale: m.bumpScale,
+  });
+}
+function toonify(root) {
+  root.traverse((o) => {
+    if (!o.material) return;
+    o.material = Array.isArray(o.material) ? o.material.map(toToon) : toToon(o.material);
+  });
+}
+toonify(scene);
+
 // --- Rear-view mirror ---
 // Render a backward-facing camera into a target, then blit it (flipped, like a
 // real mirror) into a small framed box at the top-center of the screen.
@@ -129,6 +165,7 @@ function buildKarts() {
     const slot = track.gridSlot(i);
     kart.placeAt(slot.position, slot.heading, track);
     kart._aiShootTimer = 1 + Math.random() * 3;
+    toonify(kart.group); // cel-shade the kart + cat
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) player = kart;

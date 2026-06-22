@@ -77,6 +77,7 @@ function buildGrass(scene, track, heightAt) {
     side: THREE.DoubleSide,
     roughness: 1,
   });
+  mat.userData.skipToon = true; // keep the wind vertex shader
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
     shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader;
