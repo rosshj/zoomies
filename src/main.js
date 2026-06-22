@@ -21,6 +21,8 @@ const TOTAL_LAPS = 3;
 
 const { renderer, scene, camera, applyMood } = createScene();
 const weather = new Weather(scene);
+let moodWeather = "none"; // this race's base weather (snow is layered on by altitude)
+const SNOW_ALTITUDE = 55; // climb above this (the alpine pass) and it snows
 // The main camera sees everything; the rear-view camera stays on layer 0, so
 // scenery on layer 1 and grass on layer 2 are skipped in the mirror.
 camera.layers.enable(1);
@@ -442,6 +444,7 @@ function startRace() {
   // Fresh time-of-day / weather each race.
   const mood = pickMood();
   applyMood(mood);
+  moodWeather = mood.weather; // the base weather; snow is added by altitude
   weather.setMode(mood.weather);
   fxPass.uniforms.uSat.value = mood.sat;
   fxPass.uniforms.uContrast.value = mood.contrast;
@@ -702,6 +705,11 @@ function loop(now) {
     }
     effects.update(dt);
     updatePlacement();
+
+    // Snow falls only up on the alpine pass (high ground); elsewhere the race's
+    // base weather (clear or rain) applies. So there's one distinct snow section.
+    const wantWeather = player.groundY > SNOW_ALTITUDE ? "snow" : moodWeather;
+    if (wantWeather !== weather.mode) weather.setMode(wantWeather);
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();

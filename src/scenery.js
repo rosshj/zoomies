@@ -16,8 +16,9 @@ let _inLake = () => false;
 const BIOMES = [
   { name: "meadow", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0, barrier: { a: 0xfafafa, b: 0x7cb342 } },
   { name: "forest", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9, barrier: { a: 0x6b4a2b, b: 0x3f2c19 } },
-  { name: "autumn", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
+  // Alpine sits on the big left-side hill, so its high ground reads as snow.
   { name: "alpine", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
+  { name: "autumn", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
   { name: "desert", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
 ];
 for (const b of BIOMES) {
@@ -219,8 +220,8 @@ function carveLakes(lakes, x, z, h) {
   return h;
 }
 
-// Stylised toon water: flat saturated plane with hard-stepped concentric
-// ripples, a sparkle band, and a foamy shoreline. Animated via uTime.
+// Stylised toon water: a flat saturated plane with soft diagonal ripple bands
+// drifting across it and a foamy shoreline — no concentric/pinwheel pattern.
 function buildWater(scene, lakes) {
   const mats = [];
   for (const L of lakes) {
@@ -241,17 +242,17 @@ function buildWater(scene, lakes) {
         void main(){
           vec2 p = vUv - 0.5;
           float r = length(p) * 2.0;           // 0 centre .. 1 edge
-          float ang = atan(p.y, p.x);
-          // Hard-stepped concentric ripples drifting outward.
-          float ripple = step(0.5, sin(r * 22.0 - uTime * 1.5) * 0.5 + 0.5);
-          // Rotating sparkle near the middle.
-          float glint = step(0.86, sin(ang * 9.0 + uTime * 0.7) * 0.5 + 0.5) * (1.0 - r);
-          vec3 col = mix(uShallow, uDeep, smoothstep(0.0, 1.0, r));
-          col = mix(col, col * 1.22, ripple * 0.35);
-          col = mix(col, uFoam, glint * 0.5);
-          float foam = smoothstep(0.82, 0.99, r);  // shoreline foam ring
+          // Deep in the middle, shallower toward the shore.
+          vec3 col = mix(uDeep, uShallow, smoothstep(0.2, 1.0, r));
+          // Soft diagonal ripple bands drifting across (no centre pattern).
+          float w1 = sin((vUv.x + vUv.y) * 46.0 + uTime * 1.4);
+          float w2 = sin((vUv.x - vUv.y) * 38.0 - uTime * 1.0);
+          float ripple = smoothstep(0.55, 0.95, w1 * 0.5 + 0.5) * 0.6
+                       + smoothstep(0.65, 0.98, w2 * 0.5 + 0.5) * 0.4;
+          col = mix(col, col * 1.18, ripple * 0.5);
+          float foam = smoothstep(0.86, 0.995, r);  // shoreline foam ring
           col = mix(col, uFoam, foam);
-          gl_FragColor = vec4(col, 0.88);
+          gl_FragColor = vec4(col, 0.9);
         }`,
     });
     const mesh = new THREE.Mesh(geo, matW);
@@ -354,14 +355,21 @@ function buildTerrain(scene, heightAt) {
     const y = heightAt(x, z);
     pos.setY(i, y);
 
-    // Biome ground colour at low/mid elevation, fading to rock then snow up high
-    // so the distant peaks stay rocky/snowy regardless of biome.
+    // Biome ground colour. Snow only whitens the high ALPINE hill — warm biomes
+    // just turn rocky up high, so there's one distinct snow section rather than
+    // white peaks scattered all over the course.
     biomeGround(x, z, base);
     const b = biomeAt(x, z);
     base.lerp(b.ground2Col, Math.random() * 0.35); // subtle dappling
-    if (y < 30) c.copy(base);
-    else if (y < 50) c.copy(base).lerp(cRock, (y - 30) / 20);
-    else c.copy(cRock).lerp(cSnow, Math.min(1, (y - 50) / 14));
+    if (b.name === "alpine") {
+      if (y < 44) c.copy(base);
+      else if (y < 62) c.copy(base).lerp(cRock, (y - 44) / 18);
+      else c.copy(cRock).lerp(cSnow, Math.min(1, (y - 62) / 16));
+    } else if (y < 52) {
+      c.copy(base);
+    } else {
+      c.copy(base).lerp(cRock, Math.min(1, (y - 52) / 32));
+    }
     colors.push(c.r, c.g, c.b);
   }
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
