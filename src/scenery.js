@@ -582,6 +582,7 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
   const foliageGeo = new THREE.ConeGeometry(2.4, 6, 7);
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
   const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+  foliageMat.userData.backlight = true; // glow when backlit by the sun (set in toonify)
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
   const foliage = new THREE.InstancedMesh(foliageGeo, foliageMat, spots.length);

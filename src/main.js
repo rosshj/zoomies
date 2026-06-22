@@ -80,6 +80,38 @@ const godrayPass = new ShaderPass({
 });
 composer.addPass(godrayPass);
 
+// --- Lens flare: a few translucent "ghosts" of the bright sun mirrored through
+// the screen centre, only while the sun is on-screen. Subtle, additive. ---
+const flarePass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uVis: { value: 0 },
+    uTint: { value: new THREE.Color(0xffdca6) },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uVis; uniform vec3 uTint; varying vec2 vUv;
+    const float TH = 0.78;
+    vec3 bright(vec2 uv){
+      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec3(0.0);
+      return max(vec3(0.0), texture2D(tDiffuse, uv).rgb - TH) / (1.0 - TH);
+    }
+    void main(){
+      vec3 orig = texture2D(tDiffuse, vUv).rgb;
+      if (uVis <= 0.001){ gl_FragColor = vec4(orig, 1.0); return; }
+      vec2 c = vec2(0.5);
+      vec2 ghost = (c - vUv) * 0.32;        // step toward (and past) the centre
+      vec3 flare = vec3(0.0);
+      for (int i = 1; i <= 4; i++){
+        vec2 g = vUv + ghost * float(i);
+        float w = pow(max(0.0, 1.0 - length(c - g) * 1.5), 6.0); // brightest near centre
+        flare += bright(g) * w;
+      }
+      gl_FragColor = vec4(orig + flare * uTint * uVis * 0.5, 1.0);
+    }`,
+});
+composer.addPass(flarePass);
+
 // Color grade (saturation + contrast + vignette) and chromatic aberration.
 // Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
 // gated by quality.
@@ -129,9 +161,12 @@ function makeToonGradient() {
   return tex;
 }
 const TOON_GRADIENT = makeToonGradient();
+// Toon materials flagged for backlight collect their compiled shaders here so
+// the atmosphere update can feed them the sun direction each frame.
+const backlitShaders = [];
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
-  return new THREE.MeshToonMaterial({
+  const t = new THREE.MeshToonMaterial({
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
     map: m.map || null,
     gradientMap: TOON_GRADIENT,
@@ -145,6 +180,23 @@ function toToon(m) {
     bumpMap: m.bumpMap || null,
     bumpScale: m.bumpScale,
   });
+  // Backlit foliage: glow warm where you look toward the sun through the leaves.
+  if (m.userData && m.userData.backlight) {
+    t.onBeforeCompile = (shader) => {
+      shader.uniforms.uSunView = { value: new THREE.Vector3(0, 0, 1) };
+      shader.uniforms.uSunCol = { value: new THREE.Color(0x000000) };
+      shader.fragmentShader =
+        "uniform vec3 uSunView;\nuniform vec3 uSunCol;\n" + shader.fragmentShader;
+      shader.fragmentShader = shader.fragmentShader.replace(
+        "#include <dithering_fragment>",
+        `#include <dithering_fragment>
+         float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
+         gl_FragColor.rgb += uSunCol * backlit;`
+      );
+      backlitShaders.push(shader);
+    };
+  }
+  return t;
 }
 function toonify(root) {
   root.traverse((o) => {
@@ -367,13 +419,20 @@ function updateAtmosphere() {
     vis = _ss(0.02, 0.45, facing) * (1 - _ss(1.0, 2.4, off));
   }
   godrayPass.uniforms.uVis.value = vis;
+  flarePass.uniforms.uVis.value = vis;
 
-  // Backlit grass glow (view-space light-travel direction + mood sun colour).
+  // View-space light-travel direction + mood sun colour, shared by the backlit
+  // grass and the backlit tree foliage.
+  _sunViewVec.copy(_sunDir).multiplyScalar(-1).transformDirection(camera.matrixWorldInverse);
+  const sunGlow = sunVisibleMood ? 0.5 : 0;
   const gsh = world.grass && world.grass.material.userData.shader;
   if (gsh && gsh.uniforms.uSunView) {
-    _sunViewVec.copy(_sunDir).multiplyScalar(-1).transformDirection(camera.matrixWorldInverse);
     gsh.uniforms.uSunView.value.copy(_sunViewVec);
-    gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunVisibleMood ? 0.5 : 0);
+    gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
+  }
+  for (const sh of backlitShaders) {
+    sh.uniforms.uSunView.value.copy(_sunViewVec);
+    sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
   }
 }
 
