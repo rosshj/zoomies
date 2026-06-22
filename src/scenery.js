@@ -114,7 +114,7 @@ function buildGrass(scene, track, heightAt) {
   }
   mesh.count = n;
   mesh.instanceMatrix.needsUpdate = true;
-  mesh.layers.set(1); // excluded from the rear-view mirror render
+  mesh.layers.set(2); // own layer: out of the mirror AND the outline pass
   scene.add(mesh);
   return mesh;
 }

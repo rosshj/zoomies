@@ -19,9 +19,11 @@ import { EffectsManager } from "./effects.js";
 const TOTAL_LAPS = 3;
 
 const { renderer, scene, camera } = createScene();
-// The main camera sees everything; the rear-view camera stays on the default
-// layer 0, so heavy scenery placed on layer 1 is skipped in the mirror render.
+// The main camera sees everything; the rear-view camera stays on layer 0, so
+// scenery on layer 1 is skipped in the mirror. Grass is on layer 2 (also out of
+// the outline pre-pass, which would otherwise outline every blade).
 camera.layers.enable(1);
+camera.layers.enable(2);
 
 // --- Post-processing: bloom + filmic output + MSAA ---
 const _sz = renderer.getDrawingBufferSize(new THREE.Vector2());
@@ -34,6 +36,38 @@ composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5, 0.82);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
+
+// --- Cartoon outline pass (Phase 2) ---
+// A normal-buffer pre-pass detects silhouette/crease edges; this pass draws a
+// dark line there. High quality only (it costs a second scene render).
+const normalMat = new THREE.MeshNormalMaterial();
+const normalTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y);
+const outlinePass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    tNormal: { value: normalTarget.texture },
+    uTexel: { value: new THREE.Vector2(1 / _sz.x, 1 / _sz.y) },
+    uThickness: { value: 1.2 },
+    uThresh: { value: 0.28 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform sampler2D tNormal; uniform vec2 uTexel;
+    uniform float uThickness; uniform float uThresh; varying vec2 vUv;
+    void main(){
+      vec3 c = texture2D(tDiffuse, vUv).rgb;
+      vec2 o = uTexel * uThickness;
+      vec3 n  = texture2D(tNormal, vUv).rgb;
+      vec3 nr = texture2D(tNormal, vUv + vec2(o.x, 0.0)).rgb;
+      vec3 nl = texture2D(tNormal, vUv - vec2(o.x, 0.0)).rgb;
+      vec3 nu = texture2D(tNormal, vUv + vec2(0.0, o.y)).rgb;
+      vec3 nd = texture2D(tNormal, vUv - vec2(0.0, o.y)).rgb;
+      float e = distance(n, nr) + distance(n, nl) + distance(n, nu) + distance(n, nd);
+      float edge = smoothstep(uThresh, uThresh + 0.45, e);
+      gl_FragColor = vec4(mix(c, vec3(0.05, 0.05, 0.07), edge * 0.85), 1.0);
+    }`,
+});
+composer.addPass(outlinePass);
 
 // Color grade (saturation + contrast + vignette) and chromatic aberration.
 // Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
@@ -75,7 +109,7 @@ const world = buildWorld(scene, track);
 
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
-  const steps = new Uint8Array([85, 150, 205, 255]); // 4 brightness bands
+  const steps = new Uint8Array([95, 200, 255]); // 3 bands (fewer, bolder)
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
@@ -227,6 +261,9 @@ function layoutStage() {
   camera.updateProjectionMatrix();
   composer.setPixelRatio(renderer.getPixelRatio());
   composer.setSize(W, H);
+  const dpr = renderer.getPixelRatio();
+  normalTarget.setSize(W * dpr, H * dpr);
+  outlinePass.uniforms.uTexel.value.set(1 / (W * dpr), 1 / (H * dpr));
 
   // Mirror box: top-center (small), kept clear of the top safe inset.
   const mw = Math.min(150, W * 0.17);
@@ -297,6 +334,15 @@ function renderMirror() {
 // Render the main view (through the post-processing composer), then overlay the
 // raw rear-view mirror while playing.
 function renderFrame() {
+  if (outlinePass.enabled) {
+    camera.layers.disable(2); // don't outline grass blades
+    scene.overrideMaterial = normalMat;
+    renderer.setRenderTarget(normalTarget);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(null);
+    scene.overrideMaterial = null;
+    camera.layers.enable(2);
+  }
   composer.render();
   if (player && state !== State.MENU) renderMirror();
 }
@@ -335,6 +381,7 @@ function applyQuality(q) {
   quality = q;
   const high = q === "high";
   bloomPass.enabled = high; // bloom (the expensive part) only on High
+  outlinePass.enabled = high; // outline needs a 2nd scene render — High only
   // fxPass (colour grade) stays on at all levels so colours stay vivid.
   if (world.grass) world.grass.visible = high;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
