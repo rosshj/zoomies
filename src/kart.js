@@ -301,10 +301,12 @@ export class Kart {
     let turnRate = 1.7; // rad/sec at full
     if (this.drifting) {
       turnRate = 1.9; // a bit tighter while drifting, but controllable
-      // Commit to the drift direction, but mostly follow the player's tilt so
-      // holding the drift onto a straight doesn't veer (small floor only).
-      const into = Math.sign(this.steerInput) === this.driftDir ? Math.abs(this.steerInput) : 0;
-      steer = this.driftDir * Math.max(into, 0.12);
+      // Steering modulates the drift (Mario-Kart style): tilt into the drift to
+      // tighten the arc, tilt against it to pull back toward straight. `rel` is
+      // +1 fully into the drift, -1 fully counter-steering.
+      const rel = this.steerInput * this.driftDir;
+      const amount = Math.max(-0.15, 0.55 + rel * 0.65);
+      steer = this.driftDir * amount;
     }
     this.heading += steer * turnRate * speedFactor * dir * dt;
 
