@@ -158,13 +158,33 @@ export function buildWorld(scene, track) {
 // to the surrounding ground. Footprints are verified clear of the road and of
 // each other; any that don't fit are skipped.
 function makeLakes(track, baseHeight) {
-  const specs = [
-    { x: 80, z: -120, waterR: 78, shoreR: 98, blendR: 120, depth: 9 }, // big lake where the loop passes closest
+  const lakes = [];
+
+  // Hero lake: hugs the inside of the flat bottom curve, right beside the road
+  // and AT road height (its level = the road's height there), with a wide flat
+  // shore that reaches the tarmac — so you drive along an open lakeshore with
+  // nothing in the way. Sized from the local clearance so it never hits the road.
+  {
+    const cx = 0, cz = -290;
+    const gi = track.groundInfo(cx, cz);
+    const waterR = gi.dist - track.halfWidth - 6; // water edge ~5 past the barrier
+    if (waterR > 45) {
+      lakes.push({
+        x: cx, z: cz,
+        level: gi.y, // sit level with the road
+        floor: gi.y - 9,
+        waterR,
+        shoreR: gi.dist + 8, // flat shore reaches across to the road
+        blendR: gi.dist + 28,
+      });
+    }
+  }
+
+  // A couple of scenic hill lakes out in the open, kept clear of the road.
+  for (const s of [
     { x: -430, z: 250, waterR: 40, shoreR: 52, blendR: 82, depth: 7 },
     { x: 430, z: -380, waterR: 48, shoreR: 62, blendR: 96, depth: 7 },
-  ];
-  const lakes = [];
-  for (const s of specs) {
+  ]) {
     const gi = track.groundInfo(s.x, s.z);
     if (gi.dist < track.halfWidth + s.blendR + 8) continue; // would touch the road
     if (lakes.some((L) => Math.hypot(s.x - L.x, s.z - L.z) < s.blendR + L.blendR + 6)) continue;

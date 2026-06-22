@@ -6,7 +6,7 @@ import * as THREE from "three";
 export class Weather {
   constructor(scene) {
     this.mode = "none";
-    this.count = 1500;
+    this.count = 2600;
     this.box = { w: 150, h: 95, d: 150 };
 
     this.pos = new Float32Array(this.count * 3);
@@ -20,10 +20,10 @@ export class Weather {
 
     this.rainMat = new THREE.PointsMaterial({
       map: streakTexture(),
-      color: 0xaecbe6,
-      size: 3.2,
+      color: 0xdaeaff,
+      size: 5.5, // bigger streaks so they read against a bright sky
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.9,
       depthWrite: false,
       sizeAttenuation: true,
       fog: true,
@@ -31,9 +31,9 @@ export class Weather {
     this.snowMat = new THREE.PointsMaterial({
       map: dotTexture(),
       color: 0xffffff,
-      size: 1.7,
+      size: 3.2, // chunkier flakes
       transparent: true,
-      opacity: 0.95,
+      opacity: 1.0,
       depthWrite: false,
       sizeAttenuation: true,
       fog: true,

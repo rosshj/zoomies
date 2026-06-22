@@ -40,7 +40,7 @@ export const MOODS = [
     cloud: 0xb6bcc2, sat: 1.14, contrast: 1.05,
   },
   {
-    name: "Rain", weight: 2, weather: "rain",
+    name: "Rain", weight: 3, weather: "rain",
     sunDir: [0.3, 0.66, 0.5], sunColor: 0xccd2da, sunI: 1.1,
     skyTop: 0x76828e, skyHorizon: 0xa4acb4, skyWarm: 0xa4acb4,
     hemiSky: 0xb4bcc5, hemiGround: 0x49504a, hemiI: 1.0,
@@ -49,7 +49,7 @@ export const MOODS = [
     cloud: 0x969ca4, sat: 1.08, contrast: 1.04,
   },
   {
-    name: "Snowfall", weight: 2, weather: "snow",
+    name: "Snowfall", weight: 3, weather: "snow",
     sunDir: [0.4, 0.7, 0.55], sunColor: 0xeaf2ff, sunI: 1.5,
     skyTop: 0x9fc0e0, skyHorizon: 0xeaf2fb, skyWarm: 0xf2f7ff,
     hemiSky: 0xdce8f5, hemiGround: 0x96a2ac, hemiI: 1.0,
