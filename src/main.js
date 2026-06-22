@@ -4,7 +4,8 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
-import { createScene } from "./scene.js";
+import { createScene, pickMood } from "./scene.js";
+import { Weather } from "./weather.js";
 import { Track } from "./track.js";
 import { Kart } from "./kart.js";
 import { Input } from "./input.js";
@@ -18,7 +19,8 @@ import { EffectsManager } from "./effects.js";
 
 const TOTAL_LAPS = 3;
 
-const { renderer, scene, camera } = createScene();
+const { renderer, scene, camera, applyMood } = createScene();
+const weather = new Weather(scene);
 // The main camera sees everything; the rear-view camera stays on layer 0, so
 // scenery on layer 1 and grass on layer 2 are skipped in the mirror.
 camera.layers.enable(1);
@@ -434,6 +436,14 @@ function startRace() {
   document.getElementById("results").classList.add("hidden");
   document.getElementById("hud").classList.remove("hidden");
 
+  // Fresh time-of-day / weather each race.
+  const mood = pickMood();
+  applyMood(mood);
+  weather.setMode(mood.weather);
+  fxPass.uniforms.uSat.value = mood.sat;
+  fxPass.uniforms.uContrast.value = mood.contrast;
+  hud.showToast(mood.name);
+
   buildKarts();
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
@@ -616,6 +626,8 @@ function loop(now) {
     renderFrame(); // hold the frozen frame behind the overlay
     return;
   }
+
+  weather.update(dt, camera.position); // rain/snow follows the player
 
   if (state === State.COUNTDOWN) {
     countdown -= dt;
