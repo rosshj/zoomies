@@ -100,15 +100,15 @@ export class Input {
       this._neutralRoll += this._sign * d * 0.005;
     }
 
-    const MAX = 0.58; // ~33° of tilt for full lock
-    const DEAD = 0.05;
+    const MAX = 0.5; // ~29° of tilt for full lock
+    const DEAD = 0.045;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;
     else s -= Math.sign(s) * DEAD;
 
-    // Expo curve: gentle near centre, but responsive enough overall.
+    // Mild expo: still gentle near centre, but responsive overall.
     const norm = Math.max(-1, Math.min(1, s / MAX));
-    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 1.8);
+    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 1.5);
     this._keyboardSteering = false;
   }
 
@@ -265,8 +265,8 @@ export class Input {
     if (k.ArrowUp || k.KeyW) this.throttle = 1;
     else if (k.ArrowDown || k.KeyS) this.throttle = -1;
 
-    // Smooth steering toward target to keep it from feeling twitchy.
-    const rate = Math.min(1, dt * 10);
+    // Smooth steering toward target (snappy, so it doesn't feel laggy/stiff).
+    const rate = Math.min(1, dt * 16);
     this.steer += (this._steerTarget - this.steer) * rate;
   }
 
