@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { biomeBarrierStyle } from "./scenery.js";
 
 // Fine grayscale noise used as the road's bump map (asphalt grain).
 function noiseTexture() {
@@ -24,22 +25,34 @@ export class Track {
     this.width = 30;
     this.halfWidth = this.width / 2;
 
-    // Control points (x, z, y) — a long, flowing circuit that turns both ways
-    // and rolls up and down hills.
+    // Control points (x, z, y) — a long, tall, serpentine circuit with two
+    // upper lobes and a winding lower half (see the design sketch). It runs
+    // counter-clockwise, so it favours left-hand turns, and rolls up and down
+    // big hills (two high shoulders on the left and right).
     const pts = [
-      [0, -210, 0],
-      [130, -205, 6],
-      [235, -140, 26],
-      [275, -25, 36],
-      [225, 95, 20],
-      [140, 180, 4],
-      [35, 220, 2],
-      [-85, 215, 16],
-      [-195, 165, 32],
-      [-280, 45, 38],
-      [-250, -85, 16],
-      [-160, -195, 4],
-      [-65, -228, 0],
+      [0, -430, 0],
+      [120, -400, 4],
+      [210, -330, 14],
+      [180, -250, 22],
+      [250, -160, 30],
+      [310, -40, 38],
+      [270, 80, 32],
+      [320, 200, 22],
+      [280, 330, 12],
+      [180, 420, 5],
+      [80, 400, 6],
+      [55, 300, 12],
+      [-45, 300, 14],
+      [-70, 400, 8],
+      [-170, 430, 4],
+      [-280, 350, 12],
+      [-310, 200, 24],
+      [-250, 90, 32],
+      [-300, -40, 40],
+      [-250, -160, 32],
+      [-280, -290, 18],
+      [-180, -370, 8],
+      [-70, -400, 3],
     ].map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
@@ -179,10 +192,12 @@ export class Track {
   _buildWalls() {
     const wallH = 1.6;
     const off = this.halfWidth + 0.8;
-    const red = new THREE.Color(0xe53935);
-    const white = new THREE.Color(0xfafafa);
+    const ca = new THREE.Color();
+    const cb = new THREE.Color();
 
-    // Continuous ribbon barriers (no gaps) down each side of the road.
+    // Continuous ribbon barriers (no gaps) down each side of the road. The two
+    // alternating colours come from the biome the segment sits in, so the
+    // fencing changes as you pass from meadow to forest to desert, etc.
     for (const dirSign of [1, -1]) {
       const positions = [];
       const colors = [];
@@ -194,7 +209,8 @@ export class Track {
         const base = new THREE.Vector3().copy(p).addScaledVector(side, dirSign * off);
         positions.push(base.x, base.y, base.z);
         positions.push(base.x, base.y + wallH, base.z);
-        const c = Math.floor(i / 6) % 2 === 0 ? red : white;
+        const style = biomeBarrierStyle(base.x, base.z);
+        const c = Math.floor(i / 6) % 2 === 0 ? ca.set(style.a) : cb.set(style.b);
         colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
         if (i < this.samples) {
           const a = i * 2;

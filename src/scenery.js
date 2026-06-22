@@ -14,11 +14,11 @@ let _inLake = () => false;
 // every angle, you drive through each biome as you lap. Cheap to evaluate
 // (just atan2), so terrain, trees and grass can all be themed per position.
 const BIOMES = [
-  { name: "meadow", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0 },
-  { name: "forest", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9 },
-  { name: "autumn", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65 },
-  { name: "alpine", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45 },
-  { name: "desert", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12 },
+  { name: "meadow", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0, barrier: { a: 0xfafafa, b: 0x7cb342 } },
+  { name: "forest", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9, barrier: { a: 0x6b4a2b, b: 0x3f2c19 } },
+  { name: "autumn", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
+  { name: "alpine", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
+  { name: "desert", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
 ];
 for (const b of BIOMES) {
   b.groundCol = new THREE.Color(b.ground);
@@ -30,6 +30,20 @@ const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 function biomeAt(x, z) {
   const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
   return BIOMES[Math.floor(u * BIOMES.length) % BIOMES.length];
+}
+
+// Roadside-barrier colours for the biome at a position (used by the track).
+export function biomeBarrierStyle(x, z) {
+  return biomeAt(x, z).barrier;
+}
+
+// Terrain rises as you move away from the road, so the track sits in a shallow
+// valley with hillsides climbing on both sides — that way the scenery and
+// landmarks on those slopes are visible from the road instead of hidden in
+// dips. Ramps from 0 at the verge up to a plateau by ~150 units out.
+function valleyRise(dist) {
+  const u = clamp((dist - 18) / 132, 0, 1);
+  return 38 * u * u * (3 - 2 * u);
 }
 
 // Ground colour with a short blended seam between sectors (crisp biomes, soft
@@ -53,11 +67,12 @@ export function buildWorld(scene, track) {
   _flutterers.length = 0;
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
 
-  // Big rolling hills.
-  const rawHeight = (x, z) =>
-    40 * Math.sin(x * 0.004 + 0.5) * Math.cos(z * 0.0035) +
-    22 * Math.sin(x * 0.011 - 1.2) * Math.cos(z * 0.013 + 0.7) +
-    9 * Math.sin(x * 0.03) * Math.sin(z * 0.025 + 2.1);
+  // Gentle rolling detail laid on top of the road-anchored hills (kept small so
+  // it never digs the ground below the road — that just makes scenery vanish
+  // into dips, which is what we're trying to avoid).
+  const detail = (x, z) =>
+    14 * Math.sin(x * 0.011 - 1.2) * Math.cos(z * 0.013 + 0.7) +
+    6 * Math.sin(x * 0.03) * Math.sin(z * 0.025 + 2.1);
 
   const flatten = (d) => {
     const start = roadClear;
@@ -68,17 +83,19 @@ export function buildWorld(scene, track) {
     return u * u * (3 - 2 * u); // smoothstep
   };
 
-  // Lakes: pick low spots well clear of the track and carve smooth basins.
-  const lakes = makeLakes(track, rawHeight);
+  // Lakes: pick spots in the infield and carve smooth basins. Their water level
+  // includes the valley rise so they match the surrounding (raised) ground.
+  const lakes = makeLakes(track);
   _inLake = (x, z) => lakes.some((L) => Math.hypot(x - L.x, z - L.z) < L.shoreR);
 
-  // The track now has elevation, so blend the terrain from the road's height
-  // (right next to the tarmac) out to the big hills, instead of to a flat 0.
+  // Terrain is anchored to the nearest road height, then lifted by the valley
+  // rise as you move away from the tarmac, with a little rolling detail on top.
+  // This guarantees the ground always climbs into hillsides around the road, so
+  // scenery and landmarks on the slopes stay visible instead of sinking away.
   const heightAt = (x, z) => {
     const gi = track.groundInfo(x, z);
     const f = flatten(gi.dist);
-    // Sit just below the road/shoulder near the track to avoid z-fighting.
-    const h = gi.y * (1 - f) + rawHeight(x, z) * f - 0.25;
+    const h = gi.y - 0.25 + valleyRise(gi.dist) + f * detail(x, z);
     return carveLakes(lakes, x, z, h);
   };
 
@@ -116,7 +133,7 @@ export function buildWorld(scene, track) {
 // waterline, a flat beach plateau at `level` around it (so the flat water plane
 // can't look like it's floating on a slope), then a wide smooth ramp back to
 // the natural hills.
-function makeLakes(track, rawHeight) {
+function makeLakes(track) {
   // Sit lakes in the big open infield the track loops around. Pull each toward
   // the centre until its whole footprint clears the road (origin is the most
   // clear point, so this always converges).
@@ -132,8 +149,10 @@ function makeLakes(track, rawHeight) {
       x *= 0.85;
       z *= 0.85;
     }
-    if (track.distanceToCenter(x, z) < need) continue;
-    const level = rawHeight(x, z);
+    const gi = track.groundInfo(x, z);
+    if (gi.dist < need) continue;
+    // Match the surrounding raised ground (road height + valley rise).
+    const level = gi.y + valleyRise(gi.dist);
     lakes.push({
       x, z, level,
       floor: level - 6,
@@ -280,8 +299,8 @@ function buildGrass(scene, track, heightAt) {
 }
 
 function buildTerrain(scene, heightAt) {
-  const SIZE = 1500;
-  const SEG = 256;
+  const SIZE = 1900;
+  const SEG = 280;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
 
@@ -324,10 +343,10 @@ function buildTerrain(scene, heightAt) {
 function buildMountains(scene, heightAt) {
   const mat = new THREE.MeshStandardMaterial({ color: 0x6d6253, flatShading: true, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 1 });
-  const count = 18;
+  const count = 24;
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + Math.random() * 0.2;
-    const r = 640 + Math.random() * 140;
+    const r = 840 + Math.random() * 160;
     const h = 170 + Math.random() * 150;
     const rad = 90 + Math.random() * 70;
     const x = Math.cos(a) * r;
@@ -362,7 +381,7 @@ function scatter(count, track, flatten, minFlat, range) {
 function buildTrees(scene, track, heightAt, flatten) {
   // Each candidate spot is tagged with its biome, kept with that biome's tree
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
-  const spots = scatter(230, track, flatten, 0.55, 1300)
+  const spots = scatter(340, track, flatten, 0.55, 1700)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
     .filter((s) => s.y <= 30 && Math.random() < s.b.treeDensity);
@@ -457,7 +476,7 @@ function cactusGeometry() {
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
-  const spots = scatter(90, track, flatten, 0.4, 1300).filter((s) => !_inLake(s.x, s.z));
+  const spots = scatter(140, track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
   const geo = new THREE.IcosahedronGeometry(1, 0);
   const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1, flatShading: true });
   const rocks = new THREE.InstancedMesh(geo, mat, spots.length);
@@ -1134,37 +1153,28 @@ function makeBarn() {
 }
 
 // ---- Hero landmarks ----
-// A handful of big, distinctive structures placed around the horizon so the
-// world has landmarks you can navigate by. Each faces roughly toward the
-// world centre (where the track lives).
+// Place each landmark on the OUTER hillside beside the road (away from the
+// infield), where the valley rise lifts the ground, so it looms over the track
+// and is clearly visible while driving rather than hidden in a dip. Spread them
+// around the loop and face them back toward the road.
 function buildLandmarks(scene, track, heightAt) {
-  const specs = [
-    { make: makeLighthouse, angle: 0.6, radius: 230 },
-    { make: makeCastle, angle: 2.2, radius: 300 },
-    { make: makeFerrisWheel, angle: 3.5, radius: 250 },
-    { make: makeGiantCat, angle: 4.6, radius: 215 },
-    { make: makeBigWindmill, angle: 5.6, radius: 260 },
-  ];
-  for (const s of specs) {
-    const pos = placeLandmark(track, heightAt, s.angle, s.radius);
-    const obj = s.make();
-    obj.position.set(pos.x, pos.y, pos.z);
-    obj.rotation.y = Math.atan2(-pos.x, -pos.z); // face the world centre
+  const makers = [makeLighthouse, makeCastle, makeFerrisWheel, makeGiantCat, makeBigWindmill];
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  makers.forEach((make, k) => {
+    const i = Math.floor(((k + 0.5) / makers.length) * N) % N;
+    const p = track._pts[i];
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    // Outward = the side that points away from the world centre (the infield).
+    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+    const dist = 78 + Math.random() * 30;
+    const x = p.x + side.x * outward * dist;
+    const z = p.z + side.z * outward * dist;
+    const obj = make();
+    obj.position.set(x, heightAt(x, z), z);
+    obj.rotation.y = Math.atan2(p.x - x, p.z - z); // face back toward the road
     scene.add(obj);
-  }
-}
-
-// Walk outward from a target angle/radius until we're well clear of the track.
-function placeLandmark(track, heightAt, angle, radius) {
-  for (let r = radius; r < radius + 320; r += 20) {
-    const x = Math.cos(angle) * r;
-    const z = Math.sin(angle) * r;
-    if (track.distanceToCenter(x, z) > track.halfWidth + 40)
-      return { x, z, y: heightAt(x, z) };
-  }
-  const x = Math.cos(angle) * (radius + 340);
-  const z = Math.sin(angle) * (radius + 340);
-  return { x, z, y: heightAt(x, z) };
+  });
 }
 
 // A pole with a cloth flag that flutters (registered with _flutterers).
