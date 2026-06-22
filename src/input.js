@@ -16,6 +16,7 @@ export class Input {
 
     this._neutralRoll = null;
     this._neutralSamples = 0;
+    this._calNeutral = 0; // baseline neutral captured at calibrate; clamp anchor
     this._sign = -1; // steering sign, fixed at calibrate (see calibrate())
     this._haveMotion = false;
     this._keys = {};
@@ -60,6 +61,7 @@ export class Input {
   calibrate() {
     this._neutralRoll = null; // next motion events re-capture neutral
     this._neutralSamples = 0;
+    this._calNeutral = 0; // re-anchored once the new neutral settles
     const angle =
       (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
     this._sign = angle === 270 || angle === -90 ? 1 : -1;
@@ -86,19 +88,27 @@ export class Input {
       this._neutralSamples = 1;
       return;
     }
-    // Stabilise neutral by averaging the first several samples after calibrate.
+    // Stabilise neutral by averaging the first several samples after calibrate,
+    // then lock that value in as the baseline the auto-centre can't stray far from.
     if (this._neutralSamples < 8) {
       this._neutralRoll += shortArc(roll - this._neutralRoll) / (this._neutralSamples + 1);
       this._neutralSamples++;
+      if (this._neutralSamples === 8) this._calNeutral = this._neutralRoll;
     }
 
     const d = shortArc(roll - this._neutralRoll) * this._sign;
 
-    // Very gentle auto-recenter: only near neutral (so it never fights a real
-    // turn) and very slowly, to soak up a small calibration bias that would
-    // otherwise make the kart curve on its own when you think you're level.
-    if (this._neutralSamples >= 8 && Math.abs(d) < 0.15) {
-      this._neutralRoll += this._sign * d * 0.005;
+    // Gentle auto-centre to soak up a small resting bias — but CLAMPED so it can
+    // never accumulate into a real lean. On a turn-heavy track holding a steady
+    // tilt would otherwise drag "neutral" along with it; the clamp caps that, and
+    // straights (where you hold level) pull it back toward the calibrated value.
+    if (this._neutralSamples >= 8 && Math.abs(d) < 0.12) {
+      this._neutralRoll += this._sign * d * 0.004;
+      const drift = shortArc(this._neutralRoll - this._calNeutral);
+      const CLAMP = 0.07; // ~4°, well inside a deliberate turn
+      if (Math.abs(drift) > CLAMP) {
+        this._neutralRoll = this._calNeutral + Math.sign(drift) * CLAMP;
+      }
     }
 
     const MAX = 0.5; // ~29° of tilt for full lock
