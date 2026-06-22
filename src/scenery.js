@@ -1,10 +1,18 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
+// Registries of animated parts, filled in as the world is built and driven from
+// buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
+// lighthouse beam) and gentle flutterers (flags).
+const _spinners = []; // { obj, ax:'x'|'y'|'z', speed, phase }
+const _flutterers = []; // { obj, phase }
+
 // Builds the world around the track: rolling hills, distant mountains, a small
-// town of buildings, forests, rocks and a few drifting hot-air balloons.
-// Returns { update(time) } for the animated bits.
+// town of buildings, forests, rocks, hero landmarks, hot-air balloons and birds.
+// Returns { grass, update(time) } for the animated bits.
 export function buildWorld(scene, track) {
+  _spinners.length = 0;
+  _flutterers.length = 0;
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
 
   // Big rolling hills.
@@ -36,8 +44,10 @@ export function buildWorld(scene, track) {
   buildTrees(scene, track, heightAt, flatten);
   buildRocks(scene, track, heightAt, flatten);
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene);
+  const flocks = buildBirds(scene);
 
   return {
     grass,
@@ -46,6 +56,9 @@ export function buildWorld(scene, track) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
       }
+      for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
+      for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
+      for (const fl of flocks) updateFlock(fl, time);
       const sh = grass && grass.material.userData.shader;
       if (sh) sh.uniforms.uTime.value = time;
     },
@@ -565,7 +578,7 @@ function makeWindmill() {
   part(parts, new THREE.CylinderGeometry(1.1, 1.8, tH, 10).translate(0, tH / 2, 0), 0xe6dcc6);
   part(parts, new THREE.ConeGeometry(1.6, 1.6, 10).translate(0, tH + 0.8, 0), 0x7a4a36);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  // sails (a separate spinning-looking cross at the front)
+  // sails — a cross of blades at the front that actually turns in the wind
   const sailMat = mat(0xf4efe2);
   const hub = new THREE.Group();
   hub.position.set(0, tH, 1.7);
@@ -578,6 +591,7 @@ function makeWindmill() {
     hub.add(arm);
   }
   g.add(hub);
+  _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: Math.random() * 6.28 });
   return g;
 }
 
@@ -877,6 +891,305 @@ function makeBarn() {
   door.position.set(0, 2, 4.02);
   g.add(door);
   return g;
+}
+
+// ---- Hero landmarks ----
+// A handful of big, distinctive structures placed around the horizon so the
+// world has landmarks you can navigate by. Each faces roughly toward the
+// world centre (where the track lives).
+function buildLandmarks(scene, track, heightAt) {
+  const specs = [
+    { make: makeLighthouse, angle: 0.6, radius: 230 },
+    { make: makeCastle, angle: 2.2, radius: 300 },
+    { make: makeFerrisWheel, angle: 3.5, radius: 250 },
+    { make: makeGiantCat, angle: 4.6, radius: 215 },
+    { make: makeBigWindmill, angle: 5.6, radius: 260 },
+  ];
+  for (const s of specs) {
+    const pos = placeLandmark(track, heightAt, s.angle, s.radius);
+    const obj = s.make();
+    obj.position.set(pos.x, pos.y, pos.z);
+    obj.rotation.y = Math.atan2(-pos.x, -pos.z); // face the world centre
+    scene.add(obj);
+  }
+}
+
+// Walk outward from a target angle/radius until we're well clear of the track.
+function placeLandmark(track, heightAt, angle, radius) {
+  for (let r = radius; r < radius + 320; r += 20) {
+    const x = Math.cos(angle) * r;
+    const z = Math.sin(angle) * r;
+    if (track.distanceToCenter(x, z) > track.halfWidth + 40)
+      return { x, z, y: heightAt(x, z) };
+  }
+  const x = Math.cos(angle) * (radius + 340);
+  const z = Math.sin(angle) * (radius + 340);
+  return { x, z, y: heightAt(x, z) };
+}
+
+// A pole with a cloth flag that flutters (registered with _flutterers).
+function makeFlag(height = 3, color) {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, height, 6), mat(0x5d4037));
+  pole.position.y = height / 2;
+  g.add(pole);
+  const pivot = new THREE.Group();
+  pivot.position.y = height - 0.4;
+  const cloth = new THREE.Mesh(
+    new THREE.PlaneGeometry(1.6, 1.0),
+    mat(color ?? pick([0xd23a2a, 0x2a7ad2, 0x2e9e4a, 0xe0a52a]), { side: THREE.DoubleSide })
+  );
+  cloth.position.x = 0.8;
+  pivot.add(cloth);
+  g.add(pivot);
+  _flutterers.push({ obj: pivot, phase: Math.random() * 6.28 });
+  return g;
+}
+
+function makeLighthouse() {
+  const g = new THREE.Group();
+  const h = 20;
+  const bands = 5;
+  for (let i = 0; i < bands; i++) {
+    const r0 = 2.4 - (i / bands) * 1.0;
+    const r1 = 2.4 - ((i + 1) / bands) * 1.0;
+    const seg = new THREE.Mesh(
+      new THREE.CylinderGeometry(r1, r0, h / bands, 16),
+      mat(i % 2 ? 0xd23a2a : 0xf5f0e6)
+    );
+    seg.position.y = (i + 0.5) * (h / bands);
+    seg.castShadow = true;
+    g.add(seg);
+  }
+  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 0.6, 16), mat(0x37474f));
+  gallery.position.y = h;
+  g.add(gallery);
+  const lamp = new THREE.Mesh(
+    new THREE.CylinderGeometry(1.3, 1.3, 2.2, 12),
+    mat(0xfff3c4, { emissive: 0xffe082, emissiveIntensity: 0.9 })
+  );
+  lamp.position.y = h + 1.4;
+  g.add(lamp);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.7, 1.6, 12), mat(0x2b2b2b));
+  roof.position.y = h + 3.3;
+  g.add(roof);
+  // A long translucent beam that sweeps around (MeshBasic, so it stays glowing).
+  const beamHub = new THREE.Group();
+  beamHub.position.y = h + 1.4;
+  const beam = new THREE.Mesh(
+    new THREE.ConeGeometry(1.3, 24, 4, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: 0xfff6c0,
+      transparent: true,
+      opacity: 0.16,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    })
+  );
+  beam.rotation.z = Math.PI / 2;
+  beam.position.x = 12;
+  beamHub.add(beam);
+  g.add(beamHub);
+  _spinners.push({ obj: beamHub, ax: "y", speed: 0.8, phase: 0 });
+  return g;
+}
+
+function makeCastle() {
+  const g = new THREE.Group();
+  const stone = 0xb9b3a6;
+  const stone2 = 0x9c968a;
+  const parts = [];
+  // Central keep + crenellations.
+  part(parts, new THREE.BoxGeometry(10, 9, 10).translate(0, 4.5, 0), stone);
+  const merlon = (x, z) => part(parts, new THREE.BoxGeometry(1.1, 1.3, 1.1).translate(x, 9.65, z), stone2);
+  for (let t = -4; t <= 4; t += 2) {
+    merlon(t, 5);
+    merlon(t, -5);
+    merlon(5, t);
+    merlon(-5, t);
+  }
+  // Gatehouse door.
+  part(parts, new THREE.BoxGeometry(2.4, 3.4, 0.3).translate(0, 1.7, 5), 0x4a2f1c);
+  // Four corner towers.
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1])
+      part(parts, new THREE.CylinderGeometry(2, 2.2, 12, 10).translate(sx * 6, 6, sz * 6), stone);
+  g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
+  // Conical tower roofs + flags (separate so they keep their colours/animation).
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(2.6, 3.6, 10), mat(0x4f6e78));
+      cone.position.set(sx * 6, 13.8, sz * 6);
+      g.add(cone);
+      const flag = makeFlag(3);
+      flag.position.set(sx * 6, 15.6, sz * 6);
+      g.add(flag);
+    }
+  return g;
+}
+
+function makeFerrisWheel() {
+  const g = new THREE.Group();
+  const R = 11;
+  const steel = mat(0x9099a3);
+  // A-frame supports.
+  for (const sx of [-1, 1])
+    for (const lean of [-1, 1]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, R * 1.55, 8), steel);
+      leg.position.set(sx * 4, R * 0.72, lean * 3);
+      leg.rotation.x = lean * 0.34;
+      leg.castShadow = true;
+      g.add(leg);
+    }
+  const wheel = new THREE.Group();
+  wheel.position.set(0, R + 2, 0);
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(R, 0.3, 8, 36), steel));
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, 0.2, 8, 28), steel));
+  const cabCols = [0xd23a2a, 0x2a7ad2, 0x2e9e4a, 0xe0a52a, 0xab47bc, 0xff8f00];
+  const n = 12;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const cx = Math.cos(a) * R;
+    const cy = Math.sin(a) * R;
+    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, R, 6), steel);
+    spoke.position.set(cx / 2, cy / 2, 0);
+    spoke.rotation.z = a - Math.PI / 2;
+    wheel.add(spoke);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 1.6), mat(cabCols[i % cabCols.length]));
+    cab.position.set(cx, cy, 0);
+    wheel.add(cab);
+  }
+  g.add(wheel);
+  _spinners.push({ obj: wheel, ax: "z", speed: 0.25, phase: 0 });
+  return g;
+}
+
+function makeGiantCat() {
+  const g = new THREE.Group();
+  const stone = mat(0xc9c2b4);
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5, 1.2, 20), mat(0x8a8278));
+  base.position.y = 0.6;
+  g.add(base);
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.6, 8, 16), stone);
+  body.position.y = 4.8;
+  body.castShadow = true;
+  g.add(body);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 16), stone);
+  chest.position.set(0, 4, 1.4);
+  chest.scale.set(1, 1.2, 0.8);
+  g.add(chest);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 16), stone);
+  head.position.y = 10.2;
+  g.add(head);
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.9, 4), stone);
+    ear.position.set(sx * 1.3, 12.3, 0);
+    g.add(ear);
+    const eye = new THREE.Mesh(
+      new THREE.SphereGeometry(0.45, 10, 10),
+      mat(0x2b2b2b, { emissive: 0x0a3a2a, emissiveIntensity: 0.25 })
+    );
+    eye.position.set(sx * 0.95, 10.7, 2.2);
+    g.add(eye);
+  }
+  const tail = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.5, 8, 16, Math.PI * 1.2), stone);
+  tail.position.set(2.8, 2.0, 1.4);
+  tail.rotation.set(Math.PI / 2, 0, 0.5);
+  g.add(tail);
+  const collar = new THREE.Mesh(
+    new THREE.TorusGeometry(2.2, 0.32, 8, 16),
+    mat(0xe0a52a, { emissive: 0xe0a52a, emissiveIntensity: 0.3 })
+  );
+  collar.position.y = 8.0;
+  collar.rotation.x = Math.PI / 2;
+  collar.scale.set(1, 0.9, 1);
+  g.add(collar);
+  return g;
+}
+
+function makeBigWindmill() {
+  const g = new THREE.Group();
+  const tH = 16;
+  const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4, tH, 12), mat(0xe6dcc6));
+  tower.position.y = tH / 2;
+  tower.castShadow = true;
+  g.add(tower);
+  const balcony = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.4, 12), mat(0x5d4037));
+  balcony.position.y = tH * 0.55;
+  g.add(balcony);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(3.2, 3, 12), mat(0x7a4a36));
+  cap.position.y = tH + 1.2;
+  g.add(cap);
+  const hub = new THREE.Group();
+  hub.position.set(0, tH * 0.92, 3.4);
+  for (let i = 0; i < 4; i++) {
+    const arm = new THREE.Group();
+    const spar = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9, 0.3), mat(0x6b4a2b));
+    spar.position.y = 4.5;
+    arm.add(spar);
+    const cloth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 8, 0.1), mat(0xf4efe2));
+    cloth.position.set(1.3, 4.5, 0);
+    arm.add(cloth);
+    arm.rotation.z = (i / 4) * Math.PI * 2;
+    hub.add(arm);
+  }
+  g.add(hub);
+  _spinners.push({ obj: hub, ax: "z", speed: 0.5, phase: Math.random() * 6.28 });
+  const flag = makeFlag(2.6);
+  flag.position.y = tH + 2.6;
+  g.add(flag);
+  return g;
+}
+
+// ---- Birds ----
+// A few flocks of simple birds circling high in the sky, wings flapping.
+function buildBirds(scene) {
+  const flocks = [];
+  const birdMat = mat(0x33373d, { flatShading: true });
+  for (let f = 0; f < 3; f++) {
+    const flock = new THREE.Group();
+    const wings = [];
+    const count = 4 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < count; i++) {
+      const bird = new THREE.Group();
+      for (const sx of [-1, 1]) {
+        const wg = new THREE.Group();
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat);
+        wing.position.x = sx * 1.1;
+        wg.add(wing);
+        bird.add(wg);
+        wings.push({ wg, sx, phase: Math.random() * 6.28 });
+      }
+      bird.position.set((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 18);
+      bird.scale.setScalar(0.7 + Math.random() * 0.6);
+      flock.add(bird);
+    }
+    scene.add(flock);
+    flocks.push({
+      flock,
+      wings,
+      R: 130 + Math.random() * 170,
+      cx: (Math.random() - 0.5) * 320,
+      cz: (Math.random() - 0.5) * 320,
+      baseY: 85 + Math.random() * 55,
+      speed: (0.05 + Math.random() * 0.05) * (Math.random() < 0.5 ? 1 : -1),
+      phase: Math.random() * 6.28,
+    });
+  }
+  return flocks;
+}
+
+function updateFlock(fl, time) {
+  const a = time * fl.speed + fl.phase;
+  fl.flock.position.set(
+    fl.cx + Math.cos(a) * fl.R,
+    fl.baseY + Math.sin(time * 0.3 + fl.phase) * 5,
+    fl.cz + Math.sin(a) * fl.R
+  );
+  fl.flock.rotation.y = -a + (fl.speed > 0 ? -Math.PI / 2 : Math.PI / 2); // face travel
+  for (const w of fl.wings) {
+    w.wg.rotation.z = w.sx * (0.25 + Math.sin(time * 8 + w.phase) * 0.55);
+  }
 }
 
 function buildBalloons(scene) {
