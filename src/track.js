@@ -21,7 +21,7 @@ function noiseTexture() {
 // onto the track (lap timing, AI, containment, ground height).
 export class Track {
   constructor() {
-    this.width = 22;
+    this.width = 30;
     this.halfWidth = this.width / 2;
 
     // Control points (x, z, y) — a long, flowing circuit that turns both ways

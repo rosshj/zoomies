@@ -100,16 +100,15 @@ export class Input {
       this._neutralRoll += this._sign * d * 0.005;
     }
 
-    const MAX = 0.7; // ~40° of tilt for full lock (need a real tilt to turn hard)
+    const MAX = 0.58; // ~33° of tilt for full lock
     const DEAD = 0.05;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;
     else s -= Math.sign(s) * DEAD;
 
-    // Strong expo curve so small tilts give small steering and only big tilts
-    // give a big turn — like a real steering wheel.
+    // Expo curve: gentle near centre, but responsive enough overall.
     const norm = Math.max(-1, Math.min(1, s / MAX));
-    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 2.2);
+    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 1.8);
     this._keyboardSteering = false;
   }
 
