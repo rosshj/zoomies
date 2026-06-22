@@ -49,8 +49,8 @@ const outlinePass = new ShaderPass({
     tDiffuse: { value: null },
     tNormal: { value: normalTarget.texture },
     uTexel: { value: new THREE.Vector2(1 / _sz.x, 1 / _sz.y) },
-    uThickness: { value: 1.2 },
-    uThresh: { value: 0.28 },
+    uThickness: { value: 1.6 },
+    uThresh: { value: 0.16 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
@@ -65,11 +65,14 @@ const outlinePass = new ShaderPass({
       vec3 nu = texture2D(tNormal, vUv + vec2(0.0, o.y)).rgb;
       vec3 nd = texture2D(tNormal, vUv - vec2(0.0, o.y)).rgb;
       float e = distance(n, nr) + distance(n, nl) + distance(n, nu) + distance(n, nd);
-      float edge = smoothstep(uThresh, uThresh + 0.45, e);
-      gl_FragColor = vec4(mix(c, vec3(0.05, 0.05, 0.07), edge * 0.85), 1.0);
+      float edge = smoothstep(uThresh, uThresh + 0.25, e);
+      gl_FragColor = vec4(mix(c, vec3(0.02, 0.02, 0.04), edge), 1.0);
     }`,
 });
 composer.addPass(outlinePass);
+// ShaderPass clones the uniforms (cloning the texture too) — repoint tNormal at
+// the live normal buffer so the edge detector actually reads it.
+outlinePass.uniforms.tNormal.value = normalTarget.texture;
 
 // Color grade (saturation + contrast + vignette) and chromatic aberration.
 // Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
@@ -111,7 +114,7 @@ const world = buildWorld(scene, track);
 
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
-  const steps = new Uint8Array([95, 200, 255]); // 3 bands (fewer, bolder)
+  const steps = new Uint8Array([55, 165, 255]); // 3 bands, dark shadow for punch
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
