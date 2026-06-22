@@ -298,7 +298,7 @@ export class Kart {
     const speedFactor = Math.min(1, Math.abs(this.speed) / 10);
     const dir = this.speed >= 0 ? 1 : -1;
     let steer = this.steerInput;
-    let turnRate = 1.7; // rad/sec at full
+    let turnRate = 1.6; // rad/sec at full
     if (this.drifting) {
       turnRate = 1.8;
       // The drift has a gentle inherent pull; steering has strong authority over

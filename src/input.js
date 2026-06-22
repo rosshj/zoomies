@@ -97,15 +97,16 @@ export class Input {
     // gentle turn got absorbed into neutral, so straight became a tilt). The
     // neutral is set by calibrate() at the start and via the "center steering"
     // button; a fixed deadzone keeps small jitter from leaking.
-    const MAX = 0.55; // ~31° of tilt for full lock (less sensitive)
+    const MAX = 0.7; // ~40° of tilt for full lock (need a real tilt to turn hard)
     const DEAD = 0.05;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;
     else s -= Math.sign(s) * DEAD;
 
-    // Expo curve: gentler near centre, full lock still reachable.
+    // Strong expo curve so small tilts give small steering and only big tilts
+    // give a big turn — like a real steering wheel.
     const norm = Math.max(-1, Math.min(1, s / MAX));
-    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 1.5);
+    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 2.2);
     this._keyboardSteering = false;
   }
 
