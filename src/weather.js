@@ -6,6 +6,8 @@ import * as THREE from "three";
 export class Weather {
   constructor(scene) {
     this.mode = "none";
+    this.base = "none"; // mood weather (none / rain)
+    this.snow = 0; // alpine snow overlay intensity 0..1 (altitude-driven)
     this.count = 2600;
     this.box = { w: 150, h: 95, d: 150 };
 
@@ -38,6 +40,8 @@ export class Weather {
       sizeAttenuation: true,
       fog: true,
     });
+    this._rainOpacity = 0.9;
+    this._snowOpacity = 1.0;
 
     this.points = new THREE.Points(this.geo, this.rainMat);
     this.points.visible = false;
@@ -46,11 +50,35 @@ export class Weather {
     scene.add(this.points);
   }
 
-  setMode(mode) {
-    this.mode = mode;
-    this.points.visible = mode !== "none";
-    if (mode === "rain") this.points.material = this.rainMat;
-    else if (mode === "snow") this.points.material = this.snowMat;
+  // The mood's base weather (clear or rain).
+  setBase(mode) {
+    this.base = mode;
+    this._refresh();
+  }
+
+  // Alpine snow overlay intensity (0..1), driven by the player's altitude so it
+  // fades in/out gradually as you climb into / descend from the snowy pass.
+  setSnow(intensity) {
+    this.snow = Math.max(0, Math.min(1, intensity));
+    this._refresh();
+  }
+
+  _refresh() {
+    if (this.snow > 0.02) {
+      // Snow wins where it's snowing; its opacity fades with intensity.
+      this.mode = "snow";
+      this.points.material = this.snowMat;
+      this.snowMat.opacity = this._snowOpacity * this.snow;
+      this.points.visible = true;
+    } else if (this.base === "rain") {
+      this.mode = "rain";
+      this.points.material = this.rainMat;
+      this.rainMat.opacity = this._rainOpacity;
+      this.points.visible = true;
+    } else {
+      this.mode = "none";
+      this.points.visible = false;
+    }
   }
 
   update(dt, camPos) {

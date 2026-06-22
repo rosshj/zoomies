@@ -27,6 +27,7 @@ for (const b of BIOMES) {
 }
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const SNOW_WHITE = new THREE.Color(0xeef4fa);
 
 function biomeAt(x, z) {
   const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
@@ -117,7 +118,7 @@ export function buildWorld(scene, track) {
   // Lakes: a big one in the open infield (the loop wraps right around it) plus a
   // couple of smaller ones out on the hills. Their level matches the ground.
   const lakes = makeLakes(track, baseHeight);
-  _inLake = (x, z) => lakes.some((L) => Math.hypot(x - L.x, z - L.z) < L.shoreR);
+  _inLake = (x, z) => lakes.some((L) => lakeDist(L, x, z) < L.shoreR);
 
   const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
 
@@ -161,25 +162,42 @@ export function buildWorld(scene, track) {
 function makeLakes(track, baseHeight) {
   const lakes = [];
 
-  // Hero lake: hugs the inside of the flat bottom curve, right beside the road.
-  // Its surface sits just below the lowest nearby road height (so the road
-  // always stays ABOVE the shore — otherwise a raised shore buries the kart),
-  // with a short bank up to the tarmac. _inLake clears props on that side so
-  // nothing blocks the view. Sized from local clearance so it never hits the road.
+  // Hero lake: a curved RIBBON that follows the inside of the flat bottom arc,
+  // so it hugs the road's shape instead of bulging in like a circle would. Its
+  // surface sits just below the lowest road height along the arc (so the road
+  // always stays above the shore and never buries the kart), with a short bank
+  // up to the tarmac. _inLake clears props on that side so nothing blocks it.
   {
-    const cx = 0, cz = -290;
-    const gi = track.groundInfo(cx, cz);
-    if (gi.dist > 60) {
-      const level = gi.y - 4; // just below the lowest part of the flat bottom curve
-      lakes.push({
-        x: cx, z: cz,
-        level,
-        floor: level - 8,
-        waterR: gi.dist - 22, // water edge ~6 past the barrier
-        shoreR: gi.dist - 4, // flat shore stops just short of the road
-        blendR: gi.dist + 12, // short bank ramps up to road height at the tarmac
+    const N = track.samples;
+    const up = new THREE.Vector3(0, 1, 0);
+    const gap = 6;
+    const waterR = 46; // half-width of the ribbon
+    const i0 = Math.round(0.93 * N);
+    const i1 = Math.round(1.07 * N);
+    const spine = [];
+    let minY = Infinity;
+    for (let i = i0; i <= i1; i += 2) {
+      const idx = ((i % N) + N) % N;
+      const p = track._pts[idx];
+      const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
+      const inSign = side.x * p.x + side.z * p.z >= 0 ? -1 : 1; // unit dir toward infield
+      const off = track.halfWidth + gap + waterR; // ribbon centreline offset
+      spine.push({
+        x: p.x + side.x * inSign * off,
+        z: p.z + side.z * inSign * off,
+        sx: side.x * inSign,
+        sz: side.z * inSign,
       });
+      if (p.y < minY) minY = p.y;
     }
+    const level = minY - 4;
+    lakes.push({
+      ribbon: true, spine, level,
+      floor: level - 8,
+      waterR,
+      shoreR: waterR + 12,
+      blendR: waterR + 30,
+    });
   }
 
   // A couple of scenic hill lakes out in the open, kept clear of the road.
@@ -202,9 +220,27 @@ function makeLakes(track, baseHeight) {
   return lakes;
 }
 
+// Distance from (x,z) to a lake — radial for a circle lake, nearest-point on the
+// spine polyline for a ribbon lake.
+function lakeDist(L, x, z) {
+  if (!L.ribbon) return Math.hypot(x - L.x, z - L.z);
+  let md = Infinity;
+  const sp = L.spine;
+  for (let i = 0; i < sp.length - 1; i++) {
+    const a = sp[i], b = sp[i + 1];
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const len2 = dx * dx + dz * dz || 1;
+    let t = ((x - a.x) * dx + (z - a.z) * dz) / len2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const d = Math.hypot(x - (a.x + dx * t), z - (a.z + dz * t));
+    if (d < md) md = d;
+  }
+  return md;
+}
+
 function carveLakes(lakes, x, z, h) {
   for (const L of lakes) {
-    const d = Math.hypot(x - L.x, z - L.z);
+    const d = lakeDist(L, x, z);
     if (d >= L.blendR) continue;
     if (d < L.waterR) {
       const u = d / L.waterR; // 0 centre .. 1 shoreline
@@ -220,47 +256,111 @@ function carveLakes(lakes, x, z, h) {
   return h;
 }
 
-// Stylised toon water: a flat saturated plane with soft diagonal ripple bands
-// drifting across it and a foamy shoreline — no concentric/pinwheel pattern.
+// Stylised toon water shared by round and ribbon lakes. Colour/foam are driven
+// by a per-vertex "shore" value (0 at the centre/spine, 1 at the bank) and a
+// "len" value along the water, so there's no concentric/pinwheel pattern.
+function makeWaterMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    side: THREE.DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uDeep: { value: new THREE.Color(0x1f6f8c) },
+      uShallow: { value: new THREE.Color(0x57c6d6) },
+      uFoam: { value: new THREE.Color(0xeafcff) },
+    },
+    vertexShader: `
+      attribute float aShore; attribute float aLen;
+      varying float vShore; varying float vLen;
+      void main(){ vShore = aShore; vLen = aLen;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform float uTime; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoam;
+      varying float vShore; varying float vLen;
+      void main(){
+        vec3 col = mix(uDeep, uShallow, smoothstep(0.0, 1.0, vShore));
+        float w1 = sin(vLen * 40.0 + vShore * 8.0 + uTime * 1.4);
+        float w2 = sin(vLen * 26.0 - vShore * 5.0 - uTime * 1.0);
+        float ripple = smoothstep(0.55, 0.95, w1 * 0.5 + 0.5) * 0.6
+                     + smoothstep(0.65, 0.98, w2 * 0.5 + 0.5) * 0.4;
+        col = mix(col, col * 1.18, ripple * 0.5);
+        float foam = smoothstep(0.84, 0.995, vShore);
+        col = mix(col, uFoam, foam);
+        gl_FragColor = vec4(col, 0.9);
+      }`,
+  });
+}
+
 function buildWater(scene, lakes) {
   const mats = [];
   for (const L of lakes) {
-    const geo = new THREE.CircleGeometry(L.waterR, 56);
-    geo.rotateX(-Math.PI / 2);
-    const matW = new THREE.ShaderMaterial({
-      transparent: true,
-      uniforms: {
-        uTime: { value: 0 },
-        uDeep: { value: new THREE.Color(0x1f6f8c) },
-        uShallow: { value: new THREE.Color(0x57c6d6) },
-        uFoam: { value: new THREE.Color(0xeafcff) },
-      },
-      vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `
-        uniform float uTime; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoam;
-        varying vec2 vUv;
-        void main(){
-          vec2 p = vUv - 0.5;
-          float r = length(p) * 2.0;           // 0 centre .. 1 edge
-          // Deep in the middle, shallower toward the shore.
-          vec3 col = mix(uDeep, uShallow, smoothstep(0.2, 1.0, r));
-          // Soft diagonal ripple bands drifting across (no centre pattern).
-          float w1 = sin((vUv.x + vUv.y) * 46.0 + uTime * 1.4);
-          float w2 = sin((vUv.x - vUv.y) * 38.0 - uTime * 1.0);
-          float ripple = smoothstep(0.55, 0.95, w1 * 0.5 + 0.5) * 0.6
-                       + smoothstep(0.65, 0.98, w2 * 0.5 + 0.5) * 0.4;
-          col = mix(col, col * 1.18, ripple * 0.5);
-          float foam = smoothstep(0.86, 0.995, r);  // shoreline foam ring
-          col = mix(col, uFoam, foam);
-          gl_FragColor = vec4(col, 0.9);
-        }`,
-    });
-    const mesh = new THREE.Mesh(geo, matW);
-    mesh.position.set(L.x, L.level + 0.05, L.z);
+    const mat = makeWaterMaterial();
+    const mesh = L.ribbon ? ribbonWaterMesh(L, mat) : circleWaterMesh(L, mat);
     scene.add(mesh);
-    mats.push(matW);
+    mats.push(mat);
   }
   return mats;
+}
+
+function circleWaterMesh(L, mat) {
+  const geo = new THREE.CircleGeometry(L.waterR, 56);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  const shore = new Float32Array(pos.count);
+  const lenA = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i);
+    shore[i] = Math.min(1, Math.hypot(x, z) / L.waterR);
+    lenA[i] = Math.atan2(z, x) / (Math.PI * 2) + 0.5;
+  }
+  geo.setAttribute("aShore", new THREE.BufferAttribute(shore, 1));
+  geo.setAttribute("aLen", new THREE.BufferAttribute(lenA, 1));
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(L.x, L.level + 0.05, L.z);
+  return mesh;
+}
+
+// A flat ribbon following the spine (left edge / centre / right edge per
+// sample) with rounded end caps, so the water hugs the curve of the road.
+function ribbonWaterMesh(L, mat) {
+  const sp = L.spine, half = L.waterR, n = sp.length;
+  const pos = [], shore = [], lenA = [], idx = [];
+  for (let j = 0; j < n; j++) {
+    const s = sp[j], u = j / (n - 1);
+    pos.push(s.x - s.sx * half, 0, s.z - s.sz * half); shore.push(1); lenA.push(u);
+    pos.push(s.x, 0, s.z); shore.push(0); lenA.push(u);
+    pos.push(s.x + s.sx * half, 0, s.z + s.sz * half); shore.push(1); lenA.push(u);
+  }
+  for (let j = 0; j < n - 1; j++) {
+    const a = j * 3, b = (j + 1) * 3;
+    idx.push(a, b, a + 1, a + 1, b, b + 1);
+    idx.push(a + 1, b + 1, a + 2, a + 2, b + 1, b + 2);
+  }
+  const cap = (end, nb) => {
+    const s = sp[end];
+    let tx = sp[end].x - sp[nb].x, tz = sp[end].z - sp[nb].z;
+    const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
+    const c = pos.length / 3;
+    pos.push(s.x, 0, s.z); shore.push(0); lenA.push(end === 0 ? 0 : 1);
+    const SEG = 8, start = c + 1;
+    for (let k = 0; k <= SEG; k++) {
+      const ang = (k / SEG) * Math.PI - Math.PI / 2;
+      const dx = Math.cos(ang) * tx + Math.sin(ang) * s.sx;
+      const dz = Math.cos(ang) * tz + Math.sin(ang) * s.sz;
+      pos.push(s.x + dx * half, 0, s.z + dz * half); shore.push(1); lenA.push(end === 0 ? 0 : 1);
+    }
+    for (let k = 0; k < SEG; k++) idx.push(c, start + k, start + k + 1);
+  };
+  cap(0, 1);
+  cap(n - 1, n - 2);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("aShore", new THREE.Float32BufferAttribute(shore, 1));
+  geo.setAttribute("aLen", new THREE.Float32BufferAttribute(lenA, 1));
+  geo.setIndex(idx);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = L.level + 0.05; // spine positions are already world x/z
+  return mesh;
 }
 
 // Instanced grass blades along the roadside, swaying in the wind.
@@ -493,7 +593,9 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
 
     let h = b.foliage[0];
     if (b.name === "autumn") h += (Math.random() - 0.5) * 0.12; // mix red/orange/gold
-    foliage.setColorAt(i, col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (Math.random() - 0.5) * 0.1, 0.14, 0.6)));
+    col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (Math.random() - 0.5) * 0.1, 0.14, 0.6));
+    if (b.name === "alpine") col.lerp(SNOW_WHITE, 0.45); // snow-dusted pines
+    foliage.setColorAt(i, col);
   });
   trunks.instanceMatrix.needsUpdate = true;
   foliage.instanceMatrix.needsUpdate = true;
@@ -749,13 +851,13 @@ function buildRoadside(scene, track, heightAt) {
       if (town) {
         // Front shops right by the road.
         if (Math.random() < 0.62 + density * 0.32)
-          place(() => makeTownStructure(density), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
+          place((b) => makeTownStructure(density, b), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
         // Several rows of houses stacking back up the hillside, thinning with
         // depth so the town recedes into the hills instead of being a thin strip.
         const rows = [13, 24, 36, 50, 66];
         for (let r = 0; r < rows.length; r++) {
           if (Math.random() < (0.52 + density * 0.4) * (1 - r * 0.15))
-            place(() => makeBuilding(density), halfW + rows[r] + Math.random() * 7, dir, p, side, true);
+            place((b) => makeBuilding(density, b), halfW + rows[r] + Math.random() * 7, dir, p, side, true);
         }
         if (Math.random() < 0.5)
           place(makeStreetProp, halfW + 3.2 + Math.random() * 1.4, dir, p, side, true);
@@ -831,7 +933,7 @@ function bodyMaterial(wall) {
 
 // A detailed small-town / farm building: foundation, trim, varied overhanging
 // roof, chimney, dormer, framed door + awning, sometimes an L-shaped wing.
-function makeBuilding(density) {
+function makeBuilding(density, biome) {
   const g = new THREE.Group();
   const w = 4 + Math.random() * 3.5;
   const d = 4 + Math.random() * 3.5;
@@ -841,9 +943,12 @@ function makeBuilding(density) {
   const h = floors * 2.7;
   const base = 0.6;
   const top = base + h;
-  const wall = pick(BUILDING_PALETTE);
-  const roofCol = pick(ROOF_PALETTE);
-  const trim = pick(TRIM_PALETTE);
+  // In the alpine (snow) biome, frost the walls and snow-cover the roof.
+  const snow = biome && biome.name === "alpine";
+  let wall = pick(BUILDING_PALETTE);
+  if (snow) wall = new THREE.Color(wall).lerp(new THREE.Color(0xffffff), 0.3).getHex();
+  const roofCol = snow ? 0xeef4fa : pick(ROOF_PALETTE);
+  const trim = snow ? 0xdfe8f0 : pick(TRIM_PALETTE);
 
   // Window-lit body (+ optional wing), merged into one emissive mesh.
   const bodyParts = [new THREE.BoxGeometry(w, h, d).translate(0, base + h / 2, 0)];
@@ -905,11 +1010,11 @@ function makeBuilding(density) {
 }
 
 // Pick a town structure — mostly houses, occasionally a landmark.
-function makeTownStructure(density) {
+function makeTownStructure(density, biome) {
   const r = Math.random();
   if (r < 0.05) return makeChurch();
   if (r < 0.09) return makeWaterTower();
-  return makeBuilding(density);
+  return makeBuilding(density, biome);
 }
 
 function makeChurch() {
