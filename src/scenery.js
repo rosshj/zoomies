@@ -394,6 +394,10 @@ function buildGrass(scene, track, heightAt) {
   mat.userData.skipToon = true; // keep the wind vertex shader
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = { value: 0 };
+    // View-space sun direction + colour, updated each frame, for a backlit glow
+    // so the meadow lights up when the sun is behind it (atmospheric warmth).
+    shader.uniforms.uSunView = { value: new THREE.Vector3(0, 0, 1) };
+    shader.uniforms.uSunCol = { value: new THREE.Color(0xffe6b0) };
     shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
@@ -401,6 +405,16 @@ function buildGrass(scene, track, heightAt) {
        float ph = instanceMatrix[3][0] * 0.15 + instanceMatrix[3][2] * 0.15;
        transformed.x += sin(uTime * 1.6 + ph) * 0.18 * position.y;
        transformed.z += cos(uTime * 1.3 + ph) * 0.10 * position.y;`
+    );
+    shader.fragmentShader =
+      "uniform vec3 uSunView;\nuniform vec3 uSunCol;\n" + shader.fragmentShader;
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <dithering_fragment>",
+      `#include <dithering_fragment>
+       // Looking toward the sun through the blade -> warm translucent glow,
+       // strongest near the (lighter) tips.
+       float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
+       gl_FragColor.rgb += uSunCol * backlit * (0.35 + 0.65 * vColor.g);`
     );
     mat.userData.shader = shader;
   };

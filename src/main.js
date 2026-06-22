@@ -19,7 +19,7 @@ import { EffectsManager } from "./effects.js";
 
 const TOTAL_LAPS = 3;
 
-const { renderer, scene, camera, applyMood } = createScene();
+const { renderer, scene, camera, sun, applyMood } = createScene();
 const weather = new Weather(scene);
 let snowMix = 0; // smoothed alpine-snow intensity (0..1), ramped by altitude
 // The main camera sees everything; the rear-view camera stays on layer 0, so
@@ -39,10 +39,46 @@ const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5,
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 
-// (Cartoon ink outlines were removed: full-scene screen-space outlines smeared
-// on dense procedural geometry and read poorly on mobile. The cel look now comes
-// purely from toon banding + bold colors, which is clean and artifact-free.)
-
+// --- Atmosphere: screen-space god-rays (crepuscular light shafts) ---
+// A cheap radial blur of the bright sky toward the sun's screen position: where
+// dark trees/buildings interrupt the bright sky, the gaps read as light shafts.
+// No second scene render, so it stays mobile-friendly.
+const godrayPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uSun: { value: new THREE.Vector2(0.5, 0.7) }, // sun position in screen UV
+    uVis: { value: 0 }, // 0 when sun is hidden / behind camera
+    uColor: { value: new THREE.Color(0xffe6b0) },
+    uDensity: { value: 0.85 },
+    uWeight: { value: 1.5 },
+    uDecay: { value: 0.95 },
+    uThreshold: { value: 0.55 },
+  },
+  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uVis;
+    uniform vec3 uColor; uniform float uDensity; uniform float uWeight;
+    uniform float uDecay; uniform float uThreshold; varying vec2 vUv;
+    const int N = 24;
+    void main(){
+      vec3 orig = texture2D(tDiffuse, vUv).rgb;
+      if (uVis <= 0.001) { gl_FragColor = vec4(orig, 1.0); return; }
+      vec2 delta = (vUv - uSun) * (uDensity / float(N));
+      vec2 coord = vUv;
+      float illum = 1.0;
+      vec3 accum = vec3(0.0);
+      for (int i = 0; i < N; i++) {
+        coord -= delta;
+        vec3 s = texture2D(tDiffuse, clamp(coord, 0.0, 1.0)).rgb;
+        float l = max(0.0, max(s.r, max(s.g, s.b)) - uThreshold);
+        accum += s * l * illum;
+        illum *= uDecay;
+      }
+      accum *= uWeight / float(N);
+      gl_FragColor = vec4(orig + accum * uColor * uVis, 1.0);
+    }`,
+});
+composer.addPass(godrayPass);
 
 // Color grade (saturation + contrast + vignette) and chromatic aberration.
 // Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
@@ -306,9 +342,45 @@ function renderMirror() {
   renderer.setViewport(0, 0, stageState.W, stageState.H);
 }
 
+// Update the god-ray pass: project the sun to screen and fade it out when it's
+// hidden by the weather or behind the camera.
+let sunVisibleMood = true;
+const _sunDir = new THREE.Vector3();
+const _camFwd = new THREE.Vector3();
+const _sunScreen = new THREE.Vector3();
+const _ss = (a, b, x) => {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+};
+const _sunViewVec = new THREE.Vector3();
+function updateAtmosphere() {
+  camera.updateMatrixWorld();
+  camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
+  _sunDir.copy(sun.position).normalize();
+  _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
+  const facing = _sunDir.dot(_camFwd);
+  let vis = 0;
+  if (sunVisibleMood && facing > 0.02) {
+    _sunScreen.copy(_sunDir).multiplyScalar(3000).add(camera.position).project(camera);
+    godrayPass.uniforms.uSun.value.set(_sunScreen.x * 0.5 + 0.5, _sunScreen.y * 0.5 + 0.5);
+    const off = Math.max(Math.abs(_sunScreen.x), Math.abs(_sunScreen.y));
+    vis = _ss(0.02, 0.45, facing) * (1 - _ss(1.0, 2.4, off));
+  }
+  godrayPass.uniforms.uVis.value = vis;
+
+  // Backlit grass glow (view-space light-travel direction + mood sun colour).
+  const gsh = world.grass && world.grass.material.userData.shader;
+  if (gsh && gsh.uniforms.uSunView) {
+    _sunViewVec.copy(_sunDir).multiplyScalar(-1).transformDirection(camera.matrixWorldInverse);
+    gsh.uniforms.uSunView.value.copy(_sunViewVec);
+    gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunVisibleMood ? 0.5 : 0);
+  }
+}
+
 // Render the main view (through the post-processing composer), then overlay the
 // raw rear-view mirror while playing.
 function renderFrame() {
+  updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) renderMirror();
 }
@@ -450,6 +522,9 @@ function startRace() {
   snowMix = 0;
   fxPass.uniforms.uSat.value = mood.sat;
   fxPass.uniforms.uContrast.value = mood.contrast;
+  // God-rays only when the sun is out; tint them to the mood's sun colour.
+  sunVisibleMood = mood.sunVisible;
+  godrayPass.uniforms.uColor.value.set(mood.sunColor);
   hud.showToast(mood.name);
 
   buildKarts();
