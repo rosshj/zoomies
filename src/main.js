@@ -353,6 +353,21 @@ function toMenu() {
 document.getElementById("btn-pause").addEventListener("click", pauseGame);
 document.getElementById("resume-btn").addEventListener("click", resumeGame);
 document.getElementById("menu-btn").addEventListener("click", toMenu);
+
+// Tilt indicator (hidden by default; toggle in the pause menu).
+const steerBar = document.getElementById("steer-bar");
+const indicatorBtn = document.getElementById("indicator-btn");
+let showIndicator = false;
+function applyIndicator() {
+  if (steerBar) steerBar.style.display = showIndicator ? "block" : "none";
+  if (indicatorBtn) indicatorBtn.textContent = `Tilt indicator: ${showIndicator ? "On" : "Off"}`;
+}
+if (indicatorBtn)
+  indicatorBtn.addEventListener("click", () => {
+    showIndicator = !showIndicator;
+    applyIndicator();
+  });
+applyIndicator();
 window.addEventListener("keydown", (e) => {
   if (e.code === "Escape" || e.code === "KeyP") {
     if (state === State.RACING) pauseGame();

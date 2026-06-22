@@ -300,12 +300,12 @@ export class Kart {
     let steer = this.steerInput;
     let turnRate = 1.7; // rad/sec at full
     if (this.drifting) {
-      turnRate = 1.9; // a bit tighter while drifting, but controllable
-      // Steering modulates the drift (Mario-Kart style): tilt into the drift to
-      // tighten the arc, tilt against it to pull back toward straight. `rel` is
-      // +1 fully into the drift, -1 fully counter-steering.
-      const rel = this.steerInput * this.driftDir;
-      const amount = Math.max(-0.15, 0.55 + rel * 0.65);
+      turnRate = 1.8;
+      // The drift has a gentle inherent pull; steering has strong authority over
+      // it. Tilt into the drift to tighten, tilt against it to pull back (and a
+      // little past straight) — counter-steering really bites now.
+      const rel = this.steerInput * this.driftDir; // +1 into, -1 counter
+      const amount = Math.max(-0.35, 0.3 + rel * 0.7);
       steer = this.driftDir * amount;
     }
     this.heading += steer * turnRate * speedFactor * dir * dt;

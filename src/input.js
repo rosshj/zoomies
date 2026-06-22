@@ -97,14 +97,15 @@ export class Input {
     // gentle turn got absorbed into neutral, so straight became a tilt). The
     // neutral is set by calibrate() at the start and via the "center steering"
     // button; a fixed deadzone keeps small jitter from leaking.
-    const MAX = 0.42; // ~24° of tilt for full lock — keeps you clear of the
-    // angle where the OS may flip orientation (esp. on iOS, which can't lock)
-    const DEAD = 0.045;
+    const MAX = 0.55; // ~31° of tilt for full lock (less sensitive)
+    const DEAD = 0.05;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;
     else s -= Math.sign(s) * DEAD;
 
-    this._steerTarget = Math.max(-1, Math.min(1, s / MAX));
+    // Expo curve: gentler near centre, full lock still reachable.
+    const norm = Math.max(-1, Math.min(1, s / MAX));
+    this._steerTarget = Math.sign(norm) * Math.pow(Math.abs(norm), 1.5);
     this._keyboardSteering = false;
   }
 
