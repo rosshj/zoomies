@@ -42,37 +42,73 @@ composer.addPass(new OutputPass());
 // dark line there. High quality only (it costs a second scene render).
 const normalMat = new THREE.MeshNormalMaterial();
 const normalTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y);
+// A depth texture, written by the same pre-pass, lets us key outlines off real
+// depth discontinuities (object silhouettes) rather than every normal wiggle —
+// which is what kept the lines from showing through geometry and scribbling all
+// over distant foliage.
+normalTarget.depthTexture = new THREE.DepthTexture(_sz.x, _sz.y);
 let outlineProps = true; // include the dense roadside props in the outline pass
 let outlineScale = 1; // normal-buffer resolution scale
 const outlinePass = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null },
     tNormal: { value: normalTarget.texture },
+    tDepth: { value: normalTarget.depthTexture },
     uTexel: { value: new THREE.Vector2(1 / _sz.x, 1 / _sz.y) },
-    uThickness: { value: 1.6 },
-    uThresh: { value: 0.16 },
+    uThickness: { value: 1.2 },
+    uDepthThresh: { value: 0.025 }, // depth jump, as a fraction of distance
+    uNormalThresh: { value: 0.55 }, // only strong creases
+    cameraNear: { value: camera.near },
+    cameraFar: { value: camera.far },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform sampler2D tNormal; uniform vec2 uTexel;
-    uniform float uThickness; uniform float uThresh; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform sampler2D tNormal; uniform sampler2D tDepth;
+    uniform vec2 uTexel; uniform float uThickness;
+    uniform float uDepthThresh; uniform float uNormalThresh;
+    uniform float cameraNear; uniform float cameraFar;
+    varying vec2 vUv;
+    // View-space distance from the non-linear depth buffer.
+    float linDepth(vec2 uv){
+      float z = texture2D(tDepth, uv).x;
+      float ndc = z * 2.0 - 1.0;
+      return (2.0 * cameraNear * cameraFar) /
+             (cameraFar + cameraNear - ndc * (cameraFar - cameraNear));
+    }
     void main(){
       vec3 c = texture2D(tDiffuse, vUv).rgb;
       vec2 o = uTexel * uThickness;
+
+      // --- Silhouette edges: big depth jumps between neighbours ---
+      float dc = linDepth(vUv);
+      float dr = linDepth(vUv + vec2(o.x, 0.0));
+      float dl = linDepth(vUv - vec2(o.x, 0.0));
+      float du = linDepth(vUv + vec2(0.0, o.y));
+      float dd = linDepth(vUv - vec2(0.0, o.y));
+      float depthDiff = abs(dc - dr) + abs(dc - dl) + abs(dc - du) + abs(dc - dd);
+      // Threshold scales with distance, so a faraway building doesn't scribble
+      // and a near kart still gets a crisp line.
+      float depthEdge = step(uDepthThresh * dc, depthDiff);
+
+      // --- Crease edges: strong normal changes, only on nearby geometry ---
       vec3 n  = texture2D(tNormal, vUv).rgb;
       vec3 nr = texture2D(tNormal, vUv + vec2(o.x, 0.0)).rgb;
       vec3 nl = texture2D(tNormal, vUv - vec2(o.x, 0.0)).rgb;
       vec3 nu = texture2D(tNormal, vUv + vec2(0.0, o.y)).rgb;
       vec3 nd = texture2D(tNormal, vUv - vec2(0.0, o.y)).rgb;
-      float e = distance(n, nr) + distance(n, nl) + distance(n, nu) + distance(n, nd);
-      float edge = smoothstep(uThresh, uThresh + 0.25, e);
-      gl_FragColor = vec4(mix(c, vec3(0.02, 0.02, 0.04), edge), 1.0);
+      float ne = distance(n, nr) + distance(n, nl) + distance(n, nu) + distance(n, nd);
+      float near = 1.0 - smoothstep(70.0, 150.0, dc); // fade creases out with distance
+      float normalEdge = step(uNormalThresh, ne) * near;
+
+      float edge = max(depthEdge, normalEdge);
+      gl_FragColor = vec4(mix(c, vec3(0.04, 0.04, 0.06), edge), 1.0);
     }`,
 });
 composer.addPass(outlinePass);
-// ShaderPass clones the uniforms (cloning the texture too) — repoint tNormal at
-// the live normal buffer so the edge detector actually reads it.
+// ShaderPass clones the uniforms (cloning the textures too) — repoint tNormal /
+// tDepth at the live buffers so the edge detector actually reads them.
 outlinePass.uniforms.tNormal.value = normalTarget.texture;
+outlinePass.uniforms.tDepth.value = normalTarget.depthTexture;
 
 // Color grade (saturation + contrast + vignette) and chromatic aberration.
 // Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
@@ -114,7 +150,7 @@ const world = buildWorld(scene, track);
 
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
-  const steps = new Uint8Array([55, 165, 255]); // 3 bands, dark shadow for punch
+  const steps = new Uint8Array([85, 180, 255]); // 3 bands; shadow defined but not muddy
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
