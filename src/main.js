@@ -159,11 +159,11 @@ function updateBoostUI() {
 // --- Karts: 1 player + 5 AI rivals ---
 const ROSTER = [
   { name: "You", color: 0xe53935, catColor: 0xf0a830, isPlayer: true, skill: 1.0 },
-  { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 1.03 },
-  { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 1.05 },
-  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.0 },
-  { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.06 },
-  { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 1.02 },
+  { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 1.07 },
+  { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 1.09 },
+  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.05 },
+  { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.11 },
+  { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 1.06 },
 ];
 
 let karts = [];
@@ -574,7 +574,9 @@ function aiActions(dt) {
     // Rubber-band: trailing karts run a little faster, leaders a little slower,
     // to keep the pack competitive.
     const gap = player.totalProgress - k.totalProgress;
-    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.06, Math.min(0.16, gap * 0.12)));
+    // Catch up strongly when behind, but barely ease off when leading, so the
+    // front-runners stay competitive instead of waiting for the player.
+    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)));
 
     if (k.boosting) effects.trickle(k);
     if (k.finished || k.spinTimer > 0) {
@@ -603,23 +605,31 @@ function aiActions(dt) {
     }
     if (nearestAhead < 16) k.throttleInput *= 0.55 + 0.45 * (nearestAhead / 16);
 
-    // --- Shield: raise it when a hairball is bearing down on us. ---
+    // --- Shield: raise it when a hairball is bearing down — but imperfectly, so
+    // it doesn't feel like shooting just flips their shield on. Each new threat
+    // gets a reaction roll (they might not bother) and a reaction delay (fast or
+    // charged shots can beat it). ---
     let threat = false;
     for (const b of hairballs.balls) {
       if (b.owner === k) continue;
       const dx = k.position.x - b.mesh.position.x;
       const dz = k.position.z - b.mesh.position.z;
       const d = Math.hypot(dx, dz);
-      if (d < 26) {
-        // Is it heading roughly at us?
+      if (d < 24) {
         const vlen = Math.hypot(b.vel.x, b.vel.z) || 1;
-        if ((dx * b.vel.x + dz * b.vel.z) / (d * vlen) > 0.5) {
+        if ((dx * b.vel.x + dz * b.vel.z) / (d * vlen) > 0.55) {
           threat = true;
           break;
         }
       }
     }
-    k.shielding = threat;
+    if (threat && !k._threatPrev) {
+      k._shieldTry = Math.random() < k.shieldSkill; // sometimes they just don't react
+      k._shieldDelay = 0.18 + Math.random() * 0.32; // human-ish reaction time
+    }
+    if (threat) k._shieldDelay -= dt;
+    k.shielding = threat && k._shieldTry && k._shieldDelay <= 0;
+    k._threatPrev = threat;
 
     // --- Fart boost when full, on a straightish stretch (not mid-shield). ---
     if (k.boostMeter >= 1 && !threat && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {

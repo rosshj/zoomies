@@ -23,9 +23,9 @@ export class Weather {
     this.rainMat = new THREE.PointsMaterial({
       map: streakTexture(),
       color: 0xdaeaff,
-      size: 5.5, // bigger streaks so they read against a bright sky
+      size: 2.6, // slim streaks
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.85,
       depthWrite: false,
       sizeAttenuation: true,
       fog: true,
@@ -33,15 +33,15 @@ export class Weather {
     this.snowMat = new THREE.PointsMaterial({
       map: dotTexture(),
       color: 0xffffff,
-      size: 3.2, // chunkier flakes
+      size: 1.5, // small flakes
       transparent: true,
-      opacity: 1.0,
+      opacity: 0.95,
       depthWrite: false,
       sizeAttenuation: true,
       fog: true,
     });
-    this._rainOpacity = 0.9;
-    this._snowOpacity = 1.0;
+    this._rainOpacity = 0.85;
+    this._snowOpacity = 0.95;
 
     this.points = new THREE.Points(this.geo, this.rainMat);
     this.points.visible = false;

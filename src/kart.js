@@ -93,7 +93,13 @@ export class Kart {
     this.shootCharge = 0; // player: hold-to-charge level 0..1
     // AI: a fixed preferred lane offset (-1..1) so the field spreads across the
     // road instead of all chasing the exact same line into a corner.
-    this.laneBias = isPlayer ? 0 : (Math.random() * 2 - 1) * 0.7;
+    this.laneBias = isPlayer ? 0 : (Math.random() * 2 - 1) * 0.55;
+    // AI shield reactions are deliberately imperfect: a per-driver chance they
+    // even react to a given shot, plus a reaction delay (so fast shots slip by).
+    this.shieldSkill = isPlayer ? 0 : 0.4 + Math.random() * 0.28;
+    this._threatPrev = false;
+    this._shieldTry = false;
+    this._shieldDelay = 0;
 
     // Tuning (calmer, less frantic than an all-out racer)
     this.maxSpeed = 34 * skill;
@@ -464,17 +470,23 @@ export class Kart {
     const diff = angleDelta(desired, this.heading);
     this.steerInput = Math.max(-1, Math.min(1, diff * 3.2));
 
-    // Full gas on straights, brake harder for sharp corners so they actually
-    // make the turn instead of running wide and bunching up at the apex.
+    // Carry good corner speed: brake for sharp bends but keep a healthy floor so
+    // they stay competitive instead of crawling round every turn.
     this.throttleInput = Math.max(
-      sharp > 0.55 ? 0.16 : 0.5,
-      1 - sharp * 1.0 - Math.min(0.4, Math.abs(diff) * 0.5)
+      sharp > 0.6 ? 0.34 : 0.55,
+      1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45)
     );
 
-    // Drift through fast sweeping corners (and bank the exit boost), but not in
-    // very tight hairpins where it'd just wash wide.
-    this.driftHeld =
-      this.spinTimer <= 0 && speed > 15 && sharp > 0.45 && sharp < 0.95 && Math.abs(this.steerInput) > 0.3;
+    // Drift through sweeping corners and HOLD it well into the exit for a long
+    // charge (bigger boost). Hysteresis: start only on a real sweeper, but once
+    // drifting keep holding until the road nearly straightens out.
+    if (this.spinTimer > 0) {
+      this.driftHeld = false;
+    } else if (this.drifting) {
+      this.driftHeld = speed > 8 && sharp > 0.16; // hold through the exit
+    } else {
+      this.driftHeld = speed > 16 && sharp > 0.4 && sharp < 0.96 && Math.abs(this.steerInput) > 0.3;
+    }
 
     // Stuck recovery: if we've been crawling (pinned on a wall) without being
     // spun out, reverse to peel off it; normal driving then re-aims us.
