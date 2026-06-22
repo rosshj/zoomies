@@ -90,6 +90,10 @@ export class Kart {
 
     // Shooting cooldown
     this.shootCooldown = 0;
+    this.shootCharge = 0; // player: hold-to-charge level 0..1
+    // AI: a fixed preferred lane offset (-1..1) so the field spreads across the
+    // road instead of all chasing the exact same line into a corner.
+    this.laneBias = isPlayer ? 0 : (Math.random() * 2 - 1) * 0.7;
 
     // Tuning (calmer, less frantic than an all-out racer)
     this.maxSpeed = 34 * skill;
@@ -204,6 +208,9 @@ export class Kart {
   spinOut(impactDir = null) {
     if (this.spinTimer > 0) return;
     this.spinTimer = 1.4;
+    // Can't fire back for a couple of seconds after taking a hairball.
+    this.shootCooldown = Math.max(this.shootCooldown, 2.0);
+    this.driftHeld = false;
     this.spinDir = Math.random() < 0.5 ? -1 : 1;
     this.spinAngVel = this.spinDir * (4.5 + Math.random() * 1.5);
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
@@ -443,23 +450,31 @@ export class Kart {
     const sharp = Math.min(1, Math.abs(curve) * 6);
 
     // Aim point a short distance ahead — shorter on sharp corners so we follow
-    // the bend instead of cutting it. A gentle apex only on mild bends.
+    // the bend instead of cutting it. A gentle apex on mild bends, blended with
+    // this driver's own lane bias so the field fans out instead of clumping.
     const aimDist = (8 + speed * 0.5) * (1 - 0.5 * sharp);
     const aT = wrap(this.trackT + aimDist / L);
     const target = track.getPointAt(aT);
     const side = new THREE.Vector3().crossVectors(track.getTangentAt(aT), UP).normalize();
     const apex = Math.sign(curve) * (1 - sharp) * (track.halfWidth - 4);
-    target.addScaledVector(side, apex);
+    const lane = this.laneBias * (1 - sharp) * (track.halfWidth - 3); // hold a personal line
+    target.addScaledVector(side, apex + lane);
 
     const desired = Math.atan2(target.x - this.position.x, target.z - this.position.z);
     const diff = angleDelta(desired, this.heading);
-    this.steerInput = Math.max(-1, Math.min(1, diff * 3.0));
+    this.steerInput = Math.max(-1, Math.min(1, diff * 3.2));
 
-    // Full gas on straights, ease right down for sharp corners.
+    // Full gas on straights, brake harder for sharp corners so they actually
+    // make the turn instead of running wide and bunching up at the apex.
     this.throttleInput = Math.max(
-      sharp > 0.55 ? 0.18 : 0.5,
-      1 - sharp * 0.9 - Math.min(0.35, Math.abs(diff) * 0.4)
+      sharp > 0.55 ? 0.16 : 0.5,
+      1 - sharp * 1.0 - Math.min(0.4, Math.abs(diff) * 0.5)
     );
+
+    // Drift through fast sweeping corners (and bank the exit boost), but not in
+    // very tight hairpins where it'd just wash wide.
+    this.driftHeld =
+      this.spinTimer <= 0 && speed > 15 && sharp > 0.45 && sharp < 0.95 && Math.abs(this.steerInput) > 0.3;
 
     // Stuck recovery: if we've been crawling (pinned on a wall) without being
     // spun out, reverse to peel off it; normal driving then re-aims us.
@@ -468,6 +483,7 @@ export class Kart {
     if (this._stuck > 0.6) {
       this.throttleInput = -1;
       this.steerInput *= -0.3; // steering inverts in reverse; nudge off the wall
+      this.driftHeld = false;
       if (this._stuck > 1.8) this._stuck = 0; // try forward again
     }
   }

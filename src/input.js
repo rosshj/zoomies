@@ -8,7 +8,8 @@ export class Input {
 
     this._steerTarget = 0;
     this._jumpQueued = false;
-    this._shootQueued = false;
+    this.shootHeld = false; // shoot button held (charging)
+    this._shootRelease = false; // a press→release happened (fire request)
     this._boostQueued = false;
     this.shielding = false; // held, not queued
     this.jumpHeld = false; // held — sustains a drift
@@ -196,12 +197,25 @@ export class Input {
       jump.addEventListener("pointerup", release);
       jump.addEventListener("pointercancel", release);
     }
-    if (shoot)
-      shoot.addEventListener("pointerdown", (e) => {
+    if (shoot) {
+      // Hold to charge (shoots faster/further); fires on release. A quick tap is
+      // just a tiny hold, so it fires a normal shot.
+      const press = (e) => {
         e.preventDefault();
-        this._shootQueued = true;
-        flash(shoot);
-      });
+        this.shootHeld = true;
+        shoot.setPointerCapture?.(e.pointerId);
+        shoot.classList.add("charging");
+      };
+      const release = () => {
+        if (!this.shootHeld) return;
+        this.shootHeld = false;
+        this._shootRelease = true;
+        shoot.classList.remove("charging");
+      };
+      shoot.addEventListener("pointerdown", press);
+      shoot.addEventListener("pointerup", release);
+      shoot.addEventListener("pointercancel", release);
+    }
     if (boost)
       boost.addEventListener("pointerdown", (e) => {
         e.preventDefault();
@@ -237,13 +251,17 @@ export class Input {
         this._jumpQueued = true;
         this.jumpHeld = true;
       }
-      if (e.code === "KeyF") this._shootQueued = true;
+      if (e.code === "KeyF") this.shootHeld = true; // hold to charge
       if (e.code === "KeyB") this._boostQueued = true;
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = true;
     });
     window.addEventListener("keyup", (e) => {
       this._keys[e.code] = false;
       if (e.code === "Space") this.jumpHeld = false;
+      if (e.code === "KeyF" && this.shootHeld) {
+        this.shootHeld = false;
+        this._shootRelease = true;
+      }
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = false;
     });
   }
@@ -280,9 +298,10 @@ export class Input {
     return j;
   }
 
-  consumeShoot() {
-    const s = this._shootQueued;
-    this._shootQueued = false;
+  // True once when the shoot button is released (request to fire).
+  consumeShootRelease() {
+    const s = this._shootRelease;
+    this._shootRelease = false;
     return s;
   }
 

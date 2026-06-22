@@ -147,10 +147,13 @@ const hud = new HUD();
 // Boost (fart) meter UI reflects the player kart's own meter.
 const boostBtn = document.getElementById("btn-boost");
 const boostFill = document.getElementById("boost-fill");
+const shootBtn = document.getElementById("btn-shoot");
 function updateBoostUI() {
   const m = player ? player.boostMeter : 0;
   boostFill.style.height = `${Math.round(m * 100)}%`;
   boostBtn.classList.toggle("disabled", m < 1); // only fire when full
+  // Dim the shoot button while it's recharging (or locked out after a hit).
+  if (shootBtn) shootBtn.classList.toggle("disabled", !!player && player.shootCooldown > 0);
 }
 
 // --- Karts: 1 player + 5 AI rivals ---
@@ -549,7 +552,21 @@ function updatePlacement() {
   order.forEach((k, idx) => (k.place = idx + 1));
 }
 
-// --- AI actions: catch-up, shooting + fart boosts ---
+const SHOOT_CHARGE_TIME = 0.7; // seconds of hold for a full-power shot
+const SHOOT_RECHARGE = 0.9; // min seconds between shots (no spamming)
+
+// Fire a hairball if allowed (recharge done, not spun out), and start the
+// recharge. Shared by the player and the AI so the rules are identical.
+function fireHairball(kart, charge = 0) {
+  if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
+  hairballs.spawn(kart, charge);
+  kart.shootCooldown = SHOOT_RECHARGE;
+  return true;
+}
+
+// --- AI actions: catch-up, shooting, boosts, shields, anti-clumping ---
+const _aiFwd = new THREE.Vector3();
+const _aiTo = new THREE.Vector3();
 function aiActions(dt) {
   for (const k of karts) {
     if (k.isPlayer) continue;
@@ -560,29 +577,70 @@ function aiActions(dt) {
     k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.06, Math.min(0.16, gap * 0.12)));
 
     if (k.boosting) effects.trickle(k);
-    if (k.finished || k.spinTimer > 0) continue;
+    if (k.finished || k.spinTimer > 0) {
+      k.shielding = false;
+      continue;
+    }
 
-    // Fire a fart boost only when the meter is full (same as the player), and
-    // preferably on a straight.
-    if (k.boostMeter >= 1 && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
+    _aiFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
+
+    // --- Anti-clumping: ease off and steer aside when right behind another
+    // kart, so the pack doesn't pile into tight corners in a single knot. ---
+    let nearestAhead = Infinity;
+    for (const other of karts) {
+      if (other === k || other.finished) continue;
+      _aiTo.subVectors(other.position, k.position);
+      const d = _aiTo.length();
+      if (d > 0.001 && d < 16 && _aiTo.dot(_aiFwd) / d > 0.6) {
+        if (d < nearestAhead) nearestAhead = d;
+        // Steer away from the side the other kart is on (heading-relative angle).
+        let a = Math.atan2(_aiTo.x, _aiTo.z) - k.heading;
+        while (a > Math.PI) a -= Math.PI * 2;
+        while (a < -Math.PI) a += Math.PI * 2;
+        const away = Math.abs(a) < 0.05 ? (k.laneBias >= 0 ? 1 : -1) : -Math.sign(a);
+        k.steerInput = Math.max(-1, Math.min(1, k.steerInput + away * 0.35));
+      }
+    }
+    if (nearestAhead < 16) k.throttleInput *= 0.55 + 0.45 * (nearestAhead / 16);
+
+    // --- Shield: raise it when a hairball is bearing down on us. ---
+    let threat = false;
+    for (const b of hairballs.balls) {
+      if (b.owner === k) continue;
+      const dx = k.position.x - b.mesh.position.x;
+      const dz = k.position.z - b.mesh.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d < 26) {
+        // Is it heading roughly at us?
+        const vlen = Math.hypot(b.vel.x, b.vel.z) || 1;
+        if ((dx * b.vel.x + dz * b.vel.z) / (d * vlen) > 0.5) {
+          threat = true;
+          break;
+        }
+      }
+    }
+    k.shielding = threat;
+
+    // --- Fart boost when full, on a straightish stretch (not mid-shield). ---
+    if (k.boostMeter >= 1 && !threat && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
       if (k.fartBoost()) {
         k.boostMeter = 0;
         effects.fartBurst(k);
       }
     }
 
-    // Fire more often, with a slightly wider/longer reach.
+    // --- Shoot at a kart ahead, gated by the same recharge as the player. ---
     k._aiShootTimer -= dt;
-    if (k._aiShootTimer > 0) continue;
-    k._aiShootTimer = 1.4 + Math.random() * 2.6;
-    const fwd = new THREE.Vector3(Math.sin(k.heading), 0, Math.cos(k.heading));
-    for (const other of karts) {
-      if (other === k || other.finished) continue;
-      const to = new THREE.Vector3().subVectors(other.position, k.position);
-      const dist = to.length();
-      if (dist > 3 && dist < 44 && to.normalize().dot(fwd) > 0.82) {
-        hairballs.spawn(k);
-        break;
+    if (k.shootCooldown <= 0 && k._aiShootTimer <= 0) {
+      k._aiShootTimer = 1.0 + Math.random() * 2.2;
+      for (const other of karts) {
+        if (other === k || other.finished) continue;
+        _aiTo.subVectors(other.position, k.position);
+        const dist = _aiTo.length();
+        if (dist > 3 && dist < 46 && _aiTo.normalize().dot(_aiFwd) > 0.8) {
+          fireHairball(k, Math.random() < 0.4 ? 0.8 : 0); // sometimes a charged shot
+          break;
+        }
       }
     }
   }
@@ -664,9 +722,12 @@ function loop(now) {
     player.driftHeld = input.jumpHeld;
     steerDot.style.transform = `translateX(${input.steer * 80}px)`;
     if (input.consumeJump()) player.jump();
-    if (input.consumeShoot() && player.shootCooldown <= 0) {
-      hairballs.spawn(player);
-      player.shootCooldown = 0.6;
+    // Hold the shoot button to charge a faster/further shot; fire on release.
+    if (input.shootHeld && player.shootCooldown <= 0)
+      player.shootCharge = Math.min(player.shootCharge + dt / SHOOT_CHARGE_TIME, 1);
+    if (input.consumeShootRelease()) {
+      fireHairball(player, player.shootCharge);
+      player.shootCharge = 0;
     }
     if (input.consumeBoost() && player.boostMeter >= 1) {
       if (player.fartBoost()) {

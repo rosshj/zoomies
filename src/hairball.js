@@ -13,16 +13,19 @@ export class HairballManager {
     });
   }
 
-  spawn(owner) {
+  // `charge` (0..1) comes from the player holding the shoot button: a charged
+  // shot flies faster, flatter and further.
+  spawn(owner, charge = 0) {
     const { pos, dir } = owner.muzzle();
     const mesh = new THREE.Mesh(this.geo, this.mat);
     mesh.position.copy(pos);
     mesh.castShadow = true;
     this.scene.add(mesh);
+    const speed = 70 + charge * 48;
     this.balls.push({
       mesh,
-      vel: dir.clone().multiplyScalar(70).add(new THREE.Vector3(0, 4, 0)),
-      life: 2.2,
+      vel: dir.clone().multiplyScalar(speed).add(new THREE.Vector3(0, 4 - charge * 1.5, 0)),
+      life: 2.2 + charge * 1.1,
       owner,
     });
   }

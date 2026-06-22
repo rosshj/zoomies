@@ -338,6 +338,18 @@ kbd {
   bottom: 30px;
   background: rgba(255, 87, 34, 0.5);
   border-color: rgba(255, 138, 101, 0.7);
+  transition: transform 0.08s ease, box-shadow 0.1s ease;
+}
+
+/* Recharging / locked out after a hit. */
+#btn-shoot.disabled {
+  opacity: 0.4;
+}
+
+/* Held: charging a stronger shot. */
+#btn-shoot.charging {
+  transform: scale(1.12);
+  box-shadow: 0 0 18px rgba(255, 138, 101, 0.95);
 }
 
 #btn-jump {
