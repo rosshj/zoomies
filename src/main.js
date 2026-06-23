@@ -871,6 +871,38 @@ window.addEventListener("keydown", (e) => {
 document.getElementById("start-btn").addEventListener("click", startRace);
 document.getElementById("restart-btn").addEventListener("click", startRace);
 
+// Solo / Multiplayer toggle. Only offered when an Ably key is configured. It
+// flips the ?mp=1 flag and reloads — the cleanest way to enter/leave networked
+// mode, since the whole multiplayer stack is wired up from that flag at load.
+const modeBtn = document.getElementById("mode-btn");
+if (modeBtn && resolveAblyKey()) {
+  modeBtn.classList.remove("hidden");
+  const inMP = new URLSearchParams(location.search).has("mp");
+  modeBtn.textContent = inMP ? "👤 Play Solo" : "🎮 Play Multiplayer";
+  modeBtn.addEventListener("click", () => {
+    const u = new URL(location.href);
+    if (inMP) u.searchParams.delete("mp");
+    else u.searchParams.set("mp", "1");
+    u.searchParams.set("seed", WORLD_SEED); // keep the same world across the reload
+    location.href = u.toString();
+  });
+}
+
+// Lobby: copy the invite link (already carries ?seed=…&mp=1) to the clipboard.
+const lobbyCopyBtn = document.getElementById("lobby-copy");
+if (lobbyCopyBtn) {
+  lobbyCopyBtn.addEventListener("click", async () => {
+    const label = "📋 Copy invite link";
+    try {
+      await navigator.clipboard.writeText(location.href);
+      lobbyCopyBtn.textContent = "✓ Link copied!";
+    } catch {
+      lobbyCopyBtn.textContent = "⚠ Copy failed — copy the URL";
+    }
+    setTimeout(() => (lobbyCopyBtn.textContent = label), 1800);
+  });
+}
+
 function startRace() {
   // These need the user-gesture from the click, so fire them synchronously.
   enterFullscreenLandscape();
