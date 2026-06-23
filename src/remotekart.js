@@ -51,13 +51,15 @@ export class RemoteKart {
     if (typeof pose.pr === "number") this.totalProgress = pose.pr;
   }
 
-  // Give the ghost a bump impulse (local, visual only). nx/nz is the unit push
-  // direction; `impulse` is a VELOCITY kick — the ghost then coasts and bleeds
-  // off speed with friction in update(), so it lurches forward on contact and
-  // eases to a stop like a real collision, rather than teleporting and freezing.
+  // Give the ghost a SMALL, brief bump for instant local feedback. This is just
+  // an immediacy bridge — the real slide arrives over the network as the other
+  // client's kart actually gets knocked, and that's what dominates after ~250ms.
+  // Velocity is capped so repeated/fast contacts can never accumulate into a
+  // fling off the track.
   bump(nx, nz, impulse) {
     this.bumpVel.x += nx * impulse;
     this.bumpVel.z += nz * impulse;
+    this.bumpVel.clampLength(0, 10);
   }
 
   // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
@@ -66,16 +68,13 @@ export class RemoteKart {
     if (!s) return; // nothing buffered yet
     const k = this.kart;
 
-    // Collision bump: integrate the impulse velocity into the offset, then bleed
-    // the velocity off with friction. The velocity decays exponentially, so the
-    // ghost keeps creeping forward while smoothly slowing — a gradual coast, not
-    // a jump-and-stop. Keep the impulse low enough that the slide's natural peak
-    // stays UNDER the clamp; the clamp is only a safety net against pile-ups
-    // (hitting it would hard-stop the slide). The offset re-converges very gently.
+    // Collision bump: a short local nudge that fades quickly so it hands off to
+    // the authoritative network slide (the other client's real knockback)
+    // without double-counting or lingering past the contact.
     this.bumpOff.addScaledVector(this.bumpVel, dt);
-    this.bumpVel.multiplyScalar(1 - Math.min(1, 1.0 * dt)); // friction: gradual coast (~1s)
-    this.bumpOff.multiplyScalar(1 - Math.min(1, 0.3 * dt)); // very gentle re-converge
-    this.bumpOff.clampLength(0, 20); // safety only — normal hits never reach this
+    this.bumpVel.multiplyScalar(1 - Math.min(1, 3 * dt)); // fade as network catches up
+    this.bumpOff.multiplyScalar(1 - Math.min(1, 1.5 * dt)); // ease back to true path
+    this.bumpOff.clampLength(0, 5); // safety only
 
     // Drop the puppet onto the interpolated pose, plus the transient bump offset.
     k.position.x = s.x + this.bumpOff.x;

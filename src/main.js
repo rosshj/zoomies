@@ -1059,27 +1059,31 @@ function resolveRemoteCollisions() {
     const nz = dz / dist;
     const overlap = min - dist;
 
-    // Mass-weighted split, exactly like the local kart-kart bump: the lighter
-    // kart moves more. The player's share is applied to the real player; the
-    // ghost's share becomes a transient local shove so it reacts on contact (its
-    // authoritative network path then takes over as the other client reacts too).
+    // Fully separate the player from the ghost (the ghost can't move
+    // authoritatively, so the player takes the whole correction). Resolving the
+    // overlap in one frame stops impulses piling up over multiple frames of
+    // contact — that pile-up was flinging ghosts off the track.
+    player.position.x -= nx * overlap;
+    player.position.z -= nz * overlap;
+
+    // The player's knock is the AUTHORITATIVE reaction: it moves the player's
+    // real position (wall-contained, gradual decay), which propagates over the
+    // network and is exactly what the other client sees this kart do.
     const ima = 1 / player.mass;
     const img = 1 / g.mass;
     const inv = ima + img;
-    const sp = ima / inv; // player's share of the push
+    const sp = ima / inv; // player's share
     const sg = img / inv; // ghost's share
 
-    player.position.x -= nx * overlap * sp;
-    player.position.z -= nz * overlap * sp;
-
     const power = 10 + (Math.abs(player.speed) + Math.abs(g.speed)) * 0.4;
-    player.knock.x -= nx * power * sp;
-    player.knock.z -= nz * power * sp;
+    player.knock.x -= nx * power * sp * 1.8;
+    player.knock.z -= nz * power * sp * 1.8;
     player.speed *= 0.99;
 
-    // Shove the ghost the other way by its share: a velocity impulse it coasts
-    // off (visual only; its authoritative network path then takes over).
-    r.bump(nx, nz, power * sg * 1.3);
+    // Small, brief local nudge on the ghost for instant feedback only — sized to
+    // roughly match the real slide that lands over the network ~250ms later, so
+    // the handoff is seamless and the ghost never flies off.
+    r.bump(nx, nz, power * sg * 0.8);
   }
 }
 

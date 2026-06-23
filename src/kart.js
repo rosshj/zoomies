@@ -341,10 +341,12 @@ export class Kart {
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.position.addScaledVector(fwd, this.speed * dt);
 
-    // Bumper-car knockback (decaying positional impulse).
+    // Bumper-car knockback (decaying positional impulse). The decay is gentle so
+    // a bump glides to a stop rather than snapping — this is the slide both the
+    // player and (over the network) other clients see when this kart is hit.
     if (this.knock.lengthSq() > 0.0001) {
       this.position.addScaledVector(this.knock, dt);
-      this.knock.multiplyScalar(1 - Math.min(1, 4 * dt));
+      this.knock.multiplyScalar(1 - Math.min(1, 2.5 * dt));
     }
 
     // Keep the kart contained on the road: clamp it inside the barriers and
