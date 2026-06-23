@@ -61,12 +61,15 @@ const godrayPass = new ShaderPass({
     uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uVis;
     uniform vec3 uColor; uniform float uDensity; uniform float uWeight;
     uniform float uDecay; uniform float uThreshold; varying vec2 vUv;
-    const int N = 24;
+    const int N = 40;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
     void main(){
       vec3 orig = texture2D(tDiffuse, vUv).rgb;
       if (uVis <= 0.001) { gl_FragColor = vec4(orig, 1.0); return; }
       vec2 delta = (vUv - uSun) * (uDensity / float(N));
-      vec2 coord = vUv;
+      // Start each pixel at a jittered offset so the low sample count reads as
+      // fine noise instead of hard banded "spokes" along the shafts.
+      vec2 coord = vUv - delta * hash(vUv);
       float illum = 1.0;
       vec3 accum = vec3(0.0);
       for (int i = 0; i < N; i++) {
@@ -77,8 +80,11 @@ const godrayPass = new ShaderPass({
         illum *= uDecay;
       }
       accum *= uWeight / float(N);
-      // Clamp the added light so staring at the sun can't wash the frame out.
-      vec3 add = min(accum * uColor * uVis, vec3(0.52));
+      // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off
+      // smoothly near the sun instead of forming a flat plateau.
+      vec3 raw = accum * uColor * uVis;
+      vec3 cap = vec3(0.6);
+      vec3 add = cap * (vec3(1.0) - exp(-raw / cap));
       gl_FragColor = vec4(orig + add, 1.0);
     }`,
 });
