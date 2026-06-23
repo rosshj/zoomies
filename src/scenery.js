@@ -142,7 +142,7 @@ export function buildWorld(scene, track) {
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes);
   const grass = buildGrass(scene, track, heightAt);
-  const balloons = buildBalloons(scene);
+  const balloons = buildBalloons(scene, heightAt);
   const flocks = buildBirds(scene);
 
   return {
@@ -1724,7 +1724,7 @@ function updateFlock(fl, time) {
   }
 }
 
-function buildBalloons(scene) {
+function buildBalloons(scene, heightAt) {
   const balloons = [];
   const colors = [0xff5252, 0x42a5f5, 0xffca28, 0xab47bc, 0x66bb6a];
   for (let i = 0; i < 6; i++) {
@@ -1745,9 +1745,12 @@ function buildBalloons(scene) {
 
     const a = Math.random() * Math.PI * 2;
     const r = 150 + Math.random() * 300;
-    g.position.set(Math.cos(a) * r, 0, Math.sin(a) * r);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    g.position.set(x, 0, z);
     scene.add(g);
-    balloons.push({ mesh: g, baseY: 70 + Math.random() * 50, phase: Math.random() * 6.28 });
+    // Float above the terrain beneath them, so they clear the high snowy hill.
+    const ground = heightAt ? heightAt(x, z) : 0;
+    balloons.push({ mesh: g, baseY: ground + 75 + Math.random() * 45, phase: Math.random() * 6.28 });
   }
   return balloons;
 }

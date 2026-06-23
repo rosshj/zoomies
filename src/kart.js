@@ -363,12 +363,18 @@ export class Kart {
       }
     }
 
-    // Follow the road surface height; estimate slope for a pitch tilt.
-    this.groundY = proj.groundY;
-    const ahead = track.project(
-      new THREE.Vector3().copy(this.position).addScaledVector(fwd, 6)
-    );
-    const targetPitch = -(ahead.groundY - this.groundY) / 6;
+    // Sit the kart on its front + rear contact points (not just the centreline),
+    // so the wheels lay on the slope and the rear doesn't dig into the hill on
+    // crests/descents. Pitch matches the line between the two contacts.
+    const half = 1.9; // front/rear contact half-length
+    const frontY = track.project(
+      new THREE.Vector3().copy(this.position).addScaledVector(fwd, half)
+    ).groundY;
+    const rearY = track.project(
+      new THREE.Vector3().copy(this.position).addScaledVector(fwd, -half)
+    ).groundY;
+    this.groundY = (frontY + rearY) * 0.5;
+    const targetPitch = (rearY - frontY) / (2 * half);
     this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 8 * dt);
     this.position.y = this.groundY;
 

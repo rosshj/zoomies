@@ -52,9 +52,9 @@ const godrayPass = new ShaderPass({
     uVis: { value: 0 }, // 0 when sun is hidden / behind camera
     uColor: { value: new THREE.Color(0xffe6b0) },
     uDensity: { value: 0.8 },
-    uWeight: { value: 0.7 },
-    uDecay: { value: 0.93 },
-    uThreshold: { value: 0.72 }, // only the sun/near-sun drives shafts, not the whole bright sky
+    uWeight: { value: 1.05 },
+    uDecay: { value: 0.94 },
+    uThreshold: { value: 0.67 }, // only the sun/near-sun drives shafts, not the whole bright sky
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
@@ -78,7 +78,7 @@ const godrayPass = new ShaderPass({
       }
       accum *= uWeight / float(N);
       // Clamp the added light so staring at the sun can't wash the frame out.
-      vec3 add = min(accum * uColor * uVis, vec3(0.4));
+      vec3 add = min(accum * uColor * uVis, vec3(0.52));
       gl_FragColor = vec4(orig + add, 1.0);
     }`,
 });

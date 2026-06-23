@@ -102,9 +102,12 @@ export function createScene() {
       puff.position.set((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
       cloud.add(puff);
     }
+    // Sit them out beyond the playable hills and high up, so they read as
+    // distant sky and never clip the track (the alpine hill rises high).
     const a = Math.random() * Math.PI * 2;
-    const r = 220 + Math.random() * 220;
-    cloud.position.set(Math.cos(a) * r, 60 + Math.random() * 50, Math.sin(a) * r);
+    const r = 520 + Math.random() * 440;
+    cloud.position.set(Math.cos(a) * r, 150 + Math.random() * 90, Math.sin(a) * r);
+    cloud.scale.setScalar(1.6 + Math.random() * 1.2); // bigger since they're farther
     scene.add(cloud);
   }
 
