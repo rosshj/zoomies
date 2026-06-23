@@ -451,6 +451,20 @@ function initMultiplayer() {
         if (r) r.pushState(pose);
       });
       net.on("start", (at) => beginSyncedRace(at));
+      net.on("shoot", (s) => {
+        hairballs.spawnAt(
+          new THREE.Vector3(s.px, s.py, s.pz),
+          new THREE.Vector3(s.dx, s.dy, s.dz),
+          s.c || 0
+        );
+      });
+      net.on("hit", (h) => {
+        // Only the targeted client reacts; the victim's own shield gets last say.
+        if (h.target !== net.id || !player || state !== State.RACING) return;
+        if (player.shielding) return;
+        const dir = new THREE.Vector3(h.hx, 0, h.hz);
+        player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
+      });
       net.connect();
     })
     .catch((err) => {
@@ -1111,6 +1125,11 @@ function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
   hairballs.spawn(kart, charge);
   kart.shootCooldown = SHOOT_RECHARGE;
+  // Tell other players about the shot so they can see the projectile fly.
+  if (MP.enabled && MP.net && kart === player) {
+    const m = kart.muzzle();
+    MP.net.sendShoot(m.pos, m.dir, charge);
+  }
   return true;
 }
 
@@ -1328,7 +1347,12 @@ function loop(now) {
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
     resolveRemoteCollisions(); // bump against remote ghost karts (multiplayer)
-    hairballs.update(dt, karts);
+    hairballs.update(
+      dt,
+      karts,
+      MP.enabled ? MP.remotes : null,
+      MP.enabled ? (id, dir) => MP.net && MP.net.sendHit(id, dir) : null
+    );
     // Sparks where a kart scraped a railing; skid marks while spinning out.
     for (const k of karts) {
       if (k.wallHit) {

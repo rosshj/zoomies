@@ -17,6 +17,16 @@ export class HairballManager {
   // shot flies faster, flatter and further.
   spawn(owner, charge = 0) {
     const { pos, dir } = owner.muzzle();
+    this._add(pos, dir, charge, owner, false);
+  }
+
+  // A network-replicated hairball from a remote player: visual only (the firing
+  // client is authoritative over its own shots, so this never collides here).
+  spawnAt(pos, dir, charge = 0) {
+    this._add(pos, dir, charge, null, true);
+  }
+
+  _add(pos, dir, charge, owner, ghost) {
     const mesh = new THREE.Mesh(this.geo, this.mat);
     mesh.position.copy(pos);
     mesh.castShadow = true;
@@ -27,10 +37,14 @@ export class HairballManager {
       vel: dir.clone().multiplyScalar(speed).add(new THREE.Vector3(0, 4 - charge * 1.5, 0)),
       life: 2.2 + charge * 1.1,
       owner,
+      ghost,
     });
   }
 
-  update(dt, karts) {
+  // `remotes` (a Map of RemoteKart) and `onRemoteHit(id, dir)` are supplied in
+  // multiplayer: our own hairballs can hit remote ghosts, and we report the hit
+  // to that client (shooter-authoritative) so it spins its own kart out.
+  update(dt, karts, remotes = null, onRemoteHit = null) {
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const b = this.balls[i];
       b.life -= dt;
@@ -40,21 +54,26 @@ export class HairballManager {
       b.mesh.rotation.y += dt * 7;
 
       let hit = false;
-      if (b.life > 0) {
+      // Ghost balls are network-replicated visuals only — they never collide.
+      if (b.life > 0 && !b.ghost) {
         for (const k of karts) {
           if (k === b.owner || k.finished) continue;
-          const dx = k.position.x - b.mesh.position.x;
-          const dz = k.position.z - b.mesh.position.z;
-          const dy = k.position.y + k.y + 1 - b.mesh.position.y;
-          if (dx * dx + dz * dz + dy * dy < 12) {
-            if (!k.shielding) {
-              // Shove the victim in the hairball's travel direction.
-              const dir = new THREE.Vector3(b.vel.x, 0, b.vel.z);
-              if (dir.lengthSq() > 0.0001) dir.normalize();
-              k.spinOut(dir);
-            }
+          if (this._overlaps(b, k)) {
+            if (!k.shielding) k.spinOut(this._travelDir(b));
             hit = true; // shield blocks & destroys the hairball
             break;
+          }
+        }
+        // Remote ghosts (multiplayer): report the hit; the target spins itself.
+        if (!hit && remotes) {
+          for (const r of remotes.values()) {
+            if (!r._ready) continue;
+            const k = r.kart;
+            if (this._overlaps(b, k)) {
+              if (!k.shielding && onRemoteHit) onRemoteHit(r.id, this._travelDir(b));
+              hit = true;
+              break;
+            }
           }
         }
       }
@@ -64,5 +83,18 @@ export class HairballManager {
         this.balls.splice(i, 1);
       }
     }
+  }
+
+  _overlaps(b, k) {
+    const dx = k.position.x - b.mesh.position.x;
+    const dz = k.position.z - b.mesh.position.z;
+    const dy = k.position.y + k.y + 1 - b.mesh.position.y;
+    return dx * dx + dz * dz + dy * dy < 12;
+  }
+
+  _travelDir(b) {
+    const dir = new THREE.Vector3(b.vel.x, 0, b.vel.z);
+    if (dir.lengthSq() > 0.0001) dir.normalize();
+    return dir;
   }
 }

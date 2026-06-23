@@ -27,7 +27,7 @@ export class Net {
     this.clock = new ClockSync(localNow);
     this._localNow = localNow;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -80,6 +80,24 @@ export class Net {
     this.transport.send({ type: "start", id: this.id, at });
   }
 
+  // Broadcast that I fired a hairball, so others can render the projectile.
+  sendShoot(pos, dir, charge) {
+    if (!this.connected) return;
+    this.transport.send({
+      type: "shoot", id: this.id,
+      px: pos.x, py: pos.y, pz: pos.z,
+      dx: dir.x, dy: dir.y, dz: dir.z,
+      c: charge || 0,
+    });
+  }
+
+  // Shooter-authoritative hit: tell `target` it was struck (spin out), with the
+  // hairball's travel direction so the spin shoves the right way.
+  sendHit(target, dir) {
+    if (!this.connected) return;
+    this.transport.send({ type: "hit", id: this.id, target, hx: dir.x, hz: dir.z });
+  }
+
   _onMessage(m) {
     switch (m.type) {
       case "welcome":
@@ -110,6 +128,12 @@ export class Net {
         break;
       case "start":
         this._emit("start", m.at);
+        break;
+      case "shoot":
+        this._emit("shoot", { px: m.px, py: m.py, pz: m.pz, dx: m.dx, dy: m.dy, dz: m.dz, c: m.c });
+        break;
+      case "hit":
+        this._emit("hit", { target: m.target, hx: m.hx, hz: m.hz });
         break;
     }
   }
