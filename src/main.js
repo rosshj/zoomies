@@ -1351,7 +1351,17 @@ function loop(now) {
       dt,
       karts,
       MP.enabled ? MP.remotes : null,
-      MP.enabled ? (id, dir) => MP.net && MP.net.sendHit(id, dir) : null
+      MP.enabled
+        ? (id, dir) => {
+            if (!MP.net) return;
+            MP.net.sendHit(id, dir);
+            // Instant local feedback: jolt the ghost in the hairball's direction
+            // so the hit reads immediately, bridging the round-trip until the
+            // victim's real spin-out streams back over the network.
+            const r = MP.remotes.get(id);
+            if (r) r.bump(dir.x, dir.z, 15);
+          }
+        : null
     );
     // Sparks where a kart scraped a railing; skid marks while spinning out.
     for (const k of karts) {
