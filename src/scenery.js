@@ -655,6 +655,63 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
   foliage.layers.set(1);
   scene.add(trunks);
   scene.add(foliage);
+
+  // Soft contact shadow under each tree — grounds them without the cost of a
+  // real shadow pass (reads as the SSAO "occlusion" darkening at the base).
+  buildBlobShadows(
+    scene,
+    spots.map((spot) => {
+      const sc = 0.9 * scaleMul;
+      return { x: spot.x, y: spot.y, z: spot.z, r: (2.0 + spot.b.sx) * sc };
+    })
+  );
+}
+
+// Flat, soft, dark discs laid on the ground under objects — a cheap contact /
+// ambient-occlusion shadow. One shared soft-edged texture, all instanced.
+let _blobTex = null;
+function blobTexture() {
+  if (_blobTex) return _blobTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(0,0,0,0.55)");
+  g.addColorStop(0.6, "rgba(0,0,0,0.32)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _blobTex = new THREE.CanvasTexture(c);
+  return _blobTex;
+}
+
+function buildBlobShadows(scene, discs) {
+  if (!discs.length) return;
+  const geo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2); // lie flat
+  const mat = new THREE.MeshBasicMaterial({
+    map: blobTexture(),
+    transparent: true,
+    depthWrite: false,
+    opacity: 0.5,
+    fog: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+  });
+  const mesh = new THREE.InstancedMesh(geo, mat, discs.length);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const s = new THREE.Vector3();
+  const p = new THREE.Vector3();
+  discs.forEach((d, i) => {
+    p.set(d.x, d.y + 0.06, d.z); // just above the ground to avoid z-fighting
+    s.set(d.r * 2, 1, d.r * 2);
+    m.compose(p, q, s);
+    mesh.setMatrixAt(i, m);
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.renderOrder = 1; // draw over the ground, under the trees
+  mesh.layers.set(1); // match the trees: excluded from the mirror render
+  scene.add(mesh);
 }
 
 // Desert cacti: a saguaro built once and instanced.
@@ -681,6 +738,11 @@ function buildCacti(scene, spots) {
   if (cacti.instanceColor) cacti.instanceColor.needsUpdate = true;
   cacti.layers.set(1);
   scene.add(cacti);
+
+  buildBlobShadows(
+    scene,
+    spots.map((spot) => ({ x: spot.x, y: spot.y, z: spot.z, r: 1.6 }))
+  );
 }
 
 function cactusGeometry() {

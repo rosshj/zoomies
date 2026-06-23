@@ -129,20 +129,29 @@ const fxPass = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null },
     uAberr: { value: 0 },
+    uRadial: { value: 0 }, // radial motion blur amount (ramps with speed/boost)
     uVignette: { value: 0.4 },
     uSat: { value: 1.3 },
     uContrast: { value: 1.07 },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uVignette;
-    uniform float uSat; uniform float uContrast; varying vec2 vUv;
+    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uRadial;
+    uniform float uVignette; uniform float uSat; uniform float uContrast; varying vec2 vUv;
     void main(){
       vec2 d = vUv - 0.5;
-      vec3 col;
-      col.r = texture2D(tDiffuse, vUv + d * uAberr).r;
-      col.g = texture2D(tDiffuse, vUv).g;
-      col.b = texture2D(tDiffuse, vUv - d * uAberr).b;
+      // Radial (zoom) motion blur toward the screen centre + chromatic split,
+      // both ramped by speed so flat-out driving reads fast. uRadial=0 -> no blur.
+      vec3 col = vec3(0.0);
+      const int RB = 6;
+      for (int i = 0; i < RB; i++) {
+        float s = 1.0 - float(i) * (uRadial / float(RB));
+        vec2 uv = 0.5 + d * s;
+        col.r += texture2D(tDiffuse, uv + d * uAberr).r;
+        col.g += texture2D(tDiffuse, uv).g;
+        col.b += texture2D(tDiffuse, uv - d * uAberr).b;
+      }
+      col /= float(RB);
       float l = dot(col, vec3(0.299, 0.587, 0.114));
       col = mix(vec3(l), col, uSat);          // saturation
       col = (col - 0.5) * uContrast + 0.5;     // contrast
@@ -984,6 +993,12 @@ function loop(now) {
     // Chromatic aberration ramps up with the boost.
     const aberrTarget = player.boosting ? 0.008 : 0;
     fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
+    // Radial (zoom) motion blur: subtle from ~18 m/s, stronger flat-out, and an
+    // extra kick while boosting. Smoothed so it eases in/out, never snaps.
+    const spd = Math.abs(player.speed);
+    const radialTarget =
+      Math.min(1, Math.max(0, (spd - 18) / 40)) * 0.05 + (player.boosting ? 0.05 : 0);
+    fxPass.uniforms.uRadial.value += (radialTarget - fxPass.uniforms.uRadial.value) * Math.min(1, dt * 4);
 
     // AI
     for (const k of karts) if (!k.isPlayer) k.driveAI(track, dt);
