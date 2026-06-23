@@ -1059,15 +1059,26 @@ function resolveRemoteCollisions() {
     const nz = dz / dist;
     const overlap = min - dist;
 
-    // Push the player fully clear (the ghost stays on its interpolated path).
-    player.position.x -= nx * overlap;
-    player.position.z -= nz * overlap;
+    // Mass-weighted split, exactly like the local kart-kart bump: the lighter
+    // kart moves more. The player's share is applied to the real player; the
+    // ghost's share becomes a transient local shove so it reacts on contact (its
+    // authoritative network path then takes over as the other client reacts too).
+    const ima = 1 / player.mass;
+    const img = 1 / g.mass;
+    const inv = ima + img;
+    const sp = ima / inv; // player's share of the push
+    const sg = img / inv; // ghost's share
 
-    // Bumper impulse on the player, scaled by the closing speed.
+    player.position.x -= nx * overlap * sp;
+    player.position.z -= nz * overlap * sp;
+
     const power = 10 + (Math.abs(player.speed) + Math.abs(g.speed)) * 0.4;
-    player.knock.x -= nx * power;
-    player.knock.z -= nz * power;
+    player.knock.x -= nx * power * sp;
+    player.knock.z -= nz * power * sp;
     player.speed *= 0.99;
+
+    // Shove the ghost the other way by its share (visual; springs back).
+    r.bump(nx, nz, overlap * sg, power * sg);
   }
 }
 

@@ -29,6 +29,12 @@ export class RemoteKart {
     this._prevH = 0;
     this._prevS = 0;
     this._ready = false;
+    // Local collision "bump": a transient offset added on top of the interpolated
+    // pose so the ghost visibly springs away when you ram it, instead of sitting
+    // there like a wall. It decays back to zero, letting the authoritative network
+    // path (which reflects the other client's own knockback) take over.
+    this.bumpOff = new THREE.Vector3();
+    this.bumpVel = new THREE.Vector3();
     // Race-placement fields, kept duck-type compatible with Kart so the shared
     // placement sort treats local and remote karts identically.
     this.totalProgress = -1;
@@ -45,15 +51,33 @@ export class RemoteKart {
     if (typeof pose.pr === "number") this.totalProgress = pose.pr;
   }
 
+  // Give the ghost a momentary shove (local, visual only). nx/nz is the unit
+  // push direction, `sep` an immediate positional kick, `impulse` a velocity so
+  // it keeps drifting briefly like a real bump before easing back.
+  bump(nx, nz, sep, impulse) {
+    this.bumpOff.x += nx * sep;
+    this.bumpOff.z += nz * sep;
+    this.bumpVel.x += nx * impulse;
+    this.bumpVel.z += nz * impulse;
+    // Keep it sane so a fast pile-up can't fling the ghost across the map.
+    const cap = 3;
+    this.bumpOff.clampLength(0, cap);
+  }
+
   // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
   update(renderTime, dt) {
     const s = sampleBuffer(this.buffer, renderTime, 250);
     if (!s) return; // nothing buffered yet
     const k = this.kart;
 
-    // Drop the puppet straight onto the interpolated pose.
-    k.position.x = s.x;
-    k.position.z = s.z;
+    // Integrate + decay the local collision bump (a spring back to the true path).
+    this.bumpOff.addScaledVector(this.bumpVel, dt);
+    this.bumpVel.multiplyScalar(1 - Math.min(1, 4 * dt));
+    this.bumpOff.multiplyScalar(1 - Math.min(1, 3 * dt));
+
+    // Drop the puppet onto the interpolated pose, plus the transient bump offset.
+    k.position.x = s.x + this.bumpOff.x;
+    k.position.z = s.z + this.bumpOff.z;
     k.groundY = s.y; // sender already did ground-follow; y is absolute world height
     k.y = 0; // hops are baked into the sender's y; no separate jump offset
     k.position.y = s.y;
