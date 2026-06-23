@@ -7,5 +7,8 @@
     "start": "npx --yes serve -l 8080 .",
     "dev": "npx --yes serve -l 8080 ."
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "partykit": "^0.0.115"
+  }
 }

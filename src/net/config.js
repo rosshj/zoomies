@@ -13,3 +13,6 @@ export function resolveHost() {
   const p = new URLSearchParams(location.search).get("host");
   return (p || PARTY_HOST || "").trim();
 }
+
+// Ably key for multiplayer.
+export const ABLY_KEY = "zDRQCw.ydmgPw:JrBtmO-j6bXrQJZfYGCHfeuQwuCpsPZ7sZJjUxNMGEk";
