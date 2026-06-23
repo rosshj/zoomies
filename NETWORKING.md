@@ -38,37 +38,46 @@ loaded until you turn it on.
 | `party/zoomies.js` | PartyKit server (relay + presence + clock) |
 | `partykit.json` | PartyKit project config |
 
-## Turn it on (≈5 minutes)
+## Turn it on — Ably (recommended, ≈3 minutes, no server)
 
-1. **Install + log in** (one time):
-   ```
-   npm i -D partykit
-   npx partykit login
-   ```
-2. **Deploy the room server:**
-   ```
-   npx partykit deploy
-   ```
-   This prints your host, e.g. `zoomies.YOURNAME.partykit.dev`.
-3. **Point the game at it** — set it in `src/net/config.js`:
+The PartyKit.dev zone hit Cloudflare's 10K-subdomain limit and can't accept new
+deploys. Ably is the active backend — free tier, no server to run.
+
+1. **Create a free Ably account** at https://ably.com  
+2. **Copy your API key**: Dashboard → Apps → (your app) → API Keys → copy the key  
+   (it looks like `xVLyHw.AbCdEf:xxxxxxxxxxxxxxxxxxxx`)  
+3. **Paste it** in `src/net/config.js`:
    ```js
-   export const PARTY_HOST = "zoomies.YOURNAME.partykit.dev";
+   export const ABLY_KEY = "xVLyHw.AbCdEf:xxxxxxxxxxxxxxxxxxxx";
    ```
-4. **Play multiplayer** by adding `&mp=1` to the URL. The room is the world seed,
-   so the same link = same world + same lobby:
+4. **Play multiplayer** by adding `&mp=1` to the URL. Room = world seed:
    ```
    https://your-game.vercel.app/?seed=ABC123&mp=1
    ```
-   Open it on two devices (or two tabs) and you'll see each other's ghost karts.
+   Open on two devices (or two tabs) — you'll see each other's ghost karts.
    A small `MP · peers N · ping Xms` readout appears bottom-left.
 
-### Local development
+No deploy step, no server. Ably relays everything.
 
-Run the room server locally and point the game at it without editing config:
+## Turn it on — PartyKit (blocked / for reference)
+
+PartyKit can't currently deploy new projects to partykit.dev (Cloudflare zone
+limit). Kept here for when they fix it:
+
+1. `npm i -D partykit && npx partykit login`
+2. `npx partykit deploy` → prints `zoomies.YOURNAME.partykit.dev`
+3. Set `PARTY_HOST` in `src/net/config.js`
+4. Add `&mp=1` to the URL
+
+### Local development (Ably)
+
+No local server needed — Ably's cloud relays in dev too. Just set the key and
+use `?mp=1`. For a loopback/offline test:
 ```
-npx partykit dev            # serves on 127.0.0.1:1999
-# then open:  http://localhost:5173/?seed=ABC123&mp=1&host=127.0.0.1:1999
+# open two tabs:
+http://localhost:5173/?seed=ABC123&mp=1
 ```
+Both tabs connect to the same Ably channel and see each other immediately.
 
 ## How to actually validate it
 
