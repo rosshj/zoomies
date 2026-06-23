@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -434,20 +435,20 @@ function buildGrass(scene, track, heightAt) {
   let tries = 0;
   while (n < COUNT && tries < COUNT * 4) {
     tries++;
-    const i = Math.floor(Math.random() * N);
+    const i = Math.floor(rand() * N);
     const pt = track._pts[i];
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const dir = Math.random() < 0.5 ? 1 : -1;
-    const dist = halfW + 2.5 + Math.random() * 34;
-    const x = pt.x + side.x * dir * dist + (Math.random() - 0.5) * 3;
-    const z = pt.z + side.z * dir * dist + (Math.random() - 0.5) * 3;
+    const dir = rand() < 0.5 ? 1 : -1;
+    const dist = halfW + 2.5 + rand() * 34;
+    const x = pt.x + side.x * dir * dist + (rand() - 0.5) * 3;
+    const z = pt.z + side.z * dir * dist + (rand() - 0.5) * 3;
     if (track.distanceToCenter(x, z) < halfW + 2) continue;
     if (_inLake(x, z)) continue;
     const biome = biomeAt(x, z);
-    if (Math.random() > biome.grassDensity) continue; // sparse in dry biomes
+    if (rand() > biome.grassDensity) continue; // sparse in dry biomes
     dummy.position.set(x, heightAt(x, z), z);
-    dummy.rotation.set((Math.random() - 0.5) * 0.3, Math.random() * Math.PI, (Math.random() - 0.5) * 0.3);
-    dummy.scale.setScalar(0.7 + Math.random() * 1.1);
+    dummy.rotation.set((rand() - 0.5) * 0.3, rand() * Math.PI, (rand() - 0.5) * 0.3);
+    dummy.scale.setScalar(0.7 + rand() * 1.1);
     dummy.updateMatrix();
     mesh.setMatrixAt(n, dummy.matrix);
     mesh.setColorAt(n, tint.set(biome.grassTint)); // tints the blade gradient
@@ -485,7 +486,7 @@ function buildTerrain(scene, heightAt) {
     // white peaks scattered all over the course.
     biomeGround(x, z, base);
     const b = biomeAt(x, z);
-    base.lerp(b.ground2Col, Math.random() * 0.35); // subtle dappling
+    base.lerp(b.ground2Col, rand() * 0.35); // subtle dappling
     if (b.name === "alpine") {
       if (y < 44) c.copy(base);
       else if (y < 62) c.copy(base).lerp(cRock, (y - 44) / 18);
@@ -545,7 +546,7 @@ function buildMountains(scene, heightAt, track) {
     const base = heightAt(x, z) + h / 2 - bury;
     const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), desert ? rockDesert : rockN);
     m.position.set(x, base, z);
-    m.rotation.y = Math.random() * Math.PI;
+    m.rotation.y = rand() * Math.PI;
     scene.add(m);
     // No snow caps in the desert — snowy peaks behind cacti look wrong.
     if (!desert) {
@@ -559,9 +560,9 @@ function buildMountains(scene, heightAt, track) {
   // Distant mountain ring around the whole world.
   const count = 24;
   for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + Math.random() * 0.2;
-    const r = 840 + Math.random() * 160;
-    peak(Math.cos(a) * r, Math.sin(a) * r, 170 + Math.random() * 150, 90 + Math.random() * 70, 30);
+    const a = (i / count) * Math.PI * 2 + rand() * 0.2;
+    const r = 840 + rand() * 160;
+    peak(Math.cos(a) * r, Math.sin(a) * r, 170 + rand() * 150, 90 + rand() * 70, 30);
   }
 
   // A few peaks brought in close beside the track, so you race right up against
@@ -573,8 +574,8 @@ function buildMountains(scene, heightAt, track) {
       const p = track._pts[i];
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-      const off = 165 + Math.random() * 55;
-      peak(p.x + side.x * outward * off, p.z + side.z * outward * off, 120 + Math.random() * 50, 50 + Math.random() * 22, 22);
+      const off = 165 + rand() * 55;
+      peak(p.x + side.x * outward * off, p.z + side.z * outward * off, 120 + rand() * 50, 50 + rand() * 22, 22);
     }
   }
 }
@@ -585,8 +586,8 @@ function scatter(count, track, flatten, minFlat, range) {
   let tries = 0;
   while (out.length < count && tries < count * 30) {
     tries++;
-    const x = (Math.random() - 0.5) * range;
-    const z = (Math.random() - 0.5) * range;
+    const x = (rand() - 0.5) * range;
+    const z = (rand() - 0.5) * range;
     const d = track.distanceToCenter(x, z);
     if (flatten(d) < minFlat) continue;
     out.push({ x, z });
@@ -600,7 +601,7 @@ function buildTrees(scene, track, heightAt, flatten) {
   const spots = scatter(340, track, flatten, 0.55, 1700)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
-    .filter((s) => s.y <= 30 && Math.random() < s.b.treeDensity);
+    .filter((s) => s.y <= 30 && rand() < s.b.treeDensity);
 
   const cones = spots.filter((s) => s.b.style !== "cactus");
   const cacti = spots.filter((s) => s.b.style === "cactus");
@@ -628,8 +629,8 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
 
   spots.forEach((spot, i) => {
     const { y, b } = spot;
-    const sc = (0.8 + Math.random() * 1.4) * scaleMul;
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
+    const sc = (0.8 + rand() * 1.4) * scaleMul;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI);
 
     p.set(spot.x, y + 1.5 * sc, spot.z);
     s.set(sc, sc, sc);
@@ -643,8 +644,8 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
     foliage.setMatrixAt(i, m);
 
     let h = b.foliage[0];
-    if (b.name === "autumn") h += (Math.random() - 0.5) * 0.12; // mix red/orange/gold
-    col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (Math.random() - 0.5) * 0.1, 0.14, 0.6));
+    if (b.name === "autumn") h += (rand() - 0.5) * 0.12; // mix red/orange/gold
+    col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.6));
     if (b.name === "alpine") col.lerp(SNOW_WHITE, 0.45); // snow-dusted pines
     foliage.setColorAt(i, col);
   });
@@ -726,13 +727,13 @@ function buildCacti(scene, spots) {
   const p = new THREE.Vector3();
   const col = new THREE.Color();
   spots.forEach((spot, i) => {
-    const sc = 0.9 + Math.random() * 0.9;
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
+    const sc = 0.9 + rand() * 0.9;
+    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI);
     p.set(spot.x, spot.y, spot.z);
     s.set(sc, sc, sc);
     m.compose(p, q, s);
     cacti.setMatrixAt(i, m);
-    cacti.setColorAt(i, col.setHSL(0.28, 0.4, 0.34 + Math.random() * 0.12));
+    cacti.setColorAt(i, col.setHSL(0.28, 0.4, 0.34 + rand() * 0.12));
   });
   cacti.instanceMatrix.needsUpdate = true;
   if (cacti.instanceColor) cacti.instanceColor.needsUpdate = true;
@@ -772,10 +773,10 @@ function buildForests(scene, track, heightAt) {
     const reps = here.name === "forest" ? 6 : 3;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     for (let r = 0; r < reps; r++) {
-      const dir = Math.random() < 0.5 ? 1 : -1;
-      const dist = halfW + 5 + Math.random() * 115;
-      const x = p.x + side.x * dir * dist + (Math.random() - 0.5) * 9;
-      const z = p.z + side.z * dir * dist + (Math.random() - 0.5) * 9;
+      const dir = rand() < 0.5 ? 1 : -1;
+      const dist = halfW + 5 + rand() * 115;
+      const x = p.x + side.x * dir * dist + (rand() - 0.5) * 9;
+      const z = p.z + side.z * dir * dist + (rand() - 0.5) * 9;
       if (track.distanceToCenter(x, z) < halfW + 4) continue;
       if (_inLake(x, z)) continue;
       const b = biomeAt(x, z);
@@ -808,10 +809,10 @@ function buildCliffs(scene, track, heightAt) {
       for (let row = 0; row < 3; row++) {
         // Keep the base row well clear of the tarmac (chunks are ~sx wide, so
         // start far enough out that they don't spill onto the road).
-        const off = track.halfWidth + 15 + row * 8 + Math.random() * 3;
+        const off = track.halfWidth + 15 + row * 8 + rand() * 3;
         const x = p.x + side.x * outward * off;
         const z = p.z + side.z * outward * off;
-        chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + Math.random() * 10 });
+        chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + rand() * 10 });
       }
     }
   }
@@ -820,14 +821,14 @@ function buildCliffs(scene, track, heightAt) {
   mesh.castShadow = true;
   chunks.forEach((c, i) => {
     const sy = c.h / 2;
-    const sx = 3 + Math.random() * 3.5;
-    const sz = 3 + Math.random() * 3.5;
-    q.setFromEuler(new THREE.Euler(Math.random() * 0.5, Math.random() * Math.PI, Math.random() * 0.5));
+    const sx = 3 + rand() * 3.5;
+    const sz = 3 + rand() * 3.5;
+    q.setFromEuler(new THREE.Euler(rand() * 0.5, rand() * Math.PI, rand() * 0.5));
     pv.set(c.x, c.base + sy * 0.45, c.z);
     s.set(sx, sy, sz);
     m.compose(pv, q, s);
     mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, col.setHSL(0.09, 0.12, 0.42 + Math.random() * 0.12));
+    mesh.setColorAt(i, col.setHSL(0.09, 0.12, 0.42 + rand() * 0.12));
   });
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -846,8 +847,8 @@ function buildRocks(scene, track, heightAt, flatten) {
   const s = new THREE.Vector3();
   spots.forEach((spot, i) => {
     const y = heightAt(spot.x, spot.z);
-    const sc = 1 + Math.random() * 3;
-    q.setFromEuler(new THREE.Euler(Math.random() * 3, Math.random() * 3, Math.random() * 3));
+    const sc = 1 + rand() * 3;
+    q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
     p.set(spot.x, y + sc * 0.4, spot.z);
     s.set(sc, sc * 0.8, sc);
     m.compose(p, q, s);
@@ -872,25 +873,25 @@ function buildTown(scene, track, heightAt) {
   const townCenter = { x: 320, z: 330 };
   for (let i = 0; i < 26; i++) {
     placements.push({
-      x: townCenter.x + (Math.random() - 0.5) * 240,
-      z: townCenter.z + (Math.random() - 0.5) * 240,
+      x: townCenter.x + (rand() - 0.5) * 240,
+      z: townCenter.z + (rand() - 0.5) * 240,
     });
   }
   for (let i = 0; i < 16; i++) {
-    const a = Math.random() * Math.PI * 2;
-    const r = 300 + Math.random() * 260;
+    const a = rand() * Math.PI * 2;
+    const r = 300 + rand() * 260;
     placements.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });
   }
 
   for (const pl of placements) {
     if (track.distanceToCenter(pl.x, pl.z) < track.halfWidth + 30) continue;
     const y = heightAt(pl.x, pl.z);
-    const w = 8 + Math.random() * 10;
-    const d = 8 + Math.random() * 10;
-    const floors = 1 + Math.floor(Math.random() * 4);
+    const w = 8 + rand() * 10;
+    const d = 8 + rand() * 10;
+    const floors = 1 + Math.floor(rand() * 4);
     const h = floors * 5;
     const mat = new THREE.MeshStandardMaterial({
-      color: palette[Math.floor(Math.random() * palette.length)],
+      color: palette[Math.floor(rand() * palette.length)],
       roughness: 0.9,
     });
     const b = new THREE.Group();
@@ -918,7 +919,7 @@ function buildTown(scene, track, heightAt) {
     }
 
     b.position.set(pl.x, y, pl.z);
-    b.rotation.y = Math.random() * Math.PI;
+    b.rotation.y = rand() * Math.PI;
     scene.add(b);
   }
 }
@@ -945,8 +946,8 @@ function buildRoadside(scene, track, heightAt) {
     const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
     prop.position.set(x, heightAt(x, z), z);
     prop.rotation.y = faceRoad
-      ? Math.atan2(-side.x * dir, -side.z * dir) + (Math.random() - 0.5) * 0.4
-      : Math.random() * Math.PI * 2;
+      ? Math.atan2(-side.x * dir, -side.z * dir) + (rand() - 0.5) * 0.4
+      : rand() * Math.PI * 2;
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
   };
@@ -963,25 +964,25 @@ function buildRoadside(scene, track, heightAt) {
     for (const dir of [1, -1]) {
       if (town) {
         // Front shops right by the road.
-        if (Math.random() < 0.62 + density * 0.32)
-          place((b) => makeTownStructure(density, b), halfW + 5 + Math.random() * 2.5, dir, p, side, true);
+        if (rand() < 0.62 + density * 0.32)
+          place((b) => makeTownStructure(density, b), halfW + 5 + rand() * 2.5, dir, p, side, true);
         // Several rows of houses stacking back up the hillside, thinning with
         // depth so the town recedes into the hills instead of being a thin strip.
         const rows = [13, 24, 36, 50, 66];
         for (let r = 0; r < rows.length; r++) {
-          if (Math.random() < (0.52 + density * 0.4) * (1 - r * 0.15))
-            place((b) => makeBuilding(density, b), halfW + rows[r] + Math.random() * 7, dir, p, side, true);
+          if (rand() < (0.52 + density * 0.4) * (1 - r * 0.15))
+            place((b) => makeBuilding(density, b), halfW + rows[r] + rand() * 7, dir, p, side, true);
         }
-        if (Math.random() < 0.5)
-          place(makeStreetProp, halfW + 3.2 + Math.random() * 1.4, dir, p, side, true);
-      } else if (Math.random() < 0.4) {
-        place(makeFarmProp, halfW + 6 + Math.random() * 18, dir, p, side, false);
+        if (rand() < 0.5)
+          place(makeStreetProp, halfW + 3.2 + rand() * 1.4, dir, p, side, true);
+      } else if (rand() < 0.4) {
+        place(makeFarmProp, halfW + 6 + rand() * 18, dir, p, side, false);
       }
     }
   }
 }
 
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const pick = (arr) => arr[Math.floor(rand() * arr.length)];
 function mat(color, opts = {}) {
   return new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...opts });
 }
@@ -1001,8 +1002,8 @@ function windowTexture() {
   const rows = 4;
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
-      const lit = Math.random();
-      const v = lit < 0.5 ? Math.floor(150 + Math.random() * 105) : 22;
+      const lit = rand();
+      const v = lit < 0.5 ? Math.floor(150 + rand() * 105) : 22;
       ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.82)},${Math.floor(v * 0.45)})`;
       ctx.fillRect(8 + col * 18, 7 + r * 18, 11, 12);
     }
@@ -1048,11 +1049,11 @@ function bodyMaterial(wall) {
 // roof, chimney, dormer, framed door + awning, sometimes an L-shaped wing.
 function makeBuilding(density, biome) {
   const g = new THREE.Group();
-  const w = 4 + Math.random() * 3.5;
-  const d = 4 + Math.random() * 3.5;
+  const w = 4 + rand() * 3.5;
+  const d = 4 + rand() * 3.5;
   let floors = 1;
-  if (Math.random() < 0.45 + density * 0.2) floors = 2;
-  if (floors === 2 && Math.random() < 0.15) floors = 3;
+  if (rand() < 0.45 + density * 0.2) floors = 2;
+  if (floors === 2 && rand() < 0.15) floors = 3;
   const h = floors * 2.7;
   const base = 0.6;
   const top = base + h;
@@ -1066,12 +1067,12 @@ function makeBuilding(density, biome) {
   // Window-lit body (+ optional wing), merged into one emissive mesh.
   const bodyParts = [new THREE.BoxGeometry(w, h, d).translate(0, base + h / 2, 0)];
   let wing = null;
-  if (Math.random() < 0.4) {
+  if (rand() < 0.4) {
     const ww = w * 0.6;
     const wd = d * 0.62;
     const wh = h * (floors > 1 ? 0.6 : 0.92);
-    const wx = (w / 2 + ww / 2 - 0.2) * (Math.random() < 0.5 ? 1 : -1);
-    const wz = (Math.random() - 0.5) * d * 0.3;
+    const wx = (w / 2 + ww / 2 - 0.2) * (rand() < 0.5 ? 1 : -1);
+    const wz = (rand() - 0.5) * d * 0.3;
     bodyParts.push(new THREE.BoxGeometry(ww, wh, wd).translate(wx, base + wh / 2, wz));
     wing = { ww, wd, wh, wx, wz };
   }
@@ -1084,7 +1085,7 @@ function makeBuilding(density, biome) {
   part(parts, new THREE.BoxGeometry(w + 0.5, base, d + 0.5).translate(0, base / 2, 0), 0x5a4f44); // foundation
   part(parts, new THREE.BoxGeometry(w + 0.12, 0.18, d + 0.12).translate(0, top - 0.1, 0), trim); // eave band
 
-  const flat = Math.random() < 0.25;
+  const flat = rand() < 0.25;
   if (flat) {
     part(parts, new THREE.BoxGeometry(w + 0.3, 0.5, d + 0.3).translate(0, top + 0.25, 0), roofCol);
     part(parts, new THREE.BoxGeometry(w + 0.4, 0.5, 0.3).translate(0, top + 0.6, d / 2 + 0.05), trim); // front parapet
@@ -1092,24 +1093,24 @@ function makeBuilding(density, biome) {
     const roofH = 1.4 + floors * 0.45;
     const rad = Math.max(w, d) * 0.82 + 0.5;
     part(parts, new THREE.ConeGeometry(rad, roofH, 4).rotateY(Math.PI / 4).translate(0, top + roofH / 2, 0), roofCol);
-    if (Math.random() < 0.75) {
+    if (rand() < 0.75) {
       const cx = w * 0.25;
       const cz = d * 0.2;
       part(parts, new THREE.BoxGeometry(0.5, 1.6, 0.5).translate(cx, top + roofH * 0.4, cz), 0x8a5a44);
       part(parts, new THREE.BoxGeometry(0.7, 0.22, 0.7).translate(cx, top + roofH * 0.4 + 0.9, cz), 0x333333);
     }
-    if (floors >= 2 && Math.random() < 0.5) {
+    if (floors >= 2 && rand() < 0.5) {
       part(parts, new THREE.BoxGeometry(1.3, 1.1, 1.0).translate(0, top + 0.35, d / 2 - 0.3), wall);
       part(parts, new THREE.ConeGeometry(1.1, 0.8, 4).rotateY(Math.PI / 4).translate(0, top + 1.2, d / 2 - 0.3), roofCol);
     }
   }
 
   // Framed door (+ step).
-  const dx = (Math.random() - 0.5) * (w - 2.2);
+  const dx = (rand() - 0.5) * (w - 2.2);
   part(parts, new THREE.BoxGeometry(1.4, 2.1, 0.18).translate(dx, base + 1.0, d / 2 + 0.02), trim);
   part(parts, new THREE.BoxGeometry(0.95, 1.65, 0.12).translate(dx, base + 0.82, d / 2 + 0.12), 0x4a2f1c);
   part(parts, new THREE.BoxGeometry(1.6, 0.2, 0.7).translate(dx, base, d / 2 + 0.35), 0x7a6b58); // step
-  if (Math.random() < 0.4) {
+  if (rand() < 0.4) {
     const awn = new THREE.BoxGeometry(2.2, 0.22, 1.1);
     awn.rotateX(-0.32);
     awn.translate(dx, base + 2.0, d / 2 + 0.55);
@@ -1124,7 +1125,7 @@ function makeBuilding(density, biome) {
 
 // Pick a town structure — mostly houses, occasionally a landmark.
 function makeTownStructure(density, biome) {
-  const r = Math.random();
+  const r = rand();
   if (r < 0.05) return makeChurch();
   if (r < 0.09) return makeWaterTower();
   return makeBuilding(density, biome);
@@ -1185,7 +1186,7 @@ function makeWindmill() {
     hub.add(arm);
   }
   g.add(hub);
-  _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: Math.random() * 6.28 });
+  _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28 });
   return g;
 }
 
@@ -1200,7 +1201,7 @@ function makeSilo() {
 }
 
 function makeStreetProp() {
-  const r = Math.random();
+  const r = rand();
   if (r < 0.26) return makeLamp();
   if (r < 0.42) return makeBench();
   if (r < 0.54) return makeHydrant();
@@ -1218,7 +1219,7 @@ function makePlanter() {
   const m = mat(0x4caf50, { flatShading: true });
   for (let i = 0; i < 3; i++) {
     const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), m);
-    b.position.set((Math.random() - 0.5) * 0.8, 0.8, (Math.random() - 0.5) * 0.8);
+    b.position.set((rand() - 0.5) * 0.8, 0.8, (rand() - 0.5) * 0.8);
     g.add(b);
   }
   return g;
@@ -1239,7 +1240,7 @@ function makeMarketStall() {
       post.position.set(sx * 1.2, 1.2, sz * 0.6);
       g.add(post);
     }
-  const stripe = Math.random() < 0.5 ? 0xd23a2a : 0x2a7ad2;
+  const stripe = rand() < 0.5 ? 0xd23a2a : 0x2a7ad2;
   const canopy = new THREE.Mesh(new THREE.BoxGeometry(3, 0.3, 1.9), mat(stripe));
   canopy.position.y = 2.5;
   canopy.castShadow = true;
@@ -1263,7 +1264,7 @@ function makeSign() {
   g.add(post);
   const board = new THREE.Mesh(
     new THREE.BoxGeometry(1.6, 0.8, 0.1),
-    mat([0x2e7d32, 0xc62828, 0x1565c0, 0xf9a825][Math.floor(Math.random() * 4)])
+    mat([0x2e7d32, 0xc62828, 0x1565c0, 0xf9a825][Math.floor(rand() * 4)])
   );
   board.position.y = 1.9;
   g.add(board);
@@ -1308,7 +1309,7 @@ function makeHydrant() {
 
 function makeFarmProp(biome) {
   const b = biome || BIOMES[0];
-  const r = Math.random();
+  const r = rand();
   if (b.style === "cactus") {
     // Dry country: cacti, rocks and the odd ranch structure.
     if (r < 0.45) return makeCactusProp();
@@ -1332,7 +1333,7 @@ function makeFarmProp(biome) {
 function makeCactusProp() {
   const g = new THREE.Group();
   const c = new THREE.Mesh(cactusGeometry(), mat(0x4f8a4a, { flatShading: true }));
-  c.scale.setScalar(0.9 + Math.random() * 0.8);
+  c.scale.setScalar(0.9 + rand() * 0.8);
   c.castShadow = true;
   g.add(c);
   return g;
@@ -1341,11 +1342,11 @@ function makeCactusProp() {
 function makeRockProp() {
   const g = new THREE.Group();
   const m = mat(0x9a8a6a, { flatShading: true });
-  const n = 1 + Math.floor(Math.random() * 3);
+  const n = 1 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
-    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6 + Math.random() * 1.0, 0), m);
-    r.position.set((Math.random() - 0.5) * 2, 0.4, (Math.random() - 0.5) * 2);
-    r.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6 + rand() * 1.0, 0), m);
+    r.position.set((rand() - 0.5) * 2, 0.4, (rand() - 0.5) * 2);
+    r.rotation.set(rand() * 3, rand() * 3, rand() * 3);
     r.castShadow = true;
     g.add(r);
   }
@@ -1355,9 +1356,9 @@ function makeRockProp() {
 function makeHouse() {
   const g = new THREE.Group();
   const palette = [0xd9776a, 0xe0b15a, 0x7aa6c2, 0x9ccc8f, 0xc9bfa8, 0xb98ec2, 0xe8e0d0];
-  const w = 5 + Math.random() * 4;
-  const d = 5 + Math.random() * 4;
-  const floors = 1 + Math.floor(Math.random() * 3);
+  const w = 5 + rand() * 4;
+  const d = 5 + rand() * 4;
+  const floors = 1 + Math.floor(rand() * 3);
   const h = floors * 3.2;
   const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(pick(palette)));
   body.position.y = h / 2;
@@ -1415,15 +1416,15 @@ function makeFence(color) {
 function makeTree(biome) {
   const b = biome || BIOMES[0];
   const g = new THREE.Group();
-  const s = 0.9 + Math.random() * 1.2;
+  const s = 0.9 + rand() * 1.2;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 6), mat(0x6b4a2b));
   trunk.position.y = 1.5 * s;
   trunk.scale.setScalar(s);
   trunk.castShadow = true;
   g.add(trunk);
   let h = b.foliage[0];
-  if (b.name === "autumn") h += (Math.random() - 0.5) * 0.12;
-  const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (Math.random() - 0.5) * 0.1, 0.14, 0.6));
+  if (b.name === "autumn") h += (rand() - 0.5) * 0.12;
+  const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.6));
   const fol = new THREE.Mesh(new THREE.ConeGeometry(2.4, 6, 7), mat(folCol.getHex(), { flatShading: true }));
   fol.position.y = (3 + 3 * b.sy) * s;
   fol.scale.set(b.sx * s, b.sy * s, b.sx * s);
@@ -1435,10 +1436,10 @@ function makeTree(biome) {
 function makeBush() {
   const g = new THREE.Group();
   const m = mat(0x4caf50, { flatShading: true });
-  const n = 2 + Math.floor(Math.random() * 3);
+  const n = 2 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
-    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9 + Math.random() * 0.6, 0), m);
-    b.position.set((Math.random() - 0.5) * 2, 0.7, (Math.random() - 0.5) * 2);
+    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9 + rand() * 0.6, 0), m);
+    b.position.set((rand() - 0.5) * 2, 0.7, (rand() - 0.5) * 2);
     b.castShadow = true;
     g.add(b);
   }
@@ -1536,7 +1537,7 @@ function buildLandmarks(scene, track, heightAt) {
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     // Outward = the side that points away from the world centre (the infield).
     const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-    const dist = 78 + Math.random() * 30;
+    const dist = 78 + rand() * 30;
     const x = p.x + side.x * outward * dist;
     const z = p.z + side.z * outward * dist;
     const obj = make();
@@ -1561,7 +1562,7 @@ function makeFlag(height = 3, color) {
   cloth.position.x = 0.8;
   pivot.add(cloth);
   g.add(pivot);
-  _flutterers.push({ obj: pivot, phase: Math.random() * 6.28 });
+  _flutterers.push({ obj: pivot, phase: rand() * 6.28 });
   return g;
 }
 
@@ -1753,7 +1754,7 @@ function makeBigWindmill() {
     hub.add(arm);
   }
   g.add(hub);
-  _spinners.push({ obj: hub, ax: "z", speed: 0.5, phase: Math.random() * 6.28 });
+  _spinners.push({ obj: hub, ax: "z", speed: 0.5, phase: rand() * 6.28 });
   const flag = makeFlag(2.6);
   flag.position.y = tH + 2.6;
   g.add(flag);
@@ -1768,7 +1769,7 @@ function buildBirds(scene) {
   for (let f = 0; f < 3; f++) {
     const flock = new THREE.Group();
     const wings = [];
-    const count = 4 + Math.floor(Math.random() * 4);
+    const count = 4 + Math.floor(rand() * 4);
     for (let i = 0; i < count; i++) {
       const bird = new THREE.Group();
       for (const sx of [-1, 1]) {
@@ -1777,22 +1778,22 @@ function buildBirds(scene) {
         wing.position.x = sx * 1.1;
         wg.add(wing);
         bird.add(wg);
-        wings.push({ wg, sx, phase: Math.random() * 6.28 });
+        wings.push({ wg, sx, phase: rand() * 6.28 });
       }
-      bird.position.set((Math.random() - 0.5) * 18, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 18);
-      bird.scale.setScalar(0.7 + Math.random() * 0.6);
+      bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
+      bird.scale.setScalar(0.7 + rand() * 0.6);
       flock.add(bird);
     }
     scene.add(flock);
     flocks.push({
       flock,
       wings,
-      R: 130 + Math.random() * 170,
-      cx: (Math.random() - 0.5) * 320,
-      cz: (Math.random() - 0.5) * 320,
-      baseY: 85 + Math.random() * 55,
-      speed: (0.05 + Math.random() * 0.05) * (Math.random() < 0.5 ? 1 : -1),
-      phase: Math.random() * 6.28,
+      R: 130 + rand() * 170,
+      cx: (rand() - 0.5) * 320,
+      cz: (rand() - 0.5) * 320,
+      baseY: 85 + rand() * 55,
+      speed: (0.05 + rand() * 0.05) * (rand() < 0.5 ? 1 : -1),
+      phase: rand() * 6.28,
     });
   }
   return flocks;
@@ -1830,14 +1831,14 @@ function buildBalloons(scene, heightAt) {
     );
     g.add(basket);
 
-    const a = Math.random() * Math.PI * 2;
-    const r = 150 + Math.random() * 300;
+    const a = rand() * Math.PI * 2;
+    const r = 150 + rand() * 300;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
     g.position.set(x, 0, z);
     scene.add(g);
     // Float above the terrain beneath them, so they clear the high snowy hill.
     const ground = heightAt ? heightAt(x, z) : 0;
-    balloons.push({ mesh: g, baseY: ground + 75 + Math.random() * 45, phase: Math.random() * 6.28 });
+    balloons.push({ mesh: g, baseY: ground + 75 + rand() * 45, phase: rand() * 6.28 });
   }
   return balloons;
 }

@@ -13,6 +13,20 @@ import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
+import { setSeed, getSeed, randomSeed } from "./rng.js";
+
+// World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
+// (the basis for multiplayer: everyone in a lobby builds from the same seed);
+// otherwise we mint a fresh one and write it back to the URL so it's shareable.
+const _seedParam = new URLSearchParams(location.search).get("seed");
+const WORLD_SEED = (_seedParam || randomSeed()).toUpperCase();
+setSeed(WORLD_SEED);
+if (!_seedParam && history.replaceState) {
+  const u = new URL(location.href);
+  u.searchParams.set("seed", WORLD_SEED);
+  history.replaceState(null, "", u);
+}
+console.log(`[zoomies] world seed: ${getSeed()}`);
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
