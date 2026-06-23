@@ -1077,8 +1077,9 @@ function resolveRemoteCollisions() {
     player.knock.z -= nz * power * sp;
     player.speed *= 0.99;
 
-    // Shove the ghost the other way by its share (visual; springs back).
-    r.bump(nx, nz, overlap * sg, power * sg);
+    // Shove the ghost the other way by its share: a velocity impulse it coasts
+    // off (visual only; its authoritative network path then takes over).
+    r.bump(nx, nz, power * sg * 1.6);
   }
 }
 

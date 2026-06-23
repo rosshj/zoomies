@@ -51,17 +51,13 @@ export class RemoteKart {
     if (typeof pose.pr === "number") this.totalProgress = pose.pr;
   }
 
-  // Give the ghost a momentary shove (local, visual only). nx/nz is the unit
-  // push direction, `sep` an immediate positional kick, `impulse` a velocity so
-  // it keeps drifting briefly like a real bump before easing back.
-  bump(nx, nz, sep, impulse) {
-    this.bumpOff.x += nx * sep;
-    this.bumpOff.z += nz * sep;
+  // Give the ghost a bump impulse (local, visual only). nx/nz is the unit push
+  // direction; `impulse` is a VELOCITY kick — the ghost then coasts and bleeds
+  // off speed with friction in update(), so it lurches forward on contact and
+  // eases to a stop like a real collision, rather than teleporting and freezing.
+  bump(nx, nz, impulse) {
     this.bumpVel.x += nx * impulse;
     this.bumpVel.z += nz * impulse;
-    // Keep it sane so a fast pile-up can't fling the ghost across the map.
-    const cap = 3;
-    this.bumpOff.clampLength(0, cap);
   }
 
   // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
@@ -70,10 +66,13 @@ export class RemoteKart {
     if (!s) return; // nothing buffered yet
     const k = this.kart;
 
-    // Integrate + decay the local collision bump (a spring back to the true path).
+    // Collision bump: integrate the impulse velocity into the offset, then bleed
+    // the velocity off with friction (gradual slow-down) and let the offset ease
+    // gently back to the true path so it never permanently diverges.
     this.bumpOff.addScaledVector(this.bumpVel, dt);
-    this.bumpVel.multiplyScalar(1 - Math.min(1, 4 * dt));
-    this.bumpOff.multiplyScalar(1 - Math.min(1, 3 * dt));
+    this.bumpVel.multiplyScalar(1 - Math.min(1, 3 * dt)); // friction: coast to a stop
+    this.bumpOff.multiplyScalar(1 - Math.min(1, 1.3 * dt)); // gentle return to path
+    this.bumpOff.clampLength(0, 4);
 
     // Drop the puppet onto the interpolated pose, plus the transient bump offset.
     k.position.x = s.x + this.bumpOff.x;
