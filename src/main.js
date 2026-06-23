@@ -14,6 +14,10 @@ import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed } from "./rng.js";
+import { Net } from "./net/net.js";
+import { createPartyTransport } from "./net/partysocket.js";
+import { resolveHost } from "./net/config.js";
+import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
 // (the basis for multiplayer: everyone in a lobby builds from the same seed);
@@ -332,6 +336,128 @@ function buildKarts() {
     if (cfg.isPlayer) player = kart;
   });
 }
+
+// Cel-shade a kart group the same way buildKarts does (rim light + toon bands),
+// so remote players' karts match the look of the local field.
+function decorateKartGroup(group) {
+  group.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+  });
+  toonify(group);
+}
+
+// --- Multiplayer (Phase 2: "ghost race") ---------------------------------
+// Opt-in: only active when a PartyKit host is configured AND the URL has ?mp=1.
+// Remote players appear as render-only "ghost" karts driven by interpolated
+// network snapshots — they glide alongside but DON'T collide or affect the race
+// (they're deliberately kept out of `karts[]`). The room is the world seed, so
+// a link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
+const MP_NAMES = ["Tigger", "Salem", "Felix", "Luna", "Smokey", "Oreo", "Ziggy", "Mochi", "Pixel", "Binx"];
+const MP_SKINS = [
+  { color: 0x1e88e5, catColor: 0x9e9e9e },
+  { color: 0x43a047, catColor: 0x3e2723 },
+  { color: 0xfb8c00, catColor: 0xffffff },
+  { color: 0x8e24aa, catColor: 0x212121 },
+  { color: 0xfdd835, catColor: 0xd7a86e },
+  { color: 0x00897b, catColor: 0xffe0b2 },
+];
+function makeMpIdentity() {
+  const n = MP_NAMES[Math.floor(Math.random() * MP_NAMES.length)];
+  const s = MP_SKINS[Math.floor(Math.random() * MP_SKINS.length)];
+  return { name: n, color: s.color, catColor: s.catColor };
+}
+
+const MP = { enabled: false, net: null, remotes: new Map(), sendAcc: 0, hudAcc: 0, hud: null };
+
+function mpSpawn(identity) {
+  if (MP.remotes.has(identity.id)) return;
+  const r = new RemoteKart(identity);
+  decorateKartGroup(r.group);
+  scene.add(r.group);
+  MP.remotes.set(identity.id, r);
+}
+function mpDespawn(id) {
+  const r = MP.remotes.get(id);
+  if (r) {
+    r.dispose(scene);
+    MP.remotes.delete(id);
+  }
+}
+
+function mpDebugHud() {
+  const el = document.createElement("div");
+  el.id = "mp-debug";
+  el.style.cssText =
+    "position:fixed;left:8px;bottom:8px;z-index:9999;font:11px/1.4 monospace;" +
+    "color:#cdf;background:rgba(10,16,32,.6);padding:3px 7px;border-radius:6px;pointer-events:none";
+  document.body.appendChild(el);
+  return el;
+}
+
+function initMultiplayer() {
+  const host = resolveHost();
+  if (!host || !new URLSearchParams(location.search).has("mp")) return; // opt-in only
+  MP.enabled = true;
+  MP.hud = mpDebugHud();
+  MP.hud.textContent = "MP · connecting…";
+  createPartyTransport({ host, room: WORLD_SEED })
+    .then((transport) => {
+      const net = new Net(transport, makeMpIdentity());
+      MP.net = net;
+      net.on("peer", (identity) => mpSpawn(identity));
+      net.on("peerleave", (id) => mpDespawn(id));
+      net.on("state", (id, pose) => {
+        const r = MP.remotes.get(id);
+        if (r) r.pushState(pose);
+      });
+      net.connect();
+    })
+    .catch((err) => {
+      console.warn("[zoomies] multiplayer failed to start:", err);
+      MP.enabled = false;
+      if (MP.hud) MP.hud.textContent = "MP · failed";
+    });
+}
+
+// Broadcast my pose (~18 Hz) and interpolate every ghost kart. Runs every frame
+// while connected, in any game state, so remote karts glide continuously.
+function updateMultiplayer(dt) {
+  if (!MP.enabled || !MP.net) return;
+  const net = MP.net;
+  if (net.connected && player) {
+    MP.sendAcc += dt;
+    if (MP.sendAcc >= 1 / 18) {
+      MP.sendAcc = 0;
+      let f = 0;
+      if (player.drifting) f |= FLAG.DRIFT;
+      if (player.boosting) f |= FLAG.BOOST;
+      if (player.shielding) f |= FLAG.SHIELD;
+      if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
+      net.sendState({
+        x: player.position.x,
+        y: player.groundY + player.y,
+        z: player.position.z,
+        h: player.heading,
+        p: player.slopePitch,
+        s: player.speed,
+        f,
+      });
+    }
+  }
+  const rt = net.now() - INTERP_DELAY; // render remote karts slightly in the past
+  for (const r of MP.remotes.values()) r.update(rt, dt);
+
+  MP.hudAcc += dt;
+  if (MP.hudAcc >= 0.5 && MP.hud) {
+    MP.hudAcc = 0;
+    MP.hud.textContent = `MP · peers ${MP.remotes.size} · ping ${Math.round(net.clock.rtt)}ms · ${
+      net.connected ? "live" : "…"
+    }`;
+  }
+}
+
+initMultiplayer();
 
 // --- Game state ---
 const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4 };
@@ -955,6 +1081,7 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
+  updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.COUNTDOWN) {
     countdown -= dt;
