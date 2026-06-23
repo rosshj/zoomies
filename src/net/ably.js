@@ -10,6 +10,24 @@ function makeId() {
   return (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).slice(0, 16);
 }
 
+// A STABLE per-tab id. On a reload, Ably keeps the previous connection's
+// presence entry alive for a while before it times out — with a fresh random id
+// each load, the other players briefly see that stale entry as a phantom extra
+// player. Reusing the same id (persisted for the tab) means the old and new
+// presence entries share a clientId and collapse into one in the set-based diff.
+function getClientId() {
+  try {
+    let id = sessionStorage.getItem("zoomies_cid");
+    if (!id) {
+      id = makeId();
+      sessionStorage.setItem("zoomies_cid", id);
+    }
+    return id;
+  } catch {
+    return makeId(); // private mode / no storage — fall back to a fresh id
+  }
+}
+
 class AblyTransport {
   constructor(client, channel, selfId) {
     this._client = client;
@@ -65,7 +83,7 @@ class AblyTransport {
 export async function createAblyTransport({ key, room }) {
   const mod = await import('ably');
   const Realtime = mod.Realtime ?? mod.default?.Realtime ?? mod.default;
-  const selfId = makeId();
+  const selfId = getClientId();
 
   const client = new Realtime({ key, clientId: selfId });
   const channel = client.channels.get(`zoomies:${room}`);
@@ -132,6 +150,15 @@ export async function createAblyTransport({ key, room }) {
 
   client.connection.on('closed', () => { if (transport.onclose) transport.onclose(); });
   client.connection.on('failed', () => { if (transport.onclose) transport.onclose(); });
+
+  // Leave promptly on navigate-away/reload so peers don't have to wait for the
+  // server-side presence timeout to notice we're gone.
+  window.addEventListener('pagehide', () => {
+    try {
+      channel.presence.leave();
+      client.close();
+    } catch {}
+  });
 
   return transport;
 }
