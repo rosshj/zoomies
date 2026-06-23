@@ -997,7 +997,7 @@ function loop(now) {
     // extra kick while boosting. Smoothed so it eases in/out, never snaps.
     const spd = Math.abs(player.speed);
     const radialTarget =
-      Math.min(1, Math.max(0, (spd - 18) / 40)) * 0.05 + (player.boosting ? 0.05 : 0);
+      Math.min(1, Math.max(0, (spd - 26) / 44)) * 0.02 + (player.boosting ? 0.025 : 0);
     fxPass.uniforms.uRadial.value += (radialTarget - fxPass.uniforms.uRadial.value) * Math.min(1, dt * 4);
 
     // AI
