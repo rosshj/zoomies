@@ -357,11 +357,9 @@ function layoutStage() {
   stage.style.setProperty("--safe-bottom", `${sb}px`);
   stage.style.setProperty("--safe-left", `${sl}px`);
 
-  renderer.setSize(W, H);
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
-  composer.setPixelRatio(renderer.getPixelRatio());
-  composer.setSize(W, H);
+  applyResolution();
 
   // Mirror box: top-center (small), kept clear of the top safe inset.
   const mw = Math.min(150, W * 0.17);
@@ -510,6 +508,21 @@ function stageToLocal(clientX, clientY) {
 }
 
 input.setStageMapper(stageToLocal);
+
+// Render resolution (declared before the first layoutStage call below).
+let quality = isTouch ? "low" : "high";
+let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
+function baseDpr() {
+  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25);
+}
+function applyResolution() {
+  const pr = Math.max(0.5, baseDpr() * renderScale);
+  renderer.setPixelRatio(pr);
+  renderer.setSize(stageState.W, stageState.H);
+  composer.setPixelRatio(pr);
+  composer.setSize(stageState.W, stageState.H);
+}
+
 window.addEventListener("resize", layoutStage);
 window.addEventListener("orientationchange", layoutStage);
 layoutStage();
@@ -525,21 +538,36 @@ function triggerHit() {
   }
 }
 
-// --- Graphics quality toggle (heavy effects off on Low) ---
-let quality = isTouch ? "low" : "high";
+// --- Dynamic resolution scaling ---
+// Render the 3D at a variable internal resolution to hold a steady frame rate:
+// drop it when frames run long, probe it back up when there's headroom. The CSS
+// size (and HUD) stay full-res; only the drawing buffer scales.
+const DRS_MIN = 0.55;
+let _frameMs = 16.7;
+let _drsCooldown = 0;
+function updateDRS(rawMs, dt) {
+  _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.1; // smoothed frame interval
+  _drsCooldown -= dt;
+  if (_drsCooldown > 0) return;
+  if (_frameMs > 18.6 && renderScale > DRS_MIN) {
+    renderScale = Math.max(DRS_MIN, renderScale - 0.1); // dropping frames -> ease off
+    applyResolution();
+    _drsCooldown = 0.5;
+  } else if (_frameMs < 17.4 && renderScale < 1) {
+    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution
+    applyResolution();
+    _drsCooldown = 1.4;
+  }
+}
 const qualityBtn = document.getElementById("quality-btn");
 function applyQuality(q) {
   quality = q;
   const high = q === "high";
-  // Bloom is the marquee glow effect, so keep it on at both quality levels
-  // (it was previously gated to High, which is why phones — defaulting to Low —
-  // never showed any blooming). Low just runs at a lower pixel ratio.
-  bloomPass.enabled = true;
-  // fxPass (colour grade) stays on at all levels so colours stay vivid.
+  bloomPass.enabled = true; // marquee glow on both tiers
   if (world.grass) world.grass.visible = high;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, high ? 2 : 1.25));
+  renderScale = 1; // reset DRS on a manual quality change
   if (qualityBtn) qualityBtn.textContent = `Graphics: ${high ? "High" : "Low"}`;
-  layoutStage();
+  layoutStage(); // applies the resolution
 }
 if (qualityBtn)
   qualityBtn.addEventListener("click", () => applyQuality(quality === "high" ? "low" : "high"));
@@ -879,10 +907,12 @@ let prevPlayerSpin = 0;
 
 function loop(now) {
   requestAnimationFrame(loop);
+  const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
   dt = Math.min(dt, 0.05); // clamp big frame gaps
 
+  updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   world.update(now / 1000); // drift the balloons
 
   if (state === State.PAUSED) {
