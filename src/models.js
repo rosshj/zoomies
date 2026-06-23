@@ -1,4 +1,12 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+
+// Rounded box helper — the workhorse of the soft, toy-like art direction. Edges
+// are chamfered by `r` (auto-clamped so it never exceeds half the smallest side).
+function rbox(w, h, d, r = 0.18, seg = 4) {
+  const radius = Math.min(r, w / 2, h / 2, d / 2) * 0.98;
+  return new RoundedBoxGeometry(w, h, d, seg, radius);
+}
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
 // origin sits at the seat base. `furColor` tints the fur. The returned group's
@@ -7,11 +15,10 @@ import * as THREE from "three";
 export function createCat(furColor = 0xf0a830) {
   const cat = new THREE.Group();
   const baseCol = new THREE.Color(furColor);
-  const fur = new THREE.MeshStandardMaterial({ color: furColor, roughness: 0.8, flatShading: true });
+  const fur = new THREE.MeshStandardMaterial({ color: furColor, roughness: 0.85 });
   const stripeMat = new THREE.MeshStandardMaterial({
     color: baseCol.clone().multiplyScalar(0.6),
-    roughness: 0.8,
-    flatShading: true,
+    roughness: 0.85,
   });
   const dark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.5 });
   const pink = new THREE.MeshStandardMaterial({ color: 0xff8fab, roughness: 0.6 });
@@ -36,7 +43,7 @@ export function createCat(furColor = 0xf0a830) {
 
   // Back stripes (tabby)
   for (let i = 0; i < 3; i++) {
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.12, 0.34), stripeMat);
+    const stripe = new THREE.Mesh(rbox(1.3, 0.12, 0.34, 0.06), stripeMat);
     stripe.position.set(0, 1.25 - i * 0.02, -0.4 - i * 0.28);
     stripe.rotation.x = 0.5;
     cat.add(stripe);
@@ -211,32 +218,32 @@ export function createKartModel(bodyColor = 0xe53935) {
   const glass = new THREE.MeshStandardMaterial({ color: 0xffeb3b, emissive: 0xffc107, emissiveIntensity: 0.4 });
 
   // Chassis
-  const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.5, 4.2), paint);
+  const chassis = new THREE.Mesh(rbox(2.4, 0.5, 4.2, 0.24), paint);
   chassis.position.y = 0.7;
   chassis.castShadow = true;
   group.add(chassis);
 
-  // Nose cone
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.45, 1.4), paint);
+  // Nose
+  const nose = new THREE.Mesh(rbox(2.0, 0.45, 1.4, 0.22), paint);
   nose.position.set(0, 0.62, 2.4);
   nose.castShadow = true;
   group.add(nose);
-  const noseTip = new THREE.Mesh(new THREE.ConeGeometry(0.9, 1.0, 4), paint);
-  noseTip.rotation.x = Math.PI / 2;
-  noseTip.rotation.y = Math.PI / 4;
-  noseTip.position.set(0, 0.62, 3.2);
+  // Soft rounded snout instead of a hard pyramid tip.
+  const noseTip = new THREE.Mesh(rbox(1.5, 0.5, 1.3, 0.45), paint);
+  noseTip.position.set(0, 0.6, 3.15);
+  noseTip.castShadow = true;
   group.add(noseTip);
 
   // Side pods
   for (const sx of [-1, 1]) {
-    const pod = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.6, 2.4), paint);
+    const pod = new THREE.Mesh(rbox(0.7, 0.6, 2.4, 0.26), paint);
     pod.position.set(sx * 1.45, 0.7, 0.1);
     pod.castShadow = true;
     group.add(pod);
   }
 
   // Seat well (where the cat sits)
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.7, 1.6), dark);
+  const seat = new THREE.Mesh(rbox(1.6, 0.7, 1.6, 0.28), dark);
   seat.position.set(0, 1.0, -0.5);
   group.add(seat);
 
@@ -247,13 +254,13 @@ export function createKartModel(bodyColor = 0xe53935) {
   group.add(wheel);
 
   // Rear spoiler
-  const spoilerPost = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.7, 0.15), dark);
+  const spoilerPost = new THREE.Mesh(rbox(0.18, 0.7, 0.18, 0.07), dark);
   for (const sx of [-1, 1]) {
     const p = spoilerPost.clone();
     p.position.set(sx * 0.7, 1.2, -2.2);
     group.add(p);
   }
-  const wing = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 0.7), paint);
+  const wing = new THREE.Mesh(rbox(2.6, 0.16, 0.7, 0.07), paint);
   wing.position.set(0, 1.55, -2.25);
   wing.castShadow = true;
   group.add(wing);
