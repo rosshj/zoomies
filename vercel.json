@@ -8,6 +8,18 @@
       "headers": [
         { "key": "Permissions-Policy", "value": "accelerometer=(self), gyroscope=(self)" }
       ]
+    },
+    {
+      "source": "/(.*)\\.(js|html|css|json)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
     }
   ]
 }
