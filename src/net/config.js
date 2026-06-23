@@ -4,7 +4,7 @@
 // Create a free account at https://ably.com, copy your publishable API key
 // (Dashboard → Apps → API Keys), and paste it here. Safe to ship in client code.
 // Free tier: 200 concurrent connections, 6M messages/month.
-export const ABLY_KEY = "";
+export const ABLY_KEY = "zDRQCw.ydmgPw:JrBtmO-j6bXrQJZfYGCHfeuQwuCpsPZ7sZJjUxNMGEk";
 
 // === PartyKit (fallback) ===
 // PARTY_HOST is your deployed PartyKit host, WITHOUT protocol, e.g.
@@ -23,6 +23,3 @@ export function resolveHost() {
   const p = new URLSearchParams(location.search).get("host");
   return (p || PARTY_HOST || "").trim();
 }
-
-// Ably key for multiplayer.
-export const ABLY_KEY = "zDRQCw.ydmgPw:JrBtmO-j6bXrQJZfYGCHfeuQwuCpsPZ7sZJjUxNMGEk";
