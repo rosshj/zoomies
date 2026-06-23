@@ -5,9 +5,9 @@ import { sampleBuffer, pushSnapshot, lerpAngle } from "./net/interp.js";
 // Pose flag bitmask shared by sender (main loop) and receiver (RemoteKart).
 export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8 };
 
-// How far in the past we render remote karts. A ~100ms buffer gives interpolation
-// two snapshots to work between at 15–20 Hz, smoothing out packet timing.
-export const INTERP_DELAY = 100; // ms
+// How far in the past we render remote karts. 150ms gives the buffer enough
+// headroom at ~100ms ping so interpolation always has snapshots to work between.
+export const INTERP_DELAY = 150; // ms
 
 // A remote player's kart: a render-only puppet. It reuses the entire Kart visual
 // (chassis, cat rig, lean, contact shadow, shield bubble, spinning wheels) but

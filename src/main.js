@@ -432,7 +432,7 @@ function updateMultiplayer(dt) {
   const net = MP.net;
   if (net.connected && player) {
     MP.sendAcc += dt;
-    if (MP.sendAcc >= 1 / 18) {
+    if (MP.sendAcc >= 1 / 25) {
       MP.sendAcc = 0;
       let f = 0;
       if (player.drifting) f |= FLAG.DRIFT;
