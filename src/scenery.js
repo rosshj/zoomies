@@ -497,6 +497,31 @@ function buildTerrain(scene, heightAt) {
     }
     colors.push(c.r, c.g, c.b);
   }
+
+  // Baked ambient occlusion: darken concave ground (valley floors, hill bases,
+  // basin/cliff edges) where neighbouring terrain rises above it. Computed once
+  // from the grid heights (no projection), so it's free at runtime and adds the
+  // depth/grounding that makes a scene feel "lit" rather than flat.
+  const seg1 = SEG + 1;
+  for (let iz = 0; iz <= SEG; iz++) {
+    for (let ix = 0; ix <= SEG; ix++) {
+      const idx = iz * seg1 + ix;
+      const y = pos.getY(idx);
+      let occ = 0;
+      let n = 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [2, 2], [-2, -2], [2, -2], [-2, 2]]) {
+        const nx = ix + dx, nz = iz + dz;
+        if (nx < 0 || nz < 0 || nx > SEG || nz > SEG) continue;
+        occ += Math.max(0, pos.getY(nz * seg1 + nx) - y);
+        n++;
+      }
+      const ao = 1 - Math.min(0.36, (occ / Math.max(1, n)) * 0.045);
+      colors[idx * 3] *= ao;
+      colors[idx * 3 + 1] *= ao;
+      colors[idx * 3 + 2] *= ao;
+    }
+  }
+
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geo.computeVertexNormals();
 

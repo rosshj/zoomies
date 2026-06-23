@@ -510,10 +510,13 @@ function stageToLocal(clientX, clientY) {
 input.setStageMapper(stageToLocal);
 
 // Render resolution (declared before the first layoutStage call below).
-let quality = isTouch ? "low" : "high";
+// Default everything to High now that dynamic resolution scaling protects the
+// frame rate — it renders at full retina and only scales back if a device can't
+// keep up, so we get the high-quality look without risking stutter.
+let quality = "high";
 let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
 function baseDpr() {
-  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25);
+  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.5);
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -521,6 +524,11 @@ function applyResolution() {
   renderer.setSize(stageState.W, stageState.H);
   composer.setPixelRatio(pr);
   composer.setSize(stageState.W, stageState.H);
+  // Run bloom at half resolution — it's heavily blurred anyway, so it looks the
+  // same for ~a quarter of the cost. (composer.setSize set it to full; override.)
+  const bw = Math.max(1, Math.round(stageState.W * pr * 0.5));
+  const bh = Math.max(1, Math.round(stageState.H * pr * 0.5));
+  bloomPass.setSize(bw, bh);
 }
 
 window.addEventListener("resize", layoutStage);
