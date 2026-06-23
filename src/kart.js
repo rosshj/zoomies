@@ -363,19 +363,21 @@ export class Kart {
       }
     }
 
-    // Sit the kart on its front + rear contact points (not just the centreline),
+    // Sit the kart on its front + rear wheel contacts (not just the centreline),
     // so the wheels lay on the slope and the rear doesn't dig into the hill on
-    // crests/descents. Pitch matches the line between the two contacts.
-    const half = 1.9; // front/rear contact half-length
+    // crests/descents. The sample baseline matches the actual wheelbase, the
+    // body is lifted by the wheel-contact offset so the tyres rest on the road,
+    // and the pitch follows quickly so it stays glued through slope changes.
+    const half = 1.55; // matches the front/rear wheel positions
     const frontY = track.project(
       new THREE.Vector3().copy(this.position).addScaledVector(fwd, half)
     ).groundY;
     const rearY = track.project(
       new THREE.Vector3().copy(this.position).addScaledVector(fwd, -half)
     ).groundY;
-    this.groundY = (frontY + rearY) * 0.5;
-    const targetPitch = (rearY - frontY) / (2 * half);
-    this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 8 * dt);
+    this.groundY = (frontY + rearY) * 0.5 + 0.08; // lift so the tyres rest on, not in, the road
+    const targetPitch = Math.atan2(rearY - frontY, 2 * half);
+    this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 16 * dt);
     this.position.y = this.groundY;
 
     // Vertical / jump physics (relative to the road surface).
