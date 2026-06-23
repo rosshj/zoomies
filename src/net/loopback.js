@@ -51,6 +51,7 @@ export class LoopbackHub {
         for (const [oid, h] of this.hellos) if (oid !== id) this._toClient(id, h);
         break;
       case "state":
+      default: // state / start / hit / finish … fan out to everyone else
         this._broadcastOthers(id, msg);
         break;
     }

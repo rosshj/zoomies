@@ -48,7 +48,8 @@ export default class ZoomiesServer {
       }
 
       case "state":
-        this.room.broadcast(JSON.stringify(m), [sender.id]); // fan out to others
+      default: // state / start / hit / finish … fan out to others
+        this.room.broadcast(JSON.stringify(m), [sender.id]);
         break;
     }
   }

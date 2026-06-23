@@ -208,6 +208,24 @@ kbd {
   font-weight: bold;
 }
 
+#lobby-players {
+  list-style: none;
+  padding: 0;
+  margin: 10px auto 14px;
+  display: inline-block;
+  text-align: left;
+  line-height: 1.8;
+  font-size: 16px;
+}
+#lobby-players .you {
+  color: var(--accent);
+  font-weight: bold;
+}
+#lobby-code {
+  letter-spacing: 2px;
+  color: var(--accent);
+}
+
 /* ===== HUD ===== */
 #hud {
   position: absolute;

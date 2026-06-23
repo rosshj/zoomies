@@ -320,9 +320,13 @@ function buildKarts() {
   for (const k of karts) scene.remove(k.group);
   karts = [];
   rimShaders.length = 0; // drop last race's kart shaders before rebuilding
-  ROSTER.forEach((cfg, i) => {
+  // Multiplayer is humans-only: drop the AI field (remote players fill the grid
+  // as real participants). Solo play keeps the full roster of AI rivals.
+  const roster = MP.enabled ? ROSTER.slice(0, 1) : ROSTER;
+  roster.forEach((cfg, i) => {
     const kart = new Kart(cfg);
-    const slot = track.gridSlot(i);
+    const slotIndex = MP.enabled && cfg.isPlayer ? mpGridSlot() : i;
+    const slot = track.gridSlot(slotIndex);
     kart.placeAt(slot.position, slot.heading, track);
     kart._aiShootTimer = 1 + Math.random() * 3;
     // Flag the kart/cat materials for a sun rim light so the hero pops off the
@@ -369,7 +373,31 @@ function makeMpIdentity() {
   return { name: n, color: s.color, catColor: s.catColor };
 }
 
-const MP = { enabled: false, net: null, remotes: new Map(), sendAcc: 0, hudAcc: 0, hud: null };
+const MP = {
+  enabled: false, net: null, remotes: new Map(),
+  sendAcc: 0, hudAcc: 0, hud: null,
+  inLobby: false, startAt: 0,
+};
+
+// Host election: the lowest connection id is host. Every client derives this
+// from the same member set, so they all agree with no negotiation. The same
+// sorted order also assigns starting-grid slots, so players don't stack up.
+function mpOrderedIds() {
+  const ids = [MP.net && MP.net.id, ...MP.remotes.keys()].filter(Boolean);
+  ids.sort();
+  return ids;
+}
+function mpHostId() {
+  const ids = mpOrderedIds();
+  return ids.length ? ids[0] : null;
+}
+function mpIsHost() {
+  return !!(MP.net && MP.net.id && mpHostId() === MP.net.id);
+}
+function mpGridSlot() {
+  const i = MP.net ? mpOrderedIds().indexOf(MP.net.id) : 0;
+  return Math.max(0, i);
+}
 
 function mpSpawn(identity) {
   if (MP.remotes.has(identity.id)) return;
@@ -410,12 +438,19 @@ function initMultiplayer() {
     .then((transport) => {
       const net = new Net(transport, makeMpIdentity());
       MP.net = net;
-      net.on("peer", (identity) => mpSpawn(identity));
-      net.on("peerleave", (id) => mpDespawn(id));
+      net.on("peer", (identity) => {
+        mpSpawn(identity);
+        if (MP.inLobby) renderLobby();
+      });
+      net.on("peerleave", (id) => {
+        mpDespawn(id);
+        if (MP.inLobby) renderLobby();
+      });
       net.on("state", (id, pose) => {
         const r = MP.remotes.get(id);
         if (r) r.pushState(pose);
       });
+      net.on("start", (at) => beginSyncedRace(at));
       net.connect();
     })
     .catch((err) => {
@@ -778,7 +813,10 @@ function resumeGame() {
 function toMenu() {
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
+  document.getElementById("lobby").classList.add("hidden");
   document.getElementById("menu").classList.remove("hidden");
+  MP.inLobby = false;
+  MP.startAt = 0;
   state = State.MENU;
 }
 document.getElementById("btn-pause").addEventListener("click", pauseGame);
@@ -818,8 +856,27 @@ function startRace() {
   input.jumpHeld = false; // clear any held state from a previous run
   input.shielding = false;
 
+  // In multiplayer the START button takes you to the lobby; the race itself
+  // begins when the host starts it, synchronized across everyone. (Doing the
+  // gesture-only setup above here means the countdown can later be triggered
+  // over the network without needing another tap on iOS.)
+  if (MP.enabled) {
+    enterLobby();
+    return;
+  }
+
+  prepareRace();
+  countdown = 3.999;
+  countdownCalibrated = false;
+  state = State.COUNTDOWN;
+}
+
+// Everything to spin up a race that does NOT need a user gesture — so it can run
+// both from the local START click and from a network-triggered synchronized start.
+function prepareRace() {
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
+  document.getElementById("lobby").classList.add("hidden");
   document.getElementById("hud").classList.remove("hidden");
 
   // Fresh time of day each race (sky/sun only). Precipitation is no longer
@@ -840,9 +897,66 @@ function startRace() {
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
   track.raceTime = 0;
-  countdown = 3.999;
+}
+
+// --- Multiplayer lobby ---
+function renderLobby() {
+  if (!MP.enabled || !MP.net) return;
+  const codeEl = document.getElementById("lobby-code");
+  if (codeEl) codeEl.textContent = WORLD_SEED;
+  const list = document.getElementById("lobby-players");
+  if (list) {
+    list.innerHTML = "";
+    const host = mpHostId();
+    const rows = [
+      { id: MP.net.id, name: "You", you: true },
+      ...[...MP.remotes.values()].map((r) => ({ id: r.id, name: r.name })),
+    ];
+    for (const row of rows) {
+      const li = document.createElement("li");
+      li.textContent = (row.id === host ? "👑 " : "🐱 ") + row.name;
+      if (row.you) li.className = "you";
+      list.appendChild(li);
+    }
+  }
+  const startBtn = document.getElementById("lobby-start");
+  const waiting = document.getElementById("lobby-waiting");
+  if (startBtn) startBtn.style.display = mpIsHost() ? "" : "none";
+  if (waiting) waiting.style.display = mpIsHost() ? "none" : "";
+}
+
+function enterLobby() {
+  MP.inLobby = true;
+  document.getElementById("menu").classList.add("hidden");
+  document.getElementById("results").classList.add("hidden");
+  document.getElementById("lobby").classList.remove("hidden");
+  renderLobby();
+}
+
+// Line the countdown up to the shared-clock instant `at` so every client hits
+// GO at the same moment. Triggered locally on the host and via the network on
+// everyone else; the state guard makes a double-trigger harmless.
+function beginSyncedRace(at) {
+  if (state === State.COUNTDOWN || state === State.RACING) return;
+  input.jumpHeld = false;
+  input.shielding = false;
+  MP.inLobby = false;
+  MP.startAt = at;
+  prepareRace();
+  countdown = Math.max(0.3, (at - MP.net.now()) / 1000);
   countdownCalibrated = false;
   state = State.COUNTDOWN;
+}
+
+const COUNTDOWN_LEAD_MS = 4000;
+const lobbyStartBtn = document.getElementById("lobby-start");
+if (lobbyStartBtn) {
+  lobbyStartBtn.addEventListener("click", () => {
+    if (!MP.enabled || !MP.net || !mpIsHost()) return;
+    const at = MP.net.now() + COUNTDOWN_LEAD_MS;
+    MP.net.sendStart(at);
+    beginSyncedRace(at);
+  });
 }
 
 // --- Camera follow ---
@@ -1094,7 +1208,10 @@ function loop(now) {
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.COUNTDOWN) {
-    countdown -= dt;
+    // In multiplayer, drive the countdown straight off the shared clock so every
+    // client reaches GO at the same instant regardless of local frame timing.
+    if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
+    else countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
     const n = Math.ceil(countdown - 1);
     hud.showToast(n > 0 ? `${n}` : "GO!");
@@ -1106,6 +1223,7 @@ function loop(now) {
     }
     if (countdown <= 0) {
       state = State.RACING;
+      MP.startAt = 0;
     }
     renderFrame();
     return;

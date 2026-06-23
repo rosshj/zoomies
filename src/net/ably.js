@@ -47,8 +47,9 @@ class AblyTransport {
         this._channel.presence.enter({ name: obj.name, color: obj.color, catColor: obj.catColor })
           .catch(() => {});
         break;
-      case 'state':
-        this._channel.publish('state', obj).catch(() => {});
+      default:
+        // state / start / hit / finish … all relayed as channel messages.
+        this._channel.publish(obj.type, obj).catch(() => {});
         break;
     }
   }
@@ -105,10 +106,11 @@ export async function createAblyTransport({ key, room }) {
         // Synthetic welcome — lets Net assign our id and kick off hello + pings.
         transport._emit({ type: 'welcome', id: selfId });
 
-        // State snapshots from remote karts.
-        channel.subscribe('state', (msg) => {
+        // Any published channel message (state/start/hit/finish) relays back,
+        // stamped with the authoritative sender id.
+        channel.subscribe((msg) => {
           if (msg.clientId === selfId) return;
-          transport._emit({ type: 'state', id: msg.clientId, ...msg.data });
+          transport._emit({ ...msg.data, id: msg.clientId });
         });
 
         // Any presence action (enter/leave/update/present) triggers a full

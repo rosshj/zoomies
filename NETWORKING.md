@@ -54,8 +54,12 @@ deploys. Ably is the active backend — free tier, no server to run.
    ```
    https://your-game.vercel.app/?seed=ABC123&mp=1
    ```
-   Open on two devices (or two tabs) — you'll see each other's ghost karts.
-   A small `MP · peers N · ping Xms` readout appears bottom-left.
+   Open on two devices (or two tabs). START RACE drops you into a **lobby** (room
+   code + player list); the player with a 👑 is the host. When the host presses
+   START RACE, everyone's countdown is synchronized off a shared clock and the
+   race begins together. Multiplayer races are **humans-only** (no AI), and
+   placement (`2nd / N`) is shared across all players. A small
+   `MP · peers N · ping Xms` readout appears bottom-left.
 
 No deploy step, no server. Ably relays everything.
 

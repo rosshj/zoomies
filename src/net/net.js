@@ -27,7 +27,7 @@ export class Net {
     this.clock = new ClockSync(localNow);
     this._localNow = localNow;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -73,6 +73,13 @@ export class Net {
     });
   }
 
+  // Host broadcasts the synchronized race start. `at` is the shared-clock time
+  // (ms) the countdown reaches GO, so every client can line up the same instant.
+  sendStart(at) {
+    if (!this.connected) return;
+    this.transport.send({ type: "start", id: this.id, at });
+  }
+
   _onMessage(m) {
     switch (m.type) {
       case "welcome":
@@ -100,6 +107,9 @@ export class Net {
       case "bye":
         if (!this._peers.delete(m.id)) break; // unknown / already gone
         this._emit("peerleave", m.id);
+        break;
+      case "start":
+        this._emit("start", m.at);
         break;
     }
   }
