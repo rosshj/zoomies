@@ -1039,6 +1039,38 @@ function resolveCollisions() {
   }
 }
 
+// Multiplayer: bump against remote ghost karts. We only ever move OUR OWN player
+// out of the overlap — the ghost's pose is network-driven, so nudging it would
+// just fight interpolation and jitter. The other client resolves the mirror
+// collision against our ghost, so both sides agree without any referee.
+function resolveRemoteCollisions() {
+  if (!MP.enabled || !player) return;
+  const min = 4.4;
+  for (const r of MP.remotes.values()) {
+    if (!r._ready) continue; // no real pose yet — don't collide at the origin
+    const g = r.kart;
+    const dx = g.position.x - player.position.x;
+    const dz = g.position.z - player.position.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq <= 0.0001 || distSq >= min * min) continue;
+
+    const dist = Math.sqrt(distSq);
+    const nx = dx / dist;
+    const nz = dz / dist;
+    const overlap = min - dist;
+
+    // Push the player fully clear (the ghost stays on its interpolated path).
+    player.position.x -= nx * overlap;
+    player.position.z -= nz * overlap;
+
+    // Bumper impulse on the player, scaled by the closing speed.
+    const power = 10 + (Math.abs(player.speed) + Math.abs(g.speed)) * 0.4;
+    player.knock.x -= nx * power;
+    player.knock.z -= nz * power;
+    player.speed *= 0.99;
+  }
+}
+
 // --- Placement ---
 // In multiplayer, remote ghost karts join the field as real participants: each
 // broadcasts its totalProgress, so a "2nd / 4" agrees across every screen.
@@ -1279,6 +1311,7 @@ function loop(now) {
     // Step physics
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
+    resolveRemoteCollisions(); // bump against remote ghost karts (multiplayer)
     hairballs.update(dt, karts);
     // Sparks where a kart scraped a railing; skid marks while spinning out.
     for (const k of karts) {
