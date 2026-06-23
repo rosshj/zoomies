@@ -70,6 +70,35 @@ export async function createAblyTransport({ key, room }) {
   const channel = client.channels.get(`zoomies:${room}`);
   const transport = new AblyTransport(client, channel, selfId);
 
+  // Presence as a SET, not a stream of deltas. Relying on individual
+  // enter/leave events is fragile — a missed event or a brief reconnect leaves
+  // the two sides disagreeing about who's in the room (one shows peers 0, the
+  // other peers 1). Instead, on every presence change we re-fetch the full
+  // membership and diff it, emitting hello for newcomers and bye for departures.
+  // This is idempotent (Net dedupes), self-heals after reconnects, and is cheap
+  // because presence changes are rare.
+  let present = new Set();
+  async function resyncPresence() {
+    let members;
+    try {
+      members = await channel.presence.get();
+    } catch {
+      return;
+    }
+    const now = new Set();
+    for (const m of members) {
+      if (m.clientId === selfId) continue;
+      now.add(m.clientId);
+      if (!present.has(m.clientId)) {
+        transport._emit({ type: 'hello', id: m.clientId, ...m.data });
+      }
+    }
+    for (const id of present) {
+      if (!now.has(id)) transport._emit({ type: 'bye', id });
+    }
+    present = now;
+  }
+
   await new Promise((resolve, reject) => {
     client.connection.once('connected', async () => {
       try {
@@ -82,27 +111,11 @@ export async function createAblyTransport({ key, room }) {
           transport._emit({ type: 'state', id: msg.clientId, ...msg.data });
         });
 
-        // Peer presence.
-        channel.presence.subscribe('enter', (member) => {
-          if (member.clientId === selfId) return;
-          transport._emit({ type: 'hello', id: member.clientId, ...member.data });
-        });
-        channel.presence.subscribe('update', (member) => {
-          if (member.clientId === selfId) return;
-          transport._emit({ type: 'hello', id: member.clientId, ...member.data });
-        });
-        channel.presence.subscribe('leave', (member) => {
-          transport._emit({ type: 'bye', id: member.clientId });
-        });
+        // Any presence action (enter/leave/update/present) triggers a full
+        // re-sync, so both sides always converge on the same membership.
+        channel.presence.subscribe(() => resyncPresence());
 
-        // Catch up on peers already in the room before we joined.
-        const members = await channel.presence.get();
-        for (const m of members) {
-          if (m.clientId !== selfId) {
-            transport._emit({ type: 'hello', id: m.clientId, ...m.data });
-          }
-        }
-
+        await resyncPresence(); // initial membership
         resolve();
       } catch (e) {
         reject(e);
@@ -110,6 +123,10 @@ export async function createAblyTransport({ key, room }) {
     });
     client.connection.once('failed', () => reject(new Error('Ably connection failed')));
   });
+
+  // A dropped-and-resumed connection can miss presence deltas; re-sync on every
+  // reconnect so we never get stuck believing a peer is absent (or still here).
+  client.connection.on('connected', () => resyncPresence());
 
   client.connection.on('closed', () => { if (transport.onclose) transport.onclose(); });
   client.connection.on('failed', () => { if (transport.onclose) transport.onclose(); });
