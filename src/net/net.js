@@ -27,7 +27,7 @@ export class Net {
     this.clock = new ClockSync(localNow);
     this._localNow = localNow;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], finish: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -98,6 +98,13 @@ export class Net {
     this.transport.send({ type: "hit", id: this.id, target, hx: dir.x, hz: dir.z });
   }
 
+  // Announce that I crossed the finish line. `ft` is my race time (seconds since
+  // the synchronized GO), directly comparable across clients for final ordering.
+  sendFinish(ft) {
+    if (!this.connected) return;
+    this.transport.send({ type: "finish", id: this.id, ft });
+  }
+
   _onMessage(m) {
     switch (m.type) {
       case "welcome":
@@ -134,6 +141,10 @@ export class Net {
         break;
       case "hit":
         this._emit("hit", { target: m.target, hx: m.hx, hz: m.hz });
+        break;
+      case "finish":
+        if (m.id === this.id) break;
+        this._emit("finish", m.id, m.ft);
         break;
     }
   }

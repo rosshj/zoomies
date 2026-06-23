@@ -465,6 +465,15 @@ function initMultiplayer() {
         const dir = new THREE.Vector3(h.hx, 0, h.hz);
         player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
       });
+      net.on("finish", (id, ft) => {
+        const r = MP.remotes.get(id);
+        if (r) {
+          r.finished = true;
+          r.finishTime = ft;
+        }
+        // If the results screen is already up, slot the late finisher in live.
+        if (state === State.FINISHED) renderResults();
+      });
       net.connect();
     })
     .catch((err) => {
@@ -911,6 +920,15 @@ function prepareRace() {
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
   track.raceTime = 0;
+  // Clear any finish/progress state carried over from a previous race on the
+  // remote ghosts (they persist across races; only local karts are rebuilt).
+  if (MP.enabled) {
+    for (const r of MP.remotes.values()) {
+      r.finished = false;
+      r.finishTime = 0;
+      r.totalProgress = -1;
+    }
+  }
 }
 
 // --- Multiplayer lobby ---
@@ -1226,23 +1244,39 @@ function aiActions(dt) {
 }
 
 // --- Results ---
+// The full race field for placement/results: local karts plus, in multiplayer,
+// every remote ghost as a real participant.
+function raceField() {
+  const f = [...karts];
+  if (MP.enabled) for (const r of MP.remotes.values()) f.push(r);
+  return f;
+}
+
 function showResults() {
   state = State.FINISHED;
+  renderResults();
+  document.getElementById("hud").classList.remove("hidden");
+  document.getElementById("results").classList.remove("hidden");
+}
+
+// Built separately so it can re-render when a remote player finishes after the
+// results screen is already up (their time slots into the standings live).
+function renderResults() {
   updatePlacement();
-  const order = [...karts].sort((a, b) => a.place - b.place);
+  const order = raceField().sort((a, b) => a.place - b.place);
   const list = document.getElementById("results-list");
   list.innerHTML = "";
   order.forEach((k) => {
     const li = document.createElement("li");
-    const time = k.finished ? ` — ${formatClock(k.finishTime)}` : " — DNF";
+    const time = k.finished
+      ? ` — ${formatClock(k.finishTime)}`
+      : MP.enabled ? " — racing…" : " — DNF";
     li.textContent = `${ordinal(k.place)}  ${k.name}${time}`;
-    if (k.isPlayer) li.className = "you";
+    if (k === player) li.className = "you";
     list.appendChild(li);
   });
   document.getElementById("results-title").textContent =
     player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
-  document.getElementById("hud").classList.remove("hidden");
-  document.getElementById("results").classList.remove("hidden");
 }
 
 function formatClock(sec) {
@@ -1417,6 +1451,7 @@ function loop(now) {
     // End the race shortly after the player finishes.
     if (player.finished) {
       hud.showToast("FINISH!");
+      if (MP.enabled && MP.net) MP.net.sendFinish(player.finishTime); // share my time
       setTimeout(showResults, 1500);
       state = State.FINISHED; // freeze input; karts keep coasting in loop below
     }
