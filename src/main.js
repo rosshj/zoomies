@@ -1079,7 +1079,7 @@ function resolveRemoteCollisions() {
 
     // Shove the ghost the other way by its share: a velocity impulse it coasts
     // off (visual only; its authoritative network path then takes over).
-    r.bump(nx, nz, power * sg * 2.4);
+    r.bump(nx, nz, power * sg * 1.3);
   }
 }
 
