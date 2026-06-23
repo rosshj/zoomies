@@ -16,7 +16,8 @@ import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed } from "./rng.js";
 import { Net } from "./net/net.js";
 import { createPartyTransport } from "./net/partysocket.js";
-import { resolveHost } from "./net/config.js";
+import { createAblyTransport } from "./net/ably.js";
+import { resolveHost, resolveAblyKey } from "./net/config.js";
 import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -396,12 +397,16 @@ function mpDebugHud() {
 }
 
 function initMultiplayer() {
+  const ablyKey = resolveAblyKey();
   const host = resolveHost();
-  if (!host || !new URLSearchParams(location.search).has("mp")) return; // opt-in only
+  if ((!ablyKey && !host) || !new URLSearchParams(location.search).has("mp")) return;
   MP.enabled = true;
   MP.hud = mpDebugHud();
   MP.hud.textContent = "MP · connecting…";
-  createPartyTransport({ host, room: WORLD_SEED })
+  const transportP = ablyKey
+    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED })
+    : createPartyTransport({ host, room: WORLD_SEED });
+  transportP
     .then((transport) => {
       const net = new Net(transport, makeMpIdentity());
       MP.net = net;
