@@ -2,37 +2,22 @@ import * as THREE from "three";
 
 // Time-of-day / weather moods. One is chosen per race; applyMood() restyles the
 // sky, sun, lights, fog and exposure to match, then rebakes the environment map.
+// One fixed time of day — a bright sunny afternoon: blue sky, a warm low-ish
+// sun for dramatic shadows, high exposure and strong fill so it stays bright.
+// (Time of day used to be randomised, which is why some races started dark.)
 export const MOODS = [
   {
-    name: "Midday", weight: 5, weather: "none",
-    sunDir: [0.46, 0.56, 0.64], sunColor: 0xfff4e0, sunI: 2.3,
-    skyTop: 0x2f72d6, skyHorizon: 0xdff0f7, skyWarm: 0xffe6ad,
-    hemiSky: 0xbfe3ff, hemiGround: 0x4a6f46, hemiI: 0.72,
-    bg: 0xbfe3ff, fog: 0xcfe7f2, fogNear: 520, fogFar: 1750, exposure: 1.05,
-    sunCore: [2.2, 2.0, 1.5], sunSize: 42, sunVisible: true,
-    cloud: 0xffffff, sat: 1.3, contrast: 1.07,
-  },
-  {
-    name: "Golden Hour", weight: 4, weather: "none",
-    sunDir: [0.68, 0.32, 0.72], sunColor: 0xffd09a, sunI: 2.4,
-    skyTop: 0x3b6fb0, skyHorizon: 0xffd9a8, skyWarm: 0xffbf80,
-    hemiSky: 0xffe0c0, hemiGround: 0x5a5036, hemiI: 0.66,
-    bg: 0xffd9a8, fog: 0xffd9b0, fogNear: 460, fogFar: 1550, exposure: 1.06,
-    sunCore: [2.6, 1.8, 1.05], sunSize: 60, sunVisible: true,
-    cloud: 0xffe6cc, sat: 1.35, contrast: 1.08,
-  },
-  {
-    name: "Dusk", weight: 1, weather: "none",
-    sunDir: [0.8, 0.2, 0.56], sunColor: 0xffa078, sunI: 2.0,
-    skyTop: 0x3c4a86, skyHorizon: 0xffa676, skyWarm: 0xff8a60,
-    hemiSky: 0xb495b6, hemiGround: 0x40384c, hemiI: 0.78,
-    bg: 0x8474a0, fog: 0xc49aa0, fogNear: 420, fogFar: 1400, exposure: 1.08,
-    sunCore: [2.8, 1.2, 0.7], sunSize: 74, sunVisible: true,
-    cloud: 0xd2b0c8, sat: 1.3, contrast: 1.07,
+    name: "Sunny", weight: 1, weather: "none",
+    sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.5,
+    skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
+    hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.82,
+    bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
+    sunCore: [2.3, 2.05, 1.5], sunSize: 48, sunVisible: true,
+    cloud: 0xffffff, sat: 1.3, contrast: 1.06,
   },
   // Weather (rain/snow) is no longer a random mood — it's dictated by the biome
   // you're driving through (wet forest brings rain; the alpine pass brings snow),
-  // handled in the main loop. The moods above are just times of day.
+  // handled in the main loop.
 ];
 
 export function pickMood() {
