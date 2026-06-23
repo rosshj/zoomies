@@ -281,10 +281,10 @@ export class Input {
     const k = this._keys;
 
     if (k.ArrowLeft || k.KeyA) {
-      this._steerTarget = -1;
+      this._steerTarget = 1;
       this._keyboardSteering = true;
     } else if (k.ArrowRight || k.KeyD) {
-      this._steerTarget = 1;
+      this._steerTarget = -1;
       this._keyboardSteering = true;
     } else if (this._keyboardSteering) {
       this._steerTarget = 0;
