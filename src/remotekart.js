@@ -67,12 +67,14 @@ export class RemoteKart {
     const k = this.kart;
 
     // Collision bump: integrate the impulse velocity into the offset, then bleed
-    // the velocity off with friction (gradual slow-down) and let the offset ease
-    // gently back to the true path so it never permanently diverges.
+    // the velocity off slowly so the ghost keeps sliding (momentum). The offset
+    // returns to the true path only very gently — a hard spring-back is what made
+    // hits feel stiff (lurch, then yanked to a stop). A real knocked kart stays
+    // displaced and coasts; the authoritative network path converges underneath.
     this.bumpOff.addScaledVector(this.bumpVel, dt);
-    this.bumpVel.multiplyScalar(1 - Math.min(1, 3 * dt)); // friction: coast to a stop
-    this.bumpOff.multiplyScalar(1 - Math.min(1, 1.3 * dt)); // gentle return to path
-    this.bumpOff.clampLength(0, 4);
+    this.bumpVel.multiplyScalar(1 - Math.min(1, 1.5 * dt)); // friction: long coast
+    this.bumpOff.multiplyScalar(1 - Math.min(1, 0.4 * dt)); // very gentle re-converge
+    this.bumpOff.clampLength(0, 5);
 
     // Drop the puppet onto the interpolated pose, plus the transient bump offset.
     k.position.x = s.x + this.bumpOff.x;
