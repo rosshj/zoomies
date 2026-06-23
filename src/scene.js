@@ -5,7 +5,7 @@ import * as THREE from "three";
 export const MOODS = [
   {
     name: "Midday", weight: 5, weather: "none",
-    sunDir: [0.4, 0.82, 0.55], sunColor: 0xfff4e0, sunI: 2.2,
+    sunDir: [0.46, 0.56, 0.64], sunColor: 0xfff4e0, sunI: 2.3,
     skyTop: 0x2f72d6, skyHorizon: 0xdff0f7, skyWarm: 0xffe6ad,
     hemiSky: 0xbfe3ff, hemiGround: 0x4a6f46, hemiI: 0.72,
     bg: 0xbfe3ff, fog: 0xcfe7f2, fogNear: 520, fogFar: 1750, exposure: 1.05,
@@ -14,7 +14,7 @@ export const MOODS = [
   },
   {
     name: "Golden Hour", weight: 4, weather: "none",
-    sunDir: [0.62, 0.4, 0.7], sunColor: 0xffd09a, sunI: 2.4,
+    sunDir: [0.68, 0.32, 0.72], sunColor: 0xffd09a, sunI: 2.4,
     skyTop: 0x3b6fb0, skyHorizon: 0xffd9a8, skyWarm: 0xffbf80,
     hemiSky: 0xffe0c0, hemiGround: 0x5a5036, hemiI: 0.66,
     bg: 0xffd9a8, fog: 0xffd9b0, fogNear: 460, fogFar: 1550, exposure: 1.06,
@@ -23,7 +23,7 @@ export const MOODS = [
   },
   {
     name: "Dusk", weight: 1, weather: "none",
-    sunDir: [0.72, 0.26, 0.6], sunColor: 0xffa078, sunI: 2.0,
+    sunDir: [0.8, 0.2, 0.56], sunColor: 0xffa078, sunI: 2.0,
     skyTop: 0x3c4a86, skyHorizon: 0xffa676, skyWarm: 0xff8a60,
     hemiSky: 0xb495b6, hemiGround: 0x40384c, hemiI: 0.78,
     bg: 0x8474a0, fog: 0xc49aa0, fogNear: 420, fogFar: 1400, exposure: 1.08,
@@ -78,14 +78,17 @@ export function createScene() {
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
-  const s = 300;
+  // A tight frustum that the game keeps centred on the player (see main loop):
+  // same map budget focused around you = crisp, dramatic shadows where they show.
+  const s = 130;
   sun.shadow.camera.left = -s;
   sun.shadow.camera.right = s;
   sun.shadow.camera.top = s;
   sun.shadow.camera.bottom = -s;
-  sun.shadow.camera.near = 1;
-  sun.shadow.camera.far = 600;
+  sun.shadow.camera.near = 20;
+  sun.shadow.camera.far = 720;
   sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.6; // helps the tighter frustum avoid acne
   scene.add(sun);
   scene.add(sun.target);
 
@@ -117,6 +120,8 @@ export function createScene() {
   // Apply a mood: restyle everything and rebake the environment map.
   function applyMood(m) {
     sunDir.set(m.sunDir[0], m.sunDir[1], m.sunDir[2]).normalize();
+    sun.target.position.set(0, 0, 0); // re-anchor (the game re-centres it on the player)
+    sun.target.updateMatrixWorld();
     sun.position.copy(sunDir).multiplyScalar(320);
     sun.color.set(m.sunColor);
     sun.intensity = m.sunI;

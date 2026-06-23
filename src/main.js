@@ -138,6 +138,13 @@ const fxPass = new ShaderPass({
       float l = dot(col, vec3(0.299, 0.587, 0.114));
       col = mix(vec3(l), col, uSat);          // saturation
       col = (col - 0.5) * uContrast + 0.5;     // contrast
+      // Cinematic split-tone: cool the shadows, warm the highlights, so light
+      // reads as warm light and shadow reads as a different (cool) colour —
+      // richer/more dramatic without actually crushing the shadows darker.
+      float lum = dot(clamp(col, 0.0, 1.0), vec3(0.299, 0.587, 0.114));
+      vec3 cool = vec3(0.90, 0.97, 1.10);
+      vec3 warm = vec3(1.10, 1.02, 0.90);
+      col *= mix(cool, warm, smoothstep(0.15, 0.85, lum));
       float vig = smoothstep(0.92, 0.34, length(d));
       col *= mix(1.0, vig, uVignette);
       gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
@@ -163,9 +170,12 @@ function makeToonGradient() {
   return tex;
 }
 const TOON_GRADIENT = makeToonGradient();
-// Toon materials flagged for backlight collect their compiled shaders here so
-// the atmosphere update can feed them the sun direction each frame.
+// Toon materials flagged for sun-driven effects collect their compiled shaders
+// so the atmosphere update can feed them the sun direction each frame. Foliage
+// (world-persistent) and karts (rebuilt each race) are kept separate so the
+// kart list can be reset on rebuild without leaking old shaders.
 const backlitShaders = [];
+const rimShaders = [];
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
   const t = new THREE.MeshToonMaterial({
@@ -182,20 +192,28 @@ function toToon(m) {
     bumpMap: m.bumpMap || null,
     bumpScale: m.bumpScale,
   });
-  // Backlit foliage: glow warm where you look toward the sun through the leaves.
-  if (m.userData && m.userData.backlight) {
+  // Sun-driven add-ons, fed the view-space light direction each frame:
+  //  - backlight: foliage glows warm where you look toward the sun through it.
+  //  - rim: a warm sun rim on the hero's silhouette so it pops off the scene.
+  const ud = m.userData || {};
+  if (ud.backlight || ud.rim) {
     t.onBeforeCompile = (shader) => {
       shader.uniforms.uSunView = { value: new THREE.Vector3(0, 0, 1) };
       shader.uniforms.uSunCol = { value: new THREE.Color(0x000000) };
       shader.fragmentShader =
         "uniform vec3 uSunView;\nuniform vec3 uSunCol;\n" + shader.fragmentShader;
-      shader.fragmentShader = shader.fragmentShader.replace(
-        "#include <dithering_fragment>",
-        `#include <dithering_fragment>
-         float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
-         gl_FragColor.rgb += uSunCol * backlit;`
-      );
-      backlitShaders.push(shader);
+      let inject = "#include <dithering_fragment>\n";
+      if (ud.backlight) {
+        inject += `float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
+         gl_FragColor.rgb += uSunCol * backlit;\n`;
+      }
+      if (ud.rim) {
+        inject += `float rimF = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 2.5);
+         rimF *= max(dot(normal, -uSunView), 0.0);
+         gl_FragColor.rgb += uSunCol * rimF * 2.4;\n`;
+      }
+      shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", inject);
+      (ud.rim ? rimShaders : backlitShaders).push(shader);
     };
   }
   return t;
@@ -262,11 +280,18 @@ let player = null;
 function buildKarts() {
   for (const k of karts) scene.remove(k.group);
   karts = [];
+  rimShaders.length = 0; // drop last race's kart shaders before rebuilding
   ROSTER.forEach((cfg, i) => {
     const kart = new Kart(cfg);
     const slot = track.gridSlot(i);
     kart.placeAt(slot.position, slot.heading, track);
     kart._aiShootTimer = 1 + Math.random() * 3;
+    // Flag the kart/cat materials for a sun rim light so the hero pops off the
+    // background (applied during the toon conversion).
+    kart.group.traverse((o) => {
+      const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+    });
     toonify(kart.group); // cel-shade the kart + cat
     scene.add(kart.group);
     karts.push(kart);
@@ -410,7 +435,19 @@ const _sunViewVec = new THREE.Vector3();
 function updateAtmosphere() {
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-  _sunDir.copy(sun.position).normalize();
+  // Direction toward the sun (invariant to the follow offset below).
+  _sunDir.copy(sun.position).sub(sun.target.position).normalize();
+
+  // Keep the tight shadow frustum centred on the player so its crisp shadows
+  // are always where they show. Move light + target together to preserve the
+  // sun direction.
+  if (player) {
+    sun.target.position.copy(player.position);
+    sun.position.copy(player.position).addScaledVector(_sunDir, 320);
+    sun.target.updateMatrixWorld();
+    sun.updateMatrixWorld();
+  }
+
   _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facing = _sunDir.dot(_camFwd);
   let vis = 0;
@@ -436,6 +473,10 @@ function updateAtmosphere() {
     gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
   }
   for (const sh of backlitShaders) {
+    sh.uniforms.uSunView.value.copy(_sunViewVec);
+    sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
+  }
+  for (const sh of rimShaders) {
     sh.uniforms.uSunView.value.copy(_sunViewVec);
     sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
   }
