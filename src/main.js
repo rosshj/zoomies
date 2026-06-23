@@ -51,10 +51,10 @@ const godrayPass = new ShaderPass({
     uSun: { value: new THREE.Vector2(0.5, 0.7) }, // sun position in screen UV
     uVis: { value: 0 }, // 0 when sun is hidden / behind camera
     uColor: { value: new THREE.Color(0xffe6b0) },
-    uDensity: { value: 0.85 },
-    uWeight: { value: 1.5 },
-    uDecay: { value: 0.95 },
-    uThreshold: { value: 0.55 },
+    uDensity: { value: 0.8 },
+    uWeight: { value: 0.7 },
+    uDecay: { value: 0.93 },
+    uThreshold: { value: 0.72 }, // only the sun/near-sun drives shafts, not the whole bright sky
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
@@ -77,7 +77,9 @@ const godrayPass = new ShaderPass({
         illum *= uDecay;
       }
       accum *= uWeight / float(N);
-      gl_FragColor = vec4(orig + accum * uColor * uVis, 1.0);
+      // Clamp the added light so staring at the sun can't wash the frame out.
+      vec3 add = min(accum * uColor * uVis, vec3(0.4));
+      gl_FragColor = vec4(orig + add, 1.0);
     }`,
 });
 composer.addPass(godrayPass);
@@ -93,7 +95,7 @@ const flarePass = new ShaderPass({
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uVis; uniform vec3 uTint; varying vec2 vUv;
-    const float TH = 0.78;
+    const float TH = 0.85;
     vec3 bright(vec2 uv){
       if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec3(0.0);
       return max(vec3(0.0), texture2D(tDiffuse, uv).rgb - TH) / (1.0 - TH);
@@ -109,7 +111,7 @@ const flarePass = new ShaderPass({
         float w = pow(max(0.0, 1.0 - length(c - g) * 1.5), 6.0); // brightest near centre
         flare += bright(g) * w;
       }
-      gl_FragColor = vec4(orig + flare * uTint * uVis * 0.5, 1.0);
+      gl_FragColor = vec4(orig + min(flare * uTint * uVis * 0.28, vec3(0.3)), 1.0);
     }`,
 });
 composer.addPass(flarePass);
