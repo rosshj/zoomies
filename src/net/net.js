@@ -58,7 +58,8 @@ export class Net {
     return this.clock.now();
   }
 
-  // Broadcast my kart pose. pose = { x, y, z, h, p, s, f } (f = flag bitmask).
+  // Broadcast my kart pose. pose = { x, y, z, h, p, s, f, pr } (f = flag bitmask,
+  // pr = totalProgress = lap + within-lap fraction, the shared placement key).
   sendState(pose) {
     if (!this.connected) return;
     this.transport.send({
@@ -68,6 +69,7 @@ export class Net {
       x: pose.x, y: pose.y, z: pose.z,
       h: pose.h, p: pose.p, s: pose.s,
       f: pose.f | 0,
+      pr: pose.pr,
     });
   }
 
@@ -92,7 +94,7 @@ export class Net {
       case "state":
         if (m.id === this.id) break;
         this._emit("state", m.id, {
-          x: m.x, y: m.y, z: m.z, h: m.h, p: m.p, s: m.s, f: m.f | 0, t: m.t,
+          x: m.x, y: m.y, z: m.z, h: m.h, p: m.p, s: m.s, f: m.f | 0, t: m.t, pr: m.pr,
         });
         break;
       case "bye":

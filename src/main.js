@@ -447,6 +447,7 @@ function updateMultiplayer(dt) {
         p: player.slopePitch,
         s: player.speed,
         f,
+        pr: player.totalProgress,
       });
     }
   }
@@ -925,14 +926,18 @@ function resolveCollisions() {
 }
 
 // --- Placement ---
+// In multiplayer, remote ghost karts join the field as real participants: each
+// broadcasts its totalProgress, so a "2nd / 4" agrees across every screen.
 function updatePlacement() {
-  const order = [...karts].sort((a, b) => {
+  const field = [...karts];
+  if (MP.enabled) for (const r of MP.remotes.values()) field.push(r);
+  field.sort((a, b) => {
     if (a.finished && b.finished) return a.finishTime - b.finishTime;
     if (a.finished) return -1;
     if (b.finished) return 1;
     return b.totalProgress - a.totalProgress;
   });
-  order.forEach((k, idx) => (k.place = idx + 1));
+  field.forEach((k, idx) => (k.place = idx + 1));
 }
 
 const SHOOT_CHARGE_TIME = 0.7; // seconds of hold for a full-power shot
@@ -1201,7 +1206,7 @@ function loop(now) {
       lapNum: player.displayLap(TOTAL_LAPS),
       totalLaps: TOTAL_LAPS,
       place: player.place,
-      totalKarts: karts.length,
+      totalKarts: karts.length + (MP.enabled ? MP.remotes.size : 0),
       speedKmh: Math.abs(player.speed) * 3.0,
       time: raceTime,
     });

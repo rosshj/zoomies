@@ -29,11 +29,20 @@ export class RemoteKart {
     this._prevH = 0;
     this._prevS = 0;
     this._ready = false;
+    // Race-placement fields, kept duck-type compatible with Kart so the shared
+    // placement sort treats local and remote karts identically.
+    this.totalProgress = -1;
+    this.finished = false;
+    this.finishTime = 0;
+    this.place = 1;
   }
 
   // A pose snapshot arrived from the network (already in shared-clock time).
   pushState(pose) {
     pushSnapshot(this.buffer, pose);
+    // Progress isn't interpolated through the buffer — latest value wins. It only
+    // feeds placement, which doesn't need sub-frame accuracy.
+    if (typeof pose.pr === "number") this.totalProgress = pose.pr;
   }
 
   // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
