@@ -40,6 +40,9 @@ composer.addPass(new RenderPass(scene, camera));
 const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5, 0.82);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
+const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
+const BLOOM_THRESHOLD = bloomPass.threshold;
+let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 
 // --- Atmosphere: screen-space god-rays (crepuscular light shafts) ---
 // A cheap radial blur of the bright sky toward the sun's screen position: where
@@ -1028,7 +1031,13 @@ function loop(now) {
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;
     fxPass.uniforms.uSat.value = moodSat * (1 - 0.22 * wet);
-    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet);
+    // The near-white snow section sails past the bloom threshold and blows the
+    // whole frame out. Ease bloom down + raise its threshold + pull exposure
+    // back in proportion to how deep into the snow we are (smoothed, not snapped).
+    _snowBlend += ((where === "snow" ? 1 : 0) - _snowBlend) * Math.min(1, dt * 1.2);
+    bloomPass.strength = BLOOM_STRENGTH * (1 - 0.55 * _snowBlend);
+    bloomPass.threshold = BLOOM_THRESHOLD + 0.1 * _snowBlend;
+    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend);
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();
