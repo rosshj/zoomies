@@ -99,18 +99,50 @@ export class EffectsManager {
     });
   }
 
+  // Drift charge "powers up" toward the rainbow blast you get on release: the
+  // sparks emit faster and grow as charge builds, stepping blue -> gold -> and,
+  // when fully charged, cycling rainbow hues (shared with the fart trail) so the
+  // payoff is telegraphed.
   driftSparks(kart) {
-    if (Math.random() > 0.6) return;
-    const tier = kart.driftCharge > 1.5 ? 0xff5252 : kart.driftCharge > 0.8 ? 0xffd54f : 0xbfe3ff;
+    const charge = kart.driftCharge;
+    const maxed = charge > 1.5;
+    // Emission rate climbs with charge.
+    const rate = maxed ? 0.92 : charge > 0.8 ? 0.7 : 0.42;
+    if (Math.random() > rate) return;
+
+    let col;
+    let size = 0.6 + Math.min(charge, 2) * 0.18;
+    if (maxed) {
+      this._hue = (this._hue + 0.07) % 1;
+      col = new THREE.Color().setHSL(this._hue, 1, 0.62);
+      size += 0.25;
+    } else if (charge > 0.8) {
+      col = new THREE.Color(0xffd54f);
+    } else {
+      col = new THREE.Color(0xbfe3ff);
+    }
     const v = new THREE.Vector3((Math.random() - 0.5) * 8, 2 + Math.random() * 3, (Math.random() - 0.5) * 8);
-    this._spawn(this._rear(kart, 0.6), new THREE.Color(tier), {
+    this._spawn(this._rear(kart, 0.6), col, {
       additive: true,
       spark: true,
-      size: 0.7,
-      life: 0.3,
+      size,
+      life: 0.32,
       v,
       damp: 1,
     });
+
+    // At full charge, add the occasional soft rainbow puff so the kart visibly
+    // brims with the colour it's about to unleash.
+    if (maxed && Math.random() < 0.3) {
+      this._spawn(this._rear(kart, 0.9), col.clone(), {
+        additive: true,
+        size: 1.3,
+        life: 0.4,
+        grow: 2,
+        v: new THREE.Vector3(0, 1.6, 0),
+        opacity: 0.5,
+      });
+    }
   }
 
   wallSparks(kart) {
