@@ -192,11 +192,26 @@ export class Track {
 
   _buildWalls() {
     const wallH = 1.6;
-    const off = this.halfWidth + 0.8;
+    const off = this.halfWidth + 0.8; // inner face — kept where the old thin wall sat
     const ca = new THREE.Color();
     const cb = new THREE.Color();
 
-    // Continuous ribbon barriers (no gaps) down each side of the road. The two
+    // Cross-section of the barrier, offset OUTWARD from the road (sOff) and UP
+    // (yOff): a solid wall with a rounded top, so it reads as a chunky kerb
+    // rather than a paper-thin ribbon. Swept along the spine below.
+    const W = 0.85; // thickness
+    const r = W / 2; // top round radius
+    const shoulderY = wallH - r;
+    const profile = [[0, 0]];
+    const ARC = 5;
+    for (let k = 0; k <= ARC; k++) {
+      const a = Math.PI * (1 - k / ARC); // inner shoulder -> over the top -> outer shoulder
+      profile.push([r + Math.cos(a) * r, shoulderY + Math.sin(a) * r]);
+    }
+    profile.push([W, 0]);
+    const P = profile.length;
+
+    // Continuous barriers (no gaps) down each side of the road. The two
     // alternating colours come from the biome the segment sits in, so the
     // fencing changes as you pass from meadow to forest to desert, etc.
     for (const dirSign of [1, -1]) {
@@ -206,16 +221,20 @@ export class Track {
       for (let i = 0; i <= this.samples; i++) {
         const idx = i % this.samples;
         const p = this._pts[idx];
-        const side = this._sideAt(idx);
-        const base = new THREE.Vector3().copy(p).addScaledVector(side, dirSign * off);
-        positions.push(base.x, base.y, base.z);
-        positions.push(base.x, base.y + wallH, base.z);
-        const style = biomeBarrierStyle(base.x, base.z);
+        const side = this._sideAt(idx); // horizontal lateral; outward when scaled by dirSign
+        const style = biomeBarrierStyle(p.x + side.x * dirSign * off, p.z + side.z * dirSign * off);
         const c = Math.floor(i / 6) % 2 === 0 ? ca.set(style.a) : cb.set(style.b);
-        colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+        for (const [sOff, yOff] of profile) {
+          const d = off + sOff;
+          positions.push(p.x + side.x * dirSign * d, p.y + yOff, p.z + side.z * dirSign * d);
+          colors.push(c.r, c.g, c.b);
+        }
         if (i < this.samples) {
-          const a = i * 2;
-          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+          const a0 = i * P;
+          const b0 = (i + 1) * P;
+          for (let j = 0; j < P - 1; j++) {
+            indices.push(a0 + j, a0 + j + 1, b0 + j, a0 + j + 1, b0 + j + 1, b0 + j);
+          }
         }
       }
       const geo = new THREE.BufferGeometry();
