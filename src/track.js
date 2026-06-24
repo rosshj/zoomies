@@ -519,32 +519,64 @@ export class Track {
   }
 
   _buildCenterLine() {
-    // A continuous painted line down the centre of the road (offset a hair above
-    // the surface so it reads as painted on, following the road's pitch/curve).
+    // The centre line only appears in the built-up town stretches and the alpine
+    // (snowy) pass. A per-sample 0/1 visibility field is box-blurred so the line
+    // fades in and out over distance instead of stopping abruptly.
+    const div = this.samples;
+    const ZONES = 6; // matches the town/farm zoning in scenery.buildRoadside
+    let vis = new Float32Array(div);
+    for (let i = 0; i < div; i++) {
+      const p = this._pts[i];
+      const town = Math.floor((i / div) * ZONES) % 2 === 0;
+      const snow = biomeRoadStyle(p.x, p.z).kind === "snow";
+      vis[i] = town || snow ? 1 : 0;
+    }
+    const W = 7; // blur half-window; two passes give a gentle ~tens-of-units fade
+    for (let pass = 0; pass < 2; pass++) {
+      const out = new Float32Array(div);
+      for (let i = 0; i < div; i++) {
+        let s = 0;
+        for (let k = -W; k <= W; k++) s += vis[(((i + k) % div) + div) % div];
+        out[i] = s / (2 * W + 1);
+      }
+      vis = out;
+    }
+
     const hw = 0.24; // half-width of the line
     const positions = [];
+    const alphas = [];
     const indices = [];
-    for (let i = 0; i <= this.samples; i++) {
-      const idx = i % this.samples;
+    for (let i = 0; i <= div; i++) {
+      const idx = i % div;
       const p = this._pts[idx];
       const side = this._sideAt(idx);
       const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
       const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
       positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-      if (i < this.samples) {
+      alphas.push(vis[idx], vis[idx]);
+      if (i < div) {
         const k = i * 2;
         indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
       }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
     geo.setIndex(indices);
-    geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(
-      geo,
-      new THREE.MeshStandardMaterial({ color: 0xf4cf3a, roughness: 0.9, side: THREE.DoubleSide })
-    );
-    mesh.receiveShadow = true;
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      uniforms: { uColor: { value: new THREE.Color(0xf4cf3a) } },
+      vertexShader: `
+        attribute float aAlpha; varying float vA;
+        void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: `
+        uniform vec3 uColor; varying float vA;
+        void main(){ if (vA < 0.02) discard; gl_FragColor = vec4(uColor, vA); }`,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 1;
     this.group.add(mesh);
   }
 
