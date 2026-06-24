@@ -1413,7 +1413,7 @@ function loop(now) {
   dt = Math.min(dt, 0.05); // clamp big frame gaps
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
-  world.update(now / 1000); // drift the balloons
+  world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay

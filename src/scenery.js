@@ -8,6 +8,7 @@ import { rand } from "./rng.js"; // seeded RNG so the world is identical per see
 // lighthouse beam) and gentle flutterers (flags).
 const _spinners = []; // { obj, ax:'x'|'y'|'z', speed, phase }
 const _flutterers = []; // { obj, phase }
+const _critters = []; // wandering ground animals: { obj, base, ... }
 // Set per build: true where a lake basin sits, so scatter/grass/props avoid it.
 let _inLake = () => false;
 
@@ -119,6 +120,7 @@ function biomeGround(x, z, out) {
 export function buildWorld(scene, track) {
   _spinners.length = 0;
   _flutterers.length = 0;
+  _critters.length = 0;
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
 
   // Gentle rolling detail laid on top of the road-anchored hills (kept small so
@@ -188,10 +190,12 @@ export function buildWorld(scene, track) {
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
   const flocks = buildBirds(scene);
+  const fireflies = buildFireflies(scene, track, heightAt);
+  const pigeonFlocks = buildPigeons(scene, track, heightAt);
 
   return {
     grass,
-    update(time) {
+    update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
@@ -199,6 +203,9 @@ export function buildWorld(scene, track) {
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
       for (const fl of flocks) updateFlock(fl, time);
+      for (const c of _critters) updateCritter(c, dt, time, heightAt);
+      for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
+      if (fireflies) fireflies.material.uniforms.uTime.value = time;
       for (const w of waters) w.uniforms.uTime.value = time;
       const sh = grass && grass.material.userData.shader;
       if (sh) sh.uniforms.uTime.value = time;
@@ -993,6 +1000,21 @@ function buildRoadside(scene, track, heightAt) {
       : rand() * Math.PI * 2;
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
+    // Animals amble around their spawn (capped so the per-frame cost stays low).
+    if (prop.userData.wander && _critters.length < 48) {
+      _critters.push({
+        obj: prop,
+        base: prop.position.clone(),
+        ry: prop.rotation.y,
+        range: prop.userData.wander.range,
+        speed: prop.userData.wander.speed,
+        bob: prop.userData.wander.bob,
+        phase: rand() * 6.28,
+        t: rand() * 3,
+        tx: prop.position.x,
+        tz: prop.position.z,
+      });
+    }
   };
 
   for (let i = 0; i < N; i += step) {
@@ -1513,6 +1535,7 @@ function makeCow() {
       leg.position.set(sx * 1.1, 0.75, sz * 0.5);
       g.add(leg);
     }
+  g.userData.wander = { range: 4, speed: 1.1, bob: 0.06 }; // cows graze slowly
   return g;
 }
 
@@ -1534,6 +1557,7 @@ function makeSheep() {
       leg.position.set(sx * 0.7, 0.55, sz * 0.45);
       g.add(leg);
     }
+  g.userData.wander = { range: 5, speed: 1.6, bob: 0.16 }; // sheep bounce more
   return g;
 }
 
@@ -1813,7 +1837,7 @@ function makeBigWindmill() {
 function buildBirds(scene) {
   const flocks = [];
   const birdMat = mat(0x33373d, { flatShading: true });
-  for (let f = 0; f < 3; f++) {
+  for (let f = 0; f < 6; f++) {
     const flock = new THREE.Group();
     const wings = [];
     const count = 4 + Math.floor(rand() * 4);
@@ -1856,6 +1880,215 @@ function updateFlock(fl, time) {
   fl.flock.rotation.y = -a + (fl.speed > 0 ? -Math.PI / 2 : Math.PI / 2); // face travel
   for (const w of fl.wings) {
     w.wg.rotation.z = w.sx * (0.25 + Math.sin(time * 8 + w.phase) * 0.55);
+  }
+}
+
+// Gentle wander for ground animals: amble toward a roaming target near their
+// spawn, turn the nose (local -X) to lead, follow the ground, and bob as they
+// go. heightAt is only sampled when a new target is chosen (cheap).
+function updateCritter(c, dt, time, heightAt) {
+  c.t -= dt;
+  if (c.t <= 0) {
+    c.t = 2.5 + rand() * 4;
+    const a = rand() * Math.PI * 2;
+    const r = rand() * c.range;
+    c.tx = c.base.x + Math.cos(a) * r;
+    c.tz = c.base.z + Math.sin(a) * r;
+    c.gy = heightAt(c.tx, c.tz);
+  }
+  const dx = c.tx - c.obj.position.x;
+  const dz = c.tz - c.obj.position.z;
+  const d = Math.hypot(dx, dz);
+  if (d > 0.15) {
+    const step = Math.min(d, c.speed * dt);
+    c.obj.position.x += (dx / d) * step;
+    c.obj.position.z += (dz / d) * step;
+    let diff = Math.atan2(dz, -dx) - c.ry; // nose = local -X
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    c.ry += diff * Math.min(1, dt * 4);
+    c.obj.rotation.y = c.ry;
+  }
+  const targetY = c.gy ?? c.base.y;
+  c.cy = (c.cy ?? c.base.y) + (targetY - (c.cy ?? c.base.y)) * Math.min(1, dt * 2);
+  c.obj.position.y = c.cy + Math.abs(Math.sin(time * 3 + c.phase)) * c.bob;
+}
+
+// Forest fireflies: a cloud of additive glowing points that drift and twinkle,
+// scattered through the wooded biome near the road. Animation lives in the
+// shader (position drift + twinkle) so the whole field is one cheap draw call.
+function buildFireflies(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const positions = [];
+  const phases = [];
+  const want = 260;
+  let tries = 0;
+  while (positions.length / 3 < want && tries < want * 8) {
+    tries++;
+    const i = Math.floor(rand() * N);
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== "forest") continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const dirS = rand() < 0.5 ? 1 : -1;
+    const dist = track.halfWidth + 6 + rand() * 42;
+    const x = p.x + side.x * dirS * dist + (rand() - 0.5) * 8;
+    const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 8;
+    if (track.distanceToCenter(x, z) < track.halfWidth + 4) continue;
+    if (_inLake(x, z)) continue;
+    positions.push(x, heightAt(x, z) + 1.2 + rand() * 2.6, z);
+    phases.push(rand() * 6.28);
+  }
+  if (!positions.length) return null;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+      attribute float aPhase; uniform float uTime; varying float vTw;
+      void main(){
+        vec3 pos = position;
+        pos.x += sin(uTime * 0.6 + aPhase) * 1.3;
+        pos.y += sin(uTime * 0.9 + aPhase * 1.7) * 0.8;
+        pos.z += cos(uTime * 0.5 + aPhase * 1.3) * 1.3;
+        vec4 mv = modelViewMatrix * vec4(pos, 1.0);
+        vTw = 0.5 + 0.5 * sin(uTime * 3.0 + aPhase * 5.0);
+        gl_PointSize = clamp(180.0 / -mv.z, 1.0, 9.0) * (0.5 + 0.5 * vTw);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      varying float vTw;
+      void main(){
+        float d = length(gl_PointCoord - 0.5);
+        float a = smoothstep(0.5, 0.0, d) * vTw;
+        gl_FragColor = vec4(vec3(0.75, 1.0, 0.45) * (0.6 + vTw), a);
+      }`,
+  });
+  material.userData.skipToon = true;
+  const pts = new THREE.Points(geo, material);
+  pts.frustumCulled = false; // points are displaced in the shader
+  scene.add(pts);
+  return { mesh: pts, material };
+}
+
+// A single grey pigeon (perched, wings foldable). Returns { group, wings }.
+function makePigeon() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x9aa3ad));
+  body.scale.set(1, 0.9, 1.4);
+  body.castShadow = true;
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat(0xb0b8c0));
+  head.position.set(0, 0.22, 0.34);
+  g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), mat(0xe0a52a));
+  beak.rotation.x = Math.PI / 2;
+  beak.position.set(0, 0.2, 0.5);
+  g.add(beak);
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), mat(0x7e878f));
+  tail.position.set(0, 0.02, -0.42);
+  g.add(tail);
+  const wings = [];
+  for (const sx of [-1, 1]) {
+    const wg = new THREE.Group();
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), mat(0x868f98));
+    wing.position.x = sx * 0.3;
+    wg.add(wing);
+    wg.position.set(sx * 0.1, 0.05, 0);
+    g.add(wg);
+    wings.push({ wg, sx, phase: rand() * 6.28 });
+  }
+  return { group: g, wings };
+}
+
+// A roadside loft with a flock of pigeons perched on its roof; they all burst
+// into the air when the player drives close, then re-perch once you're well past.
+function buildPigeons(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const i = Math.floor(0.08 * N);
+  const p = track._pts[i];
+  const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+  const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+  const bx = p.x + side.x * outward * (track.halfWidth + 9);
+  const bz = p.z + side.z * outward * (track.halfWidth + 9);
+  const by = heightAt(bx, bz);
+
+  const loft = new THREE.Group();
+  const wallH = 4;
+  const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
+  body.position.y = wallH / 2;
+  body.castShadow = true;
+  loft.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
+  roof.rotation.y = Math.PI / 4;
+  roof.position.y = wallH + 1.2;
+  roof.castShadow = true;
+  loft.add(roof);
+  loft.position.set(bx, by, bz);
+  loft.rotation.y = Math.atan2(p.x - bx, p.z - bz);
+  loft.traverse((o) => o.layers.set(1));
+  scene.add(loft);
+
+  const flockGroup = new THREE.Group();
+  flockGroup.position.set(bx, by, bz);
+  scene.add(flockGroup);
+  const birds = [];
+  const n = 7;
+  for (let k = 0; k < n; k++) {
+    const pg = makePigeon();
+    const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
+    pg.group.position.copy(home);
+    pg.group.rotation.y = (rand() - 0.5) * 1.2;
+    pg.group.traverse((o) => o.layers.set(1));
+    flockGroup.add(pg.group);
+    birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
+  }
+  return [{ center: new THREE.Vector3(bx, by, bz), triggerR: 14, scattered: false, timer: 0, birds }];
+}
+
+function updatePigeons(flock, dt, time, playerPos) {
+  if (!flock.scattered) {
+    for (const b of flock.birds) {
+      b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
+      for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
+    }
+    if (playerPos) {
+      const dx = playerPos.x - flock.center.x;
+      const dz = playerPos.z - flock.center.z;
+      if (dx * dx + dz * dz < flock.triggerR * flock.triggerR) {
+        flock.scattered = true;
+        flock.timer = 0;
+        for (const b of flock.birds) {
+          const a = Math.random() * Math.PI * 2;
+          b.vel.set(Math.cos(a) * (5 + Math.random() * 5), 8 + Math.random() * 4, Math.sin(a) * (5 + Math.random() * 5));
+        }
+      }
+    }
+  } else {
+    flock.timer += dt;
+    for (const b of flock.birds) {
+      b.group.position.addScaledVector(b.vel, dt);
+      b.vel.y = Math.max(b.vel.y - 5 * dt, 2.5); // arc up, then keep climbing away
+      for (const w of b.wings) w.wg.rotation.z = w.sx * (0.3 + Math.sin(time * 24 + b.phase) * 0.8);
+      b.group.rotation.y = Math.atan2(b.vel.x, b.vel.z);
+    }
+    if (flock.timer > 4 && playerPos) {
+      const dx = playerPos.x - flock.center.x;
+      const dz = playerPos.z - flock.center.z;
+      if (dx * dx + dz * dz > 80 * 80) {
+        flock.scattered = false;
+        for (const b of flock.birds) {
+          b.group.position.copy(b.home);
+          b.group.rotation.set(0, b.homeRy, 0);
+          b.vel.set(0, 0, 0);
+        }
+      }
+    }
   }
 }
 
