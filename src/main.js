@@ -1069,10 +1069,20 @@ let shakeMag = 0;
 // Finish fireworks: burst from the arch when the leader first crosses the line,
 // then keep launching a few more for a short celebration.
 function updateFireworks(dt) {
-  if (!_fireworksDone && raceField().some((k) => k.finished)) {
-    _fireworksDone = true;
-    _fwTimer = 4.5;
-    _fwNext = 0;
+  // Fire the instant the leader is actually AT the line — gating on proximity to
+  // the arch (not just the finished flag) so a flag that flips a touch early
+  // (e.g. a networked ghost still gliding in) can't set them off beforehand.
+  if (!_fireworksDone && track.archApex) {
+    const winner = raceField().find((k) => k.finished);
+    if (winner) {
+      const dx = winner.position.x - track.archApex.x;
+      const dz = winner.position.z - track.archApex.z;
+      if (dx * dx + dz * dz < 12 * 12) {
+        _fireworksDone = true;
+        _fwTimer = 8;
+        _fwNext = 0;
+      }
+    }
   }
   if (_fwTimer > 0 && track.archApex) {
     _fwTimer -= dt;
@@ -1578,7 +1588,7 @@ function loop(now) {
     if (player.finished) {
       hud.showToast("FINISH!");
       if (MP.enabled && MP.net) MP.net.sendFinish(player.finishTime); // share my time
-      setTimeout(showResults, 6000);
+      setTimeout(showResults, 13000);
       state = State.FINISHED; // freeze player input; karts auto-pilot their victory lap
     }
   }

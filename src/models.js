@@ -49,15 +49,22 @@ export function createCat(furColor = 0xf0a830) {
     cat.add(stripe);
   }
 
-  // Front paws on the wheel
+  // Front paws on the wheel. Each arm hangs off a shoulder pivot so it can be
+  // raised for a victory fist-pump; at rest (pivot identity) the pose is
+  // unchanged from before.
+  const arms = {};
   for (const sx of [-1, 1]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.5, 1.05, 0.45);
+    cat.add(pivot);
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.6, 4, 8), fur);
-    arm.position.set(sx * 0.5, 1.05, 0.6);
+    arm.position.set(0, 0, 0.15);
     arm.rotation.x = -1.0;
-    cat.add(arm);
+    pivot.add(arm);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 10), white);
-    paw.position.set(sx * 0.5, 1.2, 0.95);
-    cat.add(paw);
+    paw.position.set(0, 0.15, 0.5);
+    pivot.add(paw);
+    arms[sx < 0 ? "L" : "R"] = pivot;
   }
 
   // --- Head (animated for lean/pitch) ---
@@ -128,6 +135,20 @@ export function createCat(furColor = 0xf0a830) {
   nose.position.set(0, -0.04, 0.92);
   head.add(nose);
 
+  // Cool-cat sunglasses, hidden until the victory celebration drops them on.
+  const glasses = new THREE.Group();
+  const shade = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.4 });
+  for (const sx of [-1, 1]) {
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.24, 0.06), shade);
+    lens.position.set(sx * 0.3, 0.12, 0.64);
+    glasses.add(lens);
+  }
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.05), shade);
+  bridge.position.set(0, 0.16, 0.64);
+  glasses.add(bridge);
+  glasses.visible = false;
+  head.add(glasses);
+
   // Whiskers on pivots (sweep with cornering)
   const whiskerMat = new THREE.LineBasicMaterial({ color: 0xf0f0f0 });
   const whiskers = {};
@@ -166,6 +187,10 @@ export function createCat(furColor = 0xf0a830) {
     earR: ears.R,
     whiskerL: whiskers.L,
     whiskerR: whiskers.R,
+    armL: arms.L,
+    armR: arms.R,
+    glasses,
+    celebT: 0,
     tail: tailPivot,
     springs: {
       earSway: { a: 0, v: 0 },
@@ -184,7 +209,8 @@ export function createCat(furColor = 0xf0a830) {
 // intensity, `lon` the longitudinal acceleration; both roughly -1..1. The
 // appendages lag and overshoot via simple spring-dampers so they whip around
 // corners and flatten back under acceleration. `toot` lifts the tail.
-export function updateCatRig(rig, dt, lat, lon, toot = false) {
+// `celebrate` triggers the victory pose: sunglasses drop on and one paw pumps.
+export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false) {
   if (!rig) return;
   const sp = rig.springs;
   const step = (s, target, k, d) => {
@@ -206,6 +232,24 @@ export function updateCatRig(rig, dt, lat, lon, toot = false) {
   rig.whiskerR.rotation.y = sp.whisker.a;
   rig.tail.rotation.set(sp.tailX.a, sp.tailY.a, 0);
   rig.head.rotation.set(sp.headPitch.a, 0, sp.headLean.a);
+
+  // --- Victory celebration: shades drop on, right paw pumps the air ---
+  if (celebrate) {
+    rig.celebT += dt;
+    if (rig.glasses) {
+      rig.glasses.visible = true;
+      rig.glasses.position.y = Math.max(0, 1.0 - rig.celebT * 4); // slide on over ~0.25s
+    }
+    if (rig.armR) {
+      const pump = Math.sin(rig.celebT * 9);
+      rig.armR.rotation.set(-1.9 + pump * 0.5, 0, -0.2); // paw raised overhead, pumping
+    }
+  } else {
+    rig.celebT = 0;
+    if (rig.glasses) rig.glasses.visible = false;
+    if (rig.armR) rig.armR.rotation.set(0, 0, 0);
+  }
+  if (rig.armL) rig.armL.rotation.set(0, 0, 0); // left paw stays on the wheel
 }
 
 // Builds a chunky go-kart. Returns { group, wheels:[...] } so wheels can spin.

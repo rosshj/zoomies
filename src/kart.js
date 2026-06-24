@@ -460,7 +460,7 @@ export class Kart {
 
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
     // lifts while tooting).
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0);
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished);
 
     // Contact shadow stays on the ground and shrinks as the kart hops.
     const air = 1 / (1 + this.y * 0.16);

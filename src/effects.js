@@ -153,29 +153,56 @@ export class EffectsManager {
     }
   }
 
-  // A single firework shell bursting at `origin`: a spherical spray of bright
-  // sparks in one colour family that fan out and arc back down under gravity.
+  // A big firework shell bursting at `origin`: a bright flash core, a fat
+  // spherical spray of glowing sparks in one colour family, and a few slow
+  // trailing comets — all fanning out and arcing back down under gravity.
   fireworkBurst(origin) {
     const baseHue = Math.random();
-    const n = 26;
+    // Bright flash core that pops and fades fast (the "glow").
+    this._spawn(origin.clone(), new THREE.Color().setHSL(baseHue, 0.5, 0.92), {
+      additive: true,
+      size: 3.5,
+      life: 0.32,
+      grow: 16,
+      opacity: 1,
+      damp: 1,
+    });
+    // Main spray.
+    const n = 46;
     for (let i = 0; i < n; i++) {
-      const col = new THREE.Color().setHSL((baseHue + Math.random() * 0.15) % 1, 1, 0.62);
+      const col = new THREE.Color().setHSL((baseHue + Math.random() * 0.18) % 1, 1, 0.62);
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
-      const sp = 9 + Math.random() * 8;
+      const sp = 14 + Math.random() * 13;
       const dir = new THREE.Vector3(
         Math.sin(phi) * Math.cos(theta),
-        Math.abs(Math.cos(phi)) * 0.7 + 0.45, // bias the spray upward
+        Math.abs(Math.cos(phi)) * 0.7 + 0.5, // bias the spray upward
         Math.sin(phi) * Math.sin(theta)
       ).multiplyScalar(sp);
       this._spawn(origin.clone(), col, {
         additive: true,
         spark: true,
-        size: 0.7 + Math.random() * 0.3,
-        life: 0.9 + Math.random() * 0.6,
+        size: 1.2 + Math.random() * 0.8,
+        life: 1.1 + Math.random() * 0.9,
         v: dir,
         damp: 0.5,
         gravity: 9,
+      });
+    }
+    // A few fat, slow trailing comets for extra drama.
+    for (let i = 0; i < 7; i++) {
+      const col = new THREE.Color().setHSL((baseHue + 0.5 + Math.random() * 0.2) % 1, 1, 0.66);
+      const a = Math.random() * Math.PI * 2;
+      const v = new THREE.Vector3(Math.cos(a) * 6, 9 + Math.random() * 6, Math.sin(a) * 6);
+      this._spawn(origin.clone(), col, {
+        additive: true,
+        size: 2.0 + Math.random(),
+        life: 1.4 + Math.random() * 0.8,
+        grow: 1.5,
+        v,
+        damp: 0.4,
+        gravity: 11,
+        opacity: 0.95,
       });
     }
   }
