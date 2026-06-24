@@ -120,15 +120,39 @@ export class Kart {
     this.group.add(cat);
     this.catRig = cat.userData.rig;
 
-    // Shield bubble (held protection from hairballs)
+    // Shield bubble (held protection from hairballs) — a glowing Fresnel energy
+    // orb: bright at the rim, faint fill, with travelling shimmer bands.
     this.shielding = false;
     this.shieldMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(3.3, 16, 12),
-      new THREE.MeshBasicMaterial({
-        color: 0x4fc3f7,
+      new THREE.SphereGeometry(3.3, 24, 16),
+      new THREE.ShaderMaterial({
         transparent: true,
-        opacity: 0.28,
         depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uTime: { value: 0 },
+          uColor: { value: new THREE.Color(0x6fd6ff) },
+        },
+        vertexShader: `
+          varying vec3 vN; varying vec3 vV;
+          void main(){
+            vec4 mv = modelViewMatrix * vec4(position, 1.0);
+            vN = normalize(normalMatrix * normal);
+            vV = normalize(-mv.xyz);
+            gl_Position = projectionMatrix * mv;
+          }`,
+        fragmentShader: `
+          uniform float uTime; uniform vec3 uColor;
+          varying vec3 vN; varying vec3 vV;
+          void main(){
+            float fres = pow(1.0 - max(dot(vN, vV), 0.0), 2.4);
+            float band = 0.5 + 0.5 * sin(vN.y * 18.0 - uTime * 4.0); // travelling shimmer
+            float pulse = 0.85 + 0.15 * sin(uTime * 2.5);            // gentle breathing
+            vec3 col = uColor * ((fres * 1.7 + 0.12) * pulse + band * fres * 0.5);
+            float a = clamp(fres * 0.9 + 0.08 + band * fres * 0.3, 0.0, 1.0);
+            gl_FragColor = vec4(col, a);
+          }`,
       })
     );
     this.shieldMesh.position.y = 1.2;
@@ -444,8 +468,10 @@ export class Kart {
     // Shield bubble.
     this.shieldMesh.visible = this.shielding;
     if (this.shielding) {
-      const s = 1 + Math.sin(performance.now() * 0.01) * 0.04;
+      const now = performance.now();
+      const s = 1 + Math.sin(now * 0.01) * 0.04;
       this.shieldMesh.scale.setScalar(s);
+      this.shieldMesh.material.uniforms.uTime.value = now * 0.001;
     }
 
     for (const w of this.wheels) w.rotation.x = this._wheelSpin || 0;
