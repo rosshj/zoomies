@@ -601,3 +601,17 @@ button.small {
   70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
+
+/* Minimap — bottom-left, just right of the throttle. Kept small and mostly
+   transparent (track outline + dots) so it doesn't cover the driving view. */
+#minimap {
+  position: absolute;
+  bottom: max(16px, calc(var(--safe-bottom, 0px) + 12px));
+  left: max(150px, calc(var(--safe-left, 0px) + 122px));
+  width: 132px;
+  height: 132px;
+  border-radius: 12px;
+  background: rgba(10, 16, 32, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
