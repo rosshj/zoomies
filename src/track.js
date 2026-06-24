@@ -1,5 +1,4 @@
 import * as THREE from "three";
-import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { biomeBarrierStyle } from "./scenery.js";
 
 // Fine grayscale noise used as the road's bump map (asphalt grain).
@@ -319,22 +318,38 @@ export class Track {
       }
     }
 
-    const archMat = new THREE.MeshStandardMaterial({ color: 0x263238 });
-    for (const dir of [1, -1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 9, 10), archMat);
-      const lp = new THREE.Vector3().copy(p).addScaledVector(side, dir * (this.halfWidth + 1.2));
-      leg.position.set(lp.x, lp.y + 4.5, lp.z);
-      leg.castShadow = true;
-      this.group.add(leg);
+    // Archway over the track: a single tube that rises as a post on each side
+    // and curves over the road into a rounded arch. The apex is recorded so the
+    // finish fireworks can burst from it.
+    const up = new THREE.Vector3(0, 1, 0);
+    const W = this.halfWidth + 1.6; // post offset from centre
+    const postH = 5.5; // straight post height before the arch curves
+    const archRise = 5.0; // how high the arch bulges above the posts
+    const pt = (s, y) => new THREE.Vector3().copy(p).addScaledVector(side, s).addScaledVector(up, y);
+    const archPts = [pt(-W, 0)]; // left base
+    const ARCSEG = 16;
+    for (let k = 0; k <= ARCSEG; k++) {
+      const a = Math.PI * (1 - k / ARCSEG); // left shoulder -> apex -> right shoulder
+      archPts.push(pt(W * Math.cos(a), postH + archRise * Math.sin(a)));
     }
-    const beam = new THREE.Mesh(
-      new RoundedBoxGeometry(this.width + 4, 1.6, 1.6, 3, 0.5),
-      new THREE.MeshStandardMaterial({ color: 0xffb300 })
+    archPts.push(pt(W, 0)); // right base
+    const archGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(archPts), 90, 0.55, 12, false);
+    const arch = new THREE.Mesh(
+      archGeo,
+      new THREE.MeshStandardMaterial({ color: 0xe53935, roughness: 0.55, metalness: 0.1 })
     );
-    beam.position.set(p.x, p.y + 9, p.z);
-    beam.rotation.y = -Math.atan2(tan.z, tan.x);
-    beam.castShadow = true;
-    this.group.add(beam);
+    arch.castShadow = true;
+    this.group.add(arch);
+
+    // Golden finials at the apex and shoulders for a fairground gate look.
+    const finialMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
+    this.archApex = pt(0, postH + archRise);
+    for (const s of [-W, 0, W]) {
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 12), finialMat);
+      ball.position.copy(pt(s, s === 0 ? postH + archRise : postH));
+      ball.castShadow = true;
+      this.group.add(ball);
+    }
   }
 
   getPointAt(t) {
