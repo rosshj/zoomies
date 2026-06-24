@@ -293,7 +293,7 @@ const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 const hud = new HUD();
 
-// Boost (fart) meter UI reflects the player kart's own meter.
+// Boost (toot) meter UI reflects the player kart's own meter.
 const boostBtn = document.getElementById("btn-boost");
 const boostFill = document.getElementById("boost-fill");
 const shootBtn = document.getElementById("btn-shoot");
@@ -1333,11 +1333,11 @@ function aiActions(dt) {
     k.shielding = threat && k._shieldTry && k._shieldDelay <= 0;
     k._threatPrev = threat;
 
-    // --- Fart boost when full, on a straightish stretch (not mid-shield). ---
+    // --- Toot boost when full, on a straightish stretch (not mid-shield). ---
     if (k.boostMeter >= 1 && !threat && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
-      if (k.fartBoost()) {
+      if (k.tootBoost()) {
         k.boostMeter = 0;
-        effects.fartBurst(k);
+        effects.tootBurst(k);
       }
     }
 
@@ -1467,9 +1467,9 @@ function loop(now) {
       player.shootCharge = 0;
     }
     if (input.consumeBoost() && player.boostMeter >= 1) {
-      if (player.fartBoost()) {
+      if (player.tootBoost()) {
         player.boostMeter = 0; // fully deplete on use
-        effects.fartBurst(player);
+        effects.tootBurst(player);
       }
     }
     updateBoostUI();
@@ -1516,13 +1516,18 @@ function loop(now) {
           }
         : null
     );
-    // Sparks where a kart scraped a railing; skid marks while spinning out.
+    // Sparks where a kart scraped a railing; skid marks while spinning out;
+    // a charge-coloured cloud puff when a drift boost is released.
     for (const k of karts) {
       if (k.wallHit) {
         effects.wallSparks(k);
         k.wallHit = false;
       }
       if (k.spinTimer > 0) effects.skid(k);
+      if (k.boostPuff >= 0) {
+        effects.tootBurst(k, k.boostPuff);
+        k.boostPuff = -1;
+      }
     }
     updateFireworks(dt);
     effects.update(dt);

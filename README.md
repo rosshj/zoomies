@@ -18,7 +18,7 @@ laps, and pelt your rivals with hairballs.
 | Reverse | Keep holding **down** once stopped |
 | Jump / Drift | **⬆ button** — hop into a corner while turning to drift |
 | Shoot hairball 🐾 | **🐾 button** (bottom-right) |
-| Boost 💨 | **💨 button** — a turbo cat fart; the meter recharges |
+| Boost 💨 | **💨 button** — a turbo cat toot; the meter recharges |
 
 **Drifting:** jump while steering into a corner to start a slide. Hold the
 drift to charge a mini-turbo (sparks turn blue → orange → red); straighten out

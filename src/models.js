@@ -183,8 +183,8 @@ export function createCat(furColor = 0xf0a830) {
 // Animates a cat rig with cornering physics. `lat` is the (signed) cornering
 // intensity, `lon` the longitudinal acceleration; both roughly -1..1. The
 // appendages lag and overshoot via simple spring-dampers so they whip around
-// corners and flatten back under acceleration. `fart` lifts the tail.
-export function updateCatRig(rig, dt, lat, lon, fart = false) {
+// corners and flatten back under acceleration. `toot` lifts the tail.
+export function updateCatRig(rig, dt, lat, lon, toot = false) {
   if (!rig) return;
   const sp = rig.springs;
   const step = (s, target, k, d) => {
@@ -196,7 +196,7 @@ export function updateCatRig(rig, dt, lat, lon, fart = false) {
   step(sp.earBack, Math.max(0, lon) * 0.7 + Math.abs(lat) * 0.5, 75, 12);
   step(sp.whisker, -lat * 0.9, 55, 8);
   step(sp.tailY, -lat * 1.9, 42, 6);
-  step(sp.tailX, fart ? -1.5 : -Math.max(0, lon) * 0.5, 55, 9);
+  step(sp.tailX, toot ? -1.5 : -Math.max(0, lon) * 0.5, 55, 9);
   step(sp.headLean, -lat * 0.4, 65, 10);
   step(sp.headPitch, lon * 0.2, 70, 11);
 

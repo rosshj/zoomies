@@ -90,7 +90,7 @@ export class RemoteKart {
     const f = s.f | 0;
     k.drifting = (f & FLAG.DRIFT) !== 0;
     k.shielding = (f & FLAG.SHIELD) !== 0;
-    k.fartTimer = f & FLAG.BOOST ? 0.1 : 0; // drives the boost wheelie + tail lift
+    k.tootTimer = f & FLAG.BOOST ? 0.1 : 0; // drives the boost wheelie + tail lift
 
     // Derive lean + cat-rig cornering from how fast the heading is turning, so
     // the puppet leans into bends and the cat reacts without extra bandwidth.

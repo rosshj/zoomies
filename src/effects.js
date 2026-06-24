@@ -1,6 +1,6 @@
 import * as THREE from "three";
 
-// Soft particle effects (textured sprites): rainbow fart clouds, boost trail,
+// Soft particle effects (textured sprites): rainbow toot clouds, boost trail,
 // drift/wall sparks, plus reusable tyre skid-mark quads.
 export class EffectsManager {
   constructor(scene) {
@@ -65,11 +65,18 @@ export class EffectsManager {
       );
   }
 
-  // Big rainbow cloud burst — the fart.
-  fartBurst(kart) {
+  // Boost cloud burst, coloured by how much was charged (matching the drift-
+  // charge spark tiers): a solid blue cloud for a light charge, gold for a mid
+  // charge, and a full rainbow only at full charge. The toot-meter boost passes
+  // the default high charge, so the button toot is always the rainbow one.
+  tootBurst(kart, charge = 2) {
+    const rainbow = charge > 1.5;
+    const tier = charge > 0.8 ? 0xffd54f : 0xbfe3ff;
     const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
     for (let i = 0; i < 16; i++) {
-      const col = new THREE.Color().setHSL((this._hue + i / 16) % 1, 1, 0.6);
+      const col = rainbow
+        ? new THREE.Color().setHSL((this._hue + i / 16) % 1, 1, 0.6)
+        : new THREE.Color(tier);
       const v = fwd
         .clone()
         .multiplyScalar(-(5 + Math.random() * 6))
@@ -83,7 +90,7 @@ export class EffectsManager {
         opacity: 0.85,
       });
     }
-    this._hue = (this._hue + 0.13) % 1;
+    if (rainbow) this._hue = (this._hue + 0.13) % 1;
   }
 
   // Continuous rainbow trail while boosting.
@@ -102,7 +109,7 @@ export class EffectsManager {
 
   // Drift charge "powers up" toward the rainbow blast you get on release: the
   // sparks emit faster and grow as charge builds, stepping blue -> gold -> and,
-  // when fully charged, cycling rainbow hues (shared with the fart trail) so the
+  // when fully charged, cycling rainbow hues (shared with the toot trail) so the
   // payoff is telegraphed.
   driftSparks(kart) {
     const charge = kart.driftCharge;

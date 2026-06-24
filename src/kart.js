@@ -72,11 +72,12 @@ export class Kart {
     this.driftCharge = 0;
     this.driftHeld = false; // jump button held (sustains the drift)
 
-    // Boost (drift mini-turbo and the fart boost button)
+    // Boost (drift mini-turbo and the toot boost button)
     this.boostTimer = 0;
     this.boostSpeed = 0;
-    this.fartTimer = 0; // tail-lift/fart animation timer
-    this.boostMeter = 0; // fart-boost charge, 0..1 (starts empty, recharges)
+    this.tootTimer = 0; // tail-lift/toot animation timer
+    this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
+    this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -207,16 +208,16 @@ export class Kart {
   }
 
   // Apply a temporary speed boost. `mult` is the boosted top speed as a
-  // fraction of maxSpeed; `fart` triggers the tail-lift/fart effect.
-  applyBoost(mult, duration, fart = false) {
+  // fraction of maxSpeed; `toot` triggers the tail-lift/toot effect.
+  applyBoost(mult, duration, toot = false) {
     this.boostSpeed = this.maxSpeed * mult;
     this.boostTimer = Math.max(this.boostTimer, duration);
     this.speed = Math.max(this.speed, this.maxSpeed); // instant kick
-    if (fart) this.fartTimer = Math.max(this.fartTimer, duration);
+    if (toot) this.tootTimer = Math.max(this.tootTimer, duration);
   }
 
-  // The fart boost button (limited uses are tracked by the caller).
-  fartBoost() {
+  // The toot boost button (limited uses are tracked by the caller).
+  tootBoost() {
     if (this.spinTimer > 0 || this.finished) return false;
     this.applyBoost(1.6, 1.5, true);
     return true;
@@ -229,6 +230,7 @@ export class Kart {
     this.drifting = false;
     const c = Math.min(this.driftCharge, 3.2);
     this.applyBoost(1.12 + c * 0.12, 0.4 + c * 0.28);
+    this.boostPuff = c; // signal a charge-coloured boost cloud (see main loop)
     this.driftCharge = 0;
   }
 
@@ -276,7 +278,7 @@ export class Kart {
     }
 
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
-    if (this.fartTimer > 0) this.fartTimer -= dt;
+    if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
     this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
 
@@ -449,7 +451,7 @@ export class Kart {
     this.group.rotation.y = this.heading;
 
     // Pitch with the slope (+ a slight wheelie on boost).
-    this.group.rotation.x = this.slopePitch + (this.fartTimer > 0 ? -0.12 : 0);
+    this.group.rotation.x = this.slopePitch + (this.tootTimer > 0 ? -0.12 : 0);
 
     // Lean into turns (harder while drifting).
     const leanInput = this.drifting ? this.driftDir : this.steerInput;
@@ -457,8 +459,8 @@ export class Kart {
     this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
 
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
-    // lifts while farting).
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.fartTimer > 0);
+    // lifts while tooting).
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0);
 
     // Contact shadow stays on the ground and shrinks as the kart hops.
     const air = 1 / (1 + this.y * 0.16);
