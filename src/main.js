@@ -656,6 +656,9 @@ const _ss = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 const _sunViewVec = new THREE.Vector3();
+const _shUp = new THREE.Vector3(0, 1, 0);
+const _shRight = new THREE.Vector3();
+const _shUpL = new THREE.Vector3();
 function updateAtmosphere() {
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
@@ -663,11 +666,25 @@ function updateAtmosphere() {
   _sunDir.copy(sun.position).sub(sun.target.position).normalize();
 
   // Keep the tight shadow frustum centred on the player so its crisp shadows
-  // are always where they show. Move light + target together to preserve the
+  // are always where they show. Snap the centre to shadow-map texels (in the
+  // light's own view basis) so the now-tighter, crisper shadows don't swim or
+  // shimmer as the player moves. Light + target move together, preserving the
   // sun direction.
   if (player) {
-    sun.target.position.copy(player.position);
-    sun.position.copy(player.position).addScaledVector(_sunDir, 320);
+    const cam = sun.shadow.camera;
+    const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
+    _shRight.crossVectors(_shUp, _sunDir).normalize();
+    _shUpL.crossVectors(_sunDir, _shRight).normalize();
+    const p = player.position;
+    const dr = Math.round(p.dot(_shRight) / texel) * texel;
+    const du = Math.round(p.dot(_shUpL) / texel) * texel;
+    const df = p.dot(_sunDir);
+    sun.target.position
+      .set(0, 0, 0)
+      .addScaledVector(_shRight, dr)
+      .addScaledVector(_shUpL, du)
+      .addScaledVector(_sunDir, df);
+    sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
     sun.target.updateMatrixWorld();
     sun.updateMatrixWorld();
   }

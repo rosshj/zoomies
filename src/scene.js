@@ -65,16 +65,21 @@ export function createScene() {
   sun.shadow.mapSize.set(2048, 2048);
   // A tight frustum that the game keeps centred on the player (see main loop):
   // same map budget focused around you = crisp, dramatic shadows where they show.
-  const s = 130;
+  // Kept fairly small so the 2048 map gives plenty of texels per unit near the
+  // kart (crisp edges); distant scenery shadows fall outside it but read tiny.
+  const s = 85;
   sun.shadow.camera.left = -s;
   sun.shadow.camera.right = s;
   sun.shadow.camera.top = s;
   sun.shadow.camera.bottom = -s;
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 720;
-  sun.shadow.bias = -0.0004;
-  sun.shadow.normalBias = 0.6; // helps the tighter frustum avoid acne
-  sun.shadow.radius = 4; // soft PCF penumbra for the gentle, toy-like look
+  // Small biases: a low normalBias keeps contact shadows attached (a high one
+  // peter-pans them so objects look like they float); the tighter, higher-res
+  // frustum keeps acne away without leaning on it.
+  sun.shadow.bias = -0.0005;
+  sun.shadow.normalBias = 0.18;
+  sun.shadow.radius = 5; // soft PCF penumbra for the gentle, toy-like look
   scene.add(sun);
   scene.add(sun.target);
 
