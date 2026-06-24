@@ -1,51 +1,41 @@
 import * as THREE from "three";
-import { Reflector } from "three/addons/objects/Reflector.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
 
-// Custom shader for the hero puddle's planar reflection: samples the mirrored
-// scene render (rippled), blends a dark water base in by Fresnel, and fades the
-// odd-shaped edge. tDiffuse/textureMatrix are driven by Reflector itself.
-const PUDDLE_REFLECTOR_SHADER = {
+// Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
+// a grazing-angle (Fresnel) sky tint and a faint moving glint so it reads as
+// standing water, with no extra render pass or reflection sampling. uBase is the
+// dark water tone; uSky is the colour the surface brightens toward at the rim.
+const PUDDLE_SHEEN_SHADER = {
   uniforms: {
-    color: { value: new THREE.Color(0xffffff) }, // required by Reflector (unused here)
-    tDiffuse: { value: null },
-    textureMatrix: { value: new THREE.Matrix4() },
     uTime: { value: 0 },
     uBase: { value: new THREE.Color(0x0c1822) },
+    uSky: { value: new THREE.Color(0x9fb7c8) },
   },
   vertexShader: `
-    uniform mat4 textureMatrix;
     attribute float aEdge;
-    varying vec4 vUv;
     varying vec3 vWorld;
     varying float vEdge;
     void main(){
       vEdge = aEdge;
       vec4 wp = modelMatrix * vec4(position, 1.0);
       vWorld = wp.xyz;
-      vUv = textureMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
     }`,
   fragmentShader: `
-    uniform sampler2D tDiffuse;
     uniform float uTime;
     uniform vec3 uBase;
-    varying vec4 vUv;
+    uniform vec3 uSky;
     varying vec3 vWorld;
     varying float vEdge;
     void main(){
-      // Ripple the reflection sample so the mirror image wobbles like water.
-      vec2 ripple = vec2(
-        sin(vWorld.x * 1.5 + uTime * 2.0) + 0.6 * sin(vWorld.z * 1.0 - uTime * 1.6),
-        sin(vWorld.z * 1.3 + uTime * 1.8) + 0.6 * sin(vWorld.x * 0.9 + uTime * 1.3)
-      ) * 0.02;
-      vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
-      // Fresnel: more reflective at grazing angles (normal is up, so use view.y).
+      // Fresnel against the flat (upward) surface: brighter, sky-tinted at grazing angles.
       vec3 V = normalize(cameraPosition - vWorld);
-      float fres = pow(clamp(1.0 - max(V.y, 0.0), 0.0001, 1.0), 2.5);
-      vec3 col = mix(uBase, refl.rgb, mix(0.55, 1.0, fres));
-      float alpha = (1.0 - smoothstep(0.45, 1.0, vEdge)) * 0.95;
+      float fres = pow(clamp(1.0 - max(V.y, 0.0), 0.0001, 1.0), 3.0);
+      // Faint moving glint so the water shimmers a little.
+      float glint = 0.5 + 0.5 * sin(vWorld.x * 1.3 + vWorld.z * 1.1 + uTime * 1.6);
+      vec3 col = mix(uBase, uSky, fres * 0.85) + glint * 0.04;
+      float alpha = (1.0 - smoothstep(0.4, 1.0, vEdge)) * 0.9;
       gl_FragColor = vec4(col, alpha);
     }`,
 };
@@ -78,15 +68,13 @@ function chevronTexture() {
   return (_chevronTex = t);
 }
 
-// An irregular, organic puddle blob built directly in the Reflector's LOCAL
-// space (the reflector mesh is rotated flat: local X = world X, local Y = world
-// -Z), centred at world (cx, cz). Triangle fan with a noisy radius per angle;
-// `aEdge` is 0 at the centre and 1 at the rim for the soft edge fade. Building
-// in shared local space lets every puddle in the dip merge into one reflection
-// surface (level water, one render).
-function puddleBlobLocal(cx, cz, baseR, stretchZ, hz = 0) {
+// An irregular, organic puddle blob built flat in world XZ (y = 0; the mesh is
+// lifted to the water level), centred at world (cx, cz). Triangle fan with a
+// noisy radius per angle; `aEdge` is 0 at the centre and 1 at the rim for the
+// soft edge fade. Multiple blobs merge into one wet-sheen decal mesh.
+function puddleBlob(cx, cz, baseR, stretchZ) {
   const segs = 26;
-  const pos = [cx, -cz, hz];
+  const pos = [cx, 0, cz];
   const edge = [0];
   const ph0 = Math.random() * 6.28, ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
   for (let i = 0; i < segs; i++) {
@@ -96,7 +84,7 @@ function puddleBlobLocal(cx, cz, baseR, stretchZ, hz = 0) {
     const r = baseR * Math.max(0.4, wob);
     const wx = cx + Math.cos(a) * r;
     const wz = cz + Math.sin(a) * r * stretchZ;
-    pos.push(wx, -wz, hz);
+    pos.push(wx, 0, wz);
     edge.push(1);
   }
   const idx = [];
@@ -280,8 +268,9 @@ export class Track {
 
   // Intentional puddles where water would actually pool: a big one in the LOWEST
   // part of the forest stretch (elongated along the road), and a few smaller ones
-  // in other low spots. Odd organic shapes, wet/reflective shader. Centres go in
-  // this.puddles so the main loop can splash when driven through in the rain.
+  // in other low spots. Odd organic shapes with a cheap flat wet-sheen shader (no
+  // extra render pass). Each blob sits flush on its own local ground height.
+  // Centres go in this.puddles so the main loop can splash when driven through.
   _buildPuddles() {
     this.puddles = [];
     const forest = [];
@@ -291,42 +280,36 @@ export class Track {
     }
     if (!forest.length) return;
     forest.sort((a, b) => a.p.y - b.p.y); // lowest first
-    const waterY = forest[0].p.y;
 
-    // True planar reflection only works for puddles coplanar with the single
-    // reflection plane. Keep every puddle at hz: 0 (the one water level): raised
-    // puddles can't sample the planar reflection and read as black, and the
-    // rising road would occlude them. So confine the small ones to the genuinely
-    // flat dip bottom and round out the big one.
-    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, baseR: 6.5, stretch: 1.0, hz: 0 }];
+    // A hero puddle in the lowest dip plus a few smaller ones in other low forest
+    // spots. With a flat decal (no reflection plane) they can spread out: each
+    // blob is lifted to its own ground height so it sits flush on the road.
+    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, gy: forest[0].p.y, baseR: 6, stretch: 1.25 }];
     for (let k = 1; k < forest.length && placements.length < 6; k++) {
       const s = forest[k];
-      if (s.p.y > waterY + 0.9) break; // only the genuinely flat dip bottom
-      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 9 * 9)) continue;
-      placements.push({ cx: s.p.x, cz: s.p.z, baseR: 2 + Math.random() * 2, stretch: 1, hz: 0 });
+      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 18 * 18)) continue;
+      placements.push({ cx: s.p.x, cz: s.p.z, gy: s.p.y, baseR: 2 + Math.random() * 2, stretch: 1 });
     }
 
-    // One merged reflection surface for the whole connected puddle, so every
-    // puddle (big and small) shows a true reflection from a single render.
+    // Merge every blob into one wet-sheen decal mesh.
     const geoms = placements.map((pl) => {
       this.puddles.push({ x: pl.cx, z: pl.cz, r: pl.baseR * pl.stretch });
-      return puddleBlobLocal(pl.cx, pl.cz, pl.baseR, pl.stretch, pl.hz);
+      const g = puddleBlob(pl.cx, pl.cz, pl.baseR, pl.stretch);
+      g.translate(0, pl.gy + 0.04, 0); // sit flush on this puddle's ground
+      return g;
     });
-    const reflector = new Reflector(mergeGeometries(geoms), {
-      textureWidth: 256,
-      textureHeight: 256,
-      shader: PUDDLE_REFLECTOR_SHADER,
-    });
-    reflector.material.transparent = true;
-    reflector.material.depthWrite = false;
-    reflector.material.side = THREE.DoubleSide; // local-Y flip reverses winding; show both faces
-    reflector.rotation.x = -Math.PI / 2; // local XY -> flat world plane at waterY
-    reflector.position.set(0, waterY + 0.04, 0);
-    reflector.renderOrder = 1;
-    reflector.visible = false; // enabled by proximity in the main loop
-    this.group.add(reflector);
-    this.puddleReflector = reflector;
-    this.puddleReflectorCenter = { x: forest[0].p.x, z: forest[0].p.z };
+    const mesh = new THREE.Mesh(
+      mergeGeometries(geoms),
+      new THREE.ShaderMaterial({
+        ...PUDDLE_SHEEN_SHADER,
+        transparent: true,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      })
+    );
+    mesh.renderOrder = 1;
+    this.group.add(mesh);
+    this.puddleMesh = mesh;
   }
 
   // Glowing chevron pads painted on the road that kick your speed when driven

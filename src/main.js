@@ -751,14 +751,9 @@ function updateAtmosphere() {
     sh.uniforms.uSunView.value.copy(_sunViewVec);
     sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
   }
-  // Puddles' true reflection: only render it (a full extra scene pass) when the
-  // player is near the forest dip; animate its ripples while active.
-  if (track.puddleReflector) {
-    const c = track.puddleReflectorCenter;
-    const at = player ? player.position : camera.position;
-    const near = (at.x - c.x) ** 2 + (at.z - c.z) ** 2 < 80 * 80;
-    track.puddleReflector.visible = near;
-    if (near) track.puddleReflector.material.uniforms.uTime.value = performance.now() * 0.001;
+  // Animate the puddles' wet-sheen shimmer.
+  if (track.puddleMesh) {
+    track.puddleMesh.material.uniforms.uTime.value = performance.now() * 0.001;
   }
 }
 
