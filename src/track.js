@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Reflector } from "three/addons/objects/Reflector.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
 
 // Custom shader for the hero puddle's planar reflection: samples the mirrored
@@ -43,8 +44,8 @@ const PUDDLE_REFLECTOR_SHADER = {
       // Fresnel: more reflective at grazing angles (normal is up, so use view.y).
       vec3 V = normalize(cameraPosition - vWorld);
       float fres = pow(clamp(1.0 - max(V.y, 0.0), 0.0001, 1.0), 2.5);
-      vec3 col = mix(uBase, refl.rgb, mix(0.5, 1.0, fres));
-      float alpha = (1.0 - smoothstep(0.72, 1.0, vEdge)) * 0.95;
+      vec3 col = mix(uBase, refl.rgb, mix(0.55, 1.0, fres));
+      float alpha = (1.0 - smoothstep(0.45, 1.0, vEdge)) * 0.95;
       gl_FragColor = vec4(col, alpha);
     }`,
 };
@@ -77,25 +78,24 @@ function chevronTexture() {
   return (_chevronTex = t);
 }
 
-// An irregular, organic puddle outline (a triangle fan with a noisy radius per
-// angle) laid flat in the XZ plane. `aEdge` is 0 at the centre and 1 at the rim
-// so the shader can fade the edge softly. `sx`/`sz` stretch it (e.g. along the
-// road for the big one).
-function puddleGeometry(baseR, sx = 1, sz = 1, xy = false) {
-  const segs = 22;
-  const pos = [0, 0, 0];
+// An irregular, organic puddle blob built directly in the Reflector's LOCAL
+// space (the reflector mesh is rotated flat: local X = world X, local Y = world
+// -Z), centred at world (cx, cz). Triangle fan with a noisy radius per angle;
+// `aEdge` is 0 at the centre and 1 at the rim for the soft edge fade. Building
+// in shared local space lets every puddle in the dip merge into one reflection
+// surface (level water, one render).
+function puddleBlobLocal(cx, cz, baseR, stretchZ) {
+  const segs = 26;
+  const pos = [cx, -cz, 0];
   const edge = [0];
   const ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
   for (let i = 0; i < segs; i++) {
     const a = (i / segs) * Math.PI * 2;
-    const wob = 1 + 0.32 * Math.sin(a * 2 + ph1) + 0.18 * Math.sin(a * 3 + ph2) + 0.12 * Math.sin(a * 5 + ph3);
-    const r = baseR * Math.max(0.45, wob);
-    const X = Math.cos(a) * r * sx;
-    const Y = Math.sin(a) * r * sz;
-    // XZ (flat, for the sky-shader small puddles) or XY (for the Reflector mesh,
-    // which is then rotated flat — three's Reflector expects a +Z-facing plane).
-    if (xy) pos.push(X, Y, 0);
-    else pos.push(X, 0, Y);
+    const wob = 1 + 0.4 * Math.sin(a * 2 + ph1) + 0.24 * Math.sin(a * 3 + ph2) + 0.15 * Math.sin(a * 5 + ph3);
+    const r = baseR * Math.max(0.4, wob);
+    const wx = cx + Math.cos(a) * r;
+    const wz = cz + Math.sin(a) * r * stretchZ;
+    pos.push(wx, -wz, 0);
     edge.push(1);
   }
   const idx = [];
@@ -105,63 +105,6 @@ function puddleGeometry(baseR, sx = 1, sz = 1, xy = false) {
   g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
   g.setIndex(idx);
   return g;
-}
-
-// Wet, reflective puddle shader (Option A): reflects a procedural sky gradient
-// plus a sharp sun glint, brightens at grazing angles (Fresnel), and ripples —
-// all driven harder by rain. No extra render pass. Sky colours are the fixed
-// sunny mood; uTime/uRain/uSunDir are fed each frame from the main loop.
-function makePuddleMaterial() {
-  return new THREE.ShaderMaterial({
-    transparent: true,
-    depthWrite: false,
-    side: THREE.DoubleSide, // flat decal: visible regardless of triangle winding
-    uniforms: {
-      uTime: { value: 0 },
-      uRain: { value: 0 },
-      uSunDir: { value: new THREE.Vector3(0.4, 0.82, 0.55) },
-      uSkyTop: { value: new THREE.Color(0x2f74c8) },
-      uSkyHorizon: { value: new THREE.Color(0xc4d8ea) },
-      uBase: { value: new THREE.Color(0x0c1822) },
-    },
-    vertexShader: `
-      attribute float aEdge;
-      varying vec3 vWorld; varying float vEdge;
-      void main(){
-        vEdge = aEdge;
-        vec4 wp = modelMatrix * vec4(position, 1.0);
-        vWorld = wp.xyz;
-        gl_Position = projectionMatrix * viewMatrix * wp;
-      }`,
-    fragmentShader: `
-      uniform float uTime; uniform float uRain; uniform vec3 uSunDir;
-      uniform vec3 uSkyTop; uniform vec3 uSkyHorizon; uniform vec3 uBase;
-      varying vec3 vWorld; varying float vEdge;
-      void main(){
-        vec3 V = normalize(cameraPosition - vWorld);
-        // Animated ripples perturb the up-normal. Kept gentle when dry so the
-        // reflection stays a clear mirror; choppier in the rain.
-        float amp = 0.05 + 0.16 * uRain;
-        vec3 N = normalize(vec3(
-          amp * (sin(vWorld.x * 1.6 + uTime * 2.3) + 0.6 * sin(vWorld.z * 1.0 - uTime * 1.7)),
-          1.0,
-          amp * (sin(vWorld.z * 1.4 + uTime * 1.9) + 0.6 * sin(vWorld.x * 0.9 + uTime * 1.4))
-        ));
-        vec3 R = reflect(-V, N);
-        // Sky: bright pale horizon at grazing angles, deepening to blue overhead.
-        vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.5, clamp(R.y, 0.0, 1.0)));
-        // Soft sun disc + a tight glint streak (bases clamped so pow() != NaN).
-        float sd = clamp(dot(R, normalize(uSunDir)), 0.0001, 1.0);
-        float sun = pow(sd, 16.0) * 0.6 + pow(sd, 150.0) * 2.2;
-        // Reflective even looking straight down (floor), full mirror at grazing.
-        float ndv = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
-        float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 2.5);
-        float refl = mix(0.34, 1.0, fres) * (0.85 + 0.15 * uRain);
-        vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.94, 0.8) * sun * (0.8 + 0.4 * uRain);
-        float alpha = (1.0 - smoothstep(0.72, 1.0, vEdge)) * 0.94;
-        gl_FragColor = vec4(clamp(col, 0.0, 4.0), alpha);
-      }`,
-  });
 }
 
 // Fine grayscale noise used as the road's bump map (asphalt grain).
@@ -347,49 +290,38 @@ export class Track {
     }
     if (!forest.length) return;
     forest.sort((a, b) => a.p.y - b.p.y); // lowest first
-    const low = forest[0];
-    const minY = low.p.y;
+    const waterY = forest[0].p.y;
 
-    // Hero puddle: a TRUE planar reflection (Reflector renders the mirrored world
-    // into a texture). Built in the XY plane and rotated flat; only rendered when
-    // the player is near (toggled in the main loop) so it's free elsewhere.
-    const tan = this._tans[low.i];
-    const reflector = new Reflector(puddleGeometry(7.5, 1.0, 1.7, true), {
+    // Water is level: pick the big puddle in the lowest dip plus a few small ones
+    // right at that same level (so one flat reflection plane serves them all).
+    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, baseR: 7, stretch: 1.25 }];
+    for (let k = 1; k < forest.length && placements.length < 6; k++) {
+      const s = forest[k];
+      if (s.p.y > waterY + 2.5) break; // only what sits at the water level
+      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 16 * 16)) continue;
+      placements.push({ cx: s.p.x, cz: s.p.z, baseR: 2 + Math.random() * 2, stretch: 1 });
+    }
+
+    // One merged reflection surface for the whole connected puddle, so every
+    // puddle (big and small) shows a true reflection from a single render.
+    const geoms = placements.map((pl) => {
+      this.puddles.push({ x: pl.cx, z: pl.cz, r: pl.baseR * pl.stretch });
+      return puddleBlobLocal(pl.cx, pl.cz, pl.baseR, pl.stretch);
+    });
+    const reflector = new Reflector(mergeGeometries(geoms), {
       textureWidth: 256,
       textureHeight: 256,
       shader: PUDDLE_REFLECTOR_SHADER,
     });
     reflector.material.transparent = true;
     reflector.material.depthWrite = false;
-    reflector.rotation.order = "YXZ";
-    reflector.rotation.y = Math.atan2(tan.x, tan.z);
-    reflector.rotation.x = -Math.PI / 2;
-    reflector.position.set(low.p.x, minY + 0.04, low.p.z);
+    reflector.rotation.x = -Math.PI / 2; // local XY -> flat world plane at waterY
+    reflector.position.set(0, waterY + 0.04, 0);
     reflector.renderOrder = 1;
     reflector.visible = false; // enabled by proximity in the main loop
     this.group.add(reflector);
     this.puddleReflector = reflector;
-    this.puddleReflectorCenter = { x: low.p.x, z: low.p.z };
-    this.puddles.push({ x: low.p.x, z: low.p.z, r: 7.5 * 1.7 });
-
-    // Smaller puddles nearby keep the cheap procedural sky reflection.
-    this.puddleMaterial = makePuddleMaterial();
-    const placed = [{ x: low.p.x, z: low.p.z }];
-    let count = 0;
-    for (let k = 1; k < forest.length && count < 5; k++) {
-      const s = forest[k];
-      if (s.p.y > minY + 16) break; // only the low areas
-      if (placed.some((q) => (q.x - s.p.x) ** 2 + (q.z - s.p.z) ** 2 < 30 * 30)) continue;
-      const baseR = 1.8 + Math.random() * 1.8;
-      const mesh = new THREE.Mesh(puddleGeometry(baseR, 1, 1, false), this.puddleMaterial);
-      mesh.position.set(s.p.x, s.p.y + 0.04, s.p.z);
-      mesh.rotation.y = Math.random() * Math.PI * 2;
-      mesh.renderOrder = 1;
-      this.group.add(mesh);
-      this.puddles.push({ x: s.p.x, z: s.p.z, r: baseR });
-      placed.push({ x: s.p.x, z: s.p.z });
-      count++;
-    }
+    this.puddleReflectorCenter = { x: forest[0].p.x, z: forest[0].p.z };
   }
 
   // Glowing chevron pads painted on the road that kick your speed when driven
