@@ -1,5 +1,53 @@
 import * as THREE from "three";
+import { Reflector } from "three/addons/objects/Reflector.js";
 import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
+
+// Custom shader for the hero puddle's planar reflection: samples the mirrored
+// scene render (rippled), blends a dark water base in by Fresnel, and fades the
+// odd-shaped edge. tDiffuse/textureMatrix are driven by Reflector itself.
+const PUDDLE_REFLECTOR_SHADER = {
+  uniforms: {
+    color: { value: new THREE.Color(0xffffff) }, // required by Reflector (unused here)
+    tDiffuse: { value: null },
+    textureMatrix: { value: new THREE.Matrix4() },
+    uTime: { value: 0 },
+    uBase: { value: new THREE.Color(0x0c1822) },
+  },
+  vertexShader: `
+    uniform mat4 textureMatrix;
+    attribute float aEdge;
+    varying vec4 vUv;
+    varying vec3 vWorld;
+    varying float vEdge;
+    void main(){
+      vEdge = aEdge;
+      vec4 wp = modelMatrix * vec4(position, 1.0);
+      vWorld = wp.xyz;
+      vUv = textureMatrix * vec4(position, 1.0);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;
+    uniform float uTime;
+    uniform vec3 uBase;
+    varying vec4 vUv;
+    varying vec3 vWorld;
+    varying float vEdge;
+    void main(){
+      // Ripple the reflection sample so the mirror image wobbles like water.
+      vec2 ripple = vec2(
+        sin(vWorld.x * 1.5 + uTime * 2.0) + 0.6 * sin(vWorld.z * 1.0 - uTime * 1.6),
+        sin(vWorld.z * 1.3 + uTime * 1.8) + 0.6 * sin(vWorld.x * 0.9 + uTime * 1.3)
+      ) * 0.02;
+      vec4 refl = texture2DProj(tDiffuse, vUv + vec4(ripple, 0.0, 0.0));
+      // Fresnel: more reflective at grazing angles (normal is up, so use view.y).
+      vec3 V = normalize(cameraPosition - vWorld);
+      float fres = pow(clamp(1.0 - max(V.y, 0.0), 0.0001, 1.0), 2.5);
+      vec3 col = mix(uBase, refl.rgb, mix(0.5, 1.0, fres));
+      float alpha = (1.0 - smoothstep(0.72, 1.0, vEdge)) * 0.95;
+      gl_FragColor = vec4(col, alpha);
+    }`,
+};
 
 // Bluish-white tone for the alpine road's icy patches.
 const SNOW_PATCH = new THREE.Color(0xdfeaf5);
@@ -33,7 +81,7 @@ function chevronTexture() {
 // angle) laid flat in the XZ plane. `aEdge` is 0 at the centre and 1 at the rim
 // so the shader can fade the edge softly. `sx`/`sz` stretch it (e.g. along the
 // road for the big one).
-function puddleGeometry(baseR, sx = 1, sz = 1) {
+function puddleGeometry(baseR, sx = 1, sz = 1, xy = false) {
   const segs = 22;
   const pos = [0, 0, 0];
   const edge = [0];
@@ -42,7 +90,12 @@ function puddleGeometry(baseR, sx = 1, sz = 1) {
     const a = (i / segs) * Math.PI * 2;
     const wob = 1 + 0.32 * Math.sin(a * 2 + ph1) + 0.18 * Math.sin(a * 3 + ph2) + 0.12 * Math.sin(a * 5 + ph3);
     const r = baseR * Math.max(0.45, wob);
-    pos.push(Math.cos(a) * r * sx, 0, Math.sin(a) * r * sz);
+    const X = Math.cos(a) * r * sx;
+    const Y = Math.sin(a) * r * sz;
+    // XZ (flat, for the sky-shader small puddles) or XY (for the Reflector mesh,
+    // which is then rotated flat — three's Reflector expects a +Z-facing plane).
+    if (xy) pos.push(X, Y, 0);
+    else pos.push(X, 0, Y);
     edge.push(1);
   }
   const idx = [];
@@ -294,34 +347,47 @@ export class Track {
     }
     if (!forest.length) return;
     forest.sort((a, b) => a.p.y - b.p.y); // lowest first
+    const low = forest[0];
+    const minY = low.p.y;
+
+    // Hero puddle: a TRUE planar reflection (Reflector renders the mirrored world
+    // into a texture). Built in the XY plane and rotated flat; only rendered when
+    // the player is near (toggled in the main loop) so it's free elsewhere.
+    const tan = this._tans[low.i];
+    const reflector = new Reflector(puddleGeometry(7.5, 1.0, 1.7, true), {
+      textureWidth: 256,
+      textureHeight: 256,
+      shader: PUDDLE_REFLECTOR_SHADER,
+    });
+    reflector.material.transparent = true;
+    reflector.material.depthWrite = false;
+    reflector.rotation.order = "YXZ";
+    reflector.rotation.y = Math.atan2(tan.x, tan.z);
+    reflector.rotation.x = -Math.PI / 2;
+    reflector.position.set(low.p.x, minY + 0.04, low.p.z);
+    reflector.renderOrder = 1;
+    reflector.visible = false; // enabled by proximity in the main loop
+    this.group.add(reflector);
+    this.puddleReflector = reflector;
+    this.puddleReflectorCenter = { x: low.p.x, z: low.p.z };
+    this.puddles.push({ x: low.p.x, z: low.p.z, r: 7.5 * 1.7 });
+
+    // Smaller puddles nearby keep the cheap procedural sky reflection.
     this.puddleMaterial = makePuddleMaterial();
-
-    const placed = [];
-    const addPuddle = (s, baseR, sx, sz, alignTangent) => {
-      const mesh = new THREE.Mesh(puddleGeometry(baseR, sx, sz), this.puddleMaterial);
-      mesh.position.set(s.p.x, s.p.y + 0.04, s.p.z);
-      if (alignTangent) {
-        const t = this._tans[s.i];
-        mesh.rotation.y = Math.atan2(t.x, t.z); // stretch runs along the road
-      } else {
-        mesh.rotation.y = Math.random() * Math.PI * 2;
-      }
-      mesh.renderOrder = 1;
-      this.group.add(mesh);
-      this.puddles.push({ x: s.p.x, z: s.p.z, r: baseR * Math.max(sx, sz) });
-      placed.push(s.p);
-    };
-
-    // Big puddle flooding the lowest dip, stretched along the road.
-    addPuddle(forest[0], 7.5, 1.0, 1.7, true);
-    // A handful of small puddles in other genuinely low, spaced-out spots.
-    const minY = forest[0].p.y;
+    const placed = [{ x: low.p.x, z: low.p.z }];
     let count = 0;
     for (let k = 1; k < forest.length && count < 5; k++) {
       const s = forest[k];
       if (s.p.y > minY + 16) break; // only the low areas
-      if (placed.some((q) => (q.x - s.p.x) ** 2 + (q.z - s.p.z) ** 2 < 30 * 30)) continue; // keep them apart
-      addPuddle(s, 1.8 + Math.random() * 1.8, 1, 1, false);
+      if (placed.some((q) => (q.x - s.p.x) ** 2 + (q.z - s.p.z) ** 2 < 30 * 30)) continue;
+      const baseR = 1.8 + Math.random() * 1.8;
+      const mesh = new THREE.Mesh(puddleGeometry(baseR, 1, 1, false), this.puddleMaterial);
+      mesh.position.set(s.p.x, s.p.y + 0.04, s.p.z);
+      mesh.rotation.y = Math.random() * Math.PI * 2;
+      mesh.renderOrder = 1;
+      this.group.add(mesh);
+      this.puddles.push({ x: s.p.x, z: s.p.z, r: baseR });
+      placed.push({ x: s.p.x, z: s.p.z });
       count++;
     }
   }
