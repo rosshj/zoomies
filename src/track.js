@@ -86,24 +86,27 @@ function makePuddleMaterial() {
       varying vec3 vWorld; varying float vEdge;
       void main(){
         vec3 V = normalize(cameraPosition - vWorld);
-        // Animated ripples perturb the up-normal (stronger in the rain).
-        float amp = 0.06 + 0.13 * uRain;
+        // Animated ripples perturb the up-normal (stronger in the rain) so the
+        // reflection wobbles like real water.
+        float amp = 0.09 + 0.16 * uRain;
         vec3 N = normalize(vec3(
-          amp * (sin(vWorld.x * 1.3 + uTime * 2.0) + 0.6 * sin(vWorld.z * 0.9 - uTime * 1.5)),
+          amp * (sin(vWorld.x * 1.6 + uTime * 2.3) + 0.6 * sin(vWorld.z * 1.0 - uTime * 1.7)),
           1.0,
-          amp * (sin(vWorld.z * 1.1 + uTime * 1.7) + 0.6 * sin(vWorld.x * 0.8 + uTime * 1.3))
+          amp * (sin(vWorld.z * 1.4 + uTime * 1.9) + 0.6 * sin(vWorld.x * 0.9 + uTime * 1.4))
         ));
         vec3 R = reflect(-V, N);
-        vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.6, clamp(R.y, 0.0, 1.0)));
-        // Sharp sun glint (base clamped away from 0 so pow() never returns NaN).
-        float glint = pow(clamp(dot(R, normalize(uSunDir)), 0.0001, 1.0), 90.0);
-        // Fresnel: near-mirror at grazing angles, duller looking straight down.
+        // Sky: bright pale horizon at grazing angles, deepening to blue overhead
+        // (the bright grazing horizon band is the key wet cue).
+        vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.5, clamp(R.y, 0.0, 1.0)));
+        // Soft sun disc + a tight glint streak (bases clamped so pow() != NaN).
+        float sd = clamp(dot(R, normalize(uSunDir)), 0.0001, 1.0);
+        float sun = pow(sd, 16.0) * 0.45 + pow(sd, 140.0) * 1.5;
+        // Fresnel: near-mirror at grazing angles, dark water looking straight down.
         float ndv = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
-        float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 4.0);
-        // Dark water looking straight down; near-mirror sky at grazing angles.
-        float refl = mix(0.16, 0.95, fres) * (0.7 + 0.3 * uRain);
-        vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.95, 0.82) * glint * (0.8 + 0.6 * uRain);
-        float alpha = (1.0 - smoothstep(0.55, 1.0, vEdge)) * 0.9;
+        float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 3.0);
+        float refl = mix(0.12, 0.97, fres) * (0.7 + 0.3 * uRain);
+        vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.94, 0.8) * sun * (0.7 + 0.5 * uRain);
+        float alpha = (1.0 - smoothstep(0.72, 1.0, vEdge)) * 0.92;
         gl_FragColor = vec4(clamp(col, 0.0, 4.0), alpha);
       }`,
   });
@@ -516,36 +519,22 @@ export class Track {
   }
 
   _buildCenterLine() {
-    // Dashes built as quads lying in the road surface (offset a hair along the
-    // surface normal) so they read as painted-on, not raised — important now
-    // that the road pitches over hills.
+    // A continuous painted line down the centre of the road (offset a hair above
+    // the surface so it reads as painted on, following the road's pitch/curve).
+    const hw = 0.24; // half-width of the line
     const positions = [];
     const indices = [];
-    const N = 220;
-    const up = new THREE.Vector3(0, 1, 0);
-    const hl = 1.6; // half-length of a dash
-    const hw = 0.22; // half-width
-    let v = 0;
-    for (let k = 0; k < N; k += 2) {
-      const t = k / N;
-      const p = this.curve.getPointAt(t);
-      const tan = this.curve.getTangentAt(t).normalize();
-      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
-      const normal = new THREE.Vector3().crossVectors(side, tan).normalize();
-      const o = normal.clone().multiplyScalar(0.03);
-      const corner = (al, aw) =>
-        new THREE.Vector3()
-          .copy(p)
-          .addScaledVector(tan, al)
-          .addScaledVector(side, aw)
-          .add(o);
-      const c0 = corner(-hl, -hw);
-      const c1 = corner(-hl, hw);
-      const c2 = corner(hl, -hw);
-      const c3 = corner(hl, hw);
-      positions.push(c0.x, c0.y, c0.z, c1.x, c1.y, c1.z, c2.x, c2.y, c2.z, c3.x, c3.y, c3.z);
-      indices.push(v, v + 2, v + 1, v + 1, v + 2, v + 3);
-      v += 4;
+    for (let i = 0; i <= this.samples; i++) {
+      const idx = i % this.samples;
+      const p = this._pts[idx];
+      const side = this._sideAt(idx);
+      const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
+      const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
+      positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
+      if (i < this.samples) {
+        const k = i * 2;
+        indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      }
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -553,7 +542,7 @@ export class Track {
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(
       geo,
-      new THREE.MeshStandardMaterial({ color: 0xf4cf3a, roughness: 0.9 })
+      new THREE.MeshStandardMaterial({ color: 0xf4cf3a, roughness: 0.9, side: THREE.DoubleSide })
     );
     mesh.receiveShadow = true;
     this.group.add(mesh);

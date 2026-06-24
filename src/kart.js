@@ -113,6 +113,11 @@ export class Kart {
 
     // Visual
     this.group = new THREE.Group();
+    // Vehicle rotation order: yaw (heading) first, then pitch and roll in the
+    // kart's LOCAL frame. With the default XYZ order the pitch is applied around
+    // the world axis, so the kart only tilts to the grade when facing ±Z — on a
+    // looping track it mostly wouldn't pitch at all.
+    this.group.rotation.order = "YXZ";
     const { group: kart, wheels } = createKartModel(color);
     this.wheels = wheels;
     this.group.add(kart);
