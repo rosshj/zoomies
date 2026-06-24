@@ -198,6 +198,9 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track);
 
+// Minimap: a static top-down outline of the track with a coloured dot per kart.
+let minimap = setupMinimap();
+
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
   // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
@@ -749,7 +752,63 @@ function updateAtmosphere() {
 function renderFrame() {
   updateAtmosphere();
   composer.render();
-  if (player && state !== State.MENU) renderMirror();
+  if (player && state !== State.MENU) {
+    renderMirror();
+    drawMinimap();
+  }
+}
+
+// --- Minimap ---
+// Fit the track's world XZ bounds into the canvas (preserving aspect, padded),
+// bake the centreline into a Path2D once, then each frame stroke that outline
+// and plot a dot per kart coloured to match its body.
+function setupMinimap() {
+  const canvas = document.getElementById("minimap");
+  if (!canvas || !track._pts || !track._pts.length) return null;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = 12;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of track._pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  const scale = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxZ - minZ || 1));
+  const ox = (W - (maxX - minX) * scale) / 2 - minX * scale;
+  const oz = (H - (maxZ - minZ) * scale) / 2 - minZ * scale;
+  const toX = (x) => ox + x * scale;
+  const toY = (z) => oz + z * scale;
+  const path = new Path2D();
+  track._pts.forEach((p, i) => (i === 0 ? path.moveTo(toX(p.x), toY(p.z)) : path.lineTo(toX(p.x), toY(p.z))));
+  path.closePath();
+  return { ctx, toX, toY, W, H, path };
+}
+
+function drawMinimap() {
+  if (!minimap) return;
+  const { ctx, toX, toY, W, H, path } = minimap;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.stroke(path);
+  for (const e of raceField()) {
+    const k = e.kart || e; // remote wrappers hold their kart
+    if (!k.position) continue;
+    const isPlayer = !!k.isPlayer;
+    ctx.beginPath();
+    ctx.arc(toX(k.position.x), toY(k.position.z), isPlayer ? 5 : 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#" + ((k.color ?? 0xffffff) >>> 0).toString(16).padStart(6, "0");
+    ctx.fill();
+    if (isPlayer) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+    }
+  }
 }
 
 // Inverse of the stage transform: viewport point -> stage-local point.

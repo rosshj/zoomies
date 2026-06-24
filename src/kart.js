@@ -35,6 +35,7 @@ export class Kart {
   constructor({ color, catColor, name, isPlayer, skill = 1 }) {
     this.name = name;
     this.isPlayer = isPlayer;
+    this.color = color; // body colour, also used for the minimap dot
     this.skill = skill; // AI speed multiplier (1 = full)
 
     // State
