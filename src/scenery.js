@@ -43,6 +43,39 @@ function rbox(w, h, d, r = 0.15, seg = 2) {
   return new RoundedBoxGeometry(w, h, d, seg, radius);
 }
 
+// A vertical prism that rounds only the four UPRIGHT corners, leaving the top
+// and bottom flat — what a building actually wants. (A RoundedBoxGeometry rounds
+// all 12 edges, so a roof on its puffed-in top reads as a mushroom.) Built by
+// extruding a rounded-rectangle footprint; centred like BoxGeometry so callers
+// can position it the same way. UVs are normalised so emissive window maps tile
+// cleanly around the walls instead of clamping/streaking.
+function roundedColumn(w, h, d, r) {
+  r = Math.max(0.01, Math.min(r, w / 2 - 0.01, d / 2 - 0.01));
+  const hw = w / 2, hd = d / 2;
+  const s = new THREE.Shape();
+  s.moveTo(-hw + r, -hd);
+  s.lineTo(hw - r, -hd);
+  s.quadraticCurveTo(hw, -hd, hw, -hd + r);
+  s.lineTo(hw, hd - r);
+  s.quadraticCurveTo(hw, hd, hw - r, hd);
+  s.lineTo(-hw + r, hd);
+  s.quadraticCurveTo(-hw, hd, -hw, hd - r);
+  s.lineTo(-hw, -hd + r);
+  s.quadraticCurveTo(-hw, -hd, -hw + r, -hd);
+  const uvGen = {
+    generateTopUV: () => [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()],
+    generateSideWallUV: (g, v, a, b, c, dd) => {
+      const U = (i) => Math.atan2(v[i * 3 + 1], v[i * 3]) / (Math.PI * 2) + 0.5;
+      const V = (i) => v[i * 3 + 2] / h;
+      return [a, b, c, dd].map((i) => new THREE.Vector2(U(i), V(i)));
+    },
+  };
+  const geo = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 3, UVGenerator: uvGen });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, -h / 2, 0); // centre vertically like BoxGeometry
+  return geo;
+}
+
 function biomeAt(x, z) {
   const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
   return BIOMES[Math.floor(u * BIOMES.length) % BIOMES.length];
@@ -1079,7 +1112,7 @@ function makeBuilding(density, biome) {
   const trim = snow ? 0xdfe8f0 : pick(TRIM_PALETTE);
 
   // Window-lit body (+ optional wing), merged into one emissive mesh.
-  const bodyParts = [rbox(w, h, d, 0.8).translate(0, base + h / 2, 0)];
+  const bodyParts = [roundedColumn(w, h, d, 0.9).translate(0, base + h / 2, 0)];
   let wing = null;
   if (rand() < 0.4) {
     const ww = w * 0.6;
@@ -1087,7 +1120,7 @@ function makeBuilding(density, biome) {
     const wh = h * (floors > 1 ? 0.6 : 0.92);
     const wx = (w / 2 + ww / 2 - 0.2) * (rand() < 0.5 ? 1 : -1);
     const wz = (rand() - 0.5) * d * 0.3;
-    bodyParts.push(rbox(ww, wh, wd, 0.8).translate(wx, base + wh / 2, wz));
+    bodyParts.push(roundedColumn(ww, wh, wd, 0.9).translate(wx, base + wh / 2, wz));
     wing = { ww, wd, wh, wx, wz };
   }
   const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
@@ -1151,11 +1184,11 @@ function makeChurch() {
   const roofCol = 0x4f6e78;
   const parts = [];
   const naveH = 6;
-  part(parts, rbox(6, naveH, 9, 1.0).translate(0, naveH / 2, 0), wall);
+  part(parts, roundedColumn(6, naveH, 9, 1.0).translate(0, naveH / 2, 0), wall);
   part(parts, new THREE.ConeGeometry(5, 3, 4).rotateY(Math.PI / 4).translate(0, naveH + 1.5, 0), roofCol);
   // bell tower
   const tH = 10;
-  part(parts, rbox(3, tH, 3, 0.85).translate(0, tH / 2, 5), wall);
+  part(parts, roundedColumn(3, tH, 3, 0.85).translate(0, tH / 2, 5), wall);
   part(parts, new THREE.ConeGeometry(2.4, 4, 4).rotateY(Math.PI / 4).translate(0, tH + 2, 5), roofCol);
   // cross
   part(parts, new THREE.BoxGeometry(0.2, 1.4, 0.2).translate(0, tH + 4.6, 5), 0xf0e6d2);
@@ -1374,7 +1407,7 @@ function makeHouse() {
   const d = 5 + rand() * 4;
   const floors = 1 + Math.floor(rand() * 3);
   const h = floors * 3.2;
-  const body = new THREE.Mesh(rbox(w, h, d, 0.8), mat(pick(palette)));
+  const body = new THREE.Mesh(roundedColumn(w, h, d, 0.9), mat(pick(palette)));
   body.position.y = h / 2;
   body.castShadow = body.receiveShadow = true;
   g.add(body);
@@ -1520,7 +1553,7 @@ function makeHayBale() {
 function makeBarn() {
   const g = new THREE.Group();
   const red = mat(0xa8322a);
-  const body = new THREE.Mesh(rbox(11, 6, 8, 1.1), red);
+  const body = new THREE.Mesh(roundedColumn(11, 6, 8, 1.1), red);
   body.position.y = 3;
   body.castShadow = body.receiveShadow = true;
   g.add(body);
@@ -1634,7 +1667,7 @@ function makeCastle() {
   const stone2 = 0x9c968a;
   const parts = [];
   // Central keep + crenellations.
-  part(parts, rbox(10, 9, 10, 1.2).translate(0, 4.5, 0), stone);
+  part(parts, roundedColumn(10, 9, 10, 1.3).translate(0, 4.5, 0), stone);
   const merlon = (x, z) => part(parts, rbox(1.1, 1.3, 1.1, 0.42).translate(x, 9.65, z), stone2);
   for (let t = -4; t <= 4; t += 2) {
     merlon(t, 5);
