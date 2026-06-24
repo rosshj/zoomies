@@ -387,6 +387,12 @@ export class Kart {
       this.position.addScaledVector(proj.side, correction);
       this.speed *= 1 - Math.min(0.4, 1.6 * dt);
       this.knock.multiplyScalar(0.5);
+      // Clipping a wall kills an active drift and forfeits its charge (no boost
+      // reward) — drive clean through the corner to keep the slide.
+      if (this.drifting) {
+        this.drifting = false;
+        this.driftCharge = 0;
+      }
       if (Math.abs(this.speed) > 6) {
         this.wallHit = true;
         this.wallHitDir.copy(proj.side).multiplyScalar(Math.sign(proj.lateral));
