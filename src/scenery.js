@@ -1031,8 +1031,12 @@ const TRIM_PALETTE = [0xfbf3e3, 0xf2e6cc, 0x5b3a22, 0x3f4a55];
 // fully detailed building is still only ~2 draw calls.
 const _solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 });
 
-// Add a positioned geometry to `parts` with a baked vertex colour.
+// Add a positioned geometry to `parts` with a baked vertex colour. Geometries
+// are normalised to non-indexed first: RoundedBoxGeometry (from rbox()) is
+// non-indexed while Box/Cone/Cylinder are indexed, and mergeGeometries() refuses
+// to mix the two. Converting everything here keeps every merge compatible.
 function part(parts, geo, color) {
+  if (geo.index) geo = geo.toNonIndexed();
   const c = new THREE.Color(color);
   const n = geo.attributes.position.count;
   const arr = new Float32Array(n * 3);
