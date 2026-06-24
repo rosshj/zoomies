@@ -526,10 +526,11 @@ export class Track {
     const ZONES = 6; // matches the town/farm zoning in scenery.buildRoadside
     let vis = new Float32Array(div);
     for (let i = 0; i < div; i++) {
-      const p = this._pts[i];
+      const kind = biomeRoadStyle(this._pts[i].x, this._pts[i].z).kind;
       const town = Math.floor((i / div) * ZONES) % 2 === 0;
-      const snow = biomeRoadStyle(p.x, p.z).kind === "snow";
-      vis[i] = town || snow ? 1 : 0;
+      // Towns get a centre line, but never the forest ("damp") or the snowy
+      // alpine pass ("snow").
+      vis[i] = town && kind !== "damp" && kind !== "snow" ? 1 : 0;
     }
     const W = 7; // blur half-window; two passes give a gentle ~tens-of-units fade
     for (let pass = 0; pass < 2; pass++) {
