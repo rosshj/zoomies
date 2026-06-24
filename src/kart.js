@@ -269,13 +269,10 @@ export class Kart {
   update(dt, track) {
     this._dt = dt;
     if (this.finished) {
-      // Coast to a gentle stop after finishing.
-      this.speed *= 0.95;
-      this._lat = 0;
-      this._lon = 0;
-      this._integrate(dt, track, true);
-      this._syncMesh();
-      return;
+      // Victory lap: keep cruising the circuit on autopilot at a relaxed pace
+      // (steering is fed by the AI driver each frame) instead of stopping.
+      this.throttleInput = Math.min(Math.max(this.throttleInput, 0.4), 0.62);
+      this.shootCharge = 0;
     }
 
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
@@ -430,7 +427,7 @@ export class Kart {
     const d = t - this.prevT;
     if (d < -0.5) {
       this.lap++;
-      if (this.lap >= track.totalLaps) {
+      if (!this.finished && this.lap >= track.totalLaps) {
         this.finished = true;
         this.finishTime = track.raceTime;
       }

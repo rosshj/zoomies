@@ -46,6 +46,7 @@ export class EffectsManager {
       life: opts.life,
       grow: opts.grow ?? 0,
       damp: opts.damp ?? 2,
+      gravity: opts.gravity ?? 0,
     });
     return s;
   }
@@ -145,6 +146,33 @@ export class EffectsManager {
     }
   }
 
+  // A single firework shell bursting at `origin`: a spherical spray of bright
+  // sparks in one colour family that fan out and arc back down under gravity.
+  fireworkBurst(origin) {
+    const baseHue = Math.random();
+    const n = 26;
+    for (let i = 0; i < n; i++) {
+      const col = new THREE.Color().setHSL((baseHue + Math.random() * 0.15) % 1, 1, 0.62);
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const sp = 9 + Math.random() * 8;
+      const dir = new THREE.Vector3(
+        Math.sin(phi) * Math.cos(theta),
+        Math.abs(Math.cos(phi)) * 0.7 + 0.45, // bias the spray upward
+        Math.sin(phi) * Math.sin(theta)
+      ).multiplyScalar(sp);
+      this._spawn(origin.clone(), col, {
+        additive: true,
+        spark: true,
+        size: 0.7 + Math.random() * 0.3,
+        life: 0.9 + Math.random() * 0.6,
+        v: dir,
+        damp: 0.5,
+        gravity: 9,
+      });
+    }
+  }
+
   wallSparks(kart) {
     const n = 4 + Math.floor(Math.random() * 4);
     const along = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
@@ -189,6 +217,7 @@ export class EffectsManager {
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt;
+      if (p.gravity) p.v.y -= p.gravity * dt;
       p.s.position.addScaledVector(p.v, dt);
       p.v.multiplyScalar(1 - Math.min(1, p.damp * dt));
       if (p.grow) p.s.scale.addScalar(p.grow * dt);

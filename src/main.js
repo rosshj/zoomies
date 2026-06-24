@@ -541,6 +541,12 @@ let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
 let countdownCalibrated = false;
+// Finish celebration: fireworks from the arch when the leader crosses the line,
+// and a slow camera orbit around the player's kart during its victory lap.
+let _fireworksDone = false; // leader's finish fireworks fired once per race
+let _fwTimer = 0; // remaining celebration time (keeps launching bursts)
+let _fwNext = 0; // countdown to the next burst
+let _finishCamAngle = 0; // victory orbit angle once the player finishes
 
 // --- Stage / orientation ---
 // We render at the true viewport size (no CSS rotation — that caused cutoff and
@@ -981,6 +987,10 @@ function prepareRace() {
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
   track.raceTime = 0;
+  _fireworksDone = false;
+  _fwTimer = 0;
+  _fwNext = 0;
+  _finishCamAngle = 0;
   // Clear any finish/progress state carried over from a previous race on the
   // remote ghosts (they persist across races; only local karts are rebuilt).
   if (MP.enabled) {
@@ -1056,7 +1066,48 @@ if (lobbyStartBtn) {
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
 let shakeMag = 0;
+// Finish fireworks: burst from the arch when the leader first crosses the line,
+// then keep launching a few more for a short celebration.
+function updateFireworks(dt) {
+  if (!_fireworksDone && raceField().some((k) => k.finished)) {
+    _fireworksDone = true;
+    _fwTimer = 4.5;
+    _fwNext = 0;
+  }
+  if (_fwTimer > 0 && track.archApex) {
+    _fwTimer -= dt;
+    _fwNext -= dt;
+    if (_fwNext <= 0) {
+      _fwNext = 0.22 + Math.random() * 0.28;
+      const o = track.archApex
+        .clone()
+        .add(new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 3, (Math.random() - 0.5) * 2));
+      effects.fireworkBurst(o);
+    }
+  }
+}
+
 function updateCamera(dt, snap = false) {
+  // Victory lap: take control and orbit slowly around the kart as it cruises.
+  if (player.finished) {
+    _finishCamAngle += dt * 0.45;
+    const r = 12;
+    const desired = new THREE.Vector3(
+      player.position.x + Math.sin(_finishCamAngle) * r,
+      player.position.y + 6,
+      player.position.z + Math.cos(_finishCamAngle) * r
+    );
+    const look = new THREE.Vector3(player.position.x, player.position.y + 1.5, player.position.z);
+    const lerp = snap ? 1 : 1 - Math.pow(0.02, dt);
+    camPos.lerp(desired, lerp);
+    camTarget.lerp(look, lerp);
+    camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
+    camera.updateProjectionMatrix();
+    camera.position.copy(camPos);
+    camera.lookAt(camTarget);
+    return;
+  }
+
   const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
   const desired = new THREE.Vector3()
     .copy(player.position)
@@ -1441,7 +1492,8 @@ function loop(now) {
     fxPass.uniforms.uRadial.value += (radialTarget - fxPass.uniforms.uRadial.value) * Math.min(1, dt * 4);
 
     // AI
-    for (const k of karts) if (!k.isPlayer) k.driveAI(track, dt);
+    // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
+    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt);
     aiActions(dt);
 
     // Step physics
@@ -1472,6 +1524,7 @@ function loop(now) {
       }
       if (k.spinTimer > 0) effects.skid(k);
     }
+    updateFireworks(dt);
     effects.update(dt);
     updatePlacement();
 
@@ -1515,18 +1568,23 @@ function loop(now) {
 
     updateCamera(dt);
 
-    // End the race shortly after the player finishes.
+    // Hand off to the victory lap once the player finishes; show results after a
+    // celebratory beat (camera orbits the kart, fireworks pop) rather than instantly.
     if (player.finished) {
       hud.showToast("FINISH!");
       if (MP.enabled && MP.net) MP.net.sendFinish(player.finishTime); // share my time
-      setTimeout(showResults, 1500);
-      state = State.FINISHED; // freeze input; karts keep coasting in loop below
+      setTimeout(showResults, 6000);
+      state = State.FINISHED; // freeze player input; karts auto-pilot their victory lap
     }
   }
 
   if (state === State.FINISHED) {
-    // Let karts coast to a stop and keep the camera alive.
+    // Victory lap: every kart auto-pilots around the circuit and the camera orbits
+    // the player's kart; fireworks keep popping from the arch.
+    for (const k of karts) k.driveAI(track, dt);
     for (const k of karts) k.update(dt, track);
+    resolveCollisions();
+    updateFireworks(dt);
     effects.update(dt);
     updateCamera(dt);
   }
