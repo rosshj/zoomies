@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 
 // Registries of animated parts, filled in as the world is built and driven from
@@ -32,6 +33,15 @@ for (const b of BIOMES) {
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const SNOW_WHITE = new THREE.Color(0xeef4fa);
+
+// Rounded box for the soft, toy-town art direction. Low segment count keeps the
+// tri budget sane across the many roadside props; radius auto-clamps to the box.
+// Used for silhouette-defining masses (building bodies, animals, props); tiny
+// trim stays as plain BoxGeometry, and rocks/cliffs are left intentionally craggy.
+function rbox(w, h, d, r = 0.15, seg = 2) {
+  const radius = Math.min(r, w / 2, h / 2, d / 2) * 0.95;
+  return new RoundedBoxGeometry(w, h, d, seg, radius);
+}
 
 function biomeAt(x, z) {
   const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
@@ -1065,7 +1075,7 @@ function makeBuilding(density, biome) {
   const trim = snow ? 0xdfe8f0 : pick(TRIM_PALETTE);
 
   // Window-lit body (+ optional wing), merged into one emissive mesh.
-  const bodyParts = [new THREE.BoxGeometry(w, h, d).translate(0, base + h / 2, 0)];
+  const bodyParts = [rbox(w, h, d, 0.4).translate(0, base + h / 2, 0)];
   let wing = null;
   if (rand() < 0.4) {
     const ww = w * 0.6;
@@ -1073,7 +1083,7 @@ function makeBuilding(density, biome) {
     const wh = h * (floors > 1 ? 0.6 : 0.92);
     const wx = (w / 2 + ww / 2 - 0.2) * (rand() < 0.5 ? 1 : -1);
     const wz = (rand() - 0.5) * d * 0.3;
-    bodyParts.push(new THREE.BoxGeometry(ww, wh, wd).translate(wx, base + wh / 2, wz));
+    bodyParts.push(rbox(ww, wh, wd, 0.4).translate(wx, base + wh / 2, wz));
     wing = { ww, wd, wh, wx, wz };
   }
   const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
@@ -1137,11 +1147,11 @@ function makeChurch() {
   const roofCol = 0x4f6e78;
   const parts = [];
   const naveH = 6;
-  part(parts, new THREE.BoxGeometry(6, naveH, 9).translate(0, naveH / 2, 0), wall);
+  part(parts, rbox(6, naveH, 9, 0.5).translate(0, naveH / 2, 0), wall);
   part(parts, new THREE.ConeGeometry(5, 3, 4).rotateY(Math.PI / 4).translate(0, naveH + 1.5, 0), roofCol);
   // bell tower
   const tH = 10;
-  part(parts, new THREE.BoxGeometry(3, tH, 3).translate(0, tH / 2, 5), wall);
+  part(parts, rbox(3, tH, 3, 0.4).translate(0, tH / 2, 5), wall);
   part(parts, new THREE.ConeGeometry(2.4, 4, 4).rotateY(Math.PI / 4).translate(0, tH + 2, 5), roofCol);
   // cross
   part(parts, new THREE.BoxGeometry(0.2, 1.4, 0.2).translate(0, tH + 4.6, 5), 0xf0e6d2);
@@ -1213,7 +1223,7 @@ function makeStreetProp() {
 
 function makePlanter() {
   const g = new THREE.Group();
-  const box = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.4), mat(0x8d6e3a));
+  const box = new THREE.Mesh(rbox(1.4, 0.6, 1.4, 0.14), mat(0x8d6e3a));
   box.position.y = 0.3;
   g.add(box);
   const m = mat(0x4caf50, { flatShading: true });
@@ -1228,7 +1238,7 @@ function makePlanter() {
 function makeMarketStall() {
   const g = new THREE.Group();
   const wood = mat(0x9c6b3f);
-  const table = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.2, 1.4), wood);
+  const table = new THREE.Mesh(rbox(2.6, 0.2, 1.4, 0.09), wood);
   table.position.y = 1.0;
   g.add(table);
   for (const sx of [-1, 1])
@@ -1241,7 +1251,7 @@ function makeMarketStall() {
       g.add(post);
     }
   const stripe = rand() < 0.5 ? 0xd23a2a : 0x2a7ad2;
-  const canopy = new THREE.Mesh(new THREE.BoxGeometry(3, 0.3, 1.9), mat(stripe));
+  const canopy = new THREE.Mesh(rbox(3, 0.3, 1.9, 0.13), mat(stripe));
   canopy.position.y = 2.5;
   canopy.castShadow = true;
   g.add(canopy);
@@ -1274,10 +1284,10 @@ function makeSign() {
 function makeBench() {
   const g = new THREE.Group();
   const wood = mat(0x8d6e3a);
-  const seat = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.18, 0.7), wood);
+  const seat = new THREE.Mesh(rbox(2.4, 0.18, 0.7, 0.08), wood);
   seat.position.y = 0.6;
   g.add(seat);
-  const back = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.7, 0.15), wood);
+  const back = new THREE.Mesh(rbox(2.4, 0.7, 0.15, 0.07), wood);
   back.position.set(0, 1.0, -0.28);
   g.add(back);
   for (const sx of [-1, 1]) {
@@ -1360,7 +1370,7 @@ function makeHouse() {
   const d = 5 + rand() * 4;
   const floors = 1 + Math.floor(rand() * 3);
   const h = floors * 3.2;
-  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat(pick(palette)));
+  const body = new THREE.Mesh(rbox(w, h, d, 0.4), mat(pick(palette)));
   body.position.y = h / 2;
   body.castShadow = body.receiveShadow = true;
   g.add(body);
@@ -1401,12 +1411,12 @@ function makeFence(color) {
   const m = mat(color);
   const len = 6;
   for (let i = 0; i <= 3; i++) {
-    const post = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.4, 0.2), m);
+    const post = new THREE.Mesh(rbox(0.2, 1.4, 0.2, 0.09), m);
     post.position.set(-len / 2 + (i / 3) * len, 0.7, 0);
     g.add(post);
   }
   for (const ry of [0.5, 1.05]) {
-    const rail = new THREE.Mesh(new THREE.BoxGeometry(len, 0.16, 0.12), m);
+    const rail = new THREE.Mesh(rbox(len, 0.16, 0.12, 0.06), m);
     rail.position.set(0, ry, 0);
     g.add(rail);
   }
@@ -1450,19 +1460,19 @@ function makeCow() {
   const g = new THREE.Group();
   const white = mat(0xf2f2f2);
   const dark = mat(0x3a2f2a);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(3, 1.6, 1.5), white);
+  const body = new THREE.Mesh(rbox(3, 1.6, 1.5, 0.45), white);
   body.position.y = 1.5;
   body.castShadow = true;
   g.add(body);
-  const patch = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.62, 1.0), dark);
+  const patch = new THREE.Mesh(rbox(1.1, 1.62, 1.0, 0.3), dark);
   patch.position.set(0.6, 1.5, 0);
   g.add(patch);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.9, 0.9), white);
+  const head = new THREE.Mesh(rbox(0.9, 0.9, 0.9, 0.28), white);
   head.position.set(-1.7, 1.7, 0);
   g.add(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.5, 0.3), dark);
+      const leg = new THREE.Mesh(rbox(0.3, 1.5, 0.3, 0.12), dark);
       leg.position.set(sx * 1.1, 0.75, sz * 0.5);
       g.add(leg);
     }
@@ -1478,12 +1488,12 @@ function makeSheep() {
   body.scale.set(1.3, 1, 1);
   body.castShadow = true;
   g.add(body);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.7, 0.6), dark);
+  const head = new THREE.Mesh(rbox(0.7, 0.7, 0.6, 0.22), dark);
   head.position.set(-1.4, 1.5, 0);
   g.add(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.1, 0.22), dark);
+      const leg = new THREE.Mesh(rbox(0.22, 1.1, 0.22, 0.09), dark);
       leg.position.set(sx * 0.7, 0.55, sz * 0.45);
       g.add(leg);
     }
@@ -1506,7 +1516,7 @@ function makeHayBale() {
 function makeBarn() {
   const g = new THREE.Group();
   const red = mat(0xa8322a);
-  const body = new THREE.Mesh(new THREE.BoxGeometry(11, 6, 8), red);
+  const body = new THREE.Mesh(rbox(11, 6, 8, 0.55), red);
   body.position.y = 3;
   body.castShadow = body.receiveShadow = true;
   g.add(body);
@@ -1620,8 +1630,8 @@ function makeCastle() {
   const stone2 = 0x9c968a;
   const parts = [];
   // Central keep + crenellations.
-  part(parts, new THREE.BoxGeometry(10, 9, 10).translate(0, 4.5, 0), stone);
-  const merlon = (x, z) => part(parts, new THREE.BoxGeometry(1.1, 1.3, 1.1).translate(x, 9.65, z), stone2);
+  part(parts, rbox(10, 9, 10, 0.5).translate(0, 4.5, 0), stone);
+  const merlon = (x, z) => part(parts, rbox(1.1, 1.3, 1.1, 0.22).translate(x, 9.65, z), stone2);
   for (let t = -4; t <= 4; t += 2) {
     merlon(t, 5);
     merlon(t, -5);
@@ -1675,7 +1685,7 @@ function makeFerrisWheel() {
     spoke.position.set(cx / 2, cy / 2, 0);
     spoke.rotation.z = a - Math.PI / 2;
     wheel.add(spoke);
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.4, 1.6), mat(cabCols[i % cabCols.length]));
+    const cab = new THREE.Mesh(rbox(1.6, 1.4, 1.6, 0.35), mat(cabCols[i % cabCols.length]));
     cab.position.set(cx, cy, 0);
     wheel.add(cab);
   }
@@ -1826,7 +1836,7 @@ function buildBalloons(scene, heightAt) {
     envelope.position.y = 10;
     g.add(envelope);
     const basket = new THREE.Mesh(
-      new THREE.BoxGeometry(3, 3, 3),
+      rbox(3, 3, 3, 0.4),
       new THREE.MeshStandardMaterial({ color: 0x8d6e3a })
     );
     g.add(basket);

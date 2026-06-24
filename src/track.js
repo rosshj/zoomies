@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { biomeBarrierStyle } from "./scenery.js";
 
 // Fine grayscale noise used as the road's bump map (asphalt grain).
@@ -308,7 +309,7 @@ export class Track {
       this.group.add(leg);
     }
     const beam = new THREE.Mesh(
-      new THREE.BoxGeometry(this.width + 4, 1.6, 1.6),
+      new RoundedBoxGeometry(this.width + 4, 1.6, 1.6, 3, 0.5),
       new THREE.MeshStandardMaterial({ color: 0xffb300 })
     );
     beam.position.set(p.x, p.y + 9, p.z);
