@@ -56,7 +56,7 @@ const _composerTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y, {
 });
 const composer = new EffectComposer(renderer, _composerTarget);
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.6, 0.5, 0.82);
+const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.45, 0.5, 0.85);
 composer.addPass(bloomPass);
 composer.addPass(new OutputPass());
 const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
@@ -152,7 +152,7 @@ const fxPass = new ShaderPass({
     tDiffuse: { value: null },
     uAberr: { value: 0 },
     uRadial: { value: 0 }, // radial motion blur amount (ramps with speed/boost)
-    uVignette: { value: 0.4 },
+    uVignette: { value: 0.28 },
     uSat: { value: 1.3 },
     uContrast: { value: 1.07 },
   },
@@ -200,7 +200,9 @@ const world = buildWorld(scene, track);
 
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
-  const steps = new Uint8Array([120, 195, 255]); // 3 bands; shadow lifted so it never crushes to black
+  // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
+  // matte "toy" cel rather than a hard 3-step terminator.
+  const steps = new Uint8Array([145, 195, 228, 255]);
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
@@ -249,7 +251,7 @@ function toToon(m) {
       if (ud.rim) {
         inject += `float rimF = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 2.5);
          rimF *= max(dot(normal, -uSunView), 0.0);
-         gl_FragColor.rgb += uSunCol * rimF * 2.4;\n`;
+         gl_FragColor.rgb += uSunCol * rimF * 1.6;\n`;
       }
       shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", inject);
       (ud.rim ? rimShaders : backlitShaders).push(shader);

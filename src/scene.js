@@ -10,10 +10,10 @@ export const MOODS = [
     name: "Sunny", weight: 1, weather: "none",
     sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.5,
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
-    hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.82,
+    hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
     sunCore: [2.3, 2.05, 1.5], sunSize: 48, sunVisible: true,
-    cloud: 0xffffff, sat: 1.3, contrast: 1.06,
+    cloud: 0xffffff, sat: 1.3, contrast: 1.02,
   },
   // Weather (rain/snow) is no longer a random mood — it's dictated by the biome
   // you're driving through (wet forest brings rain; the alpine pass brings snow),
@@ -74,6 +74,7 @@ export function createScene() {
   sun.shadow.camera.far = 720;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.6; // helps the tighter frustum avoid acne
+  sun.shadow.radius = 4; // soft PCF penumbra for the gentle, toy-like look
   scene.add(sun);
   scene.add(sun.target);
 
