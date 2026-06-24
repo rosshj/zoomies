@@ -36,7 +36,7 @@ console.log(`[zoomies] world seed: ${getSeed()}`);
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
 
-const TOTAL_LAPS = 3;
+let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
 const { renderer, scene, camera, sun, applyMood } = createScene();
 const weather = new Weather(scene);
@@ -896,6 +896,18 @@ if (qualityBtn)
   qualityBtn.addEventListener("click", () => applyQuality(quality === "high" ? "low" : "high"));
 applyQuality(quality);
 
+// Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
+const lapsBtn = document.getElementById("laps-btn");
+function applyLapsBtn() {
+  if (lapsBtn) lapsBtn.textContent = `Laps: ${TOTAL_LAPS}`;
+}
+if (lapsBtn)
+  lapsBtn.addEventListener("click", () => {
+    TOTAL_LAPS = (TOTAL_LAPS % 5) + 1;
+    applyLapsBtn();
+  });
+applyLapsBtn();
+
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
   try {
@@ -1051,6 +1063,7 @@ function prepareRace() {
   godrayPass.uniforms.uColor.value.set(mood.sunColor);
   hud.showToast(mood.name);
 
+  track.totalLaps = TOTAL_LAPS; // apply the chosen race length
   buildKarts();
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
