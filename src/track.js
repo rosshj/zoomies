@@ -4,6 +4,31 @@ import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
 // Bluish-white tone for the alpine road's icy patches.
 const SNOW_PATCH = new THREE.Color(0xdfeaf5);
 
+// Glowing cyan chevron texture for boost pads (arrows point "up" = forward).
+let _chevronTex = null;
+function chevronTexture() {
+  if (_chevronTex) return _chevronTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#0bd1e6";
+  ctx.fillRect(0, 0, 64, 64);
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (let y = 6; y <= 54; y += 16) {
+    ctx.beginPath();
+    ctx.moveTo(12, y + 13);
+    ctx.lineTo(32, y);
+    ctx.lineTo(52, y + 13);
+    ctx.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return (_chevronTex = t);
+}
+
 // Fine grayscale noise used as the road's bump map (asphalt grain).
 function noiseTexture() {
   const c = document.createElement("canvas");
@@ -169,7 +194,49 @@ export class Track {
     this._buildWalls();
     this._buildCenterLine();
     this._buildEdgeLines();
+    this._buildBoostPads();
     this._buildStartLine();
+  }
+
+  // Glowing chevron pads painted on the road that kick your speed when driven
+  // over. Records centres in this.boostPads for the main loop to test against.
+  _buildBoostPads() {
+    this.boostPads = [];
+    const up = new THREE.Vector3(0, 1, 0);
+    const halfLen = 4;
+    const halfW = 6;
+    const mat = new THREE.MeshBasicMaterial({
+      map: chevronTexture(),
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    });
+    for (const t of [0.12, 0.38, 0.6, 0.85]) {
+      const p = this.curve.getPointAt(t);
+      const tan = this.curve.getTangentAt(t).normalize();
+      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
+      const y = p.y + 0.06;
+      const corner = (al, aw) =>
+        new THREE.Vector3().copy(p).addScaledVector(tan, al).addScaledVector(side, aw);
+      const fl = corner(halfLen, halfW);
+      const fr = corner(halfLen, -halfW);
+      const bl = corner(-halfLen, halfW);
+      const br = corner(-halfLen, -halfW);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(
+          [bl.x, y, bl.z, br.x, y, br.z, fl.x, y, fl.z, fr.x, y, fr.z],
+          3
+        )
+      );
+      geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
+      geo.setIndex([0, 1, 2, 2, 1, 3]);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.renderOrder = 1; // draw over the road
+      this.group.add(mesh);
+      this.boostPads.push({ x: p.x, z: p.z, r: 6 });
+    }
   }
 
   // Solid painted lines down both edges of the tarmac (just inside the verge).

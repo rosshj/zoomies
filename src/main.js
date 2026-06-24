@@ -1171,6 +1171,26 @@ if (lobbyStartBtn) {
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
 let shakeMag = 0;
+// Boost pads: a short speed kick (and its rainbow trail) when a kart drives over
+// a chevron pad, with a per-kart cooldown so it fires once per pass.
+function applyBoostPads(dt) {
+  const pads = track.boostPads;
+  if (!pads) return;
+  for (const k of karts) {
+    k._padCd = (k._padCd || 0) - dt;
+    if (k.finished || k.spinTimer > 0 || k._padCd > 0 || k.speed < 4) continue;
+    for (const pad of pads) {
+      const dx = k.position.x - pad.x;
+      const dz = k.position.z - pad.z;
+      if (dx * dx + dz * dz < pad.r * pad.r) {
+        k.applyBoost(1.4, 0.8);
+        k._padCd = 1.2;
+        break;
+      }
+    }
+  }
+}
+
 // Finish fireworks: burst from the arch when the leader first crosses the line,
 // then keep launching a few more for a short celebration.
 function updateFireworks(dt) {
@@ -1674,6 +1694,7 @@ function loop(now) {
 
     // Step physics
     for (const k of karts) k.update(dt, track);
+    applyBoostPads(dt);
     resolveCollisions();
     resolveRemoteCollisions(); // bump against remote ghost karts (multiplayer)
     hairballs.update(
