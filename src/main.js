@@ -36,7 +36,7 @@ console.log(`[zoomies] world seed: ${getSeed()}`);
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
 
-const TOTAL_LAPS = 3;
+let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
 const { renderer, scene, camera, sun, applyMood } = createScene();
 const weather = new Weather(scene);
@@ -198,6 +198,9 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track);
 
+// Minimap: a static top-down outline of the track with a coloured dot per kart.
+let minimap = setupMinimap();
+
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
 function makeToonGradient() {
   // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
@@ -324,7 +327,9 @@ function buildKarts() {
   rimShaders.length = 0; // drop last race's kart shaders before rebuilding
   // Multiplayer is humans-only: drop the AI field (remote players fill the grid
   // as real participants). Solo play keeps the full roster of AI rivals.
-  const roster = MP.enabled ? ROSTER.slice(0, 1) : ROSTER;
+  // Multiplayer and time trial are solo fields (just your kart); a normal race
+  // brings the full AI roster.
+  const roster = MP.enabled || timeTrial ? ROSTER.slice(0, 1) : ROSTER;
   // Solo: shuffle the starting-grid slots so the player doesn't always launch
   // from the same spot. It's one level for now, so a random grid position each
   // race adds variety. (Per-race Math.random, not the seeded world RNG.)
@@ -547,6 +552,10 @@ let _fireworksDone = false; // leader's finish fireworks fired once per race
 let _fwTimer = 0; // remaining celebration time (keeps launching bursts)
 let _fwNext = 0; // countdown to the next burst
 let _finishCamAngle = 0; // victory orbit angle once the player finishes
+// Time-trial mode: solo, single timed lap, local best-times leaderboard.
+let timeTrial = false;
+let ttLapStart = -1; // raceTime when the timed lap began (first start-line crossing)
+let _ttResult = null; // { top, entry } from the latest recorded run, for the results screen
 
 // --- Stage / orientation ---
 // We render at the true viewport size (no CSS rotation — that caused cutoff and
@@ -749,7 +758,63 @@ function updateAtmosphere() {
 function renderFrame() {
   updateAtmosphere();
   composer.render();
-  if (player && state !== State.MENU) renderMirror();
+  if (player && state !== State.MENU) {
+    renderMirror();
+    drawMinimap();
+  }
+}
+
+// --- Minimap ---
+// Fit the track's world XZ bounds into the canvas (preserving aspect, padded),
+// bake the centreline into a Path2D once, then each frame stroke that outline
+// and plot a dot per kart coloured to match its body.
+function setupMinimap() {
+  const canvas = document.getElementById("minimap");
+  if (!canvas || !track._pts || !track._pts.length) return null;
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = 12;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of track._pts) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  const scale = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxZ - minZ || 1));
+  const ox = (W - (maxX - minX) * scale) / 2 - minX * scale;
+  const oz = (H - (maxZ - minZ) * scale) / 2 - minZ * scale;
+  const toX = (x) => ox + x * scale;
+  const toY = (z) => oz + z * scale;
+  const path = new Path2D();
+  track._pts.forEach((p, i) => (i === 0 ? path.moveTo(toX(p.x), toY(p.z)) : path.lineTo(toX(p.x), toY(p.z))));
+  path.closePath();
+  return { ctx, toX, toY, W, H, path };
+}
+
+function drawMinimap() {
+  if (!minimap) return;
+  const { ctx, toX, toY, W, H, path } = minimap;
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "rgba(255,255,255,0.5)";
+  ctx.lineWidth = 3;
+  ctx.lineJoin = "round";
+  ctx.stroke(path);
+  for (const e of raceField()) {
+    const k = e.kart || e; // remote wrappers hold their kart
+    if (!k.position) continue;
+    const isPlayer = !!k.isPlayer;
+    ctx.beginPath();
+    ctx.arc(toX(k.position.x), toY(k.position.z), isPlayer ? 5 : 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = "#" + ((k.color ?? 0xffffff) >>> 0).toString(16).padStart(6, "0");
+    ctx.fill();
+    if (isPlayer) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#fff";
+      ctx.stroke();
+    }
+  }
 }
 
 // Inverse of the stage transform: viewport point -> stage-local point.
@@ -837,6 +902,18 @@ if (qualityBtn)
   qualityBtn.addEventListener("click", () => applyQuality(quality === "high" ? "low" : "high"));
 applyQuality(quality);
 
+// Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
+const lapsBtn = document.getElementById("laps-btn");
+function applyLapsBtn() {
+  if (lapsBtn) lapsBtn.textContent = `Laps: ${TOTAL_LAPS}`;
+}
+if (lapsBtn)
+  lapsBtn.addEventListener("click", () => {
+    TOTAL_LAPS = (TOTAL_LAPS % 5) + 1;
+    applyLapsBtn();
+  });
+applyLapsBtn();
+
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
   try {
@@ -877,6 +954,7 @@ function toMenu() {
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
   document.getElementById("lobby").classList.add("hidden");
+  document.getElementById("results").classList.add("hidden");
   document.getElementById("menu").classList.remove("hidden");
   MP.inLobby = false;
   MP.startAt = 0;
@@ -885,6 +963,9 @@ function toMenu() {
 document.getElementById("btn-pause").addEventListener("click", pauseGame);
 document.getElementById("resume-btn").addEventListener("click", resumeGame);
 document.getElementById("menu-btn").addEventListener("click", toMenu);
+// Every menu can get back to the main screen: lobby and results both offer it.
+document.getElementById("lobby-back")?.addEventListener("click", toMenu);
+document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
 
 // Tilt indicator (hidden by default; toggle in the pause menu).
 const steerBar = document.getElementById("steer-bar");
@@ -909,7 +990,14 @@ window.addEventListener("keydown", (e) => {
 
 // --- Menu wiring ---
 document.getElementById("start-btn").addEventListener("click", startRace);
-document.getElementById("restart-btn").addEventListener("click", startRace);
+// "Race again" repeats whichever mode you were just in.
+document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
+// Time trial is solo-only; hide it in multiplayer.
+const timeTrialBtn = document.getElementById("time-trial-btn");
+if (timeTrialBtn) {
+  if (MP.enabled) timeTrialBtn.classList.add("hidden");
+  else timeTrialBtn.addEventListener("click", startTimeTrial);
+}
 
 // Solo / Multiplayer toggle. Only offered when an Ably key is configured. It
 // flips the ?mp=1 flag and reloads — the cleanest way to enter/leave networked
@@ -944,6 +1032,14 @@ if (lobbyCopyBtn) {
 }
 
 function startRace() {
+  timeTrial = false;
+  beginRace();
+}
+function startTimeTrial() {
+  timeTrial = true;
+  beginRace();
+}
+function beginRace() {
   // These need the user-gesture from the click, so fire them synchronously.
   enterFullscreenLandscape();
   input.enableMotion();
@@ -988,10 +1084,14 @@ function prepareRace() {
   godrayPass.uniforms.uColor.value.set(mood.sunColor);
   hud.showToast(mood.name);
 
+  track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
   track.raceTime = 0;
+  prevPlayerLap = -1; // so the time-trial lap-start crossing is detected cleanly
+  ttLapStart = -1;
+  _ttResult = null;
   _fireworksDone = false;
   _fwTimer = 0;
   _fwNext = 0;
@@ -1392,6 +1492,10 @@ function showResults() {
 // Built separately so it can re-render when a remote player finishes after the
 // results screen is already up (their time slots into the standings live).
 function renderResults() {
+  if (timeTrial) {
+    renderTimeTrialResults();
+    return;
+  }
   updatePlacement();
   const order = raceField().sort((a, b) => a.place - b.place);
   const list = document.getElementById("results-list");
@@ -1413,6 +1517,63 @@ function formatClock(sec) {
   const m = Math.floor(sec / 60);
   const s = (sec % 60).toFixed(1).padStart(4, "0");
   return `${m}:${s}`;
+}
+
+// --- Time trial: local best-lap leaderboard (localStorage; swap for a DB later) ---
+const TT_KEY = "zoomies-timetrial-v1";
+function loadTimeTrial() {
+  try {
+    const v = JSON.parse(localStorage.getItem(TT_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+function recordTimeTrial(time) {
+  const list = loadTimeTrial();
+  const entry = { time, date: Date.now() };
+  list.push(entry);
+  list.sort((a, b) => a.time - b.time);
+  const top = list.slice(0, 10);
+  try {
+    localStorage.setItem(TT_KEY, JSON.stringify(top));
+  } catch {
+    /* storage may be unavailable (private mode); leaderboard is best-effort */
+  }
+  return { top, entry };
+}
+// Lap time as M:SS.dd (or SS.dds under a minute).
+function formatLap(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec - m * 60;
+  return m > 0 ? `${m}:${s.toFixed(2).padStart(5, "0")}` : `${s.toFixed(2)}s`;
+}
+function renderTimeTrialResults() {
+  const yourTime = _ttResult ? _ttResult.entry.time : null;
+  const top = _ttResult ? _ttResult.top : loadTimeTrial();
+  const best = top.length ? top[0].time : null;
+  document.getElementById("results-title").textContent =
+    yourTime != null && best != null && yourTime <= best ? "⏱ New Best Lap!" : "⏱ Time Trial";
+  const list = document.getElementById("results-list");
+  list.innerHTML = "";
+  if (yourTime != null) {
+    const me = document.createElement("li");
+    me.className = "you";
+    me.textContent = `Your lap: ${formatLap(yourTime)}`;
+    list.appendChild(me);
+  }
+  if (!top.length) {
+    const li = document.createElement("li");
+    li.textContent = "No times yet — set one!";
+    list.appendChild(li);
+  }
+  top.forEach((e, i) => {
+    const li = document.createElement("li");
+    const isYou = _ttResult && e === _ttResult.entry;
+    li.textContent = `${i + 1}.  ${formatLap(e.time)}`;
+    if (isYou) li.className = "you";
+    list.appendChild(li);
+  });
 }
 
 // --- Main loop ---
@@ -1569,21 +1730,25 @@ function loop(now) {
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();
     prevPlayerSpin = player.spinTimer;
 
-    // Lap toast for the player
-    if (player.lap !== prevPlayerLap && player.lap >= 1 && !player.finished) {
-      const lapNum = player.displayLap(TOTAL_LAPS);
-      if (lapNum >= 2) hud.showToast(`Lap ${lapNum}/${TOTAL_LAPS}`);
+    const laps = track.totalLaps;
+    // Time trial: start the lap clock the moment we first cross the start line.
+    if (timeTrial && prevPlayerLap < 0 && player.lap >= 0) ttLapStart = raceTime;
+
+    // Lap toast for the player (normal races only)
+    if (!timeTrial && player.lap !== prevPlayerLap && player.lap >= 1 && !player.finished) {
+      const lapNum = player.displayLap(laps);
+      if (lapNum >= 2) hud.showToast(`Lap ${lapNum}/${laps}`);
     }
     prevPlayerLap = player.lap;
 
     // HUD
     hud.update({
-      lapNum: player.displayLap(TOTAL_LAPS),
-      totalLaps: TOTAL_LAPS,
+      lapNum: player.displayLap(laps),
+      totalLaps: laps,
       place: player.place,
       totalKarts: karts.length + (MP.enabled ? MP.remotes.size : 0),
       speedKmh: Math.abs(player.speed) * 3.0,
-      time: raceTime,
+      time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
     });
 
     updateCamera(dt);
@@ -1591,10 +1756,17 @@ function loop(now) {
     // Hand off to the victory lap once the player finishes; show results after a
     // celebratory beat (camera orbits the kart, fireworks pop) rather than instantly.
     if (player.finished) {
-      hud.showToast("FINISH!");
-      if (MP.enabled && MP.net) MP.net.sendFinish(player.finishTime); // share my time
-      setTimeout(showResults, 13000);
-      state = State.FINISHED; // freeze player input; karts auto-pilot their victory lap
+      if (timeTrial) {
+        const lapTime = player.finishTime - (ttLapStart >= 0 ? ttLapStart : 0);
+        _ttResult = recordTimeTrial(lapTime);
+        hud.showToast("LAP DONE!");
+        setTimeout(showResults, 4000);
+      } else {
+        hud.showToast("FINISH!");
+        if (MP.enabled && MP.net) MP.net.sendFinish(player.finishTime); // share my time
+        setTimeout(showResults, 13000);
+      }
+      state = State.FINISHED; // freeze player input; kart auto-pilots its victory lap
     }
   }
 

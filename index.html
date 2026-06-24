@@ -71,6 +71,10 @@
     <!-- Rear-view mirror frame (top center); the view is drawn by WebGL) -->
     <div id="mirror-frame"><span>REAR</span></div>
 
+    <!-- Minimap (bottom-left, just right of the throttle): track outline + a
+         coloured dot per kart -->
+    <canvas id="minimap" width="150" height="150"></canvas>
+
     <!-- Steering indicator (bottom center) -->
     <div id="steer">
       <div id="steer-bar"><div id="steer-dot"></div></div>
@@ -108,7 +112,9 @@
         <h1>🐱 ZOOMIES</h1>
         <p class="tagline">Cat Kart Racing</p>
         <button id="start-btn">START RACE</button>
+        <button id="time-trial-btn">⏱ TIME TRIAL</button>
         <button id="mode-btn" class="secondary small hidden">🎮 Play Multiplayer</button>
+        <button id="laps-btn" class="secondary small">Laps: 3</button>
         <button id="quality-btn" class="secondary small">Graphics: High</button>
         <p class="hint">📲 Add to Home Screen for fullscreen landscape.</p>
         <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
@@ -122,7 +128,7 @@
           <li><strong>🐾 Shoot</strong> hairballs to spin out rivals</li>
           <li><strong>🛡️ Hold Shield</strong> to block hairballs</li>
           <li><strong>💨 Boost</strong> — a turbo cat toot (recharges)</li>
-          <li>First to finish <strong>3 laps</strong> wins!</li>
+          <li>First to finish <strong>all laps</strong> wins!</li>
         </ul>
       </div>
     </div>
@@ -138,6 +144,7 @@
       <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
       <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
       <p class="hint">Share the invite link to add players.</p>
+      <button id="lobby-back" class="secondary small">← Main Menu</button>
     </div>
   </div>
 
@@ -147,6 +154,7 @@
       <h1 id="results-title">🏁 Finish!</h1>
       <ol id="results-list"></ol>
       <button id="restart-btn">RACE AGAIN</button>
+      <button id="results-menu-btn" class="secondary">Main Menu</button>
     </div>
   </div>
 
