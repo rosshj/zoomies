@@ -1417,11 +1417,12 @@ function loop(now) {
     // Chromatic aberration ramps up with the boost.
     const aberrTarget = player.boosting ? 0.008 : 0;
     fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
-    // Radial (zoom) motion blur: subtle from ~18 m/s, stronger flat-out, and an
-    // extra kick while boosting. Smoothed so it eases in/out, never snaps.
+    // Radial (zoom) motion blur: kept very subtle and only near top speed, with
+    // NO extra kick while boosting — boosting is frequent, so that kick smeared
+    // the screen most of the time. The FOV punch on boost already sells speed.
+    // Smoothed so it eases in/out, never snaps.
     const spd = Math.abs(player.speed);
-    const radialTarget =
-      Math.min(1, Math.max(0, (spd - 26) / 44)) * 0.02 + (player.boosting ? 0.025 : 0);
+    const radialTarget = Math.min(1, Math.max(0, (spd - 34) / 40)) * 0.006;
     fxPass.uniforms.uRadial.value += (radialTarget - fxPass.uniforms.uRadial.value) * Math.min(1, dt * 4);
 
     // AI
