@@ -325,9 +325,19 @@ function buildKarts() {
   // Multiplayer is humans-only: drop the AI field (remote players fill the grid
   // as real participants). Solo play keeps the full roster of AI rivals.
   const roster = MP.enabled ? ROSTER.slice(0, 1) : ROSTER;
+  // Solo: shuffle the starting-grid slots so the player doesn't always launch
+  // from the same spot. It's one level for now, so a random grid position each
+  // race adds variety. (Per-race Math.random, not the seeded world RNG.)
+  const slots = roster.map((_, i) => i);
+  if (!MP.enabled) {
+    for (let i = slots.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [slots[i], slots[j]] = [slots[j], slots[i]];
+    }
+  }
   roster.forEach((cfg, i) => {
     const kart = new Kart(cfg);
-    const slotIndex = MP.enabled && cfg.isPlayer ? mpGridSlot() : i;
+    const slotIndex = MP.enabled && cfg.isPlayer ? mpGridSlot() : slots[i];
     const slot = track.gridSlot(slotIndex);
     kart.placeAt(slot.position, slot.heading, track);
     kart._aiShootTimer = 1 + Math.random() * 3;
