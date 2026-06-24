@@ -1186,7 +1186,10 @@ function updatePlacement() {
 }
 
 const SHOOT_CHARGE_TIME = 0.7; // seconds of hold for a full-power shot
-const SHOOT_RECHARGE = 0.9; // min seconds between shots (no spamming)
+const SHOOT_RECHARGE = 1.2; // min seconds between shots (no spamming)
+// Longer grace at the green light so the race doesn't open with everyone pelting
+// each other on the start line — first hairball isn't ready until this elapses.
+const SHOOT_OPENING_LOCKOUT = SHOOT_RECHARGE * 2;
 
 // Fire a hairball if allowed (recharge done, not spun out), and start the
 // recharge. Shared by the player and the AI so the rules are identical.
@@ -1376,6 +1379,8 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      // Hold everyone's first shot for an opening grace period.
+      for (const k of karts) k.shootCooldown = Math.max(k.shootCooldown, SHOOT_OPENING_LOCKOUT);
     }
     renderFrame();
     return;
