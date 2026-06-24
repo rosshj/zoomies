@@ -29,6 +29,22 @@ function chevronTexture() {
   return (_chevronTex = t);
 }
 
+// Soft dark puddle decal (radial fade) for the rainy forest stretch.
+let _puddleTex = null;
+function puddleTexture() {
+  if (_puddleTex) return _puddleTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
+  g.addColorStop(0, "rgba(38,52,68,0.88)");
+  g.addColorStop(0.7, "rgba(48,64,82,0.5)");
+  g.addColorStop(1, "rgba(60,78,96,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  return (_puddleTex = new THREE.CanvasTexture(c));
+}
+
 // Fine grayscale noise used as the road's bump map (asphalt grain).
 function noiseTexture() {
   const c = document.createElement("canvas");
@@ -195,7 +211,35 @@ export class Track {
     this._buildCenterLine();
     this._buildEdgeLines();
     this._buildBoostPads();
+    this._buildPuddles();
     this._buildStartLine();
+  }
+
+  // Dark puddle decals scattered on the road through the rainy forest stretch.
+  // Centres are recorded in this.puddles so the main loop can kick up a splash
+  // when you drive through one while it's raining.
+  _buildPuddles() {
+    this.puddles = [];
+    const mat = new THREE.MeshBasicMaterial({
+      map: puddleTexture(),
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.65,
+    });
+    for (let i = 0; i < this.samples; i += 7) {
+      const p = this._pts[i];
+      if (biomeRoadStyle(p.x, p.z).kind !== "damp" || Math.random() < 0.5) continue;
+      const side = this._sideAt(i);
+      const lat = (Math.random() * 2 - 1) * (this.halfWidth - 4);
+      const cx = p.x + side.x * lat;
+      const cz = p.z + side.z * lat;
+      const r = 1.6 + Math.random() * 2.0;
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 2).rotateX(-Math.PI / 2), mat);
+      mesh.position.set(cx, p.y + 0.04, cz);
+      mesh.renderOrder = 1;
+      this.group.add(mesh);
+      this.puddles.push({ x: cx, z: cz, r });
+    }
   }
 
   // Glowing chevron pads painted on the road that kick your speed when driven

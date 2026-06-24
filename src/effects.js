@@ -207,6 +207,23 @@ export class EffectsManager {
     }
   }
 
+  // A little burst of water droplets kicked up when driving through a puddle.
+  splash(pos) {
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 2 + Math.random() * 3.5;
+      const v = new THREE.Vector3(Math.cos(a) * sp, 2.5 + Math.random() * 2.5, Math.sin(a) * sp);
+      this._spawn(pos.clone().setY(pos.y + 0.2), new THREE.Color(0xcfe8ff), {
+        size: 0.35 + Math.random() * 0.3,
+        life: 0.4,
+        v,
+        damp: 1.4,
+        gravity: 13,
+        opacity: 0.8,
+      });
+    }
+  }
+
   wallSparks(kart) {
     const n = 4 + Math.floor(Math.random() * 4);
     const along = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));

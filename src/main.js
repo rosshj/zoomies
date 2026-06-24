@@ -1738,6 +1738,21 @@ function loop(now) {
     weather.setWeather(where);
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;
+    // Kick up a splash when driving through a puddle while it's raining.
+    if (track.puddles && wet > 0.2 && Math.abs(player.speed) > 6) {
+      player._puddleCd = (player._puddleCd || 0) - dt;
+      if (player._puddleCd <= 0) {
+        for (const pd of track.puddles) {
+          const dx = player.position.x - pd.x;
+          const dz = player.position.z - pd.z;
+          if (dx * dx + dz * dz < pd.r * pd.r) {
+            effects.splash(player.position);
+            player._puddleCd = 0.14;
+            break;
+          }
+        }
+      }
+    }
     fxPass.uniforms.uSat.value = moodSat * (1 - 0.22 * wet);
     // The near-white snow section sails past the bloom threshold and blows the
     // whole frame out. Ease bloom down + raise its threshold + pull exposure
