@@ -936,6 +936,7 @@ function toMenu() {
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
   document.getElementById("lobby").classList.add("hidden");
+  document.getElementById("results").classList.add("hidden");
   document.getElementById("menu").classList.remove("hidden");
   MP.inLobby = false;
   MP.startAt = 0;
@@ -944,6 +945,9 @@ function toMenu() {
 document.getElementById("btn-pause").addEventListener("click", pauseGame);
 document.getElementById("resume-btn").addEventListener("click", resumeGame);
 document.getElementById("menu-btn").addEventListener("click", toMenu);
+// Every menu can get back to the main screen: lobby and results both offer it.
+document.getElementById("lobby-back")?.addEventListener("click", toMenu);
+document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
 
 // Tilt indicator (hidden by default; toggle in the pause menu).
 const steerBar = document.getElementById("steer-bar");
