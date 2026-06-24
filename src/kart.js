@@ -146,12 +146,16 @@ export class Kart {
           uniform float uTime; uniform vec3 uColor;
           varying vec3 vN; varying vec3 vV;
           void main(){
-            float fres = pow(1.0 - max(dot(vN, vV), 0.0), 2.4);
+            float ndv = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
+            // Clamp the base away from 0: pow(0.0, x) yields NaN on some (mobile)
+            // GPUs, and a single NaN fragment gets smeared across the whole frame
+            // by the bloom blur -> full-screen black flicker.
+            float fres = pow(clamp(1.0 - ndv, 0.001, 1.0), 2.4);
             float band = 0.5 + 0.5 * sin(vN.y * 18.0 - uTime * 4.0); // travelling shimmer
             float pulse = 0.85 + 0.15 * sin(uTime * 2.5);            // gentle breathing
             vec3 col = uColor * ((fres * 1.7 + 0.12) * pulse + band * fres * 0.5);
             float a = clamp(fres * 0.9 + 0.08 + band * fres * 0.3, 0.0, 1.0);
-            gl_FragColor = vec4(col, a);
+            gl_FragColor = vec4(clamp(col, 0.0, 4.0), a);
           }`,
       })
     );
