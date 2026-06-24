@@ -88,10 +88,11 @@ function puddleBlobLocal(cx, cz, baseR, stretchZ, hz = 0) {
   const segs = 26;
   const pos = [cx, -cz, hz];
   const edge = [0];
-  const ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
+  const ph0 = Math.random() * 6.28, ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
   for (let i = 0; i < segs; i++) {
     const a = (i / segs) * Math.PI * 2;
-    const wob = 1 + 0.4 * Math.sin(a * 2 + ph1) + 0.24 * Math.sin(a * 3 + ph2) + 0.15 * Math.sin(a * 5 + ph3);
+    // Several harmonics (incl. a low one) for a clearly irregular, organic outline.
+    const wob = 1 + 0.28 * Math.sin(a + ph0) + 0.4 * Math.sin(a * 2 + ph1) + 0.24 * Math.sin(a * 3 + ph2) + 0.15 * Math.sin(a * 5 + ph3);
     const r = baseR * Math.max(0.4, wob);
     const wx = cx + Math.cos(a) * r;
     const wz = cz + Math.sin(a) * r * stretchZ;
@@ -292,15 +293,17 @@ export class Track {
     forest.sort((a, b) => a.p.y - b.p.y); // lowest first
     const waterY = forest[0].p.y;
 
-    // Water is level: a big puddle in the lowest dip plus a few smaller ones in
-    // nearby low spots. The smalls sit at their own ground height (hz offset) but
-    // share the one flat reflection plane at waterY (approximate but reads fine).
-    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, baseR: 7, stretch: 1.25, hz: 0 }];
+    // True planar reflection only works for puddles coplanar with the single
+    // reflection plane. Keep every puddle at hz: 0 (the one water level): raised
+    // puddles can't sample the planar reflection and read as black, and the
+    // rising road would occlude them. So confine the small ones to the genuinely
+    // flat dip bottom and round out the big one.
+    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, baseR: 6.5, stretch: 1.0, hz: 0 }];
     for (let k = 1; k < forest.length && placements.length < 6; k++) {
       const s = forest[k];
-      if (s.p.y > waterY + 5) break; // only the low forest spots
-      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 18 * 18)) continue;
-      placements.push({ cx: s.p.x, cz: s.p.z, baseR: 2 + Math.random() * 2, stretch: 1, hz: s.p.y - waterY });
+      if (s.p.y > waterY + 0.9) break; // only the genuinely flat dip bottom
+      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 9 * 9)) continue;
+      placements.push({ cx: s.p.x, cz: s.p.z, baseR: 2 + Math.random() * 2, stretch: 1, hz: 0 });
     }
 
     // One merged reflection surface for the whole connected puddle, so every
