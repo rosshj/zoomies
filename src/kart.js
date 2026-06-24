@@ -77,7 +77,10 @@ export class Kart {
     this.boostTimer = 0;
     this.boostSpeed = 0;
     this.tootTimer = 0; // tail-lift/toot animation timer
-    this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
+    // Toot-boost charge, 0..1 (recharges over time). The player earns it from
+    // empty; AI karts get a random head start so the field doesn't all reach a
+    // full meter at the same instant and toot in a synchronized burst.
+    this.boostMeter = isPlayer ? 0 : Math.random();
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
 
     // Lap tracking
