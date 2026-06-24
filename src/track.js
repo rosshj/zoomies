@@ -86,27 +86,26 @@ function makePuddleMaterial() {
       varying vec3 vWorld; varying float vEdge;
       void main(){
         vec3 V = normalize(cameraPosition - vWorld);
-        // Animated ripples perturb the up-normal (stronger in the rain) so the
-        // reflection wobbles like real water.
-        float amp = 0.09 + 0.16 * uRain;
+        // Animated ripples perturb the up-normal. Kept gentle when dry so the
+        // reflection stays a clear mirror; choppier in the rain.
+        float amp = 0.05 + 0.16 * uRain;
         vec3 N = normalize(vec3(
           amp * (sin(vWorld.x * 1.6 + uTime * 2.3) + 0.6 * sin(vWorld.z * 1.0 - uTime * 1.7)),
           1.0,
           amp * (sin(vWorld.z * 1.4 + uTime * 1.9) + 0.6 * sin(vWorld.x * 0.9 + uTime * 1.4))
         ));
         vec3 R = reflect(-V, N);
-        // Sky: bright pale horizon at grazing angles, deepening to blue overhead
-        // (the bright grazing horizon band is the key wet cue).
+        // Sky: bright pale horizon at grazing angles, deepening to blue overhead.
         vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.5, clamp(R.y, 0.0, 1.0)));
         // Soft sun disc + a tight glint streak (bases clamped so pow() != NaN).
         float sd = clamp(dot(R, normalize(uSunDir)), 0.0001, 1.0);
-        float sun = pow(sd, 16.0) * 0.45 + pow(sd, 140.0) * 1.5;
-        // Fresnel: near-mirror at grazing angles, dark water looking straight down.
+        float sun = pow(sd, 16.0) * 0.6 + pow(sd, 150.0) * 2.2;
+        // Reflective even looking straight down (floor), full mirror at grazing.
         float ndv = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
-        float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 3.0);
-        float refl = mix(0.12, 0.97, fres) * (0.7 + 0.3 * uRain);
-        vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.94, 0.8) * sun * (0.7 + 0.5 * uRain);
-        float alpha = (1.0 - smoothstep(0.72, 1.0, vEdge)) * 0.92;
+        float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 2.5);
+        float refl = mix(0.34, 1.0, fres) * (0.85 + 0.15 * uRain);
+        vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.94, 0.8) * sun * (0.8 + 0.4 * uRain);
+        float alpha = (1.0 - smoothstep(0.72, 1.0, vEdge)) * 0.94;
         gl_FragColor = vec4(clamp(col, 0.0, 4.0), alpha);
       }`,
   });
