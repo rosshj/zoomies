@@ -646,7 +646,12 @@ function renderMirror() {
 
     renderer.autoClear = true;
     renderer.setRenderTarget(rearRT);
+    // Hide our own kart (and its shield bubble) in the mirror so the view behind
+    // stays clear and upcoming karts are easy to see.
+    const selfVisible = player.group.visible;
+    player.group.visible = false;
     renderer.render(scene, rearCamera);
+    player.group.visible = selfVisible;
     renderer.setRenderTarget(null);
   }
 
