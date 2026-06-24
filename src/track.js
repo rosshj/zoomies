@@ -1,5 +1,8 @@
 import * as THREE from "three";
-import { biomeBarrierStyle } from "./scenery.js";
+import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
+
+// Bluish-white tone for the alpine road's icy patches.
+const SNOW_PATCH = new THREE.Color(0xdfeaf5);
 
 // Fine grayscale noise used as the road's bump map (asphalt grain).
 function noiseTexture() {
@@ -117,7 +120,15 @@ export class Track {
           (hash(idx, j) - 0.5) * 0.07;
         const lane = Math.min(Math.abs(f - 0.32), Math.abs(f - 0.68));
         if (lane < 0.08) shade -= 0.06;
-        c.copy(base).multiplyScalar(shade);
+        // Biome surface: tint the asphalt and add per-biome speckle so the road
+        // changes character as you lap (sandy/cracked desert, snowy/icy alpine,
+        // damp forest tarmac, warm autumn).
+        const style = biomeRoadStyle(x, z);
+        const h2 = hash(idx * 1.7 + 3.1, j * 2.3 + 5.7);
+        c.setRGB(base.r * style.tint[0], base.g * style.tint[1], base.b * style.tint[2]).multiplyScalar(shade);
+        if (style.kind === "sand" && h2 < 0.05) c.multiplyScalar(0.55); // dark cracks
+        else if (style.kind === "snow" && h2 > 0.9) c.lerp(SNOW_PATCH, 0.7); // icy patches
+        else if (style.kind === "damp" && h2 > 0.93) c.multiplyScalar(0.7); // wet patches
         colors.push(c.r, c.g, c.b);
       }
 
@@ -157,23 +168,75 @@ export class Track {
     this._buildSandTrim();
     this._buildWalls();
     this._buildCenterLine();
+    this._buildEdgeLines();
     this._buildStartLine();
+  }
+
+  // Solid painted lines down both edges of the tarmac (just inside the verge).
+  _buildEdgeLines() {
+    const inset = this.halfWidth - 0.55;
+    const hw = 0.22; // half-width of the painted line
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xece7da,
+      roughness: 0.85,
+      side: THREE.DoubleSide,
+    });
+    for (const sgn of [1, -1]) {
+      const positions = [];
+      const indices = [];
+      for (let i = 0; i <= this.samples; i++) {
+        const idx = i % this.samples;
+        const p = this._pts[idx];
+        const side = this._sideAt(idx);
+        const a = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset - hw));
+        const b = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset + hw));
+        positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
+        if (i < this.samples) {
+          const k = i * 2;
+          indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+        }
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.receiveShadow = true;
+      this.group.add(mesh);
+    }
   }
 
   _buildSandTrim() {
     const div = this.samples;
     const positions = [];
+    const colors = [];
     const indices = [];
     const trim = 3.2;
+    const sand = new THREE.Color(0xc2a86a);
+    const red = new THREE.Color(0xd83a2f);
+    const white = new THREE.Color(0xf2f2f2);
+    const c = new THREE.Color();
+    const tanAng = (k) => {
+      const t = this._tans[((k % div) + div) % div];
+      return Math.atan2(t.x, t.z);
+    };
     for (let i = 0; i <= div; i++) {
       const idx = i % div;
       const p = this._pts[idx];
       const side = this._sideAt(idx);
+      // Local curvature: how much the heading turns over a short look-ahead. On
+      // bends the verge becomes a red/white rumble kerb; straights stay sandy.
+      let d = tanAng(idx + 10) - tanAng(idx);
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      if (Math.abs(d) > 0.055) c.copy(Math.floor(i / 2) % 2 === 0 ? red : white);
+      else c.copy(sand);
       const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
       const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
       const rIn = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
       const rOut = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth - trim);
       positions.push(lOut.x, lOut.y, lOut.z, lIn.x, lIn.y, lIn.z, rIn.x, rIn.y, rIn.z, rOut.x, rOut.y, rOut.z);
+      for (let v = 0; v < 4; v++) colors.push(c.r, c.g, c.b);
       if (i < div) {
         const a = i * 4;
         indices.push(a, a + 1, a + 4, a + 1, a + 5, a + 4);
@@ -182,9 +245,10 @@ export class Track {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xc2a86a, roughness: 1 }));
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }

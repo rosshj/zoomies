@@ -92,6 +92,20 @@ export function biomeWeatherAt(x, z) {
   return biomeAt(x, z).weather;
 }
 
+// Road-surface character for the biome at a position: an RGB multiplier applied
+// to the base asphalt, plus a `kind` the track uses for per-biome speckle
+// (sandy cracks, alpine ice, damp forest tarmac, warm autumn).
+const ROAD_STYLES = {
+  meadow: { tint: [1, 1, 1], kind: "asphalt" },
+  forest: { tint: [0.78, 0.85, 0.93], kind: "damp" },
+  alpine: { tint: [1.35, 1.42, 1.55], kind: "snow" },
+  autumn: { tint: [1.1, 1.0, 0.85], kind: "autumn" },
+  desert: { tint: [1.7, 1.45, 1.02], kind: "sand" },
+};
+export function biomeRoadStyle(x, z) {
+  return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
+}
+
 // Terrain rises as you move away from the road, so the track sits in a shallow
 // valley with hillsides climbing on both sides — that way the scenery and
 // landmarks on those slopes are visible from the road instead of hidden in
