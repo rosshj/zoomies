@@ -547,20 +547,20 @@ function buildTerrain(scene, heightAt) {
 }
 
 function buildMountains(scene, heightAt, track) {
-  const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, flatShading: true, roughness: 1 });
-  const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, flatShading: true, roughness: 1 });
-  const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, flatShading: true, roughness: 1 });
+  const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, roughness: 1 });
+  const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
+  const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
 
   const peak = (x, z, h, rad, bury) => {
     const desert = biomeAt(x, z).name === "desert";
     const base = heightAt(x, z) + h / 2 - bury;
-    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 7), desert ? rockDesert : rockN);
+    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 18), desert ? rockDesert : rockN);
     m.position.set(x, base, z);
     m.rotation.y = rand() * Math.PI;
     scene.add(m);
     // No snow caps in the desert — snowy peaks behind cacti look wrong.
     if (!desert) {
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 7), snow);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 18), snow);
       cap.position.set(x, base + h * 0.5 - h * 0.15, z);
       cap.rotation.y = m.rotation.y;
       scene.add(cap);
@@ -826,7 +826,7 @@ function buildCliffs(scene, track, heightAt) {
       }
     }
   }
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8076, roughness: 1, flatShading: true });
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8076, roughness: 1 });
   const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
   mesh.castShadow = true;
   chunks.forEach((c, i) => {
@@ -848,8 +848,8 @@ function buildCliffs(scene, track, heightAt) {
 
 function buildRocks(scene, track, heightAt, flatten) {
   const spots = scatter(140, track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
-  const geo = new THREE.IcosahedronGeometry(1, 0);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1, flatShading: true });
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1 });
   const rocks = new THREE.InstancedMesh(geo, mat, spots.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -1351,10 +1351,10 @@ function makeCactusProp() {
 
 function makeRockProp() {
   const g = new THREE.Group();
-  const m = mat(0x9a8a6a, { flatShading: true });
+  const m = mat(0x9a8a6a);
   const n = 1 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
-    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6 + rand() * 1.0, 0), m);
+    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6 + rand() * 1.0, 1), m);
     r.position.set((rand() - 0.5) * 2, 0.4, (rand() - 0.5) * 2);
     r.rotation.set(rand() * 3, rand() * 3, rand() * 3);
     r.castShadow = true;
