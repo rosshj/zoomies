@@ -315,6 +315,7 @@ export class Track {
     });
     reflector.material.transparent = true;
     reflector.material.depthWrite = false;
+    reflector.material.side = THREE.DoubleSide; // local-Y flip reverses winding; show both faces
     reflector.rotation.x = -Math.PI / 2; // local XY -> flat world plane at waterY
     reflector.position.set(0, waterY + 0.04, 0);
     reflector.renderOrder = 1;
