@@ -751,6 +751,13 @@ function updateAtmosphere() {
     sh.uniforms.uSunView.value.copy(_sunViewVec);
     sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
   }
+  // Wet puddles: animate ripples + react to rain, reflecting the world-space sun.
+  if (track.puddleMaterial) {
+    const u = track.puddleMaterial.uniforms;
+    u.uTime.value = performance.now() * 0.001;
+    u.uRain.value = weather.rainAmount;
+    u.uSunDir.value.copy(_sunDir);
+  }
 }
 
 // Render the main view (through the post-processing composer), then overlay the

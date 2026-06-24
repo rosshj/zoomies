@@ -29,20 +29,82 @@ function chevronTexture() {
   return (_chevronTex = t);
 }
 
-// Soft dark puddle decal (radial fade) for the rainy forest stretch.
-let _puddleTex = null;
-function puddleTexture() {
-  if (_puddleTex) return _puddleTex;
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-  g.addColorStop(0, "rgba(38,52,68,0.88)");
-  g.addColorStop(0.7, "rgba(48,64,82,0.5)");
-  g.addColorStop(1, "rgba(60,78,96,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
-  return (_puddleTex = new THREE.CanvasTexture(c));
+// An irregular, organic puddle outline (a triangle fan with a noisy radius per
+// angle) laid flat in the XZ plane. `aEdge` is 0 at the centre and 1 at the rim
+// so the shader can fade the edge softly. `sx`/`sz` stretch it (e.g. along the
+// road for the big one).
+function puddleGeometry(baseR, sx = 1, sz = 1) {
+  const segs = 22;
+  const pos = [0, 0, 0];
+  const edge = [0];
+  const ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * Math.PI * 2;
+    const wob = 1 + 0.32 * Math.sin(a * 2 + ph1) + 0.18 * Math.sin(a * 3 + ph2) + 0.12 * Math.sin(a * 5 + ph3);
+    const r = baseR * Math.max(0.45, wob);
+    pos.push(Math.cos(a) * r * sx, 0, Math.sin(a) * r * sz);
+    edge.push(1);
+  }
+  const idx = [];
+  for (let i = 0; i < segs; i++) idx.push(0, 1 + i, 1 + ((i + 1) % segs));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
+  g.setIndex(idx);
+  return g;
+}
+
+// Wet, reflective puddle shader (Option A): reflects a procedural sky gradient
+// plus a sharp sun glint, brightens at grazing angles (Fresnel), and ripples —
+// all driven harder by rain. No extra render pass. Sky colours are the fixed
+// sunny mood; uTime/uRain/uSunDir are fed each frame from the main loop.
+function makePuddleMaterial() {
+  return new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uRain: { value: 0 },
+      uSunDir: { value: new THREE.Vector3(0.4, 0.82, 0.55) },
+      uSkyTop: { value: new THREE.Color(0x357fd6) },
+      uSkyHorizon: { value: new THREE.Color(0xe7f1f6) },
+      uBase: { value: new THREE.Color(0x10161c) },
+    },
+    vertexShader: `
+      attribute float aEdge;
+      varying vec3 vWorld; varying float vEdge;
+      void main(){
+        vEdge = aEdge;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorld = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }`,
+    fragmentShader: `
+      uniform float uTime; uniform float uRain; uniform vec3 uSunDir;
+      uniform vec3 uSkyTop; uniform vec3 uSkyHorizon; uniform vec3 uBase;
+      varying vec3 vWorld; varying float vEdge;
+      void main(){
+        vec3 V = normalize(cameraPosition - vWorld);
+        // Animated ripples perturb the up-normal (stronger in the rain).
+        float amp = 0.06 + 0.13 * uRain;
+        vec3 N = normalize(vec3(
+          amp * (sin(vWorld.x * 1.3 + uTime * 2.0) + 0.6 * sin(vWorld.z * 0.9 - uTime * 1.5)),
+          1.0,
+          amp * (sin(vWorld.z * 1.1 + uTime * 1.7) + 0.6 * sin(vWorld.x * 0.8 + uTime * 1.3))
+        ));
+        vec3 R = reflect(-V, N);
+        vec3 sky = mix(uSkyHorizon, uSkyTop, smoothstep(0.0, 0.6, clamp(R.y, 0.0, 1.0)));
+        // Sharp sun glint (base clamped away from 0 so pow() never returns NaN).
+        float glint = pow(clamp(dot(R, normalize(uSunDir)), 0.0001, 1.0), 90.0);
+        // Fresnel: near-mirror at grazing angles, duller looking straight down.
+        float ndv = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
+        float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 4.0);
+        float refl = mix(0.22, 0.92, fres) * (0.55 + 0.45 * uRain);
+        vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.95, 0.82) * glint * (0.8 + 0.6 * uRain);
+        float alpha = (1.0 - smoothstep(0.55, 1.0, vEdge)) * 0.9;
+        gl_FragColor = vec4(clamp(col, 0.0, 4.0), alpha);
+      }`,
+  });
 }
 
 // Fine grayscale noise used as the road's bump map (asphalt grain).
@@ -215,30 +277,48 @@ export class Track {
     this._buildStartLine();
   }
 
-  // Dark puddle decals scattered on the road through the rainy forest stretch.
-  // Centres are recorded in this.puddles so the main loop can kick up a splash
-  // when you drive through one while it's raining.
+  // Intentional puddles where water would actually pool: a big one in the LOWEST
+  // part of the forest stretch (elongated along the road), and a few smaller ones
+  // in other low spots. Odd organic shapes, wet/reflective shader. Centres go in
+  // this.puddles so the main loop can splash when driven through in the rain.
   _buildPuddles() {
     this.puddles = [];
-    const mat = new THREE.MeshBasicMaterial({
-      map: puddleTexture(),
-      transparent: true,
-      depthWrite: false,
-      opacity: 0.65,
-    });
-    for (let i = 0; i < this.samples; i += 7) {
+    const forest = [];
+    for (let i = 0; i < this.samples; i++) {
       const p = this._pts[i];
-      if (biomeRoadStyle(p.x, p.z).kind !== "damp" || Math.random() < 0.5) continue;
-      const side = this._sideAt(i);
-      const lat = (Math.random() * 2 - 1) * (this.halfWidth - 4);
-      const cx = p.x + side.x * lat;
-      const cz = p.z + side.z * lat;
-      const r = 1.6 + Math.random() * 2.0;
-      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r * 2, r * 2).rotateX(-Math.PI / 2), mat);
-      mesh.position.set(cx, p.y + 0.04, cz);
+      if (biomeRoadStyle(p.x, p.z).kind === "damp") forest.push({ i, p });
+    }
+    if (!forest.length) return;
+    forest.sort((a, b) => a.p.y - b.p.y); // lowest first
+    this.puddleMaterial = makePuddleMaterial();
+
+    const placed = [];
+    const addPuddle = (s, baseR, sx, sz, alignTangent) => {
+      const mesh = new THREE.Mesh(puddleGeometry(baseR, sx, sz), this.puddleMaterial);
+      mesh.position.set(s.p.x, s.p.y + 0.04, s.p.z);
+      if (alignTangent) {
+        const t = this._tans[s.i];
+        mesh.rotation.y = Math.atan2(t.x, t.z); // stretch runs along the road
+      } else {
+        mesh.rotation.y = Math.random() * Math.PI * 2;
+      }
       mesh.renderOrder = 1;
       this.group.add(mesh);
-      this.puddles.push({ x: cx, z: cz, r });
+      this.puddles.push({ x: s.p.x, z: s.p.z, r: baseR * Math.max(sx, sz) });
+      placed.push(s.p);
+    };
+
+    // Big puddle flooding the lowest dip, stretched along the road.
+    addPuddle(forest[0], 7.5, 1.0, 1.7, true);
+    // A handful of small puddles in other genuinely low, spaced-out spots.
+    const minY = forest[0].p.y;
+    let count = 0;
+    for (let k = 1; k < forest.length && count < 5; k++) {
+      const s = forest[k];
+      if (s.p.y > minY + 16) break; // only the low areas
+      if (placed.some((q) => (q.x - s.p.x) ** 2 + (q.z - s.p.z) ** 2 < 30 * 30)) continue; // keep them apart
+      addPuddle(s, 1.8 + Math.random() * 1.8, 1, 1, false);
+      count++;
     }
   }
 
