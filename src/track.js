@@ -62,13 +62,14 @@ function makePuddleMaterial() {
   return new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
+    side: THREE.DoubleSide, // flat decal: visible regardless of triangle winding
     uniforms: {
       uTime: { value: 0 },
       uRain: { value: 0 },
       uSunDir: { value: new THREE.Vector3(0.4, 0.82, 0.55) },
       uSkyTop: { value: new THREE.Color(0x357fd6) },
       uSkyHorizon: { value: new THREE.Color(0xe7f1f6) },
-      uBase: { value: new THREE.Color(0x10161c) },
+      uBase: { value: new THREE.Color(0x1a2632) },
     },
     vertexShader: `
       attribute float aEdge;
@@ -99,7 +100,7 @@ function makePuddleMaterial() {
         // Fresnel: near-mirror at grazing angles, duller looking straight down.
         float ndv = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
         float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 4.0);
-        float refl = mix(0.22, 0.92, fres) * (0.55 + 0.45 * uRain);
+        float refl = mix(0.5, 0.96, fres) * (0.7 + 0.3 * uRain);
         vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.95, 0.82) * glint * (0.8 + 0.6 * uRain);
         float alpha = (1.0 - smoothstep(0.55, 1.0, vEdge)) * 0.9;
         gl_FragColor = vec4(clamp(col, 0.0, 4.0), alpha);
@@ -334,6 +335,7 @@ export class Track {
       transparent: true,
       opacity: 0.92,
       depthWrite: false,
+      side: THREE.DoubleSide, // flat decal: stay visible regardless of winding
     });
     for (const t of [0.12, 0.38, 0.6, 0.85]) {
       const p = this.curve.getPointAt(t);
