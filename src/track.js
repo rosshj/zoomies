@@ -84,9 +84,9 @@ function chevronTexture() {
 // `aEdge` is 0 at the centre and 1 at the rim for the soft edge fade. Building
 // in shared local space lets every puddle in the dip merge into one reflection
 // surface (level water, one render).
-function puddleBlobLocal(cx, cz, baseR, stretchZ) {
+function puddleBlobLocal(cx, cz, baseR, stretchZ, hz = 0) {
   const segs = 26;
-  const pos = [cx, -cz, 0];
+  const pos = [cx, -cz, hz];
   const edge = [0];
   const ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
   for (let i = 0; i < segs; i++) {
@@ -95,7 +95,7 @@ function puddleBlobLocal(cx, cz, baseR, stretchZ) {
     const r = baseR * Math.max(0.4, wob);
     const wx = cx + Math.cos(a) * r;
     const wz = cz + Math.sin(a) * r * stretchZ;
-    pos.push(wx, -wz, 0);
+    pos.push(wx, -wz, hz);
     edge.push(1);
   }
   const idx = [];
@@ -292,21 +292,22 @@ export class Track {
     forest.sort((a, b) => a.p.y - b.p.y); // lowest first
     const waterY = forest[0].p.y;
 
-    // Water is level: pick the big puddle in the lowest dip plus a few small ones
-    // right at that same level (so one flat reflection plane serves them all).
-    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, baseR: 7, stretch: 1.25 }];
+    // Water is level: a big puddle in the lowest dip plus a few smaller ones in
+    // nearby low spots. The smalls sit at their own ground height (hz offset) but
+    // share the one flat reflection plane at waterY (approximate but reads fine).
+    const placements = [{ cx: forest[0].p.x, cz: forest[0].p.z, baseR: 7, stretch: 1.25, hz: 0 }];
     for (let k = 1; k < forest.length && placements.length < 6; k++) {
       const s = forest[k];
-      if (s.p.y > waterY + 2.5) break; // only what sits at the water level
-      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 16 * 16)) continue;
-      placements.push({ cx: s.p.x, cz: s.p.z, baseR: 2 + Math.random() * 2, stretch: 1 });
+      if (s.p.y > waterY + 5) break; // only the low forest spots
+      if (placements.some((q) => (q.cx - s.p.x) ** 2 + (q.cz - s.p.z) ** 2 < 18 * 18)) continue;
+      placements.push({ cx: s.p.x, cz: s.p.z, baseR: 2 + Math.random() * 2, stretch: 1, hz: s.p.y - waterY });
     }
 
     // One merged reflection surface for the whole connected puddle, so every
     // puddle (big and small) shows a true reflection from a single render.
     const geoms = placements.map((pl) => {
       this.puddles.push({ x: pl.cx, z: pl.cz, r: pl.baseR * pl.stretch });
-      return puddleBlobLocal(pl.cx, pl.cz, pl.baseR, pl.stretch);
+      return puddleBlobLocal(pl.cx, pl.cz, pl.baseR, pl.stretch, pl.hz);
     });
     const reflector = new Reflector(mergeGeometries(geoms), {
       textureWidth: 256,
