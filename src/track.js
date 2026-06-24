@@ -67,9 +67,9 @@ function makePuddleMaterial() {
       uTime: { value: 0 },
       uRain: { value: 0 },
       uSunDir: { value: new THREE.Vector3(0.4, 0.82, 0.55) },
-      uSkyTop: { value: new THREE.Color(0x357fd6) },
-      uSkyHorizon: { value: new THREE.Color(0xe7f1f6) },
-      uBase: { value: new THREE.Color(0x1a2632) },
+      uSkyTop: { value: new THREE.Color(0x2f74c8) },
+      uSkyHorizon: { value: new THREE.Color(0xc4d8ea) },
+      uBase: { value: new THREE.Color(0x0c1822) },
     },
     vertexShader: `
       attribute float aEdge;
@@ -100,7 +100,8 @@ function makePuddleMaterial() {
         // Fresnel: near-mirror at grazing angles, duller looking straight down.
         float ndv = clamp(dot(vec3(0.0, 1.0, 0.0), V), 0.0, 1.0);
         float fres = pow(clamp(1.0 - ndv, 0.0001, 1.0), 4.0);
-        float refl = mix(0.5, 0.96, fres) * (0.7 + 0.3 * uRain);
+        // Dark water looking straight down; near-mirror sky at grazing angles.
+        float refl = mix(0.16, 0.95, fres) * (0.7 + 0.3 * uRain);
         vec3 col = mix(uBase, sky, refl) + vec3(1.0, 0.95, 0.82) * glint * (0.8 + 0.6 * uRain);
         float alpha = (1.0 - smoothstep(0.55, 1.0, vEdge)) * 0.9;
         gl_FragColor = vec4(clamp(col, 0.0, 4.0), alpha);
@@ -324,12 +325,12 @@ export class Track {
   }
 
   // Glowing chevron pads painted on the road that kick your speed when driven
-  // over. Records centres in this.boostPads for the main loop to test against.
+  // over. Built as a short ribbon that follows the road samples so the pad lies
+  // flush across pitch and curve. Records centres in this.boostPads.
   _buildBoostPads() {
     this.boostPads = [];
-    const up = new THREE.Vector3(0, 1, 0);
-    const halfLen = 4;
     const halfW = 6;
+    const ringsHalf = 2; // samples each side of centre (pad ~conforms over its length)
     const mat = new THREE.MeshBasicMaterial({
       map: chevronTexture(),
       transparent: true,
@@ -337,31 +338,37 @@ export class Track {
       depthWrite: false,
       side: THREE.DoubleSide, // flat decal: stay visible regardless of winding
     });
+    const div = this.samples;
     for (const t of [0.12, 0.38, 0.6, 0.85]) {
-      const p = this.curve.getPointAt(t);
-      const tan = this.curve.getTangentAt(t).normalize();
-      const side = new THREE.Vector3().crossVectors(tan, up).normalize();
-      const y = p.y + 0.06;
-      const corner = (al, aw) =>
-        new THREE.Vector3().copy(p).addScaledVector(tan, al).addScaledVector(side, aw);
-      const fl = corner(halfLen, halfW);
-      const fr = corner(halfLen, -halfW);
-      const bl = corner(-halfLen, halfW);
-      const br = corner(-halfLen, -halfW);
+      const ci = Math.round(t * div) % div;
+      const positions = [];
+      const uvs = [];
+      const indices = [];
+      const nRings = ringsHalf * 2 + 1;
+      for (let r = 0; r < nRings; r++) {
+        const idx = (((ci - ringsHalf + r) % div) + div) % div;
+        const p = this._pts[idx];
+        const side = this._sideAt(idx);
+        positions.push(
+          p.x + side.x * halfW, p.y + 0.06, p.z + side.z * halfW,
+          p.x - side.x * halfW, p.y + 0.06, p.z - side.z * halfW
+        );
+        const v = r / (nRings - 1);
+        uvs.push(0, v, 1, v);
+        if (r < nRings - 1) {
+          const a = r * 2;
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+        }
+      }
       const geo = new THREE.BufferGeometry();
-      geo.setAttribute(
-        "position",
-        new THREE.Float32BufferAttribute(
-          [bl.x, y, bl.z, br.x, y, br.z, fl.x, y, fl.z, fr.x, y, fr.z],
-          3
-        )
-      );
-      geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 1, 1, 1], 2));
-      geo.setIndex([0, 1, 2, 2, 1, 3]);
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+      geo.setIndex(indices);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.renderOrder = 1; // draw over the road
       this.group.add(mesh);
-      this.boostPads.push({ x: p.x, z: p.z, r: 6 });
+      const pc = this._pts[ci];
+      this.boostPads.push({ x: pc.x, z: pc.z, r: 6 });
     }
   }
 

@@ -413,7 +413,9 @@ export class Kart {
     ).groundY;
     this.groundY = (frontY + rearY) * 0.5 + 0.08; // lift so the tyres rest on, not in, the road
     const targetPitch = Math.atan2(rearY - frontY, 2 * half);
-    this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 16 * dt);
+    // Track the slope quickly so the kart stays glued through crests/dips instead
+    // of the nose stabbing in or the tail floating during the transition.
+    this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 26 * dt);
     this.position.y = this.groundY;
 
     // Vertical / jump physics (relative to the road surface).
