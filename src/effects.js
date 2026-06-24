@@ -242,13 +242,38 @@ export class EffectsManager {
     }
   }
 
+  // Lay continuous tyre marks by bridging each new rear-wheel position to the
+  // previous one (a stretched, travel-aligned segment), so the trail stays
+  // unbroken even when the kart is sliding sideways in a drift. `_lastSkid`
+  // holds the two previous wheel endpoints per kart.
   skid(kart) {
-    const last = this._lastSkid.get(kart);
-    if (last && last.distanceToSquared(kart.position) < 0.45) return;
-    this._lastSkid.set(kart, kart.position.clone());
-    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
     const right = new THREE.Vector3(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
-    for (const o of [-1.3, 1.3]) {
+    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    const cur = [-1.3, 1.3].map((o) =>
+      new THREE.Vector3()
+        .copy(kart.position)
+        .addScaledVector(right, o)
+        .addScaledVector(fwd, -1.4)
+        .setY(kart.groundY + 0.05)
+    );
+    const prev = this._lastSkid.get(kart);
+    if (!prev) {
+      this._lastSkid.set(kart, cur);
+      return;
+    }
+    const step = prev[0].distanceToSquared(cur[0]);
+    if (step < 0.16) return; // moved too little — wait so segments aren't degenerate
+    if (step > 36) {
+      // Resumed after a gap: don't draw a long bridge across the gap, just reset.
+      this._lastSkid.set(kart, cur);
+      return;
+    }
+    for (let i = 0; i < 2; i++) {
+      const a = prev[i];
+      const b = cur[i];
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const len = Math.hypot(dx, dz);
       let mesh;
       if (this.skids.length < this.skidMax) {
         mesh = new THREE.Mesh(this.skidGeo, this.skidMat);
@@ -258,10 +283,11 @@ export class EffectsManager {
         mesh = this.skids[this.skidIdx];
         this.skidIdx = (this.skidIdx + 1) % this.skidMax;
       }
-      const pos = new THREE.Vector3().copy(kart.position).addScaledVector(right, o).addScaledVector(fwd, -1.4);
-      mesh.position.set(pos.x, kart.groundY + 0.05, pos.z);
-      mesh.rotation.y = kart.heading;
+      mesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+      mesh.rotation.y = Math.atan2(dx, dz); // run the mark along the slide path
+      mesh.scale.set(1, 1, (len / 1.3) * 1.15); // stretch to span the gap (slight overlap)
     }
+    this._lastSkid.set(kart, cur);
   }
 
   update(dt) {
