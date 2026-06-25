@@ -34,6 +34,11 @@ if (!_seedParam && history.replaceState) {
 }
 console.log(`[zoomies] world seed: ${getSeed()}`);
 
+// Background music tracks. Drop the files in assets/music/ (see the README
+// there); until they exist these stay silent and cost nothing.
+audio.registerMusic("menu", "./assets/music/menu.mp3");
+audio.registerMusic("race", "./assets/music/race.mp3");
+
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
 
@@ -968,7 +973,7 @@ function toMenu() {
   document.getElementById("menu").classList.remove("hidden");
   audio.stopEngine();
   audio.setSkid(false);
-  audio.playBeat("menu"); // mellow version on the menu
+  audio.playMusic("menu");
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
@@ -1681,7 +1686,7 @@ function loop(now) {
       state = State.RACING;
       MP.startAt = 0;
       audio.startEngine(); // engines fire up on the green light
-      audio.playBeat("race"); // full melodic-trap beat during the race
+      audio.playMusic("race");
       // Hold everyone's first shot for an opening grace period.
       for (const k of karts) k.shootCooldown = Math.max(k.shootCooldown, SHOOT_OPENING_LOCKOUT);
     }
