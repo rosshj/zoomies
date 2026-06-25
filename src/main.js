@@ -2048,13 +2048,16 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // Browsers block audio until a user gesture, so the menu can't autoplay music on
-// load. Start it (fading in) on the player's first interaction while on the main
-// screen; later screens manage their own music.
-window.addEventListener(
-  "pointerdown",
-  () => {
-    audio.unlock();
-    if (state === State.MENU) audio.playMusic("menu");
-  },
-  { once: true }
-);
+// load. Start it (fading in) on the player's FIRST interaction of any kind —
+// tapping anywhere, not just a button. Capture phase so nothing swallows it.
+function startMenuMusicOnce() {
+  audio.unlock();
+  if (!audio.ready) return; // gesture didn't unlock yet; wait for the next one
+  if (state === State.MENU) audio.playMusic("menu");
+  for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+    window.removeEventListener(ev, startMenuMusicOnce, true);
+  }
+}
+for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+  window.addEventListener(ev, startMenuMusicOnce, true);
+}
