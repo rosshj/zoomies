@@ -580,7 +580,13 @@ class AudioEngine {
   // No-op if the track wasn't registered or failed to load.
   playMusic(name) {
     if (!this.ctx) return;
-    if (this._curTrack === name) return;
+    if (this._curTrack === name) {
+      // Already selected — but a first-gesture play() can be rejected, leaving it
+      // paused. Make sure it's actually rolling (cheap to call when already playing).
+      const cur = this._tracks[name];
+      if (cur && this.musicOn && cur.el.paused) cur.el.play().catch(() => {});
+      return;
+    }
     // Stop whatever's currently playing.
     const prev = this._curTrack && this._tracks[this._curTrack];
     if (prev) {
@@ -612,6 +618,12 @@ class AudioEngine {
       track.fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
     }
     if (this.musicOn) track.el.play().catch(() => {});
+  }
+
+  // Whether a music track is actually rolling right now (not just selected).
+  get musicPlaying() {
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    return !!(cur && !cur.el.paused);
   }
 
   stopMusic() {

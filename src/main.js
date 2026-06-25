@@ -2056,8 +2056,13 @@ function startMenuMusicOnce() {
   audio.unlock();
   if (!audio.ready) return; // gesture didn't unlock yet; wait for the next one
   if (state === State.MENU) audio.playMusic("menu");
-  for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
-    window.removeEventListener(ev, startMenuMusicOnce, true);
+  // Keep listening until the track is actually playing (the first gesture's
+  // play() can be rejected on iOS) — or the player has muted music. Only then
+  // stop watching for gestures.
+  if (audio.musicPlaying || !audio.musicOn) {
+    for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
+      window.removeEventListener(ev, startMenuMusicOnce, true);
+    }
   }
 }
 for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
