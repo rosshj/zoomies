@@ -92,7 +92,8 @@ export class Kart {
     this.trackT = 0;
     this.totalProgress = -1;
     this.finished = false;
-    this.finishTime = 0;
+    this.finishTime = 0; // elapsed race time at finish (for display)
+    this.finishClock = 0; // shared-clock instant at finish (for MP ranking)
     this.place = 1;
     this._stuck = 0; // AI: time spent crawling (wall recovery)
 

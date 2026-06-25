@@ -100,9 +100,12 @@ export class Net {
 
   // Announce that I crossed the finish line. `ft` is my race time (seconds since
   // the synchronized GO), directly comparable across clients for final ordering.
-  sendFinish(ft) {
+  // ft = elapsed race time (for display). fc = shared-clock instant of finishing,
+  // which is what every client ranks by — local elapsed time drifts between
+  // clients over a long race and can't decide a close finish.
+  sendFinish(ft, fc) {
     if (!this.connected) return;
-    this.transport.send({ type: "finish", id: this.id, ft });
+    this.transport.send({ type: "finish", id: this.id, ft, fc });
   }
 
   _onMessage(m) {
@@ -144,7 +147,7 @@ export class Net {
         break;
       case "finish":
         if (m.id === this.id) break;
-        this._emit("finish", m.id, m.ft);
+        this._emit("finish", m.id, m.ft, m.fc);
         break;
     }
   }

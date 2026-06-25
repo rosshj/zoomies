@@ -40,6 +40,7 @@ export class RemoteKart {
     this.totalProgress = -1;
     this.finished = false;
     this.finishTime = 0;
+    this.finishClock = 0; // shared-clock instant at finish (for ranking)
     this.place = 1;
   }
 

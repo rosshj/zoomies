@@ -491,11 +491,12 @@ function initMultiplayer() {
         const dir = new THREE.Vector3(h.hx, 0, h.hz);
         player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
       });
-      net.on("finish", (id, ft) => {
+      net.on("finish", (id, ft, fc) => {
         const r = MP.remotes.get(id);
         if (r) {
           r.finished = true;
           r.finishTime = ft;
+          r.finishClock = fc || 0;
         }
         // If the results screen is already up, slot the late finisher in live.
         if (state === State.FINISHED) renderResults();
@@ -1353,6 +1354,7 @@ function prepareRace() {
     for (const r of MP.remotes.values()) {
       r.finished = false;
       r.finishTime = 0;
+      r.finishClock = 0;
       r.totalProgress = -1;
     }
   }
@@ -1746,7 +1748,12 @@ function updatePlacement() {
   const field = [...karts];
   if (MP.enabled) for (const r of MP.remotes.values()) field.push(r);
   field.sort((a, b) => {
-    if (a.finished && b.finished) return a.finishTime - b.finishTime;
+    if (a.finished && b.finished) {
+      // Rank by the shared-clock finish instant when both have one (multiplayer);
+      // fall back to elapsed time for AI / solo where every clock is local.
+      if (a.finishClock && b.finishClock) return a.finishClock - b.finishClock;
+      return a.finishTime - b.finishTime;
+    }
     if (a.finished) return -1;
     if (b.finished) return 1;
     return b.totalProgress - a.totalProgress;
@@ -2220,7 +2227,12 @@ function loop(now) {
         setTimeout(showResults, 4000);
       } else {
         hud.showToast("FINISH!");
-        if (MP.enabled && MP.net) MP.net.sendFinish(player.finishTime); // share my time
+        if (MP.enabled && MP.net) {
+          // Stamp the finish on the shared clock so every client ranks it the
+          // same way (local elapsed time drifts apart over a long race).
+          player.finishClock = MP.net.now();
+          MP.net.sendFinish(player.finishTime, player.finishClock);
+        }
         setTimeout(showResults, 13000);
       }
       state = State.FINISHED; // freeze player input; kart auto-pilots its victory lap
