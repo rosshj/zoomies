@@ -22,16 +22,14 @@ import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
-// (the basis for multiplayer: everyone in a lobby builds from the same seed);
-// otherwise we mint a fresh one and write it back to the URL so it's shareable.
+// (the basis for multiplayer: everyone in a lobby builds from the same seed).
+// We deliberately do NOT write a freshly-minted seed back into the URL: doing so
+// let an installed PWA capture that seed as its launch URL and then reuse it
+// forever (you'd be stuck on one old code/world). Multiplayer sets ?seed itself
+// when hosting or joining, so sharing still works; solo just mints a fresh code.
 const _seedParam = new URLSearchParams(location.search).get("seed");
 const WORLD_SEED = (_seedParam || randomSeed()).toUpperCase();
 setSeed(WORLD_SEED);
-if (!_seedParam && history.replaceState) {
-  const u = new URL(location.href);
-  u.searchParams.set("seed", WORLD_SEED);
-  history.replaceState(null, "", u);
-}
 console.log(`[zoomies] world seed: ${getSeed()}`);
 
 // Background music. One track drives both the menu and the race (it loops).
