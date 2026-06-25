@@ -1387,22 +1387,34 @@ function updateFireworks(dt) {
   }
 }
 
-// Cinematic menu background: slowly orbit a scenic spot, then cross-fade (dip to
-// black) to a vantage in a DIFFERENT biome, touring the whole map behind the
-// menu. One vantage per distinct biome so each shot looks different.
+// Cinematic menu background: slowly orbit a spot, then cross-fade to a vantage
+// FURTHER along the track, touring the whole map behind the menu. Shots are
+// picked greedily so each one jumps a good distance down the loop (preferring a
+// biome change), making consecutive scenes look clearly different.
 const _menuShots = (() => {
-  const seen = new Set();
   const shots = [];
-  for (let i = 0; i < 60; i++) {
-    const t = i / 60;
+  const MIN_GAP = 0.15; // jump at least this fraction of the loop between shots
+  const FORCE_GAP = 0.34; // ...but always take one after this far, even same biome
+  let lastT = -1;
+  let lastKind = null;
+  for (let i = 0; i < 160 && shots.length < 6; i++) {
+    const t = i / 160;
     const p = track.getPointAt(t);
     const kind = biomeRoadStyle(p.x, p.z).kind;
-    if (!seen.has(kind)) {
-      seen.add(kind);
+    if (shots.length === 0) {
       shots.push(t);
+      lastT = t;
+      lastKind = kind;
+      continue;
+    }
+    const gap = t - lastT;
+    if ((gap >= MIN_GAP && kind !== lastKind) || gap >= FORCE_GAP) {
+      shots.push(t);
+      lastT = t;
+      lastKind = kind;
     }
   }
-  if (shots.length < 2) shots.push(0.25, 0.6, 0.85); // fallback variety
+  if (shots.length < 2) return [0.1, 0.35, 0.6, 0.85]; // fallback variety
   return shots;
 })();
 const SHOT_HOLD = 6.5; // seconds orbiting one biome
