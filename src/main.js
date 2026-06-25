@@ -589,8 +589,18 @@ function layoutStage() {
   // so the game always presents in landscape. Children are position:absolute so
   // they rotate/fill with the stage (Safari mis-handles position:fixed here).
   const rot = portrait ? (a === 180 ? 270 : 90) : 0;
-  const W = Math.max(iw, ih);
-  const H = Math.min(iw, ih);
+  let W = Math.max(iw, ih);
+  let H = Math.min(iw, ih);
+  // When we're rotating the stage ourselves (orientation locked to portrait in a
+  // mobile browser), the browser toolbar shrinks the viewport's long axis, so
+  // the rotated landscape leaves a blank bar on one side. Stretch the long edge
+  // to the full screen size to cover it. Gated to touch + portrait so desktop
+  // and true (unlocked) landscape are untouched; clamped so a bogus screen size
+  // can't blow the layout up.
+  if (rot !== 0 && window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+    const screenLong = Math.max(screen.width || 0, screen.height || 0);
+    if (screenLong > W && screenLong < W * 1.4) W = screenLong;
+  }
   stageState = { iw, ih, W, H, rot };
   rotateEl.classList.add("hidden"); // forced landscape — never prompt
 
