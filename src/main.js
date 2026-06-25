@@ -1260,7 +1260,6 @@ function prepareRace() {
   if (menuXfade) menuXfade.style.opacity = 0;
   _menuPhase = "hold";
   _menuShotT = 0;
-  _menuCapturePending = false;
   // Clear any finish/progress state carried over from a previous race on the
   // remote ghosts (they persist across races; only local karts are rebuilt).
   if (MP.enabled) {
@@ -1407,8 +1406,9 @@ const _menuShots = (() => {
   return shots;
 })();
 const SHOT_HOLD = 6.5; // seconds orbiting one biome
-const SHOT_FADE = 1.5; // seconds for the snapshot cross-dissolve
-const _menuAnchor = new THREE.Vector3();
+const SHOT_FADE = 1.5; // seconds for the cross-dissolve
+const _menuAnchor = new THREE.Vector3(); // current/incoming biome
+const _menuAnchorPrev = new THREE.Vector3(); // outgoing biome (during a dissolve)
 const _menuLook = new THREE.Vector3();
 const menuXfade = document.getElementById("menu-xfade");
 const menuXfadeCtx = menuXfade ? menuXfade.getContext("2d") : null;
@@ -1416,11 +1416,13 @@ let _menuShot = 0;
 let _menuPhase = "hold"; // "hold" | "fading"
 let _menuShotT = 0; // time orbiting the current biome
 let _menuFadeT = 0; // elapsed cross-dissolve
-let _menuCapturePending = false; // grab a snapshot after this frame's render
 let _menuPrevTime = -1;
 function _setMenuAnchor(i) {
   _menuAnchor.copy(track.getPointAt(_menuShots[i % _menuShots.length]));
 }
+
+// Advance the menu-tour clock and phase (timing only — rendering is separate so
+// the dissolve can render BOTH biomes live).
 function updateMenuCamera(timeSec) {
   if (_menuPrevTime < 0) _setMenuAnchor(_menuShot);
   let dt = timeSec - _menuPrevTime;
@@ -1429,28 +1431,28 @@ function updateMenuCamera(timeSec) {
 
   if (_menuPhase === "hold") {
     _menuShotT += dt;
-    // Time to move on: capture this frame (still the current biome) after it
-    // renders, then we'll swap the camera and dissolve.
-    if (_menuShotT >= SHOT_HOLD && !_menuCapturePending) _menuCapturePending = true;
+    if (_menuShotT >= SHOT_HOLD) {
+      // Begin a dissolve: remember the outgoing biome, move to the next one.
+      _menuAnchorPrev.copy(_menuAnchor);
+      _menuShot = (_menuShot + 1) % _menuShots.length;
+      _setMenuAnchor(_menuShot);
+      _menuPhase = "fading";
+      _menuFadeT = 0;
+    }
   } else {
-    // Fading: the live view is already the NEW biome; fade the frozen snapshot
-    // of the previous one out over it.
     _menuFadeT += dt;
-    const k = Math.min(1, _menuFadeT / SHOT_FADE);
-    if (menuXfade) menuXfade.style.opacity = (1 - k).toFixed(3);
-    if (k >= 1) {
+    if (_menuFadeT >= SHOT_FADE) {
       _menuPhase = "hold";
       _menuShotT = 0;
+      if (menuXfade) menuXfade.style.opacity = 0;
     }
   }
+}
 
-  const ang = timeSec * 0.07; // gentle drift
-  camera.position.set(
-    _menuAnchor.x + Math.cos(ang) * 34,
-    _menuAnchor.y + 16,
-    _menuAnchor.z + Math.sin(ang) * 34
-  );
-  _menuLook.set(_menuAnchor.x, _menuAnchor.y + 2.5, _menuAnchor.z);
+// Orbit the camera around an anchor and aim slightly above the road.
+function _orbitMenuCam(anchor, ang) {
+  camera.position.set(anchor.x + Math.cos(ang) * 34, anchor.y + 16, anchor.z + Math.sin(ang) * 34);
+  _menuLook.set(anchor.x, anchor.y + 2.5, anchor.z);
   camera.lookAt(_menuLook);
   if (camera.fov !== 58) {
     camera.fov = 58;
@@ -1458,29 +1460,36 @@ function updateMenuCamera(timeSec) {
   }
 }
 
-// Called right after the menu frame renders: if a transition is due, freeze the
-// just-rendered frame into the overlay, snap the camera to the next biome, and
-// begin fading the frozen frame out — a true cross-dissolve with no black dip.
-function captureMenuXfade() {
-  if (!_menuCapturePending) return;
-  _menuCapturePending = false;
-  if (menuXfadeCtx) {
-    const gl = renderer.domElement;
-    if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
-      menuXfade.width = gl.width;
-      menuXfade.height = gl.height;
+// Render the menu background. While dissolving, render the OUTGOING biome (live)
+// into the overlay and fade it out over the INCOMING biome (live) — a true
+// cross-fade with both sides still moving, no freeze and no dip to black.
+function renderMenuBackground(timeSec) {
+  const ang = timeSec * 0.07; // gentle drift
+  if (_menuPhase === "fading") {
+    const k = Math.min(1, _menuFadeT / SHOT_FADE);
+    // Outgoing biome -> capture into the overlay (fading out).
+    _orbitMenuCam(_menuAnchorPrev, ang);
+    renderFrame();
+    if (menuXfadeCtx) {
+      const gl = renderer.domElement;
+      if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
+        menuXfade.width = gl.width;
+        menuXfade.height = gl.height;
+      }
+      try {
+        menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
+        menuXfade.style.opacity = (1 - k).toFixed(3);
+      } catch (e) {
+        /* capture failed (rare) — the incoming render still shows */
+      }
     }
-    try {
-      menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
-      menuXfade.style.opacity = "1";
-    } catch (e) {
-      /* capture failed (rare) — skip the dissolve this time */
-    }
+    // Incoming biome -> the displayed frame.
+    _orbitMenuCam(_menuAnchor, ang);
+    renderFrame();
+  } else {
+    _orbitMenuCam(_menuAnchor, ang);
+    renderFrame();
   }
-  _menuShot = (_menuShot + 1) % _menuShots.length;
-  _setMenuAnchor(_menuShot);
-  _menuPhase = "fading";
-  _menuFadeT = 0;
 }
 
 function updateCamera(dt, snap = false) {
@@ -1889,9 +1898,8 @@ function loop(now) {
   if (state === State.MENU) {
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
-    updateMenuCamera(now / 1000);
-    renderFrame();
-    captureMenuXfade(); // grab the frame for the cross-dissolve (same tick as render)
+    updateMenuCamera(now / 1000); // advance tour timing/phase
+    renderMenuBackground(now / 1000); // single render, or dual-render cross-dissolve
     return;
   }
 
