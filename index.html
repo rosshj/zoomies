@@ -127,7 +127,33 @@
         <button id="howto-btn" class="secondary small">❓ How to Play</button>
         <button id="open-settings" class="secondary small">⚙ Settings</button>
       </div>
-      <p class="hint">📲 Add to Home Screen for fullscreen landscape.</p>
+      <!-- Shown only when not already installed (JS); does the native install
+           prompt where supported, or opens the iOS instructions overlay. -->
+      <button id="install-btn" class="secondary small hidden">📲 Add to Home Screen</button>
+    </div>
+  </div>
+
+  <!-- ===== Add-to-Home-Screen instructions (iOS) ===== -->
+  <div id="install-help" class="overlay hidden">
+    <div class="menu-card">
+      <h1>📲 Add to Home Screen</h1>
+      <p class="tagline">Play fullscreen, no browser bars</p>
+      <ol class="install-steps">
+        <li>
+          Tap the <strong>Share</strong> button
+          <span class="share-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 14V3" /><path d="M8 7l4-4 4 4" />
+              <path d="M5 11v8a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-8" />
+            </svg>
+          </span>
+          in Safari's toolbar
+        </li>
+        <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
+        <li>Open <strong>Zoomies GP</strong> from your Home Screen</li>
+      </ol>
+      <button id="install-help-back" class="secondary">← Got it</button>
     </div>
   </div>
 

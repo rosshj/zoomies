@@ -1061,6 +1061,52 @@ const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
 document.getElementById("howto-back")?.addEventListener("click", () => closeSubScreen(howtoOverlay));
 
+// --- Add to Home Screen ---
+// Chromium fires `beforeinstallprompt`, which we stash and replay from the
+// button to show the native install dialog. iOS has no such API, so there the
+// button opens step-by-step instructions for the Share-sheet flow. The button
+// hides itself once the app is installed (running standalone).
+const installBtn = document.getElementById("install-btn");
+const installHelp = document.getElementById("install-help");
+const _isIOS =
+  /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const _isStandalone =
+  (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+  window.navigator.standalone === true;
+let _deferredInstall = null;
+function refreshInstallBtn() {
+  // Show when there's something useful to do: a captured native prompt, or iOS
+  // (instructions). Never when already installed.
+  const show = !_isStandalone && (!!_deferredInstall || _isIOS);
+  installBtn?.classList.toggle("hidden", !show);
+}
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); // keep our button in charge instead of the mini-infobar
+  _deferredInstall = e;
+  refreshInstallBtn();
+});
+window.addEventListener("appinstalled", () => {
+  _deferredInstall = null;
+  installBtn?.classList.add("hidden");
+});
+installBtn?.addEventListener("click", async () => {
+  if (_deferredInstall) {
+    _deferredInstall.prompt();
+    try {
+      await _deferredInstall.userChoice;
+    } catch {
+      /* dismissed */
+    }
+    _deferredInstall = null;
+    refreshInstallBtn();
+  } else {
+    openSubScreen(installHelp); // iOS: show the Share-sheet instructions
+  }
+});
+document.getElementById("install-help-back")?.addEventListener("click", () => closeSubScreen(installHelp));
+refreshInstallBtn();
+
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
   audio.setMusicOn(!audio.musicOn);
