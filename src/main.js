@@ -905,18 +905,20 @@ function updateDRS(rawMs, dt) {
     _drsCooldown = 1.4;
   }
 }
-const qualityBtn = document.getElementById("set-quality");
+const qualityLowBtn = document.getElementById("set-quality-low");
+const qualityHighBtn = document.getElementById("set-quality-high");
 function applyQuality(q) {
   quality = q;
   const high = q === "high";
   bloomPass.enabled = true; // marquee glow on both tiers
   if (world.grass) world.grass.visible = high;
   renderScale = 1; // reset DRS on a manual quality change
-  if (qualityBtn) qualityBtn.textContent = high ? "High" : "Low";
+  qualityLowBtn?.classList.toggle("is-active", !high);
+  qualityHighBtn?.classList.toggle("is-active", high);
   layoutStage(); // applies the resolution
 }
-if (qualityBtn)
-  qualityBtn.addEventListener("click", () => applyQuality(quality === "high" ? "low" : "high"));
+qualityLowBtn?.addEventListener("click", () => applyQuality("low"));
+qualityHighBtn?.addEventListener("click", () => applyQuality("high"));
 applyQuality(quality);
 
 // Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.

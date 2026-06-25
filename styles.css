@@ -652,12 +652,11 @@ button.small {
   gap: 14px;
 }
 
-/* The Graphics row has no slider; let its button span the slider column too. */
-#set-quality {
+/* The Graphics row has no slider; let its toggle span the slider column too. */
+#quality-toggle {
   grid-column: 2 / 4;
   justify-self: start;
-  min-width: 70px;
-  text-align: center;
+  margin-top: 0; /* the seg-toggle's default top margin is for the menu, not here */
 }
 
 .setting-label {
