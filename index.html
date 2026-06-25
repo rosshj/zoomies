@@ -122,6 +122,16 @@
         <button id="mode-solo" class="seg-btn is-active">👤 Solo</button>
         <button id="mode-mp" class="seg-btn">🎮 Multiplayer</button>
       </div>
+      <!-- Multiplayer: host shares their code (START to host); a friend types it
+           in to join that lobby. Shown only in Multiplayer mode. -->
+      <div id="mp-join" class="mp-join hidden">
+        <p class="hint">Your code: <strong id="mp-mycode">—</strong> · START to host</p>
+        <div class="mp-join-row">
+          <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
+                 autocomplete="off" spellcheck="false" maxlength="10" placeholder="Enter friend's code" />
+          <button id="mp-join-btn" class="secondary small">Join</button>
+        </div>
+      </div>
       <div class="menu-options">
         <button id="laps-btn" class="secondary small">Laps: 3</button>
         <button id="howto-btn" class="secondary small">❓ How to Play</button>
@@ -133,11 +143,16 @@
     </div>
   </div>
 
-  <!-- ===== Add-to-Home-Screen instructions (iOS) ===== -->
+  <!-- ===== Add-to-Home-Screen instructions / install gate ===== -->
   <div id="install-help" class="overlay hidden">
     <div class="menu-card">
       <h1>📲 Add to Home Screen</h1>
       <p class="tagline">Play fullscreen, no browser bars</p>
+      <p id="install-gate-note" class="install-gate-note hidden">
+        Zoomies&nbsp;GP runs as an app — add it to your Home Screen to play.
+      </p>
+      <!-- Native install (Chromium): shown when the browser offers it. -->
+      <button id="install-help-go" class="hidden">📲 Install</button>
       <ol class="install-steps">
         <li>
           Tap the <strong>Share</strong> button

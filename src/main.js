@@ -1068,44 +1068,66 @@ document.getElementById("howto-back")?.addEventListener("click", () => closeSubS
 // hides itself once the app is installed (running standalone).
 const installBtn = document.getElementById("install-btn");
 const installHelp = document.getElementById("install-help");
+const installGo = document.getElementById("install-help-go"); // native install (in overlay)
+const installBack = document.getElementById("install-help-back");
+const installGateNote = document.getElementById("install-gate-note");
 const _isIOS =
   /iphone|ipad|ipod/i.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const _isStandalone =
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
+const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 let _deferredInstall = null;
-function refreshInstallBtn() {
-  // Show when there's something useful to do: a captured native prompt, or iOS
-  // (instructions). Never when already installed.
-  const show = !_isStandalone && (!!_deferredInstall || _isIOS);
-  installBtn?.classList.toggle("hidden", !show);
+let _installGate = false; // mandatory-install mode (touch device, not installed)
+
+function refreshInstallUI() {
+  const canNative = !!_deferredInstall;
+  // Menu button: useful only when not gated, not installed, and there's an action.
+  const showBtn = !_installGate && !_isStandalone && (canNative || _isIOS);
+  installBtn?.classList.toggle("hidden", !showBtn);
+  // Native install button inside the overlay appears whenever the browser offers it.
+  installGo?.classList.toggle("hidden", !canNative);
+}
+async function triggerNativeInstall() {
+  if (!_deferredInstall) return;
+  _deferredInstall.prompt();
+  try {
+    await _deferredInstall.userChoice;
+  } catch {
+    /* dismissed */
+  }
+  _deferredInstall = null;
+  refreshInstallUI();
 }
 window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault(); // keep our button in charge instead of the mini-infobar
+  e.preventDefault(); // keep our UI in charge instead of the mini-infobar
   _deferredInstall = e;
-  refreshInstallBtn();
+  refreshInstallUI();
 });
 window.addEventListener("appinstalled", () => {
   _deferredInstall = null;
   installBtn?.classList.add("hidden");
 });
-installBtn?.addEventListener("click", async () => {
-  if (_deferredInstall) {
-    _deferredInstall.prompt();
-    try {
-      await _deferredInstall.userChoice;
-    } catch {
-      /* dismissed */
-    }
-    _deferredInstall = null;
-    refreshInstallBtn();
-  } else {
-    openSubScreen(installHelp); // iOS: show the Share-sheet instructions
-  }
+installBtn?.addEventListener("click", () => {
+  if (_deferredInstall) triggerNativeInstall();
+  else openSubScreen(installHelp); // iOS: Share-sheet instructions
 });
-document.getElementById("install-help-back")?.addEventListener("click", () => closeSubScreen(installHelp));
-refreshInstallBtn();
+installGo?.addEventListener("click", triggerNativeInstall);
+installBack?.addEventListener("click", () => closeSubScreen(installHelp));
+
+// Mandatory install on touch devices: the bar/flip/multiplayer-link issues only
+// behave in a standalone (home-screen) app, so block in-browser play on phones
+// and tablets until installed. Desktop keeps playing in the tab (none of those
+// issues apply there). The install screen floats over the live scene like the
+// other menus, with no way to dismiss it.
+if (_isTouch && !_isStandalone) {
+  _installGate = true;
+  installGateNote?.classList.remove("hidden");
+  installBack?.classList.add("hidden");
+  openSubScreen(installHelp);
+}
+refreshInstallUI();
 
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
@@ -1169,10 +1191,31 @@ if (timeTrialBtn) {
 const modeToggle = document.getElementById("mode-toggle");
 const modeSoloBtn = document.getElementById("mode-solo");
 const modeMpBtn = document.getElementById("mode-mp");
+const mpJoin = document.getElementById("mp-join");
+const mpMyCode = document.getElementById("mp-mycode");
+const mpCodeInput = document.getElementById("mp-code");
 function updateModeBtn() {
   modeSoloBtn?.classList.toggle("is-active", !MP.enabled);
   modeMpBtn?.classList.toggle("is-active", MP.enabled);
+  // Show the join field in Multiplayer mode; surface this client's room code.
+  mpJoin?.classList.toggle("hidden", !MP.enabled);
+  if (mpMyCode) mpMyCode.textContent = WORLD_SEED;
 }
+// Join a friend's lobby by code: their code IS the world seed + room, so we
+// reload into that world with multiplayer on. In a PWA this navigation stays in
+// the installed app (no Safari hop), which is why a typed code beats a link.
+function joinByCode() {
+  const code = (mpCodeInput?.value || "").trim().toUpperCase();
+  if (!code || code === WORLD_SEED) return;
+  const u = new URL(location.href);
+  u.searchParams.set("seed", code);
+  u.searchParams.set("mp", "1");
+  location.href = u.toString();
+}
+document.getElementById("mp-join-btn")?.addEventListener("click", joinByCode);
+mpCodeInput?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") joinByCode();
+});
 function enterMultiplayer() {
   audio.unlock();
   const u = new URL(location.href);

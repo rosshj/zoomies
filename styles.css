@@ -89,7 +89,8 @@ body {
    hiding it. */
 #menu,
 #howto,
-#settings {
+#settings,
+#install-help {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
@@ -145,7 +146,62 @@ body {
   font-size: 10px;
 }
 
+/* Multiplayer join (lobby code) */
+.mp-join {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+.mp-join .hint {
+  margin: 0;
+}
+.mp-join .hint strong {
+  color: var(--accent);
+  letter-spacing: 1px;
+}
+.mp-join-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+#mp-code {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+  width: 170px;
+  padding: 8px 10px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  outline: none;
+}
+#mp-code::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: none;
+  letter-spacing: 0.5px;
+  font-weight: normal;
+}
+#mp-code:focus {
+  border-color: var(--accent);
+}
+.mp-join-row button.small {
+  margin-top: 0;
+}
+
 /* Add-to-Home-Screen instructions */
+.install-gate-note {
+  margin: 10px auto 4px;
+  max-width: 340px;
+  font-size: 13.5px;
+  color: var(--accent);
+  font-weight: bold;
+}
 .install-steps {
   text-align: left;
   margin: 14px auto;
