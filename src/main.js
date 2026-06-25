@@ -450,6 +450,7 @@ function initMultiplayer() {
   const ablyKey = resolveAblyKey();
   const host = resolveHost();
   if ((!ablyKey && !host) || !new URLSearchParams(location.search).has("mp")) return;
+  if (MP.enabled) return; // already connected (idempotent for runtime toggling)
   MP.enabled = true;
   MP.hud = mpDebugHud();
   MP.hud.textContent = "MP · connecting…";
@@ -466,6 +467,11 @@ function initMultiplayer() {
       });
       net.on("peerleave", (id) => {
         mpDespawn(id);
+        if (MP.inLobby) renderLobby();
+      });
+      // Once our own connection is acknowledged, fill in the lobby (it may have
+      // been opened before the socket finished connecting).
+      net.on("open", () => {
         if (MP.inLobby) renderLobby();
       });
       net.on("state", (id, pose) => {
@@ -1106,21 +1112,60 @@ if (timeTrialBtn) {
   else timeTrialBtn.addEventListener("click", startTimeTrial);
 }
 
-// Solo / Multiplayer toggle. Only offered when an Ably key is configured. It
-// flips the ?mp=1 flag and reloads — the cleanest way to enter/leave networked
-// mode, since the whole multiplayer stack is wired up from that flag at load.
+// Solo / Multiplayer toggle. Only offered when an Ably key is configured.
+// Switches mode at RUNTIME (no page reload, so no jarring flash): entering
+// connects and drops you straight into the lobby; leaving tears the connection
+// down and returns to the menu. The ?mp flag is kept in sync via replaceState so
+// the invite link stays shareable and a refresh lands in the same mode.
 const modeBtn = document.getElementById("mode-btn");
+function updateModeBtn() {
+  if (!modeBtn) return;
+  modeBtn.textContent = MP.enabled ? "👤 Play Solo" : "🎮 Play Multiplayer";
+}
+function enterMultiplayer() {
+  audio.unlock();
+  const u = new URL(location.href);
+  u.searchParams.set("mp", "1");
+  u.searchParams.set("seed", WORLD_SEED);
+  history.replaceState(null, "", u);
+  initMultiplayer(); // connects (async); the lobby fills in on "open"/"peer"
+  // Same gesture-only setup beginRace does, so the network-triggered start needs
+  // no extra tap on iOS.
+  enterFullscreenLandscape();
+  input.enableMotion();
+  input.calibrate();
+  input.jumpHeld = false;
+  input.shielding = false;
+  updateModeBtn();
+  enterLobby();
+}
+function exitMultiplayer() {
+  if (MP.net) {
+    try {
+      MP.net.close();
+    } catch {
+      /* ignore */
+    }
+    MP.net = null;
+  }
+  for (const id of [...MP.remotes.keys()]) mpDespawn(id);
+  MP.enabled = false;
+  MP.inLobby = false;
+  MP.startAt = 0;
+  if (MP.hud) {
+    MP.hud.remove();
+    MP.hud = null;
+  }
+  const u = new URL(location.href);
+  u.searchParams.delete("mp");
+  history.replaceState(null, "", u);
+  updateModeBtn();
+  toMenu();
+}
 if (modeBtn && resolveAblyKey()) {
   modeBtn.classList.remove("hidden");
-  const inMP = new URLSearchParams(location.search).has("mp");
-  modeBtn.textContent = inMP ? "👤 Play Solo" : "🎮 Play Multiplayer";
-  modeBtn.addEventListener("click", () => {
-    const u = new URL(location.href);
-    if (inMP) u.searchParams.delete("mp");
-    else u.searchParams.set("mp", "1");
-    u.searchParams.set("seed", WORLD_SEED); // keep the same world across the reload
-    location.href = u.toString();
-  });
+  updateModeBtn();
+  modeBtn.addEventListener("click", () => (MP.enabled ? exitMultiplayer() : enterMultiplayer()));
 }
 
 // Lobby: copy the invite link (already carries ?seed=…&mp=1) to the clipboard.
