@@ -169,35 +169,41 @@ class AudioEngine {
   //  SOUND EFFECTS
   // ===========================================================================
 
-  // The signature cat "toot" boost: a buzzy square that swoops down then up a
-  // touch, with a little vibrato — comic, not rude.
+  // The boost: a punchy POP (pitched transient) followed by a rising WHOOSH
+  // (noise swept up through a bandpass). Satisfying and turbo-y.
   toot(pos = null) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const o = this._osc("square", 240);
-    const lp = this.ctx.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 1200;
-    o.connect(lp);
-    const g = this._route(lp, pos, 0.32);
-    if (!g) return;
-    const peak = g._peak;
-    o.frequency.setValueAtTime(250, t);
-    o.frequency.exponentialRampToValueAtTime(120, t + 0.16);
-    o.frequency.exponentialRampToValueAtTime(180, t + 0.34);
-    // Vibrato for the "brrrp" texture.
-    const lfo = this._osc("sine", 22);
-    const lfoG = this.ctx.createGain();
-    lfoG.gain.value = 30;
-    lfo.connect(lfoG);
-    lfoG.connect(o.frequency);
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.38);
-    o.start(t);
-    lfo.start(t);
-    o.stop(t + 0.4);
-    lfo.stop(t + 0.4);
+
+    // POP — a quick pitched thump with a fast decay.
+    const o = this._osc("triangle", 440);
+    o.frequency.setValueAtTime(440, t);
+    o.frequency.exponentialRampToValueAtTime(130, t + 0.07);
+    const pg = this._route(o, pos, 0.5);
+    if (pg) {
+      pg.gain.setValueAtTime(0.0001, t);
+      pg.gain.exponentialRampToValueAtTime(pg._peak, t + 0.006);
+      pg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13);
+      o.start(t);
+      o.stop(t + 0.15);
+    }
+
+    // WHOOSH — bandpassed noise sweeping upward, swelling then fading.
+    const src = this._noiseSource();
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.Q.value = 0.8;
+    bp.frequency.setValueAtTime(450, t);
+    bp.frequency.exponentialRampToValueAtTime(4200, t + 0.3);
+    src.connect(bp);
+    const wg = this._route(bp, pos, 0.5);
+    if (wg) {
+      wg.gain.setValueAtTime(0.0001, t);
+      wg.gain.linearRampToValueAtTime(wg._peak, t + 0.08);
+      wg.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+      src.start(t);
+      src.stop(t + 0.42);
+    }
   }
 
   // Drift-release mini-turbo: a bright rising whoosh (filtered noise sweep).
@@ -404,15 +410,16 @@ class AudioEngine {
   startEngine() {
     if (!this.ctx || this._engine) return;
     const t = this.ctx.currentTime;
-    // Two detuned saws + a sub for body, through a lowpass whose cutoff and
-    // pitch track speed. Gain stays low — it's a background hum, not a drone.
-    const osc1 = this._osc("sawtooth", 60);
-    const osc2 = this._osc("sawtooth", 61.5); // slight detune = movement
-    const sub = this._osc("triangle", 30);
+    // A soft, detuned hum through a NON-resonant lowpass. The old version used a
+    // resonant filter (Q 4) which whined — that's gone. Quiet by design: this is
+    // a background hum, not a drone.
+    const osc1 = this._osc("sawtooth", 58);
+    const osc2 = this._osc("triangle", 59); // triangle = far fewer harsh harmonics
+    const sub = this._osc("triangle", 29);
     const lp = this.ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.value = 600;
-    lp.Q.value = 4;
+    lp.frequency.value = 380;
+    lp.Q.value = 0.6; // no resonant peak -> no whine
     const g = this.ctx.createGain();
     g.gain.value = 0.0001;
     osc1.connect(lp);
@@ -423,22 +430,23 @@ class AudioEngine {
     osc1.start(t);
     osc2.start(t);
     sub.start(t);
-    g.gain.setTargetAtTime(0.05, t, 0.4);
+    g.gain.setTargetAtTime(0.022, t, 0.4);
     this._engine = { osc1, osc2, sub, lp, g };
   }
 
-  // freq tracks speed (0..1). boosting opens the filter + lifts the gain.
+  // freq tracks speed (0..1). boosting opens the filter + lifts the gain a touch.
   setEngine(speedFrac, boosting) {
     const e = this._engine;
     if (!e || !this.ctx) return;
     const t = this.ctx.currentTime;
-    const f = 55 + speedFrac * 130; // ~55Hz idle -> ~185Hz redline
+    const f = 50 + speedFrac * 110; // ~50Hz idle -> ~160Hz redline
     e.osc1.frequency.setTargetAtTime(f, t, 0.06);
-    e.osc2.frequency.setTargetAtTime(f * 1.01, t, 0.06);
+    e.osc2.frequency.setTargetAtTime(f * 1.008, t, 0.06);
     e.sub.frequency.setTargetAtTime(f * 0.5, t, 0.06);
-    const cut = 500 + speedFrac * 1800 + (boosting ? 1400 : 0);
+    const cut = 300 + speedFrac * 950 + (boosting ? 700 : 0);
     e.lp.frequency.setTargetAtTime(cut, t, 0.08);
-    e.g.gain.setTargetAtTime(0.045 + speedFrac * 0.03 + (boosting ? 0.025 : 0), t, 0.1);
+    // Roughly half the old loudness, and it leans on speed rather than sitting loud.
+    e.g.gain.setTargetAtTime(0.015 + speedFrac * 0.02 + (boosting ? 0.01 : 0), t, 0.1);
   }
 
   stopEngine() {
@@ -450,27 +458,43 @@ class AudioEngine {
     this._engine = null;
   }
 
-  // Drift skid: a sustained tire screech (bandpassed noise). Call each frame
-  // with whether the player is drifting; the level eases in/out.
+  // Drift skid: a sustained tire SCREECH. A broadband friction hiss plus a
+  // sharp resonant squeal whose pitch wobbles (LFO) for that live-rubber warble.
+  // Call each frame with whether the player is drifting; the level eases in/out.
   setSkid(on, intensity = 1) {
     if (!this.ctx) return;
     if (on && !this._skid) {
+      const t = this.ctx.currentTime;
       const src = this._noiseSource();
-      const bp = this.ctx.createBiquadFilter();
-      bp.type = "bandpass";
-      bp.frequency.value = 1800;
-      bp.Q.value = 3.5;
+      // Friction hiss.
+      const hiss = this.ctx.createBiquadFilter();
+      hiss.type = "bandpass";
+      hiss.frequency.value = 2800;
+      hiss.Q.value = 1.1;
+      // The squeal: a tight resonant peak that the LFO wobbles around.
+      const squeal = this.ctx.createBiquadFilter();
+      squeal.type = "bandpass";
+      squeal.frequency.value = 1500;
+      squeal.Q.value = 7;
+      const lfo = this._osc("sine", 7.5);
+      const lfoG = this.ctx.createGain();
+      lfoG.gain.value = 240; // ± wobble of the squeal pitch
+      lfo.connect(lfoG);
+      lfoG.connect(squeal.frequency);
       const g = this.ctx.createGain();
       g.gain.value = 0.0001;
-      src.connect(bp);
-      bp.connect(g);
+      src.connect(hiss);
+      hiss.connect(g);
+      src.connect(squeal);
+      squeal.connect(g);
       g.connect(this.sfxGain);
-      src.start(this.ctx.currentTime);
-      this._skid = { src, bp, g };
+      src.start(t);
+      lfo.start(t);
+      this._skid = { src, g };
     }
     if (this._skid) {
       const t = this.ctx.currentTime;
-      this._skid.g.gain.setTargetAtTime(on ? 0.05 * intensity : 0.0001, t, 0.05);
+      this._skid.g.gain.setTargetAtTime(on ? 0.1 * intensity : 0.0001, t, 0.05);
     }
   }
 
