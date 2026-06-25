@@ -38,9 +38,10 @@
   <!-- WebGL canvas mount -->
   <div id="game"></div>
 
-  <!-- Menu cinematic cross-fade layer: dips the live scene to black between
-       biome shots (sits above the canvas, below the menu cards). -->
-  <div id="menu-fade"></div>
+  <!-- Menu cinematic cross-fade: holds a frozen snapshot of the previous biome
+       and fades it out to reveal the next one (true dissolve, no dip to black).
+       Sits above the canvas, below the menu cards. -->
+  <canvas id="menu-xfade"></canvas>
 
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
