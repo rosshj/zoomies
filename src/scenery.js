@@ -23,7 +23,7 @@ const BIOMES = [
   { name: "meadow", weather: "none", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0, barrier: { a: 0xfafafa, b: 0x7cb342 } },
   { name: "forest", weather: "rain", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9, barrier: { a: 0x6b4a2b, b: 0x3f2c19 } },
   // Alpine sits on the big left-side hill, so its high ground reads as snow.
-  { name: "alpine", weather: "none", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
+  { name: "alpine", weather: "snow", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
   { name: "autumn", weather: "none", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
   { name: "desert", weather: "none", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
 ];
@@ -561,20 +561,18 @@ function buildTerrain(scene, heightAt) {
     const y = heightAt(x, z);
     pos.setY(i, y);
 
-    // Biome ground colour. Snow only whitens the high ALPINE hill — warm biomes
-    // just turn rocky up high, so there's one distinct snow section rather than
-    // white peaks scattered all over the course.
+    // Ground colour is driven by the BIOME, not altitude — so snow belongs to the
+    // alpine biome wherever it sits (even flat), and a warm biome's tall hills stay
+    // their own colour instead of reading as a stray snowy peak.
     biomeGround(x, z, base);
     const b = biomeAt(x, z);
     base.lerp(b.ground2Col, rand() * 0.35); // subtle dappling
     if (b.name === "alpine") {
-      if (y < 44) c.copy(base);
-      else if (y < 62) c.copy(base).lerp(cRock, (y - 44) / 18);
-      else c.copy(cRock).lerp(cSnow, Math.min(1, (y - 62) / 16));
-    } else if (y < 52) {
-      c.copy(base);
+      // Snowy throughout, whiter the higher it climbs; rock shows through low down.
+      c.copy(cRock).lerp(cSnow, clamp(0.6 + y / 130, 0.6, 1));
     } else {
-      c.copy(base).lerp(cRock, Math.min(1, (y - 52) / 32));
+      c.copy(base);
+      if (y > 78) c.lerp(cRock, Math.min(0.45, (y - 78) / 120)); // only the tallest peaks, subtle rock — never white
     }
     colors.push(c.r, c.g, c.b);
   }

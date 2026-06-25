@@ -70,7 +70,6 @@ let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
 const { renderer, scene, camera, sun, applyMood } = createScene();
 const weather = new Weather(scene);
-const SNOW_ALTITUDE = 55; // above this (the alpine pass) it snows, regardless of biome
 let moodSat = 1.3; // this race's base saturation (rain desaturates from it)
 let moodExposure = 1.05; // this race's base exposure (rain darkens from it)
 // The main camera sees everything; the rear-view camera stays on layer 0, so
@@ -2261,11 +2260,10 @@ function loop(now) {
     effects.update(dt);
     updatePlacement();
 
-    // Weather is dictated by where you are: snow up on the alpine pass, the
-    // biome's own precipitation (rain in the wet forest/autumn) elsewhere. The
-    // Weather class crossfades smoothly as you cross between them.
-    const where =
-      player.groundY > SNOW_ALTITUDE ? "snow" : biomeWeatherAt(player.position.x, player.position.z);
+    // Weather follows the BIOME (snow in alpine, rain in the wet forest), not
+    // altitude — so a procedural track's hills don't sprinkle snow into warm
+    // biomes. The Weather class crossfades smoothly as you cross between them.
+    const where = biomeWeatherAt(player.position.x, player.position.z);
     weather.setWeather(where);
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;

@@ -24,33 +24,52 @@ const CLASSIC_POINTS = [
 //   hilliness: elevation amplitude (flat -> mountainous)
 // Randomness (the loop's specific "personality") comes from the seeded `rand()`
 // stream, so the same world seed reproduces the same track.
+// Weighted sum of sine harmonics at angle `a`, normalized to ~[-1, 1]. `list` is
+// [{k, w}]; one seeded phase per harmonic in `phases`.
+function harmSum(list, a, phases) {
+  let s = 0;
+  let wsum = 0;
+  for (let j = 0; j < list.length; j++) {
+    s += list[j].w * Math.sin(list[j].k * a + phases[j]);
+    wsum += list[j].w;
+  }
+  return wsum > 0 ? s / wsum : 0;
+}
+
 function generateLoopPoints(cfg) {
   const size = clamp01(cfg.size);
   const curviness = clamp01(cfg.curviness);
   const hilliness = clamp01(cfg.hilliness);
 
-  const N = 18 + Math.round(curviness * 10); // 18..28 control points
-  const baseR = 260 + size * 240; // ~260..500 world units
-  const radVar = 0.1 + curviness * 0.34; // ±10%..±44% radius wobble (stays < 1 -> simple loop)
-  const hillAmp = hilliness * 95;
+  const N = 16 + Math.round(curviness * 22); // 16..38 control points (more corners)
+  const baseR = 240 + size * 280; // ~240..520 world units
+  const radVar = 0.08 + curviness * 0.52; // ±8%..±60% radius wobble (stays < 1 -> simple loop)
+  const hillAmp = hilliness * 155; // up to ~155 (was 95) for real mountains
 
-  // Seeded harmonic phases + weights so each seed gets a distinct shape.
-  const rp = [rand() * TAU, rand() * TAU, rand() * TAU];
-  const hp = [rand() * TAU, rand() * TAU, rand() * TAU];
-  const rw = [1, 0.5 + rand() * 0.4, 0.25 + rand() * 0.35];
-  const hw = [1, 0.5 + rand() * 0.5, 0.3 + rand() * 0.4];
-  const rwSum = rw[0] + rw[1] + rw[2];
-  const hwSum = hw[0] + hw[1] + hw[2];
+  // Radius harmonics — higher ones scale with curviness, so low = smooth flowing,
+  // high = lots of tight technical corners.
+  const rH = [
+    { k: 1, w: 1 },
+    { k: 2, w: 0.6 },
+    { k: 3, w: 0.3 + curviness * 0.45 },
+    { k: 4, w: curviness * 0.45 },
+    { k: 5, w: curviness * 0.3 },
+  ];
+  // Elevation harmonics — kept LOW frequency so big hills are long, drivable
+  // climbs rather than cliffs.
+  const eH = [
+    { k: 1, w: 1 },
+    { k: 2, w: 0.55 },
+    { k: 3, w: 0.3 },
+  ];
+  const rPhase = rH.map(() => rand() * TAU);
+  const ePhase = eH.map(() => rand() * TAU);
 
   const pts = [];
   for (let i = 0; i < N; i++) {
     const a = (i / N) * TAU;
-    const rWob =
-      (rw[0] * Math.sin(a + rp[0]) + rw[1] * Math.sin(2 * a + rp[1]) + rw[2] * Math.sin(3 * a + rp[2])) / rwSum;
-    const r = baseR * (1 + radVar * rWob);
-    const hWob =
-      (hw[0] * Math.sin(a + hp[0]) + hw[1] * Math.sin(2 * a + hp[1]) + hw[2] * Math.sin(3 * a + hp[2])) / hwSum;
-    const y = Math.max(0, hillAmp * (0.5 + 0.5 * hWob)); // 0..hillAmp, hills sit above ground
+    const r = baseR * (1 + radVar * harmSum(rH, a, rPhase));
+    const y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
     pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
   }
   return pts;
