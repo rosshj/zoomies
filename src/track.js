@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
+import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand } from "./rng.js";
 
 const TAU = Math.PI * 2;
@@ -41,19 +41,20 @@ function generateLoopPoints(cfg) {
   const curviness = clamp01(cfg.curviness);
   const hilliness = clamp01(cfg.hilliness);
 
-  const N = 16 + Math.round(curviness * 22); // 16..38 control points (more corners)
+  const N = 16 + Math.round(curviness * 30); // 16..46 control points (more corners)
   const baseR = 240 + size * 280; // ~240..520 world units
-  const radVar = 0.08 + curviness * 0.52; // ±8%..±60% radius wobble (stays < 1 -> simple loop)
+  const radVar = 0.08 + curviness * 0.62; // ±8%..±70% radius wobble (stays < 1 -> simple loop)
   const hillAmp = hilliness * 155; // up to ~155 (was 95) for real mountains
 
-  // Radius harmonics — higher ones scale with curviness, so low = smooth flowing,
-  // high = lots of tight technical corners.
+  // Radius harmonics — higher ones scale steeply with curviness, so low = smooth
+  // flowing and high = a genuinely twisty, varied, technical circuit.
   const rH = [
     { k: 1, w: 1 },
     { k: 2, w: 0.6 },
-    { k: 3, w: 0.3 + curviness * 0.45 },
-    { k: 4, w: curviness * 0.45 },
-    { k: 5, w: curviness * 0.3 },
+    { k: 3, w: 0.3 + curviness * 0.6 },
+    { k: 4, w: curviness * 0.65 },
+    { k: 5, w: curviness * 0.5 },
+    { k: 6, w: curviness * 0.32 },
   ];
   // Elevation harmonics — kept LOW frequency so big hills are long, drivable
   // climbs rather than cliffs.
@@ -218,6 +219,25 @@ export class Track {
     // Point list for cheap distance/height queries used by scenery.
     this._coarse = [];
     for (let i = 0; i < this.samples; i += 2) this._coarse.push(this._pts[i]);
+
+    // Biome layout for this track: altitude-driven (alpine on the peaks, warm
+    // biomes in the lows) for generated tracks; angular wedges for the classic
+    // one. The height sampler lets biomeAt read the local road elevation. Set
+    // BEFORE building the road so its biome styling matches the scenery.
+    let eMin = Infinity;
+    let eMax = -Infinity;
+    for (const p of this._pts) {
+      if (p.y < eMin) eMin = p.y;
+      if (p.y > eMax) eMax = p.y;
+    }
+    this.elevMin = eMin;
+    this.elevMax = eMax;
+    setHeightSampler((x, z) => this.groundInfo(x, z).y);
+    setBiomeLayout(config && config.biomes, {
+      altitude: !!(config && config.mode === "custom"),
+      elevMin: eMin,
+      elevMax: eMax,
+    });
 
     this.group = new THREE.Group();
     this._buildRoad();

@@ -11,7 +11,7 @@ import { Kart } from "./kart.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeRoadStyle, setBiomeLayout } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeRoadStyle } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed } from "./rng.js";
 import { Net } from "./net/net.js";
@@ -56,7 +56,6 @@ const WORLD_SEED = (
   randomSeed()
 ).toUpperCase();
 setSeed(WORLD_SEED);
-if (trackConfig.mode === "custom") setBiomeLayout(trackConfig.biomes);
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 
 // Background music. One track drives both the menu and the race (it loops).

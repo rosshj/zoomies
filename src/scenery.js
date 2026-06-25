@@ -77,25 +77,78 @@ function roundedColumn(w, h, d, r) {
   return geo;
 }
 
-// The biomes in play, as angular wedges around the origin. Defaults to all of
-// them; setBiomeLayout() lets a custom track pick a subset (e.g. desert + alpine,
-// or a single biome for the whole map).
+// Biome layout. Two modes:
+//  - "angular" (classic track): biomes are wedges around the origin, as before.
+//  - "altitude" (generated tracks): ALPINE follows high ground (snow on the
+//    peaks), the warm biomes fill the lower ground as wide, soft-edged wedges.
+// A height sampler lets biomeAt() look up the local elevation itself, so callers
+// don't have to thread `y` everywhere.
 let _activeBiomes = BIOMES;
+let _altMode = false;
+let _warm = BIOMES.filter((b) => b.name !== "alpine");
+let _alpine = null;
+let _eMin = 0;
+let _eMax = 1;
+let _heightSampler = null;
 
-// Choose which biomes appear (by name). Empty/unknown -> all biomes. Call BEFORE
-// building the track + world so the road styling and scatter agree.
-export function setBiomeLayout(names) {
-  if (Array.isArray(names) && names.length) {
-    const picked = BIOMES.filter((b) => names.includes(b.name));
-    _activeBiomes = picked.length ? picked : BIOMES;
-  } else {
-    _activeBiomes = BIOMES;
-  }
+// Choose which biomes appear (by name). Empty/unknown -> all. opts:
+//   { altitude, elevMin, elevMax } enable altitude-driven layout (custom tracks).
+export function setBiomeLayout(names, opts = {}) {
+  const sel = Array.isArray(names) && names.length ? BIOMES.filter((b) => names.includes(b.name)) : BIOMES;
+  _activeBiomes = sel.length ? sel : BIOMES;
+  _alpine = _activeBiomes.find((b) => b.name === "alpine") || null;
+  _warm = _activeBiomes.filter((b) => b.name !== "alpine");
+  if (!_warm.length) _warm = _activeBiomes; // alpine-only map
+  _altMode = !!opts.altitude;
+  _eMin = opts.elevMin ?? 0;
+  _eMax = opts.elevMax ?? 1;
 }
 
-function biomeAt(x, z) {
-  const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
-  return _activeBiomes[Math.floor(u * _activeBiomes.length) % _activeBiomes.length];
+// Provide an elevation lookup fn(x,z)->y so biomeAt can read altitude. Set by the
+// track once its samples exist (before it styles its road).
+export function setHeightSampler(fn) {
+  _heightSampler = fn;
+}
+
+const smooth = (t) => {
+  t = clamp(t, 0, 1);
+  return t * t * (3 - 2 * t);
+};
+
+// How "alpine" an elevation reads, 0 (warm) .. 1 (full snow), with a wide
+// transition band so the snow line is a gradient, not a hard edge.
+const ALPINE_LINE = 0.52;
+const ALPINE_BAND = 0.24;
+function alpineWeight(y) {
+  if (!_alpine || !_altMode) return 0;
+  if (_eMax - _eMin < 8) return 0; // ~flat track -> no peaks -> no alpine/snow
+  const yn = clamp((y - _eMin) / (_eMax - _eMin), 0, 1);
+  return smooth((yn - (ALPINE_LINE - ALPINE_BAND)) / (2 * ALPINE_BAND));
+}
+
+// The lower-ground warm biome at (x,z) as a wide, soft-edged angular blend.
+// Returns { a, b, t } (colour = lerp(a,b,t)).
+function warmBlend(x, z) {
+  const n = _warm.length;
+  if (n <= 1) return { a: _warm[0], b: _warm[0], t: 0 };
+  const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
+  const i0 = Math.floor(s) % n;
+  const frac = s - Math.floor(s);
+  const t = frac < 0.58 ? 0 : smooth((frac - 0.58) / 0.42); // soft seam over ~40% of each wedge
+  return { a: _warm[i0], b: _warm[(i0 + 1) % n], t };
+}
+
+// Dominant biome at a point (for scatter / weather / barriers). `y` optional —
+// looked up via the height sampler in altitude mode when omitted.
+function biomeAt(x, z, y) {
+  if (!_altMode) {
+    const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
+    return _activeBiomes[Math.floor(u * _activeBiomes.length) % _activeBiomes.length];
+  }
+  if (y === undefined) y = _heightSampler ? _heightSampler(x, z) : 0;
+  if (alpineWeight(y) >= 0.5) return _alpine;
+  const wb = warmBlend(x, z);
+  return wb.t < 0.5 ? wb.a : wb.b;
 }
 
 // Roadside-barrier colours for the biome at a position (used by the track).
@@ -131,17 +184,24 @@ function valleyRise(dist) {
   return 38 * u * u * (3 - 2 * u);
 }
 
-// Ground colour with a short blended seam between sectors (crisp biomes, soft
-// borders). Writes into `out` and returns it.
-function biomeGround(x, z, out) {
-  const n = BIOMES.length;
-  const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
-  const i0 = Math.floor(s) % n;
-  const frac = s - Math.floor(s);
-  const a = BIOMES[i0];
-  const b = BIOMES[(i0 + 1) % n];
-  const w = frac < 0.82 ? 0 : (frac - 0.82) / 0.18;
-  return out.copy(a.groundCol).lerp(b.groundCol, w * w * (3 - 2 * w));
+// Ground colour with SOFT biome borders. In altitude mode the warm biomes blend
+// as wide wedges and the alpine base fades in with height; in classic mode it's
+// the original angular blend (over the active biomes). Writes `out`, returns it.
+function biomeGround(x, z, out, y) {
+  if (!_altMode) {
+    const n = _activeBiomes.length;
+    const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
+    const i0 = Math.floor(s) % n;
+    const frac = s - Math.floor(s);
+    const w = frac < 0.6 ? 0 : smooth((frac - 0.6) / 0.4);
+    return out.copy(_activeBiomes[i0].groundCol).lerp(_activeBiomes[(i0 + 1) % n].groundCol, w);
+  }
+  if (y === undefined) y = _heightSampler ? _heightSampler(x, z) : 0;
+  const wb = warmBlend(x, z);
+  out.copy(wb.a.groundCol).lerp(wb.b.groundCol, wb.t);
+  const aw = alpineWeight(y);
+  if (aw > 0 && _alpine) out.lerp(_alpine.groundCol, aw); // warm -> alpine base by height
+  return out;
 }
 
 // Builds the world around the track: rolling hills, distant mountains, a small
@@ -561,18 +621,22 @@ function buildTerrain(scene, heightAt) {
     const y = heightAt(x, z);
     pos.setY(i, y);
 
-    // Ground colour is driven by the BIOME, not altitude — so snow belongs to the
-    // alpine biome wherever it sits (even flat), and a warm biome's tall hills stay
-    // their own colour instead of reading as a stray snowy peak.
-    biomeGround(x, z, base);
-    const b = biomeAt(x, z);
-    base.lerp(b.ground2Col, rand() * 0.35); // subtle dappling
-    if (b.name === "alpine") {
-      // Snowy throughout, whiter the higher it climbs; rock shows through low down.
-      c.copy(cRock).lerp(cSnow, clamp(0.6 + y / 130, 0.6, 1));
-    } else {
-      c.copy(base);
-      if (y > 78) c.lerp(cRock, Math.min(0.45, (y - 78) / 120)); // only the tallest peaks, subtle rock — never white
+    biomeGround(x, z, base, y);
+    const b = biomeAt(x, z, y);
+    base.lerp(b.ground2Col, rand() * 0.3); // subtle dappling
+    c.copy(base);
+    if (_altMode) {
+      // Altitude layout: snow whitens with height (gradual, follows the alpine
+      // weight); warm biomes' tallest peaks get a faint rock tint, never white.
+      const aw = alpineWeight(y);
+      if (aw > 0) c.lerp(cSnow, aw * clamp(0.55 + y / 240, 0.55, 1));
+      else if (y > 95) c.lerp(cRock, Math.min(0.4, (y - 95) / 130));
+    } else if (b.name === "alpine") {
+      // Classic layout: the original altitude-banded alpine snow.
+      if (y >= 62) c.copy(cRock).lerp(cSnow, Math.min(1, (y - 62) / 16));
+      else if (y >= 44) c.copy(base).lerp(cRock, (y - 44) / 18);
+    } else if (y > 52) {
+      c.copy(base).lerp(cRock, Math.min(1, (y - 52) / 32));
     }
     colors.push(c.r, c.g, c.b);
   }
