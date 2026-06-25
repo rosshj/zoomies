@@ -6,6 +6,12 @@ const UP = new THREE.Vector3(0, 1, 0);
 // Boost meter recharge rate (full in ~16s) — identical for the player and AI.
 export const BOOST_RECHARGE = 1 / 16;
 
+// A drift must be held at least this long (seconds) to earn a mini-turbo. Below
+// it the drift just ends with no boost — so brief flicks, and the short re-grabs
+// the AI makes when its curvature reading wiggles at a corner exit or S-bend
+// inflection, don't each pop a boost on the straight.
+const MIN_DRIFT_CHARGE = 0.5;
+
 // Soft radial blob used as a contact/grounding shadow under each kart.
 let _shadowTex = null;
 function shadowTexture() {
@@ -77,10 +83,7 @@ export class Kart {
     this.boostTimer = 0;
     this.boostSpeed = 0;
     this.tootTimer = 0; // tail-lift/toot animation timer
-    // Toot-boost charge, 0..1 (recharges over time). The player earns it from
-    // empty; AI karts get a random head start so the field doesn't all reach a
-    // full meter at the same instant and toot in a synchronized burst.
-    this.boostMeter = isPlayer ? 0 : Math.random();
+    this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
 
     // Lap tracking
@@ -233,14 +236,17 @@ export class Kart {
   }
 
   // End a drift, awarding a boost that scales with how long it was held (the
-  // longer you hold jump through the corner, the bigger the boost).
+  // longer you hold jump through the corner, the bigger the boost). A drift that
+  // didn't charge long enough earns nothing — no trivial flick boosts.
   endDrift() {
     if (!this.drifting) return;
     this.drifting = false;
-    const c = Math.min(this.driftCharge, 3.2);
+    const charge = this.driftCharge;
+    this.driftCharge = 0;
+    if (charge < MIN_DRIFT_CHARGE) return; // too short to earn a mini-turbo
+    const c = Math.min(charge, 3.2);
     this.applyBoost(1.12 + c * 0.12, 0.4 + c * 0.28);
     this.boostPuff = c; // signal a charge-coloured boost cloud (see main loop)
-    this.driftCharge = 0;
   }
 
   get boosting() {
