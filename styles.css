@@ -20,7 +20,11 @@ body {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
+  /* Branded bezel: a warm-dark tone (echoing the gold UI) so any device
+     safe-area strip the scene can't fill reads as an intentional frame rather
+     than a dead black bar. Solid so it looks the same on whichever edge the
+     strip lands. */
+  background: #241c0c;
   font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   color: #fff;
   overscroll-behavior: none;
