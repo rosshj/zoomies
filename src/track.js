@@ -1,6 +1,60 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { biomeBarrierStyle, biomeRoadStyle } from "./scenery.js";
+import { rand } from "./rng.js";
+
+const TAU = Math.PI * 2;
+const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0.5));
+
+// The original hand-authored circuit, kept as the "classic" preset. Triples are
+// [x, z, y] (y is elevation), mapped to Vector3(x, y, z) at build time.
+const CLASSIC_POINTS = [
+  [0, -430, 0], [120, -400, 4], [210, -330, 14], [180, -250, 22], [250, -160, 30],
+  [310, -40, 38], [270, 80, 32], [320, 200, 22], [280, 330, 12], [180, 420, 5],
+  [80, 400, 6], [55, 300, 12], [-45, 300, 14], [-70, 400, 8], [-170, 430, 4],
+  [-280, 350, 28], [-310, 200, 58], [-250, 90, 78], [-300, -40, 84], [-250, -160, 58],
+  [-280, -290, 28], [-180, -370, 8], [-70, -400, 3],
+];
+
+// Procedurally generate a closed loop of control points from a few knobs. Built
+// in POLAR coordinates (one radius per monotonically-increasing angle), which
+// guarantees the loop never crosses itself — the worst pitfall in track gen.
+//   size:      overall scale of the circuit (length)
+//   curviness: how wiggly / how many corners (radius variance + point count)
+//   hilliness: elevation amplitude (flat -> mountainous)
+// Randomness (the loop's specific "personality") comes from the seeded `rand()`
+// stream, so the same world seed reproduces the same track.
+function generateLoopPoints(cfg) {
+  const size = clamp01(cfg.size);
+  const curviness = clamp01(cfg.curviness);
+  const hilliness = clamp01(cfg.hilliness);
+
+  const N = 18 + Math.round(curviness * 10); // 18..28 control points
+  const baseR = 260 + size * 240; // ~260..500 world units
+  const radVar = 0.1 + curviness * 0.34; // ±10%..±44% radius wobble (stays < 1 -> simple loop)
+  const hillAmp = hilliness * 95;
+
+  // Seeded harmonic phases + weights so each seed gets a distinct shape.
+  const rp = [rand() * TAU, rand() * TAU, rand() * TAU];
+  const hp = [rand() * TAU, rand() * TAU, rand() * TAU];
+  const rw = [1, 0.5 + rand() * 0.4, 0.25 + rand() * 0.35];
+  const hw = [1, 0.5 + rand() * 0.5, 0.3 + rand() * 0.4];
+  const rwSum = rw[0] + rw[1] + rw[2];
+  const hwSum = hw[0] + hw[1] + hw[2];
+
+  const pts = [];
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * TAU;
+    const rWob =
+      (rw[0] * Math.sin(a + rp[0]) + rw[1] * Math.sin(2 * a + rp[1]) + rw[2] * Math.sin(3 * a + rp[2])) / rwSum;
+    const r = baseR * (1 + radVar * rWob);
+    const hWob =
+      (hw[0] * Math.sin(a + hp[0]) + hw[1] * Math.sin(2 * a + hp[1]) + hw[2] * Math.sin(3 * a + hp[2])) / hwSum;
+    const y = Math.max(0, hillAmp * (0.5 + 0.5 * hWob)); // 0..hillAmp, hills sit above ground
+    pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+  }
+  return pts;
+}
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
 // a grazing-angle (Fresnel) sky tint and a faint moving glint so it reads as
@@ -116,39 +170,18 @@ function noiseTexture() {
 // barrier walls, start/finish line and helpers for projecting a world position
 // onto the track (lap timing, AI, containment, ground height).
 export class Track {
-  constructor() {
-    this.width = 30;
+  // `config` (optional): { mode:"custom", size, curviness, hilliness, width }.
+  // Without it (or mode !== "custom") the hand-authored classic circuit is used.
+  constructor(config = null) {
+    this.width = config && config.width ? config.width : 30;
     this.halfWidth = this.width / 2;
 
-    // Control points (x, z, y) — a long, tall, serpentine circuit with two
-    // upper lobes and a winding lower half (see the design sketch). It runs
-    // counter-clockwise, so it favours left-hand turns, and rolls up and down
-    // big hills (two high shoulders on the left and right).
-    const pts = [
-      [0, -430, 0],
-      [120, -400, 4],
-      [210, -330, 14],
-      [180, -250, 22],
-      [250, -160, 30],
-      [310, -40, 38],
-      [270, 80, 32],
-      [320, 200, 22],
-      [280, 330, 12],
-      [180, 420, 5],
-      [80, 400, 6],
-      [55, 300, 12],
-      [-45, 300, 14],
-      [-70, 400, 8],
-      [-170, 430, 4],
-      [-280, 350, 28],
-      [-310, 200, 58],
-      [-250, 90, 78],
-      [-300, -40, 84],
-      [-250, -160, 58],
-      [-280, -290, 28],
-      [-180, -370, 8],
-      [-70, -400, 3],
-    ].map(([x, z, y]) => new THREE.Vector3(x, y, z));
+    // Control points (x, y, z). Either the procedural loop from the knobs, or
+    // the classic hand-authored serpentine circuit.
+    const pts =
+      config && config.mode === "custom"
+        ? generateLoopPoints(config)
+        : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
     this.length = this.curve.getLength();

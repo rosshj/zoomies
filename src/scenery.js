@@ -77,9 +77,25 @@ function roundedColumn(w, h, d, r) {
   return geo;
 }
 
+// The biomes in play, as angular wedges around the origin. Defaults to all of
+// them; setBiomeLayout() lets a custom track pick a subset (e.g. desert + alpine,
+// or a single biome for the whole map).
+let _activeBiomes = BIOMES;
+
+// Choose which biomes appear (by name). Empty/unknown -> all biomes. Call BEFORE
+// building the track + world so the road styling and scatter agree.
+export function setBiomeLayout(names) {
+  if (Array.isArray(names) && names.length) {
+    const picked = BIOMES.filter((b) => names.includes(b.name));
+    _activeBiomes = picked.length ? picked : BIOMES;
+  } else {
+    _activeBiomes = BIOMES;
+  }
+}
+
 function biomeAt(x, z) {
   const u = (Math.atan2(z, x) / (Math.PI * 2) + 1) % 1;
-  return BIOMES[Math.floor(u * BIOMES.length) % BIOMES.length];
+  return _activeBiomes[Math.floor(u * _activeBiomes.length) % _activeBiomes.length];
 }
 
 // Roadside-barrier colours for the biome at a position (used by the track).

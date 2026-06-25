@@ -90,7 +90,8 @@ body {
 #menu,
 #howto,
 #settings,
-#install-help {
+#install-help,
+#track-panel {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
@@ -144,6 +145,50 @@ body {
 .menu-main .hint {
   margin-top: 8px;
   font-size: 10px;
+}
+
+/* Track generator panel */
+#track-knobs {
+  margin: 14px 0 6px;
+}
+.track-row {
+  display: grid;
+  grid-template-columns: 60px 1fr;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  text-align: left;
+}
+.biome-pick {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 7px;
+  margin: 12px 0 6px;
+}
+.biome-chip {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+  padding: 7px 12px;
+  margin: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+}
+.biome-chip:active {
+  transform: none;
+  box-shadow: none;
+}
+.biome-chip.on {
+  background: linear-gradient(180deg, #ffd24d, var(--accent));
+  color: #1a1206;
+  border-color: transparent;
+}
+#track-mode {
+  margin: 0 auto;
 }
 
 /* Multiplayer join (lobby code) */

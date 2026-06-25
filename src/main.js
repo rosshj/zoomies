@@ -11,7 +11,7 @@ import { Kart } from "./kart.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeRoadStyle } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeRoadStyle, setBiomeLayout } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed } from "./rng.js";
 import { Net } from "./net/net.js";
@@ -27,10 +27,37 @@ import { audio } from "./audio.js";
 // let an installed PWA capture that seed as its launch URL and then reuse it
 // forever (you'd be stuck on one old code/world). Multiplayer sets ?seed itself
 // when hosting or joining, so sharing still works; solo just mints a fresh code.
+// Track recipe (procedural generation knobs), persisted locally. mode "classic"
+// = the hand-authored circuit; mode "custom" = a generated loop from the knobs,
+// with its own stored seed so it reproduces across reloads until you reroll.
+const TRACK_KEY = "zoomies-track-v1";
+function loadTrackConfig() {
+  try {
+    const c = JSON.parse(localStorage.getItem(TRACK_KEY));
+    if (c && typeof c === "object" && c.mode) return c;
+  } catch {
+    /* ignore */
+  }
+  return { mode: "classic" };
+}
+function saveTrackConfig(c) {
+  try {
+    localStorage.setItem(TRACK_KEY, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+}
+const trackConfig = loadTrackConfig();
+
 const _seedParam = new URLSearchParams(location.search).get("seed");
-const WORLD_SEED = (_seedParam || randomSeed()).toUpperCase();
+const WORLD_SEED = (
+  (trackConfig.mode === "custom" && trackConfig.seed) ||
+  _seedParam ||
+  randomSeed()
+).toUpperCase();
 setSeed(WORLD_SEED);
-console.log(`[zoomies] world seed: ${getSeed()}`);
+if (trackConfig.mode === "custom") setBiomeLayout(trackConfig.biomes);
+console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 
 // Background music. One track drives both the menu and the race (it loops).
 audio.registerMusic("menu", "./assets/music/zoomies.mp3");
@@ -194,7 +221,7 @@ const fxPass = new ShaderPass({
 });
 composer.addPass(fxPass);
 
-const track = new Track();
+const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
 track.totalLaps = TOTAL_LAPS;
 track.raceTime = 0;
 scene.add(track.group);
@@ -1127,6 +1154,88 @@ if (_isTouch && !_isStandalone) {
   openSubScreen(installHelp);
 }
 refreshInstallUI();
+
+// --- Track generator panel ---
+// Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
+// from the new track (rebuilding scenery + track in place is a later upgrade).
+const trackPanel = document.getElementById("track-panel");
+const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert"];
+let _trackDraft = null;
+function syncTrackPanel() {
+  if (!_trackDraft) return;
+  const custom = _trackDraft.mode === "custom";
+  document.getElementById("track-classic")?.classList.toggle("is-active", !custom);
+  document.getElementById("track-custom")?.classList.toggle("is-active", custom);
+  const knobs = document.getElementById("track-knobs");
+  if (knobs) knobs.style.display = custom ? "" : "none";
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el) el.value = Math.round(v * 100);
+  };
+  set("track-curvy", _trackDraft.curviness);
+  set("track-hilly", _trackDraft.hilliness);
+  set("track-size", _trackDraft.size);
+  trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", _trackDraft.biomes.includes(chip.dataset.biome));
+  });
+}
+function openTrackPanel() {
+  _trackDraft = {
+    mode: trackConfig.mode || "classic",
+    size: trackConfig.size ?? 0.5,
+    curviness: trackConfig.curviness ?? 0.5,
+    hilliness: trackConfig.hilliness ?? 0.5,
+    biomes:
+      Array.isArray(trackConfig.biomes) && trackConfig.biomes.length
+        ? [...trackConfig.biomes]
+        : [...ALL_BIOMES],
+    seed: trackConfig.seed || randomSeed(),
+  };
+  syncTrackPanel();
+  openSubScreen(trackPanel);
+}
+document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
+document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
+document.getElementById("track-classic")?.addEventListener("click", () => {
+  _trackDraft.mode = "classic";
+  syncTrackPanel();
+});
+document.getElementById("track-custom")?.addEventListener("click", () => {
+  _trackDraft.mode = "custom";
+  syncTrackPanel();
+});
+document.getElementById("track-curvy")?.addEventListener("input", (e) => {
+  _trackDraft.curviness = e.target.value / 100;
+});
+document.getElementById("track-hilly")?.addEventListener("input", (e) => {
+  _trackDraft.hilliness = e.target.value / 100;
+});
+document.getElementById("track-size")?.addEventListener("input", (e) => {
+  _trackDraft.size = e.target.value / 100;
+});
+document.getElementById("track-new")?.addEventListener("click", (e) => {
+  _trackDraft.seed = randomSeed();
+  const btn = e.currentTarget;
+  btn.textContent = "🎲 New shape ✓";
+  setTimeout(() => (btn.textContent = "🎲 Reroll shape"), 1100);
+});
+trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const b = chip.dataset.biome;
+    const i = _trackDraft.biomes.indexOf(b);
+    if (i >= 0) {
+      if (_trackDraft.biomes.length > 1) _trackDraft.biomes.splice(i, 1); // keep at least one
+    } else {
+      _trackDraft.biomes.push(b);
+    }
+    syncTrackPanel();
+  });
+});
+document.getElementById("track-apply")?.addEventListener("click", () => {
+  if (_trackDraft.mode === "custom" && !_trackDraft.seed) _trackDraft.seed = randomSeed();
+  saveTrackConfig(_trackDraft);
+  location.reload(); // rebuild the world from the new recipe
+});
 
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
