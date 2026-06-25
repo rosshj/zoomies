@@ -55,6 +55,17 @@ body {
 }
 
 /* ===== Overlays ===== */
+/* Menu cinematic cross-fade: a black layer above the canvas but below the menu
+   cards (z 50). Opacity is driven each frame to dip between biome shots. */
+#menu-fade {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  background: #05070d;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .overlay {
   position: absolute;
   inset: 0;

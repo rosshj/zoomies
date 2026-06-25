@@ -11,7 +11,7 @@ import { Kart } from "./kart.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeRoadStyle } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed } from "./rng.js";
 import { Net } from "./net/net.js";
@@ -1256,6 +1256,7 @@ function prepareRace() {
   _fwNext = 0;
   _finishCamAngle = 0;
   camPos.set(0, 0, 0); // force the countdown camera to snap from the menu orbit
+  if (menuFadeEl) menuFadeEl.style.opacity = 0; // clear any in-progress menu cross-fade
   // Clear any finish/progress state carried over from a previous race on the
   // remote ghosts (they persist across races; only local karts are rebuilt).
   if (MP.enabled) {
@@ -1383,15 +1384,61 @@ function updateFireworks(dt) {
   }
 }
 
-// Slow cinematic orbit over a scenic spot on the track, behind the glassy menu.
-const _menuAnchor = new THREE.Vector3();
-let _menuAnchorReady = false;
-const _menuLook = new THREE.Vector3();
-function updateMenuCamera(timeSec) {
-  if (!_menuAnchorReady) {
-    _menuAnchor.copy(track.getPointAt(0.07)); // a point just past the start line
-    _menuAnchorReady = true;
+// Cinematic menu background: slowly orbit a scenic spot, then cross-fade (dip to
+// black) to a vantage in a DIFFERENT biome, touring the whole map behind the
+// menu. One vantage per distinct biome so each shot looks different.
+const _menuShots = (() => {
+  const seen = new Set();
+  const shots = [];
+  for (let i = 0; i < 60; i++) {
+    const t = i / 60;
+    const p = track.getPointAt(t);
+    const kind = biomeRoadStyle(p.x, p.z).kind;
+    if (!seen.has(kind)) {
+      seen.add(kind);
+      shots.push(t);
+    }
   }
+  if (shots.length < 2) shots.push(0.25, 0.6, 0.85); // fallback variety
+  return shots;
+})();
+const SHOT_HOLD = 6.5; // seconds orbiting one biome
+const SHOT_FADE = 1.4; // seconds for the dip-to-black cross-fade
+const _menuAnchor = new THREE.Vector3();
+const _menuLook = new THREE.Vector3();
+const menuFadeEl = document.getElementById("menu-fade");
+let _menuShot = 0;
+let _menuShotT = 0; // time spent on the current shot
+let _menuSwitched = false; // anchor already advanced this transition?
+let _menuPrevTime = -1;
+function _setMenuAnchor(i) {
+  _menuAnchor.copy(track.getPointAt(_menuShots[i % _menuShots.length]));
+}
+function updateMenuCamera(timeSec) {
+  if (_menuPrevTime < 0) _setMenuAnchor(_menuShot);
+  let dt = timeSec - _menuPrevTime;
+  _menuPrevTime = timeSec;
+  if (dt < 0 || dt > 0.5) dt = 0; // first frame / tab was backgrounded
+  _menuShotT += dt;
+
+  // Cross-fade between shots: hold, then dip to black, swap biome at the darkest
+  // point, fade back up.
+  let fade = 0;
+  if (_menuShotT >= SHOT_HOLD) {
+    const u = Math.min(1, (_menuShotT - SHOT_HOLD) / SHOT_FADE);
+    fade = Math.sin(u * Math.PI); // 0 -> 1 -> 0
+    if (u >= 0.5 && !_menuSwitched) {
+      _menuShot = (_menuShot + 1) % _menuShots.length;
+      _setMenuAnchor(_menuShot);
+      _menuSwitched = true;
+    }
+    if (u >= 1) {
+      _menuShotT = 0;
+      _menuSwitched = false;
+    }
+  }
+  if (menuFadeEl) menuFadeEl.style.opacity = fade.toFixed(3);
+
   const ang = timeSec * 0.07; // gentle drift
   camera.position.set(
     _menuAnchor.x + Math.cos(ang) * 34,
