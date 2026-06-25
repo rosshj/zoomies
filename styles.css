@@ -128,6 +128,39 @@ body {
   font-size: 10px;
 }
 
+/* Solo / Multiplayer segmented toggle — two pills in one track; the selected
+   side is filled so it's obvious which mode is active. */
+.seg-toggle {
+  display: inline-flex;
+  margin-top: 10px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.seg-btn {
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  font-weight: bold;
+  padding: 7px 16px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  box-shadow: none;
+  margin: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.seg-btn:active {
+  transform: none;
+  box-shadow: none;
+}
+.seg-btn.is-active {
+  background: linear-gradient(180deg, #ffd24d, var(--accent));
+  color: #1a1206;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
 .menu-main h1 {
   /* Stacked drop-shadows give the title a chunky 2.5D extrude. */
   text-shadow: 0 2px 0 var(--accent-2), 0 4px 0 #b93310, 0 6px 0 rgba(120, 30, 8, 0.6),

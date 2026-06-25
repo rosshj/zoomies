@@ -113,7 +113,10 @@
       <p class="tagline">Cat Kart Racing</p>
       <button id="start-btn">START RACE</button>
       <button id="time-trial-btn">⏱ TIME TRIAL</button>
-      <button id="mode-btn" class="secondary small hidden">🎮 Play Multiplayer</button>
+      <div id="mode-toggle" class="seg-toggle hidden">
+        <button id="mode-solo" class="seg-btn is-active">👤 Solo</button>
+        <button id="mode-mp" class="seg-btn">🎮 Multiplayer</button>
+      </div>
       <div class="menu-options">
         <button id="laps-btn" class="secondary small">Laps: 3</button>
         <button id="howto-btn" class="secondary small">❓ How to Play</button>
@@ -177,7 +180,7 @@
         <div class="setting-row">
           <span class="setting-label">Music</span>
           <button id="set-music-toggle" class="secondary small toggle">On</button>
-          <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="40"
+          <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="25"
                  aria-label="Music volume" />
         </div>
         <div class="setting-row">

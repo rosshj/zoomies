@@ -1117,10 +1117,12 @@ if (timeTrialBtn) {
 // connects and drops you straight into the lobby; leaving tears the connection
 // down and returns to the menu. The ?mp flag is kept in sync via replaceState so
 // the invite link stays shareable and a refresh lands in the same mode.
-const modeBtn = document.getElementById("mode-btn");
+const modeToggle = document.getElementById("mode-toggle");
+const modeSoloBtn = document.getElementById("mode-solo");
+const modeMpBtn = document.getElementById("mode-mp");
 function updateModeBtn() {
-  if (!modeBtn) return;
-  modeBtn.textContent = MP.enabled ? "👤 Play Solo" : "🎮 Play Multiplayer";
+  modeSoloBtn?.classList.toggle("is-active", !MP.enabled);
+  modeMpBtn?.classList.toggle("is-active", MP.enabled);
 }
 function enterMultiplayer() {
   audio.unlock();
@@ -1156,10 +1158,15 @@ function exitMultiplayer() {
   updateModeBtn();
   toMenu();
 }
-if (modeBtn && resolveAblyKey()) {
-  modeBtn.classList.remove("hidden");
+if (modeToggle && resolveAblyKey()) {
+  modeToggle.classList.remove("hidden");
   updateModeBtn();
-  modeBtn.addEventListener("click", () => (MP.enabled ? exitMultiplayer() : enterMultiplayer()));
+  modeSoloBtn?.addEventListener("click", () => {
+    if (MP.enabled) exitMultiplayer();
+  });
+  modeMpBtn?.addEventListener("click", () => {
+    if (!MP.enabled) enterMultiplayer();
+  });
 }
 
 // Lobby: copy the invite link (already carries ?seed=…&mp=1) to the clipboard.

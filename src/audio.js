@@ -11,7 +11,7 @@
 const SETTINGS_KEY = "zoomies-audio-v2";
 
 // Default mix: SFX sit loud and clear, music well underneath them.
-const DEFAULT_MUSIC_VOL = 0.4;
+const DEFAULT_MUSIC_VOL = 0.25;
 const DEFAULT_SFX_VOL = 1.0;
 
 // Stereo pan + distance falloff for a sound emitted at a world position, heard
