@@ -228,11 +228,14 @@ class AudioEngine {
   //  SOUND EFFECTS
   // ===========================================================================
 
-  // The boost: a punchy POP (pitched transient) followed by a rising WHOOSH
-  // (noise swept up through a bandpass). Satisfying and turbo-y.
+  // The boost: a tire CHIRP (peel-out) + a punchy POP (pitched transient) + a
+  // rising WHOOSH (noise swept up). Layered like a real turbo kick.
   toot(pos = null) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+
+    // CHIRP — tires breaking loose as you launch.
+    this._screech(pos, 0.16, 0.13);
 
     // POP — a quick pitched thump with a fast decay.
     const o = this._osc("triangle", 440);
@@ -265,10 +268,11 @@ class AudioEngine {
     }
   }
 
-  // Drift-release mini-turbo: a bright rising whoosh (filtered noise sweep).
+  // Drift-release mini-turbo: a tire chirp + a bright rising whoosh.
   boost(pos = null) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    this._screech(pos, 0.14, 0.11); // chirp as the drift releases
     const src = this._noiseSource();
     const bp = this.ctx.createBiquadFilter();
     bp.type = "bandpass";
@@ -314,28 +318,37 @@ class AudioEngine {
     }
   }
 
-  // Getting spun out by a hairball: a comedic "bonk" wobble down.
+  // Getting spun out: a comedic "bonk" that wobbles down dizzily. (The spinning
+  // tires screech is layered on at the call site via skidBurst.)
   hit(pos = null) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
-    const o = this._osc("sine", 420);
-    o.frequency.setValueAtTime(420, t);
-    o.frequency.exponentialRampToValueAtTime(70, t + 0.3);
+    const o = this._osc("sine", 440);
+    o.frequency.setValueAtTime(440, t);
+    o.frequency.exponentialRampToValueAtTime(70, t + 0.4);
     const o2 = this._osc("square", 210);
-    o2.frequency.exponentialRampToValueAtTime(60, t + 0.3);
+    o2.frequency.exponentialRampToValueAtTime(58, t + 0.4);
+    // Dizzy vibrato so it reads as a comedic spin, not just a thud.
+    const wob = this._osc("sine", 12);
+    const wobG = this.ctx.createGain();
+    wobG.gain.value = 45;
+    wob.connect(wobG);
+    wobG.connect(o.frequency);
     const mix = this.ctx.createGain();
     mix.gain.value = 0.5;
     o.connect(mix);
     o2.connect(mix);
-    const g = this._route(mix, pos, 0.4);
+    const g = this._route(mix, pos, 0.42);
     if (!g) return;
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime(g._peak, t + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42);
     o.start(t);
     o2.start(t);
-    o.stop(t + 0.36);
-    o2.stop(t + 0.36);
+    wob.start(t);
+    o.stop(t + 0.44);
+    o2.stop(t + 0.44);
+    wob.stop(t + 0.44);
   }
 
   // Kart-to-kart bump: a soft low thud. Debounced so sustained contact doesn't
@@ -576,6 +589,47 @@ class AudioEngine {
       const t = this.ctx.currentTime;
       this._skid.g.gain.setTargetAtTime(on ? 0.1 * intensity : 0.0001, t, 0.05);
     }
+  }
+
+  // A one-shot tire screech voice: friction hiss + a wobbling resonant squeal,
+  // enveloped over `dur`. Shared by the boost chirp, spin-out skid, etc.
+  _screech(pos, dur, peak) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const src = this._noiseSource();
+    const hiss = this.ctx.createBiquadFilter();
+    hiss.type = "bandpass";
+    hiss.frequency.value = 2500;
+    hiss.Q.value = 1.1;
+    const squeal = this.ctx.createBiquadFilter();
+    squeal.type = "bandpass";
+    squeal.frequency.value = 1700;
+    squeal.Q.value = 8;
+    const lfo = this._osc("sine", 9);
+    const lfoG = this.ctx.createGain();
+    lfoG.gain.value = 280;
+    lfo.connect(lfoG);
+    lfoG.connect(squeal.frequency);
+    const mix = this.ctx.createGain();
+    mix.gain.value = 1;
+    src.connect(hiss);
+    hiss.connect(mix);
+    src.connect(squeal);
+    squeal.connect(mix);
+    const g = this._route(mix, pos, peak);
+    if (!g) return;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(g._peak, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.start(t);
+    lfo.start(t);
+    src.stop(t + dur + 0.05);
+    lfo.stop(t + dur + 0.05);
+  }
+
+  // A one-shot tire screech — for spin-outs, hard landings, peel-outs, etc.
+  skidBurst(pos = null, dur = 0.5, intensity = 1) {
+    this._screech(pos, dur, 0.17 * intensity);
   }
 
   // ===========================================================================

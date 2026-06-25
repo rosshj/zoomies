@@ -877,6 +877,7 @@ const flashEl = document.getElementById("flash");
 function triggerHit() {
   shakeMag = 1.6;
   audio.hit();
+  audio.skidBurst(null, 0.9); // tires screech as you slew round
   if (flashEl) {
     flashEl.classList.remove("on");
     void flashEl.offsetWidth; // restart the CSS flash
@@ -1884,7 +1885,12 @@ function loop(now) {
       Math.cos(player.heading)
     );
     audio.setEngine(Math.min(1, Math.abs(player.speed) / player.maxSpeed), player.boosting);
-    audio.setSkid(player.drifting && Math.abs(player.speed) > 8);
+    // Tires screech while drifting (full) and chatter through hard turns at speed
+    // (lighter), so cornering has grip feedback even without a drift.
+    const _sp = Math.abs(player.speed);
+    const _drift = player.drifting && _sp > 8;
+    const _hardTurn = !player.drifting && Math.abs(player.steerInput) > 0.62 && _sp > 24;
+    audio.setSkid(_drift || _hardTurn, _drift ? 1 : 0.45);
 
     // Rainbow boost trail + drift sparks/skids for the player.
     if (player.boosting) effects.trickle(player);
@@ -1939,7 +1945,10 @@ function loop(now) {
       }
       if (k.spinTimer > 0) effects.skid(k);
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
-      if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) audio.hit(k.position);
+      if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
+        audio.hit(k.position);
+        audio.skidBurst(k.position, 0.8);
+      }
       k._prevSpin = k.spinTimer;
       if (k.boostPuff >= 0) {
         effects.tootBurst(k, k.boostPuff);
