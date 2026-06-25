@@ -1128,16 +1128,10 @@ function enterMultiplayer() {
   u.searchParams.set("mp", "1");
   u.searchParams.set("seed", WORLD_SEED);
   history.replaceState(null, "", u);
-  initMultiplayer(); // connects (async); the lobby fills in on "open"/"peer"
-  // Same gesture-only setup beginRace does, so the network-triggered start needs
-  // no extra tap on iOS.
-  enterFullscreenLandscape();
-  input.enableMotion();
-  input.calibrate();
-  input.jumpHeld = false;
-  input.shielding = false;
+  initMultiplayer(); // connects (async) in the background while we stay on the menu
   updateModeBtn();
-  enterLobby();
+  // Stay on the main menu — START then takes you to the lobby (beginRace handles
+  // the fullscreen/motion gesture setup there, as in solo).
 }
 function exitMultiplayer() {
   if (MP.net) {
