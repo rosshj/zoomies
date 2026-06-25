@@ -101,7 +101,7 @@
       <h1>⏸ Paused</h1>
       <button id="resume-btn">RESUME</button>
       <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
-      <button id="sound-btn-pause" class="secondary small">🔊 Sound: On</button>
+      <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
       <button id="menu-btn" class="secondary">MAIN MENU</button>
     </div>
   </div>
@@ -116,8 +116,7 @@
         <button id="time-trial-btn">⏱ TIME TRIAL</button>
         <button id="mode-btn" class="secondary small hidden">🎮 Play Multiplayer</button>
         <button id="laps-btn" class="secondary small">Laps: 3</button>
-        <button id="quality-btn" class="secondary small">Graphics: High</button>
-        <button id="sound-btn" class="secondary small">🔊 Sound: On</button>
+        <button id="open-settings" class="secondary small">⚙ Settings</button>
         <p class="hint">📲 Add to Home Screen for fullscreen landscape.</p>
         <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
       </div>
@@ -157,6 +156,32 @@
       <ol id="results-list"></ol>
       <button id="restart-btn">RACE AGAIN</button>
       <button id="results-menu-btn" class="secondary">Main Menu</button>
+    </div>
+  </div>
+
+  <!-- ===== Settings (graphics + sound) ===== -->
+  <div id="settings" class="overlay hidden">
+    <div class="menu-card">
+      <h1>⚙ Settings</h1>
+      <div class="settings-list">
+        <div class="setting-row">
+          <span class="setting-label">Graphics</span>
+          <button id="set-quality" class="secondary small">High</button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Music</span>
+          <button id="set-music-toggle" class="secondary small toggle">On</button>
+          <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="40"
+                 aria-label="Music volume" />
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Sound FX</span>
+          <button id="set-sfx-toggle" class="secondary small toggle">On</button>
+          <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
+                 aria-label="Sound effects volume" />
+        </div>
+      </div>
+      <button id="settings-back" class="secondary">← Back</button>
     </div>
   </div>
 

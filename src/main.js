@@ -899,14 +899,14 @@ function updateDRS(rawMs, dt) {
     _drsCooldown = 1.4;
   }
 }
-const qualityBtn = document.getElementById("quality-btn");
+const qualityBtn = document.getElementById("set-quality");
 function applyQuality(q) {
   quality = q;
   const high = q === "high";
   bloomPass.enabled = true; // marquee glow on both tiers
   if (world.grass) world.grass.visible = high;
   renderScale = 1; // reset DRS on a manual quality change
-  if (qualityBtn) qualityBtn.textContent = `Graphics: ${high ? "High" : "Low"}`;
+  if (qualityBtn) qualityBtn.textContent = high ? "High" : "Low";
   layoutStage(); // applies the resolution
 }
 if (qualityBtn)
@@ -984,21 +984,66 @@ document.getElementById("menu-btn").addEventListener("click", toMenu);
 document.getElementById("lobby-back")?.addEventListener("click", toMenu);
 document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
 
-// --- Sound on/off (persisted; mirrored on the menu + pause buttons) ---
-const soundBtns = [document.getElementById("sound-btn"), document.getElementById("sound-btn-pause")];
-function applySoundBtn() {
-  const label = audio.muted ? "🔇 Sound: Off" : "🔊 Sound: On";
-  for (const b of soundBtns) if (b) b.textContent = label;
+// --- Settings screen (graphics + sound), opened from the menu and pause ---
+const settingsOverlay = document.getElementById("settings");
+const musicToggle = document.getElementById("set-music-toggle");
+const musicVol = document.getElementById("set-music-vol");
+const sfxToggle = document.getElementById("set-sfx-toggle");
+const sfxVol = document.getElementById("set-sfx-vol");
+
+// Reflect the current audio settings onto the controls.
+function refreshAudioUI() {
+  if (musicToggle) {
+    musicToggle.textContent = audio.musicOn ? "On" : "Off";
+    musicToggle.classList.toggle("off", !audio.musicOn);
+  }
+  if (sfxToggle) {
+    sfxToggle.textContent = audio.sfxOn ? "On" : "Off";
+    sfxToggle.classList.toggle("off", !audio.sfxOn);
+  }
+  if (musicVol) {
+    musicVol.value = Math.round(audio.musicVol * 100);
+    musicVol.disabled = !audio.musicOn;
+  }
+  if (sfxVol) {
+    sfxVol.value = Math.round(audio.sfxVol * 100);
+    sfxVol.disabled = !audio.sfxOn;
+  }
 }
-for (const b of soundBtns) {
-  if (!b) continue;
-  b.addEventListener("click", () => {
-    audio.unlock(); // first tap may also be the gesture that unlocks audio
-    audio.toggleMute();
-    applySoundBtn();
-  });
+
+function openSettings() {
+  audio.unlock(); // the opening tap is a valid gesture to start audio
+  refreshAudioUI();
+  settingsOverlay.classList.remove("hidden"); // stacks over the menu/pause card
 }
-applySoundBtn();
+function closeSettings() {
+  settingsOverlay.classList.add("hidden");
+}
+document.getElementById("open-settings")?.addEventListener("click", openSettings);
+document.getElementById("open-settings-pause")?.addEventListener("click", openSettings);
+document.getElementById("settings-back")?.addEventListener("click", closeSettings);
+
+musicToggle?.addEventListener("click", () => {
+  audio.unlock();
+  audio.setMusicOn(!audio.musicOn);
+  refreshAudioUI();
+});
+sfxToggle?.addEventListener("click", () => {
+  audio.unlock();
+  audio.setSfxOn(!audio.sfxOn);
+  refreshAudioUI();
+});
+musicVol?.addEventListener("input", () => {
+  audio.unlock();
+  audio.setMusicVolume(musicVol.value / 100);
+});
+sfxVol?.addEventListener("input", () => {
+  audio.unlock();
+  audio.setSfxVolume(sfxVol.value / 100);
+});
+// Play a sample tick when the SFX slider is released so the new level is audible.
+sfxVol?.addEventListener("change", () => audio.uiClick());
+refreshAudioUI();
 
 // Tilt indicator (hidden by default; toggle in the pause menu).
 const steerBar = document.getElementById("steer-bar");

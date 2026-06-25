@@ -8,7 +8,11 @@
 // unlock() runs inside a click/tap. setListener() is fed the player's pose each
 // frame so rival-kart sounds can be distance-attenuated and panned.
 
-const MUTE_KEY = "zoomies-muted-v1";
+const SETTINGS_KEY = "zoomies-audio-v2";
+
+// Default mix: SFX sit loud and clear, music well underneath them.
+const DEFAULT_MUSIC_VOL = 0.4;
+const DEFAULT_SFX_VOL = 1.0;
 
 // Stereo pan + distance falloff for a sound emitted at a world position, heard
 // from the listener pose. Beyond MAX_DIST it's inaudible; pan follows the
@@ -21,7 +25,12 @@ class AudioEngine {
     this.master = null; // everything routes here
     this.sfxGain = null; // one-shot + engine SFX bus
     this.musicGain = null; // background music bus
-    this.muted = this._loadMuted();
+    // Independent music + SFX controls (on/off and 0..1 volume), persisted.
+    const s = this._loadSettings();
+    this.musicOn = s.musicOn;
+    this.sfxOn = s.sfxOn;
+    this.musicVol = s.musicVol;
+    this.sfxVol = s.sfxVol;
     this._noise = null; // shared white-noise buffer
 
     // Engine loop nodes (created on first race).
@@ -43,11 +52,37 @@ class AudioEngine {
     this._lastBump = 0;
   }
 
-  _loadMuted() {
+  _loadSettings() {
+    const def = { musicOn: true, sfxOn: true, musicVol: DEFAULT_MUSIC_VOL, sfxVol: DEFAULT_SFX_VOL };
     try {
-      return localStorage.getItem(MUTE_KEY) === "1";
+      const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY));
+      if (raw && typeof raw === "object") {
+        return {
+          musicOn: raw.musicOn !== false,
+          sfxOn: raw.sfxOn !== false,
+          musicVol: typeof raw.musicVol === "number" ? raw.musicVol : DEFAULT_MUSIC_VOL,
+          sfxVol: typeof raw.sfxVol === "number" ? raw.sfxVol : DEFAULT_SFX_VOL,
+        };
+      }
     } catch {
-      return false;
+      /* ignore */
+    }
+    return def;
+  }
+
+  _saveSettings() {
+    try {
+      localStorage.setItem(
+        SETTINGS_KEY,
+        JSON.stringify({
+          musicOn: this.musicOn,
+          sfxOn: this.sfxOn,
+          musicVol: this.musicVol,
+          sfxVol: this.sfxVol,
+        })
+      );
+    } catch {
+      /* ignore */
     }
   }
 
@@ -59,13 +94,13 @@ class AudioEngine {
       if (!AC) return;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 1;
+      this.master.gain.value = 1;
       this.master.connect(this.ctx.destination);
       this.sfxGain = this.ctx.createGain();
-      this.sfxGain.gain.value = 0.9;
+      this.sfxGain.gain.value = this.sfxOn ? this.sfxVol : 0;
       this.sfxGain.connect(this.master);
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = 0.55;
+      this.musicGain.gain.value = this.musicOn ? this.musicVol : 0;
       this.musicGain.connect(this.master);
 
       // One reusable second of white noise for skids, splashes, impacts, etc.
@@ -81,29 +116,50 @@ class AudioEngine {
     return !!this.ctx;
   }
 
-  toggleMute() {
-    this.setMuted(!this.muted);
-    return this.muted;
-  }
-
-  setMuted(m) {
-    this.muted = m;
-    try {
-      localStorage.setItem(MUTE_KEY, m ? "1" : "0");
-    } catch {
-      /* ignore */
-    }
-    if (this.master) {
-      const t = this.ctx.currentTime;
-      this.master.gain.cancelScheduledValues(t);
-      this.master.gain.setTargetAtTime(m ? 0 : 1, t, 0.05);
-    }
-    // Pause/resume the music element so a muted track doesn't keep streaming.
+  // --- Music controls ---
+  setMusicOn(on) {
+    this.musicOn = on;
+    this._applyMusicGain();
+    // Pause/resume the element so an off track doesn't keep streaming.
     const cur = this._curTrack && this._tracks[this._curTrack];
     if (cur) {
-      if (m) cur.el.pause();
-      else cur.el.play().catch(() => {});
+      if (on) cur.el.play().catch(() => {});
+      else cur.el.pause();
     }
+    this._saveSettings();
+  }
+
+  setMusicVolume(v) {
+    this.musicVol = Math.max(0, Math.min(1, v));
+    this._applyMusicGain();
+    this._saveSettings();
+  }
+
+  _applyMusicGain() {
+    if (!this.musicGain) return;
+    const t = this.ctx.currentTime;
+    this.musicGain.gain.cancelScheduledValues(t);
+    this.musicGain.gain.setTargetAtTime(this.musicOn ? this.musicVol : 0, t, 0.04);
+  }
+
+  // --- SFX controls ---
+  setSfxOn(on) {
+    this.sfxOn = on;
+    this._applySfxGain();
+    this._saveSettings();
+  }
+
+  setSfxVolume(v) {
+    this.sfxVol = Math.max(0, Math.min(1, v));
+    this._applySfxGain();
+    this._saveSettings();
+  }
+
+  _applySfxGain() {
+    if (!this.sfxGain) return;
+    const t = this.ctx.currentTime;
+    this.sfxGain.gain.cancelScheduledValues(t);
+    this.sfxGain.gain.setTargetAtTime(this.sfxOn ? this.sfxVol : 0, t, 0.04);
   }
 
   // Feed the listener (player) pose so spatial SFX can pan/attenuate.
@@ -541,7 +597,7 @@ class AudioEngine {
         track.source = null;
       }
     }
-    if (!this.muted) track.el.play().catch(() => {});
+    if (this.musicOn) track.el.play().catch(() => {});
   }
 
   stopMusic() {
