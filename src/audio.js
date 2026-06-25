@@ -469,43 +469,64 @@ class AudioEngine {
   startEngine() {
     if (!this.ctx || this._engine) return;
     const t = this.ctx.currentTime;
-    // A soft, detuned hum through a NON-resonant lowpass. The old version used a
-    // resonant filter (Q 4) which whined — that's gone. Quiet by design: this is
-    // a background hum, not a drone.
-    const osc1 = this._osc("sawtooth", 58);
-    const osc2 = this._osc("triangle", 59); // triangle = far fewer harsh harmonics
-    const sub = this._osc("triangle", 29);
+    // Kart-racer style "whir" instead of a combustion drone: a soft low hum
+    // (pure sines — no buzzy sawtooth, no detuned beating) plus a speed-driven
+    // broadband air/tire rush that does most of the "going fast" work, with a
+    // gentle tremolo so it breathes instead of droning. Deliberately quiet.
+    const hum = this._osc("sine", 60);
+    const sub = this._osc("sine", 30);
+    // Air/tire rush: looping noise through a bandpass that opens up with speed.
+    const rush = this._noiseSource();
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = "bandpass";
+    bp.frequency.value = 900;
+    bp.Q.value = 0.5;
+    const rushGain = this.ctx.createGain();
+    rushGain.gain.value = 0.0001;
+    rush.connect(bp);
+    bp.connect(rushGain);
+    // Tremolo: a slow LFO wobbles the hum level for a subtle chug.
+    const humGain = this.ctx.createGain();
+    humGain.gain.value = 0.6;
+    const trem = this._osc("sine", 6);
+    const tremDepth = this.ctx.createGain();
+    tremDepth.gain.value = 0.28;
+    trem.connect(tremDepth);
+    tremDepth.connect(humGain.gain);
     const lp = this.ctx.createBiquadFilter();
     lp.type = "lowpass";
-    lp.frequency.value = 380;
-    lp.Q.value = 0.6; // no resonant peak -> no whine
-    const g = this.ctx.createGain();
+    lp.frequency.value = 480;
+    lp.Q.value = 0.4;
+    const g = this.ctx.createGain(); // master engine level (driven by speed)
     g.gain.value = 0.0001;
-    osc1.connect(lp);
-    osc2.connect(lp);
-    sub.connect(g); // sub bypasses the filter
+    hum.connect(humGain);
+    humGain.connect(lp);
     lp.connect(g);
+    sub.connect(g);
+    rushGain.connect(g);
     g.connect(this.sfxGain);
-    osc1.start(t);
-    osc2.start(t);
+    hum.start(t);
     sub.start(t);
-    g.gain.setTargetAtTime(0.022, t, 0.4);
-    this._engine = { osc1, osc2, sub, lp, g };
+    rush.start(t);
+    trem.start(t);
+    g.gain.setTargetAtTime(0.02, t, 0.4);
+    this._engine = { hum, sub, rush, bp, rushGain, trem, lp, g };
   }
 
-  // freq tracks speed (0..1). boosting opens the filter + lifts the gain a touch.
+  // speedFrac 0..1 drives pitch, the air rush, and tremolo rate; boosting opens
+  // the filter and lifts the level a touch.
   setEngine(speedFrac, boosting) {
     const e = this._engine;
     if (!e || !this.ctx) return;
     const t = this.ctx.currentTime;
-    const f = 50 + speedFrac * 110; // ~50Hz idle -> ~160Hz redline
-    e.osc1.frequency.setTargetAtTime(f, t, 0.06);
-    e.osc2.frequency.setTargetAtTime(f * 1.008, t, 0.06);
-    e.sub.frequency.setTargetAtTime(f * 0.5, t, 0.06);
-    const cut = 300 + speedFrac * 950 + (boosting ? 700 : 0);
-    e.lp.frequency.setTargetAtTime(cut, t, 0.08);
-    // Roughly half the old loudness, and it leans on speed rather than sitting loud.
-    e.g.gain.setTargetAtTime(0.015 + speedFrac * 0.02 + (boosting ? 0.01 : 0), t, 0.1);
+    const f = 55 + speedFrac * 95; // ~55Hz idle -> ~150Hz; gentle, never whiny
+    e.hum.frequency.setTargetAtTime(f, t, 0.08);
+    e.sub.frequency.setTargetAtTime(f * 0.5, t, 0.08);
+    e.trem.frequency.setTargetAtTime(5 + speedFrac * 9, t, 0.1); // chugs faster with speed
+    e.bp.frequency.setTargetAtTime(700 + speedFrac * 2400 + (boosting ? 800 : 0), t, 0.1);
+    e.rushGain.gain.setTargetAtTime(0.12 + speedFrac * 0.5, t, 0.1); // rush grows with speed
+    e.lp.frequency.setTargetAtTime(380 + speedFrac * 600 + (boosting ? 500 : 0), t, 0.08);
+    e.g.gain.setTargetAtTime(0.016 + speedFrac * 0.02 + (boosting ? 0.01 : 0), t, 0.1);
   }
 
   stopEngine() {
@@ -513,7 +534,7 @@ class AudioEngine {
     if (!e || !this.ctx) return;
     const t = this.ctx.currentTime;
     e.g.gain.setTargetAtTime(0.0001, t, 0.15);
-    [e.osc1, e.osc2, e.sub].forEach((o) => o.stop(t + 0.6));
+    [e.hum, e.sub, e.rush, e.trem].forEach((o) => o.stop(t + 0.6));
     this._engine = null;
   }
 
