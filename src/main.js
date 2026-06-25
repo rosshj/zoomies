@@ -2046,3 +2046,15 @@ function loop(now) {
 }
 
 requestAnimationFrame(loop);
+
+// Browsers block audio until a user gesture, so the menu can't autoplay music on
+// load. Start it (fading in) on the player's first interaction while on the main
+// screen; later screens manage their own music.
+window.addEventListener(
+  "pointerdown",
+  () => {
+    audio.unlock();
+    if (state === State.MENU) audio.playMusic("menu");
+  },
+  { once: true }
+);

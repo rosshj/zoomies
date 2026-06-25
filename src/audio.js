@@ -14,6 +14,9 @@ const SETTINGS_KEY = "zoomies-audio-v2";
 const DEFAULT_MUSIC_VOL = 0.25;
 const DEFAULT_SFX_VOL = 1.0;
 
+// How long the music takes to ease up from silence when a track starts.
+const MUSIC_FADE_SEC = 1.8;
+
 // Stereo pan + distance falloff for a sound emitted at a world position, heard
 // from the listener pose. Beyond MAX_DIST it's inaudible; pan follows the
 // listener's right vector. Returns null if the source is out of range.
@@ -587,15 +590,26 @@ class AudioEngine {
     this._curTrack = name;
     const track = this._tracks[name];
     if (!track) return;
-    // Route the element through the music bus once (for unified volume/mute).
+    // Route the element through a per-track fade gain into the music bus once
+    // (the fade gain does the fade-in; the music bus handles volume/mute).
     if (!track.source && this.ctx.createMediaElementSource) {
       try {
         track.source = this.ctx.createMediaElementSource(track.el);
-        track.source.connect(this.musicGain);
+        track.fade = this.ctx.createGain();
+        track.fade.gain.value = 0;
+        track.source.connect(track.fade);
+        track.fade.connect(this.musicGain);
       } catch {
         // Some browsers throw if the element is reused; fall back to el.volume.
         track.source = null;
       }
+    }
+    // Fade the track up from silence so it eases in rather than blasting on.
+    if (track.fade) {
+      const t = this.ctx.currentTime;
+      track.fade.gain.cancelScheduledValues(t);
+      track.fade.gain.setValueAtTime(0, t);
+      track.fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
     }
     if (this.musicOn) track.el.play().catch(() => {});
   }
