@@ -1,6 +1,6 @@
 {
-  "name": "Zoomies — Cat Kart Racing",
-  "short_name": "Zoomies",
+  "name": "Zoomies GP — Cat Kart Racing",
+  "short_name": "Zoomies GP",
   "description": "Cat go-kart racing with tilt steering. Hold landscape, tilt to steer, shoot hairballs!",
   "start_url": "./index.html",
   "scope": "./",

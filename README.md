@@ -1,4 +1,4 @@
-# 🐱 Zoomies — Cat Kart Racing
+# 🐱 Zoomies GP — Cat Kart Racing
 
 A web-based go-kart racing game built with [three.js](https://threejs.org/),
 where cats drive the karts. Steer with your phone's accelerometer, race three
