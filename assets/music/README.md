@@ -1,24 +1,23 @@
 # Background music
 
-Drop two audio files here and they'll play automatically — no code changes needed:
+The game now plays a **procedural, Don Toliver–style melodic trap loop**
+synthesized in code (`src/audio.js`) — dreamy pads, an echoing lead, hard 808s,
+and trap drums. It needs no files: there's a mellow version on the menu and the
+full beat during a race. Volume/mute is the **Sound** button on the menu and
+pause screen.
 
-| File | When it plays | Suggested vibe |
-|------|---------------|----------------|
-| `menu.mp3` | Main menu / between races | Light, loopable theme |
-| `race.mp3` | During a race | Upbeat, driving loop |
+## Want to use a real audio track instead?
 
-## Requirements / tips
+The file-based player is still available if you'd rather ship your own song:
 
-- **Format:** `.mp3` is the safest cross-browser choice. (If you'd rather use
-  `.ogg`/`.m4a`, change the paths in `src/main.js` where `audio.registerMusic(...)`
-  is called.)
-- **Looping:** the tracks loop seamlessly, so pick loops (or songs that tolerate
-  a hard loop point). No need to fade the ends yourself.
-- **Licensing:** make sure you have the rights to whatever you ship. Royalty-free
-  / CC0 game-music sources work well.
-- **Size:** keep them reasonably small (a 1–2 min loop is plenty) so the page
-  loads fast on mobile.
+1. Drop e.g. `race.mp3` and `menu.mp3` in this folder.
+2. In `src/main.js`, register and play them instead of `audio.playBeat(...)`:
+   ```js
+   audio.registerMusic("menu", "./assets/music/menu.mp3");
+   audio.registerMusic("race", "./assets/music/race.mp3");
+   // ...then call audio.playMusic("race") / audio.playMusic("menu")
+   // where audio.playBeat("race") / audio.playBeat("menu") are called now.
+   ```
 
-Until these files exist the game just runs silent on the music layer — all the
-sound effects are synthesized in code and need no files. Volume/mute is shared
-with the rest of the audio via the **Sound** button on the menu and pause screen.
+Tips: `.mp3` is the safest cross-browser format; pick seamless loops; make sure
+you have the rights to anything you ship; keep files small for fast mobile loads.
