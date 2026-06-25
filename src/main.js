@@ -34,10 +34,9 @@ if (!_seedParam && history.replaceState) {
 }
 console.log(`[zoomies] world seed: ${getSeed()}`);
 
-// Background music tracks. Drop the files in assets/music/ (see the README
-// there); until they exist these stay silent and cost nothing.
-audio.registerMusic("menu", "./assets/music/menu.mp3");
-audio.registerMusic("race", "./assets/music/race.mp3");
+// Background music. One track drives both the menu and the race (it loops).
+audio.registerMusic("menu", "./assets/music/zoomies.mp3");
+audio.registerMusic("race", "./assets/music/zoomies.mp3");
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
