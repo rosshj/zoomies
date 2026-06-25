@@ -2068,3 +2068,15 @@ function startMenuMusicOnce() {
 for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
   window.addEventListener(ev, startMenuMusicOnce, true);
 }
+
+// Installed as a home-screen PWA? Some platforms (e.g. Android) let an installed
+// app autoplay audio with no gesture, so try to start the menu music right away.
+// iOS still requires a tap even in standalone — the first-interaction starter
+// above remains the fallback, and playMusic retries a rejected play().
+const _isStandalonePWA =
+  (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+  window.navigator.standalone === true;
+if (_isStandalonePWA) {
+  audio.unlock();
+  audio.playMusic("menu");
+}
