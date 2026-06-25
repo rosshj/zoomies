@@ -36,44 +36,92 @@ function harmSum(list, a, phases) {
   return wsum > 0 ? s / wsum : 0;
 }
 
+// Does the closed Catmull-Rom through `pts` (XZ plane) avoid crossing itself AND
+// keep every corner above `minR`? A pure radius-per-angle loop can't fold or
+// snake, so we let the points snake sideways and just validate the result.
+function _loopOK(pts, minR) {
+  const cv = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
+  const S = 260;
+  const P = [];
+  for (let i = 0; i < S; i++) P.push(cv.getPointAt(i / S));
+  const seg = (a, b, c, d) => {
+    const ccw = (p, q, r) => (r.z - p.z) * (q.x - p.x) - (q.z - p.z) * (r.x - p.x);
+    return (ccw(a, c, d) > 0) !== (ccw(b, c, d) > 0) && (ccw(a, b, c) > 0) !== (ccw(a, b, d) > 0);
+  };
+  for (let i = 0; i < S; i++) {
+    for (let j = i + 2; j < S; j++) {
+      if (i === 0 && j === S - 1) continue;
+      if (seg(P[i], P[(i + 1) % S], P[j], P[(j + 1) % S])) return false;
+    }
+  }
+  for (let i = 0; i < S; i++) {
+    const p0 = P[(i - 1 + S) % S], p1 = P[i], p2 = P[(i + 1) % S];
+    const a = p0.distanceTo(p1), b = p1.distanceTo(p2), c = p0.distanceTo(p2);
+    const area = Math.abs((p1.x - p0.x) * (p2.z - p0.z) - (p2.x - p0.x) * (p1.z - p0.z)) / 2;
+    if (area > 1e-3 && (a * b * c) / (4 * area) < minR) return false;
+  }
+  return true;
+}
+
 function generateLoopPoints(cfg) {
   const size = clamp01(cfg.size);
   const curviness = clamp01(cfg.curviness);
   const hilliness = clamp01(cfg.hilliness);
 
-  const N = 16 + Math.round(curviness * 30); // 16..46 control points (more corners)
-  const baseR = 240 + size * 280; // ~240..520 world units
-  const radVar = 0.08 + curviness * 0.62; // ±8%..±70% radius wobble (stays < 1 -> simple loop)
-  const hillAmp = hilliness * 155; // up to ~155 (was 95) for real mountains
+  const N = 16 + Math.round(curviness * 12); // 16..28 control points
+  const baseR = 260 + size * 220;
+  const hillAmp = hilliness * 155;
+  const MIN_CORNER = 17; // tightest drivable corner radius (road is 30 wide)
 
-  // Radius harmonics — higher ones scale steeply with curviness, so low = smooth
-  // flowing and high = a genuinely twisty, varied, technical circuit.
-  const rH = [
-    { k: 1, w: 1 },
-    { k: 2, w: 0.6 },
-    { k: 3, w: 0.3 + curviness * 0.6 },
-    { k: 4, w: curviness * 0.65 },
-    { k: 5, w: curviness * 0.5 },
-    { k: 6, w: curviness * 0.32 },
-  ];
-  // Elevation harmonics — kept LOW frequency so big hills are long, drivable
-  // climbs rather than cliffs.
+  // Elevation profile — kept LOW frequency so big hills are long, drivable climbs.
   const eH = [
     { k: 1, w: 1 },
     { k: 2, w: 0.55 },
     { k: 3, w: 0.3 },
   ];
-  const rPhase = rH.map(() => rand() * TAU);
   const ePhase = eH.map(() => rand() * TAU);
 
-  const pts = [];
-  for (let i = 0; i < N; i++) {
-    const a = (i / N) * TAU;
-    const r = baseR * (1 + radVar * harmSum(rH, a, rPhase));
-    const y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
-    pts.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+  // Build the XZ loop with BOTH a radial wobble (lobes/bays) and a tangential
+  // snake (the track weaves side-to-side, giving real S-bends/hairpins instead
+  // of a round blob). Then validate it's a simple, drivable loop; if not, damp
+  // the perturbation and retry. Damping eventually yields a near-circle, which
+  // always passes — so this terminates.
+  let best = null;
+  for (let attempt = 0; attempt < 16; attempt++) {
+    const damp = Math.pow(0.85, attempt);
+    const radVar = (0.15 + curviness * 0.5) * damp;
+    const tangAmp = curviness * 0.72 * damp;
+    const rH = [
+      { k: 1, w: 0.6 },
+      { k: 2, w: 0.8 },
+      { k: 3, w: 0.25 + curviness * 0.6 },
+      { k: 4, w: curviness * 0.6 },
+      { k: 5, w: curviness * 0.4 },
+    ];
+    const tH = [
+      { k: 2, w: 0.5 },
+      { k: 3, w: curviness * 0.8 },
+      { k: 4, w: curviness * 0.85 },
+      { k: 5, w: curviness * 0.6 },
+      { k: 6, w: curviness * 0.4 },
+    ];
+    const rPhase = rH.map(() => rand() * TAU);
+    const tPhase = tH.map(() => rand() * TAU);
+
+    const pts = [];
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * TAU;
+      const r = baseR * (1 + radVar * harmSum(rH, a, rPhase));
+      const tg = baseR * tangAmp * harmSum(tH, a, tPhase); // sideways snake
+      const x = Math.cos(a) * r - Math.sin(a) * tg;
+      const z = Math.sin(a) * r + Math.cos(a) * tg;
+      const y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
+      pts.push(new THREE.Vector3(x, y, z));
+    }
+    best = pts; // keep the latest as a fallback
+    if (_loopOK(pts, MIN_CORNER)) return pts;
   }
-  return pts;
+  return best; // last (heavily damped, near-circle) attempt — guaranteed gentle
 }
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
