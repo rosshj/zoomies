@@ -1023,6 +1023,11 @@ document.getElementById("open-settings")?.addEventListener("click", openSettings
 document.getElementById("open-settings-pause")?.addEventListener("click", openSettings);
 document.getElementById("settings-back")?.addEventListener("click", closeSettings);
 
+// --- How to Play sub-menu (stacks over the main menu) ---
+const howtoOverlay = document.getElementById("howto");
+document.getElementById("howto-btn")?.addEventListener("click", () => howtoOverlay?.classList.remove("hidden"));
+document.getElementById("howto-back")?.addEventListener("click", () => howtoOverlay?.classList.add("hidden"));
+
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
   audio.setMusicOn(!audio.musicOn);
@@ -1177,6 +1182,7 @@ function prepareRace() {
   _fwTimer = 0;
   _fwNext = 0;
   _finishCamAngle = 0;
+  camPos.set(0, 0, 0); // force the countdown camera to snap from the menu orbit
   // Clear any finish/progress state carried over from a previous race on the
   // remote ghosts (they persist across races; only local karts are rebuilt).
   if (MP.enabled) {
@@ -1301,6 +1307,29 @@ function updateFireworks(dt) {
         .add(new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 3, (Math.random() - 0.5) * 2));
       effects.fireworkBurst(o);
     }
+  }
+}
+
+// Slow cinematic orbit over a scenic spot on the track, behind the glassy menu.
+const _menuAnchor = new THREE.Vector3();
+let _menuAnchorReady = false;
+const _menuLook = new THREE.Vector3();
+function updateMenuCamera(timeSec) {
+  if (!_menuAnchorReady) {
+    _menuAnchor.copy(track.getPointAt(0.07)); // a point just past the start line
+    _menuAnchorReady = true;
+  }
+  const ang = timeSec * 0.07; // gentle drift
+  camera.position.set(
+    _menuAnchor.x + Math.cos(ang) * 34,
+    _menuAnchor.y + 16,
+    _menuAnchor.z + Math.sin(ang) * 34
+  );
+  _menuLook.set(_menuAnchor.x, _menuAnchor.y + 2.5, _menuAnchor.z);
+  camera.lookAt(_menuLook);
+  if (camera.fov !== 58) {
+    camera.fov = 58;
+    camera.updateProjectionMatrix();
   }
 }
 
@@ -1706,6 +1735,14 @@ function loop(now) {
 
   weather.update(dt, camera.position); // rain/snow follows the player
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
+
+  if (state === State.MENU) {
+    // Cinematic: slowly orbit the camera over the track so the menu floats above
+    // the real world (the menu/how-to overlays are glassy and let it show through).
+    updateMenuCamera(now / 1000);
+    renderFrame();
+    return;
+  }
 
   if (state === State.COUNTDOWN) {
     // In multiplayer, drive the countdown straight off the shared clock so every

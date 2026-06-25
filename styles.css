@@ -67,6 +67,14 @@ body {
   text-align: center;
 }
 
+/* The main menu and its How-to sub-screen float over the LIVE 3D world (a slow
+   camera orbit renders behind), so darken it just enough for legibility instead
+   of hiding it. */
+#menu,
+#howto {
+  background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
+}
+
 .menu-card {
   background: var(--panel);
   border: 2px solid rgba(255, 179, 0, 0.4);
@@ -76,29 +84,40 @@ body {
   max-height: 94%;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  /* Frosted glass so the live 3D scene reads through behind the menu. */
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
 }
 
-/* Two-column landscape layout for the start screen. */
-.menu-card.wide {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  max-width: min(840px, 100%);
-  text-align: left;
-}
-
-.menu-left {
-  flex: 0 0 auto;
+/* Single centred column for the start screen. */
+.menu-card.menu-main {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  padding-right: 24px;
-  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  width: min(420px, 100%);
+  gap: 2px;
+  border-color: rgba(255, 179, 0, 0.55);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 0 40px rgba(255, 179, 0, 0.12);
 }
 
-.menu-right {
-  flex: 1 1 auto;
+.menu-main h1 {
+  /* Stacked drop-shadows give the title a chunky 2.5D extrude. */
+  text-shadow: 0 2px 0 var(--accent-2), 0 4px 0 #b93310, 0 6px 0 rgba(120, 30, 8, 0.6),
+    0 10px 18px rgba(0, 0, 0, 0.55);
+}
+
+/* Row of small option buttons (Laps · How to Play · Settings). */
+.menu-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.menu-options button.small {
+  margin-top: 0;
 }
 
 h1 {
