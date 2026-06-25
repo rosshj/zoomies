@@ -1011,22 +1011,46 @@ function refreshAudioUI() {
   }
 }
 
+// Sub-screens (Settings, How to Play) REPLACE whichever menu-level screen is up
+// rather than stacking over it: hide the current one, remember it, restore on
+// back. That keeps only one card over the live 3D world.
+let _overlayReturn = null;
+function openSubScreen(el) {
+  _overlayReturn = null;
+  for (const id of ["menu", "pause-overlay"]) {
+    const o = document.getElementById(id);
+    if (o && !o.classList.contains("hidden")) {
+      _overlayReturn = o;
+      o.classList.add("hidden");
+      break;
+    }
+  }
+  el.classList.remove("hidden");
+}
+function closeSubScreen(el) {
+  el.classList.add("hidden");
+  if (_overlayReturn) {
+    _overlayReturn.classList.remove("hidden");
+    _overlayReturn = null;
+  }
+}
+
 function openSettings() {
   audio.unlock(); // the opening tap is a valid gesture to start audio
   refreshAudioUI();
-  settingsOverlay.classList.remove("hidden"); // stacks over the menu/pause card
+  openSubScreen(settingsOverlay);
 }
 function closeSettings() {
-  settingsOverlay.classList.add("hidden");
+  closeSubScreen(settingsOverlay);
 }
 document.getElementById("open-settings")?.addEventListener("click", openSettings);
 document.getElementById("open-settings-pause")?.addEventListener("click", openSettings);
 document.getElementById("settings-back")?.addEventListener("click", closeSettings);
 
-// --- How to Play sub-menu (stacks over the main menu) ---
+// --- How to Play sub-menu (replaces the main menu) ---
 const howtoOverlay = document.getElementById("howto");
-document.getElementById("howto-btn")?.addEventListener("click", () => howtoOverlay?.classList.remove("hidden"));
-document.getElementById("howto-back")?.addEventListener("click", () => howtoOverlay?.classList.add("hidden"));
+document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
+document.getElementById("howto-back")?.addEventListener("click", () => closeSubScreen(howtoOverlay));
 
 musicToggle?.addEventListener("click", () => {
   audio.unlock();

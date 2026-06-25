@@ -67,11 +67,12 @@ body {
   text-align: center;
 }
 
-/* The main menu and its How-to sub-screen float over the LIVE 3D world (a slow
-   camera orbit renders behind), so darken it just enough for legibility instead
-   of hiding it. */
+/* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
+   orbit renders behind), so darken it just enough for legibility instead of
+   hiding it. */
 #menu,
-#howto {
+#howto,
+#settings {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
@@ -81,7 +82,7 @@ body {
   border-radius: 18px;
   padding: 16px 22px;
   max-width: min(560px, 100%);
-  max-height: 94%;
+  max-height: 97%;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   /* Frosted glass so the live 3D scene reads through behind the menu. */
@@ -96,10 +97,35 @@ body {
   align-items: center;
   text-align: center;
   width: min(420px, 100%);
-  gap: 2px;
+  gap: 1px;
+  padding: 12px 22px;
   border-color: rgba(255, 179, 0, 0.55);
   box-shadow: 0 22px 70px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset,
     0 0 40px rgba(255, 179, 0, 0.12);
+}
+
+/* Compact the primary buttons so the whole card fits the short landscape height
+   (no clipped/scrolled bottom). */
+.menu-main > button {
+  font-size: 16px;
+  padding: 9px 28px;
+  margin-top: 6px;
+}
+.menu-main h1 {
+  font-size: clamp(24px, 4vw, 34px);
+}
+.menu-main .tagline {
+  margin: 0 0 2px;
+}
+.menu-main .menu-options {
+  margin-top: 9px;
+}
+.menu-main .menu-options button.small {
+  padding: 7px 15px;
+}
+.menu-main .hint {
+  margin-top: 8px;
+  font-size: 10px;
 }
 
 .menu-main h1 {
