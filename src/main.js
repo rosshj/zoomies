@@ -591,13 +591,22 @@ function layoutStage() {
   const rot = portrait ? (a === 180 ? 270 : 90) : 0;
   let W = Math.max(iw, ih);
   let H = Math.min(iw, ih);
-  // When we're rotating the stage ourselves (orientation locked to portrait in a
-  // mobile browser), the browser toolbar shrinks the viewport's long axis, so
-  // the rotated landscape leaves a blank bar on one side. Stretch the long edge
-  // to the full screen size to cover it. Gated to touch + portrait so desktop
-  // and true (unlocked) landscape are untouched; clamped so a bogus screen size
-  // can't blow the layout up.
-  if (rot !== 0 && window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+  const standalone =
+    (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+    window.navigator.standalone === true;
+  const coarse = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  if (standalone && screen.width && screen.height) {
+    // Installed (home-screen) app: size to the FULL device screen so the scene
+    // bleeds under the status bar and home indicator. iOS' innerWidth/Height can
+    // exclude the home-indicator strip, which left a dark bar on that edge. The
+    // menu and HUD still inset themselves via the --safe-* vars below, so the
+    // controls stay clear of the system UI.
+    W = Math.max(screen.width, screen.height);
+    H = Math.min(screen.width, screen.height);
+  } else if (rot !== 0 && coarse) {
+    // Orientation-locked in a mobile BROWSER tab: the toolbar shrinks the long
+    // axis, leaving a bar. Stretch toward the full screen to cover what we can
+    // (can't fully beat the toolbar — installing to the home screen does).
     const screenLong = Math.max(screen.width || 0, screen.height || 0);
     if (screenLong > W && screenLong < W * 1.4) W = screenLong;
   }
