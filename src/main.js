@@ -19,6 +19,7 @@ import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
 import { resolveHost, resolveAblyKey } from "./net/config.js";
 import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
+import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
 // (the basis for multiplayer: everyone in a lobby builds from the same seed);
@@ -32,6 +33,11 @@ if (!_seedParam && history.replaceState) {
   history.replaceState(null, "", u);
 }
 console.log(`[zoomies] world seed: ${getSeed()}`);
+
+// Background music tracks. Drop the files in assets/music/ (see the README
+// there); until they exist these stay silent and cost nothing.
+audio.registerMusic("menu", "./assets/music/menu.mp3");
+audio.registerMusic("race", "./assets/music/race.mp3");
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
@@ -546,6 +552,7 @@ let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
 let countdownCalibrated = false;
+let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 // Finish celebration: fireworks from the arch when the leader crosses the line,
 // and a slow camera orbit around the player's kart during its victory lap.
 let _fireworksDone = false; // leader's finish fireworks fired once per race
@@ -864,6 +871,7 @@ layoutStage();
 const flashEl = document.getElementById("flash");
 function triggerHit() {
   shakeMag = 1.6;
+  audio.hit();
   if (flashEl) {
     flashEl.classList.remove("on");
     void flashEl.offsetWidth; // restart the CSS flash
@@ -947,11 +955,14 @@ const pauseOverlay = document.getElementById("pause-overlay");
 function pauseGame() {
   if (state !== State.RACING) return;
   state = State.PAUSED;
+  audio.stopEngine();
+  audio.setSkid(false);
   pauseOverlay.classList.remove("hidden");
 }
 function resumeGame() {
   if (state !== State.PAUSED) return;
   pauseOverlay.classList.add("hidden");
+  audio.startEngine();
   state = State.RACING;
 }
 function toMenu() {
@@ -960,6 +971,9 @@ function toMenu() {
   document.getElementById("lobby").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("menu").classList.remove("hidden");
+  audio.stopEngine();
+  audio.setSkid(false);
+  audio.playMusic("menu");
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
@@ -970,6 +984,22 @@ document.getElementById("menu-btn").addEventListener("click", toMenu);
 // Every menu can get back to the main screen: lobby and results both offer it.
 document.getElementById("lobby-back")?.addEventListener("click", toMenu);
 document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
+
+// --- Sound on/off (persisted; mirrored on the menu + pause buttons) ---
+const soundBtns = [document.getElementById("sound-btn"), document.getElementById("sound-btn-pause")];
+function applySoundBtn() {
+  const label = audio.muted ? "🔇 Sound: Off" : "🔊 Sound: On";
+  for (const b of soundBtns) if (b) b.textContent = label;
+}
+for (const b of soundBtns) {
+  if (!b) continue;
+  b.addEventListener("click", () => {
+    audio.unlock(); // first tap may also be the gesture that unlocks audio
+    audio.toggleMute();
+    applySoundBtn();
+  });
+}
+applySoundBtn();
 
 // Tilt indicator (hidden by default; toggle in the pause menu).
 const steerBar = document.getElementById("steer-bar");
@@ -1045,6 +1075,8 @@ function startTimeTrial() {
 }
 function beginRace() {
   // These need the user-gesture from the click, so fire them synchronously.
+  audio.unlock(); // browsers only allow audio to start from a gesture
+  audio.uiClick();
   enterFullscreenLandscape();
   input.enableMotion();
   input.calibrate();
@@ -1063,6 +1095,7 @@ function beginRace() {
   prepareRace();
   countdown = 3.999;
   countdownCalibrated = false;
+  prevCountN = 99;
   state = State.COUNTDOWN;
 }
 
@@ -1157,6 +1190,7 @@ function beginSyncedRace(at) {
   prepareRace();
   countdown = Math.max(0.3, (at - MP.net.now()) / 1000);
   countdownCalibrated = false;
+  prevCountN = 99;
   state = State.COUNTDOWN;
 }
 
@@ -1314,6 +1348,10 @@ function resolveCollisions() {
       a.knock.z -= nz * power * sa;
       b.knock.x += nx * power * sb;
       b.knock.z += nz * power * sb;
+      // Thud on contact (debounced inside audio.bump). Heard from the player's
+      // seat if they're involved, otherwise positioned at the impact.
+      const involvesPlayer = a === player || b === player;
+      audio.bump(involvesPlayer ? null : a.position, Math.min(1, power / 40));
 
       // Only a tiny speed scrub — you keep your momentum through contact.
       a.speed *= 0.99;
@@ -1396,6 +1434,7 @@ const SHOOT_OPENING_LOCKOUT = SHOOT_RECHARGE * 2;
 function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
   hairballs.spawn(kart, charge);
+  audio.shoot(kart === player ? null : kart.position);
   kart.shootCooldown = SHOOT_RECHARGE;
   // Tell other players about the shot so they can see the projectile fly.
   if (MP.enabled && MP.net && kart === player) {
@@ -1477,6 +1516,7 @@ function aiActions(dt) {
       if (k.tootBoost()) {
         k.boostMeter = 0;
         effects.tootBurst(k);
+        audio.toot(k.position);
       }
     }
 
@@ -1631,6 +1671,11 @@ function loop(now) {
     updateCamera(dt, camPos.lengthSq() === 0);
     const n = Math.ceil(countdown - 1);
     hud.showToast(n > 0 ? `${n}` : "GO!");
+    // A beep on each 3/2/1 and a higher GO! chirp, as the number changes.
+    if (n !== prevCountN && n <= 3) {
+      audio.countdownBeep(Math.max(0, n));
+      prevCountN = n;
+    }
     // Re-zero steering near the end of the countdown, once the player has
     // settled into their driving grip.
     if (n === 1 && !countdownCalibrated) {
@@ -1640,6 +1685,8 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      audio.startEngine(); // engines fire up on the green light
+      audio.playMusic("race");
       // Hold everyone's first shot for an opening grace period.
       for (const k of karts) k.shootCooldown = Math.max(k.shootCooldown, SHOOT_OPENING_LOCKOUT);
     }
@@ -1670,9 +1717,21 @@ function loop(now) {
       if (player.tootBoost()) {
         player.boostMeter = 0; // fully deplete on use
         effects.tootBurst(player);
+        audio.toot();
       }
     }
     updateBoostUI();
+
+    // Audio: keep the listener on the player, drive the engine pitch with speed,
+    // and screech the tires while drifting.
+    audio.setListener(
+      player.position.x,
+      player.position.z,
+      Math.sin(player.heading),
+      Math.cos(player.heading)
+    );
+    audio.setEngine(Math.min(1, Math.abs(player.speed) / player.maxSpeed), player.boosting);
+    audio.setSkid(player.drifting && Math.abs(player.speed) > 8);
 
     // Rainbow boost trail + drift sparks/skids for the player.
     if (player.boosting) effects.trickle(player);
@@ -1722,11 +1781,16 @@ function loop(now) {
     for (const k of karts) {
       if (k.wallHit) {
         effects.wallSparks(k);
+        audio.scrape(k === player ? null : k.position);
         k.wallHit = false;
       }
       if (k.spinTimer > 0) effects.skid(k);
+      // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
+      if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) audio.hit(k.position);
+      k._prevSpin = k.spinTimer;
       if (k.boostPuff >= 0) {
         effects.tootBurst(k, k.boostPuff);
+        audio.boost(k === player ? null : k.position);
         k.boostPuff = -1;
       }
     }
@@ -1751,6 +1815,7 @@ function loop(now) {
           const dz = player.position.z - pd.z;
           if (dx * dx + dz * dz < pd.r * pd.r) {
             effects.splash(player.position);
+            audio.splash();
             player._puddleCd = 0.14;
             break;
           }
@@ -1777,7 +1842,10 @@ function loop(now) {
     // Lap toast for the player (normal races only)
     if (!timeTrial && player.lap !== prevPlayerLap && player.lap >= 1 && !player.finished) {
       const lapNum = player.displayLap(laps);
-      if (lapNum >= 2) hud.showToast(`Lap ${lapNum}/${laps}`);
+      if (lapNum >= 2) {
+        hud.showToast(`Lap ${lapNum}/${laps}`);
+        audio.lap();
+      }
     }
     prevPlayerLap = player.lap;
 
@@ -1796,6 +1864,8 @@ function loop(now) {
     // Hand off to the victory lap once the player finishes; show results after a
     // celebratory beat (camera orbits the kart, fireworks pop) rather than instantly.
     if (player.finished) {
+      audio.finish();
+      audio.setSkid(false);
       if (timeTrial) {
         const lapTime = player.finishTime - (ttLapStart >= 0 ? ttLapStart : 0);
         _ttResult = recordTimeTrial(lapTime);
