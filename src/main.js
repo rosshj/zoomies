@@ -9,6 +9,7 @@ import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
 import { setNightMode } from "./models.js";
+import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
@@ -243,6 +244,13 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+
+// Knockable roadside props (crates/barrels/leaf piles) via crashcat. Async + best
+// effort: if the engine fails to load, `props` stays null and the game is fine.
+let props = null;
+initProps(scene, track, { seed: WORLD_SEED }).then((p) => {
+  props = p;
+});
 
 // Minimap: a static top-down outline of the track with a coloured dot per kart.
 let minimap = setupMinimap();
@@ -2232,6 +2240,17 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
+
+  // Step the knockable props and let the karts shove the ones they touch.
+  if (props) {
+    props.update(
+      dt,
+      raceField().map((e) => {
+        const k = e.kart || e;
+        return k && k.position ? { x: k.position.x, z: k.position.z } : null;
+      })
+    );
+  }
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.MENU) {
