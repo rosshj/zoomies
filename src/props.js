@@ -129,7 +129,17 @@ function build(scene, track, opts) {
   }
 
   const prevK = [];
-  const HIT_R = 3.6;
+  const HIT_R = 4.0;
+  // Squared distance from point (px,pz) to segment (ax,az)-(bx,bz). Used so a fast
+  // kart that jumps PAST a prop between frames still registers the hit.
+  const segDist2 = (px, pz, ax, az, bx, bz) => {
+    const dx = bx - ax, dz = bz - az;
+    const l2 = dx * dx + dz * dz;
+    let t = l2 > 0 ? ((px - ax) * dx + (pz - az) * dz) / l2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const ex = px - (ax + dx * t), ez = pz - (az + dz * t);
+    return ex * ex + ez * ez;
+  };
   // scratch
   const _e = new THREE.Euler();
   const _qT = new THREE.Quaternion();
@@ -203,12 +213,15 @@ function build(scene, track, opts) {
         const k = karts[ki];
         if (!k) continue;
         const prev = prevK[ki] || { x: k.x, z: k.z };
-        const vx = (k.x - prev.x) / Math.max(dt, 1e-3);
-        const vz = (k.z - prev.z) / Math.max(dt, 1e-3);
+        const ax = prev.x, az = prev.z;
+        const vx = (k.x - ax) / Math.max(dt, 1e-3);
+        const vz = (k.z - az) / Math.max(dt, 1e-3);
         prevK[ki] = { x: k.x, z: k.z };
         const speed = Math.hypot(vx, vz);
         if (speed < 2.5) continue;
-        moving.push({ x: k.x, z: k.z, dx: vx / speed, dz: vz / speed, speed });
+        // Extend the swept segment a little past the nose so the kart's length is
+        // accounted for (not just its centre point).
+        moving.push({ ax, az, bx: k.x + (vx / speed) * 2.5, bz: k.z + (vz / speed) * 2.5, dx: vx / speed, dz: vz / speed, speed });
       }
     }
 
@@ -216,8 +229,7 @@ function build(scene, track, opts) {
     for (const mk of moving) {
       for (const pr of props) {
         if (pr.hit > 0) continue;
-        const dx = pr.pos.x - mk.x, dz = pr.pos.z - mk.z;
-        if (dx * dx + dz * dz > HIT_R * HIT_R) continue;
+        if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > HIT_R * HIT_R) continue;
         const launch = 16 + Math.min(mk.speed, 150) * 0.95;
         const lift = 7 + Math.min(mk.speed, 120) * 0.06;
         pr.asleep = false;
@@ -237,9 +249,8 @@ function build(scene, track, opts) {
     for (const lp of leafPiles) {
       if (!lp.burst) {
         for (const mk of moving) {
-          const ddx = lp.x - mk.x, ddz = lp.z - mk.z;
           const reach = lp.r + 3.2;
-          if (ddx * ddx + ddz * ddz > reach * reach) continue;
+          if (segDist2(lp.x, lp.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
           lp.burst = true;
           for (const lf of lp.leaves) {
             const blow = 4 + Math.min(mk.speed, 90) * 0.22;

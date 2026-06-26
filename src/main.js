@@ -252,26 +252,22 @@ initProps(scene, track, { seed: WORLD_SEED }).then((p) => {
   props = p;
 });
 
-// Player headlights (night only): a pair of REAL spotlights mounted on the kart,
-// pointing forward and down, so they actually illuminate the road and any props
-// ahead — and the lit pool they cast IS the beam, conforming to the surface with
-// no decal to clip the track. Shadowless to keep them cheap. Attached when the
-// player kart is (re)built; see attachHeadlights().
-let _headlightsOn = false;
-function attachHeadlights(playerKart) {
-  if (TIME_OF_DAY !== "night" || _headlightsOn || !playerKart || !playerKart.group) return;
-  const grp = playerKart.group;
+// Kart headlights (night only): a REAL shadowless spotlight mounted on each kart,
+// aimed forward and down, so it actually illuminates the road and any props ahead
+// — the lit pool it casts IS the beam, conforming to the surface with no decal to
+// clip the track. One per kart (player, AI and remotes) so the whole field lights
+// the road; cheap because there are no shadow maps.
+function attachKartHeadlight(grp) {
+  if (TIME_OF_DAY !== "night" || !grp || grp.userData._hl) return;
   const target = new THREE.Object3D();
   target.position.set(0, -3.5, 18); // aim forward and down onto the road
   grp.add(target);
-  for (const sx of [-0.55, 0.55]) {
-    const spot = new THREE.SpotLight(0xfff2d6, 120, 75, 0.6, 0.55, 1.3);
-    spot.position.set(sx, 0.7, 2.9); // at the headlights
-    spot.castShadow = false;
-    spot.target = target;
-    grp.add(spot);
-  }
-  _headlightsOn = true;
+  const spot = new THREE.SpotLight(0xfff2d6, 95, 75, 0.66, 0.55, 1.3);
+  spot.position.set(0, 0.7, 2.9); // at the headlights
+  spot.castShadow = false;
+  spot.target = target;
+  grp.add(spot);
+  grp.userData._hl = true;
 }
 
 // Minimap: a static top-down outline of the track with a coloured dot per kart.
@@ -429,12 +425,11 @@ function buildKarts() {
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
     });
     toonify(kart.group); // cel-shade the kart + cat
+    attachKartHeadlight(kart.group); // night: every kart lights the road ahead
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
   });
-  _headlightsOn = false; // player kart was rebuilt; re-mount its headlights
-  attachHeadlights(player);
 }
 
 // Cel-shade a kart group the same way buildKarts does (rim light + toon bands),
@@ -445,6 +440,7 @@ function decorateKartGroup(group) {
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
   });
   toonify(group);
+  attachKartHeadlight(group); // remote karts light the road at night too
 }
 
 // --- Multiplayer (Phase 2: "ghost race") ---------------------------------
