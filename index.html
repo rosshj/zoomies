@@ -116,6 +116,10 @@
     <div class="menu-card menu-main">
       <h1>🐱 ZOOMIES GP</h1>
       <p class="tagline">Cat Kart Racing</p>
+      <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
+        <canvas id="menu-map" class="track-map" width="480" height="210"></canvas>
+        <span id="menu-map-label" class="map-label">Classic circuit</span>
+      </button>
       <button id="start-btn">START RACE</button>
       <button id="time-trial-btn">⏱ TIME TRIAL</button>
       <div id="mode-toggle" class="seg-toggle hidden">
@@ -222,6 +226,9 @@
       <div class="seg-toggle" id="track-mode">
         <button id="track-classic" class="seg-btn">Classic</button>
         <button id="track-custom" class="seg-btn">Generated</button>
+      </div>
+      <div class="map-frame">
+        <canvas id="track-preview" class="track-map" width="480" height="320"></canvas>
       </div>
       <div id="track-knobs">
         <div class="track-row"><span class="setting-label">Curvy</span>

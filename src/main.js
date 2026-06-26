@@ -6,7 +6,7 @@ import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
 import { createScene, pickMood } from "./scene.js";
 import { Weather } from "./weather.js";
-import { Track } from "./track.js";
+import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
@@ -833,6 +833,51 @@ function setupMinimap() {
   return { ctx, toX, toY, W, H, path };
 }
 
+// Paint a top-down outline of a loop (array of {x,z}) into a 2D canvas, fitting
+// its world bounds with padding and preserving aspect. Used by the track-menu
+// preview and the main-menu map so you can see the shape before you race.
+function paintTrackMap(canvas, controlPoints) {
+  if (!canvas || !controlPoints || !controlPoints.length) return;
+  // Smooth the control points into the same closed Catmull-Rom the road is built
+  // from, so the preview matches the shape you'll actually drive (not a polygon).
+  const curve = new THREE.CatmullRomCurve3(controlPoints, true, "catmullrom", 0.5);
+  const points = [];
+  for (let i = 0; i < 300; i++) points.push(curve.getPointAt(i / 300));
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  const pad = 16;
+  ctx.clearRect(0, 0, W, H);
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z;
+    if (p.z > maxZ) maxZ = p.z;
+  }
+  const scale = Math.min((W - 2 * pad) / (maxX - minX || 1), (H - 2 * pad) / (maxZ - minZ || 1));
+  const ox = (W - (maxX - minX) * scale) / 2 - minX * scale;
+  const oz = (H - (maxZ - minZ) * scale) / 2 - minZ * scale;
+  const toX = (x) => ox + x * scale;
+  const toY = (z) => oz + z * scale;
+  ctx.beginPath();
+  points.forEach((p, i) => (i === 0 ? ctx.moveTo(toX(p.x), toY(p.z)) : ctx.lineTo(toX(p.x), toY(p.z))));
+  ctx.closePath();
+  ctx.lineJoin = "round";
+  // Soft dark roadbed under a bright centreline so it reads as a track.
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 9;
+  ctx.stroke();
+  ctx.strokeStyle = "#ffd24a";
+  ctx.lineWidth = 3.5;
+  ctx.stroke();
+  // Start dot at the first control point.
+  ctx.beginPath();
+  ctx.arc(toX(points[0].x), toY(points[0].z), 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = "#fff";
+  ctx.fill();
+}
+
 function drawMinimap() {
   if (!minimap) return;
   const { ctx, toX, toY, W, H, path } = minimap;
@@ -1177,6 +1222,20 @@ function syncTrackPanel() {
   trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
     chip.classList.toggle("on", _trackDraft.biomes.includes(chip.dataset.biome));
   });
+  scheduleTrackPreview();
+}
+
+// Regenerating the loop runs the validate-and-retry generator, which can take a
+// few ms, so coalesce slider drags to one redraw per animation frame.
+let _previewPending = false;
+function scheduleTrackPreview() {
+  if (_previewPending || !_trackDraft) return;
+  _previewPending = true;
+  requestAnimationFrame(() => {
+    _previewPending = false;
+    if (!_trackDraft) return;
+    paintTrackMap(document.getElementById("track-preview"), previewLoopPoints(_trackDraft));
+  });
 }
 function openTrackPanel() {
   _trackDraft = {
@@ -1195,6 +1254,19 @@ function openTrackPanel() {
   openSubScreen(trackPanel);
 }
 document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
+
+// Main-menu map: a thumbnail of the track you're about to race, doubling as a
+// shortcut into the track editor.
+function refreshMenuMap() {
+  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig));
+  const label = document.getElementById("menu-map-label");
+  if (label) {
+    label.textContent =
+      trackConfig.mode === "custom" ? `Generated · ${trackConfig.seed || "—"}` : "Classic circuit";
+  }
+}
+document.getElementById("menu-map-btn")?.addEventListener("click", openTrackPanel);
+refreshMenuMap();
 document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
 document.getElementById("track-classic")?.addEventListener("click", () => {
   _trackDraft.mode = "classic";
@@ -1206,18 +1278,23 @@ document.getElementById("track-custom")?.addEventListener("click", () => {
 });
 document.getElementById("track-curvy")?.addEventListener("input", (e) => {
   _trackDraft.curviness = e.target.value / 100;
+  scheduleTrackPreview();
 });
 document.getElementById("track-hilly")?.addEventListener("input", (e) => {
   _trackDraft.hilliness = e.target.value / 100;
+  scheduleTrackPreview();
 });
 document.getElementById("track-hills")?.addEventListener("input", (e) => {
   _trackDraft.hills = e.target.value / 100;
+  scheduleTrackPreview();
 });
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
+  scheduleTrackPreview();
 });
 document.getElementById("track-new")?.addEventListener("click", (e) => {
   _trackDraft.seed = randomSeed();
+  scheduleTrackPreview();
   const btn = e.currentTarget;
   btn.textContent = "🎲 New shape ✓";
   setTimeout(() => (btn.textContent = "🎲 Reroll shape"), 1100);

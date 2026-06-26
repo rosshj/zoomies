@@ -166,6 +166,45 @@ body {
   gap: 7px;
   margin: 12px 0 6px;
 }
+
+/* Track map preview (track menu + main menu). A sunken framed panel holding the
+   2D outline canvas, styled to feel like a little tactical map of the circuit. */
+.map-frame {
+  position: relative;
+  margin: 12px auto;
+  padding: 8px;
+  border-radius: 14px;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(70, 110, 80, 0.5), rgba(20, 30, 28, 0.7));
+  border: 2px solid rgba(255, 179, 0, 0.35);
+  box-shadow: inset 0 2px 14px rgba(0, 0, 0, 0.5);
+  width: 100%;
+  box-sizing: border-box;
+}
+.track-map {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+/* On the main menu the map doubles as a button into the track editor. */
+.map-frame-btn {
+  cursor: pointer;
+  display: block;
+  -webkit-tap-highlight-color: transparent;
+}
+.map-frame-btn:active {
+  transform: scale(0.99);
+}
+.map-label {
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
 .biome-chip {
   font-size: 12px;
   letter-spacing: 0.5px;

@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
-import { rand } from "./rng.js";
+import { rand, makeRng } from "./rng.js";
 
 const TAU = Math.PI * 2;
 const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0.5));
@@ -63,7 +63,10 @@ function _loopOK(pts, minR) {
   return true;
 }
 
-function generateLoopPoints(cfg) {
+// `rng` defaults to the shared world stream (so the built track matches the seed),
+// but the menu preview passes an isolated stream seeded from the same value to
+// draw the identical shape without disturbing the world build.
+function generateLoopPoints(cfg, rng = rand) {
   const size = clamp01(cfg.size);
   const curviness = clamp01(cfg.curviness);
   const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
@@ -89,7 +92,7 @@ function generateLoopPoints(cfg) {
   const hillFreq = Math.max(1, Math.round((0.6 + hills * 5) * (0.6 + size * 0.7)));
   const eH = [];
   for (let k = 1; k <= hillFreq; k++) eH.push({ k, w: 1 / k });
-  const ePhase = eH.map(() => rand() * TAU);
+  const ePhase = eH.map(() => rng() * TAU);
 
   // Build the XZ loop with a radial wobble (lobes/bays) PLUS a smaller tangential
   // snake (the track weaves sideways for S-bends, not just outward bulges).
@@ -119,8 +122,8 @@ function generateLoopPoints(cfg) {
     const damp = attempt < 40 ? 1 : Math.pow(0.85, attempt - 39);
     const radVar = (0.12 + curviness * 0.55 + detail * 0.18) * damp;
     const tangAmp = (curviness * 0.18 + detail * 0.2) * damp;
-    const rPhase = rH.map(() => rand() * TAU);
-    const tPhase = tH.map(() => rand() * TAU);
+    const rPhase = rH.map(() => rng() * TAU);
+    const tPhase = tH.map(() => rng() * TAU);
 
     const pts = [];
     for (let i = 0; i < N; i++) {
@@ -136,6 +139,17 @@ function generateLoopPoints(cfg) {
     if (_loopOK(pts, MIN_CORNER)) return pts;
   }
   return best;
+}
+
+// Centreline control points a given track config WILL produce, for the menu map
+// preview — without building the world or touching the shared RNG stream. Custom
+// tracks reproduce the exact shape via an isolated stream seeded from the same
+// value; classic returns the hand-authored circuit.
+export function previewLoopPoints(config) {
+  if (!config || config.mode !== "custom") {
+    return CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
+  }
+  return generateLoopPoints(config, makeRng(config.seed || "preview"));
 }
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
