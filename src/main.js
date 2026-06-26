@@ -256,10 +256,19 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
-// Knockable roadside props (crates/barrels/leaf piles) via crashcat. Async + best
-// effort: if the engine fails to load, `props` stays null and the game is fine.
+// Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
+// to build, `props` stays null and the game is fine. Smashing a green CATNIP crate
+// grants that kart an 8s hands-free green boost.
 let props = null;
-initProps(scene, track, { seed: WORLD_SEED }).then((p) => {
+initProps(scene, track, {
+  seed: WORLD_SEED,
+  onCatnip: (kart, pos) => {
+    kart.giveCatnip();
+    effects.tootBurst(kart, 2, true); // green smash poof
+    audio.boost(kart === player ? null : kart.position);
+    if (kart === player) hud.showToast("🌿 Catnip!");
+  },
+}).then((p) => {
   props = p;
 });
 
@@ -2126,7 +2135,7 @@ function aiActions(dt) {
     // front-runners stay competitive instead of waiting for the player.
     k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)));
 
-    if (k.boosting) effects.trickle(k);
+    if (k.boosting) effects.trickle(k, k.catnipBoosting);
     if (k.finished || k.spinTimer > 0) {
       k.shielding = false;
       continue;
@@ -2330,10 +2339,12 @@ function loop(now) {
 
   weather.update(dt, camera.position); // rain/snow follows the player
 
-  // Boost light flares up while the player boosts (eased so it pulses on/off).
+  // Boost light flares up while the player boosts (eased so it pulses on/off);
+  // it glows green for a catnip boost, warm orange otherwise.
   if (_boostLight) {
     const tgt = player && player.boosting ? 34 : 0;
     _boostLight.intensity += (tgt - _boostLight.intensity) * Math.min(1, dt * 12);
+    _boostLight.color.set(player && player.catnipBoosting ? 0x6fe040 : 0xff8a2e);
   }
 
   // Step the knockable props and let the karts shove the ones they touch.
@@ -2342,7 +2353,7 @@ function loop(now) {
       dt,
       raceField().map((e) => {
         const k = e.kart || e;
-        return k && k.position ? { x: k.position.x, z: k.position.z } : null;
+        return k && k.position ? { x: k.position.x, z: k.position.z, kart: k } : null;
       })
     );
   }
@@ -2432,7 +2443,7 @@ function loop(now) {
     audio.setSkid(_drift || _hardTurn, _drift ? 1 : 0.45);
 
     // Rainbow boost trail + drift sparks/skids for the player.
-    if (player.boosting) effects.trickle(player);
+    if (player.boosting) effects.trickle(player, player.catnipBoosting);
     if (player.drifting) {
       effects.driftSparks(player);
       effects.skid(player);

@@ -85,6 +85,7 @@ export class Kart {
     this.tootTimer = 0; // tail-lift/toot animation timer
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
+    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 8s
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -256,6 +257,16 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
+  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 8s.
+  // Sustained each frame in update(); reads as a green boost (cloud + flames).
+  giveCatnip() {
+    if (this.finished) return;
+    this.catnipTimer = 8;
+  }
+  get catnipBoosting() {
+    return this.catnipTimer > 0;
+  }
+
   // Spin out — keep the kart's momentum so it slides out realistically and
   // the spin decays, rather than whipping around in place. `impactDir` (xz)
   // adds a modest shove from the hit.
@@ -299,6 +310,11 @@ export class Kart {
     if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
     this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
+    // Catnip keeps the boost topped up (so `boosting` stays true) for its duration.
+    if (this.catnipTimer > 0) {
+      this.catnipTimer -= dt;
+      this.applyBoost(1.5, 0.18, true);
+    }
 
     if (this.spinTimer > 0) {
       this.spinTimer -= dt;
@@ -487,13 +503,20 @@ export class Kart {
     const leanAmt = this.drifting ? 0.26 : 0.12;
     this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
 
-    // Boost flames: show + flicker while boosting.
+    // Boost flames: show + flicker while boosting. Catnip turns them green.
     if (this.flames) {
       const on = this.boosting;
       this.flames.visible = on;
       if (on) {
-        const f = 0.7 + Math.random() * 0.6;
-        this.flames.scale.set(1, 1, f);
+        this.flames.scale.set(1, 1, 0.7 + Math.random() * 0.6);
+        const green = this.catnipBoosting;
+        if (green !== this._flamesGreen) {
+          this._flamesGreen = green;
+          const oc = this.flames.children[0] && this.flames.children[0].material;
+          const cc = this.flames.children[1] && this.flames.children[1].material;
+          if (oc) oc.color.set(green ? 0x49d62a : 0xff7a1e);
+          if (cc) cc.color.set(green ? 0xd6ffb0 : 0xfff2c0);
+        }
       }
     }
 

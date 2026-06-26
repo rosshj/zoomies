@@ -37,14 +37,24 @@ function build(scene, track, opts) {
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
 
-  const makeCrate = () => {
+  // A catnip crate stands out: green-stained wood with a glowing emissive leaf
+  // orb on top, so players are drawn to smash it open.
+  const catnipBody = new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.8 });
+  const catnipTop = new THREE.MeshStandardMaterial({ color: 0x6f9a4a, roughness: 0.8 });
+  const catnipGlow = new THREE.MeshStandardMaterial({ color: 0x9be86a, emissive: 0x6fe040, emissiveIntensity: 1.8 });
+  const makeCrate = (catnip = false) => {
     const s = 1.5 + rand() * 0.6;
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), woodTop);
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), catnip ? catnipBody : woodMat));
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), catnip ? catnipTop : woodTop);
     lid.position.y = s * 0.5;
     g.add(lid);
     g.traverse((o) => (o.castShadow = true));
+    if (catnip) {
+      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(s * 0.26, 0), catnipGlow);
+      orb.position.y = s * 0.7;
+      g.add(orb);
+    }
     return { mesh: g, rest: s / 2 };
   };
   const makeBarrel = () => {
@@ -60,12 +70,13 @@ function build(scene, track, opts) {
     g.traverse((o) => (o.castShadow = true));
     return { mesh: g, rest: h / 2 };
   };
-  const addProp = (x, z, groundY, built) => {
+  const addProp = (x, z, groundY, built, catnip = false) => {
     const mesh = built.mesh;
     mesh.position.set(x, groundY + built.rest, z);
     group.add(mesh);
     props.push({
-      mesh, rest: built.rest, hit: 0, asleep: true, settle: false,
+      mesh, rest: built.rest, hit: 0, asleep: true, settle: false, catnip, dead: 0,
+      ox2: x, oz2: z, groundY,
       pos: new THREE.Vector3(x, groundY + built.rest, z),
       vel: new THREE.Vector3(), angVel: new THREE.Vector3(), quat: new THREE.Quaternion(),
     });
@@ -120,8 +131,12 @@ function build(scene, track, opts) {
       const x = p.x + side.x * lat + fwd.x * along;
       const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
-      if (kindRoll < 0.8) addProp(x, z, groundY, kindRoll < 0.5 ? makeCrate() : makeBarrel());
-      else addLeafPile(x, z, groundY);
+      if (kindRoll < 0.8) {
+        const isCrate = kindRoll < 0.5;
+        // ~1 in 4 crates hides catnip (the green glowing ones).
+        const catnip = isCrate && rand() < 0.26;
+        addProp(x, z, groundY, isCrate ? makeCrate(catnip) : makeBarrel(), catnip);
+      } else addLeafPile(x, z, groundY);
     }
   }
 
@@ -222,16 +237,25 @@ function build(scene, track, opts) {
         const speed = Math.hypot(vx, vz);
         if (speed < 2.5) continue;
         // Extend the swept segment a little past the nose so the kart's length is
-        // accounted for (not just its centre point).
-        moving.push({ ax, az, bx: k.x + (vx / speed) * 2.5, bz: k.z + (vz / speed) * 2.5, dx: vx / speed, dz: vz / speed, speed });
+        // accounted for (not just its centre point). Carry the kart ref so a catnip
+        // crate can grant the power-up to whoever smashed it.
+        moving.push({ ax, az, bx: k.x + (vx / speed) * 2.5, bz: k.z + (vz / speed) * 2.5, dx: vx / speed, dz: vz / speed, speed, kart: k.kart });
       }
     }
 
     // Crates / barrels: fling the ones a kart drives into, scaling hard with speed.
+    // Catnip crates instead SMASH (release the power-up to the kart and vanish,
+    // respawning after a while so it's grabbable again later in the race).
     for (const mk of moving) {
       for (const pr of props) {
-        if (pr.hit > 0) continue;
+        if (pr.dead > 0 || pr.hit > 0) continue;
         if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > HIT_R * HIT_R) continue;
+        if (pr.catnip) {
+          pr.dead = 12; // hidden for 12s, then respawns
+          pr.mesh.visible = false;
+          if (opts.onCatnip && mk.kart) opts.onCatnip(mk.kart, pr.pos);
+          continue;
+        }
         const launch = 16 + Math.min(mk.speed, 150) * 0.95;
         const lift = 7 + Math.min(mk.speed, 120) * 0.06;
         pr.asleep = false;
@@ -244,6 +268,22 @@ function build(scene, track, opts) {
     }
     for (const pr of props) {
       if (pr.hit > 0) pr.hit -= dt;
+      if (pr.dead > 0) {
+        pr.dead -= dt;
+        if (pr.dead <= 0) {
+          // Respawn the catnip crate at its spawn, upright and asleep.
+          pr.pos.set(pr.ox2, pr.groundY + pr.rest, pr.oz2);
+          pr.quat.identity();
+          pr.vel.set(0, 0, 0);
+          pr.angVel.set(0, 0, 0);
+          pr.asleep = true;
+          pr.settle = false;
+          pr.mesh.position.copy(pr.pos);
+          pr.mesh.quaternion.copy(pr.quat);
+          pr.mesh.visible = true;
+        }
+        continue;
+      }
       stepProp(pr, dt);
     }
 

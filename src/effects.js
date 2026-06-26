@@ -69,12 +69,14 @@ export class EffectsManager {
   // charge spark tiers): a solid blue cloud for a light charge, gold for a mid
   // charge, and a full rainbow only at full charge. The toot-meter boost passes
   // the default high charge, so the button toot is always the rainbow one.
-  tootBurst(kart, charge = 2) {
-    const rainbow = charge > 1.5;
+  tootBurst(kart, charge = 2, green = false) {
+    const rainbow = !green && charge > 1.5;
     const tier = charge > 0.8 ? 0xffd54f : 0xbfe3ff;
     const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
     for (let i = 0; i < 16; i++) {
-      const col = rainbow
+      const col = green
+        ? new THREE.Color().setHSL(0.28, 0.85, 0.4 + Math.random() * 0.2)
+        : rainbow
         ? new THREE.Color().setHSL((this._hue + i / 16) % 1, 1, 0.6)
         : new THREE.Color(tier);
       const v = fwd
@@ -93,10 +95,15 @@ export class EffectsManager {
     if (rainbow) this._hue = (this._hue + 0.13) % 1;
   }
 
-  // Continuous rainbow trail while boosting.
-  trickle(kart) {
-    this._hue = (this._hue + 0.05) % 1;
-    const col = new THREE.Color().setHSL(this._hue, 1, 0.6);
+  // Continuous trail while boosting — rainbow normally, green for a catnip boost.
+  trickle(kart, green = false) {
+    let col;
+    if (green) {
+      col = new THREE.Color().setHSL(0.28, 0.85, 0.45 + Math.random() * 0.12);
+    } else {
+      this._hue = (this._hue + 0.05) % 1;
+      col = new THREE.Color().setHSL(this._hue, 1, 0.6);
+    }
     this._spawn(this._rear(kart, 0.8), col, {
       additive: true,
       size: 1.6,
