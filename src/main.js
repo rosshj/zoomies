@@ -112,6 +112,8 @@ composer.addPass(new OutputPass());
 const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
 const BLOOM_THRESHOLD = bloomPass.threshold;
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
+let _lightning = 0; // current lightning-flash intensity (decays each frame)
+let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
 
 // --- Atmosphere: screen-space god-rays (crepuscular light shafts) ---
 // A cheap radial blur of the bright sky toward the sun's screen position: where
@@ -2463,7 +2465,19 @@ function loop(now) {
     _snowBlend += ((where === "snow" ? 1 : 0) - _snowBlend) * Math.min(1, dt * 1.2);
     bloomPass.strength = BLOOM_STRENGTH * (1 - 0.55 * _snowBlend);
     bloomPass.threshold = BLOOM_THRESHOLD + 0.1 * _snowBlend;
-    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend);
+    // Lightning: in proper rain, fire an occasional whole-scene flash (just a
+    // brief exposure punch — no real light — with a flicker so it reads as a
+    // double strike). Self-restoring since exposure is recomputed each frame.
+    if (wet > 0.4) {
+      _lightningNext -= dt;
+      if (_lightningNext <= 0) {
+        _lightning = 1;
+        _lightningNext = 5 + Math.random() * 13;
+      }
+    }
+    _lightning = Math.max(0, _lightning - dt * 3.2);
+    const flash = _lightning > 0 ? Math.max(0, 0.45 + 0.55 * Math.sin(_lightning * 42)) * _lightning : 0;
+    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend) * (1 + flash * 1.5);
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();
