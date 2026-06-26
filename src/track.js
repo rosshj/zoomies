@@ -66,45 +66,44 @@ function _loopOK(pts, minR) {
 function generateLoopPoints(cfg) {
   const size = clamp01(cfg.size);
   const curviness = clamp01(cfg.curviness);
-  const hilliness = clamp01(cfg.hilliness);
+  const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
+  const hills = clamp01(cfg.hills ?? 0.5); // how MANY hills (frequency)
 
-  const N = 16 + Math.round(curviness * 12); // 16..28 control points
+  const N = 18 + Math.round(curviness * 8); // 18..26 control points
   const baseR = 260 + size * 220;
-  const hillAmp = hilliness * 155;
+  const hillAmp = elevation * 155;
   const MIN_CORNER = 17; // tightest drivable corner radius (road is 30 wide)
 
-  // Elevation profile — kept LOW frequency so big hills are long, drivable climbs.
-  const eH = [
-    { k: 1, w: 1 },
-    { k: 2, w: 0.55 },
-    { k: 3, w: 0.3 },
-  ];
+  // Elevation profile: number of hills scales with the Hills knob AND map size
+  // (bigger maps fit more hills). 1/k weighting keeps the climbs/drops drivable
+  // (the amplitude lives in the big low-frequency hill, with smaller bumps on top).
+  const hillFreq = Math.max(1, Math.round((0.6 + hills * 5) * (0.6 + size * 0.7)));
+  const eH = [];
+  for (let k = 1; k <= hillFreq; k++) eH.push({ k, w: 1 / k });
   const ePhase = eH.map(() => rand() * TAU);
 
-  // Build the XZ loop with BOTH a radial wobble (lobes/bays) and a tangential
-  // snake (the track weaves side-to-side, giving real S-bends/hairpins instead
-  // of a round blob). Then validate it's a simple, drivable loop; if not, damp
-  // the perturbation and retry. Damping eventually yields a near-circle, which
-  // always passes — so this terminates.
+  // Build the XZ loop with a radial wobble (lobes/bays) PLUS a smaller tangential
+  // snake (the track weaves sideways for S-bends, not just outward bulges).
+  // Curviness scales both. Then validate the loop is simple + drivable, rerolling
+  // at FULL strength until one passes (most do); a damped pass is a rare fallback.
+  const rH = [
+    { k: 1, w: 0.5 },
+    { k: 2, w: 0.9 },
+    { k: 3, w: 0.3 + curviness * 0.7 },
+    { k: 4, w: curviness * 0.7 },
+    { k: 5, w: curviness * 0.45 },
+  ];
+  const tH = [
+    { k: 2, w: 0.7 },
+    { k: 3, w: 0.6 + curviness * 0.5 },
+    { k: 4, w: curviness * 0.6 },
+  ];
   let best = null;
-  for (let attempt = 0; attempt < 16; attempt++) {
-    const damp = Math.pow(0.85, attempt);
-    const radVar = (0.15 + curviness * 0.5) * damp;
-    const tangAmp = curviness * 0.72 * damp;
-    const rH = [
-      { k: 1, w: 0.6 },
-      { k: 2, w: 0.8 },
-      { k: 3, w: 0.25 + curviness * 0.6 },
-      { k: 4, w: curviness * 0.6 },
-      { k: 5, w: curviness * 0.4 },
-    ];
-    const tH = [
-      { k: 2, w: 0.5 },
-      { k: 3, w: curviness * 0.8 },
-      { k: 4, w: curviness * 0.85 },
-      { k: 5, w: curviness * 0.6 },
-      { k: 6, w: curviness * 0.4 },
-    ];
+  for (let attempt = 0; attempt < 24; attempt++) {
+    // Full strength for most attempts; only damp as a last resort if nothing valid.
+    const damp = attempt < 18 ? 1 : Math.pow(0.8, attempt - 17);
+    const radVar = (0.12 + curviness * 0.45) * damp;
+    const tangAmp = curviness * 0.2 * damp;
     const rPhase = rH.map(() => rand() * TAU);
     const tPhase = tH.map(() => rand() * TAU);
 
@@ -112,16 +111,16 @@ function generateLoopPoints(cfg) {
     for (let i = 0; i < N; i++) {
       const a = (i / N) * TAU;
       const r = baseR * (1 + radVar * harmSum(rH, a, rPhase));
-      const tg = baseR * tangAmp * harmSum(tH, a, tPhase); // sideways snake
+      const tg = baseR * tangAmp * harmSum(tH, a, tPhase);
       const x = Math.cos(a) * r - Math.sin(a) * tg;
       const z = Math.sin(a) * r + Math.cos(a) * tg;
       const y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
       pts.push(new THREE.Vector3(x, y, z));
     }
-    best = pts; // keep the latest as a fallback
+    best = pts;
     if (_loopOK(pts, MIN_CORNER)) return pts;
   }
-  return best; // last (heavily damped, near-circle) attempt — guaranteed gentle
+  return best;
 }
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with

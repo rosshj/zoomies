@@ -1172,6 +1172,7 @@ function syncTrackPanel() {
   };
   set("track-curvy", _trackDraft.curviness);
   set("track-hilly", _trackDraft.hilliness);
+  set("track-hills", _trackDraft.hills);
   set("track-size", _trackDraft.size);
   trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
     chip.classList.toggle("on", _trackDraft.biomes.includes(chip.dataset.biome));
@@ -1183,6 +1184,7 @@ function openTrackPanel() {
     size: trackConfig.size ?? 0.5,
     curviness: trackConfig.curviness ?? 0.5,
     hilliness: trackConfig.hilliness ?? 0.5,
+    hills: trackConfig.hills ?? 0.5,
     biomes:
       Array.isArray(trackConfig.biomes) && trackConfig.biomes.length
         ? [...trackConfig.biomes]
@@ -1207,6 +1209,9 @@ document.getElementById("track-curvy")?.addEventListener("input", (e) => {
 });
 document.getElementById("track-hilly")?.addEventListener("input", (e) => {
   _trackDraft.hilliness = e.target.value / 100;
+});
+document.getElementById("track-hills")?.addEventListener("input", (e) => {
+  _trackDraft.hills = e.target.value / 100;
 });
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
