@@ -2158,7 +2158,7 @@ function buildPigeons(scene, track, heightAt) {
   const up = new THREE.Vector3(0, 1, 0);
   // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold in
   // the loop doesn't drop this building onto a different stretch of road.
-  let bx, bz;
+  let bx, bz, px, pz;
   for (let attempt = 0; attempt < 10; attempt++) {
     const i = Math.floor(((0.08 + attempt * 0.07) % 1) * N);
     const p = track._pts[i];
@@ -2169,6 +2169,8 @@ function buildPigeons(scene, track, heightAt) {
     if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 6) continue;
     bx = cx;
     bz = cz;
+    px = p.x; // road point the loft faces
+    pz = p.z;
     break;
   }
   const by = heightAt(bx, bz);
@@ -2185,7 +2187,7 @@ function buildPigeons(scene, track, heightAt) {
   roof.castShadow = true;
   loft.add(roof);
   loft.position.set(bx, by, bz);
-  loft.rotation.y = Math.atan2(p.x - bx, p.z - bz);
+  loft.rotation.y = Math.atan2(px - bx, pz - bz);
   loft.traverse((o) => o.layers.set(1));
   scene.add(loft);
 
