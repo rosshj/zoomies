@@ -144,6 +144,59 @@ body {
   max-width: 320px;
 }
 
+/* Track panel: same two-column treatment (map | controls) so the tall control
+   stack + map fit the short landscape stage instead of clipping. */
+.menu-card.track-main {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  width: min(760px, 100%);
+  max-width: min(760px, 100%);
+  gap: 4px 24px;
+}
+.track-main .menu-col {
+  max-width: 360px;
+  justify-content: flex-start;
+}
+.track-main h1 {
+  font-size: clamp(20px, 3.5vw, 28px);
+  margin: 0 0 4px;
+}
+.track-main .map-frame {
+  margin: 4px auto 0;
+}
+/* Tighten the control stack so it fits beside the map without scrolling. */
+.track-main #track-knobs {
+  margin: 8px 0 4px;
+  width: 100%;
+}
+.track-main .track-row {
+  margin-bottom: 6px;
+}
+.track-main .biome-pick {
+  margin: 8px 0 4px;
+  gap: 5px;
+}
+.track-main .biome-chip {
+  padding: 5px 9px;
+  font-size: 11px;
+}
+.track-main #track-new {
+  margin-top: 2px;
+}
+.track-main #track-apply,
+.track-main #track-back {
+  font-size: 15px;
+  padding: 9px 24px;
+  margin-top: 6px;
+  width: 100%;
+}
+.track-main #track-back {
+  margin-top: 4px;
+}
+
 /* Compact the primary buttons so each column fits the short landscape height. */
 .menu-col-actions > button {
   font-size: 16px;

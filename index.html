@@ -227,35 +227,41 @@
 
   <!-- ===== Track generator ===== -->
   <div id="track-panel" class="overlay hidden">
-    <div class="menu-card">
-      <h1>🏞 Track</h1>
-      <div class="seg-toggle" id="track-mode">
-        <button id="track-classic" class="seg-btn">Classic</button>
-        <button id="track-custom" class="seg-btn">Generated</button>
-      </div>
-      <div class="map-frame">
-        <canvas id="track-preview" class="track-map" width="480" height="320"></canvas>
-      </div>
-      <div id="track-knobs">
-        <div class="track-row"><span class="setting-label">Curvy</span>
-          <input id="track-curvy" class="slider" type="range" min="0" max="100" value="50" /></div>
-        <div class="track-row"><span class="setting-label">Height</span>
-          <input id="track-hilly" class="slider" type="range" min="0" max="100" value="50" /></div>
-        <div class="track-row"><span class="setting-label">Hills</span>
-          <input id="track-hills" class="slider" type="range" min="0" max="100" value="50" /></div>
-        <div class="track-row"><span class="setting-label">Size</span>
-          <input id="track-size" class="slider" type="range" min="0" max="100" value="50" /></div>
-        <div class="biome-pick" id="track-biomes">
-          <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>
-          <button data-biome="forest" class="biome-chip">🌲 Forest</button>
-          <button data-biome="alpine" class="biome-chip">🏔 Alpine</button>
-          <button data-biome="autumn" class="biome-chip">🍂 Autumn</button>
-          <button data-biome="desert" class="biome-chip">🏜 Desert</button>
+    <div class="menu-card track-main">
+      <!-- Map on one side, controls on the other, so the panel stays short enough
+           for the landscape stage (same reason as the main menu). -->
+      <div class="menu-col track-col-map">
+        <h1>🏞 Track</h1>
+        <div class="map-frame">
+          <canvas id="track-preview" class="track-map" width="480" height="320"></canvas>
         </div>
-        <button id="track-new" class="secondary small">🎲 Reroll shape</button>
       </div>
-      <button id="track-apply">✓ Apply &amp; Play</button>
-      <button id="track-back" class="secondary">← Back</button>
+      <div class="menu-col track-col-ctrl">
+        <div class="seg-toggle" id="track-mode">
+          <button id="track-classic" class="seg-btn">Classic</button>
+          <button id="track-custom" class="seg-btn">Generated</button>
+        </div>
+        <div id="track-knobs">
+          <div class="track-row"><span class="setting-label">Curvy</span>
+            <input id="track-curvy" class="slider" type="range" min="0" max="100" value="50" /></div>
+          <div class="track-row"><span class="setting-label">Height</span>
+            <input id="track-hilly" class="slider" type="range" min="0" max="100" value="50" /></div>
+          <div class="track-row"><span class="setting-label">Hills</span>
+            <input id="track-hills" class="slider" type="range" min="0" max="100" value="50" /></div>
+          <div class="track-row"><span class="setting-label">Size</span>
+            <input id="track-size" class="slider" type="range" min="0" max="100" value="50" /></div>
+          <div class="biome-pick" id="track-biomes">
+            <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>
+            <button data-biome="forest" class="biome-chip">🌲 Forest</button>
+            <button data-biome="alpine" class="biome-chip">🏔 Alpine</button>
+            <button data-biome="autumn" class="biome-chip">🍂 Autumn</button>
+            <button data-biome="desert" class="biome-chip">🏜 Desert</button>
+          </div>
+          <button id="track-new" class="secondary small">🎲 Reroll shape</button>
+        </div>
+        <button id="track-apply">✓ Apply &amp; Play</button>
+        <button id="track-back" class="secondary">← Back</button>
+      </div>
     </div>
   </div>
 
