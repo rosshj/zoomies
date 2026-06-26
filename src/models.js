@@ -23,8 +23,8 @@ function beamTexture() {
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255,247,224,0.85)");
-  g.addColorStop(0.5, "rgba(255,238,200,0.32)");
+  g.addColorStop(0, "rgba(255,247,224,0.5)");
+  g.addColorStop(0.45, "rgba(255,238,200,0.22)");
   g.addColorStop(1, "rgba(255,230,180,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
@@ -353,8 +353,8 @@ export function createKartModel(bodyColor = 0xe53935) {
         depthWrite: false, fog: false, toneMapped: false,
       })
     );
-    beam.position.set(0, 0.06, 8.5); // out in front of the nose
-    beam.scale.set(7, 1, 17); // narrow + long = a forward cone of light
+    beam.position.set(0, 0.05, 6.5); // low, just in front of the nose
+    beam.scale.set(6, 1, 13); // narrow + long = a soft forward wash of light
     beam.renderOrder = 1;
     group.add(beam);
   }

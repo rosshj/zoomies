@@ -132,7 +132,8 @@ async function build(scene, track, opts) {
   };
 
   // Seeded placement: walk the track and, at intervals, drop a small cluster of
-  // props just off the tarmac (kept clear of the road centre).
+  // props. Mix ON-ROAD props (so you can plough through them) with ones just off
+  // the verge, so they're not all out of reach beyond the barriers.
   const up = new THREE.Vector3(0, 1, 0);
   const MAX_PROPS = 64;
   const stepSamples = Math.max(6, Math.round((N * 26) / track.length)); // ~every 26 units
@@ -140,16 +141,20 @@ async function build(scene, track, opts) {
     if (rand() < 0.45) continue; // gaps, so they're occasional not constant
     const p = track._pts[i];
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const dir = rand() < 0.5 ? 1 : -1;
+    const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize();
     const cluster = 1 + ((rand() * 3) | 0); // 1..3
     const kindRoll = rand();
+    const onRoad = rand() < 0.5; // half the clusters sit on the racing surface
+    const dir = rand() < 0.5 ? 1 : -1;
     for (let c = 0; c < cluster && props.length < MAX_PROPS; c++) {
-      const off = track.halfWidth + 3.5 + rand() * 7;
+      // Lateral position: on-road clusters spread across the lane; off-road ones
+      // sit just past the barrier so they're still reachable from a wide line.
+      const lat = onRoad
+        ? (rand() * 2 - 1) * (track.halfWidth - 3)
+        : dir * (track.halfWidth + 3 + rand() * 7);
       const along = (rand() - 0.5) * 6;
-      const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize();
-      const x = p.x + side.x * dir * off + fwd.x * along;
-      const z = p.z + side.z * dir * off + fwd.z * along;
-      if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue; // not on the road
+      const x = p.x + side.x * lat + fwd.x * along;
+      const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
       const built = kindRoll < 0.5 ? makeCrate() : kindRoll < 0.8 ? makeBarrel() : makeLeafPile();
       addProp(x, z, groundY, built.half, built.mesh);

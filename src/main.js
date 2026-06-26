@@ -1869,6 +1869,12 @@ function updateCamera(dt, snap = false) {
   camPos.lerp(desired, lerp);
   camTarget.lerp(look, lerp);
 
+  // Keep the camera above the track surface beneath it: on a steep descent the
+  // spot behind the kart is up-slope (higher ground), which could otherwise leave
+  // the camera buried under the road. Sample the road height there and lift if low.
+  const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
+  if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
+
   // FOV kick when boosting for a sense of speed.
   const targetFov = 62 + (player.boosting ? 7 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);

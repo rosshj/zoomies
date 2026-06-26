@@ -938,23 +938,40 @@ function buildStreetLamps(scene, track, heightAt, night) {
   }
   if (!night) return;
 
-  // Warm ground pools (additive) so the surface reads as lit under each lamp.
+  // Warm ground pools (additive). Each is a tessellated disc whose vertices are
+  // dropped onto the road surface (via groundInfo) so the light hugs the ground /
+  // its slope instead of floating as a flat disc, and its soft round texture means
+  // no hard cut-off edge. All discs merge into a single mesh (one draw call).
   const tex = lampGlowTexture();
-  const pools = new THREE.InstancedMesh(
-    new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+  const POOL_R = 15;
+  const discGeos = [];
+  for (const sp of spots) {
+    const cx = sp.x + sp.ax;
+    const cz = sp.z + sp.az;
+    const g = new THREE.CircleGeometry(POOL_R, 22).rotateX(-Math.PI / 2);
+    const pa = g.attributes.position;
+    for (let v = 0; v < pa.count; v++) {
+      const wx = cx + pa.getX(v);
+      const wz = cz + pa.getZ(v);
+      // Sit on whichever surface is on top here — the road mesh (groundInfo) over
+      // the tarmac, the terrain (heightAt) where the verge rises — so the pool
+      // hugs the ground everywhere instead of floating or sinking.
+      const surfY = Math.max(track.groundInfo(wx, wz).y, heightAt(wx, wz));
+      pa.setY(v, surfY + 0.06);
+      pa.setX(v, wx);
+      pa.setZ(v, wz);
+    }
+    pa.needsUpdate = true;
+    discGeos.push(g);
+  }
+  const poolGeo = mergeGeometries(discGeos);
+  const pools = new THREE.Mesh(
+    poolGeo,
     new THREE.MeshBasicMaterial({
       map: tex, transparent: true, blending: THREE.AdditiveBlending,
       depthWrite: false, fog: false, toneMapped: false,
-    }),
-    spots.length
+    })
   );
-  const POOL = 34;
-  spots.forEach((sp, i) => {
-    pos.set(sp.x + sp.ax, sp.y + 0.12, sp.z + sp.az);
-    pools.setMatrixAt(i, m.compose(pos, ID, sc.set(POOL, 1, POOL)));
-  });
-  sc.set(1, 1, 1);
-  pools.instanceMatrix.needsUpdate = true;
   pools.layers.set(1);
   pools.renderOrder = 1;
   scene.add(pools);
