@@ -2417,6 +2417,13 @@ function loop(now) {
         k.wallHit = false;
       }
       if (k.spinTimer > 0) effects.skid(k);
+      // Drift sparks + skid marks for the rest of the field too (the player is
+      // handled above), so the whole pack throws sparks through the corners —
+      // especially eye-catching at night with the bloom.
+      if (k.drifting && k !== player && Math.abs(k.speed) > 8) {
+        effects.driftSparks(k);
+        effects.skid(k);
+      }
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
         audio.hit(k.position);
