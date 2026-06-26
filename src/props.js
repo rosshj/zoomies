@@ -39,6 +39,9 @@ async function build(scene, track, opts) {
     if (typeof fn !== "function") throw new Error(`crashcat API missing: ${name}`);
   }
   if (!rigidBody || !box || !MotionType) throw new Error("crashcat API missing: rigidBody/box/MotionType");
+  // Continuous collision (LinearCast) stops fast props tunnelling through the thin
+  // floor/wall colliders. Optional — omit if this build doesn't expose it.
+  const MQ = CC.MotionQuality && (CC.MotionQuality.LinearCast ?? CC.MotionQuality.LINEAR_CAST);
 
   registerAll();
   const settings = createWorldSettings();
@@ -69,26 +72,62 @@ async function build(scene, track, opts) {
   const leafPiles = []; // custom particle piles: { x, z, leaves[], burst, groundY }
   const N = track.samples;
 
-  // Build one knockable prop with a box collider + a local static floor so a
-  // knocked prop has ground to land/slide on near the road.
+  // A continuous static floor + low walls follow the whole track (built below), so
+  // props always have ground under them and bounce off the barriers. Each dynamic
+  // prop is low-damping + bouncy so a hit carries real velocity, with CCD so it
+  // doesn't tunnel through the thin colliders.
   const addProp = (x, z, groundY, half, mesh) => {
     mesh.position.set(x, groundY + half[1], z);
     group.add(mesh);
-    // Local floor (static), generous so scattered props stay supported.
-    rigidBody.create(world, {
-      shape: box.create({ halfExtents: [26, 0.5, 26] }),
-      motionType: MotionType.STATIC,
-      objectLayer: L_STATIC,
-      position: [x, groundY - 0.5, z],
-    });
-    const body = rigidBody.create(world, {
+    const cfg = {
       shape: box.create({ halfExtents: half }),
       motionType: MotionType.DYNAMIC,
       objectLayer: L_MOVING,
-      position: [x, groundY + half[1] + 0.02, z],
-    });
-    props.push({ body, mesh, groundY, hit: 0 });
+      position: [x, groundY + half[1] + 0.05, z],
+      friction: 0.35,
+      restitution: 0.4, // bounce off the ground and fences
+      linearDamping: 0.04,
+      angularDamping: 0.05,
+      maxLinearVelocity: 240,
+      maxAngularVelocity: 40,
+    };
+    if (MQ != null) cfg.motionQuality = MQ;
+    const body = rigidBody.create(world, cfg);
+    props.push({ body, mesh, half, ox: x, oz: z, groundY, hit: 0 });
   };
+
+  // Static collision environment that follows the track: a wide floor strip plus a
+  // low wall on each barrier, as a chain of oriented boxes. Props rest on the floor
+  // and bounce off the walls instead of falling through the road or the fence.
+  const buildColliders = () => {
+    const SEGS = 72;
+    const segHalf = (track.length / SEGS) * 0.62; // overlap so the chain has no gaps
+    const wallH = 2.2;
+    for (let s = 0; s < SEGS; s++) {
+      const idx = Math.round((s / SEGS) * N) % N;
+      const p = track._pts[idx];
+      const t = track._tans[idx];
+      const tl = Math.hypot(t.x, t.z) || 1;
+      const tx = t.x / tl, tz = t.z / tl; // tangent in the ground plane
+      const sx = -tz, sz = tx; // left/right across the road
+      const yaw = Math.atan2(tx, tz);
+      const q = [0, Math.sin(yaw / 2), 0, Math.cos(yaw / 2)]; // box local +Z -> tangent
+      rigidBody.create(world, {
+        shape: box.create({ halfExtents: [track.halfWidth + 13, 0.6, segHalf] }),
+        motionType: MotionType.STATIC, objectLayer: L_STATIC,
+        position: [p.x, p.y - 0.6, p.z], quaternion: q,
+      });
+      for (const dir of [1, -1]) {
+        rigidBody.create(world, {
+          shape: box.create({ halfExtents: [0.5, wallH, segHalf] }),
+          motionType: MotionType.STATIC, objectLayer: L_STATIC,
+          position: [p.x + sx * dir * (track.halfWidth + 1.2), p.y + wallH, p.z + sz * dir * (track.halfWidth + 1.2)],
+          quaternion: q,
+        });
+      }
+    }
+  };
+  buildColliders();
 
   const makeCrate = () => {
     const s = 1.5 + rand() * 0.6;
@@ -140,7 +179,7 @@ async function build(scene, track, opts) {
       leaves.push({ mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
     }
     group.add(g);
-    leafPiles.push({ x, z, groundY, leaves, burst: false });
+    leafPiles.push({ x, z, groundY, r: w, leaves, burst: false });
   };
 
   // Seeded placement: walk the track and, at intervals, drop a small cluster of
@@ -204,7 +243,7 @@ async function build(scene, track, opts) {
         const vz = (k.z - prev.z) / Math.max(dt, 1e-3);
         prevK[ki] = { x: k.x, z: k.z };
         const speed = Math.hypot(vx, vz);
-        if (speed < 4) continue; // too slow to knock anything
+        if (speed < 2.5) continue; // too slow to knock anything
         moving.push({ x: k.x, z: k.z, dx: vx / speed, dz: vz / speed, speed });
       }
     }
@@ -217,14 +256,17 @@ async function build(scene, track, opts) {
         const bx = pr.body.position[0], bz = pr.body.position[2];
         const ddx = bx - mk.x, ddz = bz - mk.z;
         if (ddx * ddx + ddz * ddz > HIT_R * HIT_R) continue;
-        const launch = 14 + Math.min(mk.speed, 140) * 0.85;
-        const lift = 4 + Math.min(mk.speed, 120) * 0.05;
+        const launch = 16 + Math.min(mk.speed, 140) * 0.95;
+        const lift = 6 + Math.min(mk.speed, 120) * 0.06;
         const vel = [mk.dx * launch, lift, mk.dz * launch];
-        const spin = [mk.dx * 6, 0, mk.dz * 6];
-        const at = [bx, pr.body.position[1] - 0.4, bz];
+        // Tumble end-over-end: spin about the horizontal axis across the launch
+        // direction, so the prop rolls forward through the air.
+        const spinMag = 9 + Math.random() * 9;
+        const av = [-mk.dz * spinMag, (Math.random() - 0.5) * 6, mk.dx * spinMag];
         try {
           rigidBody.setLinearVelocity(world, pr.body, vel);
-          if (rigidBody.addImpulseAtPosition) rigidBody.addImpulseAtPosition(world, pr.body, spin, at);
+          if (rigidBody.setAngularVelocity) rigidBody.setAngularVelocity(world, pr.body, av);
+          if (rigidBody.wake) rigidBody.wake(world, pr.body);
         } catch {
           try { rigidBody.setLinearVelocity(pr.body, vel); } catch { /* ignore */ }
         }
@@ -237,7 +279,8 @@ async function build(scene, track, opts) {
       if (!lp.burst) {
         for (const mk of moving) {
           const ddx = lp.x - mk.x, ddz = lp.z - mk.z;
-          if (ddx * ddx + ddz * ddz > (HIT_R + 1.5) * (HIT_R + 1.5)) continue;
+          const reach = lp.r + 3.2; // pile spread + the kart's footprint, so a pass-through always triggers
+          if (ddx * ddx + ddz * ddz > reach * reach) continue;
           lp.burst = true;
           for (const lf of lp.leaves) {
             const blow = 4 + Math.min(mk.speed, 90) * 0.22;
@@ -278,7 +321,17 @@ async function build(scene, track, opts) {
     }
     for (const pr of props) {
       if (pr.hit > 0) pr.hit -= dt;
-      const q = pr.body.quaternion, p = pr.body.position;
+      const p = pr.body.position;
+      // Safety net: if a prop ever escapes the colliders and falls away, drop it
+      // back at its spawn instead of letting it vanish forever.
+      if (p[1] < pr.groundY - 25 && rigidBody.setPosition) {
+        try {
+          rigidBody.setPosition(world, pr.body, [pr.ox, pr.groundY + pr.half[1] + 0.05, pr.oz], true);
+          rigidBody.setLinearVelocity(world, pr.body, [0, 0, 0]);
+          if (rigidBody.setAngularVelocity) rigidBody.setAngularVelocity(world, pr.body, [0, 0, 0]);
+        } catch { /* ignore */ }
+      }
+      const q = pr.body.quaternion;
       pr.mesh.position.set(p[0], p[1], p[2]);
       pr.mesh.quaternion.set(q[0], q[1], q[2], q[3]);
     }
