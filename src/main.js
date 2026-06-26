@@ -73,9 +73,12 @@ function resolveTimeOfDay(cfg) {
 const TIME_OF_DAY = resolveTimeOfDay(trackConfig);
 setNightMode(TIME_OF_DAY === "night"); // karts get glowing headlights + a beam at night
 
-// Background music. One track drives both the menu and the race (it loops).
-audio.registerMusic("menu", "./assets/music/zoomies.mp3");
-audio.registerMusic("race", "./assets/music/zoomies.mp3");
+// Background music. One looping track drives both the menu and the race; night
+// worlds get their own moodier track.
+const MUSIC_TRACK =
+  TIME_OF_DAY === "night" ? "./assets/music/zoomieslevel1.mp3" : "./assets/music/zoomies.mp3";
+audio.registerMusic("menu", MUSIC_TRACK);
+audio.registerMusic("race", MUSIC_TRACK);
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.

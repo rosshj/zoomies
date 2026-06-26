@@ -1,8 +1,9 @@
 # Background music
 
 The game plays **`zoomies.mp3`** (installed here) on both the menu and during
-races — it loops automatically. Wiring lives in `src/main.js` where
-`audio.registerMusic(...)` is called.
+races — it loops automatically. **Night** worlds instead play the moodier
+**`zoomieslevel1.mp3`**. Wiring lives in `src/main.js`, where the track is chosen
+by the world's time of day and passed to `audio.registerMusic(...)`.
 
 ## Replacing or splitting the track
 
