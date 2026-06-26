@@ -77,7 +77,11 @@ function generateLoopPoints(cfg) {
   const N = 16 + Math.round(curviness * (8 + size * 20)); // ~24 on small maps, ~44 on big
   const baseR = 260 + size * 220;
   const hillAmp = elevation * 155;
-  const MIN_CORNER = 15; // tightest drivable corner radius (road is 30 wide)
+  // Tightest centreline corner radius. The road is laid out flat across its width,
+  // so a centreline radius below halfWidth (15) folds the inner edge over itself —
+  // which looks especially broken where a tight corner also falls on a steep grade.
+  // Keep a margin above halfWidth so the inner edge always has room (radius ~7).
+  const MIN_CORNER = 22;
 
   // Elevation profile: number of hills scales with the Hills knob AND map size
   // (bigger maps fit more hills). 1/k weighting keeps the climbs/drops drivable

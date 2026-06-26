@@ -2156,12 +2156,21 @@ function makePigeon() {
 function buildPigeons(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-  const i = Math.floor(0.08 * N);
-  const p = track._pts[i];
-  const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-  const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-  const bx = p.x + side.x * outward * (track.halfWidth + 9);
-  const bz = p.z + side.z * outward * (track.halfWidth + 9);
+  // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold in
+  // the loop doesn't drop this building onto a different stretch of road.
+  let bx, bz;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const i = Math.floor(((0.08 + attempt * 0.07) % 1) * N);
+    const p = track._pts[i];
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+    const cx = p.x + side.x * outward * (track.halfWidth + 9);
+    const cz = p.z + side.z * outward * (track.halfWidth + 9);
+    if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 6) continue;
+    bx = cx;
+    bz = cz;
+    break;
+  }
   const by = heightAt(bx, bz);
 
   const loft = new THREE.Group();
