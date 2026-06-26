@@ -69,10 +69,10 @@ function generateLoopPoints(cfg) {
   const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
   const hills = clamp01(cfg.hills ?? 0.5); // how MANY hills (frequency)
 
-  const N = 18 + Math.round(curviness * 8); // 18..26 control points
+  const N = 18 + Math.round(curviness * 22); // 18..40 control points (more corners at max)
   const baseR = 260 + size * 220;
   const hillAmp = elevation * 155;
-  const MIN_CORNER = 17; // tightest drivable corner radius (road is 30 wide)
+  const MIN_CORNER = 15; // tightest drivable corner radius (road is 30 wide)
 
   // Elevation profile: number of hills scales with the Hills knob AND map size
   // (bigger maps fit more hills). 1/k weighting keeps the climbs/drops drivable
@@ -87,23 +87,27 @@ function generateLoopPoints(cfg) {
   // Curviness scales both. Then validate the loop is simple + drivable, rerolling
   // at FULL strength until one passes (most do); a damped pass is a rare fallback.
   const rH = [
-    { k: 1, w: 0.5 },
-    { k: 2, w: 0.9 },
-    { k: 3, w: 0.3 + curviness * 0.7 },
-    { k: 4, w: curviness * 0.7 },
-    { k: 5, w: curviness * 0.45 },
+    { k: 1, w: 0.4 },
+    { k: 2, w: 0.8 },
+    { k: 3, w: 0.4 + curviness * 0.95 },
+    { k: 4, w: curviness * 1.1 },
+    { k: 5, w: curviness * 0.85 },
+    { k: 6, w: curviness * 0.6 },
+    { k: 7, w: curviness * 0.4 },
   ];
   const tH = [
-    { k: 2, w: 0.7 },
-    { k: 3, w: 0.6 + curviness * 0.5 },
-    { k: 4, w: curviness * 0.6 },
+    { k: 1, w: 0.4 },
+    { k: 2, w: 0.75 },
+    { k: 3, w: 0.65 + curviness * 0.8 },
+    { k: 4, w: curviness * 0.95 },
+    { k: 5, w: curviness * 0.65 },
   ];
   let best = null;
-  for (let attempt = 0; attempt < 24; attempt++) {
+  for (let attempt = 0; attempt < 48; attempt++) {
     // Full strength for most attempts; only damp as a last resort if nothing valid.
-    const damp = attempt < 18 ? 1 : Math.pow(0.8, attempt - 17);
-    const radVar = (0.12 + curviness * 0.45) * damp;
-    const tangAmp = curviness * 0.2 * damp;
+    const damp = attempt < 40 ? 1 : Math.pow(0.85, attempt - 39);
+    const radVar = (0.12 + curviness * 0.72) * damp;
+    const tangAmp = curviness * 0.36 * damp;
     const rPhase = rH.map(() => rand() * TAU);
     const tPhase = tH.map(() => rand() * TAU);
 

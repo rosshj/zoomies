@@ -90,6 +90,9 @@ let _alpine = null;
 let _eMin = 0;
 let _eMax = 1;
 let _heightSampler = null;
+// Seeded angular offset (in turns, 0..1) for the warm-biome wedges. Rotates which
+// biome the start line sits on so it varies per seed instead of always biome #0.
+let _biomeAngleOffset = 0;
 
 // Choose which biomes appear (by name). Empty/unknown -> all. opts:
 //   { altitude, elevMin, elevMax } enable altitude-driven layout (custom tracks).
@@ -102,6 +105,17 @@ export function setBiomeLayout(names, opts = {}) {
   _altMode = !!opts.altitude;
   _eMin = opts.elevMin ?? 0;
   _eMax = opts.elevMax ?? 1;
+  _biomeAngleOffset = 0;
+  // Generated tracks: scramble both the ORDER of the warm biomes and the angular
+  // phase, so the sequence of biomes and which one the start sits on are unique
+  // per seed (classic keeps its hand-authored fixed order).
+  if (_altMode) {
+    for (let i = _warm.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [_warm[i], _warm[j]] = [_warm[j], _warm[i]];
+    }
+    _biomeAngleOffset = rand();
+  }
 }
 
 // Provide an elevation lookup fn(x,z)->y so biomeAt can read altitude. Set by the
@@ -131,7 +145,7 @@ function alpineWeight(y) {
 function warmBlend(x, z) {
   const n = _warm.length;
   if (n <= 1) return { a: _warm[0], b: _warm[0], t: 0 };
-  const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
+  const s = ((Math.atan2(z, x) / (Math.PI * 2) + _biomeAngleOffset + 1) % 1) * n;
   const i0 = Math.floor(s) % n;
   const frac = s - Math.floor(s);
   const t = frac < 0.58 ? 0 : smooth((frac - 0.58) / 0.42); // soft seam over ~40% of each wedge
@@ -312,21 +326,38 @@ export function buildWorld(scene, track) {
 // each other; any that don't fit are skipped.
 function makeLakes(track, baseHeight) {
   const lakes = [];
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
 
-  // Hero lake: a curved RIBBON that follows the inside of the flat bottom arc,
-  // so it hugs the road's shape instead of bulging in like a circle would. The
-  // shore bank rises back to road height exactly at the barrier, so the road
-  // edge always sits ON the ground (no floating ledge over a dropped slope).
+  // Hero lake: a curved RIBBON in the infield that follows a LOW, FLAT arc of the
+  // road, so it hugs the road's shape and the bank stays gentle. The arc is chosen
+  // per seed — we throw several random candidate arcs and keep the lowest, flattest
+  // one — so the lake lands somewhere unique each map instead of always at the
+  // start line. The shore bank rises back to road height exactly at the barrier.
   {
-    const N = track.samples;
-    const up = new THREE.Vector3(0, 1, 0);
-    const waterR = 46; // half-width of the ribbon
+    const span = Math.max(3, Math.round(0.05 * N)); // half the arc length, in samples
+    const arcStats = (c) => {
+      let mn = Infinity, mx = -Infinity, sum = 0, k = 0;
+      for (let i = c - span; i <= c + span; i++) {
+        const y = track._pts[((i % N) + N) % N].y;
+        if (y < mn) mn = y;
+        if (y > mx) mx = y;
+        sum += y; k++;
+      }
+      return { mn, mx, avg: sum / k, flat: mx - mn };
+    };
+    let bestC = Math.floor(rand() * N), bestScore = Infinity;
+    for (let t = 0; t < 8; t++) {
+      const c = Math.floor(rand() * N);
+      const s = arcStats(c);
+      const score = s.avg + s.flat * 1.5; // prefer low ground that's also flat
+      if (score < bestScore) { bestScore = score; bestC = c; }
+    }
+    const waterR = 40 + rand() * 14; // half-width of the ribbon (varies per seed)
     const bankW = 12; // shore slope width: water edge -> road height at the barrier
-    const i0 = Math.round(0.95 * N); // keep to the flat bottom so the bank stays gentle
-    const i1 = Math.round(1.05 * N);
     const spine = [];
     let minY = Infinity;
-    for (let i = i0; i <= i1; i += 2) {
+    for (let i = bestC - span; i <= bestC + span; i += 2) {
       const idx = ((i % N) + N) % N;
       const p = track._pts[idx];
       const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
@@ -342,32 +373,40 @@ function makeLakes(track, baseHeight) {
       });
       if (p.y < minY) minY = p.y;
     }
-    const level = minY - 2; // just below the lowest road point along the arc
     lakes.push({
-      ribbon: true, spine, level,
-      floor: level - 8,
+      ribbon: true, spine, level: minY - 2,
+      floor: minY - 2 - 8,
       waterR,
       shoreR: waterR, // no flat beach; the whole bank rises to the road
       blendR: waterR + bankW, // ramp reaches road height at the barrier
     });
   }
 
-  // A couple of scenic hill lakes out in the open, kept clear of the road.
-  for (const s of [
-    { x: -430, z: 250, waterR: 40, shoreR: 52, blendR: 82, depth: 7 },
-    { x: 430, z: -380, waterR: 48, shoreR: 62, blendR: 96, depth: 7 },
-  ]) {
-    const gi = track.groundInfo(s.x, s.z);
-    if (gi.dist < track.halfWidth + s.blendR + 8) continue; // would touch the road
-    if (lakes.some((L) => Math.hypot(s.x - L.x, s.z - L.z) < s.blendR + L.blendR + 6)) continue;
-    const level = baseHeight(s.x, s.z);
+  // A few scenic hill lakes out in the open, placed at seeded angles & distances
+  // (not fixed coordinates) so they scatter uniquely per map. We throw a generous
+  // batch of candidates and keep the first 1–3 that clear the road and each other.
+  const wantHill = 1 + Math.floor(rand() * 3); // 1..3
+  let placedHill = 0;
+  for (let t = 0; t < 14 && placedHill < wantHill; t++) {
+    const ang = rand() * Math.PI * 2;
+    const radius = 360 + rand() * 320; // out beyond the loop
+    const x = Math.cos(ang) * radius;
+    const z = Math.sin(ang) * radius;
+    const waterR = 30 + rand() * 26;
+    const shoreR = waterR + 12 + rand() * 8;
+    const blendR = shoreR + 24 + rand() * 14;
+    const gi = track.groundInfo(x, z);
+    if (gi.dist < track.halfWidth + blendR + 8) continue; // would touch the road
+    if (lakes.some((L) => !L.ribbon && Math.hypot(x - L.x, z - L.z) < blendR + L.blendR + 6)) continue;
+    // Keep clear of the hero ribbon lake too.
+    if (lakes.some((L) => L.ribbon && lakeDist(L, x, z) < blendR + L.blendR + 6)) continue;
+    const level = baseHeight(x, z);
     lakes.push({
-      x: s.x, z: s.z, level,
-      floor: level - s.depth,
-      waterR: s.waterR,
-      shoreR: s.shoreR,
-      blendR: s.blendR,
+      x, z, level,
+      floor: level - (6 + rand() * 3),
+      waterR, shoreR, blendR,
     });
+    placedHill++;
   }
   return lakes;
 }
