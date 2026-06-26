@@ -125,8 +125,9 @@ export class Kart {
     // the world axis, so the kart only tilts to the grade when facing ±Z — on a
     // looping track it mostly wouldn't pitch at all.
     this.group.rotation.order = "YXZ";
-    const { group: kart, wheels } = createKartModel(color);
+    const { group: kart, wheels, brakeMat } = createKartModel(color);
     this.wheels = wheels;
+    this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
     this.group.add(kart);
     const cat = createCat(catColor);
     cat.scale.setScalar(0.62);
@@ -340,6 +341,9 @@ export class Kart {
       this.speed = boosting ? upper : Math.max(upper, this.speed - 26 * dt);
     }
     this.speed = Math.max(-this.maxReverse, this.speed);
+
+    // Tail lights flare when braking or reversing (dim red glow otherwise).
+    if (this.brakeMat) this.brakeMat.emissiveIntensity = this.throttleInput < -0.05 ? 2.8 : 0.25;
 
     // --- Drift: continues as long as jump is held; release fires the boost ---
     if (this.drifting) {
