@@ -278,18 +278,25 @@ initProps(scene, track, {
 // — the lit pool it casts IS the beam, conforming to the surface with no decal to
 // clip the track. One per kart (player, AI and remotes) so the whole field lights
 // the road; cheap because there are no shadow maps.
+// All kart headlight spotlights + their full intensity, so the start ramp-in can
+// scale them each frame (the whole grid's beams overlapping at the line was a
+// blowout). `_hlRamp` eases 0->1 once the lights go green.
+const _kartSpots = [];
+let _hlRamp = 1;
 function attachKartHeadlight(grp) {
   if (LIGHT_LEVEL <= 0 || !grp || grp.userData._hl) return; // on at night AND sunset
   const target = new THREE.Object3D();
   target.position.set(0, -3.5, 18); // aim forward and down onto the road
   grp.add(target);
   // Dimmer at dusk (the sunset sky is still bright), full at night.
-  const spot = new THREE.SpotLight(0xfff2d6, 68 * LIGHT_LEVEL, 75, 0.66, 0.55, 1.3);
+  const base = 68 * LIGHT_LEVEL;
+  const spot = new THREE.SpotLight(0xfff2d6, base * _hlRamp, 75, 0.66, 0.55, 1.3);
   spot.position.set(0, 0.7, 2.9); // at the headlights
   spot.castShadow = false;
   spot.target = target;
   grp.add(spot);
   grp.userData._hl = true;
+  _kartSpots.push({ light: spot, base });
 }
 
 // A warm point light at the player's exhaust that flares while boosting, so a
@@ -430,6 +437,8 @@ let player = null;
 function buildKarts() {
   for (const k of karts) scene.remove(k.group);
   karts = [];
+  _kartSpots.length = 0; // old karts (and their spotlights) are gone
+  _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   rimShaders.length = 0; // drop last race's kart shaders before rebuilding
   // Multiplayer is humans-only: drop the AI field (remote players fill the grid
   // as real participants). Solo play keeps the full roster of AI rivals.
@@ -2357,6 +2366,13 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
+
+  // Headlights ramp up once the race is underway (they start dim so the packed
+  // starting grid's overlapping beams don't blow out the screen).
+  if (_kartSpots.length) {
+    if (state === State.RACING) _hlRamp += (1 - _hlRamp) * Math.min(1, dt * 0.7);
+    for (const s of _kartSpots) s.light.intensity = s.base * _hlRamp;
+  }
 
   // Boost light flares up while the player boosts (eased so it pulses on/off);
   // it glows green for a catnip boost, warm orange otherwise.

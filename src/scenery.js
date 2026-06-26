@@ -288,7 +288,7 @@ export function buildWorld(scene, track, opts = {}) {
 
   const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
 
-  buildTerrain(scene, heightAt);
+  buildTerrain(scene, heightAt, 1 - litLevel * 0.6); // darker ground at dusk/night
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
@@ -299,7 +299,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildStringLights(scene, track, litLevel); // festive bulb strings over a few road spans
   buildOverheadStructures(scene, track, lit, litLevel); // banners + a bridge spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
-  const waters = buildWater(scene, lakes);
+  const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
   const flocks = buildBirds(scene);
@@ -345,50 +345,63 @@ function makeLakes(track, baseHeight) {
   // start line. The shore bank rises back to road height exactly at the barrier.
   {
     const span = Math.max(3, Math.round(0.05 * N)); // half the arc length, in samples
+    // Score a candidate arc: low + flat ground, AND fairly STRAIGHT — a tight
+    // curve makes the offset ribbon swing toward (or across) the road.
     const arcStats = (c) => {
-      let mn = Infinity, mx = -Infinity, sum = 0, k = 0;
+      let mn = Infinity, mx = -Infinity, sum = 0, k = 0, curv = 0;
       for (let i = c - span; i <= c + span; i++) {
         const y = track._pts[((i % N) + N) % N].y;
         if (y < mn) mn = y;
         if (y > mx) mx = y;
         sum += y; k++;
+        const t0 = track._tans[((i % N) + N) % N];
+        const t1 = track._tans[(((i + 1) % N) + N) % N];
+        let d = Math.atan2(t1.x, t1.z) - Math.atan2(t0.x, t0.z);
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        curv += Math.abs(d);
       }
-      return { mn, mx, avg: sum / k, flat: mx - mn };
+      return { avg: sum / k, flat: mx - mn, curv };
     };
     let bestC = Math.floor(rand() * N), bestScore = Infinity;
-    for (let t = 0; t < 8; t++) {
+    for (let t = 0; t < 10; t++) {
       const c = Math.floor(rand() * N);
       const s = arcStats(c);
-      const score = s.avg + s.flat * 1.5; // prefer low ground that's also flat
+      const score = s.avg + s.flat * 1.5 + s.curv * 130; // low, flat AND straight
       if (score < bestScore) { bestScore = score; bestC = c; }
     }
-    const waterR = 40 + rand() * 14; // half-width of the ribbon (varies per seed)
-    const bankW = 12; // shore slope width: water edge -> road height at the barrier
+    const waterR = 38 + rand() * 12; // half-width of the ribbon (varies per seed)
+    const bankW = 13; // shore slope width: water edge -> road height at the barrier
+    const off = track.halfWidth + bankW + waterR;
+    // One infield direction for the WHOLE arc (taken at its centre), so the ribbon
+    // can't flip across the road mid-arc on a wiggle.
+    const cp = track._pts[bestC];
+    const cs = new THREE.Vector3().crossVectors(track._tans[bestC], up).normalize();
+    const inSign = cs.x * cp.x + cs.z * cp.z >= 0 ? -1 : 1;
     const spine = [];
-    let minY = Infinity;
+    let minY = Infinity, minDist = Infinity;
     for (let i = bestC - span; i <= bestC + span; i += 2) {
       const idx = ((i % N) + N) % N;
       const p = track._pts[idx];
       const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
-      const inSign = side.x * p.x + side.z * p.z >= 0 ? -1 : 1; // unit dir toward infield
-      // Centreline offset: barrier (halfW) + bank + water radius. With this, the
-      // bank ramp (waterR..waterR+bankW) lands exactly on the barrier line.
-      const off = track.halfWidth + bankW + waterR;
-      spine.push({
-        x: p.x + side.x * inSign * off,
-        z: p.z + side.z * inSign * off,
-        sx: side.x * inSign,
-        sz: side.z * inSign,
-      });
+      const x = p.x + side.x * inSign * off;
+      const z = p.z + side.z * inSign * off;
+      spine.push({ x, z, sx: side.x * inSign, sz: side.z * inSign });
       if (p.y < minY) minY = p.y;
+      minDist = Math.min(minDist, track.distanceToCenter(x, z)); // nearest road to the lake centre
     }
-    lakes.push({
-      ribbon: true, spine, level: minY - 2,
-      floor: minY - 2 - 8,
-      waterR,
-      shoreR: waterR, // no flat beach; the whole bank rises to the road
-      blendR: waterR + bankW, // ramp reaches road height at the barrier
-    });
+    // Only place the hero lake if the water clears EVERY part of the road (the lake
+    // centre must stay at least waterR + halfWidth + a margin from any road) — on a
+    // fold this fails, so we skip it rather than spill water onto the track.
+    if (minDist > waterR + track.halfWidth + 5) {
+      lakes.push({
+        ribbon: true, spine, level: minY - 2,
+        floor: minY - 2 - 8,
+        waterR,
+        shoreR: waterR, // no flat beach; the whole bank rises to the road
+        blendR: waterR + bankW, // ramp reaches road height at the barrier
+      });
+    }
   }
 
   // A few scenic hill lakes out in the open, placed at seeded angles & distances
@@ -459,15 +472,17 @@ function carveLakes(lakes, x, z, h) {
 // Stylised toon water shared by round and ribbon lakes. Colour/foam are driven
 // by a per-vertex "shore" value (0 at the centre/spine, 1 at the bank) and a
 // "len" value along the water, so there's no concentric/pinwheel pattern.
-function makeWaterMaterial() {
+function makeWaterMaterial(darken = 1) {
+  // The water colour is shader-driven (unlit), so dim it directly at dusk/night —
+  // otherwise it glows like daylight cyan in the dark.
   return new THREE.ShaderMaterial({
     transparent: true,
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
-      uDeep: { value: new THREE.Color(0x1f6f8c) },
-      uShallow: { value: new THREE.Color(0x57c6d6) },
-      uFoam: { value: new THREE.Color(0xeafcff) },
+      uDeep: { value: new THREE.Color(0x1f6f8c).multiplyScalar(darken) },
+      uShallow: { value: new THREE.Color(0x57c6d6).multiplyScalar(darken) },
+      uFoam: { value: new THREE.Color(0xeafcff).multiplyScalar(0.4 + 0.6 * darken) },
     },
     vertexShader: `
       attribute float aShore; attribute float aLen;
@@ -491,10 +506,10 @@ function makeWaterMaterial() {
   });
 }
 
-function buildWater(scene, lakes) {
+function buildWater(scene, lakes, darken = 1) {
   const mats = [];
   for (const L of lakes) {
-    const mat = makeWaterMaterial();
+    const mat = makeWaterMaterial(darken);
     const mesh = L.ribbon ? ribbonWaterMesh(L, mat) : circleWaterMesh(L, mat);
     scene.add(mesh);
     mats.push(mat);
@@ -650,7 +665,7 @@ function buildGrass(scene, track, heightAt) {
   return mesh;
 }
 
-function buildTerrain(scene, heightAt) {
+function buildTerrain(scene, heightAt, darken = 1) {
   const SIZE = 1900;
   const SEG = 280;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
@@ -686,7 +701,9 @@ function buildTerrain(scene, heightAt) {
     } else if (y > 52) {
       c.copy(base).lerp(cRock, Math.min(1, (y - 52) / 32));
     }
-    colors.push(c.r, c.g, c.b);
+    // At dusk/night, lower the ground albedo (esp. bright snow) so the moon doesn't
+    // make it read like daytime — it stays dark until the lamps/headlights light it.
+    colors.push(c.r * darken, c.g * darken, c.b * darken);
   }
 
   // Baked ambient occlusion: darken concave ground (valley floors, hill bases,
