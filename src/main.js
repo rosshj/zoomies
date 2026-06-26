@@ -273,31 +273,36 @@ initProps(scene, track, {
   props = p;
 });
 
-// Kart headlights (night only): a REAL shadowless spotlight mounted on each kart,
-// aimed forward and down, so it actually illuminates the road and any props ahead
-// — the lit pool it casts IS the beam, conforming to the surface with no decal to
-// clip the track. One per kart (player, AI and remotes) so the whole field lights
-// the road; cheap because there are no shadow maps.
-// All kart headlight spotlights + their full intensity, so the start ramp-in can
-// scale them each frame (the whole grid's beams overlapping at the line was a
-// blowout). `_hlRamp` eases 0->1 once the lights go green.
-const _kartSpots = [];
+// Kart headlights (night/dusk only): REAL shadowless spotlights aimed forward and
+// down, so they actually illuminate the road and any props ahead — the lit pool a
+// spotlight casts IS the beam, conforming to the surface with no decal to clip the
+// track. PERF: rather than one light per kart (every lit pixel in a forward
+// renderer pays for every light, and dynamic-resolution scaling can't reduce the
+// light COUNT — only the pixel count), we keep a small FIXED pool of beams and
+// reassign them each frame to the player + the nearest karts. Every other kart
+// still shows its glowing headlight bulbs (those are emissive, free), it just
+// doesn't cast a road pool — which you almost never notice from the chase cam.
+// A constant light count also means the material shaders compile once and never
+// re-link mid-race. `_hlRamp` eases 0->1 once the lights go green so the packed
+// starting grid's overlapping beams don't blow out the screen.
+const HEADLIGHT_BUDGET = 3; // real road beams (player + 2 nearest); rest keep just bulbs
+const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
+const _hlPool = []; // { light, target } reused across karts
+const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
 let _hlRamp = 1;
-function attachKartHeadlight(grp) {
-  if (LIGHT_LEVEL <= 0 || !grp || grp.userData._hl) return; // on at night AND sunset
-  const target = new THREE.Object3D();
-  target.position.set(0, -3.5, 18); // aim forward and down onto the road
-  grp.add(target);
-  // Dimmer at dusk (the sunset sky is still bright), full at night.
-  const base = 68 * LIGHT_LEVEL;
-  const spot = new THREE.SpotLight(0xfff2d6, base * _hlRamp, 75, 0.66, 0.55, 1.3);
-  spot.position.set(0, 0.7, 2.9); // at the headlights
-  spot.castShadow = false;
-  spot.target = target;
-  grp.add(spot);
-  grp.userData._hl = true;
-  _kartSpots.push({ light: spot, base });
+function buildHeadlightPool() {
+  if (LIGHT_LEVEL <= 0 || _hlPool.length) return; // daytime needs none
+  for (let i = 0; i < HEADLIGHT_BUDGET; i++) {
+    const target = new THREE.Object3D();
+    scene.add(target);
+    const spot = new THREE.SpotLight(0xfff2d6, 0, 75, 0.66, 0.55, 1.3);
+    spot.castShadow = false;
+    spot.target = target;
+    scene.add(spot);
+    _hlPool.push({ light: spot, target });
+  }
 }
+buildHeadlightPool();
 
 // A warm point light at the player's exhaust that flares while boosting, so a
 // boost actually throws coloured light on the road and nearby props. Player-only
@@ -437,7 +442,6 @@ let player = null;
 function buildKarts() {
   for (const k of karts) scene.remove(k.group);
   karts = [];
-  _kartSpots.length = 0; // old karts (and their spotlights) are gone
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   rimShaders.length = 0; // drop last race's kart shaders before rebuilding
   // Multiplayer is humans-only: drop the AI field (remote players fill the grid
@@ -468,7 +472,6 @@ function buildKarts() {
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
     });
     toonify(kart.group); // cel-shade the kart + cat
-    attachKartHeadlight(kart.group); // night: every kart lights the road ahead
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
@@ -485,7 +488,8 @@ function decorateKartGroup(group) {
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
   });
   toonify(group);
-  attachKartHeadlight(group); // remote karts light the road at night too
+  // Remote karts share the same pooled headlight beams (assigned by proximity each
+  // frame in the loop) — no per-kart light to attach.
 }
 
 // --- Multiplayer (Phase 2: "ghost race") ---------------------------------
@@ -2367,11 +2371,35 @@ function loop(now) {
 
   weather.update(dt, camera.position); // rain/snow follows the player
 
-  // Headlights ramp up once the race is underway (they start dim so the packed
-  // starting grid's overlapping beams don't blow out the screen).
-  if (_kartSpots.length) {
+  // Assign the small headlight-beam pool to the player + the nearest karts each
+  // frame (others keep just their glowing bulbs), and ramp the beams up once the
+  // race is underway so the packed starting grid doesn't blow out the screen.
+  if (_hlPool.length) {
     if (state === State.RACING) _hlRamp += (1 - _hlRamp) * Math.min(1, dt * 0.32);
-    for (const s of _kartSpots) s.light.intensity = s.base * _hlRamp;
+    _hlCands.length = 0;
+    for (const k of karts) if (k && k.position) _hlCands.push(k);
+    if (MP.enabled) for (const r of MP.remotes.values()) if (r.kart && r.kart.position) _hlCands.push(r.kart);
+    const cx = camera.position.x, cz = camera.position.z;
+    // Player always keeps a beam; the rest are ranked by distance to the camera.
+    _hlCands.sort((a, b) => {
+      if (a === player) return -1;
+      if (b === player) return 1;
+      const da = (a.position.x - cx) ** 2 + (a.position.z - cz) ** 2;
+      const db = (b.position.x - cx) ** 2 + (b.position.z - cz) ** 2;
+      return da - db;
+    });
+    const lit = _hlBase * _hlRamp;
+    for (let i = 0; i < _hlPool.length; i++) {
+      const slot = _hlPool[i];
+      const k = _hlCands[i];
+      if (!k) { slot.light.intensity = 0; continue; } // fewer karts than beams
+      const fx = Math.sin(k.heading), fz = Math.cos(k.heading);
+      const p = k.position;
+      slot.light.position.set(p.x + fx * 2.9, p.y + 0.7, p.z + fz * 2.9); // at the headlights
+      slot.target.position.set(p.x + fx * 18, p.y - 3.5, p.z + fz * 18); // forward + down
+      slot.target.updateMatrixWorld();
+      slot.light.intensity = lit;
+    }
   }
 
   // Boost light flares up while the player boosts (eased so it pulses on/off);
