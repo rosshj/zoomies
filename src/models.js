@@ -15,24 +15,6 @@ export function setNightMode(v) {
   _night = !!v;
 }
 
-// Warm-white radial texture for the headlight beam pool on the ground.
-let _beamTex = null;
-function beamTexture() {
-  if (_beamTex) return _beamTex;
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255,247,224,0.5)");
-  g.addColorStop(0.45, "rgba(255,238,200,0.22)");
-  g.addColorStop(1, "rgba(255,230,180,0)");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
-  _beamTex = new THREE.CanvasTexture(c);
-  _beamTex.colorSpace = THREE.SRGBColorSpace;
-  return _beamTex;
-}
-
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
 // origin sits at the seat base. `furColor` tints the fur. The returned group's
 // userData.rig holds pivots (ears, whiskers, tail, head) that updateCatRig()
@@ -343,21 +325,9 @@ export function createKartModel(bodyColor = 0xe53935) {
     light.position.set(sx * 0.5, 0.65, 3.0);
     group.add(light);
   }
-  // At night, an elongated warm beam pool on the ground ahead lights the way
-  // (cheap additive decal, parented to the kart so it sweeps the road as you turn).
-  if (_night) {
-    const beam = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({
-        map: beamTexture(), transparent: true, blending: THREE.AdditiveBlending,
-        depthWrite: false, fog: false, toneMapped: false,
-      })
-    );
-    beam.position.set(0, 0.05, 6.5); // low, just in front of the nose
-    beam.scale.set(6, 1, 13); // narrow + long = a soft forward wash of light
-    beam.renderOrder = 1;
-    group.add(beam);
-  }
+  // The forward beam that lights the road is NOT parented here (it would tilt with
+  // the kart and clip the tarmac during drifts) — it's a ground-projected pool
+  // managed per-frame in the main loop (see headlights in main.js).
 
   // Wheels
   const wheels = [];

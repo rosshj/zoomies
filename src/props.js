@@ -65,7 +65,8 @@ async function build(scene, track, opts) {
   const bandMat = new THREE.MeshStandardMaterial({ color: 0xe6e2d6, roughness: 0.5, metalness: 0.4 });
   const leafCols = [0xb5532a, 0xd07b27, 0xe0a73a, 0x8a6e2f];
 
-  const props = []; // { body, mesh, groundY, hit }
+  const props = []; // crashcat rigid props (crates, barrels): { body, mesh, groundY, hit }
+  const leafPiles = []; // custom particle piles: { x, z, leaves[], burst, groundY }
   const N = track.samples;
 
   // Build one knockable prop with a box collider + a local static floor so a
@@ -114,21 +115,32 @@ async function build(scene, track, opts) {
     // Box collider approximating the barrel (square footprint).
     return { mesh: g, half: [r, h / 2, r] };
   };
-  const makeLeafPile = () => {
+  // Leaf piles are NOT rigid bodies — they're a mound of many little leaf cards
+  // that BURST upward and scatter (custom particle physics) when a kart drives
+  // through, which reads far better than one tumbling clump.
+  const leafGeo = new THREE.PlaneGeometry(0.7, 0.5);
+  const addLeafPile = (x, z, groundY) => {
     const g = new THREE.Group();
-    const w = 2.0 + rand() * 0.8;
-    for (let i = 0; i < 5; i++) {
-      const rr = 0.6 + rand() * 0.6;
-      const m = new THREE.Mesh(
-        new THREE.SphereGeometry(rr, 7, 6),
-        new THREE.MeshStandardMaterial({ color: leafCols[(rand() * leafCols.length) | 0], roughness: 1, flatShading: true })
-      );
-      m.position.set((rand() - 0.5) * w, rr * 0.5, (rand() - 0.5) * w);
-      m.scale.y = 0.6;
-      m.castShadow = true;
-      g.add(m);
+    g.position.set(x, groundY, z);
+    const leaves = [];
+    const w = 1.8 + rand() * 0.8;
+    const n = 14 + ((rand() * 8) | 0);
+    for (let i = 0; i < n; i++) {
+      const mat = new THREE.MeshStandardMaterial({
+        color: leafCols[(rand() * leafCols.length) | 0], roughness: 1, side: THREE.DoubleSide, flatShading: true,
+      });
+      const leaf = new THREE.Mesh(leafGeo, mat);
+      const a = rand() * Math.PI * 2;
+      const r = rand() * w;
+      leaf.position.set(Math.cos(a) * r, 0.05 + rand() * 0.3, Math.sin(a) * r);
+      leaf.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.6, rand() * Math.PI, (rand() - 0.5) * 0.6);
+      leaf.scale.setScalar(0.7 + rand() * 0.6);
+      leaf.castShadow = true;
+      g.add(leaf);
+      leaves.push({ mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
     }
-    return { mesh: g, half: [w * 0.6, 0.6, w * 0.6] };
+    group.add(g);
+    leafPiles.push({ x, z, groundY, leaves, burst: false });
   };
 
   // Seeded placement: walk the track and, at intervals, drop a small cluster of
@@ -156,12 +168,16 @@ async function build(scene, track, opts) {
       const x = p.x + side.x * lat + fwd.x * along;
       const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
-      const built = kindRoll < 0.5 ? makeCrate() : kindRoll < 0.8 ? makeBarrel() : makeLeafPile();
-      addProp(x, z, groundY, built.half, built.mesh);
+      if (kindRoll < 0.8) {
+        const built = kindRoll < 0.5 ? makeCrate() : makeBarrel();
+        addProp(x, z, groundY, built.half, built.mesh);
+      } else {
+        addLeafPile(x, z, groundY);
+      }
     }
   }
 
-  if (!props.length) {
+  if (!props.length && !leafPiles.length) {
     scene.remove(group);
     return null;
   }
@@ -172,41 +188,83 @@ async function build(scene, track, opts) {
   const PHYS_DT = 1 / 60;
   let acc = 0;
 
+  const GRAV = 30; // leaf-particle gravity (lighter than the rigid sim, so they hang)
+
   function update(dt, karts) {
     dt = Math.min(dt, 0.05); // clamp big frame gaps so the sim stays stable
-    // Knock detection BEFORE stepping: shove props the karts are touching.
+
+    // Per-kart motion this frame (unit heading + speed), shared by both systems.
+    const moving = [];
     if (karts && karts.length) {
       for (let ki = 0; ki < karts.length; ki++) {
         const k = karts[ki];
         if (!k) continue;
         const prev = prevK[ki] || { x: k.x, z: k.z };
-        let vx = (k.x - prev.x) / Math.max(dt, 1e-3);
-        let vz = (k.z - prev.z) / Math.max(dt, 1e-3);
+        const vx = (k.x - prev.x) / Math.max(dt, 1e-3);
+        const vz = (k.z - prev.z) / Math.max(dt, 1e-3);
         prevK[ki] = { x: k.x, z: k.z };
         const speed = Math.hypot(vx, vz);
-        if (speed < 4) continue; // too slow to bother
-        const inv = 1 / speed;
-        vx *= inv; vz *= inv;
-        for (const pr of props) {
-          if (pr.hit > 0) continue;
-          const bx = pr.body.position[0], bz = pr.body.position[2];
-          const dx = bx - k.x, dz = bz - k.z;
-          if (dx * dx + dz * dz > HIT_R * HIT_R) continue;
-          // Launch the prop along the kart's heading, with a little lift + spin.
-          // Documented signature is world-first; fall back to a no-world form.
-          const launch = 5 + Math.min(speed, 60) * 0.32;
-          const vel = [vx * launch, 3.2, vz * launch];
-          const spin = [vx * 2, 0, vz * 2];
-          const at = [bx, pr.body.position[1] - 0.4, bz];
-          try {
-            rigidBody.setLinearVelocity(world, pr.body, vel);
-            if (rigidBody.addImpulseAtPosition) rigidBody.addImpulseAtPosition(world, pr.body, spin, at);
-          } catch {
-            try {
-              rigidBody.setLinearVelocity(pr.body, vel);
-            } catch { /* ignore */ }
+        if (speed < 4) continue; // too slow to knock anything
+        moving.push({ x: k.x, z: k.z, dx: vx / speed, dz: vz / speed, speed });
+      }
+    }
+
+    // Crates / barrels: launch the ones a kart drives into. Velocity scales hard
+    // with speed so a fast hit really sends them flying.
+    for (const mk of moving) {
+      for (const pr of props) {
+        if (pr.hit > 0) continue;
+        const bx = pr.body.position[0], bz = pr.body.position[2];
+        const ddx = bx - mk.x, ddz = bz - mk.z;
+        if (ddx * ddx + ddz * ddz > HIT_R * HIT_R) continue;
+        const launch = 14 + Math.min(mk.speed, 140) * 0.85;
+        const lift = 4 + Math.min(mk.speed, 120) * 0.05;
+        const vel = [mk.dx * launch, lift, mk.dz * launch];
+        const spin = [mk.dx * 6, 0, mk.dz * 6];
+        const at = [bx, pr.body.position[1] - 0.4, bz];
+        try {
+          rigidBody.setLinearVelocity(world, pr.body, vel);
+          if (rigidBody.addImpulseAtPosition) rigidBody.addImpulseAtPosition(world, pr.body, spin, at);
+        } catch {
+          try { rigidBody.setLinearVelocity(pr.body, vel); } catch { /* ignore */ }
+        }
+        pr.hit = 0.6;
+      }
+    }
+
+    // Leaf piles: burst into a flurry that flies up and scatters along the hit.
+    for (const lp of leafPiles) {
+      if (!lp.burst) {
+        for (const mk of moving) {
+          const ddx = lp.x - mk.x, ddz = lp.z - mk.z;
+          if (ddx * ddx + ddz * ddz > (HIT_R + 1.5) * (HIT_R + 1.5)) continue;
+          lp.burst = true;
+          for (const lf of lp.leaves) {
+            const blow = 4 + Math.min(mk.speed, 90) * 0.22;
+            lf.vel.set(
+              mk.dx * blow + (Math.random() - 0.5) * 6,
+              7 + Math.random() * 7,
+              mk.dz * blow + (Math.random() - 0.5) * 6
+            );
+            lf.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
           }
-          pr.hit = 0.6;
+          break;
+        }
+      } else {
+        for (const lf of lp.leaves) {
+          lf.vel.y -= GRAV * dt;
+          lf.vel.x *= 1 - 0.9 * dt; // air drag so they flutter, not rocket
+          lf.vel.z *= 1 - 0.9 * dt;
+          const pp = lf.mesh.position;
+          pp.addScaledVector(lf.vel, dt);
+          if (pp.y < 0.05) { // settled on the ground (local origin sits at groundY)
+            pp.y = 0.05;
+            lf.vel.set(lf.vel.x * 0.25, 0, lf.vel.z * 0.25);
+            lf.spin.multiplyScalar(0.6);
+          }
+          lf.mesh.rotation.x += lf.spin.x * dt;
+          lf.mesh.rotation.y += lf.spin.y * dt;
+          lf.mesh.rotation.z += lf.spin.z * dt;
         }
       }
     }
@@ -226,6 +284,6 @@ async function build(scene, track, opts) {
     }
   }
 
-  console.log(`[zoomies] knockable props: ${props.length}`);
-  return { update, group, count: props.length };
+  console.log(`[zoomies] knockable props: ${props.length} rigid + ${leafPiles.length} leaf piles`);
+  return { update, group, count: props.length + leafPiles.length };
 }
