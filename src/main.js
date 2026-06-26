@@ -252,59 +252,26 @@ initProps(scene, track, { seed: WORLD_SEED }).then((p) => {
   props = p;
 });
 
-// Headlight beams (night only): a warm forward light-pool PROJECTED on the road
-// ahead of each kart. Kept out of the kart model and re-grounded each frame so it
-// stays flush and never tilts into the tarmac during drifts. One soft texture,
-// pooled meshes reused across karts.
-const _hlTex = (() => {
-  const c = document.createElement("canvas");
-  c.width = c.height = 64;
-  const x = c.getContext("2d");
-  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255,246,214,0.55)");
-  g.addColorStop(0.5, "rgba(255,236,196,0.22)");
-  g.addColorStop(1, "rgba(255,230,180,0)");
-  x.fillStyle = g;
-  x.fillRect(0, 0, 64, 64);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-})();
-const _hlGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
-const _hlMat = new THREE.MeshBasicMaterial({
-  map: _hlTex, color: 0xfff0d0, transparent: true,
-  blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
-});
-const _hlBeams = [];
-const _hlFwd = new THREE.Vector3();
-function updateHeadlights() {
-  if (TIME_OF_DAY !== "night") return;
-  let i = 0;
-  for (const e of raceField()) {
-    const obj = e.kart || e;
-    const grp = obj.group || obj;
-    if (!grp || !grp.position || !grp.quaternion) continue;
-    _hlFwd.set(0, 0, 1).applyQuaternion(grp.quaternion);
-    _hlFwd.y = 0;
-    if (_hlFwd.lengthSq() < 1e-4) continue;
-    _hlFwd.normalize();
-    const x = grp.position.x + _hlFwd.x * 8;
-    const z = grp.position.z + _hlFwd.z * 8;
-    let b = _hlBeams[i];
-    if (!b) {
-      b = new THREE.Mesh(_hlGeo, _hlMat);
-      b.frustumCulled = false;
-      b.renderOrder = 1;
-      scene.add(b);
-      _hlBeams[i] = b;
-    }
-    b.visible = true;
-    b.position.set(x, track.groundInfo(x, z).y + 0.07, z);
-    b.rotation.y = Math.atan2(_hlFwd.x, _hlFwd.z); // align the long axis with heading
-    b.scale.set(6, 1, 16);
-    i++;
+// Player headlights (night only): a pair of REAL spotlights mounted on the kart,
+// pointing forward and down, so they actually illuminate the road and any props
+// ahead — and the lit pool they cast IS the beam, conforming to the surface with
+// no decal to clip the track. Shadowless to keep them cheap. Attached when the
+// player kart is (re)built; see attachHeadlights().
+let _headlightsOn = false;
+function attachHeadlights(playerKart) {
+  if (TIME_OF_DAY !== "night" || _headlightsOn || !playerKart || !playerKart.group) return;
+  const grp = playerKart.group;
+  const target = new THREE.Object3D();
+  target.position.set(0, -3.5, 18); // aim forward and down onto the road
+  grp.add(target);
+  for (const sx of [-0.55, 0.55]) {
+    const spot = new THREE.SpotLight(0xfff2d6, 120, 75, 0.6, 0.55, 1.3);
+    spot.position.set(sx, 0.7, 2.9); // at the headlights
+    spot.castShadow = false;
+    spot.target = target;
+    grp.add(spot);
   }
-  for (; i < _hlBeams.length; i++) _hlBeams[i].visible = false;
+  _headlightsOn = true;
 }
 
 // Minimap: a static top-down outline of the track with a coloured dot per kart.
@@ -466,6 +433,8 @@ function buildKarts() {
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
   });
+  _headlightsOn = false; // player kart was rebuilt; re-mount its headlights
+  attachHeadlights(player);
 }
 
 // Cel-shade a kart group the same way buildKarts does (rim light + toon bands),
@@ -2312,7 +2281,6 @@ function loop(now) {
       })
     );
   }
-  updateHeadlights(); // project each kart's forward light pool onto the road (night)
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.MENU) {
