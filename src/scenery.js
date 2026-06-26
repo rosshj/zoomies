@@ -292,6 +292,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildStreetLamps(scene, track, heightAt, night); // roadside lamps (lit at night)
   buildStringLights(scene, track, night); // festive bulb strings over a few road spans
+  buildOverheadStructures(scene, track, night); // banners + a bridge spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes);
   const grass = buildGrass(scene, track, heightAt);
@@ -1042,6 +1043,90 @@ function buildStringLights(scene, track, night) {
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   mesh.layers.set(1);
   scene.add(mesh);
+}
+
+// Overhead structures you drive UNDER: cloth welcome banners on posts, and a
+// chunky bridge/overpass spanning the road. Seeded placement across the track.
+function buildOverheadStructures(scene, track, night) {
+  const N = track.samples;
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9 });
+  const clothCols = [0xd9534f, 0x4a90d9, 0x4caf50, 0xe0a73a, 0x9c5ab8];
+
+  const spanAt = (frac) => {
+    const i = Math.floor((frac % 1) * N) % N;
+    const p = track._pts[i];
+    const t = track._tans[i];
+    const tl = Math.hypot(t.x, t.z) || 1;
+    return { p, sx: -t.z / tl, sz: t.x / tl, yaw: Math.atan2(t.x / tl, t.z / tl) };
+  };
+
+  // --- Cloth banners (2) ---
+  for (const frac of [0.2 + rand() * 0.1, 0.66 + rand() * 0.1]) {
+    const { p, sx, sz, yaw } = spanAt(frac);
+    const off = track.halfWidth + 3;
+    const postH = 11;
+    for (const dir of [1, -1]) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, postH, 8), postMat);
+      post.position.set(p.x + sx * dir * off, p.y + postH / 2, p.z + sz * dir * off);
+      post.castShadow = true;
+      post.layers.set(1);
+      scene.add(post);
+    }
+    const width = (track.halfWidth + off) * 2;
+    const crossbar = new THREE.Mesh(rbox(width, 0.4, 0.4, 0.15), postMat);
+    crossbar.position.set(p.x, p.y + postH, p.z);
+    crossbar.rotation.y = yaw;
+    crossbar.layers.set(1);
+    scene.add(crossbar);
+    const cloth = new THREE.Mesh(
+      new THREE.PlaneGeometry(width * 0.86, 3.2),
+      new THREE.MeshStandardMaterial({ color: clothCols[(rand() * clothCols.length) | 0], roughness: 1, side: THREE.DoubleSide })
+    );
+    cloth.position.set(p.x, p.y + postH - 2.0, p.z);
+    cloth.rotation.y = yaw;
+    cloth.castShadow = true;
+    cloth.layers.set(1);
+    scene.add(cloth);
+  }
+
+  // --- One bridge / overpass you drive under ---
+  {
+    const { p, sx, sz, yaw } = spanAt(0.42 + rand() * 0.08);
+    const stone = new THREE.MeshStandardMaterial({ color: 0x8c8378, roughness: 1 });
+    const deckY = p.y + 13;
+    const off = track.halfWidth + 6;
+    const span = (track.halfWidth + off) * 2;
+    for (const dir of [1, -1]) {
+      const pillar = new THREE.Mesh(rbox(3.4, deckY - p.y, 4.2, 0.4), stone);
+      pillar.position.set(p.x + sx * dir * off, p.y + (deckY - p.y) / 2, p.z + sz * dir * off);
+      pillar.rotation.y = yaw;
+      pillar.castShadow = true;
+      pillar.layers.set(1);
+      scene.add(pillar);
+    }
+    const deck = new THREE.Mesh(rbox(span, 1.6, 8, 0.3), stone);
+    deck.position.set(p.x, deckY, p.z);
+    deck.rotation.y = yaw;
+    deck.castShadow = true;
+    deck.layers.set(1);
+    scene.add(deck);
+    for (const dz of [-3.4, 3.4]) {
+      const rail = new THREE.Mesh(rbox(span, 1.0, 0.4, 0.15), stone);
+      rail.position.set(p.x + Math.cos(yaw) * dz, deckY + 1.3, p.z - Math.sin(yaw) * dz);
+      rail.rotation.y = yaw;
+      rail.layers.set(1);
+      scene.add(rail);
+    }
+    if (night) {
+      const lamp = new THREE.Mesh(
+        new THREE.SphereGeometry(0.6, 10, 8),
+        new THREE.MeshStandardMaterial({ color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: 2.4 })
+      );
+      lamp.position.set(p.x, deckY - 1.2, p.z);
+      lamp.layers.set(1);
+      scene.add(lamp);
+    }
+  }
 }
 
 // Flat, soft, dark discs laid on the ground under objects — a cheap contact /
