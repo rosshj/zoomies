@@ -125,9 +125,10 @@ export class Kart {
     // the world axis, so the kart only tilts to the grade when facing ±Z — on a
     // looping track it mostly wouldn't pitch at all.
     this.group.rotation.order = "YXZ";
-    const { group: kart, wheels, brakeMat } = createKartModel(color);
+    const { group: kart, wheels, brakeMat, flames } = createKartModel(color);
     this.wheels = wheels;
     this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
+    this.flames = flames; // boost exhaust flames; shown/flickered while boosting
     this.group.add(kart);
     const cat = createCat(catColor);
     cat.scale.setScalar(0.62);
@@ -485,6 +486,16 @@ export class Kart {
     const leanInput = this.drifting ? this.driftDir : this.steerInput;
     const leanAmt = this.drifting ? 0.26 : 0.12;
     this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
+
+    // Boost flames: show + flicker while boosting.
+    if (this.flames) {
+      const on = this.boosting;
+      this.flames.visible = on;
+      if (on) {
+        const f = 0.7 + Math.random() * 0.6;
+        this.flames.scale.set(1, 1, f);
+      }
+    }
 
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
     // lifts while tooting).

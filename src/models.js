@@ -364,5 +364,27 @@ export function createKartModel(bodyColor = 0xe53935) {
     wheels.push(w);
   }
 
-  return { group, wheels, brakeMat };
+  // Boost flames out the back — hidden until boosting (the kart shows/flickers
+  // them). Bright, un-tonemapped additive cones so bloom makes them roar.
+  const flames = new THREE.Group();
+  flames.visible = false;
+  const flameOuter = new THREE.MeshBasicMaterial({
+    color: 0xff7a1e, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
+  });
+  const flameCore = new THREE.MeshBasicMaterial({
+    color: 0xfff2c0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
+  });
+  for (const sx of [-0.7, 0.7]) {
+    const outer = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.5, 8), flameOuter);
+    outer.rotation.x = -Math.PI / 2; // taper trailing backward (-Z)
+    outer.position.set(sx, 0.55, -2.7);
+    flames.add(outer);
+    const core = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 8), flameCore);
+    core.rotation.x = -Math.PI / 2;
+    core.position.set(sx, 0.55, -2.5);
+    flames.add(core);
+  }
+  group.add(flames);
+
+  return { group, wheels, brakeMat, flames };
 }

@@ -273,6 +273,18 @@ function attachKartHeadlight(grp) {
   grp.userData._hl = true;
 }
 
+// A warm point light at the player's exhaust that flares while boosting, so a
+// boost actually throws coloured light on the road and nearby props. Player-only
+// (one event-driven light) to keep the night light count in check.
+let _boostLight = null;
+function attachBoostLight(playerKart) {
+  if (!playerKart || !playerKart.group) return;
+  _boostLight = new THREE.PointLight(0xff8a2e, 0, 26, 1.6);
+  _boostLight.position.set(0, 0.7, -2.7);
+  _boostLight.castShadow = false;
+  playerKart.group.add(_boostLight);
+}
+
 // Minimap: a static top-down outline of the track with a coloured dot per kart.
 let minimap = setupMinimap();
 
@@ -433,6 +445,8 @@ function buildKarts() {
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
   });
+  _boostLight = null;
+  attachBoostLight(player); // player's exhaust glow while boosting
 }
 
 // Cel-shade a kart group the same way buildKarts does (rim light + toon bands),
@@ -2269,6 +2283,12 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
+
+  // Boost light flares up while the player boosts (eased so it pulses on/off).
+  if (_boostLight) {
+    const tgt = player && player.boosting ? 34 : 0;
+    _boostLight.intensity += (tgt - _boostLight.intensity) * Math.min(1, dt * 12);
+  }
 
   // Step the knockable props and let the karts shove the ones they touch.
   if (props) {
