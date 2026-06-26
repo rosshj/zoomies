@@ -288,7 +288,7 @@ export function buildWorld(scene, track, opts = {}) {
 
   const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
 
-  buildTerrain(scene, heightAt, 1 - litLevel * 0.6); // darker ground at dusk/night
+  buildTerrain(scene, heightAt, litLevel); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
@@ -665,7 +665,11 @@ function buildGrass(scene, track, heightAt) {
   return mesh;
 }
 
-function buildTerrain(scene, heightAt, darken = 1) {
+function buildTerrain(scene, heightAt, litLevel = 0) {
+  // General ground only dims a LITTLE at night (so the scene stays as bright as it
+  // was before) — but snow is darkened HARD, because near-white snow reflects the
+  // moonlight far more than anything else and is what reads "self-lit".
+  const groundDarken = 1 - litLevel * 0.15; // ~0.85 at night
   const SIZE = 1900;
   const SEG = 280;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
@@ -678,7 +682,6 @@ function buildTerrain(scene, heightAt, darken = 1) {
   const cMoonSnow = new THREE.Color(0x2a3550); // cool, dark "snow under moonlight"
   const base = new THREE.Color();
   const c = new THREE.Color();
-  const nightAmt = 1 - darken; // 0 in daylight, ~0.6 at night
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -704,12 +707,16 @@ function buildTerrain(scene, heightAt, darken = 1) {
     } else if (y > 52) {
       c.copy(base).lerp(cRock, Math.min(1, (y - 52) / 32));
     }
-    // At dusk/night, lower the ground albedo so the moon doesn't make it read like
-    // daytime. Snow is near-white, so it reflects moonlight far more than other
-    // ground and reads "self-lit" — push it hard toward a dark, cool moonlit tone
-    // (proportional to how snowy AND how dark the scene is), so it only brightens
-    // where the lamps/headlights actually fall on it.
-    if (nightAmt > 0 && snowAmt > 0) c.lerp(cMoonSnow, snowAmt * nightAmt);
+    // Snow at night: push it hard toward a dark, cool moonlit tone AND darken it
+    // well below the rest of the ground, so it stops glowing like daytime and only
+    // brightens where the lamps/headlights actually fall on it. General ground keeps
+    // its daytime brightness (just the mild groundDarken).
+    let darken = groundDarken;
+    if (litLevel > 0 && snowAmt > 0) {
+      const snowTint = snowAmt * litLevel; // 0..1, full on high snow at night
+      c.lerp(cMoonSnow, Math.min(0.82, snowTint));
+      darken *= 1 - snowTint * 0.55; // extra darkening for snow only
+    }
     colors.push(c.r * darken, c.g * darken, c.b * darken);
   }
 

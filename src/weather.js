@@ -34,7 +34,7 @@ export class Weather {
     this.snowMat = new THREE.PointsMaterial({
       map: dotTexture(),
       color: 0xffffff,
-      size: 1.5, // small flakes
+      size: 0.85, // small flakes
       transparent: true,
       opacity: 0.95,
       depthWrite: false,
