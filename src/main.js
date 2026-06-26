@@ -4,7 +4,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
-import { createScene, pickMood } from "./scene.js";
+import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
@@ -13,7 +13,7 @@ import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeRoadStyle } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
-import { setSeed, getSeed, randomSeed } from "./rng.js";
+import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { Net } from "./net/net.js";
 import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
@@ -58,6 +58,18 @@ const WORLD_SEED = (
 setSeed(WORLD_SEED);
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 
+// Time of day for this world. "random" (and the default) rolls one per seed via
+// an ISOLATED stream so it's identical for everyone on a seed (multiplayer) yet
+// never disturbs the shared world-build stream that shapes the track. The world
+// and its lighting are built for this once, so the menu already shows it.
+const TODS = ["midday", "sunset", "night"];
+function resolveTimeOfDay(cfg) {
+  const t = cfg.timeOfDay || "midday";
+  if (t === "midday" || t === "sunset" || t === "night") return t;
+  return TODS[Math.floor(makeRng(WORLD_SEED + "|tod")() * TODS.length)]; // "random"
+}
+const TIME_OF_DAY = resolveTimeOfDay(trackConfig);
+
 // Background music. One track drives both the menu and the race (it loops).
 audio.registerMusic("menu", "./assets/music/zoomies.mp3");
 audio.registerMusic("race", "./assets/music/zoomies.mp3");
@@ -68,9 +80,13 @@ audio.registerMusic("race", "./assets/music/zoomies.mp3");
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
 const { renderer, scene, camera, sun, applyMood } = createScene();
+// Light the world for this race's time of day up front, so the menu's live
+// backdrop already shows midday / sunset / night.
+const MOOD = moodForTimeOfDay(TIME_OF_DAY);
+applyMood(MOOD);
 const weather = new Weather(scene);
-let moodSat = 1.3; // this race's base saturation (rain desaturates from it)
-let moodExposure = 1.05; // this race's base exposure (rain darkens from it)
+let moodSat = MOOD.sat; // this race's base saturation (rain desaturates from it)
+let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens from it)
 // The main camera sees everything; the rear-view camera stays on layer 0, so
 // scenery on layer 1 and grass on layer 2 are skipped in the mirror.
 camera.layers.enable(1);
@@ -181,8 +197,8 @@ const fxPass = new ShaderPass({
     uAberr: { value: 0 },
     uRadial: { value: 0 }, // radial motion blur amount (ramps with speed/boost)
     uVignette: { value: 0.28 },
-    uSat: { value: 1.3 },
-    uContrast: { value: 1.07 },
+    uSat: { value: MOOD.sat },
+    uContrast: { value: MOOD.contrast },
   },
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
@@ -713,7 +729,7 @@ function renderMirror() {
 
 // Update the god-ray pass: project the sun to screen and fade it out when it's
 // hidden by the weather or behind the camera.
-let sunVisibleMood = true;
+let sunVisibleMood = MOOD.rays ?? MOOD.sunVisible;
 const _sunDir = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
 const _sunScreen = new THREE.Vector3();
@@ -1224,8 +1240,12 @@ function syncTrackPanel() {
   set("track-hilly", _trackDraft.hilliness);
   set("track-hills", _trackDraft.hills);
   set("track-size", _trackDraft.size);
-  trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
+  trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", _trackDraft.biomes.includes(chip.dataset.biome));
+  });
+  const tod = _trackDraft.timeOfDay || "midday";
+  trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", chip.dataset.tod === tod);
   });
   scheduleTrackPreview();
 }
@@ -1254,10 +1274,18 @@ function openTrackPanel() {
         ? [...trackConfig.biomes]
         : [...ALL_BIOMES],
     seed: trackConfig.seed || randomSeed(),
+    timeOfDay: trackConfig.timeOfDay || "midday",
   };
   syncTrackPanel();
   openSubScreen(trackPanel);
 }
+// Time-of-day picker (single-select: midday / sunset / night / random).
+document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    _trackDraft.timeOfDay = chip.dataset.tod;
+    syncTrackPanel();
+  });
+});
 document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
@@ -1519,16 +1547,17 @@ function prepareRace() {
   document.getElementById("lobby").classList.add("hidden");
   document.getElementById("hud").classList.remove("hidden");
 
-  // Fresh time of day each race (sky/sun only). Precipitation is no longer
-  // random — it's dictated by the biome you're driving through (see the loop).
-  const mood = pickMood();
+  // This world's time of day (midday/sunset/night), fixed per seed and already
+  // applied at load. Precipitation is separate — dictated by the biome you drive
+  // through (see the loop).
+  const mood = MOOD;
   applyMood(mood);
   weather.setWeather("none");
   moodSat = mood.sat;
   fxPass.uniforms.uSat.value = mood.sat;
   fxPass.uniforms.uContrast.value = mood.contrast;
-  // God-rays only when the sun is out; tint them to the mood's sun colour.
-  sunVisibleMood = mood.sunVisible;
+  // God-rays / lens-flare / warm backlight only for the daytime sun, not the moon.
+  sunVisibleMood = mood.rays ?? mood.sunVisible;
   moodExposure = mood.exposure;
   godrayPass.uniforms.uColor.value.set(mood.sunColor);
   hud.showToast(mood.name);

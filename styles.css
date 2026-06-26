@@ -207,10 +207,26 @@ body {
 .track-col-map .map-frame {
   margin: 0;
   width: 100%;
-  align-self: stretch;
+  align-self: flex-start;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* Time-of-day picker: one compact row of four chips under Environment. */
+.tod-pick {
+  margin-top: 2px;
+}
+.tod-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+}
+.tod-grid .biome-chip {
+  width: 100%;
+  text-align: center;
+  padding: 5px 4px;
+  font-size: 10px;
+  letter-spacing: 0;
 }
 .map-reroll {
   width: 100%;
