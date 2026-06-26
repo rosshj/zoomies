@@ -69,7 +69,12 @@ function generateLoopPoints(cfg) {
   const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
   const hills = clamp01(cfg.hills ?? 0.5); // how MANY hills (frequency)
 
-  const N = 18 + Math.round(curviness * 22); // 18..40 control points (more corners at max)
+  // How many curves the loop has scales with BOTH knobs, but the corner DENSITY
+  // is tied to map size: a bigger circuit has room for more (and tighter-packed)
+  // curves, a small one gets fewer, gentler bends — so small maps don't pinch the
+  // road into corners too sharp for the roadside scenery to fit beside.
+  const detail = curviness * (0.55 + 0.45 * size); // effective high-frequency curviness
+  const N = 16 + Math.round(curviness * (8 + size * 20)); // ~24 on small maps, ~44 on big
   const baseR = 260 + size * 220;
   const hillAmp = elevation * 155;
   const MIN_CORNER = 15; // tightest drivable corner radius (road is 30 wide)
@@ -86,28 +91,30 @@ function generateLoopPoints(cfg) {
   // snake (the track weaves sideways for S-bends, not just outward bulges).
   // Curviness scales both. Then validate the loop is simple + drivable, rerolling
   // at FULL strength until one passes (most do); a damped pass is a rare fallback.
+  // Low harmonics (overall lobe count) follow curviness; the high harmonics that
+  // pack in extra wiggles follow `detail`, so they thin out on small maps.
   const rH = [
-    { k: 1, w: 0.4 },
-    { k: 2, w: 0.8 },
-    { k: 3, w: 0.4 + curviness * 0.95 },
-    { k: 4, w: curviness * 1.1 },
-    { k: 5, w: curviness * 0.85 },
-    { k: 6, w: curviness * 0.6 },
-    { k: 7, w: curviness * 0.4 },
+    { k: 1, w: 0.45 },
+    { k: 2, w: 0.85 },
+    { k: 3, w: 0.4 + curviness * 0.9 },
+    { k: 4, w: detail * 1.1 },
+    { k: 5, w: detail * 0.85 },
+    { k: 6, w: detail * 0.6 },
+    { k: 7, w: detail * 0.4 },
   ];
   const tH = [
     { k: 1, w: 0.4 },
-    { k: 2, w: 0.75 },
-    { k: 3, w: 0.65 + curviness * 0.8 },
-    { k: 4, w: curviness * 0.95 },
-    { k: 5, w: curviness * 0.65 },
+    { k: 2, w: 0.7 + curviness * 0.2 },
+    { k: 3, w: 0.5 + detail * 0.8 },
+    { k: 4, w: detail * 0.95 },
+    { k: 5, w: detail * 0.65 },
   ];
   let best = null;
   for (let attempt = 0; attempt < 48; attempt++) {
     // Full strength for most attempts; only damp as a last resort if nothing valid.
     const damp = attempt < 40 ? 1 : Math.pow(0.85, attempt - 39);
-    const radVar = (0.12 + curviness * 0.72) * damp;
-    const tangAmp = curviness * 0.36 * damp;
+    const radVar = (0.12 + curviness * 0.55 + detail * 0.18) * damp;
+    const tangAmp = (curviness * 0.18 + detail * 0.2) * damp;
     const rPhase = rH.map(() => rand() * TAU);
     const tPhase = tH.map(() => rand() * TAU);
 

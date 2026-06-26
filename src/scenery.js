@@ -738,25 +738,38 @@ function buildMountains(scene, heightAt, track) {
     }
   };
 
-  // Distant mountain ring around the whole world.
+  // Distant mountain ring around the whole world. Pushed out far enough that even
+  // a max-size, max-curviness loop (which can reach ~900 units out) stays well
+  // inside it, so a ring peak never lands on the track.
   const count = 24;
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + rand() * 0.2;
-    const r = 840 + rand() * 160;
-    peak(Math.cos(a) * r, Math.sin(a) * r, 170 + rand() * 150, 90 + rand() * 70, 30);
+    const r = 1080 + rand() * 180;
+    peak(Math.cos(a) * r, Math.sin(a) * r, 190 + rand() * 160, 90 + rand() * 70, 30);
   }
 
   // A few peaks brought in close beside the track, so you race right up against
-  // a mountainside on those stretches.
+  // a mountainside on those stretches. On curvy circuits the loop can fold back
+  // near the spot "outward" of a road point, so verify the peak's whole footprint
+  // clears the ENTIRE track (not just the point it was offset from) before placing
+  // it — otherwise a mountain ends up cutting across a different part of the road.
   if (track) {
     const up = new THREE.Vector3(0, 1, 0);
     for (const tt of [0.24, 0.58, 0.9]) {
-      const i = Math.floor(tt * track.samples);
-      const p = track._pts[i];
-      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-      const off = 165 + rand() * 55;
-      peak(p.x + side.x * outward * off, p.z + side.z * outward * off, 120 + rand() * 50, 50 + rand() * 22, 22);
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const i = Math.floor(((tt + attempt * 0.045) % 1) * track.samples);
+        const p = track._pts[i];
+        const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+        const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+        const off = 165 + rand() * 55;
+        const rad = 50 + rand() * 22;
+        const x = p.x + side.x * outward * off;
+        const z = p.z + side.z * outward * off;
+        // Need the road's nearest approach to clear the cone's base radius.
+        if (track.distanceToCenter(x, z) < track.halfWidth + rad + 12) continue;
+        peak(x, z, 120 + rand() * 50, rad, 22);
+        break;
+      }
     }
   }
 }
@@ -993,6 +1006,8 @@ function buildCliffs(scene, track, heightAt) {
         const off = track.halfWidth + 15 + row * 8 + rand() * 3;
         const x = p.x + side.x * outward * off;
         const z = p.z + side.z * outward * off;
+        // Skip chunks that a fold in the loop has brought back over the road.
+        if (track.distanceToCenter(x, z) < track.halfWidth + 11) continue;
         chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + rand() * 10 });
       }
     }
