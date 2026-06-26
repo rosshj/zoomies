@@ -1211,6 +1211,8 @@ function syncTrackPanel() {
   document.getElementById("track-custom")?.classList.toggle("is-active", custom);
   const knobs = document.getElementById("track-knobs");
   if (knobs) knobs.style.display = custom ? "" : "none";
+  const reroll = document.getElementById("track-new"); // lives in the map box now
+  if (reroll) reroll.style.display = custom ? "" : "none";
   const set = (id, v) => {
     const pct = Math.round(v * 100);
     const el = document.getElementById(id);
