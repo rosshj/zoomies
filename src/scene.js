@@ -28,13 +28,14 @@ export const MOODS = [
     cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
   },
   {
-    // Night: a cool moon, dark blue sky and stars. Kept "well lit" by moonlight +
-    // (in scenery) warm street lamps and kart headlights, not pitch black.
+    // Night: a cool moon, dark blue sky and stars. Moonlight is kept LOW so the
+    // ground stays dark and reads as actually-night — the warm street lamps, string
+    // lights and kart headlights (in scenery) are what light the road, not the moon.
     name: "Night", tod: "night", weather: "none",
-    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.15,
+    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 0.5,
     skyTop: 0x060a1a, skyHorizon: 0x17263f, skyWarm: 0x17263f,
-    hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.42,
-    bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.06,
+    hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.2,
+    bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 0.98,
     sunCore: [1.25, 1.35, 1.65], sunSize: 34, sunVisible: true, rays: false, starI: 1,
     cloud: 0x2a3551, sat: 1.08, contrast: 1.06,
   },
