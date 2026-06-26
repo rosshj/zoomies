@@ -329,6 +329,17 @@ export function createKartModel(bodyColor = 0xe53935) {
   // the kart and clip the tarmac during drifts) — it's a ground-projected pool
   // managed per-frame in the main loop (see headlights in main.js).
 
+  // Tail lights: a dim red glow normally, flaring bright when braking/reversing
+  // (the kart updates brakeMat.emissiveIntensity). Shared material returned below.
+  const brakeMat = new THREE.MeshStandardMaterial({
+    color: 0x6e0d0d, emissive: 0xff2a1e, emissiveIntensity: 0.25, roughness: 0.5,
+  });
+  for (const sx of [-1, 1]) {
+    const tl = new THREE.Mesh(rbox(0.42, 0.3, 0.18, 0.07), brakeMat);
+    tl.position.set(sx * 0.72, 0.72, -2.42);
+    group.add(tl);
+  }
+
   // Wheels
   const wheels = [];
   const wheelGeo = new THREE.CylinderGeometry(0.65, 0.65, 0.55, 16);
@@ -353,5 +364,5 @@ export function createKartModel(bodyColor = 0xe53935) {
     wheels.push(w);
   }
 
-  return { group, wheels };
+  return { group, wheels, brakeMat };
 }
