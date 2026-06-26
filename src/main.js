@@ -73,12 +73,13 @@ function resolveTimeOfDay(cfg) {
 const TIME_OF_DAY = resolveTimeOfDay(trackConfig);
 setNightMode(TIME_OF_DAY === "night"); // karts get glowing headlights + a beam at night
 
-// Background music. One looping track drives both the menu and the race; night
-// worlds get their own moodier track.
+// Background music. ONE looping track drives both the menu and the race, under a
+// single name so moving menu<->race never swaps audio elements (that swap left a
+// gap / a rejected play() — "music sometimes didn't start"). Night worlds get
+// their own moodier track.
 const MUSIC_TRACK =
   TIME_OF_DAY === "night" ? "./assets/music/zoomieslevel1.mp3" : "./assets/music/zoomies.mp3";
-audio.registerMusic("menu", MUSIC_TRACK);
-audio.registerMusic("race", MUSIC_TRACK);
+audio.registerMusic("bg", MUSIC_TRACK);
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
 // share identical charge and recharge timing.
@@ -267,7 +268,7 @@ function attachKartHeadlight(grp) {
   const target = new THREE.Object3D();
   target.position.set(0, -3.5, 18); // aim forward and down onto the road
   grp.add(target);
-  const spot = new THREE.SpotLight(0xfff2d6, 95, 75, 0.66, 0.55, 1.3);
+  const spot = new THREE.SpotLight(0xfff2d6, 68, 75, 0.66, 0.55, 1.3);
   spot.position.set(0, 0.7, 2.9); // at the headlights
   spot.castShadow = false;
   spot.target = target;
@@ -1107,7 +1108,18 @@ function resumeGame() {
   audio.startEngine();
   state = State.RACING;
 }
+// True while a single-player race is "parked" in the background (you opened the
+// main menu mid-race). The race state/karts are kept intact so you can resume
+// instead of losing your progress. Multiplayer races aren't parkable.
+let _raceParked = false;
+function refreshResumeBtn() {
+  const b = document.getElementById("resume-race-btn");
+  if (b) b.classList.toggle("hidden", !_raceParked);
+}
 function toMenu() {
+  // Opening the menu mid-race parks it (so START is a fresh race but you can also
+  // Resume). Reaching the menu from results/lobby clears any parked race.
+  _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished && !MP.enabled;
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
   document.getElementById("lobby").classList.add("hidden");
@@ -1115,14 +1127,37 @@ function toMenu() {
   document.getElementById("menu").classList.remove("hidden");
   audio.stopEngine();
   audio.setSkid(false);
-  audio.playMusic("menu");
+  audio.playMusic("bg");
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
+  refreshResumeBtn();
 }
-document.getElementById("btn-pause").addEventListener("click", pauseGame);
+// Resume a parked race: drop back into it exactly where it was (paused), so the
+// player can read the scene before unpausing.
+function resumeParkedRace() {
+  if (!_raceParked) return;
+  document.getElementById("menu").classList.add("hidden");
+  document.getElementById("hud").classList.remove("hidden");
+  updateCamera(0.016, true); // snap the chase camera back onto the kart
+  state = State.PAUSED;
+  pauseOverlay.classList.remove("hidden");
+}
+document.getElementById("btn-pause").addEventListener("pointerdown", (e) => {
+  e.preventDefault(); // fire even while a finger is on the throttle/steering
+  pauseGame();
+});
 document.getElementById("resume-btn").addEventListener("click", resumeGame);
 document.getElementById("menu-btn").addEventListener("click", toMenu);
+document.getElementById("resume-race-btn")?.addEventListener("click", resumeParkedRace);
+
+// Pause automatically when the app is backgrounded (tab hidden / app switched
+// away / screen locked). The race freezes; when you come back the pause overlay
+// is showing, so you resume on your own terms. If the app is fully closed
+// (swiped away), there's nothing to do — it just ends.
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && state === State.RACING) pauseGame();
+});
 // Every menu can get back to the main screen: lobby and results both offer it.
 document.getElementById("lobby-back")?.addEventListener("click", toMenu);
 document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
@@ -1591,6 +1626,8 @@ function beginRace() {
 // Everything to spin up a race that does NOT need a user gesture — so it can run
 // both from the local START click and from a network-triggered synchronized start.
 function prepareRace() {
+  _raceParked = false; // starting fresh; nothing parked to resume
+  refreshResumeBtn();
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("lobby").classList.add("hidden");
@@ -2335,7 +2372,7 @@ function loop(now) {
       state = State.RACING;
       MP.startAt = 0;
       audio.startEngine(); // engines fire up on the green light
-      audio.playMusic("race");
+      audio.playMusic("bg");
       // Hold everyone's first shot for an opening grace period.
       for (const k of karts) k.shootCooldown = Math.max(k.shootCooldown, SHOOT_OPENING_LOCKOUT);
     }
@@ -2582,7 +2619,7 @@ requestAnimationFrame(loop);
 function startMenuMusicOnce() {
   audio.unlock();
   if (!audio.ready) return; // gesture didn't unlock yet; wait for the next one
-  if (state === State.MENU) audio.playMusic("menu");
+  audio.playMusic("bg"); // one continuous track for menu + race; safe to call any state
   // Keep listening until the track is actually playing (the first gesture's
   // play() can be rejected on iOS) — or the player has muted music. Only then
   // stop watching for gestures.
@@ -2605,5 +2642,5 @@ const _isStandalonePWA =
   window.navigator.standalone === true;
 if (_isStandalonePWA) {
   audio.unlock();
-  audio.playMusic("menu");
+  audio.playMusic("bg");
 }

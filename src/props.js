@@ -92,10 +92,12 @@ function build(scene, track, opts) {
       leaf.scale.setScalar(0.7 + rand() * 0.6);
       leaf.castShadow = true;
       g.add(leaf);
-      leaves.push({ mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+      leaves.push({ mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3(), hit: 0, asleep: true });
     }
     group.add(g);
-    leafPiles.push({ x, z, groundY, r: w, leaves, burst: false });
+    // Each leaf is its own little particle; a pile can be driven through and
+    // scattered any number of times (settled leaves just get kicked up again).
+    leafPiles.push({ x, z, groundY, r: w, leaves });
   };
 
   // Seeded placement: walk the track and drop occasional clusters, mixing ON-ROAD
@@ -245,40 +247,43 @@ function build(scene, track, opts) {
       stepProp(pr, dt);
     }
 
-    // Leaf piles: burst into a scattering flurry.
+    // Leaf piles: each leaf is its own particle. Any kart driving through kicks
+    // the leaves it touches (settled ones included), so a pile can be scattered
+    // over and over — no one-shot "already burst" state.
     for (const lp of leafPiles) {
-      if (!lp.burst) {
-        for (const mk of moving) {
-          const reach = lp.r + 3.2;
-          if (segDist2(lp.x, lp.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
-          lp.burst = true;
-          for (const lf of lp.leaves) {
-            const blow = 4 + Math.min(mk.speed, 90) * 0.22;
-            lf.vel.set(
-              mk.dx * blow + (Math.random() - 0.5) * 6,
-              7 + Math.random() * 7,
-              mk.dz * blow + (Math.random() - 0.5) * 6
-            );
-            lf.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
-          }
-          break;
-        }
-      } else {
+      // Kick leaves near a passing kart (cheap pile-level reject first).
+      for (const mk of moving) {
+        const reach = lp.r + 3.5;
+        if (segDist2(lp.x, lp.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
         for (const lf of lp.leaves) {
-          lf.vel.y -= GRAV * dt;
-          lf.vel.x *= 1 - 0.9 * dt;
-          lf.vel.z *= 1 - 0.9 * dt;
-          const pp = lf.mesh.position;
-          pp.addScaledVector(lf.vel, dt);
-          if (pp.y < 0.05) {
-            pp.y = 0.05;
-            lf.vel.set(lf.vel.x * 0.25, 0, lf.vel.z * 0.25);
-            lf.spin.multiplyScalar(0.6);
-          }
-          lf.mesh.rotation.x += lf.spin.x * dt;
-          lf.mesh.rotation.y += lf.spin.y * dt;
-          lf.mesh.rotation.z += lf.spin.z * dt;
+          if (lf.hit > 0) continue;
+          const wx = lp.x + lf.mesh.position.x, wz = lp.z + lf.mesh.position.z;
+          if (segDist2(wx, wz, mk.ax, mk.az, mk.bx, mk.bz) > 10) continue; // ~3-unit kick radius
+          const blow = 4 + Math.min(mk.speed, 90) * 0.24;
+          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, 7 + Math.random() * 7, mk.dz * blow + (Math.random() - 0.5) * 6);
+          lf.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
+          lf.hit = 0.25;
+          lf.asleep = false;
         }
+      }
+      // Integrate the leaves that are in motion; settle (and sleep) on the ground.
+      for (const lf of lp.leaves) {
+        if (lf.hit > 0) lf.hit -= dt;
+        if (lf.asleep) continue;
+        lf.vel.y -= GRAV * dt;
+        lf.vel.x *= 1 - 0.9 * dt;
+        lf.vel.z *= 1 - 0.9 * dt;
+        const pp = lf.mesh.position;
+        pp.addScaledVector(lf.vel, dt);
+        if (pp.y < 0.05) {
+          pp.y = 0.05;
+          lf.vel.set(lf.vel.x * 0.25, 0, lf.vel.z * 0.25);
+          lf.spin.multiplyScalar(0.6);
+          if (lf.vel.lengthSq() < 0.4) lf.asleep = true; // resting; can be kicked again later
+        }
+        lf.mesh.rotation.x += lf.spin.x * dt;
+        lf.mesh.rotation.y += lf.spin.y * dt;
+        lf.mesh.rotation.z += lf.spin.z * dt;
       }
     }
   }
