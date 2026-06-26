@@ -2370,7 +2370,7 @@ function loop(now) {
   // Headlights ramp up once the race is underway (they start dim so the packed
   // starting grid's overlapping beams don't blow out the screen).
   if (_kartSpots.length) {
-    if (state === State.RACING) _hlRamp += (1 - _hlRamp) * Math.min(1, dt * 0.7);
+    if (state === State.RACING) _hlRamp += (1 - _hlRamp) * Math.min(1, dt * 0.32);
     for (const s of _kartSpots) s.light.intensity = s.base * _hlRamp;
   }
 
@@ -2496,7 +2496,9 @@ function loop(now) {
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
-    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt);
+    // Hand them the live catnip crate positions so they detour to grab the power-up.
+    const catnipTargets = props ? props.catnipTargets() : null;
+    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, catnipTargets);
     aiActions(dt);
 
     // Step physics

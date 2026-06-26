@@ -675,8 +675,10 @@ function buildTerrain(scene, heightAt, darken = 1) {
   const colors = [];
   const cRock = new THREE.Color(0x7a6f5d);
   const cSnow = new THREE.Color(0xf4f7fb);
+  const cMoonSnow = new THREE.Color(0x2a3550); // cool, dark "snow under moonlight"
   const base = new THREE.Color();
   const c = new THREE.Color();
+  const nightAmt = 1 - darken; // 0 in daylight, ~0.6 at night
 
   for (let i = 0; i < pos.count; i++) {
     const x = pos.getX(i);
@@ -688,21 +690,26 @@ function buildTerrain(scene, heightAt, darken = 1) {
     const b = biomeAt(x, z, y);
     base.lerp(b.ground2Col, rand() * 0.3); // subtle dappling
     c.copy(base);
+    let snowAmt = 0; // how snowy this vertex is, so we can extra-darken it at night
     if (_altMode) {
       // Altitude layout: snow whitens with height (gradual, follows the alpine
       // weight); warm biomes' tallest peaks get a faint rock tint, never white.
       const aw = alpineWeight(y);
-      if (aw > 0) c.lerp(cSnow, aw * clamp(0.55 + y / 240, 0.55, 1));
+      if (aw > 0) { snowAmt = aw * clamp(0.55 + y / 240, 0.55, 1); c.lerp(cSnow, snowAmt); }
       else if (y > 95) c.lerp(cRock, Math.min(0.4, (y - 95) / 130));
     } else if (b.name === "alpine") {
       // Classic layout: the original altitude-banded alpine snow.
-      if (y >= 62) c.copy(cRock).lerp(cSnow, Math.min(1, (y - 62) / 16));
+      if (y >= 62) { snowAmt = Math.min(1, (y - 62) / 16); c.copy(cRock).lerp(cSnow, snowAmt); }
       else if (y >= 44) c.copy(base).lerp(cRock, (y - 44) / 18);
     } else if (y > 52) {
       c.copy(base).lerp(cRock, Math.min(1, (y - 52) / 32));
     }
-    // At dusk/night, lower the ground albedo (esp. bright snow) so the moon doesn't
-    // make it read like daytime — it stays dark until the lamps/headlights light it.
+    // At dusk/night, lower the ground albedo so the moon doesn't make it read like
+    // daytime. Snow is near-white, so it reflects moonlight far more than other
+    // ground and reads "self-lit" — push it hard toward a dark, cool moonlit tone
+    // (proportional to how snowy AND how dark the scene is), so it only brightens
+    // where the lamps/headlights actually fall on it.
+    if (nightAmt > 0 && snowAmt > 0) c.lerp(cMoonSnow, snowAmt * nightAmt);
     colors.push(c.r * darken, c.g * darken, c.b * darken);
   }
 

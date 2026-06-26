@@ -546,7 +546,7 @@ export class Kart {
   }
 
   // --- AI driver ---
-  driveAI(track, dt = 0.016) {
+  driveAI(track, dt = 0.016, catnipTargets = null) {
     const speed = Math.abs(this.speed);
     const L = track.length;
     const wrap = (t) => ((t % 1) + 1) % 1;
@@ -569,6 +569,28 @@ export class Kart {
     const apex = Math.sign(curve) * (1 - sharp) * (track.halfWidth - 4);
     const lane = this.laneBias * (1 - sharp) * (track.halfWidth - 3); // hold a personal line
     target.addScaledVector(side, apex + lane);
+
+    // Catnip seeking: if an un-smashed catnip crate is just ahead and we don't
+    // already have the boost, ease our aim toward it so the field actively grabs
+    // power-ups. Crates sit near the racing line, so pulling toward one stays on
+    // the road. We only chase ones that are genuinely ahead, and commit harder the
+    // closer it gets.
+    if (catnipTargets && catnipTargets.length && !this.catnipBoosting && this.spinTimer <= 0) {
+      const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
+      let best = null, bestD = 70;
+      for (const cn of catnipTargets) {
+        const dx = cn.x - this.position.x, dz = cn.z - this.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 3 || d > bestD) continue;
+        if ((dx * fwx + dz * fwz) / d < 0.3) continue; // must be roughly ahead, not behind
+        bestD = d; best = cn;
+      }
+      if (best) {
+        const pull = Math.min(0.85, (70 - bestD) / 50 * 0.85); // full commit inside ~20 units
+        target.x += (best.x - target.x) * pull;
+        target.z += (best.z - target.z) * pull;
+      }
+    }
 
     const desired = Math.atan2(target.x - this.position.x, target.z - this.position.z);
     const diff = angleDelta(desired, this.heading);

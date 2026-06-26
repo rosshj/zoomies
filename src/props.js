@@ -366,6 +366,14 @@ function build(scene, track, opts) {
     }
   }
 
+  // Active (not-yet-smashed) catnip crate positions, so the AI drivers can seek
+  // them out and grab the power-up instead of ignoring it.
+  function catnipTargets() {
+    const out = [];
+    for (const pr of props) if (pr.catnip && pr.dead <= 0) out.push({ x: pr.pos.x, z: pr.pos.z });
+    return out;
+  }
+
   console.log(`[zoomies] knockable props: ${props.length} crates/barrels + ${leafPiles.length} leaf piles`);
-  return { update, group, count: props.length + leafPiles.length };
+  return { update, group, count: props.length + leafPiles.length, catnipTargets };
 }
