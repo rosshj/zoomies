@@ -864,6 +864,12 @@ function updateAtmosphere() {
   vis *= clear;
   godrayPass.uniforms.uVis.value = vis;
   flarePass.uniforms.uVis.value = vis;
+  // PERF: both are full-screen shader passes that output the frame unchanged when
+  // the sun isn't visible (night, or facing away) — skip them entirely then. Saves
+  // two full-frame passes every night frame. fxPass stays last, so the
+  // render-to-screen pass is unaffected.
+  godrayPass.enabled = vis > 0.001;
+  flarePass.enabled = vis > 0.001;
 
   // View-space light-travel direction + mood sun colour, shared by the backlit
   // grass and the backlit tree foliage.
