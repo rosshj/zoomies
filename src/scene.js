@@ -14,7 +14,7 @@ export const MOODS = [
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
     hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
-    sunCore: [2.3, 2.05, 1.5], sunSize: 48, sunVisible: true, rays: true, starI: 0,
+    sunCore: [2.3, 2.05, 1.5], sunSize: 48, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
     cloud: 0xffffff, sat: 1.3, contrast: 1.02,
   },
   {
@@ -24,8 +24,8 @@ export const MOODS = [
     skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
     hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.72,
     bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.07,
-    sunCore: [2.5, 1.7, 0.95], sunSize: 74, sunVisible: true, rays: true, starI: 0.15,
-    cloud: 0xffd6ad, sat: 1.34, contrast: 1.03,
+    sunCore: [2.6, 1.7, 0.9], sunSize: 86, sunVisible: true, rays: true, rayWeight: 1.7, starI: 0.15,
+    cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
   },
   {
     // Night: a cool moon, dark blue sky and stars. Kept "well lit" by moonlight +

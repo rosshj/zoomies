@@ -8,7 +8,7 @@ import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
-import { setNightMode } from "./models.js";
+import { setLightLevel } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
@@ -71,7 +71,10 @@ function resolveTimeOfDay(cfg) {
   return TODS[Math.floor(makeRng(WORLD_SEED + "|tod")() * TODS.length)]; // "random"
 }
 const TIME_OF_DAY = resolveTimeOfDay(trackConfig);
-setNightMode(TIME_OF_DAY === "night"); // karts get glowing headlights + a beam at night
+// How lit the world is: night fully, sunset at a warm dusk level, midday off. Used
+// to bring lamps/string lights/headlights on (dimmer) at sunset too.
+const LIGHT_LEVEL = TIME_OF_DAY === "night" ? 1 : TIME_OF_DAY === "sunset" ? 0.55 : 0;
+setLightLevel(LIGHT_LEVEL); // karts' headlight bulbs glow (and underglow at night)
 
 // Background music. ONE looping track drives both the menu and the race, under a
 // single name so moving menu<->race never swaps audio elements (that swap left a
@@ -164,6 +167,8 @@ const godrayPass = new ShaderPass({
     }`,
 });
 composer.addPass(godrayPass);
+// Punchier light shafts at sunset (the low warm sun): per-mood shaft weight.
+godrayPass.uniforms.uWeight.value = MOOD.rayWeight ?? 1.05;
 
 // --- Lens flare: a few translucent "ghosts" of the bright sun mirrored through
 // the screen centre, only while the sun is on-screen. Subtle, additive. ---
@@ -264,11 +269,12 @@ initProps(scene, track, { seed: WORLD_SEED }).then((p) => {
 // clip the track. One per kart (player, AI and remotes) so the whole field lights
 // the road; cheap because there are no shadow maps.
 function attachKartHeadlight(grp) {
-  if (TIME_OF_DAY !== "night" || !grp || grp.userData._hl) return;
+  if (LIGHT_LEVEL <= 0 || !grp || grp.userData._hl) return; // on at night AND sunset
   const target = new THREE.Object3D();
   target.position.set(0, -3.5, 18); // aim forward and down onto the road
   grp.add(target);
-  const spot = new THREE.SpotLight(0xfff2d6, 68, 75, 0.66, 0.55, 1.3);
+  // Dimmer at dusk (the sunset sky is still bright), full at night.
+  const spot = new THREE.SpotLight(0xfff2d6, 68 * LIGHT_LEVEL, 75, 0.66, 0.55, 1.3);
   spot.position.set(0, 0.7, 2.9); // at the headlights
   spot.castShadow = false;
   spot.target = target;
@@ -1646,6 +1652,7 @@ function prepareRace() {
   sunVisibleMood = mood.rays ?? mood.sunVisible;
   moodExposure = mood.exposure;
   godrayPass.uniforms.uColor.value.set(mood.sunColor);
+  godrayPass.uniforms.uWeight.value = mood.rayWeight ?? 1.05;
   hud.showToast(mood.name);
 
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap

@@ -8,11 +8,13 @@ function rbox(w, h, d, r = 0.18, seg = 4) {
   return new RoundedBoxGeometry(w, h, d, seg, radius);
 }
 
-// Night mode: when on, karts get bright glowing headlights and a forward beam
-// pool. Set once (before karts are built) from the world's time of day.
-let _night = false;
-export function setNightMode(v) {
-  _night = !!v;
+// How lit-up the karts are, from the world's time of day: 0 = midday (off),
+// ~0.55 = sunset/dusk (warm, dimmer), 1 = night (full). Drives the glow of the
+// headlight bulbs; the underglow stays a night-only effect. Set once before karts
+// are built.
+let _lightLevel = 0;
+export function setLightLevel(v) {
+  _lightLevel = Math.max(0, Math.min(1, v || 0));
 }
 
 // Soft radial texture for the kart underglow pool.
@@ -286,7 +288,7 @@ export function createKartModel(bodyColor = 0xe53935) {
   const chrome = new THREE.MeshStandardMaterial({ color: 0xcfd8dc, metalness: 0.9, roughness: 0.2 });
   // Headlights glow much brighter at night (bloom picks them up).
   const glass = new THREE.MeshStandardMaterial({
-    color: 0xfff4d0, emissive: 0xfff0c0, emissiveIntensity: _night ? 2.6 : 0.4,
+    color: 0xfff4d0, emissive: 0xfff0c0, emissiveIntensity: 0.4 + _lightLevel * 2.3,
   });
 
   // Chassis
@@ -404,9 +406,9 @@ export function createKartModel(bodyColor = 0xe53935) {
   }
   group.add(flames);
 
-  // Neon underglow at night: a soft additive pool under the chassis tinted to the
-  // kart's body colour, so each kart sits in its own coloured halo.
-  if (_night) {
+  // Neon underglow — a night-only effect (a soft additive pool under the chassis
+  // tinted to the kart's body colour, so each kart sits in its own coloured halo).
+  if (_lightLevel >= 0.9) {
     const under = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({

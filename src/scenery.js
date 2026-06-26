@@ -223,6 +223,11 @@ function biomeGround(x, z, out, y) {
 // Returns { grass, update(time) } for the animated bits.
 export function buildWorld(scene, track, opts = {}) {
   const night = opts.timeOfDay === "night";
+  // Lamps / string lights / bridge lantern come on at NIGHT and at SUNSET (dusk),
+  // dimmer at dusk. `lit` = are they on at all; `litLevel` = how bright (0.55 dusk,
+  // 1 night).
+  const lit = night || opts.timeOfDay === "sunset";
+  const litLevel = night ? 1 : opts.timeOfDay === "sunset" ? 0.55 : 0;
   _spinners.length = 0;
   _flutterers.length = 0;
   _critters.length = 0;
@@ -290,9 +295,9 @@ export function buildWorld(scene, track, opts = {}) {
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
-  buildStreetLamps(scene, track, heightAt, night); // roadside lamps (lit at night)
-  buildStringLights(scene, track, night); // festive bulb strings over a few road spans
-  buildOverheadStructures(scene, track, night); // banners + a bridge spanning the road
+  buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
+  buildStringLights(scene, track, litLevel); // festive bulb strings over a few road spans
+  buildOverheadStructures(scene, track, lit, litLevel); // banners + a bridge spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes);
   const grass = buildGrass(scene, track, heightAt);
@@ -888,7 +893,7 @@ function lampGlowTexture() {
 // always present (street furniture); at NIGHT the bulbs glow (emissive + bloom),
 // each lays a warm additive light-pool on the ground and a soft halo, so the
 // night reads as lit rather than pitch black. Instanced for cheap draw calls.
-function buildStreetLamps(scene, track, heightAt, night) {
+function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   const up = new THREE.Vector3(0, 1, 0);
   const N = track.samples;
   const spacing = 78; // ~metres between lamps along the road
@@ -913,7 +918,7 @@ function buildStreetLamps(scene, track, heightAt, night) {
 
   const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.7, metalness: 0.3 });
   const bulbMat = new THREE.MeshStandardMaterial({
-    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: night ? 2.4 : 0.0, roughness: 0.4,
+    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 2.4 * level : 0.0, roughness: 0.4,
   });
   const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.28, 0.4, POST_H, 7), postMat, spots.length);
   const heads = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.95, 0.55, 0.7, 8), postMat, spots.length);
@@ -938,7 +943,7 @@ function buildStreetLamps(scene, track, heightAt, night) {
     im.layers.set(1); // out of the rear-view mirror render
     scene.add(im);
   }
-  if (!night) return;
+  if (!lit) return;
 
   // Warm ground pools (additive). Each is a tessellated disc whose vertices are
   // dropped onto the road surface (via groundInfo) so the light hugs the ground /
@@ -970,8 +975,8 @@ function buildStreetLamps(scene, track, heightAt, night) {
   const pools = new THREE.Mesh(
     poolGeo,
     new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, blending: THREE.AdditiveBlending,
-      depthWrite: false, fog: false, toneMapped: false,
+      map: tex, transparent: true, opacity: 0.35 + 0.65 * level, // subtler at dusk
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
     })
   );
   pools.layers.set(1);
@@ -981,7 +986,7 @@ function buildStreetLamps(scene, track, heightAt, night) {
   // Soft halos around each bulb.
   const haloMat = new THREE.SpriteMaterial({
     map: tex, color: 0xffe6b0, transparent: true,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.85,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.85 * level,
   });
   for (const sp of spots) {
     const halo = new THREE.Sprite(haloMat);
@@ -995,7 +1000,7 @@ function buildStreetLamps(scene, track, heightAt, night) {
 // Festive bulb strings strung in a catenary over a few road spans. The bulbs are
 // bright un-tonemapped colours, so bloom makes them twinkle/glow at night while
 // still reading as little fairy lights by day. One instanced mesh for all bulbs.
-function buildStringLights(scene, track, night) {
+function buildStringLights(scene, track, level = 0) {
   const up = new THREE.Vector3(0, 1, 0);
   const N = track.samples;
   const SPANS = 5;
@@ -1033,7 +1038,7 @@ function buildStringLights(scene, track, night) {
   const ID = new THREE.Quaternion();
   const sc = new THREE.Vector3(1, 1, 1);
   const c = new THREE.Color();
-  const glow = night ? 1.6 : 0.9; // brighter at night so they bloom
+  const glow = 0.9 + level * 0.7; // 0.9 by day, brighter toward dusk/night so they bloom
   bulbs.forEach((b, idx) => {
     m.compose(new THREE.Vector3(b.x, b.y, b.z), ID, sc);
     mesh.setMatrixAt(idx, m);
@@ -1047,7 +1052,7 @@ function buildStringLights(scene, track, night) {
 
 // Overhead structures you drive UNDER: cloth welcome banners on posts, and a
 // chunky bridge/overpass spanning the road. Seeded placement across the track.
-function buildOverheadStructures(scene, track, night) {
+function buildOverheadStructures(scene, track, lit, level = 1) {
   const N = track.samples;
   const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9 });
   const clothCols = [0xd9534f, 0x4a90d9, 0x4caf50, 0xe0a73a, 0x9c5ab8];
@@ -1117,10 +1122,10 @@ function buildOverheadStructures(scene, track, night) {
       rail.layers.set(1);
       scene.add(rail);
     }
-    if (night) {
+    if (lit) {
       const lamp = new THREE.Mesh(
         new THREE.SphereGeometry(0.6, 10, 8),
-        new THREE.MeshStandardMaterial({ color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: 2.4 })
+        new THREE.MeshStandardMaterial({ color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: 2.4 * level })
       );
       lamp.position.set(p.x, deckY - 1.2, p.z);
       lamp.layers.set(1);
