@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { USE_WEBGPU } from "./gpu.js";
 
 // Time-of-day moods. The chosen one (from the track's Time of Day setting) drives
 // applyMood(), which restyles the sky, sun/moon, lights, fog, stars and exposure,
@@ -51,7 +52,9 @@ export function moodForTimeOfDay(tod) {
 export function createScene() {
   const container = document.getElementById("game");
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  // WebGPU migration: WebGPURenderer (WebGL2 backend by default, WebGPU with
+  // ?webgpu=1). It auto-falls back to WebGL2 if WebGPU is unavailable.
+  const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: !USE_WEBGPU });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
@@ -119,14 +122,10 @@ export function createScene() {
     scene.add(cloud);
   }
 
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  let envRT = null;
-  const rebakeEnv = () => {
-    const next = pmrem.fromScene(scene, 0, 10, 4000);
-    scene.environment = next.texture;
-    if (envRT) envRT.dispose();
-    envRT = next;
-  };
+  // M1 WebGPU migration: skip PMREM environment baking (the env reflections add
+  // a small spec sheen but PMREM-from-scene on the new backend is unproven; the
+  // game reads fine without it). Reinstated as a node env in a later milestone.
+  const rebakeEnv = () => {};
 
   // Apply a mood: restyle everything and rebake the environment map.
   function applyMood(m) {
@@ -155,7 +154,11 @@ export function createScene() {
 
   applyMood(MOODS[0]);
 
-  return { renderer, scene, camera, sun, applyMood };
+  // WebGPURenderer initialises asynchronously (it picks/spins up the backend).
+  // Expose the promise so the main loop only starts rendering once it's ready.
+  const ready = renderer.init ? renderer.init() : Promise.resolve();
+
+  return { renderer, scene, camera, sun, applyMood, ready };
 }
 
 // Gradient sky dome with a warm glow around the sun direction.

@@ -1,9 +1,7 @@
 import * as THREE from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+// M1 WebGPU migration: the legacy EffectComposer post chain is disabled (see the
+// stubs below); these imports are intentionally removed so nothing pulls the WebGL
+// postprocessing addons under the WebGPU build.
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -89,7 +87,8 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
-const { renderer, scene, camera, sun, applyMood } = createScene();
+const { renderer, scene, camera, sun, applyMood, ready: rendererReady } = createScene();
+let _rendererReady = false; // flips true once WebGPURenderer.init() resolves
 // Light the world for this race's time of day up front, so the menu's live
 // backdrop already shows midday / sunset / night.
 const MOOD = moodForTimeOfDay(TIME_OF_DAY);
@@ -102,152 +101,41 @@ let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens fro
 camera.layers.enable(1);
 camera.layers.enable(2);
 
-// --- Post-processing: bloom + filmic output + MSAA ---
-const _sz = renderer.getDrawingBufferSize(new THREE.Vector2());
-const _composerTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y, {
-  type: THREE.HalfFloatType,
-  samples: 4,
-});
-const composer = new EffectComposer(renderer, _composerTarget);
-composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.45, 0.5, 0.85);
-composer.addPass(bloomPass);
-composer.addPass(new OutputPass());
+// --- Post-processing (M1 WebGPU migration: STUBBED) ---
+// The bloom + god-ray + lens-flare + colour-grade chain is the legacy WebGL
+// EffectComposer pipeline, which WebGPURenderer doesn't run. For M1 we render the
+// scene straight to the screen and stand in inert "pass" objects that carry the
+// SAME uniform shape the rest of the code pokes at — so the many
+// `pass.uniforms.x.value = …` and `pass.enabled = …` writes scattered through the
+// loop stay harmless no-ops. The real effects come back as TSL nodes in M4.
+// composer.render() simply does a direct render; renderFrame() still calls it.
+const composer = {
+  render() { renderer.render(scene, camera); },
+  setSize() {},
+  setPixelRatio() {},
+  addPass() {},
+};
+const _passStub = (uniforms) => ({ enabled: false, setSize() {}, uniforms });
+const bloomPass = { enabled: false, strength: 0.45, threshold: 0.85, setSize() {} };
 const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
 const BLOOM_THRESHOLD = bloomPass.threshold;
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 let _lightning = 0; // current lightning-flash intensity (decays each frame)
 let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
-
-// --- Atmosphere: screen-space god-rays (crepuscular light shafts) ---
-// A cheap radial blur of the bright sky toward the sun's screen position: where
-// dark trees/buildings interrupt the bright sky, the gaps read as light shafts.
-// No second scene render, so it stays mobile-friendly.
-const godrayPass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uSun: { value: new THREE.Vector2(0.5, 0.7) }, // sun position in screen UV
-    uVis: { value: 0 }, // 0 when sun is hidden / behind camera
-    uColor: { value: new THREE.Color(0xffe6b0) },
-    uDensity: { value: 0.8 },
-    uWeight: { value: 1.05 },
-    uDecay: { value: 0.94 },
-    uThreshold: { value: 0.67 }, // only the sun/near-sun drives shafts, not the whole bright sky
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uVis;
-    uniform vec3 uColor; uniform float uDensity; uniform float uWeight;
-    uniform float uDecay; uniform float uThreshold; varying vec2 vUv;
-    const int N = 40;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-    void main(){
-      vec3 orig = texture2D(tDiffuse, vUv).rgb;
-      if (uVis <= 0.001) { gl_FragColor = vec4(orig, 1.0); return; }
-      vec2 delta = (vUv - uSun) * (uDensity / float(N));
-      // Start each pixel at a jittered offset so the low sample count reads as
-      // fine noise instead of hard banded "spokes" along the shafts.
-      vec2 coord = vUv - delta * hash(vUv);
-      float illum = 1.0;
-      vec3 accum = vec3(0.0);
-      for (int i = 0; i < N; i++) {
-        coord -= delta;
-        vec3 s = texture2D(tDiffuse, clamp(coord, 0.0, 1.0)).rgb;
-        float l = max(0.0, max(s.r, max(s.g, s.b)) - uThreshold);
-        accum += s * l * illum;
-        illum *= uDecay;
-      }
-      accum *= uWeight / float(N);
-      // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off
-      // smoothly near the sun instead of forming a flat plateau.
-      vec3 raw = accum * uColor * uVis;
-      vec3 cap = vec3(0.6);
-      vec3 add = cap * (vec3(1.0) - exp(-raw / cap));
-      gl_FragColor = vec4(orig + add, 1.0);
-    }`,
+const godrayPass = _passStub({
+  uSun: { value: new THREE.Vector2(0.5, 0.7) },
+  uVis: { value: 0 },
+  uColor: { value: new THREE.Color(0xffe6b0) },
+  uWeight: { value: MOOD.rayWeight ?? 1.05 },
 });
-composer.addPass(godrayPass);
-// Punchier light shafts at sunset (the low warm sun): per-mood shaft weight.
-godrayPass.uniforms.uWeight.value = MOOD.rayWeight ?? 1.05;
-
-// --- Lens flare: a few translucent "ghosts" of the bright sun mirrored through
-// the screen centre, only while the sun is on-screen. Subtle, additive. ---
-const flarePass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uVis: { value: 0 },
-    uTint: { value: new THREE.Color(0xffdca6) },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uVis; uniform vec3 uTint; varying vec2 vUv;
-    const float TH = 0.85;
-    vec3 bright(vec2 uv){
-      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec3(0.0);
-      return max(vec3(0.0), texture2D(tDiffuse, uv).rgb - TH) / (1.0 - TH);
-    }
-    void main(){
-      vec3 orig = texture2D(tDiffuse, vUv).rgb;
-      if (uVis <= 0.001){ gl_FragColor = vec4(orig, 1.0); return; }
-      vec2 c = vec2(0.5);
-      vec2 ghost = (c - vUv) * 0.32;        // step toward (and past) the centre
-      vec3 flare = vec3(0.0);
-      for (int i = 1; i <= 4; i++){
-        vec2 g = vUv + ghost * float(i);
-        float w = pow(max(0.0, 1.0 - length(c - g) * 1.5), 6.0); // brightest near centre
-        flare += bright(g) * w;
-      }
-      gl_FragColor = vec4(orig + min(flare * uTint * uVis * 0.28, vec3(0.3)), 1.0);
-    }`,
+const flarePass = _passStub({ uVis: { value: 0 } });
+const fxPass = _passStub({
+  uAberr: { value: 0 },
+  uRadial: { value: 0 },
+  uVignette: { value: 0.28 },
+  uSat: { value: MOOD.sat },
+  uContrast: { value: MOOD.contrast },
 });
-composer.addPass(flarePass);
-
-// Color grade (saturation + contrast + vignette) and chromatic aberration.
-// Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
-// gated by quality.
-const fxPass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uAberr: { value: 0 },
-    uRadial: { value: 0 }, // radial motion blur amount (ramps with speed/boost)
-    uVignette: { value: 0.28 },
-    uSat: { value: MOOD.sat },
-    uContrast: { value: MOOD.contrast },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uRadial;
-    uniform float uVignette; uniform float uSat; uniform float uContrast; varying vec2 vUv;
-    void main(){
-      vec2 d = vUv - 0.5;
-      // Radial (zoom) motion blur toward the screen centre + chromatic split,
-      // both ramped by speed so flat-out driving reads fast. uRadial=0 -> no blur.
-      vec3 col = vec3(0.0);
-      const int RB = 6;
-      for (int i = 0; i < RB; i++) {
-        float s = 1.0 - float(i) * (uRadial / float(RB));
-        vec2 uv = 0.5 + d * s;
-        col.r += texture2D(tDiffuse, uv + d * uAberr).r;
-        col.g += texture2D(tDiffuse, uv).g;
-        col.b += texture2D(tDiffuse, uv - d * uAberr).b;
-      }
-      col /= float(RB);
-      float l = dot(col, vec3(0.299, 0.587, 0.114));
-      col = mix(vec3(l), col, uSat);          // saturation
-      col = (col - 0.5) * uContrast + 0.5;     // contrast
-      // Cinematic split-tone: cool the shadows, warm the highlights, so light
-      // reads as warm light and shadow reads as a different (cool) colour —
-      // richer/more dramatic without actually crushing the shadows darker.
-      float lum = dot(clamp(col, 0.0, 1.0), vec3(0.299, 0.587, 0.114));
-      vec3 cool = vec3(0.90, 0.97, 1.10);
-      vec3 warm = vec3(1.10, 1.02, 0.90);
-      col *= mix(cool, warm, smoothstep(0.15, 0.85, lum));
-      float vig = smoothstep(0.92, 0.34, length(d));
-      col *= mix(1.0, vig, uVignette);
-      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
-    }`,
-});
-composer.addPass(fxPass);
 
 const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
 track.totalLaps = TOTAL_LAPS;
@@ -897,10 +785,13 @@ function updateAtmosphere() {
 // Render the main view (through the post-processing composer), then overlay the
 // raw rear-view mirror while playing.
 function renderFrame() {
+  if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
-    renderMirror();
+    // M1 WebGPU migration: the rear-view mirror (a second scene render into a
+    // WebGLRenderTarget) is disabled for now — reinstated in a later milestone.
+    // renderMirror();
     drawMinimap();
   }
 }
@@ -2700,7 +2591,12 @@ function loop(now) {
   renderFrame();
 }
 
-requestAnimationFrame(loop);
+// WebGPURenderer initialises asynchronously — only start the render loop once the
+// backend is ready (renderFrame() also guards on this flag for any earlier calls).
+rendererReady
+  .then(() => { _rendererReady = true; })
+  .catch((err) => console.error("[zoomies] renderer init failed:", err))
+  .finally(() => requestAnimationFrame(loop));
 
 // Browsers block audio until a user gesture, so the menu can't autoplay music on
 // load. Start it (fading in) on the player's FIRST interaction of any kind —
