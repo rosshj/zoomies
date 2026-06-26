@@ -15,6 +15,24 @@ export function setNightMode(v) {
   _night = !!v;
 }
 
+// Soft radial texture for the kart underglow pool.
+let _underTex = null;
+function underglowTexture() {
+  if (_underTex) return _underTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(255,255,255,0.85)");
+  g.addColorStop(0.55, "rgba(255,255,255,0.3)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _underTex = new THREE.CanvasTexture(c);
+  _underTex.colorSpace = THREE.SRGBColorSpace;
+  return _underTex;
+}
+
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
 // origin sits at the seat base. `furColor` tints the fur. The returned group's
 // userData.rig holds pivots (ears, whiskers, tail, head) that updateCatRig()
@@ -385,6 +403,23 @@ export function createKartModel(bodyColor = 0xe53935) {
     flames.add(core);
   }
   group.add(flames);
+
+  // Neon underglow at night: a soft additive pool under the chassis tinted to the
+  // kart's body colour, so each kart sits in its own coloured halo.
+  if (_night) {
+    const under = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        map: underglowTexture(),
+        color: new THREE.Color(bodyColor).multiplyScalar(1.7),
+        transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
+      })
+    );
+    under.position.set(0, 0.07, -0.1);
+    under.scale.set(4.6, 1, 5.6);
+    under.renderOrder = 1;
+    group.add(under);
+  }
 
   return { group, wheels, brakeMat, flames };
 }
