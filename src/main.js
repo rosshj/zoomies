@@ -262,6 +262,7 @@ const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
+  size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
   onCatnip: (kart, pos) => {
     kart.giveCatnip();
     effects.tootBurst(kart, 2, true); // green smash poof
@@ -2028,6 +2029,14 @@ function resolveCollisions() {
       // Only a tiny speed scrub — you keep your momentum through contact.
       a.speed *= 0.99;
       b.speed *= 0.99;
+
+      // Catnip ram: a kart boosting on catnip bowls over a rival on contact (like
+      // a hairball hit), unless the rival is shielding. The catnip kart keeps going.
+      if (a.catnipBoosting && !b.catnipBoosting && !b.shielding && b.spinTimer <= 0) {
+        b.spinOut(new THREE.Vector3(nx, 0, nz));
+      } else if (b.catnipBoosting && !a.catnipBoosting && !a.shielding && a.spinTimer <= 0) {
+        a.spinOut(new THREE.Vector3(-nx, 0, -nz));
+      }
     }
   }
 }
@@ -2039,7 +2048,7 @@ function resolveCollisions() {
 function resolveRemoteCollisions() {
   if (!MP.enabled || !player) return;
   const min = 4.4;
-  for (const r of MP.remotes.values()) {
+  for (const [rid, r] of MP.remotes) {
     if (!r._ready) continue; // no real pose yet — don't collide at the origin
     const g = r.kart;
     const dx = g.position.x - player.position.x;
@@ -2077,6 +2086,16 @@ function resolveRemoteCollisions() {
     // roughly match the real slide that lands over the network ~250ms later, so
     // the handoff is seamless and the ghost never flies off.
     r.bump(nx, nz, power * sg * 0.8);
+
+    // Catnip ram across the network: tell the rival to spin out (their client
+    // honours their own shield). Debounced so contact doesn't spam hits.
+    if (player.catnipBoosting && MP.net) {
+      const now = performance.now();
+      if (!r._lastRam || now - r._lastRam > 1200) {
+        r._lastRam = now;
+        MP.net.sendHit(rid, { x: nx, z: nz });
+      }
+    }
   }
 }
 

@@ -386,6 +386,9 @@ export class Kart {
       const amount = Math.max(-0.4, 0.2 + rel * 0.7);
       steer = this.driftDir * amount;
     }
+    // Catnip is fast AND lasts 8s, which makes tight corners hard — give it extra
+    // steering authority so it stays controllable through bends.
+    if (this.catnipBoosting && !this.drifting) turnRate *= 1.4;
     this.heading += steer * turnRate * speedFactor * dir * dt;
 
     this._integrate(dt, track, false);

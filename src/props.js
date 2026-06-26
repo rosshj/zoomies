@@ -22,6 +22,11 @@ const GRAV = 30;
 function build(scene, track, opts) {
   const rng = makeRng((opts.seed || "props") + "|props");
   const rand = () => rng();
+  // Catnip is special: just one crate on a small track, two on a big one, and it
+  // takes longer to come back on a bigger track (you're away from it longer).
+  const size = opts.size ?? 0.5;
+  const catnipCount = size >= 0.55 ? 2 : 1;
+  const CATNIP_RESPAWN = 8 + size * 14; // ~8s small .. ~22s big
 
   const group = new THREE.Group();
   scene.add(group);
@@ -114,6 +119,20 @@ function build(scene, track, opts) {
   // Seeded placement: walk the track and drop occasional clusters, mixing ON-ROAD
   // props with ones just off the verge.
   const up = new THREE.Vector3(0, 1, 0);
+
+  // A fixed, well-spread number of catnip crates, placed near the racing line so
+  // they're naturally in reach.
+  const placeCatnip = (frac) => {
+    const idx = Math.floor((frac % 1) * N) % N;
+    const p = track._pts[idx];
+    const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
+    const lat = (rand() * 2 - 1) * (track.halfWidth * 0.6);
+    const x = p.x + side.x * lat, z = p.z + side.z * lat;
+    addProp(x, z, track.groundInfo(x, z).y, makeCrate(true), true);
+  };
+  const catnipFracs = catnipCount >= 2 ? [0.2 + rand() * 0.1, 0.62 + rand() * 0.12] : [0.4 + rand() * 0.2];
+  for (const f of catnipFracs) placeCatnip(f);
+
   const MAX = 64;
   const stepSamples = Math.max(6, Math.round((N * 26) / track.length));
   for (let i = 0; i < N && props.length + leafPiles.length < MAX; i += stepSamples) {
@@ -131,12 +150,8 @@ function build(scene, track, opts) {
       const x = p.x + side.x * lat + fwd.x * along;
       const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
-      if (kindRoll < 0.8) {
-        const isCrate = kindRoll < 0.5;
-        // ~1 in 4 crates hides catnip (the green glowing ones).
-        const catnip = isCrate && rand() < 0.26;
-        addProp(x, z, groundY, isCrate ? makeCrate(catnip) : makeBarrel(), catnip);
-      } else addLeafPile(x, z, groundY);
+      if (kindRoll < 0.8) addProp(x, z, groundY, kindRoll < 0.5 ? makeCrate() : makeBarrel());
+      else addLeafPile(x, z, groundY);
     }
   }
 
@@ -251,7 +266,7 @@ function build(scene, track, opts) {
         if (pr.dead > 0 || pr.hit > 0) continue;
         if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > HIT_R * HIT_R) continue;
         if (pr.catnip) {
-          pr.dead = 12; // hidden for 12s, then respawns
+          pr.dead = CATNIP_RESPAWN; // hidden, then respawns (longer on bigger tracks)
           pr.mesh.visible = false;
           if (opts.onCatnip && mk.kart) opts.onCatnip(mk.kart, pr.pos);
           continue;
