@@ -291,6 +291,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildStreetLamps(scene, track, heightAt, night); // roadside lamps (lit at night)
+  buildStringLights(scene, track, night); // festive bulb strings over a few road spans
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes);
   const grass = buildGrass(scene, track, heightAt);
@@ -988,6 +989,59 @@ function buildStreetLamps(scene, track, heightAt, night) {
     halo.layers.set(1);
     scene.add(halo);
   }
+}
+
+// Festive bulb strings strung in a catenary over a few road spans. The bulbs are
+// bright un-tonemapped colours, so bloom makes them twinkle/glow at night while
+// still reading as little fairy lights by day. One instanced mesh for all bulbs.
+function buildStringLights(scene, track, night) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const N = track.samples;
+  const SPANS = 5;
+  const COLS = [0xff3b30, 0xffd60a, 0x34c759, 0x0a84ff, 0xff9f0a, 0xffffff];
+  const bulbs = []; // { x, y, z, col }
+  const wireMat = new THREE.LineBasicMaterial({ color: 0x2a2622, transparent: true, opacity: 0.7, fog: true });
+  for (let s = 0; s < SPANS; s++) {
+    const i = Math.floor(((s + 0.5) / SPANS + rand() * 0.12) * N) % N;
+    const p = track._pts[i];
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const off = track.halfWidth + 4;
+    const ax = p.x + side.x * off, az = p.z + side.z * off, ay = p.y + 8.5;
+    const bx = p.x - side.x * off, bz = p.z - side.z * off, by = p.y + 8.5;
+    const sag = 3.0;
+    const per = 12;
+    const pts = [];
+    for (let k = 0; k <= per; k++) {
+      const t = k / per;
+      const dip = Math.sin(t * Math.PI) * sag; // catenary-ish droop
+      const x = ax + (bx - ax) * t;
+      const z = az + (bz - az) * t;
+      const y = ay + (by - ay) * t - dip;
+      pts.push(new THREE.Vector3(x, y, z));
+      if (k > 0 && k < per) bulbs.push({ x, y: y - 0.25, z, col: COLS[(k + s) % COLS.length] });
+    }
+    const wire = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat);
+    wire.layers.set(1);
+    scene.add(wire);
+  }
+  if (!bulbs.length) return;
+  const geo = new THREE.SphereGeometry(0.34, 8, 8);
+  const mat = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
+  const mesh = new THREE.InstancedMesh(geo, mat, bulbs.length);
+  const m = new THREE.Matrix4();
+  const ID = new THREE.Quaternion();
+  const sc = new THREE.Vector3(1, 1, 1);
+  const c = new THREE.Color();
+  const glow = night ? 1.6 : 0.9; // brighter at night so they bloom
+  bulbs.forEach((b, idx) => {
+    m.compose(new THREE.Vector3(b.x, b.y, b.z), ID, sc);
+    mesh.setMatrixAt(idx, m);
+    mesh.setColorAt(idx, c.set(b.col).multiplyScalar(glow));
+  });
+  mesh.instanceMatrix.needsUpdate = true;
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.layers.set(1);
+  scene.add(mesh);
 }
 
 // Flat, soft, dark discs laid on the ground under objects — a cheap contact /
