@@ -221,7 +221,8 @@ function biomeGround(x, z, out, y) {
 // Builds the world around the track: rolling hills, distant mountains, a small
 // town of buildings, forests, rocks, hero landmarks, hot-air balloons and birds.
 // Returns { grass, update(time) } for the animated bits.
-export function buildWorld(scene, track) {
+export function buildWorld(scene, track, opts = {}) {
+  const night = opts.timeOfDay === "night";
   _spinners.length = 0;
   _flutterers.length = 0;
   _critters.length = 0;
@@ -289,6 +290,7 @@ export function buildWorld(scene, track) {
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  buildStreetLamps(scene, track, heightAt, night); // roadside lamps (lit at night)
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes);
   const grass = buildGrass(scene, track, heightAt);
@@ -860,6 +862,115 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
       return { x: spot.x, y: spot.y, z: spot.z, r: (2.0 + spot.b.sx) * sc };
     })
   );
+}
+
+// Warm radial texture for the lamps' ground light-pools and glow halos.
+let _lampGlowTex = null;
+function lampGlowTexture() {
+  if (_lampGlowTex) return _lampGlowTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, "rgba(255,226,162,0.95)");
+  g.addColorStop(0.45, "rgba(255,196,110,0.4)");
+  g.addColorStop(1, "rgba(255,180,90,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 64, 64);
+  _lampGlowTex = new THREE.CanvasTexture(c);
+  _lampGlowTex.colorSpace = THREE.SRGBColorSpace;
+  return _lampGlowTex;
+}
+
+// Lamp posts lining the road, on alternating sides. Posts, shades and bulbs are
+// always present (street furniture); at NIGHT the bulbs glow (emissive + bloom),
+// each lays a warm additive light-pool on the ground and a soft halo, so the
+// night reads as lit rather than pitch black. Instanced for cheap draw calls.
+function buildStreetLamps(scene, track, heightAt, night) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const N = track.samples;
+  const spacing = 78; // ~metres between lamps along the road
+  const step = Math.max(2, Math.round((N * spacing) / track.length));
+  const POST_H = 9;
+  const spots = [];
+  let side = 1;
+  for (let i = 0; i < N; i += step) {
+    const p = track._pts[i];
+    const s = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const outward = s.x * p.x + s.z * p.z >= 0 ? 1 : -1;
+    const dir = outward * side; // alternate sides for an avenue feel
+    side *= -1;
+    const off = track.halfWidth + 5;
+    const x = p.x + s.x * dir * off;
+    const z = p.z + s.z * dir * off;
+    if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue; // folded over road
+    if (_inLake(x, z)) continue;
+    spots.push({ x, z, y: heightAt(x, z), ax: -s.x * dir, az: -s.z * dir }); // arm aims at road
+  }
+  if (!spots.length) return;
+
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.7, metalness: 0.3 });
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: night ? 2.4 : 0.0, roughness: 0.4,
+  });
+  const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.28, 0.4, POST_H, 7), postMat, spots.length);
+  const heads = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.95, 0.55, 0.7, 8), postMat, spots.length);
+  const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.42, 10, 8), bulbMat, spots.length);
+  posts.castShadow = true;
+  heads.castShadow = true;
+  const m = new THREE.Matrix4();
+  const ID = new THREE.Quaternion();
+  const sc = new THREE.Vector3(1, 1, 1);
+  const pos = new THREE.Vector3();
+  spots.forEach((sp, i) => {
+    pos.set(sp.x, sp.y + POST_H / 2, sp.z);
+    posts.setMatrixAt(i, m.compose(pos, ID, sc));
+    const hx = sp.x + sp.ax, hz = sp.z + sp.az; // head juts toward the road
+    pos.set(hx, sp.y + POST_H + 0.1, hz);
+    heads.setMatrixAt(i, m.compose(pos, ID, sc));
+    pos.set(hx, sp.y + POST_H - 0.35, hz);
+    bulbs.setMatrixAt(i, m.compose(pos, ID, sc));
+  });
+  for (const im of [posts, heads, bulbs]) {
+    im.instanceMatrix.needsUpdate = true;
+    im.layers.set(1); // out of the rear-view mirror render
+    scene.add(im);
+  }
+  if (!night) return;
+
+  // Warm ground pools (additive) so the surface reads as lit under each lamp.
+  const tex = lampGlowTexture();
+  const pools = new THREE.InstancedMesh(
+    new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, blending: THREE.AdditiveBlending,
+      depthWrite: false, fog: false, toneMapped: false,
+    }),
+    spots.length
+  );
+  const POOL = 34;
+  spots.forEach((sp, i) => {
+    pos.set(sp.x + sp.ax, sp.y + 0.12, sp.z + sp.az);
+    pools.setMatrixAt(i, m.compose(pos, ID, sc.set(POOL, 1, POOL)));
+  });
+  sc.set(1, 1, 1);
+  pools.instanceMatrix.needsUpdate = true;
+  pools.layers.set(1);
+  pools.renderOrder = 1;
+  scene.add(pools);
+
+  // Soft halos around each bulb.
+  const haloMat = new THREE.SpriteMaterial({
+    map: tex, color: 0xffe6b0, transparent: true,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.85,
+  });
+  for (const sp of spots) {
+    const halo = new THREE.Sprite(haloMat);
+    halo.position.set(sp.x + sp.ax, sp.y + POST_H - 0.35, sp.z + sp.az);
+    halo.scale.setScalar(7);
+    halo.layers.set(1);
+    scene.add(halo);
+  }
 }
 
 // Flat, soft, dark discs laid on the ground under objects — a cheap contact /

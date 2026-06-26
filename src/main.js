@@ -8,6 +8,7 @@ import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
+import { setNightMode } from "./models.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
@@ -69,6 +70,7 @@ function resolveTimeOfDay(cfg) {
   return TODS[Math.floor(makeRng(WORLD_SEED + "|tod")() * TODS.length)]; // "random"
 }
 const TIME_OF_DAY = resolveTimeOfDay(trackConfig);
+setNightMode(TIME_OF_DAY === "night"); // karts get glowing headlights + a beam at night
 
 // Background music. One track drives both the menu and the race (it loops).
 audio.registerMusic("menu", "./assets/music/zoomies.mp3");
@@ -240,7 +242,7 @@ track.totalLaps = TOTAL_LAPS;
 track.raceTime = 0;
 scene.add(track.group);
 
-const world = buildWorld(scene, track);
+const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
 // Minimap: a static top-down outline of the track with a coloured dot per kart.
 let minimap = setupMinimap();
