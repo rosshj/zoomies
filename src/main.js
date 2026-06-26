@@ -1212,8 +1212,11 @@ function syncTrackPanel() {
   const knobs = document.getElementById("track-knobs");
   if (knobs) knobs.style.display = custom ? "" : "none";
   const set = (id, v) => {
+    const pct = Math.round(v * 100);
     const el = document.getElementById(id);
-    if (el) el.value = Math.round(v * 100);
+    if (el) el.value = pct;
+    const val = document.getElementById(id + "-val");
+    if (val) val.textContent = pct;
   };
   set("track-curvy", _trackDraft.curviness);
   set("track-hilly", _trackDraft.hilliness);
@@ -1276,20 +1279,28 @@ document.getElementById("track-custom")?.addEventListener("click", () => {
   _trackDraft.mode = "custom";
   syncTrackPanel();
 });
+const setTrackVal = (id, v) => {
+  const val = document.getElementById(id + "-val");
+  if (val) val.textContent = v;
+};
 document.getElementById("track-curvy")?.addEventListener("input", (e) => {
   _trackDraft.curviness = e.target.value / 100;
+  setTrackVal("track-curvy", e.target.value);
   scheduleTrackPreview();
 });
 document.getElementById("track-hilly")?.addEventListener("input", (e) => {
   _trackDraft.hilliness = e.target.value / 100;
+  setTrackVal("track-hilly", e.target.value);
   scheduleTrackPreview();
 });
 document.getElementById("track-hills")?.addEventListener("input", (e) => {
   _trackDraft.hills = e.target.value / 100;
+  setTrackVal("track-hills", e.target.value);
   scheduleTrackPreview();
 });
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
+  setTrackVal("track-size", e.target.value);
   scheduleTrackPreview();
 });
 document.getElementById("track-new")?.addEventListener("click", (e) => {
