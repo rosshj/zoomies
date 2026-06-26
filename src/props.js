@@ -120,18 +120,36 @@ function build(scene, track, opts) {
   // props with ones just off the verge.
   const up = new THREE.Vector3(0, 1, 0);
 
-  // A fixed, well-spread number of catnip crates, placed near the racing line so
-  // they're naturally in reach.
-  const placeCatnip = (frac) => {
-    const idx = Math.floor((frac % 1) * N) % N;
+  // A spot near the racing line at a track fraction (so catnip is naturally in
+  // reach). Reused for the initial placement AND for respawns (which pick a NEW
+  // spot, so catnip never comes back in the same place).
+  const catnipSpot = (frac) => {
+    const idx = Math.floor(((frac % 1) + 1) % 1 * N) % N;
     const p = track._pts[idx];
     const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
     const lat = (rand() * 2 - 1) * (track.halfWidth * 0.6);
     const x = p.x + side.x * lat, z = p.z + side.z * lat;
-    addProp(x, z, track.groundInfo(x, z).y, makeCrate(true), true);
+    return { x, z, gy: track.groundInfo(x, z).y };
+  };
+  // Pick a fresh spot well away from a previous one and from the other catnip crate.
+  const freshCatnipSpot = (avoidX, avoidZ) => {
+    let best = null, bestScore = -1;
+    for (let t = 0; t < 6; t++) {
+      const s = catnipSpot(rand());
+      let d = avoidX === undefined ? 999 : Math.hypot(s.x - avoidX, s.z - avoidZ);
+      for (const pr of props) {
+        if (pr.catnip && pr.dead <= 0) d = Math.min(d, Math.hypot(s.x - pr.pos.x, s.z - pr.pos.z));
+      }
+      if (d > bestScore) { bestScore = d; best = s; }
+      if (d > 80) break; // good enough
+    }
+    return best;
   };
   const catnipFracs = catnipCount >= 2 ? [0.2 + rand() * 0.1, 0.62 + rand() * 0.12] : [0.4 + rand() * 0.2];
-  for (const f of catnipFracs) placeCatnip(f);
+  for (const f of catnipFracs) {
+    const s = catnipSpot(f);
+    addProp(s.x, s.z, s.gy, makeCrate(true), true);
+  }
 
   const MAX = 64;
   const stepSamples = Math.max(6, Math.round((N * 26) / track.length));
@@ -286,8 +304,13 @@ function build(scene, track, opts) {
       if (pr.dead > 0) {
         pr.dead -= dt;
         if (pr.dead <= 0) {
-          // Respawn the catnip crate at its spawn, upright and asleep.
-          pr.pos.set(pr.ox2, pr.groundY + pr.rest, pr.oz2);
+          // Respawn the catnip crate at a NEW spot (never the same place), upright
+          // and asleep.
+          const s = freshCatnipSpot(pr.ox2, pr.oz2);
+          pr.ox2 = s.x;
+          pr.oz2 = s.z;
+          pr.groundY = s.gy;
+          pr.pos.set(s.x, s.gy + pr.rest, s.z);
           pr.quat.identity();
           pr.vel.set(0, 0, 0);
           pr.angVel.set(0, 0, 0);
