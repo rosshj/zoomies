@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { attribute, color as tslColor } from "three/tsl";
 import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -697,18 +698,15 @@ export class Track {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
     geo.setIndex(indices);
-    const mat = new THREE.ShaderMaterial({
+    // TSL node material (WebGPU): yellow centre line whose opacity is the
+    // per-vertex aAlpha fade baked above.
+    const mat = new THREE.MeshBasicNodeMaterial({
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
-      uniforms: { uColor: { value: new THREE.Color(0xf4cf3a) } },
-      vertexShader: `
-        attribute float aAlpha; varying float vA;
-        void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `
-        uniform vec3 uColor; varying float vA;
-        void main(){ if (vA < 0.02) discard; gl_FragColor = vec4(uColor, vA); }`,
     });
+    mat.colorNode = tslColor(0xf4cf3a);
+    mat.opacityNode = attribute("aAlpha");
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 1;
     this.group.add(mesh);

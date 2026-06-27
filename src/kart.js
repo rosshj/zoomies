@@ -1,7 +1,28 @@
 import * as THREE from "three";
+import { color as tslColor, time, normalView, positionViewDirection } from "three/tsl";
 import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
+
+// Shield bubble (WebGPU TSL): a glowing Fresnel energy orb — bright at the rim,
+// faint fill, with a travelling shimmer + gentle breathing pulse off `time`.
+function makeShieldMaterial() {
+  const mat = new THREE.MeshBasicNodeMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+  const ndv = normalView.dot(positionViewDirection).clamp(0, 1);
+  const fres = ndv.oneMinus().clamp(0.001, 1).pow(2.4);
+  const band = time.mul(4).sin().mul(0.5).add(0.5); // travelling shimmer
+  const pulse = time.mul(2.5).sin().mul(0.15).add(0.85); // gentle breathing
+  mat.colorNode = tslColor(0x6fd6ff).mul(fres.mul(1.7).add(0.12).mul(pulse).add(band.mul(fres).mul(0.5)));
+  mat.opacityNode = fres.mul(0.9).add(0.08).add(band.mul(fres).mul(0.3)).clamp(0, 1);
+  // Dummy uniforms bag: the update loop writes material.uniforms.uTime.value.
+  mat.uniforms = { uTime: { value: 0 } };
+  return mat;
+}
 
 // Boost meter recharge rate (full in ~16s) — identical for the player and AI.
 export const BOOST_RECHARGE = 1 / 16;
@@ -142,39 +163,7 @@ export class Kart {
     this.shielding = false;
     this.shieldMesh = new THREE.Mesh(
       new THREE.SphereGeometry(3.3, 24, 16),
-      new THREE.ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        uniforms: {
-          uTime: { value: 0 },
-          uColor: { value: new THREE.Color(0x6fd6ff) },
-        },
-        vertexShader: `
-          varying vec3 vN; varying vec3 vV;
-          void main(){
-            vec4 mv = modelViewMatrix * vec4(position, 1.0);
-            vN = normalize(normalMatrix * normal);
-            vV = normalize(-mv.xyz);
-            gl_Position = projectionMatrix * mv;
-          }`,
-        fragmentShader: `
-          uniform float uTime; uniform vec3 uColor;
-          varying vec3 vN; varying vec3 vV;
-          void main(){
-            float ndv = clamp(dot(normalize(vN), normalize(vV)), 0.0, 1.0);
-            // Clamp the base away from 0: pow(0.0, x) yields NaN on some (mobile)
-            // GPUs, and a single NaN fragment gets smeared across the whole frame
-            // by the bloom blur -> full-screen black flicker.
-            float fres = pow(clamp(1.0 - ndv, 0.001, 1.0), 2.4);
-            float band = 0.5 + 0.5 * sin(vN.y * 18.0 - uTime * 4.0); // travelling shimmer
-            float pulse = 0.85 + 0.15 * sin(uTime * 2.5);            // gentle breathing
-            vec3 col = uColor * ((fres * 1.7 + 0.12) * pulse + band * fres * 0.5);
-            float a = clamp(fres * 0.9 + 0.08 + band * fres * 0.3, 0.0, 1.0);
-            gl_FragColor = vec4(clamp(col, 0.0, 4.0), a);
-          }`,
-      })
+      makeShieldMaterial()
     );
     this.shieldMesh.position.y = 1.2;
     this.shieldMesh.visible = false;

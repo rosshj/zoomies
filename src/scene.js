@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { attribute, uniform, color as tslColor } from "three/tsl";
 import { USE_WEBGPU } from "./gpu.js";
 
 // Time-of-day moods. The chosen one (from the track's Time of Day setting) drives
@@ -247,28 +248,23 @@ function buildStars(scene) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute("aSize", new THREE.Float32BufferAttribute(siz, 1));
-  const material = new THREE.ShaderMaterial({
+  // TSL node material (WebGPU): an additive star field faded in at night via the
+  // uOpacity uniform (applyMood writes material.uniforms.uOpacity.value). Per-star
+  // size comes from the aSize attribute; a cheap per-star twinkle modulates it.
+  const uOpacity = uniform(0);
+  const aSizeN = attribute("aSize");
+  const tw = aSizeN.mul(12.9).sin().mul(0.4).add(0.6);
+  const material = new THREE.PointsNodeMaterial({
     transparent: true,
     depthWrite: false,
     fog: false,
     blending: THREE.AdditiveBlending,
-    uniforms: { uOpacity: { value: 0 } },
-    vertexShader: `
-      attribute float aSize; varying float vTw;
-      void main(){
-        vTw = 0.6 + 0.4 * sin(aSize * 12.9);
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = aSize;
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      uniform float uOpacity; varying float vTw;
-      void main(){
-        float d = length(gl_PointCoord - 0.5);
-        float a = smoothstep(0.5, 0.0, d);
-        gl_FragColor = vec4(vec3(0.9, 0.93, 1.0), a * uOpacity * vTw);
-      }`,
+    sizeAttenuation: false,
   });
+  material.colorNode = tslColor(0xe6edff);
+  material.sizeNode = aSizeN;
+  material.opacityNode = uOpacity.mul(tw);
+  material.uniforms = { uOpacity }; // so applyMood's uniforms.uOpacity.value write works
   const pts = new THREE.Points(geo, material);
   pts.renderOrder = 0;
   pts.frustumCulled = false;

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3 } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 
 // Registries of animated parts, filled in as the world is built and driven from
@@ -473,37 +474,29 @@ function carveLakes(lakes, x, z, h) {
 // by a per-vertex "shore" value (0 at the centre/spine, 1 at the bank) and a
 // "len" value along the water, so there's no concentric/pinwheel pattern.
 function makeWaterMaterial(darken = 1) {
-  // The water colour is shader-driven (unlit), so dim it directly at dusk/night —
-  // otherwise it glows like daylight cyan in the dark.
-  return new THREE.ShaderMaterial({
-    transparent: true,
-    side: THREE.DoubleSide,
-    uniforms: {
-      uTime: { value: 0 },
-      uDeep: { value: new THREE.Color(0x1f6f8c).multiplyScalar(darken) },
-      uShallow: { value: new THREE.Color(0x57c6d6).multiplyScalar(darken) },
-      uFoam: { value: new THREE.Color(0xeafcff).multiplyScalar(0.4 + 0.6 * darken) },
-    },
-    vertexShader: `
-      attribute float aShore; attribute float aLen;
-      varying float vShore; varying float vLen;
-      void main(){ vShore = aShore; vLen = aLen;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      uniform float uTime; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoam;
-      varying float vShore; varying float vLen;
-      void main(){
-        vec3 col = mix(uDeep, uShallow, smoothstep(0.0, 1.0, vShore));
-        float w1 = sin(vLen * 40.0 + vShore * 8.0 + uTime * 1.4);
-        float w2 = sin(vLen * 26.0 - vShore * 5.0 - uTime * 1.0);
-        float ripple = smoothstep(0.55, 0.95, w1 * 0.5 + 0.5) * 0.6
-                     + smoothstep(0.65, 0.98, w2 * 0.5 + 0.5) * 0.4;
-        col = mix(col, col * 1.18, ripple * 0.5);
-        float foam = smoothstep(0.84, 0.995, vShore);
-        col = mix(col, uFoam, foam);
-        gl_FragColor = vec4(col, 0.9);
-      }`,
-  });
+  // TSL node material (WebGPU). The water colour is unlit, so dim it directly at
+  // dusk/night (the `darken` factor) — otherwise it glows like daylight cyan in
+  // the dark. aShore: 0 at the centre/spine -> 1 at the bank. aLen: along the
+  // water. Ripples + foam animate off the global TSL `time`.
+  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, side: THREE.DoubleSide });
+  const shore = attribute("aShore");
+  const len = attribute("aLen");
+  const deep = tslColor(0x1f6f8c).mul(darken);
+  const shallow = tslColor(0x57c6d6).mul(darken);
+  const foamCol = tslColor(0xeafcff).mul(0.4 + 0.6 * darken);
+  const w1 = len.mul(40).add(shore.mul(8)).add(time.mul(1.4)).sin();
+  const w2 = len.mul(26).sub(shore.mul(5)).sub(time.mul(1.0)).sin();
+  const ripple = smoothstep(0.55, 0.95, w1.mul(0.5).add(0.5)).mul(0.6)
+    .add(smoothstep(0.65, 0.98, w2.mul(0.5).add(0.5)).mul(0.4));
+  let col = mix(deep, shallow, smoothstep(0.0, 1.0, shore));
+  col = mix(col, col.mul(1.18), ripple.mul(0.5));
+  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
+  mat.colorNode = col;
+  mat.opacityNode = float(0.9);
+  // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` animation
+  // write in buildWorld's update stays a harmless no-op (animation is via `time`).
+  mat.uniforms = { uTime: { value: 0 } };
+  return mat;
 }
 
 function buildWater(scene, lakes, darken = 1) {
@@ -2392,31 +2385,26 @@ function buildFireflies(scene, track, heightAt) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
-  const material = new THREE.ShaderMaterial({
+  // TSL node material (WebGPU): green fireflies that drift (positionNode sway) and
+  // twinkle (opacity), animated off the global `time`.
+  const phase = attribute("aPhase");
+  const sway = vec3(
+    time.mul(0.6).add(phase).sin().mul(1.3),
+    time.mul(0.9).add(phase.mul(1.7)).sin().mul(0.8),
+    time.mul(0.5).add(phase.mul(1.3)).cos().mul(1.3)
+  );
+  const tw = time.mul(3).add(phase.mul(5)).sin().mul(0.5).add(0.5);
+  const material = new THREE.PointsNodeMaterial({
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 } },
-    vertexShader: `
-      attribute float aPhase; uniform float uTime; varying float vTw;
-      void main(){
-        vec3 pos = position;
-        pos.x += sin(uTime * 0.6 + aPhase) * 1.3;
-        pos.y += sin(uTime * 0.9 + aPhase * 1.7) * 0.8;
-        pos.z += cos(uTime * 0.5 + aPhase * 1.3) * 1.3;
-        vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-        vTw = 0.5 + 0.5 * sin(uTime * 3.0 + aPhase * 5.0);
-        gl_PointSize = clamp(180.0 / -mv.z, 1.0, 9.0) * (0.5 + 0.5 * vTw);
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      varying float vTw;
-      void main(){
-        float d = length(gl_PointCoord - 0.5);
-        float a = smoothstep(0.5, 0.0, d) * vTw;
-        gl_FragColor = vec4(vec3(0.75, 1.0, 0.45) * (0.6 + vTw), a);
-      }`,
+    sizeAttenuation: true,
   });
+  material.positionNode = positionLocal.add(sway);
+  material.colorNode = tslColor(0xbfff73).mul(tw.add(0.6));
+  material.opacityNode = tw;
+  material.sizeNode = tw.mul(0.5).add(0.5).mul(3);
+  material.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
   material.userData.skipToon = true;
   const pts = new THREE.Points(geo, material);
   pts.frustumCulled = false; // points are displaced in the shader
