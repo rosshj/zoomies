@@ -1,7 +1,7 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
@@ -131,8 +131,10 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
 const _GN = 14, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 samples (sunset perf); longer step + tighter decay keep the shaft length
-const _godray = Fn(() => {
-  const orig = _sceneTex.uv(viewportUV);
+// Returns JUST the additive shaft contribution (not the scene), so it can be
+// rendered at HALF resolution and added back to the full-res scene — god-rays are
+// soft/low-frequency, so half-res is ~4x cheaper and nearly indistinguishable.
+const _godrayShafts = Fn(() => {
   const add = vec3(0).toVar();
   // PERF: only run the sample loop when the sun is actually visible. uVis is a
   // uniform (same for every pixel), so this branch is coherent — the GPU skips the
@@ -159,10 +161,15 @@ const _godray = Fn(() => {
     const cap = vec3(0.6);
     add.assign(cap.mul(float(1).sub(raw.div(cap).negate().exp())));
   });
-  return orig.add(add);
+  return add; // shafts only
 });
+// Render the shafts to a half-resolution target (cheap), then composite over the
+// full-res scene. autoUpdate re-renders them each frame; the If-gate keeps it a
+// cheap black fill when the sun isn't visible.
+const _shaftTex = rtt(_godrayShafts());
+_shaftTex.pixelRatio = 0.5;
 {
-  let c = _godray().add(_bloomNode); // scene + shafts + additive bloom
+  let c = _sceneTex.add(_shaftTex).add(_bloomNode); // full-res scene + half-res shafts + bloom
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
   const lum = luminance(c.clamp(0, 1));
