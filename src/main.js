@@ -117,12 +117,14 @@ const _bloomNode = bloom(_scenePass, 0.45, 0.5, 0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
 const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas aren't too dark
-// Depth-of-field: a SUBTLE miniature/tilt-shift feel — keep the action (kart + road
-// just ahead) sharp and softly blur the distant horizon/scenery so the world reads
-// like a tiny toy diorama. Focus is a view-space Z (negative = ahead of camera).
-const _uDofFocus = uniform(-38);
-const _uDofAperture = uniform(0.028);
-const _uDofMax = uniform(0.009);
+// Depth-of-field: a SUBTLE miniature/tilt-shift feel — keep the action sharp and
+// softly blur the distant horizon. The DoF node's focus term is `focus + viewZ`
+// (viewZ is negative), so focus is a POSITIVE distance; we set it each frame to the
+// player's own view distance (updateAtmosphere) so the kart is always crisp. A tiny
+// aperture keeps a wide band sharp; only the far horizon reaches maxblur.
+const _uDofFocus = uniform(25);
+const _uDofAperture = uniform(0.00011);
+const _uDofMax = uniform(0.006);
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
 const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
 const _uGVis = uniform(0);
@@ -782,6 +784,7 @@ const _ss = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 const _sunViewVec = new THREE.Vector3();
+const _dofFocusVec = new THREE.Vector3(); // player position in view space (for DoF focus)
 const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
@@ -790,6 +793,15 @@ function updateAtmosphere() {
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
   // Direction toward the sun (invariant to the follow offset below).
   _sunDir.copy(sun.position).sub(sun.target.position).normalize();
+
+  // Depth-of-field focus: track the player's view-space distance so the kart (and
+  // the road just past it) stay crisp while the far horizon softens. viewZ is
+  // negative; the DoF factor is `focus + viewZ`, so focus = -viewZ (+ a little so
+  // the focus plane sits just ahead of the kart).
+  if (player) {
+    _dofFocusVec.copy(player.position).applyMatrix4(camera.matrixWorldInverse);
+    _uDofFocus.value = Math.max(8, -_dofFocusVec.z + 10);
+  }
 
   // Keep the tight shadow frustum centred on the player so its crisp shadows
   // are always where they show. Snap the centre to shadow-map texels (in the
