@@ -2456,7 +2456,7 @@ function buildFireflies(scene, track, heightAt) {
   const up = new THREE.Vector3(0, 1, 0);
   const positions = [];
   const phases = [];
-  const want = 260;
+  const want = 110; // was 260 — fewer, sparser fireflies so the forest isn't crowded with dots
   let tries = 0;
   while (positions.length / 3 < want && tries < want * 8) {
     tries++;

@@ -2729,7 +2729,7 @@ rendererReady
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
-      count: 650, // 3000 -> 1400 -> 650: just occasional dust catching the light, not a field of dots
+      count: 280, // 3000 -> 1400 -> 650 -> 280: just the occasional speck catching the light, not a field of dots
       tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
       // Daytime motes are barely-there dust; night keeps a touch more for the magical sparkle.
       opacity: night ? 0.45 : TIME_OF_DAY === "sunset" ? 0.22 : 0.13,
