@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { attribute, texture } from "three/tsl";
+import { attribute, texture, color } from "three/tsl";
 
 // Soft particle effects (textured sprites): rainbow toot clouds, boost trail,
 // drift/wall sparks, plus reusable tyre skid-mark quads.
@@ -24,19 +24,32 @@ export class EffectsManager {
     this.smokeField = this._makeField(this.smokeTex);
     this.sparkField = this._makeField(this.sparkTex);
 
-    // Skid marks: a ring buffer of flat quads reused as the trail grows.
-    this.skids = [];
-    this.skidIdx = 0;
-    this.skidMax = 600;
-    this.skidGeo = new THREE.PlaneGeometry(0.45, 1.3);
-    this.skidGeo.rotateX(-Math.PI / 2);
-    this.skidMat = new THREE.MeshBasicMaterial({
-      color: 0x1a1a1a,
-      transparent: true,
-      opacity: 0.4,
-      depthWrite: false,
-    });
-    this._lastSkid = new Map();
+    // Skid marks: ONE continuous ribbon mesh shared by every kart — a ring buffer
+    // of quads where each new quad reuses the previous quad's far edge as its near
+    // edge, so the trail reads as an unbroken streak (not dashes) and the whole
+    // thing is a single draw call (was up to 600 separate meshes). A soft-edged
+    // width texture feathers the sides.
+    this.skidMax = 1100; // quads in the ring
+    this.skidHead = 0;
+    this.skidFill = 0;
+    this._skidDirty = false;
+    const sc = this.skidMax * 6; // 6 verts per quad (2 triangles)
+    this.skidPos = new Float32Array(sc * 3);
+    this.skidUV = new Float32Array(sc * 2);
+    this.skidGeo = new THREE.BufferGeometry();
+    this.skidGeo.setAttribute("position", new THREE.BufferAttribute(this.skidPos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.skidGeo.setAttribute("uv", new THREE.BufferAttribute(this.skidUV, 2).setUsage(THREE.DynamicDrawUsage));
+    this.skidGeo.setDrawRange(0, 0);
+    const skidTex = skidTexture();
+    this.skidMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
+    this.skidMat.colorNode = color(0x161616);
+    this.skidMat.opacityNode = texture(skidTex).a.mul(0.5); // soft-edged across width
+    this.skidMesh = new THREE.Mesh(this.skidGeo, this.skidMat);
+    this.skidMesh.frustumCulled = false;
+    this.skidMesh.renderOrder = 1;
+    this.skidMesh.layers.set(0);
+    scene.add(this.skidMesh);
+    this._skidPrev = new Map(); // kart -> { c:[Vec3,Vec3], e:[edge|null, edge|null] } per rear wheel
     this._hue = 0;
   }
 
@@ -289,10 +302,10 @@ export class EffectsManager {
     }
   }
 
-  // Lay continuous tyre marks by bridging each new rear-wheel position to the
-  // previous one (a stretched, travel-aligned segment), so the trail stays
-  // unbroken even when the kart is sliding sideways in a drift. `_lastSkid`
-  // holds the two previous wheel endpoints per kart.
+  // Lay continuous tyre marks: extend a ribbon from each rear wheel by appending a
+  // quad from the previous edge to the new one. Each quad reuses the previous
+  // quad's far edge as its near edge, so the trail is one unbroken streak even
+  // through a sideways slide, instead of a chain of separate dashes.
   skid(kart) {
     const right = new THREE.Vector3(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
     const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
@@ -303,38 +316,55 @@ export class EffectsManager {
         .addScaledVector(fwd, -1.4)
         .setY(kart.groundY + 0.05)
     );
-    const prev = this._lastSkid.get(kart);
-    if (!prev) {
-      this._lastSkid.set(kart, cur);
+    let st = this._skidPrev.get(kart);
+    if (!st) {
+      this._skidPrev.set(kart, { c: [cur[0].clone(), cur[1].clone()], e: [null, null] });
       return;
     }
-    const step = prev[0].distanceToSquared(cur[0]);
-    if (step < 0.16) return; // moved too little — wait so segments aren't degenerate
-    if (step > 36) {
-      // Resumed after a gap: don't draw a long bridge across the gap, just reset.
-      this._lastSkid.set(kart, cur);
-      return;
-    }
+    const HALF = 0.3; // half the mark width
     for (let i = 0; i < 2; i++) {
-      const a = prev[i];
+      const a = st.c[i];
       const b = cur[i];
-      const dx = b.x - a.x;
-      const dz = b.z - a.z;
-      const len = Math.hypot(dx, dz);
-      let mesh;
-      if (this.skids.length < this.skidMax) {
-        mesh = new THREE.Mesh(this.skidGeo, this.skidMat);
-        this.scene.add(mesh);
-        this.skids.push(mesh);
-      } else {
-        mesh = this.skids[this.skidIdx];
-        this.skidIdx = (this.skidIdx + 1) % this.skidMax;
+      const step = a.distanceToSquared(b);
+      if (step < 0.12) continue; // too little movement — let it accumulate (no degenerate quad)
+      if (step > 36) {
+        // Resumed after a gap (or race reset): start a fresh run, no bridge.
+        a.copy(b);
+        st.e[i] = null;
+        continue;
       }
-      mesh.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-      mesh.rotation.y = Math.atan2(dx, dz); // run the mark along the slide path
-      mesh.scale.set(1, 1, (len / 1.3) * 1.15); // stretch to span the gap (slight overlap)
+      // Perpendicular to travel (in XZ) gives the two edge points of the new end.
+      const dx = b.x - a.x, dz = b.z - a.z;
+      const inv = HALF / Math.hypot(dx, dz);
+      const px = dz * inv, pz = -dx * inv;
+      const bL = new THREE.Vector3(b.x + px, b.y, b.z + pz);
+      const bR = new THREE.Vector3(b.x - px, b.y, b.z - pz);
+      // Near edge = the previous quad's far edge (continuous), or seed it at `a`.
+      const near = st.e[i] || { L: new THREE.Vector3(a.x + px, a.y, a.z + pz), R: new THREE.Vector3(a.x - px, a.y, a.z - pz) };
+      this._appendSkidQuad(near.L, near.R, bL, bR);
+      st.e[i] = { L: bL, R: bR };
+      a.copy(b);
     }
-    this._lastSkid.set(kart, cur);
+  }
+
+  // Write one ribbon quad (2 triangles, 6 verts) into the skid ring buffer.
+  _appendSkidQuad(aL, aR, bL, bR) {
+    const q = this.skidHead;
+    const P = this.skidPos, U = this.skidUV;
+    const pB = q * 18, uB = q * 12;
+    const verts = [aL, aR, bR, aL, bR, bL]; // tri1: aL,aR,bR  tri2: aL,bR,bL
+    const uvs = [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]; // U across width (soft edges), V along length
+    for (let k = 0; k < 6; k++) {
+      P[pB + k * 3] = verts[k].x;
+      P[pB + k * 3 + 1] = verts[k].y;
+      P[pB + k * 3 + 2] = verts[k].z;
+      U[uB + k * 2] = uvs[k * 2];
+      U[uB + k * 2 + 1] = uvs[k * 2 + 1];
+    }
+    this.skidHead = (this.skidHead + 1) % this.skidMax;
+    this.skidFill = Math.min(this.skidFill + 1, this.skidMax);
+    this.skidGeo.setDrawRange(0, this.skidFill * 6);
+    this._skidDirty = true;
   }
 
   update(dt) {
@@ -361,6 +391,12 @@ export class EffectsManager {
     }
     this._flush(this.smokeField, ns);
     this._flush(this.sparkField, np);
+    // Upload skid-ribbon edits once per frame (batches all this frame's appends).
+    if (this._skidDirty) {
+      this.skidGeo.attributes.position.needsUpdate = true;
+      this.skidGeo.attributes.uv.needsUpdate = true;
+      this._skidDirty = false;
+    }
   }
 
   _flush(field, count) {
@@ -393,4 +429,21 @@ function softTexture(spark) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
+}
+
+// Skid-mark width texture: opaque centre feathering to transparent at both edges,
+// so the ribbon's sides are soft instead of a hard rectangle (U runs across width).
+function skidTexture() {
+  const c = document.createElement("canvas");
+  c.width = 32;
+  c.height = 4;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 32, 0);
+  g.addColorStop(0, "rgba(255,255,255,0)");
+  g.addColorStop(0.25, "rgba(255,255,255,1)");
+  g.addColorStop(0.75, "rgba(255,255,255,1)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 32, 4);
+  return new THREE.CanvasTexture(c);
 }
