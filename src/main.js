@@ -1334,6 +1334,16 @@ refreshInstallUI();
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
 const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert"];
+// Biomes are laid out as angular wedges around the track. A small/tight loop only
+// sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
+// never visited (the reported "not all biomes show" bug). Cap the count to what a
+// map of a given size can actually display, and surface the cap in the UI.
+function maxBiomesForSize(size) {
+  if (size < 0.25) return 2;
+  if (size < 0.5) return 3;
+  if (size < 0.75) return 4;
+  return ALL_BIOMES.length; // big maps can show them all
+}
 let _trackDraft = null;
 function syncTrackPanel() {
   if (!_trackDraft) return;
@@ -1355,8 +1365,20 @@ function syncTrackPanel() {
   set("track-hilly", _trackDraft.hilliness);
   set("track-hills", _trackDraft.hills);
   set("track-size", _trackDraft.size);
+  // Enforce the size-driven biome cap: if the draft holds more than the current
+  // size allows (e.g. the user shrank the map after picking 5), trim the extras
+  // off the end, keeping the earliest-picked ones.
+  const maxBiomes = maxBiomesForSize(_trackDraft.size ?? 0.5);
+  if (_trackDraft.biomes.length > maxBiomes) _trackDraft.biomes = _trackDraft.biomes.slice(0, maxBiomes);
+  const atCap = _trackDraft.biomes.length >= maxBiomes;
+  const hint = document.getElementById("biome-max-hint");
+  if (hint) hint.textContent = maxBiomes >= ALL_BIOMES.length ? "(all available)" : `(pick up to ${maxBiomes} — bigger map = more)`;
   trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
-    chip.classList.toggle("on", _trackDraft.biomes.includes(chip.dataset.biome));
+    const on = _trackDraft.biomes.includes(chip.dataset.biome);
+    chip.classList.toggle("on", on);
+    // Grey out the chips you can't add once you're at the cap (selected ones stay
+    // interactive so you can deselect to free a slot).
+    chip.classList.toggle("locked", !on && atCap);
   });
   const tod = _trackDraft.timeOfDay || "midday";
   trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
@@ -1446,7 +1468,8 @@ document.getElementById("track-hills")?.addEventListener("input", (e) => {
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
   setTrackVal("track-size", e.target.value);
-  scheduleTrackPreview();
+  // Re-apply the biome cap and refresh the hint/locked chips as the map resizes.
+  syncTrackPanel();
 });
 document.getElementById("track-new")?.addEventListener("click", (e) => {
   _trackDraft.seed = randomSeed();
@@ -1462,6 +1485,11 @@ trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
     if (i >= 0) {
       if (_trackDraft.biomes.length > 1) _trackDraft.biomes.splice(i, 1); // keep at least one
     } else {
+      // Honour the size-driven cap: at the limit, adding a biome rolls the
+      // oldest selection out so the newest pick takes effect (rather than the
+      // click silently doing nothing).
+      const max = maxBiomesForSize(_trackDraft.size ?? 0.5);
+      if (_trackDraft.biomes.length >= max) _trackDraft.biomes.shift();
       _trackDraft.biomes.push(b);
     }
     syncTrackPanel();

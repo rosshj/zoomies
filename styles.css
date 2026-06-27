@@ -280,6 +280,12 @@ body {
   color: rgba(255, 255, 255, 0.55);
   margin: 2px 0 4px;
 }
+.env-hint {
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  text-transform: none;
+  color: var(--accent);
+}
 .track-main .biome-pick {
   justify-content: flex-start;
   margin: 0 0 2px;
@@ -412,6 +418,11 @@ body {
   background: linear-gradient(180deg, #ffd24d, var(--accent));
   color: #1a1206;
   border-color: transparent;
+}
+/* Biomes locked out because the map is too small to show them all. */
+.biome-chip.locked {
+  opacity: 0.35;
+  filter: grayscale(0.6);
 }
 #track-mode {
   margin: 0 auto;
