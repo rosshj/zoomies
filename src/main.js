@@ -1,9 +1,10 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, mrt, output } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
+import { ao } from "three/addons/tsl/display/GTAONode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -111,9 +112,17 @@ camera.layers.enable(2);
 // bloom node's uniforms so the existing snow-blend modulation keeps working.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
-const _sceneTex = _scenePass.getTextureNode();
+// MRT: also render view-space normals, so GTAO (ambient occlusion) can read them.
+_scenePass.setMRT(mrt({ output, normal: normalView }));
+const _sceneTex = _scenePass.getTextureNode("output");
+const _sceneNormal = _scenePass.getTextureNode("normal");
+const _sceneDepthTex = _scenePass.getTextureNode("depth");
 const _sceneViewZ = _scenePass.getViewZNode(); // for depth-of-field
-const _bloomNode = bloom(_scenePass, 0.45, 0.5, 0.85);
+const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
+// Ambient occlusion (GTAO): soft contact shadows in crevices / where things meet
+// the ground, for a more grounded, "rendered" look. Blended in by _uAoStrength.
+const _aoNode = ao(_sceneDepthTex, _sceneNormal, camera);
+const _uAoStrength = uniform(0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
 const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas aren't too dark
@@ -160,7 +169,11 @@ const _godray = Fn(() => {
   return orig.add(add);
 });
 {
-  let c = _godray().add(_bloomNode); // scene + shafts + additive bloom
+  // Ambient occlusion darkens the scene's crevices/contacts BEFORE bloom (so bloom
+  // doesn't fight it). _godray() returns scene+shafts; the shafts live in the bright
+  // sky where AO~1, so multiplying through is fine. Strength is blendable.
+  const aoFactor = mix(float(1), _aoNode.getTextureNode().r, _uAoStrength);
+  let c = _godray().mul(aoFactor).add(_bloomNode); // (scene+shafts)*AO + bloom
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
   const lum = luminance(c.clamp(0, 1));
