@@ -875,10 +875,8 @@ function updateAtmosphere() {
     gsh.uniforms.uSunView.value.copy(_sunViewVec);
     gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
   }
-  // Animate the puddles' wet-sheen shimmer.
-  if (track.puddleMesh) {
-    track.puddleMesh.material.uniforms.uTime.value = performance.now() * 0.001;
-  }
+  // Puddles now animate via the TSL `time` node (no per-frame uniform write needed;
+  // node materials drop the dummy .uniforms after they compile).
 }
 
 // Render the main view (through the post-processing composer), then overlay the
