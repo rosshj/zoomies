@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3 } from "three/tsl";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 
 // Registries of animated parts, filled in as the world is built and driven from
@@ -320,8 +320,10 @@ export function buildWorld(scene, track, opts = {}) {
       for (const fl of flocks) updateFlock(fl, time);
       for (const c of _critters) updateCritter(c, dt, time, heightAt);
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
-      if (fireflies) fireflies.material.uniforms.uTime.value = time;
-      for (const w of waters) w.uniforms.uTime.value = time;
+      // (fireflies + water animate via the TSL `time` node; node materials drop the
+      // dummy .uniforms after they compile, so don't write to them.)
+      if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
+      for (const w of waters) if (w.uniforms) w.uniforms.uTime.value = time;
       const sh = grass && grass.material.userData.shader;
       if (sh) sh.uniforms.uTime.value = time;
     },
@@ -475,11 +477,13 @@ function carveLakes(lakes, x, z, h) {
 // by a per-vertex "shore" value (0 at the centre/spine, 1 at the bank) and a
 // "len" value along the water, so there's no concentric/pinwheel pattern.
 function makeWaterMaterial(darken = 1) {
-  // TSL node material (WebGPU). The water colour is unlit, so dim it directly at
-  // dusk/night (the `darken` factor) — otherwise it glows like daylight cyan in
-  // the dark. aShore: 0 at the centre/spine -> 1 at the bank. aLen: along the
-  // water. Ripples + foam animate off the global TSL `time`.
-  const mat = new THREE.MeshBasicNodeMaterial({ transparent: true, side: THREE.DoubleSide });
+  // TSL node material (WebGPU). Now a METALLIC standard material so screen-space
+  // reflections (SSR, in main.js) mirror the scene on the lake. It keeps its
+  // stylised deep/shallow/foam colour as the base (so it reads blue, not pure
+  // mirror) and the ripples modulate roughness so the reflection shimmers. aShore:
+  // 0 at the centre/spine -> 1 at the bank. aLen: along the water. Animates off the
+  // global TSL `time`. `darken` dims it at dusk/night.
+  const mat = new THREE.MeshStandardNodeMaterial({ transparent: true, side: THREE.DoubleSide });
   const shore = attribute("aShore");
   const len = attribute("aLen");
   const deep = tslColor(0x1f6f8c).mul(darken);
@@ -493,9 +497,16 @@ function makeWaterMaterial(darken = 1) {
   col = mix(col, col.mul(1.18), ripple.mul(0.5));
   col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
   mat.colorNode = col;
-  mat.opacityNode = float(0.9);
-  // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` animation
-  // write in buildWorld's update stays a harmless no-op (animation is via `time`).
+  // Fresnel: water mirrors much more at grazing angles (looking across it) than
+  // looking straight down — the key to a realistic reflective surface. Drive the
+  // SSR metalness with it. Foam fringe stays matte so the bank doesn't mirror.
+  const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(3);
+  const shoreFade = smoothstep(0.9, 0.7, shore);
+  mat.metalnessNode = float(0.35).add(fres.mul(0.55)).mul(shoreFade);
+  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // ripples shimmer the reflection
+  mat.opacityNode = float(0.92);
+  // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
+  // harmless no-op (animation is via `time`).
   mat.uniforms = { uTime: { value: 0 } };
   return mat;
 }

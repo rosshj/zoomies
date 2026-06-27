@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { attribute, color as tslColor } from "three/tsl";
+import { attribute, color as tslColor, float, smoothstep, time, positionWorld } from "three/tsl";
 import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -447,15 +447,18 @@ export class Track {
       g.translate(0, pl.gy + 0.04, 0); // sit flush on this puddle's ground
       return g;
     });
-    const mesh = new THREE.Mesh(
-      mergeGeometries(geoms),
-      new THREE.ShaderMaterial({
-        ...PUDDLE_SHEEN_SHADER,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      })
-    );
+    // Reflective wet puddles (WebGPU): a metallic standard node-material so SSR
+    // (main.js) mirrors the sky/scene on them, over a dark wet-asphalt base. aEdge
+    // (0 centre -> 1 rim) fades them out at the edges; a faint moving glint shimmers.
+    const pmat = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const edge = attribute("aEdge");
+    const glint = positionWorld.x.mul(1.3).add(positionWorld.z.mul(1.1)).add(time.mul(1.6)).sin().mul(0.5).add(0.5);
+    pmat.colorNode = tslColor(0x0c1822).add(glint.mul(0.03));
+    pmat.metalnessNode = float(0.75); // very reflective (wet)
+    pmat.roughnessNode = float(0.06);
+    pmat.opacityNode = float(1).sub(smoothstep(0.4, 1.0, edge)).mul(0.9);
+    pmat.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
+    const mesh = new THREE.Mesh(mergeGeometries(geoms), pmat);
     mesh.renderOrder = 1;
     this.group.add(mesh);
     this.puddleMesh = mesh;
