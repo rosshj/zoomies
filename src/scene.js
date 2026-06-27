@@ -105,7 +105,7 @@ export function createScene() {
   // depth bias and lean on a slightly higher normalBias (offsets along the
   // surface normal, renderer-agnostic) which is the robust anti-acne knob.
   sun.shadow.bias = 0;
-  sun.shadow.normalBias = 0.25;
+  sun.shadow.normalBias = 0.35; // bumped again to catch any residual acne shimmer
   sun.shadow.radius = 5; // soft PCF penumbra for the gentle, toy-like look
   scene.add(sun);
   scene.add(sun.target);
