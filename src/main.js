@@ -1,7 +1,8 @@
 import * as THREE from "three";
-// M1 WebGPU migration: the legacy EffectComposer post chain is disabled (see the
-// stubs below); these imports are intentionally removed so nothing pulls the WebGL
-// postprocessing addons under the WebGPU build.
+// WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
+// legacy EffectComposer chain.
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform } from "three/tsl";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -101,27 +102,55 @@ let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens fro
 camera.layers.enable(1);
 camera.layers.enable(2);
 
-// --- Post-processing (M1 WebGPU migration: STUBBED) ---
-// The bloom + god-ray + lens-flare + colour-grade chain is the legacy WebGL
-// EffectComposer pipeline, which WebGPURenderer doesn't run. For M1 we render the
-// scene straight to the screen and stand in inert "pass" objects that carry the
-// SAME uniform shape the rest of the code pokes at — so the many
-// `pass.uniforms.x.value = …` and `pass.enabled = …` writes scattered through the
-// loop stay harmless no-ops. The real effects come back as TSL nodes in M4.
-// composer.render() simply does a direct render; renderFrame() still calls it.
+// --- Post-processing (M4 WebGPU): TSL node graph ---
+// PostProcessing runs a node graph instead of the legacy EffectComposer. The graph
+// is: scene pass -> + bloom -> saturation -> contrast -> warm/cool split-tone ->
+// vignette. God-rays + lens-flare + radial-blur/aberration are still deferred
+// (their pass objects stay inert stubs, keeping the scattered uniform writes as
+// no-ops). bloomPass exposes strength/threshold as getter/setters onto the bloom
+// node's uniforms so the existing snow-blend modulation keeps working unchanged.
+const postProcessing = new THREE.PostProcessing(renderer);
+const _scenePass = pass(scene, camera);
+const _bloomNode = bloom(_scenePass, 0.45, 0.5, 0.85);
+const _uSat = uniform(MOOD.sat);
+const _uContrast = uniform(MOOD.contrast);
+const _uVignette = uniform(0.28);
+{
+  let c = _scenePass.add(_bloomNode); // additive bloom over the scene
+  c = saturation(c, _uSat);
+  c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
+  const lum = luminance(c.clamp(0, 1));
+  // Cinematic split-tone: cool shadows, warm highlights.
+  c = c.mul(mix(vec3(0.9, 0.97, 1.1), vec3(1.1, 1.02, 0.9), smoothstep(0.15, 0.85, lum)));
+  const d = viewportUV.sub(0.5);
+  const vig = smoothstep(0.92, 0.34, d.length());
+  c = c.mul(mix(float(1), vig, _uVignette));
+  postProcessing.outputNode = c;
+}
+// composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
-  render() { renderer.render(scene, camera); },
+  render() { postProcessing.render(); },
   setSize() {},
   setPixelRatio() {},
   addPass() {},
 };
-const _passStub = (uniforms) => ({ enabled: false, setSize() {}, uniforms });
-const bloomPass = { enabled: false, strength: 0.45, threshold: 0.85, setSize() {} };
+const bloomPass = {
+  enabled: true,
+  setSize() {},
+  get strength() { return _bloomNode.strength.value; },
+  set strength(v) { _bloomNode.strength.value = v; },
+  get threshold() { return _bloomNode.threshold.value; },
+  set threshold(v) { _bloomNode.threshold.value = v; },
+};
 const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
 const BLOOM_THRESHOLD = bloomPass.threshold;
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 let _lightning = 0; // current lightning-flash intensity (decays each frame)
 let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
+// Still-deferred passes: inert stubs (god-rays, lens-flare, and the radial-blur/
+// chromatic-aberration part of the colour grade). uSat/uContrast/uVignette are the
+// LIVE uniform nodes above, so the mood code keeps driving the grade.
+const _passStub = (uniforms) => ({ enabled: false, setSize() {}, uniforms });
 const godrayPass = _passStub({
   uSun: { value: new THREE.Vector2(0.5, 0.7) },
   uVis: { value: 0 },
@@ -132,9 +161,9 @@ const flarePass = _passStub({ uVis: { value: 0 } });
 const fxPass = _passStub({
   uAberr: { value: 0 },
   uRadial: { value: 0 },
-  uVignette: { value: 0.28 },
-  uSat: { value: MOOD.sat },
-  uContrast: { value: MOOD.contrast },
+  uVignette: _uVignette,
+  uSat: _uSat,
+  uContrast: _uContrast,
 });
 
 const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
