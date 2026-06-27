@@ -1,7 +1,7 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
@@ -249,15 +249,16 @@ function makeToonGradient() {
   return tex;
 }
 const TOON_GRADIENT = makeToonGradient();
-// Toon materials flagged for sun-driven effects collect their compiled shaders
-// so the atmosphere update can feed them the sun direction each frame. Foliage
-// (world-persistent) and karts (rebuilt each race) are kept separate so the
-// kart list can be reset on rebuild without leaking old shaders.
+// Sun-driven rim/backlight share two uniform nodes, updated once per frame in
+// updateAtmosphere: the view-space sun-travel direction and the (mood sun colour ×
+// glow) tint. (Legacy per-shader arrays kept but unused on WebGPU.)
 const backlitShaders = [];
 const rimShaders = [];
+const uSunViewNode = uniform(new THREE.Vector3(0, 0, 1));
+const uSunColNode = uniform(new THREE.Color(0x000000));
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
-  const t = new THREE.MeshToonMaterial({
+  const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
     map: m.map || null,
     gradientMap: TOON_GRADIENT,
@@ -270,32 +271,34 @@ function toToon(m) {
     emissiveIntensity: m.emissiveIntensity,
     bumpMap: m.bumpMap || null,
     bumpScale: m.bumpScale,
-  });
-  // Sun-driven add-ons, fed the view-space light direction each frame:
-  //  - backlight: foliage glows warm where you look toward the sun through it.
-  //  - rim: a warm sun rim on the hero's silhouette so it pops off the scene.
+  };
   const ud = m.userData || {};
-  if (ud.backlight || ud.rim) {
-    t.onBeforeCompile = (shader) => {
-      shader.uniforms.uSunView = { value: new THREE.Vector3(0, 0, 1) };
-      shader.uniforms.uSunCol = { value: new THREE.Color(0x000000) };
-      shader.fragmentShader =
-        "uniform vec3 uSunView;\nuniform vec3 uSunCol;\n" + shader.fragmentShader;
-      let inject = "#include <dithering_fragment>\n";
-      if (ud.backlight) {
-        inject += `float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
-         gl_FragColor.rgb += uSunCol * backlit;\n`;
-      }
-      if (ud.rim) {
-        inject += `float rimF = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 2.5);
-         rimF *= max(dot(normal, -uSunView), 0.0);
-         gl_FragColor.rgb += uSunCol * rimF * 1.6;\n`;
-      }
-      shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", inject);
-      (ud.rim ? rimShaders : backlitShaders).push(shader);
-    };
+  // Sun-driven add-ons (foliage backlight, hero rim) are added via emissiveNode,
+  // which REPLACES the material's emissive — so only apply them to MATTE materials
+  // (black emissive). Materials with a live emissive (brake lights, headlight
+  // bulbs, glowing pads) keep stock toon so their dynamic emissiveIntensity works.
+  const matte = !params.emissive || params.emissive.getHex() === 0;
+  if ((ud.backlight || ud.rim) && matte) {
+    const t = new THREE.MeshToonNodeMaterial(params);
+    let term = null;
+    if (ud.backlight) {
+      // glows warm where you look toward the sun through the foliage.
+      const backlit = positionViewDirection.negate().dot(uSunViewNode).max(0).pow(3);
+      term = uSunColNode.mul(backlit);
+    }
+    if (ud.rim) {
+      // a warm sun rim on the silhouette so the hero pops off the scene.
+      const ndv = normalView.dot(positionViewDirection).max(0);
+      const rimF = float(1).sub(ndv).pow(2.5).mul(normalView.dot(uSunViewNode.negate()).max(0));
+      const rimTerm = uSunColNode.mul(rimF.mul(1.6));
+      term = term ? term.add(rimTerm) : rimTerm;
+    }
+    t.emissiveNode = term;
+    return t;
   }
-  return t;
+  // Everything else: stock toon (auto-converted to a node material by WebGPU,
+  // keeping the gradient banding and any dynamic emissiveIntensity).
+  return new THREE.MeshToonMaterial(params);
 }
 function toonify(root) {
   root.traverse((o) => {
@@ -789,21 +792,16 @@ function updateAtmosphere() {
   flarePass.enabled = vis > 0.001;
 
   // View-space light-travel direction + mood sun colour, shared by the backlit
-  // grass and the backlit tree foliage.
+  // tree foliage and the hero rim (the foliage/rim TSL emissive reads these nodes).
   _sunViewVec.copy(_sunDir).multiplyScalar(-1).transformDirection(camera.matrixWorldInverse);
   const sunGlow = (sunVisibleMood ? 0.5 : 0) * clear;
+  uSunViewNode.value.copy(_sunViewVec);
+  uSunColNode.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
+  // Grass keeps its own (still-GLSL, M5) backlight shader when present.
   const gsh = world.grass && world.grass.material.userData.shader;
   if (gsh && gsh.uniforms.uSunView) {
     gsh.uniforms.uSunView.value.copy(_sunViewVec);
     gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
-  }
-  for (const sh of backlitShaders) {
-    sh.uniforms.uSunView.value.copy(_sunViewVec);
-    sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
-  }
-  for (const sh of rimShaders) {
-    sh.uniforms.uSunView.value.copy(_sunViewVec);
-    sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
   }
   // Animate the puddles' wet-sheen shimmer.
   if (track.puddleMesh) {
