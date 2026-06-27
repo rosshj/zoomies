@@ -5,6 +5,7 @@ import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, 
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
+import { initGpuParticles } from "./gpuparticles.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
@@ -2364,6 +2365,7 @@ function loop(now) {
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
+  if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay
@@ -2709,8 +2711,19 @@ function loop(now) {
 
 // WebGPURenderer initialises asynchronously — only start the render loop once the
 // backend is ready (renderFrame() also guards on this flag for any earlier calls).
+let gpuParticles = null;
 rendererReady
-  .then(() => { _rendererReady = true; })
+  .then(() => {
+    _rendererReady = true;
+    // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
+    const night = TIME_OF_DAY === "night";
+    initGpuParticles(scene, renderer, {
+      count: 3000,
+      tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
+      opacity: night ? 0.6 : 0.38,
+      size: night ? 0.55 : 0.45,
+    }).then((p) => { gpuParticles = p; });
+  })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => requestAnimationFrame(loop));
 
