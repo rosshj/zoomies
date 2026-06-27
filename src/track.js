@@ -647,7 +647,11 @@ export class Track {
         new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })
       );
       mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      // Best-guess fix for the WebGPU "fence flicker": a thin, double-sided wall
+      // that also RECEIVES shadows is prone to self-shadow acne that shimmers as
+      // the light frustum snaps. Barriers are bright kerbs, so dropping received
+      // shadows is visually negligible and removes the most likely flicker source.
+      mesh.receiveShadow = false;
       this.group.add(mesh);
     }
   }

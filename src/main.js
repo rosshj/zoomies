@@ -816,9 +816,7 @@ function renderFrame() {
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
-    // M1 WebGPU migration: the rear-view mirror (a second scene render into a
-    // WebGLRenderTarget) is disabled for now — reinstated in a later milestone.
-    // renderMirror();
+    renderMirror();
     drawMinimap();
   }
 }
