@@ -3,7 +3,6 @@ import * as THREE from "three";
 // legacy EffectComposer chain.
 import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
-import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -112,7 +111,6 @@ camera.layers.enable(2);
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
 const _sceneTex = _scenePass.getTextureNode();
-const _sceneViewZ = _scenePass.getViewZNode(); // for depth-of-field
 const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
 // (Ambient occlusion was removed: GTAO at half-res showed a cross-hatch dither on
 // flat ground, and full-res was too costly — plus it forced an extra normals MRT
@@ -121,14 +119,8 @@ const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
 const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas aren't too dark
-// Depth-of-field: a SUBTLE miniature/tilt-shift feel — keep the action sharp and
-// softly blur the distant horizon. The DoF node's focus term is `focus + viewZ`
-// (viewZ is negative), so focus is a POSITIVE distance; we set it each frame to the
-// player's own view distance (updateAtmosphere) so the kart is always crisp. A tiny
-// aperture keeps a wide band sharp; only the far horizon reaches maxblur.
-const _uDofFocus = uniform(40);
-const _uDofAperture = uniform(0.00003); // tiny: keeps a WIDE band sharp (~130+ units) so the track ahead is clear
-const _uDofMax = uniform(0.004); // gentler max blur, reached only by the far horizon/sky
+// (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
+// full-screen copy. The look held up fine without it.)
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
 const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
 const _uGVis = uniform(0);
@@ -138,7 +130,7 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
-const _GN = 22, _gDensity = 0.8, _gDecay = 0.92, _gThreshold = 0.67; // 40 -> 22 samples (cheaper); decay tightened to compensate
+const _GN = 14, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 samples (sunset perf); longer step + tighter decay keep the shaft length
 const _godray = Fn(() => {
   const orig = _sceneTex.uv(viewportUV);
   const add = vec3(0).toVar();
@@ -179,9 +171,7 @@ const _godray = Fn(() => {
   const d = viewportUV.sub(0.5);
   const vig = smoothstep(0.92, 0.34, d.length());
   c = c.mul(mix(float(1), vig, _uVignette));
-  // Depth-of-field last: blur the graded colour by scene depth (dof converts the
-  // colour node to a texture internally, so it can sample neighbours).
-  postProcessing.outputNode = dof(c, _sceneViewZ, _uDofFocus, _uDofAperture, _uDofMax);
+  postProcessing.outputNode = c;
 }
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
@@ -794,7 +784,6 @@ const _ss = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 const _sunViewVec = new THREE.Vector3();
-const _dofFocusVec = new THREE.Vector3(); // player position in view space (for DoF focus)
 const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
@@ -803,17 +792,6 @@ function updateAtmosphere() {
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
   // Direction toward the sun (invariant to the follow offset below).
   _sunDir.copy(sun.position).sub(sun.target.position).normalize();
-
-  // Depth-of-field focus: track the player's view-space distance so the kart (and
-  // the road just past it) stay crisp while the far horizon softens. viewZ is
-  // negative; the DoF factor is `focus + viewZ`, so focus = -viewZ (+ a little so
-  // the focus plane sits just ahead of the kart).
-  if (player) {
-    _dofFocusVec.copy(player.position).applyMatrix4(camera.matrixWorldInverse);
-    // Focus a good way PAST the kart so the sharp band is centred down the track
-    // (the wide band still keeps the kart itself crisp).
-    _uDofFocus.value = Math.max(8, -_dofFocusVec.z + 35);
-  }
 
   // Keep the tight shadow frustum centred on the player so its crisp shadows
   // are always where they show. Snap the centre to shadow-map texels (in the
