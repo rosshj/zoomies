@@ -1,7 +1,7 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
@@ -102,21 +102,52 @@ let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens fro
 camera.layers.enable(1);
 camera.layers.enable(2);
 
-// --- Post-processing (M4 WebGPU): TSL node graph ---
+// --- Post-processing (M4/M4b WebGPU): TSL node graph ---
 // PostProcessing runs a node graph instead of the legacy EffectComposer. The graph
-// is: scene pass -> + bloom -> saturation -> contrast -> warm/cool split-tone ->
-// vignette. God-rays + lens-flare + radial-blur/aberration are still deferred
-// (their pass objects stay inert stubs, keeping the scattered uniform writes as
-// no-ops). bloomPass exposes strength/threshold as getter/setters onto the bloom
-// node's uniforms so the existing snow-blend modulation keeps working unchanged.
+// is: scene pass -> + god-ray shafts -> + bloom -> saturation -> contrast ->
+// warm/cool split-tone -> vignette. (Lens-flare + radial-blur/aberration are still
+// deferred stubs.) bloomPass exposes strength/threshold as getter/setters onto the
+// bloom node's uniforms so the existing snow-blend modulation keeps working.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
+const _sceneTex = _scenePass.getTextureNode();
 const _bloomNode = bloom(_scenePass, 0.45, 0.5, 0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
 const _uVignette = uniform(0.28);
+// God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
+const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
+const _uGVis = uniform(0);
+const _uGColor = uniform(new THREE.Color(0xffe6b0));
+const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
+// Screen-space god-rays: a radial blur of the bright sky toward the sun's screen
+// position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
+// hidden), this runs every frame — uVis just scales the result to 0. Accepted for
+// now; revisit if it costs too much on the WebGL2 fallback backend.
+const _GN = 40, _gDensity = 0.8, _gDecay = 0.94, _gThreshold = 0.67;
+const _godray = Fn(() => {
+  const orig = _sceneTex.uv(viewportUV);
+  const delta = viewportUV.sub(_uGSun).mul(_gDensity / _GN);
+  // jitter the start so the low sample count reads as fine noise, not banded spokes
+  const jitter = viewportUV.x.mul(12.9898).add(viewportUV.y.mul(78.233)).sin().mul(43758.5453).fract();
+  const coord = viewportUV.sub(delta.mul(jitter)).toVar();
+  const illum = float(1).toVar();
+  const accum = vec3(0).toVar();
+  Loop(_GN, () => {
+    coord.subAssign(delta);
+    const s = _sceneTex.uv(coord.clamp(0, 1)).rgb;
+    const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
+    accum.addAssign(s.mul(l).mul(illum));
+    illum.mulAssign(_gDecay);
+  });
+  const raw = accum.mul(_uGWeight.div(_GN)).mul(_uGColor).mul(_uGVis);
+  // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off smoothly.
+  const cap = vec3(0.6);
+  const add = cap.mul(float(1).sub(raw.div(cap).negate().exp()));
+  return orig.add(add);
+});
 {
-  let c = _scenePass.add(_bloomNode); // additive bloom over the scene
+  let c = _godray().add(_bloomNode); // scene + shafts + additive bloom
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
   const lum = luminance(c.clamp(0, 1));
@@ -147,16 +178,13 @@ const BLOOM_THRESHOLD = bloomPass.threshold;
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 let _lightning = 0; // current lightning-flash intensity (decays each frame)
 let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
-// Still-deferred passes: inert stubs (god-rays, lens-flare, and the radial-blur/
-// chromatic-aberration part of the colour grade). uSat/uContrast/uVignette are the
-// LIVE uniform nodes above, so the mood code keeps driving the grade.
+// godrayPass: the uniform fields are now the LIVE god-ray nodes, so the existing
+// updateAtmosphere/prepareRace writes (uSun/uVis/uColor/uWeight) drive the shafts.
+// (enabled is a harmless no-op — uVis=0 already zeroes the contribution.)
 const _passStub = (uniforms) => ({ enabled: false, setSize() {}, uniforms });
-const godrayPass = _passStub({
-  uSun: { value: new THREE.Vector2(0.5, 0.7) },
-  uVis: { value: 0 },
-  uColor: { value: new THREE.Color(0xffe6b0) },
-  uWeight: { value: MOOD.rayWeight ?? 1.05 },
-});
+const godrayPass = { enabled: true, setSize() {}, uniforms: {
+  uSun: _uGSun, uVis: _uGVis, uColor: _uGColor, uWeight: _uGWeight,
+} };
 const flarePass = _passStub({ uVis: { value: 0 } });
 const fxPass = _passStub({
   uAberr: { value: 0 },
