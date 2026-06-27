@@ -118,7 +118,8 @@ const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
 // look reads fine without it.)
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
-const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas aren't too dark
+const _uVignette = uniform(0.12); // eased further — corners were reading too dark
+const _uShadowLift = uniform(0.05); // gentle lift of the darkest areas (shadows were crushed)
 // (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
 // full-screen copy. The look held up fine without it.)
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
@@ -172,9 +173,13 @@ _shaftTex.pixelRatio = 0.5;
   let c = _sceneTex.add(_shaftTex).add(_bloomNode); // full-res scene + half-res shafts + bloom
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
+  // Lift the darkest areas so shadows don't crush to near-black (adds most to the
+  // darks, ~nothing to the highlights).
+  c = c.add(_uShadowLift.mul(c.clamp(0, 1).oneMinus()));
   const lum = luminance(c.clamp(0, 1));
-  // Cinematic split-tone: cool shadows, warm highlights.
-  c = c.mul(mix(vec3(0.9, 0.97, 1.1), vec3(1.1, 1.02, 0.9), smoothstep(0.15, 0.85, lum)));
+  // Cinematic split-tone: cool shadows, warm highlights. (Cool softened so it
+  // doesn't darken the shadows as much.)
+  c = c.mul(mix(vec3(0.96, 0.99, 1.06), vec3(1.08, 1.02, 0.92), smoothstep(0.15, 0.85, lum)));
   const d = viewportUV.sub(0.5);
   const vig = smoothstep(0.92, 0.34, d.length());
   c = c.mul(mix(float(1), vig, _uVignette));
@@ -371,6 +376,7 @@ const mirrorQuad = new THREE.Mesh(
   new THREE.MeshBasicMaterial({ map: rearRT.texture, depthTest: false, depthWrite: false })
 );
 mirrorQuad.scale.x = -1; // horizontal flip => proper mirror
+mirrorQuad.scale.y = -1; // WebGPU render-target textures are Y-flipped vs WebGL; undo it
 mirrorScene.add(mirrorQuad);
 const mirrorFrame = document.getElementById("mirror-frame");
 let mirrorRect = { x: 0, y: 0, w: 1, h: 1 };
