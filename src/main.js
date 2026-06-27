@@ -93,6 +93,10 @@ audio.registerMusic("bg", MUSIC_TRACK);
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady } = createScene();
+// Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
+// frame's total (the post-processing graph does many sub-renders; autoReset would
+// wipe the count between them and leave only the last pass).
+renderer.info.autoReset = false;
 let _rendererReady = false; // flips true once WebGPURenderer.init() resolves
 // Light the world for this race's time of day up front, so the menu's live
 // backdrop already shows midday / sunset / night.
@@ -871,6 +875,7 @@ function updateAtmosphere() {
 // minimap while playing.
 function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
+  renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
@@ -1259,7 +1264,9 @@ fpsToggle?.addEventListener("click", () => {
 applyFpsSetting();
 
 // Refresh the readout a few times a second from the smoothed frame interval the
-// DRS already tracks (_frameMs). Colour-coded so a costly tweak is obvious.
+// DRS already tracks (_frameMs). Also reports the live backend (WGPU vs WGL2 — so
+// you can confirm which one is actually running) and the draw-call count, which
+// tells us whether a slow frame is draw-call-bound (geometry) or fill-bound.
 let _fpsAccum = 0;
 function updateFpsCounter(dt) {
   if (!showFps || !fpsEl) return;
@@ -1267,7 +1274,9 @@ function updateFpsCounter(dt) {
   if (_fpsAccum < 0.2) return; // ~5 Hz so the number is readable, not a blur
   _fpsAccum = 0;
   const fps = Math.round(1000 / Math.max(1, _frameMs));
-  fpsEl.textContent = `${fps} FPS`;
+  const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
+  const dc = renderer?.info?.render?.drawCalls ?? 0;
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
