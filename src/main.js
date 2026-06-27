@@ -65,6 +65,8 @@ console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 // and its lighting are built for this once, so the menu already shows it.
 const TODS = ["midday", "sunset", "night"];
 function resolveTimeOfDay(cfg) {
+  const forced = new URLSearchParams(location.search).get("tod"); // debug/test override
+  if (forced && TODS.includes(forced)) return forced;
   const t = cfg.timeOfDay || "midday";
   if (t === "midday" || t === "sunset" || t === "night") return t;
   return TODS[Math.floor(makeRng(WORLD_SEED + "|tod")() * TODS.length)]; // "random"
@@ -259,10 +261,12 @@ initProps(scene, track, {
 // A constant light count also means the material shaders compile once and never
 // re-link mid-race. `_hlRamp` eases 0->1 once the lights go green so the packed
 // starting grid's overlapping beams don't blow out the screen.
-// Cover the whole field so every kart keeps its OWN beam — reassigning a small
-// pool to the nearest karts each frame made beams visibly jump/flicker between
-// karts as they jockeyed for position.
-const HEADLIGHT_BUDGET = 8; // every kart in a normal field gets a beam (no reassignment flicker)
+// WebGPU headroom: the budget now covers the WHOLE field so every kart keeps its
+// OWN beam at night — not just the nearest 3. Reassigning a small pool to the
+// nearest karts each frame made beams visibly jump/flicker between karts as they
+// jockeyed for position. The per-frame assignment still maps the nearest karts to
+// the pool, so any extras beyond the budget (large MP lobbies) fall back to bulbs.
+const HEADLIGHT_BUDGET = 8; // was 3 (player + 2 nearest); now every kart in a normal field gets a beam
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
