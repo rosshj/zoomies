@@ -692,7 +692,11 @@ function layoutStage() {
   const mleft = (W - mw) / 2;
   const mtop = Math.max(8, st + 4);
   const B = 3; // must match the #mirror-frame border width in CSS
-  mirrorRect = { x: mleft + B, y: H - mtop - mh + B, w: mw - 2 * B, h: mh - 2 * B };
+  // WebGPURenderer's setViewport/setScissor use a TOP-LEFT origin (the old
+  // WebGLRenderer used bottom-left, which needed the `H - …` Y flip). Without this
+  // the mirror rendered at the bottom of the screen while its frame sits up top —
+  // i.e. an empty REAR box. Top-left Y puts the render back inside the frame.
+  mirrorRect = { x: mleft + B, y: mtop + B, w: mw - 2 * B, h: mh - 2 * B };
   if (mirrorFrame) {
     mirrorFrame.style.width = `${mw}px`;
     mirrorFrame.style.height = `${mh}px`;
@@ -847,12 +851,8 @@ function renderFrame() {
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
-    // Rear-view mirror deferred again: re-enabling it produced no image on the
-    // WebGL2 backend (mixing a manual render-to-target + scissored blit with
-    // PostProcessing.render() doesn't compose correctly). Needs a proper node/
-    // async render-target rework — tracked for later.
-    // renderMirror();
-    drawMinimap();
+    renderMirror(); // works now: the empty box was a top-left vs bottom-left
+    drawMinimap();  // viewport-origin mismatch in mirrorRect (fixed above)
   }
 }
 
