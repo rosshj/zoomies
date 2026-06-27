@@ -646,13 +646,12 @@ export class Track {
         geo,
         new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })
       );
-      // WebGPU "fence flicker": dropping received shadows (1st guess) didn't fix
-      // it, so take the barriers out of the shadow system entirely — also stop them
-      // CASTING, in case the shimmer is their own cast shadow swimming as the tight
-      // shadow frustum snaps each frame. Barriers are bright kerbs, so losing their
-      // shadow is visually negligible. (If it STILL flickers it's geometry/depth
-      // z-fighting on the thin double-sided wall, which is a different fix.)
-      mesh.castShadow = false;
+      // The "fence flicker" was really the global shadow-map instability on WebGPU
+      // (the kart shadow flickers too) — fixed at the source via the shadow bias in
+      // scene.js. So the barrier casts its shadow again (restoring the grounding it
+      // lost), but doesn't RECEIVE shadows: a thin double-sided wall self-shadowing
+      // is an easy extra source of acne for no real visual gain.
+      mesh.castShadow = true;
       mesh.receiveShadow = false;
       this.group.add(mesh);
     }

@@ -95,11 +95,13 @@ export function createScene() {
   sun.shadow.camera.bottom = -s;
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 720;
-  // Small biases: a low normalBias keeps contact shadows attached (a high one
-  // peter-pans them so objects look like they float); the tighter, higher-res
-  // frustum keeps acne away without leaning on it.
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.18;
+  // Shadow bias (WebGPU): the old negative depth bias (-0.0005) was tuned for the
+  // WebGL renderer; on the WebGPU depth pipeline it reads differently and the
+  // shadows flicker/acne as the tight frustum follows the player. Zero the
+  // depth bias and lean on a slightly higher normalBias (offsets along the
+  // surface normal, renderer-agnostic) which is the robust anti-acne knob.
+  sun.shadow.bias = 0;
+  sun.shadow.normalBias = 0.25;
   sun.shadow.radius = 5; // soft PCF penumbra for the gentle, toy-like look
   scene.add(sun);
   scene.add(sun.target);
