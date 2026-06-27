@@ -32,7 +32,9 @@ async function build(scene, renderer, opts) {
   const uTint = uniform(tint);
   const uOpacity = uniform(opts.opacity ?? 0.5);
 
-  // Init: scatter through the box with a gentle upward+sideways drift.
+  // Init: scatter through the box with a slow DOWNWARD drift + lateral spread, so
+  // the motes gently settle like drifting dust/pollen rather than hanging in place
+  // (they read as non-falling snow when they just float — the reported bug).
   const init = Fn(() => {
     const pos = positions.element(instanceIndex);
     const vel = velocities.element(instanceIndex);
@@ -40,22 +42,29 @@ async function build(scene, renderer, opts) {
     const hy = hash(instanceIndex.mul(3.71).add(11.0));
     const hz = hash(instanceIndex.mul(5.27).add(23.0));
     pos.assign(vec3(hx.sub(0.5).mul(BOX * 2), hy.mul(HEIGHT), hz.sub(0.5).mul(BOX * 2)));
-    vel.assign(vec3(hx.sub(0.5).mul(1.1), hy.mul(0.7).add(0.25), hz.sub(0.5).mul(1.1)));
+    // Slow fall (-0.18 .. -0.5) + a little lateral spread per mote.
+    vel.assign(vec3(hx.sub(0.5).mul(0.7), hy.mul(-0.32).sub(0.18), hz.sub(0.5).mul(0.7)));
   })().compute(COUNT);
   await renderer.computeAsync(init);
 
-  // Update: integrate, then wrap into a box centred on the camera so the field is
-  // always around the player. The big even multiple of the box size keeps the mod
-  // input positive (TSL mod, like GLSL, misbehaves on negatives).
+  // Update: integrate with a gentle position-driven sway (so motes WEAVE as they
+  // fall instead of dropping straight like snow), then wrap into a box centred on
+  // the camera so the field is always around the player. The big even multiple of
+  // the box keeps the mod input positive (TSL mod, like GLSL, misbehaves on negatives).
   const update = Fn(() => {
     const pos = positions.element(instanceIndex);
     const vel = velocities.element(instanceIndex);
-    pos.addAssign(vel.mul(deltaTime));
+    // Swirl: lateral nudge from a slow sine of height — turns straight fall into a
+    // lazy weave. Cheap (no time uniform; the changing y drives the phase).
+    const sway = pos.y.mul(0.7).sin().mul(0.25);
+    pos.x.addAssign(vel.x.add(sway).mul(deltaTime));
+    pos.y.addAssign(vel.y.mul(deltaTime));
+    pos.z.addAssign(vel.z.sub(sway).mul(deltaTime));
     const relX = pos.x.sub(uCam.x).add(BOX).add(BOX * 2000.0).mod(BOX * 2.0).sub(BOX);
     const relZ = pos.z.sub(uCam.z).add(BOX).add(BOX * 2000.0).mod(BOX * 2.0).sub(BOX);
     pos.x.assign(uCam.x.add(relX));
     pos.z.assign(uCam.z.add(relZ));
-    pos.y.assign(pos.y.add(HEIGHT * 2000.0).mod(HEIGHT)); // rise + wrap back to the bottom
+    pos.y.assign(pos.y.add(HEIGHT * 2000.0).mod(HEIGHT)); // fall + wrap back to the top
   })().compute(COUNT);
 
   // Render: instanced billboarded sprites reading the position buffer per-instance.
