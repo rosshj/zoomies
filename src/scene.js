@@ -39,7 +39,7 @@ export const MOODS = [
     hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.56,
     bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.16,
     sunCore: [1.25, 1.35, 1.65], sunSize: 34, sunVisible: true, rays: false, starI: 1,
-    cloud: 0x2a3551, sat: 1.08, contrast: 1.06,
+    cloud: 0x2a3551, sat: 1.32, contrast: 1.1,
   },
 ];
 

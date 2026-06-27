@@ -138,7 +138,9 @@ const _uContrast = uniform(MOOD.contrast * 1.07);
 const _uVignette = uniform(0.12); // eased — corners were reading too dark
 // Shadow-lift is time-of-day aware: midday wants almost none (it was washing out),
 // but sunset/night read too dark in the shadowed areas, so lift their darks more.
-const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.09 : TIME_OF_DAY === "sunset" ? 0.06 : 0.02;
+// Night/sunset brightness now comes mostly from exposure + ambient (see MOODS), so
+// keep the shadow-lift modest here — too much lift greyed the blacks (washed out).
+const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.045 : TIME_OF_DAY === "sunset" ? 0.04 : 0.02;
 const _uShadowLift = uniform(_shadowLiftTOD);
 // (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
 // full-screen copy. The look held up fine without it.)
@@ -2757,10 +2759,10 @@ rendererReady
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
-      count: 1400, // was 3000 — far fewer, so they read as occasional dust, not a snowfield (and far less additive overdraw)
+      count: 650, // 3000 -> 1400 -> 650: just occasional dust catching the light, not a field of dots
       tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
       // Daytime motes are barely-there dust; night keeps a touch more for the magical sparkle.
-      opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.26 : 0.16,
+      opacity: night ? 0.45 : TIME_OF_DAY === "sunset" ? 0.22 : 0.13,
       size: night ? 0.5 : 0.38,
     }).then((p) => { gpuParticles = p; });
   })

@@ -1,10 +1,12 @@
 import * as THREE from "three";
+import { attribute } from "three/tsl";
 
 // Rain / snow precipitation that follows the camera. A single Points cloud lives
 // in a box around the player; particles fall and recycle to the top, and the
 // whole cloud is recentred on the camera each frame so it's always around you.
 export class Weather {
   constructor(scene) {
+    this.scene = scene;
     this.mode = "none";
     this.target = "none"; // desired weather for the player's current biome
     this.current = "none"; // what's actually showing (crossfades toward target)
@@ -18,37 +20,32 @@ export class Weather {
       this.pos[i * 3 + 1] = Math.random() * this.box.h;
       this.pos[i * 3 + 2] = (Math.random() - 0.5) * this.box.d;
     }
-    this.geo = new THREE.BufferGeometry();
-    this.geo.setAttribute("position", new THREE.BufferAttribute(this.pos, 3));
+    // Per-instance world positions, uploaded from the CPU simulation each frame.
+    this.aPos = new Float32Array(this.count * 3);
 
-    this.rainMat = new THREE.PointsMaterial({
-      map: streakTexture(),
-      color: 0xdaeaff,
-      size: 2.6, // slim streaks
-      transparent: true,
-      opacity: 0.85,
-      depthWrite: false,
-      sizeAttenuation: true,
-      fog: true,
-    });
-    this.snowMat = new THREE.PointsMaterial({
-      map: dotTexture(),
-      color: 0xffffff,
-      size: 0.85, // small flakes
-      transparent: true,
-      opacity: 0.95,
-      depthWrite: false,
-      sizeAttenuation: true,
-      fog: true,
-    });
+    // Rain and snow each render as a field of instanced, camera-facing sprites.
+    // NOTE: THREE.Points + PointsMaterial does NOT render on the WebGPU node
+    // pipeline — that silently dropped ALL precipitation after the migration — so
+    // we billboard instanced quads instead (the same proven path as the GPU motes).
+    const mkField = (geo, tex, col) => {
+      const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false, fog: true });
+      mat.map = tex;
+      mat.color = new THREE.Color(col);
+      const aPos = new THREE.InstancedBufferAttribute(this.aPos, 3);
+      aPos.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute("aPos", aPos);
+      mat.positionNode = attribute("aPos"); // sprite centre per instance (world space)
+      const mesh = new THREE.InstancedMesh(geo, mat, this.count);
+      mesh.frustumCulled = false;
+      mesh.renderOrder = 3;
+      mesh.visible = false;
+      scene.add(mesh);
+      return { mesh, mat, aPos };
+    };
+    this.rainField = mkField(new THREE.PlaneGeometry(0.16, 1.1), streakTexture(), 0xdaeaff);
+    this.snowField = mkField(new THREE.PlaneGeometry(0.5, 0.5), dotTexture(), 0xffffff);
     this._rainOpacity = 0.85;
     this._snowOpacity = 0.95;
-
-    this.points = new THREE.Points(this.geo, this.rainMat);
-    this.points.visible = false;
-    this.points.frustumCulled = false;
-    this.points.renderOrder = 3;
-    scene.add(this.points);
   }
 
   // Set the desired weather for where the player is now ("none" / "rain" /
@@ -70,23 +67,28 @@ export class Weather {
       if (this.intensity <= 0) {
         this.intensity = 0;
         this.current = this.target;
-        this.points.material = this.current === "snow" ? this.snowMat : this.rainMat;
       }
     } else {
       const goal = this.current === "none" ? 0 : 1;
       this.intensity += (goal - this.intensity) * Math.min(1, dt * 1.5);
     }
 
+    const rain = this.current === "rain";
     const active = this.current !== "none" && this.intensity > 0.01;
-    this.points.visible = active;
+    this.rainField.mesh.visible = active && rain;
+    this.snowField.mesh.visible = active && !rain;
     if (!active) return;
 
-    const rain = this.current === "rain";
-    this.points.material.opacity = (rain ? this._rainOpacity : this._snowOpacity) * this.intensity;
+    const field = rain ? this.rainField : this.snowField;
+    field.mat.opacity = (rain ? this._rainOpacity : this._snowOpacity) * this.intensity;
     const fall = rain ? 95 : 13;
     const { w, h, d } = this.box;
     const t = performance.now() * 0.001;
     const p = this.pos;
+    const a = this.aPos;
+    // The cloud spans a box around the camera (from below to well above it); bake
+    // that world offset straight into the per-instance positions.
+    const ox = camPos.x, oy = camPos.y - 22, oz = camPos.z;
     for (let i = 0; i < this.count; i++) {
       let y = p[i * 3 + 1] - fall * dt;
       let x = p[i * 3];
@@ -105,10 +107,11 @@ export class Weather {
       p[i * 3] = x;
       p[i * 3 + 1] = y;
       p[i * 3 + 2] = z;
+      a[i * 3] = x + ox;
+      a[i * 3 + 1] = y + oy;
+      a[i * 3 + 2] = z + oz;
     }
-    this.geo.attributes.position.needsUpdate = true;
-    // Keep the cloud around the camera (spanning from below to well above it).
-    this.points.position.set(camPos.x, camPos.y - 22, camPos.z);
+    field.aPos.needsUpdate = true;
   }
 }
 

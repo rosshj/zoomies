@@ -6,6 +6,11 @@ export class EffectsManager {
   constructor(scene) {
     this.scene = scene;
     this.parts = [];
+    // Hard cap on live particles. Each one is its own additive sprite (a draw call
+    // that doesn't batch), so a whole field boosting/drifting off the start line at
+    // once used to spike the count unbounded — the clustered-kart frame-rate dip.
+    // Over budget, the oldest (most-faded) particle is recycled before spawning.
+    this.maxParts = 240;
     this.smokeTex = softTexture(false);
     this.sparkTex = softTexture(true);
 
@@ -26,6 +31,12 @@ export class EffectsManager {
   }
 
   _spawn(pos, color, opts) {
+    // Enforce the particle budget: retire the oldest before adding a new one.
+    if (this.parts.length >= this.maxParts) {
+      const old = this.parts.shift();
+      this.scene.remove(old.s);
+      old.mat.dispose();
+    }
     const mat = new THREE.SpriteMaterial({
       map: opts.spark ? this.sparkTex : this.smokeTex,
       color,
