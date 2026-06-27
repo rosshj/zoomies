@@ -1238,6 +1238,40 @@ document.getElementById("open-settings")?.addEventListener("click", openSettings
 document.getElementById("open-settings-pause")?.addEventListener("click", openSettings);
 document.getElementById("settings-back")?.addEventListener("click", closeSettings);
 
+// --- FPS counter (opt-in via Settings; persisted) ---
+const FPS_KEY = "zoomies-fps";
+const fpsEl = document.getElementById("fps-counter");
+const fpsToggle = document.getElementById("set-fps-toggle");
+let showFps = false;
+try { showFps = localStorage.getItem(FPS_KEY) === "1"; } catch {}
+function applyFpsSetting() {
+  if (fpsEl) fpsEl.classList.toggle("hidden", !showFps);
+  if (fpsToggle) {
+    fpsToggle.textContent = showFps ? "On" : "Off";
+    fpsToggle.classList.toggle("off", !showFps);
+  }
+}
+fpsToggle?.addEventListener("click", () => {
+  showFps = !showFps;
+  try { localStorage.setItem(FPS_KEY, showFps ? "1" : "0"); } catch {}
+  applyFpsSetting();
+});
+applyFpsSetting();
+
+// Refresh the readout a few times a second from the smoothed frame interval the
+// DRS already tracks (_frameMs). Colour-coded so a costly tweak is obvious.
+let _fpsAccum = 0;
+function updateFpsCounter(dt) {
+  if (!showFps || !fpsEl) return;
+  _fpsAccum += dt;
+  if (_fpsAccum < 0.2) return; // ~5 Hz so the number is readable, not a blur
+  _fpsAccum = 0;
+  const fps = Math.round(1000 / Math.max(1, _frameMs));
+  fpsEl.textContent = `${fps} FPS`;
+  fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
+  fpsEl.classList.toggle("bad", fps < 35);
+}
+
 // --- How to Play sub-menu (replaces the main menu) ---
 const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
@@ -2374,6 +2408,7 @@ function loop(now) {
   dt = Math.min(dt, 0.05); // clamp big frame gaps
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
+  updateFpsCounter(dt); // opt-in on-screen FPS readout
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
   if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
 

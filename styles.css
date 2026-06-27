@@ -993,6 +993,28 @@ button.secondary:active {
   box-shadow: none;
 }
 
+/* FPS counter (opt-in via Settings). Top-left, small monospace pill. Colour-coded:
+   green = smooth, amber = dipping, red = struggling — handy for spotting the cost
+   of a tweak at a glance. */
+#fps-counter {
+  position: absolute;
+  top: calc(max(8px, var(--safe-top, 0px)) + 4px);
+  left: max(12px, var(--safe-left, 0px));
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(8, 12, 20, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #5fe08a;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+#fps-counter.warn { color: #ffd24d; }
+#fps-counter.bad { color: #ff5b4d; }
+
 /* Rear threat warning (top center). Hidden until a pursuer can hairball you from
    behind: fades in amber for a warning, switches to a red pulse when locked on.
    Pure HUD — no render cost (replaced the rear-view mirror's second scene pass). */

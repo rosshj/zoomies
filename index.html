@@ -50,6 +50,9 @@
     <!-- Pause (top-left) -->
     <button id="btn-pause">⏸</button>
 
+    <!-- FPS counter (opt-in via Settings) -->
+    <div id="fps-counter" class="hidden">– FPS</div>
+
     <!-- Top-right race info -->
     <div id="info">
       <div id="lap">Lap 1/3</div>
@@ -312,6 +315,10 @@
             <button id="set-quality-low" class="seg-btn">Low</button>
             <button id="set-quality-high" class="seg-btn is-active">High</button>
           </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">FPS counter</span>
+          <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
         </div>
         <div class="setting-row">
           <span class="setting-label">Music</span>
