@@ -127,7 +127,7 @@ const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, thr
 // the scene. This is the heaviest effect; gate/tune if it costs too much.
 const _ssrPass = ssr(_sceneTex, _sceneDepthTex, _sceneNormal, _sceneMetal, camera);
 _ssrPass.resolutionScale = 0.5; // half-res SSR (already the node default)
-_ssrPass.maxDistance.value = 60; // world units a ray can travel to find a hit
+_ssrPass.maxDistance.value = 44; // 60 -> 44: shorter rays = fewer march steps (the heaviest effect); water reflections still read at lake scale
 _ssrPass.thickness.value = 0.4;
 _ssrPass.opacity.value = 0.85;
 const _ssrTex = _ssrPass.getTextureNode();
@@ -148,7 +148,7 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
-const _GN = 14, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 samples (sunset perf); longer step + tighter decay keep the shaft length
+const _GN = 10, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 -> 10 samples: facing the sun was the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay keep the shaft length
 // Returns JUST the additive shaft contribution (not the scene), so it can be
 // rendered at HALF resolution and added back to the full-res scene — god-rays are
 // soft/low-frequency, so half-res is ~4x cheaper and nearly indistinguishable.
@@ -185,7 +185,7 @@ const _godrayShafts = Fn(() => {
 // full-res scene. autoUpdate re-renders them each frame; the If-gate keeps it a
 // cheap black fill when the sun isn't visible.
 const _shaftTex = rtt(_godrayShafts());
-_shaftTex.pixelRatio = 0.5;
+_shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
 {
   let c = _sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode); // scene + SSR reflections + shafts + bloom
   c = saturation(c, _uSat);
@@ -1055,19 +1055,24 @@ function triggerHit() {
 // Render the 3D at a variable internal resolution to hold a steady frame rate:
 // drop it when frames run long, probe it back up when there's headroom. The CSS
 // size (and HUD) stay full-res; only the drawing buffer scales.
-const DRS_MIN = 0.55;
+const DRS_MIN = 0.5; // was 0.55 — give the scaler a bit more room for the worst spikes (facing the sun, big maps)
 let _frameMs = 16.7;
 let _drsCooldown = 0;
 function updateDRS(rawMs, dt) {
-  _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.1; // smoothed frame interval
+  _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
-    renderScale = Math.max(DRS_MIN, renderScale - 0.1); // dropping frames -> ease off
+    // Step proportional to how far over budget we are: a big spike (turning to
+    // face the sun, cresting a hill on a big map) drops resolution HARD in one
+    // move instead of crawling down 0.1 at a time over a couple of seconds.
+    const over = _frameMs / 18.6;
+    const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
+    renderScale = Math.max(DRS_MIN, renderScale - step);
     applyResolution();
-    _drsCooldown = 0.5;
+    _drsCooldown = 0.35;
   } else if (_frameMs < 17.4 && renderScale < 1) {
-    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution
+    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
     applyResolution();
     _drsCooldown = 1.4;
   }
