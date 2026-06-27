@@ -296,6 +296,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
   const stringLights = buildStringLights(scene, track, litLevel); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, lit, litLevel); // banners + a bridge spanning the road
@@ -1680,6 +1681,7 @@ function makeBuilding(density, biome) {
   const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
   body.castShadow = true;
   body.receiveShadow = true;
+  body.userData.bodyWall = wall; // batchBuildings() bakes this into vertex colour to merge bodies
   g.add(body);
 
   // Everything else: solid vertex-coloured detail.
@@ -1723,7 +1725,96 @@ function makeBuilding(density, biome) {
   solid.castShadow = true;
   solid.receiveShadow = true;
   g.add(solid);
+  g.userData.isBuilding = true; // collected + merged by batchBuildings() to slash draw calls
   return g;
+}
+
+// Shared material for all merged building BODIES: wall colour comes from baked
+// vertex colours (so every wall tint merges into one mesh) while the lit-window
+// emissive map still reads per-facade via UVs.
+let _bodyMergeMat = null;
+function bodyMergeMaterial() {
+  if (_bodyMergeMat) return _bodyMergeMat;
+  _bodyMergeMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.94,
+    emissive: 0xffcf86,
+    emissiveMap: windowTexture(),
+    emissiveIntensity: 0.5,
+  });
+  return _bodyMergeMat;
+}
+
+// Bake a flat colour into a geometry's vertex-colour attribute (creating it).
+function bakeVertexColor(geo, hex) {
+  const c = new THREE.Color(hex);
+  const n = geo.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    arr[i * 3] = c.r;
+    arr[i * 3 + 1] = c.g;
+    arr[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+}
+
+// Draw-call slasher: the roadside town is hundreds of buildings, each 2 meshes
+// drawn again for shadows — the dominant draw-call cost. Buildings are static, so
+// here we bake every one into world space and merge them into a FEW meshes, grouped
+// into coarse spatial chunks so off-screen chunks still frustum-cull. Bodies (per-
+// wall-colour) merge via baked vertex colours + the shared window-emissive material;
+// solid detail already shares _solidMat. Collapses ~2 draw calls/building into ~2
+// per chunk. Call once after all buildings are placed.
+function batchBuildings(scene) {
+  scene.updateMatrixWorld(true);
+  const groups = [];
+  scene.traverse((o) => { if (o.userData && o.userData.isBuilding) groups.push(o); });
+  if (!groups.length) return;
+  const CHUNK = 150; // world units per merge bucket (coarse culling granularity)
+  const buckets = new Map();
+  const bucketOf = (x, z) => {
+    const key = Math.round(x / CHUNK) + "_" + Math.round(z / CHUNK);
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, (b = { bodies: [], solids: [] }));
+    return b;
+  };
+  for (const g of groups) {
+    const b = bucketOf(g.position.x, g.position.z);
+    for (const child of g.children) {
+      if (!child.isMesh) continue;
+      const geo = child.geometry.clone();
+      geo.applyMatrix4(child.matrixWorld); // bake world transform
+      if (child.userData.bodyWall !== undefined) {
+        bakeVertexColor(geo, child.userData.bodyWall);
+        b.bodies.push(geo);
+      } else {
+        b.solids.push(geo); // already vertex-coloured (_solidMat)
+      }
+    }
+    g.parent && g.parent.remove(g);
+    // free the now-unused per-building geometries/materials
+    g.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (o.material !== _solidMat) o.material.dispose();
+      }
+    });
+  }
+  const addMerged = (geos, material) => {
+    if (!geos.length) return;
+    const merged = mergeGeometries(geos);
+    geos.forEach((gg) => gg.dispose());
+    if (!merged) return;
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.layers.set(1); // match the originals (scenery layer)
+    scene.add(mesh);
+  };
+  for (const b of buckets.values()) {
+    addMerged(b.bodies, bodyMergeMaterial());
+    addMerged(b.solids, _solidMat);
+  }
 }
 
 // Pick a town structure — mostly houses, occasionally a landmark.
