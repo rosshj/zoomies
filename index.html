@@ -75,8 +75,10 @@
       <button id="btn-jump" class="action-btn">⬆</button>
     </div>
 
-    <!-- Rear-view mirror frame (top center); the view is drawn by WebGL) -->
-    <div id="mirror-frame"><span>REAR</span></div>
+    <!-- Rear threat warning (top center): replaces the rear-view mirror. Lights
+         amber when a kart has you in hairball range/cone behind you, and pulses
+         red when one is locked on and ready to fire. -->
+    <div id="rear-threat"><span class="rt-icon">🐾</span><span class="rt-label">BEHIND!</span></div>
 
     <!-- Minimap (bottom-left, just right of the throttle): track outline + a
          coloured dot per kart -->

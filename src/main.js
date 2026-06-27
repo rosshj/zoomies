@@ -393,23 +393,14 @@ function toonify(root) {
 }
 toonify(scene);
 
-// --- Rear-view mirror ---
-// Render a backward-facing camera into a target, then blit it (flipped, like a
-// real mirror) into a small framed box at the top-center of the screen.
-const rearCamera = new THREE.PerspectiveCamera(74, 2.5, 0.5, 1200);
-const rearRT = new THREE.WebGLRenderTarget(640, 256);
-rearRT.texture.colorSpace = THREE.SRGBColorSpace; // match the main view's colors
-const mirrorScene = new THREE.Scene();
-const mirrorCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const mirrorQuad = new THREE.Mesh(
-  new THREE.PlaneGeometry(2, 2),
-  new THREE.MeshBasicMaterial({ map: rearRT.texture, depthTest: false, depthWrite: false })
-);
-mirrorQuad.scale.x = -1; // horizontal flip => proper mirror
-mirrorQuad.scale.y = -1; // WebGPU render-target textures are Y-flipped vs WebGL; undo it
-mirrorScene.add(mirrorQuad);
-const mirrorFrame = document.getElementById("mirror-frame");
-let mirrorRect = { x: 0, y: 0, w: 1, h: 1 };
+// --- Rear threat indicator ---
+// (Replaces the old rear-view mirror, which cost a full second render of the whole
+// scene every other frame — the biggest single draw-call hit, worst on big maps.
+// A HUD warning when a kart can hairball you from behind is near-free and clearer
+// on a phone.) Lights amber when a pursuer has you in firing range/cone, and
+// pulses red when one is locked on AND ready to fire.
+const rearThreatEl = document.getElementById("rear-threat");
+let _threatState = "none"; // "none" | "warn" | "lock"
 
 // Steering indicator + recalibrate button
 const steerDot = document.getElementById("steer-dot");
@@ -740,24 +731,6 @@ function layoutStage() {
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
   applyResolution();
-
-  // Mirror box: top-center (small), kept clear of the top safe inset.
-  const mw = Math.min(150, W * 0.17);
-  const mh = mw * 0.4;
-  const mleft = (W - mw) / 2;
-  const mtop = Math.max(8, st + 4);
-  const B = 3; // must match the #mirror-frame border width in CSS
-  // WebGPURenderer's setViewport/setScissor use a TOP-LEFT origin (the old
-  // WebGLRenderer used bottom-left, which needed the `H - …` Y flip). Without this
-  // the mirror rendered at the bottom of the screen while its frame sits up top —
-  // i.e. an empty REAR box. Top-left Y puts the render back inside the frame.
-  mirrorRect = { x: mleft + B, y: mtop + B, w: mw - 2 * B, h: mh - 2 * B };
-  if (mirrorFrame) {
-    mirrorFrame.style.width = `${mw}px`;
-    mirrorFrame.style.height = `${mh}px`;
-    mirrorFrame.style.left = `${mleft}px`;
-    mirrorFrame.style.top = `${mtop}px`;
-  }
 }
 
 // Reads the live safe-area-inset-* values (in px) via a hidden probe element.
@@ -780,40 +753,37 @@ function readViewportInsets() {
   };
 }
 
-let mirrorTick = 0;
-function renderMirror() {
-  // Re-render the rear view every other frame (still blit every frame, so no
-  // flicker) to keep the second scene render affordable on phones.
-  if (mirrorTick++ % 2 === 0) {
-    const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
-    rearCamera.position
-      .copy(player.position)
-      .addScaledVector(fwd, 1.5)
-      .add(new THREE.Vector3(0, 4.5, 0));
-    rearCamera.lookAt(
-      new THREE.Vector3().copy(player.position).addScaledVector(fwd, -25).setY(player.position.y + 3)
-    );
-
-    renderer.autoClear = true;
-    renderer.setRenderTarget(rearRT);
-    // Hide our own kart (and its shield bubble) in the mirror so the view behind
-    // stays clear and upcoming karts are easy to see.
-    const selfVisible = player.group.visible;
-    player.group.visible = false;
-    renderer.render(scene, rearCamera);
-    player.group.visible = selfVisible;
-    renderer.setRenderTarget(null);
+// Scan for a kart that could hairball the player from behind and drive the HUD
+// warning. A pursuer is a threat when it has the player inside its firing cone and
+// range (mirrors the AI fire test in aiActions) — i.e. it's behind you, aimed at
+// you. "lock" (it can fire right now) pulses red; "warn" (in range, not yet ready
+// or not yet dead-on) is amber. Pure CPU math over karts already in memory.
+const _rtFwd = new THREE.Vector3();
+const _rtTo = new THREE.Vector3();
+function updateRearThreat() {
+  if (!rearThreatEl) return;
+  let state = "none";
+  if (player && !player.finished) {
+    const contenders = MP.enabled ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)] : karts;
+    for (const k of contenders) {
+      if (!k || k === player || k.finished || k.spinTimer > 0) continue;
+      _rtFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
+      _rtTo.subVectors(player.position, k.position);
+      const dist = _rtTo.length();
+      if (dist < 3 || dist > 50) continue; // out of hairball reach
+      const aim = _rtTo.normalize().dot(_rtFwd); // 1 = pointing straight at the player
+      if (aim < 0.78) continue; // not aimed at you
+      // Ready + dead-on + in solid range = imminent; otherwise just a warning.
+      const ready = (k.shootCooldown ?? 0) <= 0.25;
+      if (ready && aim > 0.86 && dist < 46) { state = "lock"; break; }
+      state = "warn"; // keep scanning in case another kart is a full lock
+    }
   }
-
-  // Blit the (flipped) mirror texture into just the mirror box.
-  renderer.autoClear = false;
-  renderer.setViewport(mirrorRect.x, mirrorRect.y, mirrorRect.w, mirrorRect.h);
-  renderer.setScissor(mirrorRect.x, mirrorRect.y, mirrorRect.w, mirrorRect.h);
-  renderer.setScissorTest(true);
-  renderer.render(mirrorScene, mirrorCam);
-  renderer.setScissorTest(false);
-  renderer.autoClear = true;
-  renderer.setViewport(0, 0, stageState.W, stageState.H);
+  if (state !== _threatState) {
+    _threatState = state;
+    rearThreatEl.classList.toggle("show", state !== "none");
+    rearThreatEl.classList.toggle("lock", state === "lock");
+  }
 }
 
 // Update the god-ray pass: project the sun to screen and fade it out when it's
@@ -898,14 +868,13 @@ function updateAtmosphere() {
 }
 
 // Render the main view (through the post-processing composer), then overlay the
-// raw rear-view mirror while playing.
+// minimap while playing.
 function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
-    renderMirror(); // works now: the empty box was a top-left vs bottom-left
-    drawMinimap();  // viewport-origin mismatch in mirrorRect (fixed above)
+    drawMinimap();
   }
 }
 
@@ -2414,6 +2383,7 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
+  updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
   // Assign the small headlight-beam pool to the player + the nearest karts each
   // frame (others keep just their glowing bulbs), and ramp the beams up once the
