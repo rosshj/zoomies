@@ -122,9 +122,9 @@ const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas ar
 // (viewZ is negative), so focus is a POSITIVE distance; we set it each frame to the
 // player's own view distance (updateAtmosphere) so the kart is always crisp. A tiny
 // aperture keeps a wide band sharp; only the far horizon reaches maxblur.
-const _uDofFocus = uniform(25);
-const _uDofAperture = uniform(0.00011);
-const _uDofMax = uniform(0.006);
+const _uDofFocus = uniform(40);
+const _uDofAperture = uniform(0.00003); // tiny: keeps a WIDE band sharp (~130+ units) so the track ahead is clear
+const _uDofMax = uniform(0.004); // gentler max blur, reached only by the far horizon/sky
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
 const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
 const _uGVis = uniform(0);
@@ -800,7 +800,9 @@ function updateAtmosphere() {
   // the focus plane sits just ahead of the kart).
   if (player) {
     _dofFocusVec.copy(player.position).applyMatrix4(camera.matrixWorldInverse);
-    _uDofFocus.value = Math.max(8, -_dofFocusVec.z + 10);
+    // Focus a good way PAST the kart so the sharp band is centred down the track
+    // (the wide band still keeps the kart itself crisp).
+    _uDofFocus.value = Math.max(8, -_dofFocusVec.z + 35);
   }
 
   // Keep the tight shadow frustum centred on the player so its crisp shadows
