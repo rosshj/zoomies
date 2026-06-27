@@ -1588,6 +1588,7 @@ function makeBuilding(density, biome) {
     wing = { ww, wd, wh, wx, wz };
   }
   const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
+  body.castShadow = true;
   body.receiveShadow = true;
   g.add(body);
 
@@ -1629,6 +1630,7 @@ function makeBuilding(density, biome) {
   }
 
   const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.castShadow = true;
   solid.receiveShadow = true;
   g.add(solid);
   return g;

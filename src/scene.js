@@ -87,7 +87,7 @@ export function createScene() {
   const sun = new THREE.DirectionalLight(0xffe6b8, 2.2);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(4096, 4096); // doubled: smaller texels -> less shadow shimmer
+  sun.shadow.mapSize.set(2048, 2048); // 4096 was a big cost on geometry-heavy/sun-facing views; PCF keeps 2048 stable
   // A tight frustum that the game keeps centred on the player (see main loop):
   // same map budget focused around you = crisp, dramatic shadows where they show.
   // Kept fairly small so the 2048 map gives plenty of texels per unit near the

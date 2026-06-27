@@ -111,15 +111,17 @@ camera.layers.enable(2);
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
 const _sceneTex = _scenePass.getTextureNode();
-const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
+const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, threshold 0.85->0.9: less midday wash
 // (Ambient occlusion was removed: GTAO at half-res showed a cross-hatch dither on
 // flat ground, and full-res was too costly — plus it forced an extra normals MRT
 // on the scene pass, which added to the distant-view frame-rate cost. The toon
 // look reads fine without it.)
-const _uSat = uniform(MOOD.sat);
-const _uContrast = uniform(MOOD.contrast);
-const _uVignette = uniform(0.12); // eased further — corners were reading too dark
-const _uShadowLift = uniform(0.05); // gentle lift of the darkest areas (shadows were crushed)
+// Grade: the scene was reading washed out (esp. midday), so push saturation +
+// contrast and pull the shadow-lift back to a sliver — punchier without crushing.
+const _uSat = uniform(MOOD.sat * 1.14);
+const _uContrast = uniform(MOOD.contrast * 1.07);
+const _uVignette = uniform(0.12); // eased — corners were reading too dark
+const _uShadowLift = uniform(0.02); // was 0.05 (washed the darks out); now just a sliver
 // (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
 // full-screen copy. The look held up fine without it.)
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
@@ -257,7 +259,10 @@ initProps(scene, track, {
 // A constant light count also means the material shaders compile once and never
 // re-link mid-race. `_hlRamp` eases 0->1 once the lights go green so the packed
 // starting grid's overlapping beams don't blow out the screen.
-const HEADLIGHT_BUDGET = 3; // real road beams (player + 2 nearest); rest keep just bulbs
+// Cover the whole field so every kart keeps its OWN beam — reassigning a small
+// pool to the nearest karts each frame made beams visibly jump/flicker between
+// karts as they jockeyed for position.
+const HEADLIGHT_BUDGET = 8; // every kart in a normal field gets a beam (no reassignment flicker)
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
