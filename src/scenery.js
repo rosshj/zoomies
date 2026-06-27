@@ -297,7 +297,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
-  buildStringLights(scene, track, litLevel); // festive bulb strings over a few road spans
+  const stringLights = buildStringLights(scene, track, litLevel); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, lit, litLevel); // banners + a bridge spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
@@ -309,6 +309,7 @@ export function buildWorld(scene, track, opts = {}) {
 
   return {
     grass,
+    stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
@@ -1029,49 +1030,127 @@ function buildStringLights(scene, track, level = 0) {
   const N = track.samples;
   const SPANS = 5;
   const COLS = [0xff3b30, 0xffd60a, 0x34c759, 0x0a84ff, 0xff9f0a, 0xffffff];
-  const bulbs = []; // { x, y, z, col }
   const wireMat = new THREE.LineBasicMaterial({ color: 0x2a2622, transparent: true, opacity: 0.7, fog: true });
+  const bulbGeo = new THREE.SphereGeometry(0.34, 8, 8);
+  const bulbMat = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
+
+  // Per-span data, kept so the strings can SWING (a damped spring) when karts pass
+  // under them and so the bulbs/wire/point-light all follow that sway each frame.
+  const spans = [];
+  let totalBulbs = 0;
   for (let s = 0; s < SPANS; s++) {
     const i = Math.floor(((s + 0.5) / SPANS + rand() * 0.12) * N) % N;
     const p = track._pts[i];
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
-    const ax = p.x + side.x * off, az = p.z + side.z * off, ay = p.y + 8.5;
-    const bx = p.x - side.x * off, bz = p.z - side.z * off, by = p.y + 8.5;
-    const sag = 3.0;
-    const per = 12;
-    const pts = [];
+    const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
+    const B = new THREE.Vector3(p.x - side.x * off, p.y + 8.5, p.z - side.z * off);
+    const per = 12, sag = 3.0;
+    const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize(); // sway axis
+    const base = [];
+    const cols = [];
     for (let k = 0; k <= per; k++) {
       const t = k / per;
       const dip = Math.sin(t * Math.PI) * sag; // catenary-ish droop
-      const x = ax + (bx - ax) * t;
-      const z = az + (bz - az) * t;
-      const y = ay + (by - ay) * t - dip;
-      pts.push(new THREE.Vector3(x, y, z));
-      if (k > 0 && k < per) bulbs.push({ x, y: y - 0.25, z, col: COLS[(k + s) % COLS.length] });
+      base.push(new THREE.Vector3(A.x + (B.x - A.x) * t, A.y + (B.y - A.y) * t - dip, A.z + (B.z - A.z) * t));
+      if (k > 0 && k < per) cols.push(COLS[(k + s) % COLS.length]);
     }
-    const wire = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat);
-    wire.layers.set(1);
-    scene.add(wire);
+    spans.push({
+      per, base, fwd, cols,
+      mid: new THREE.Vector3(p.x, p.y, p.z), // the road crossing point (for "kart under" test)
+      bulbStart: totalBulbs, bulbCount: per - 1,
+      swing: { x: 0, z: 0, vx: 0, vz: 0 }, phase: rand() * 6.28,
+      wire: null, wireGeo: null, light: null,
+    });
+    totalBulbs += per - 1;
   }
-  if (!bulbs.length) return;
-  const geo = new THREE.SphereGeometry(0.34, 8, 8);
-  const mat = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
-  const mesh = new THREE.InstancedMesh(geo, mat, bulbs.length);
-  const m = new THREE.Matrix4();
-  const ID = new THREE.Quaternion();
-  const sc = new THREE.Vector3(1, 1, 1);
-  const c = new THREE.Color();
-  const glow = 0.9 + level * 0.7; // 0.9 by day, brighter toward dusk/night so they bloom
-  bulbs.forEach((b, idx) => {
-    m.compose(new THREE.Vector3(b.x, b.y, b.z), ID, sc);
-    mesh.setMatrixAt(idx, m);
-    mesh.setColorAt(idx, c.set(b.col).multiplyScalar(glow));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  if (!totalBulbs) return { update() {} };
+
+  // Bulbs (instanced) — bright/unlit so they bloom.
+  const mesh = new THREE.InstancedMesh(bulbGeo, bulbMat, totalBulbs);
+  mesh.frustumCulled = false;
   mesh.layers.set(1);
+  const glow = 0.9 + level * 0.7;
+  const _c = new THREE.Color();
+  for (const sd of spans) {
+    for (let b = 0; b < sd.bulbCount; b++) mesh.setColorAt(sd.bulbStart + b, _c.set(sd.cols[b]).multiplyScalar(glow));
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   scene.add(mesh);
+
+  // Wires + (at dusk/night) a real warm point light per span so the strings
+  // actually illuminate the road beneath them.
+  for (const sd of spans) {
+    const geo = new THREE.BufferGeometry().setFromPoints(sd.base.map((v) => v.clone()));
+    const wire = new THREE.Line(geo, wireMat);
+    wire.layers.set(1);
+    wire.frustumCulled = false;
+    scene.add(wire);
+    sd.wire = wire; sd.wireGeo = geo;
+    if (level > 0.01) {
+      const lp = sd.base[Math.floor(sd.per / 2)];
+      const pl = new THREE.PointLight(0xfff0c8, 10 * level, 30, 1.7);
+      pl.position.copy(lp);
+      pl.castShadow = false;
+      scene.add(pl);
+      sd.light = pl;
+    }
+  }
+
+  const _m = new THREE.Matrix4();
+  const _id = new THREE.Quaternion();
+  const _sc = new THREE.Vector3(1, 1, 1);
+  const _v = new THREE.Vector3();
+  const K = 17, D = 2.5; // spring stiffness + damping for the swing
+  // Drive each span's swing from the karts and rebuild bulb/wire/light positions.
+  // karts: array of { x, z, dx, dz, speed } (dx,dz = horizontal heading).
+  function update(dt, karts) {
+    for (const sd of spans) {
+      const sw = sd.swing;
+      if (karts) {
+        for (const k of karts) {
+          if (!k) continue;
+          const dx = k.x - sd.mid.x, dz = k.z - sd.mid.z;
+          if (dx * dx + dz * dz < 64 && k.speed > 3) { // within ~8 units, moving
+            sw.vx += (k.dx || 0) * k.speed * 0.012; // shove in the kart's travel dir
+            sw.vz += (k.dz || 0) * k.speed * 0.012;
+          }
+        }
+      }
+      // Damped harmonic spring back to rest.
+      sw.vx += (-K * sw.x - D * sw.vx) * dt;
+      sw.vz += (-K * sw.z - D * sw.vz) * dt;
+      sw.x += sw.vx * dt;
+      sw.z += sw.vz * dt;
+      const mag = Math.hypot(sw.x, sw.z);
+      if (mag > 2.0) { sw.x *= 2.0 / mag; sw.z *= 2.0 / mag; } // cap the swing
+      // Gentle idle breeze on top so they're never dead-still.
+      const idle = Math.sin(performance.now() * 0.0011 + sd.phase) * 0.12;
+      const ox = sw.x + sd.fwd.x * idle, oz = sw.z + sd.fwd.z * idle;
+      // Apply the offset weighted by the catenary droop (max at the centre).
+      const posAttr = sd.wireGeo.attributes.position;
+      for (let kk = 0; kk <= sd.per; kk++) {
+        const w = Math.sin((kk / sd.per) * Math.PI);
+        const bp = sd.base[kk];
+        posAttr.setXYZ(kk, bp.x + ox * w, bp.y, bp.z + oz * w);
+      }
+      posAttr.needsUpdate = true;
+      for (let b = 0; b < sd.bulbCount; b++) {
+        const kk = b + 1;
+        const w = Math.sin((kk / sd.per) * Math.PI);
+        const bp = sd.base[kk];
+        _m.compose(_v.set(bp.x + ox * w, bp.y - 0.25, bp.z + oz * w), _id, _sc);
+        mesh.setMatrixAt(sd.bulbStart + b, _m);
+      }
+      if (sd.light) {
+        const lp = sd.base[Math.floor(sd.per / 2)];
+        sd.light.position.set(lp.x + ox, lp.y, lp.z + oz);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  return { update };
 }
 
 // Overhead structures you drive UNDER: cloth welcome banners on posts, and a
