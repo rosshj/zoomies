@@ -2411,6 +2411,18 @@ function loop(now) {
       })
     );
   }
+
+  // Swing the festive string lights as karts pass under them.
+  if (world.stringLights) {
+    world.stringLights.update(
+      dt,
+      raceField().map((e) => {
+        const k = e.kart || e;
+        if (!k || !k.position) return null;
+        return { x: k.position.x, z: k.position.z, dx: Math.sin(k.heading), dz: Math.cos(k.heading), speed: Math.abs(k.speed || 0) };
+      })
+    );
+  }
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.MENU) {
