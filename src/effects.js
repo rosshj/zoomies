@@ -1,18 +1,28 @@
 import * as THREE from "three";
+import { attribute, texture } from "three/tsl";
 
 // Soft particle effects (textured sprites): rainbow toot clouds, boost trail,
 // drift/wall sparks, plus reusable tyre skid-mark quads.
+//
+// All particles render through just TWO instanced meshes (one per texture: soft
+// smoke, hot spark), both additive — instead of one THREE.Sprite each. A field of
+// karts all boosting/tooting/drifting used to spawn hundreds of individual sprites,
+// each its own draw call (they don't batch); now it's 2 draw calls total. Per-
+// particle position/colour/scale/opacity are pushed into instanced attributes each
+// frame; the simulation (in `parts`) is unchanged.
 export class EffectsManager {
   constructor(scene) {
     this.scene = scene;
-    this.parts = [];
-    // Hard cap on live particles. Each one is its own additive sprite (a draw call
-    // that doesn't batch), so a whole field boosting/drifting off the start line at
-    // once used to spike the count unbounded — the clustered-kart frame-rate dip.
-    // Over budget, the oldest (most-faded) particle is recycled before spawning.
+    this.parts = []; // { pos, v, r,g,b, life, opacity, scale, grow, damp, gravity, spark }
+    // Hard cap on live particles, so a whole field boosting at once can't spike the
+    // count. Over budget, the oldest (most-faded) is recycled before spawning.
     this.maxParts = 240;
     this.smokeTex = softTexture(false);
     this.sparkTex = softTexture(true);
+    // One instanced billboard field per texture (both additive). Each is sized for
+    // the whole budget so an all-smoke or all-spark frame still fits.
+    this.smokeField = this._makeField(this.smokeTex);
+    this.sparkField = this._makeField(this.sparkTex);
 
     // Skid marks: a ring buffer of flat quads reused as the trail grows.
     this.skids = [];
@@ -30,36 +40,55 @@ export class EffectsManager {
     this._hue = 0;
   }
 
+  // Build one instanced billboard field (additive) reading per-instance position,
+  // colour, scale and opacity from instanced attributes. The texture's radial alpha
+  // shapes each particle; the tint comes from aColor.
+  _makeField(tex) {
+    const cap = this.maxParts;
+    const geo = new THREE.PlaneGeometry(1, 1);
+    const mk = (n) => {
+      const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * n), n);
+      a.setUsage(THREE.DynamicDrawUsage);
+      return a;
+    };
+    const aPos = mk(3), aColor = mk(3), aScale = mk(1), aOpacity = mk(1);
+    geo.setAttribute("aPos", aPos);
+    geo.setAttribute("aColor", aColor);
+    geo.setAttribute("aScale", aScale);
+    geo.setAttribute("aOpacity", aOpacity);
+    const mat = new THREE.SpriteNodeMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      fog: false,
+    });
+    mat.positionNode = attribute("aPos"); // sprite centre (world space)
+    mat.scaleNode = attribute("aScale");
+    mat.colorNode = attribute("aColor");
+    mat.opacityNode = texture(tex).a.mul(attribute("aOpacity")); // radial shape × fade
+    const mesh = new THREE.InstancedMesh(geo, mat, cap);
+    mesh.frustumCulled = false;
+    mesh.renderOrder = 4;
+    mesh.count = 0;
+    this.scene.add(mesh);
+    return { mesh, aPos, aColor, aScale, aOpacity };
+  }
+
   _spawn(pos, color, opts) {
     // Enforce the particle budget: retire the oldest before adding a new one.
-    if (this.parts.length >= this.maxParts) {
-      const old = this.parts.shift();
-      this.scene.remove(old.s);
-      old.mat.dispose();
-    }
-    const mat = new THREE.SpriteMaterial({
-      map: opts.spark ? this.sparkTex : this.smokeTex,
-      color,
-      transparent: true,
-      opacity: opts.opacity ?? 0.9,
-      depthWrite: false,
-      blending: opts.additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      fog: !opts.additive,
-    });
-    const s = new THREE.Sprite(mat);
-    s.position.copy(pos);
-    s.scale.setScalar(opts.size ?? 1);
-    this.scene.add(s);
+    if (this.parts.length >= this.maxParts) this.parts.shift();
     this.parts.push({
-      s,
-      mat,
-      v: opts.v || new THREE.Vector3(),
+      pos: pos.clone(),
+      r: color.r, g: color.g, b: color.b,
+      opacity: opts.opacity ?? 0.9,
+      scale: opts.size ?? 1,
+      spark: !!opts.spark,
+      v: opts.v ? opts.v.clone() : new THREE.Vector3(),
       life: opts.life,
       grow: opts.grow ?? 0,
       damp: opts.damp ?? 2,
       gravity: opts.gravity ?? 0,
     });
-    return s;
   }
 
   _rear(kart, spread) {
@@ -309,20 +338,38 @@ export class EffectsManager {
   }
 
   update(dt) {
+    // Advance the simulation and cull dead particles.
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt;
       if (p.gravity) p.v.y -= p.gravity * dt;
-      p.s.position.addScaledVector(p.v, dt);
+      p.pos.addScaledVector(p.v, dt);
       p.v.multiplyScalar(1 - Math.min(1, p.damp * dt));
-      if (p.grow) p.s.scale.addScalar(p.grow * dt);
-      p.mat.opacity = Math.max(0, p.mat.opacity - dt * 1.5);
-      if (p.life <= 0) {
-        this.scene.remove(p.s);
-        p.mat.dispose();
-        this.parts.splice(i, 1);
-      }
+      if (p.grow) p.scale += p.grow * dt;
+      p.opacity = Math.max(0, p.opacity - dt * 1.5);
+      if (p.life <= 0) this.parts.splice(i, 1);
     }
+    // Pack the live particles into the two instanced fields (by texture).
+    let ns = 0, np = 0;
+    for (const p of this.parts) {
+      const f = p.spark ? this.sparkField : this.smokeField;
+      const idx = p.spark ? np++ : ns++;
+      f.aPos.setXYZ(idx, p.pos.x, p.pos.y, p.pos.z);
+      f.aColor.setXYZ(idx, p.r, p.g, p.b);
+      f.aScale.setX(idx, p.scale);
+      f.aOpacity.setX(idx, p.opacity);
+    }
+    this._flush(this.smokeField, ns);
+    this._flush(this.sparkField, np);
+  }
+
+  _flush(field, count) {
+    field.mesh.count = count;
+    if (!count) return;
+    field.aPos.needsUpdate = true;
+    field.aColor.needsUpdate = true;
+    field.aScale.needsUpdate = true;
+    field.aOpacity.needsUpdate = true;
   }
 }
 

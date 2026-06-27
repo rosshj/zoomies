@@ -72,7 +72,10 @@ export function createScene() {
   scene.background = new THREE.Color(0xbfe3ff);
   scene.fog = new THREE.Fog(0xcfe7f2, 360, 1300);
 
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 3000);
+  // Far plane sits just past the farthest fog (max fogFar ~1850): everything beyond
+  // is 100% fog anyway, so rendering it to 3000 was pure waste. 2050 culls that
+  // invisible distance with zero visual change — a free draw-call cut on open views.
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2050);
   camera.position.set(0, 12, -18);
 
   const sunDir = new THREE.Vector3(0.4, 0.82, 0.55).normalize();
