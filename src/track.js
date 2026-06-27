@@ -646,11 +646,13 @@ export class Track {
         geo,
         new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })
       );
-      mesh.castShadow = true;
-      // Best-guess fix for the WebGPU "fence flicker": a thin, double-sided wall
-      // that also RECEIVES shadows is prone to self-shadow acne that shimmers as
-      // the light frustum snaps. Barriers are bright kerbs, so dropping received
-      // shadows is visually negligible and removes the most likely flicker source.
+      // WebGPU "fence flicker": dropping received shadows (1st guess) didn't fix
+      // it, so take the barriers out of the shadow system entirely — also stop them
+      // CASTING, in case the shimmer is their own cast shadow swimming as the tight
+      // shadow frustum snaps each frame. Barriers are bright kerbs, so losing their
+      // shadow is visually negligible. (If it STILL flickers it's geometry/depth
+      // z-fighting on the thin double-sided wall, which is a different fix.)
+      mesh.castShadow = false;
       mesh.receiveShadow = false;
       this.group.add(mesh);
     }

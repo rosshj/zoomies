@@ -114,7 +114,7 @@ const _sceneTex = _scenePass.getTextureNode();
 const _bloomNode = bloom(_scenePass, 0.45, 0.5, 0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
-const _uVignette = uniform(0.28);
+const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas aren't too dark
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
 const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
 const _uGVis = uniform(0);
@@ -135,7 +135,10 @@ const _godray = Fn(() => {
   const accum = vec3(0).toVar();
   Loop(_GN, () => {
     coord.subAssign(delta);
-    const s = _sceneTex.uv(coord.clamp(0, 1)).rgb;
+    // Clamp the sampled scene to LDR first. The old WebGL pass ran on the
+    // tone-mapped image; here the scene pass is raw HDR (the sun is 2-3x bright),
+    // so without this the shafts blow out into "crazy rays".
+    const s = _sceneTex.uv(coord.clamp(0, 1)).rgb.clamp(0, 1);
     const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
     accum.addAssign(s.mul(l).mul(illum));
     illum.mulAssign(_gDecay);
@@ -844,7 +847,11 @@ function renderFrame() {
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
-    renderMirror();
+    // Rear-view mirror deferred again: re-enabling it produced no image on the
+    // WebGL2 backend (mixing a manual render-to-target + scissored blit with
+    // PostProcessing.render() doesn't compose correctly). Needs a proper node/
+    // async render-target rework — tracked for later.
+    // renderMirror();
     drawMinimap();
   }
 }
