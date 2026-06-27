@@ -1,7 +1,7 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, mrt, output } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, mrt, output } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { ao } from "three/addons/tsl/display/GTAONode.js";
@@ -122,6 +122,8 @@ const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
 // Ambient occlusion (GTAO): soft contact shadows in crevices / where things meet
 // the ground, for a more grounded, "rendered" look. Blended in by _uAoStrength.
 const _aoNode = ao(_sceneDepthTex, _sceneNormal, camera);
+_aoNode.resolutionScale = 0.5; // AO is low-frequency: render it at half-res (~4x cheaper)
+_aoNode.samples.value = 8; // fewer AO samples (was 16) — cheaper, still smooth
 const _uAoStrength = uniform(0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
@@ -143,29 +145,35 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
-const _GN = 40, _gDensity = 0.8, _gDecay = 0.94, _gThreshold = 0.67;
+const _GN = 22, _gDensity = 0.8, _gDecay = 0.92, _gThreshold = 0.67; // 40 -> 22 samples (cheaper); decay tightened to compensate
 const _godray = Fn(() => {
   const orig = _sceneTex.uv(viewportUV);
-  const delta = viewportUV.sub(_uGSun).mul(_gDensity / _GN);
-  // jitter the start so the low sample count reads as fine noise, not banded spokes
-  const jitter = viewportUV.x.mul(12.9898).add(viewportUV.y.mul(78.233)).sin().mul(43758.5453).fract();
-  const coord = viewportUV.sub(delta.mul(jitter)).toVar();
-  const illum = float(1).toVar();
-  const accum = vec3(0).toVar();
-  Loop(_GN, () => {
-    coord.subAssign(delta);
-    // Clamp the sampled scene to LDR first. The old WebGL pass ran on the
-    // tone-mapped image; here the scene pass is raw HDR (the sun is 2-3x bright),
-    // so without this the shafts blow out into "crazy rays".
-    const s = _sceneTex.uv(coord.clamp(0, 1)).rgb.clamp(0, 1);
-    const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
-    accum.addAssign(s.mul(l).mul(illum));
-    illum.mulAssign(_gDecay);
+  const add = vec3(0).toVar();
+  // PERF: only run the sample loop when the sun is actually visible. uVis is a
+  // uniform (same for every pixel), so this branch is coherent — the GPU skips the
+  // whole loop with no divergence cost. Makes god-rays FREE at night / facing away.
+  If(_uGVis.greaterThan(0.001), () => {
+    const delta = viewportUV.sub(_uGSun).mul(_gDensity / _GN);
+    // jitter the start so the low sample count reads as fine noise, not banded spokes
+    const jitter = viewportUV.x.mul(12.9898).add(viewportUV.y.mul(78.233)).sin().mul(43758.5453).fract();
+    const coord = viewportUV.sub(delta.mul(jitter)).toVar();
+    const illum = float(1).toVar();
+    const accum = vec3(0).toVar();
+    Loop(_GN, () => {
+      coord.subAssign(delta);
+      // Clamp the sampled scene to LDR first. The old WebGL pass ran on the
+      // tone-mapped image; here the scene pass is raw HDR (the sun is 2-3x bright),
+      // so without this the shafts blow out into "crazy rays".
+      const s = _sceneTex.uv(coord.clamp(0, 1)).rgb.clamp(0, 1);
+      const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
+      accum.addAssign(s.mul(l).mul(illum));
+      illum.mulAssign(_gDecay);
+    });
+    const raw = accum.mul(_uGWeight.div(_GN)).mul(_uGColor).mul(_uGVis);
+    // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off smoothly.
+    const cap = vec3(0.6);
+    add.assign(cap.mul(float(1).sub(raw.div(cap).negate().exp())));
   });
-  const raw = accum.mul(_uGWeight.div(_GN)).mul(_uGColor).mul(_uGVis);
-  // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off smoothly.
-  const cap = vec3(0.6);
-  const add = cap.mul(float(1).sub(raw.div(cap).negate().exp()));
   return orig.add(add);
 });
 {
