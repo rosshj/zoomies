@@ -1,8 +1,9 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -110,12 +111,23 @@ camera.layers.enable(2);
 // bloom node's uniforms so the existing snow-blend modulation keeps working.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
-const _sceneTex = _scenePass.getTextureNode();
+// MRT: also render view normals + metalness so screen-space reflections (SSR) can
+// reflect the scene on metallic surfaces (the lakes — see scenery water material).
+_scenePass.setMRT(mrt({ output, normal: normalView, metalness }));
+const _sceneTex = _scenePass.getTextureNode("output");
+const _sceneNormal = _scenePass.getTextureNode("normal");
+const _sceneMetal = _scenePass.getTextureNode("metalness");
+const _sceneDepthTex = _scenePass.getTextureNode("depth");
 const _bloomNode = bloom(_sceneTex, 0.45, 0.5, 0.85);
-// (Ambient occlusion was removed: GTAO at half-res showed a cross-hatch dither on
-// flat ground, and full-res was too costly — plus it forced an extra normals MRT
-// on the scene pass, which added to the distant-view frame-rate cost. The toon
-// look reads fine without it.)
+// Screen-space reflections — optimized: half internal resolution, a modest reflect
+// distance, only on metallic pixels (water). The reflection texture is added over
+// the scene. This is the heaviest effect; gate/tune if it costs too much.
+const _ssrPass = ssr(_sceneTex, _sceneDepthTex, _sceneNormal, _sceneMetal, camera);
+_ssrPass.resolutionScale = 0.5; // half-res SSR (already the node default)
+_ssrPass.maxDistance.value = 60; // world units a ray can travel to find a hit
+_ssrPass.thickness.value = 0.4;
+_ssrPass.opacity.value = 0.85;
+const _ssrTex = _ssrPass.getTextureNode();
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
 const _uVignette = uniform(0.12); // eased further — corners were reading too dark
@@ -170,7 +182,7 @@ const _godrayShafts = Fn(() => {
 const _shaftTex = rtt(_godrayShafts());
 _shaftTex.pixelRatio = 0.5;
 {
-  let c = _sceneTex.add(_shaftTex).add(_bloomNode); // full-res scene + half-res shafts + bloom
+  let c = _sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode); // scene + SSR reflections + shafts + bloom
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
   // Lift the darkest areas so shadows don't crush to near-black (adds most to the
