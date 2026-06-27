@@ -2729,11 +2729,11 @@ rendererReady
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
-      count: 280, // 3000 -> 1400 -> 650 -> 280: just the occasional speck catching the light, not a field of dots
+      count: 450, // sweet spot: 650 read as "too many", 280 as "none" — this is the sparse-but-present middle
       tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
-      // Daytime motes are barely-there dust; night keeps a touch more for the magical sparkle.
-      opacity: night ? 0.45 : TIME_OF_DAY === "sunset" ? 0.22 : 0.13,
-      size: night ? 0.5 : 0.38,
+      // A touch more opaque so the (now fewer) specks actually catch the light.
+      opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
+      size: night ? 0.52 : 0.42,
     }).then((p) => { gpuParticles = p; });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
