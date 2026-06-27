@@ -3,6 +3,7 @@ import * as THREE from "three";
 // legacy EffectComposer chain.
 import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { dof } from "three/addons/tsl/display/DepthOfFieldNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -111,10 +112,17 @@ camera.layers.enable(2);
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
 const _sceneTex = _scenePass.getTextureNode();
+const _sceneViewZ = _scenePass.getViewZNode(); // for depth-of-field
 const _bloomNode = bloom(_scenePass, 0.45, 0.5, 0.85);
 const _uSat = uniform(MOOD.sat);
 const _uContrast = uniform(MOOD.contrast);
 const _uVignette = uniform(0.2); // was 0.28; eased so the corners/dark areas aren't too dark
+// Depth-of-field: a SUBTLE miniature/tilt-shift feel — keep the action (kart + road
+// just ahead) sharp and softly blur the distant horizon/scenery so the world reads
+// like a tiny toy diorama. Focus is a view-space Z (negative = ahead of camera).
+const _uDofFocus = uniform(-38);
+const _uDofAperture = uniform(0.028);
+const _uDofMax = uniform(0.009);
 // God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
 const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
 const _uGVis = uniform(0);
@@ -159,7 +167,9 @@ const _godray = Fn(() => {
   const d = viewportUV.sub(0.5);
   const vig = smoothstep(0.92, 0.34, d.length());
   c = c.mul(mix(float(1), vig, _uVignette));
-  postProcessing.outputNode = c;
+  // Depth-of-field last: blur the graded colour by scene depth (dof converts the
+  // colour node to a texture internally, so it can sample neighbours).
+  postProcessing.outputNode = dof(c, _sceneViewZ, _uDofFocus, _uDofAperture, _uDofMax);
 }
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
