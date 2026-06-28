@@ -16,7 +16,7 @@ export const MOODS = [
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
     hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
-    sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 0.8, starI: 0,
+    sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
     cloud: 0xffffff, sat: 1.3, contrast: 1.02,
   },
   {
@@ -26,7 +26,7 @@ export const MOODS = [
     skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
     hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.84,
     bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.13,
-    sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0.15,
+    sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.4, starI: 0.15,
     cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
   },
   {
@@ -198,10 +198,12 @@ function recolorSky(geo, sunDir, m) {
     const u = Math.max(0, v.y);
     c.copy(horizon).lerp(top, Math.pow(u, 0.65));
     const d = v.dot(sunDir);
-    // Warm glow around the sun. A power curve peaks softly AT the sun and fades out
-    // smoothly — the old smoothstep saturated to a flat 80% patch within ~11°, which
-    // read as a hard bright "orb" on the sky (esp. low on the horizon behind hills).
-    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 5) * 0.7);
+    // Warm tint hugging the sun. This was THE "orb": pow(d,5)*0.7 still spread a
+    // bright warm patch ~50° across the sky that read as a glowing dome growing
+    // toward the sun (worse on the HDR WebGPU backend). Tightened hard (pow 5->14)
+    // and dimmed (0.7->0.18) so it's just a subtle warmth right at the sun, not a
+    // dome — the disc + glow sprites carry the actual sun.
+    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 14) * 0.18);
     col.setXYZ(i, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
