@@ -874,7 +874,7 @@ function buildGroundLeaves(scene, track, heightAt) {
   // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
   // passes — all on the GPU, no per-leaf CPU physics.
   const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
-  const uWakeR = uniform(9.5); // generous so leaves you drive near clearly react
+  const uWakeR = uniform(13.0); // generous so leaves you drive near clearly react (even passing at speed)
 
   // Shared material across all chunk meshes: wind rustle + kart-wake pop.
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
@@ -895,8 +895,8 @@ function buildGroundLeaves(scene, track, heightAt) {
   const _lift = _liftSum.min(1.0);
   // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
   // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
-  const _pop = vec3(0, 1, 0).mul(_lift.mul(2.8)); // higher pop so a pass clearly kicks them up
-  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(1.1)); // strong scatter/swirl in the wake
+  const _pop = vec3(0, 1, 0).mul(_lift.mul(4.5)); // big, obvious pop when a kart passes
+  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(1.6)); // strong scatter/swirl in the wake
   mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
 
   // Bucket placements into coarse chunks so off-screen leaves cull as a group; each

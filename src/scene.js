@@ -216,9 +216,10 @@ function buildSun(scene) {
 
   const glowTex = radialGlowTexture();
   const glows = [];
-  // A tight inner glow feathers the hard core edge (so the sun reads as a soft
-  // glowing disc, not a solid ball poking over the mountains), plus the wide halos.
-  for (const [size, opacity] of [[1500, 0.55], [700, 0.7], [300, 0.85]]) {
+  // Sun halo. The old outer glow was 1500u at ~1900u distance = a ~43° wash across
+  // the sky that read as a big "orb"/light smear to the horizon. Tightened to a
+  // believable halo: a wide-but-soft outer + a feathered inner around the core.
+  for (const [size, opacity] of [[560, 0.4], [260, 0.6]]) {
     const sp = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: glowTex,
