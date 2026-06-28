@@ -157,7 +157,12 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
-const _GN = 8, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 -> 10 -> 8 samples: facing the sun is the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay + jitter keep the shaft length
+// density 0.92->0.5 (tighter spread so the glow hugs the sun instead of filling
+// ~half the horizon) and threshold 0.67->0.74 (only the brightest near-sun sky
+// drives shafts) — on the WebGPU backend the scene is HDR (sun 2-3x), which was
+// over-feeding the accumulation into a big bright dome that grew as you faced the
+// sun. See the cap (0.6->0.36) below too.
+const _GN = 8, _gDensity = 0.5, _gDecay = 0.9, _gThreshold = 0.74; // 22 -> 14 -> 10 -> 8 samples: facing the sun is the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay + jitter keep the shaft length
 // Returns JUST the additive shaft contribution (not the scene), so it can be
 // rendered at HALF resolution and added back to the full-res scene — god-rays are
 // soft/low-frequency, so half-res is ~4x cheaper and nearly indistinguishable.
@@ -185,7 +190,9 @@ const _godrayShafts = Fn(() => {
     });
     const raw = accum.mul(_uGWeight.div(_GN)).mul(_uGColor).mul(_uGVis);
     // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off smoothly.
-    const cap = vec3(0.6);
+    // Lowered 0.6->0.36 so the sun glow can't blow out into a bright dome on the
+    // HDR WebGPU backend.
+    const cap = vec3(0.36);
     add.assign(cap.mul(float(1).sub(raw.div(cap).negate().exp())));
   });
   return add; // shafts only
