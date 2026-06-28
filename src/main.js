@@ -52,6 +52,62 @@ function saveTrackConfig(c) {
 }
 const trackConfig = loadTrackConfig();
 
+// Garage: the player picks a cat (fur colour) and kart (body colour) before the
+// race. Named presets so it reads like a character-select; the saved selection is
+// stored as indices into these arrays (clamped on load) and reused for solo, the
+// multiplayer broadcast identity, and to keep the AI off the player's colours.
+const CAT_PRESETS = [
+  { name: "Marmalade", fur: 0xf0a830 },
+  { name: "Smokey", fur: 0x9e9e9e },
+  { name: "Shadow", fur: 0x2a2a2a },
+  { name: "Snow", fur: 0xfbfbfb },
+  { name: "Biscuit", fur: 0xd7a86e },
+  { name: "Espresso", fur: 0x4a3328 },
+  { name: "Cream", fur: 0xffe0b2 },
+];
+const KART_PRESETS = [
+  { name: "Ember", color: 0xe53935 },
+  { name: "Lagoon", color: 0x1e88e5 },
+  { name: "Clover", color: 0x43a047 },
+  { name: "Tangerine", color: 0xfb8c00 },
+  { name: "Grape", color: 0x8e24aa },
+  { name: "Sunbeam", color: 0xfdd835 },
+  { name: "Teal", color: 0x00897b },
+];
+const GARAGE_KEY = "zoomies-garage-v1";
+function loadGarageConfig() {
+  try {
+    const c = JSON.parse(localStorage.getItem(GARAGE_KEY));
+    if (c && typeof c === "object") {
+      return {
+        cat: clampIdx(c.cat, CAT_PRESETS.length),
+        kart: clampIdx(c.kart, KART_PRESETS.length),
+      };
+    }
+  } catch {
+    /* ignore */
+  }
+  return { cat: 0, kart: 0 }; // Marmalade in the Ember kart (the original "You")
+}
+function clampIdx(v, n) {
+  v = Number.isInteger(v) ? v : 0;
+  return v < 0 ? 0 : v >= n ? 0 : v;
+}
+function saveGarageConfig(c) {
+  try {
+    localStorage.setItem(GARAGE_KEY, JSON.stringify(c));
+  } catch {
+    /* ignore */
+  }
+}
+const garageConfig = loadGarageConfig();
+// The chosen look as concrete colours + a display name (the cat's name).
+function playerLook() {
+  const cat = CAT_PRESETS[garageConfig.cat] || CAT_PRESETS[0];
+  const kart = KART_PRESETS[garageConfig.kart] || KART_PRESETS[0];
+  return { catColor: cat.fur, color: kart.color, name: cat.name };
+}
+
 const _seedParam = new URLSearchParams(location.search).get("seed");
 const WORLD_SEED = (
   (trackConfig.mode === "custom" && trackConfig.seed) ||
@@ -446,16 +502,40 @@ const ROSTER = [
 let karts = [];
 let player = null;
 
+// First palette colour not already taken (the garage palettes are bigger than the
+// field, so there's always a free one).
+function _pickUnused(palette, used) {
+  for (const c of palette) if (!used.has(c)) return c;
+  return palette[0];
+}
+// The per-race roster: the player (slot 0) wears the garage selection; the AI keep
+// their names/skills but get nudged off the player's kart + cat colours so the
+// player stands out. Multiplayer / time-trial fields are the player alone.
+function raceRoster() {
+  const look = playerLook();
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor };
+  if (MP.enabled || timeTrial) return [playerCfg];
+  const usedKart = new Set([look.color]);
+  const usedCat = new Set([look.catColor]);
+  const ai = ROSTER.slice(1).map((cfg) => {
+    let { color, catColor } = cfg;
+    if (usedKart.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), usedKart);
+    usedKart.add(color);
+    if (usedCat.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), usedCat);
+    usedCat.add(catColor);
+    return { ...cfg, color, catColor };
+  });
+  return [playerCfg, ...ai];
+}
+
 function buildKarts() {
   for (const k of karts) scene.remove(k.group);
   karts = [];
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   rimShaders.length = 0; // drop last race's kart shaders before rebuilding
-  // Multiplayer is humans-only: drop the AI field (remote players fill the grid
-  // as real participants). Solo play keeps the full roster of AI rivals.
-  // Multiplayer and time trial are solo fields (just your kart); a normal race
-  // brings the full AI roster.
-  const roster = MP.enabled || timeTrial ? ROSTER.slice(0, 1) : ROSTER;
+  // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
+  // humans-only and time trial is solo, so both are just the player's kart.
+  const roster = raceRoster();
   // Solo: shuffle the starting-grid slots so the player doesn't always launch
   // from the same spot. It's one level for now, so a random grid position each
   // race adds variety. (Per-race Math.random, not the seeded world RNG.)
@@ -505,19 +585,11 @@ function decorateKartGroup(group) {
 // network snapshots — they glide alongside but DON'T collide or affect the race
 // (they're deliberately kept out of `karts[]`). The room is the world seed, so
 // a link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
-const MP_NAMES = ["Tigger", "Salem", "Felix", "Luna", "Smokey", "Oreo", "Ziggy", "Mochi", "Pixel", "Binx"];
-const MP_SKINS = [
-  { color: 0x1e88e5, catColor: 0x9e9e9e },
-  { color: 0x43a047, catColor: 0x3e2723 },
-  { color: 0xfb8c00, catColor: 0xffffff },
-  { color: 0x8e24aa, catColor: 0x212121 },
-  { color: 0xfdd835, catColor: 0xd7a86e },
-  { color: 0x00897b, catColor: 0xffe0b2 },
-];
+// Broadcast the player's garage selection so rivals see the cat + kart they chose
+// (display name = the cat's name).
 function makeMpIdentity() {
-  const n = MP_NAMES[Math.floor(Math.random() * MP_NAMES.length)];
-  const s = MP_SKINS[Math.floor(Math.random() * MP_SKINS.length)];
-  return { name: n, color: s.color, catColor: s.catColor };
+  const look = playerLook();
+  return { name: look.name, color: look.color, catColor: look.catColor };
 }
 
 const MP = {
@@ -1567,6 +1639,101 @@ document.getElementById("track-apply")?.addEventListener("click", () => {
   location.reload(); // rebuild the world from the new recipe
 });
 
+// --- Garage: pick your cat + kart, with a live 3D preview ------------------
+// The selection just rides in garageConfig; the player kart reads it at race start
+// (raceRoster/buildKarts) so no reload is needed. While the garage is open the menu
+// loop renders an orbiting preview kart instead of the cinematic (see the loop).
+const garageEl = document.getElementById("garage");
+let _garageDraft = null; // { cat, kart } in-progress; committed to garageConfig on Done
+let _garageOpen = false;
+let _garagePreview = null; // the preview kart's group in the scene
+const _garageAnchor = new THREE.Vector3();
+const _garageLook = new THREE.Vector3();
+
+function _disposeGroup(g) {
+  g.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) m.dispose?.();
+  });
+}
+function _clearGaragePreview() {
+  if (!_garagePreview) return;
+  scene.remove(_garagePreview);
+  _disposeGroup(_garagePreview);
+  _garagePreview = null;
+}
+// Rebuild the preview kart from the current draft (cheap enough for a click, not a
+// per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
+function buildGaragePreview() {
+  _clearGaragePreview();
+  const cat = CAT_PRESETS[_garageDraft.cat];
+  const kart = KART_PRESETS[_garageDraft.kart];
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, name: cat.name, isPlayer: false, skill: 1 });
+  pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
+  pk.group.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+  });
+  toonify(pk.group);
+  scene.add(pk.group);
+  _garagePreview = pk.group;
+}
+function syncGarageUI() {
+  const cat = CAT_PRESETS[_garageDraft.cat];
+  const kart = KART_PRESETS[_garageDraft.kart];
+  const hex = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
+  document.getElementById("cat-name").textContent = cat.name;
+  document.getElementById("kart-name").textContent = kart.name;
+  document.getElementById("cat-swatch").style.background = hex(cat.fur);
+  document.getElementById("kart-swatch").style.background = hex(kart.color);
+}
+function openGaragePanel() {
+  _garageDraft = { cat: garageConfig.cat, kart: garageConfig.kart };
+  const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
+  _garageAnchor.copy(slot.position);
+  syncGarageUI();
+  buildGaragePreview();
+  _garageOpen = true;
+  openSubScreen(garageEl);
+}
+function closeGarage() {
+  _garageOpen = false;
+  _clearGaragePreview();
+  closeSubScreen(garageEl);
+}
+function stepGarage(which, dir) {
+  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
+  _garageDraft[which] = (_garageDraft[which] + dir + n) % n;
+  syncGarageUI();
+  buildGaragePreview();
+}
+// Slowly orbit the camera around the parked preview kart.
+function renderGarage(timeSec) {
+  if (!_garagePreview) return;
+  const p = _garagePreview.position;
+  const ang = timeSec * 0.6;
+  const r = 6.2;
+  camera.position.set(p.x + Math.sin(ang) * r, p.y + 2.9, p.z + Math.cos(ang) * r);
+  _garageLook.set(p.x, p.y + 1.15, p.z);
+  camera.lookAt(_garageLook);
+  if (camera.fov !== 40) { camera.fov = 40; camera.updateProjectionMatrix(); }
+  renderFrame();
+}
+
+document.getElementById("open-garage")?.addEventListener("click", openGaragePanel);
+document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage("cat", -1));
+document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
+document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
+document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
+document.getElementById("garage-apply")?.addEventListener("click", () => {
+  garageConfig.cat = _garageDraft.cat;
+  garageConfig.kart = _garageDraft.kart;
+  saveGarageConfig(garageConfig);
+  closeGarage();
+});
+document.getElementById("garage-back")?.addEventListener("click", closeGarage);
+
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
   audio.setMusicOn(!audio.musicOn);
@@ -2535,6 +2702,12 @@ function loop(now) {
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.MENU) {
+    if (_garageOpen) {
+      // Garage sub-screen: orbit the camera around the parked preview kart so the
+      // player can inspect their chosen cat + kart in 3D.
+      renderGarage(now / 1000);
+      return;
+    }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
     updateMenuCamera(now / 1000); // advance tour timing/phase
