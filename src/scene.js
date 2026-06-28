@@ -193,18 +193,23 @@ function recolorSky(geo, sunDir, m) {
   const c = new THREE.Color();
   const pos = geo.attributes.position;
   const col = geo.attributes.color;
+  // DEBUG (temporary): ?skydim=N scales the HORIZON-band brightness (1 = current,
+  // lower = dimmer) so we can dial out the bright horizon that frames as the "orb"
+  // without darkening the top of the sky. Default 1 = no change.
+  const _sd = parseFloat(new URLSearchParams(location.search).get("skydim"));
+  const dim = _sd > 0 && _sd <= 2 ? _sd : 1;
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i).normalize();
     const u = Math.max(0, v.y);
-    c.copy(horizon).lerp(top, Math.pow(u, 0.65));
+    const g = Math.pow(u, 0.65);
+    c.copy(horizon).lerp(top, g);
     const d = v.dot(sunDir);
-    // Warm tint hugging the sun. This was THE "orb": pow(d,5)*0.7 still spread a
-    // bright warm patch ~50° across the sky that read as a glowing dome growing
-    // toward the sun (worse on the HDR WebGPU backend). Tightened hard (pow 5->14)
-    // and dimmed (0.7->0.18) so it's just a subtle warmth right at the sun, not a
-    // dome — the disc + glow sprites carry the actual sun.
-    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 14) * 0.18);
-    col.setXYZ(i, c.r, c.g, c.b);
+    // Warm glow around the sun. A power curve peaks softly AT the sun and fades out
+    // smoothly — the old smoothstep saturated to a flat 80% patch within ~11°, which
+    // read as a hard bright "orb" on the sky (esp. low on the horizon behind hills).
+    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 5) * 0.7);
+    const f = dim + (1 - dim) * g; // dim at the horizon, unchanged at the top
+    col.setXYZ(i, c.r * f, c.g * f, c.b * f);
   }
   col.needsUpdate = true;
 }
