@@ -2772,8 +2772,18 @@ function loop(now) {
 // backend is ready (renderFrame() also guards on this flag for any earlier calls).
 let gpuParticles = null;
 rendererReady
-  .then(() => {
+  .then(async () => {
     _rendererReady = true;
+    // Pre-compile every material's GPU pipeline up front. Without this, the first
+    // time a piece of scenery enters view its pipeline compiles on that frame — and
+    // a fast spin-out whips the camera onto a whole arc of never-yet-seen scenery
+    // behind you, compiling many at once = a one-second hitch. compileAsync warms
+    // them all now (during the menu), so nothing compiles mid-race.
+    try {
+      await renderer.compileAsync(scene, camera);
+    } catch (e) {
+      console.warn("[zoomies] pipeline pre-compile skipped:", e);
+    }
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
