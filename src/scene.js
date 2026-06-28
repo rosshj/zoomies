@@ -198,7 +198,10 @@ function recolorSky(geo, sunDir, m) {
     const u = Math.max(0, v.y);
     c.copy(horizon).lerp(top, Math.pow(u, 0.65));
     const d = v.dot(sunDir);
-    if (m.sunVisible && d > 0.5) c.lerp(warm, smoothstep(0.5, 0.98, d) * 0.8);
+    // Warm glow around the sun. A power curve peaks softly AT the sun and fades out
+    // smoothly — the old smoothstep saturated to a flat 80% patch within ~11°, which
+    // read as a hard bright "orb" on the sky (esp. low on the horizon behind hills).
+    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 5) * 0.7);
     col.setXYZ(i, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
