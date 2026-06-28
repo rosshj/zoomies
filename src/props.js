@@ -18,6 +18,11 @@ export async function initProps(scene, track, opts = {}) {
 }
 
 const GRAV = 30;
+// Leaves are light: weak gravity so they hang and flutter rather than drop, and
+// a wake (wind) that lingers a beat after the kart passes.
+const LEAF_GRAV = 8.5; // much gentler than crates/barrels — leaves drift down
+const LEAF_AIRDRAG = 2.4; // how strongly the wake carries a leaf toward its wind speed
+const WIND_TAU = 0.75; // wake e-folding time (s): ~2s of visible linger
 
 // A small leaf silhouette (a pointed oval ~0.48 long) in the XY plane, so callers
 // can lay it flat and spin it like the old plane card but it reads as a leaf.
@@ -125,12 +130,21 @@ function build(scene, track, opts) {
       leaf.scale.setScalar(0.6 + rand() * 0.4); // smaller leaves
       leaf.castShadow = true;
       g.add(leaf);
-      leaves.push({ mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3(), hit: 0, asleep: true });
+      // phase/flutF drive the side-to-side flutter as the leaf falls; swirlSign
+      // sends roughly half the leaves spiralling each way so a kicked pile reads
+      // as turbulence, not a uniform puff; sway* is the per-leaf flutter strength.
+      leaves.push({
+        mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3(), hit: 0, asleep: true,
+        phase: rand() * Math.PI * 2, flutF: 3 + rand() * 3, swirlSign: rand() < 0.5 ? 1 : -1,
+        swayX: 5 + rand() * 5, swayZ: 5 + rand() * 5,
+      });
     }
     group.add(g);
     // Each leaf is its own little particle; a pile can be driven through and
     // scattered any number of times (settled leaves just get kicked up again).
-    leafPiles.push({ x, z, groundY, r: w, leaves });
+    // wind* is a lingering wake the passing kart deposits (see update): it keeps
+    // carrying + swirling the airborne leaves for a beat after the kart is gone.
+    leafPiles.push({ x, z, groundY, r: w, leaves, windX: 0, windZ: 0, windUp: 0, swirl: 0, windT: 0 });
   };
 
   // Seeded placement: walk the track and drop occasional clusters, mixing ON-ROAD
@@ -346,39 +360,86 @@ function build(scene, track, opts) {
     // the leaves it touches (settled ones included), so a pile can be scattered
     // over and over — no one-shot "already burst" state.
     for (const lp of leafPiles) {
-      // Kick leaves near a passing kart (cheap pile-level reject first).
+      // Kick leaves near a passing kart (cheap pile-level reject first), and
+      // deposit a WAKE on the pile: a gust blowing the way the kart went, plus an
+      // updraft and a swirl. The wake lingers (decays over ~2s below), so the
+      // leaves keep streaming and spiralling after the kart has gone — not an
+      // instant pop. Everything scales with kart speed.
       for (const mk of moving) {
         const reach = lp.r + 3.5;
         if (segDist2(lp.x, lp.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
+        const sp = Math.min(mk.speed, 120);
+        // Refresh the wake (set, not add, so repeated frames don't run away). A
+        // faster kart drags more air, lifts harder and stirs a tighter swirl.
+        lp.windX = mk.dx * (6 + sp * 0.22);
+        lp.windZ = mk.dz * (6 + sp * 0.22);
+        lp.windUp = 3 + sp * 0.05; // turbulent updraft keeps leaves aloft a beat
+        lp.swirl = 1.2 + sp * 0.03; // curl strength (rad/s-ish), sign is per-leaf
+        lp.windT = 1.1 + sp * 0.014; // faster pass => the gust lingers longer
         for (const lf of lp.leaves) {
           if (lf.hit > 0) continue;
           const wx = lp.x + lf.mesh.position.x, wz = lp.z + lf.mesh.position.z;
           if (segDist2(wx, wz, mk.ax, mk.az, mk.bx, mk.bz) > 10) continue; // ~3-unit kick radius
-          const blow = 4 + Math.min(mk.speed, 90) * 0.24;
-          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, 7 + Math.random() * 7, mk.dz * blow + (Math.random() - 0.5) * 6);
+          const blow = 4 + sp * 0.24;
+          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, 7 + Math.random() * 7 + sp * 0.04, mk.dz * blow + (Math.random() - 0.5) * 6);
           lf.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
           lf.hit = 0.25;
           lf.asleep = false;
         }
       }
+
+      // Decay the wake toward zero (exponential, framerate-independent). Once it's
+      // out of time, treat it as gone so the wind term costs nothing.
+      const windOn = lp.windT > 0;
+      if (windOn) {
+        const wd = Math.exp(-dt / WIND_TAU);
+        lp.windX *= wd; lp.windZ *= wd; lp.windUp *= wd; lp.swirl *= wd;
+        lp.windT -= dt;
+      }
+
       // Integrate the leaves that are in motion; settle (and sleep) on the ground.
       for (const lf of lp.leaves) {
         if (lf.hit > 0) lf.hit -= dt;
         if (lf.asleep) continue;
-        lf.vel.y -= GRAV * dt;
-        lf.vel.x *= 1 - 0.9 * dt;
-        lf.vel.z *= 1 - 0.9 * dt;
         const pp = lf.mesh.position;
+        lf.phase += lf.flutF * dt;
+        const sway = Math.sin(lf.phase);
+
+        // Wake: carry the leaf toward the gust's wind speed, lift it on the
+        // updraft, and spiral it about the pile centre (sign per leaf => swirl).
+        if (windOn) {
+          lf.vel.x += (lp.windX - lf.vel.x) * LEAF_AIRDRAG * dt;
+          lf.vel.z += (lp.windZ - lf.vel.z) * LEAF_AIRDRAG * dt;
+          lf.vel.y += lp.windUp * dt;
+          const sw = lp.swirl * lf.swirlSign;
+          lf.vel.x += -pp.z * sw * dt; // tangential (perp to radius from centre)
+          lf.vel.z += pp.x * sw * dt;
+        }
+
+        // Flutter: a leaf doesn't fall straight — it sways side to side and keeps
+        // catching the air, so the descent speed pulses. Light gravity + drag.
+        lf.vel.x += sway * lf.swayX * dt;
+        lf.vel.z += Math.cos(lf.phase) * lf.swayZ * dt;
+        lf.vel.y -= LEAF_GRAV * (0.55 + 0.45 * Math.cos(lf.phase)) * dt;
+        lf.vel.x *= 1 - 0.6 * dt;
+        lf.vel.z *= 1 - 0.6 * dt;
+        // Bleed the violent launch spin down to a gentle flutter-rock over ~1s.
+        lf.spin.multiplyScalar(1 - 1.4 * dt);
+
         pp.addScaledVector(lf.vel, dt);
         if (pp.y < 0.05) {
           pp.y = 0.05;
           lf.vel.set(lf.vel.x * 0.25, 0, lf.vel.z * 0.25);
           lf.spin.multiplyScalar(0.6);
-          if (lf.vel.lengthSq() < 0.4) lf.asleep = true; // resting; can be kicked again later
+          // Don't sleep while the wake is still blowing — leaves skitter along the
+          // ground until the gust dies, then settle (and can be kicked again).
+          if (!windOn && lf.vel.lengthSq() < 0.4) lf.asleep = true;
         }
-        lf.mesh.rotation.x += lf.spin.x * dt;
+        // Rock the leaf with the flutter (sway-coupled) on top of the launch spin,
+        // so it visibly tumbles/flutters rather than spinning rigidly.
+        lf.mesh.rotation.x += (lf.spin.x + sway * 3.0) * dt;
         lf.mesh.rotation.y += lf.spin.y * dt;
-        lf.mesh.rotation.z += lf.spin.z * dt;
+        lf.mesh.rotation.z += (lf.spin.z + Math.cos(lf.phase) * 3.0) * dt;
       }
     }
   }
