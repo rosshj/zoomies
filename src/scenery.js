@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection } from "three/tsl";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
+import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -292,6 +293,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildTerrain(scene, heightAt, litLevel); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
+  buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
@@ -833,6 +835,64 @@ function scatter(count, track, flatten, minFlat, range) {
     out.push({ x, z });
   }
   return out;
+}
+
+// Loose leaves scattered across the ground (in addition to the knockable piles) so
+// leafy biomes feel carpeted and lived-in. One instanced mesh of the shared leaf
+// silhouette — small, lying flat with random spin, autumn-toned, denser in autumn
+// and forest. Cheap (a single draw call); doesn't cast shadow (flat on the ground).
+const GROUND_LEAF_COLS = [0xc4471f, 0xe07b1e, 0xf0c040, 0xd23a2a, 0x9c6b1f, 0x7a2e1e, 0xe8a838];
+function buildGroundLeaves(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const placements = [];
+  const MAX = 1100;
+  for (let i = 0; i < N && placements.length < MAX; i++) {
+    const p = track._pts[i];
+    const b = biomeAt(p.x, p.z);
+    // Per-biome leaf density: autumn is carpeted, forest scattered, meadow a sprinkle.
+    const dens = b.name === "autumn" ? 1.0 : b.name === "forest" ? 0.55 : b.name === "meadow" ? 0.2 : 0;
+    if (dens <= 0) continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const tries = Math.ceil(dens * 4);
+    for (let k = 0; k < tries && placements.length < MAX; k++) {
+      if (rand() > dens) continue;
+      const lat = (rand() * 2 - 1) * (track.halfWidth + 11); // on the road edges + verge
+      const x = p.x + side.x * lat + (rand() - 0.5) * 5;
+      const z = p.z + side.z * lat + (rand() - 0.5) * 5;
+      if (_inLake(x, z)) continue;
+      placements.push({ x, y: heightAt(x, z), z });
+    }
+  }
+  if (!placements.length) return;
+  const geo = makeLeafGeo();
+  // Node material so the leaves gently RUSTLE in the wind (the "alive" part): a
+  // per-instance phase drives a position-weighted sway, so each leaf's edges rock
+  // a little while the centre stays put. Per-instance colour via setColorAt.
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
+  const _ph = hash(instanceIndex).mul(6.2832);
+  const _t = time.add(_ph);
+  const _amp = positionLocal.length().mul(0.3); // outer edges rock more than the centre
+  const _sway = vec3(_t.mul(2.6).sin(), _t.mul(3.3).sin().mul(0.4), _t.mul(2.1).cos()).mul(_amp);
+  mat.positionNode = positionLocal.add(_sway);
+  const mesh = new THREE.InstancedMesh(geo, mat, placements.length);
+  const dummy = new THREE.Object3D();
+  const _c = new THREE.Color();
+  placements.forEach((s, i) => {
+    dummy.position.set(s.x, s.y + 0.03, s.z);
+    // Lie mostly flat (rotateX -90°) but with a wider random tilt so some leaves
+    // stand up a little and catch the light (easier to read from the chase cam).
+    dummy.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.9);
+    dummy.scale.setScalar(0.5 + rand() * 0.5);
+    dummy.updateMatrix();
+    mesh.setMatrixAt(i, dummy.matrix);
+    mesh.setColorAt(i, _c.set(GROUND_LEAF_COLS[(rand() * GROUND_LEAF_COLS.length) | 0]));
+  });
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  mesh.castShadow = false; // flat on the ground — shadow not worth the shadow-pass cost
+  mesh.receiveShadow = true;
+  mesh.layers.set(1);
+  scene.add(mesh);
 }
 
 function buildTrees(scene, track, heightAt, flatten) {

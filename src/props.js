@@ -19,6 +19,18 @@ export async function initProps(scene, track, opts = {}) {
 
 const GRAV = 30;
 
+// A small leaf silhouette (a pointed oval ~0.48 long) in the XY plane, so callers
+// can lay it flat and spin it like the old plane card but it reads as a leaf.
+export function makeLeafGeo() {
+  const s = new THREE.Shape();
+  s.moveTo(0, -0.22);
+  s.bezierCurveTo(0.16, -0.12, 0.16, 0.12, 0, 0.26);
+  s.bezierCurveTo(-0.16, 0.12, -0.16, -0.12, 0, -0.22);
+  const g = new THREE.ShapeGeometry(s, 5);
+  g.computeVertexNormals();
+  return g;
+}
+
 function build(scene, track, opts) {
   const rng = makeRng((opts.seed || "props") + "|props");
   const rand = () => rng();
@@ -87,25 +99,26 @@ function build(scene, track, opts) {
     });
   };
 
-  // Leaf piles: a mound of little leaf cards that BURST upward and scatter when a
-  // kart drives through (custom flutter, not one rigid clump).
-  const leafGeo = new THREE.PlaneGeometry(0.7, 0.5);
+  // Leaf piles: a mound of little leaf-shaped cards that BURST upward and scatter
+  // when a kart drives through (custom flutter, not one rigid clump). Shared leaf
+  // silhouette (a pointed oval) reads as a real leaf rather than a rectangle.
+  const leafGeo = makeLeafGeo();
+  // One material per palette colour, shared across all leaves (knockable leaves
+  // still need their own mesh for individual tumble, but can share materials).
+  const leafMats = leafCols.map((c) => new THREE.MeshStandardMaterial({ color: c, roughness: 1, side: THREE.DoubleSide, flatShading: true }));
   const addLeafPile = (x, z, groundY) => {
     const g = new THREE.Group();
     g.position.set(x, groundY, z);
     const leaves = [];
-    const w = 1.8 + rand() * 0.8;
-    const n = 14 + ((rand() * 8) | 0);
+    const w = 1.5 + rand() * 0.7;
+    const n = 12 + ((rand() * 6) | 0);
     for (let i = 0; i < n; i++) {
-      const mat = new THREE.MeshStandardMaterial({
-        color: leafCols[(rand() * leafCols.length) | 0], roughness: 1, side: THREE.DoubleSide, flatShading: true,
-      });
-      const leaf = new THREE.Mesh(leafGeo, mat);
+      const leaf = new THREE.Mesh(leafGeo, leafMats[(rand() * leafMats.length) | 0]);
       const a = rand() * Math.PI * 2;
       const r = rand() * w;
-      leaf.position.set(Math.cos(a) * r, 0.05 + rand() * 0.3, Math.sin(a) * r);
+      leaf.position.set(Math.cos(a) * r, 0.04 + rand() * 0.22, Math.sin(a) * r);
       leaf.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.6, rand() * Math.PI, (rand() - 0.5) * 0.6);
-      leaf.scale.setScalar(0.7 + rand() * 0.6);
+      leaf.scale.setScalar(0.6 + rand() * 0.4); // smaller leaves
       leaf.castShadow = true;
       g.add(leaf);
       leaves.push({ mesh: leaf, vel: new THREE.Vector3(), spin: new THREE.Vector3(), hit: 0, asleep: true });
