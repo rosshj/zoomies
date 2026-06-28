@@ -1,10 +1,11 @@
 import * as THREE from "three";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+// WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
+// legacy EffectComposer chain.
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
+import { bloom } from "three/addons/tsl/display/BloomNode.js";
+import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
+import { initGpuParticles } from "./gpuparticles.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart } from "./kart.js";
@@ -66,6 +67,8 @@ console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 // and its lighting are built for this once, so the menu already shows it.
 const TODS = ["midday", "sunset", "night"];
 function resolveTimeOfDay(cfg) {
+  const forced = new URLSearchParams(location.search).get("tod"); // debug/test override
+  if (forced && TODS.includes(forced)) return forced;
   const t = cfg.timeOfDay || "midday";
   if (t === "midday" || t === "sunset" || t === "night") return t;
   return TODS[Math.floor(makeRng(WORLD_SEED + "|tod")() * TODS.length)]; // "random"
@@ -89,7 +92,12 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
-const { renderer, scene, camera, sun, applyMood } = createScene();
+const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
+// Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
+// frame's total (the post-processing graph does many sub-renders; autoReset would
+// wipe the count between them and leave only the last pass).
+renderer.info.autoReset = false;
+let _rendererReady = false; // flips true once WebGPURenderer.init() resolves
 // Light the world for this race's time of day up front, so the menu's live
 // backdrop already shows midday / sunset / night.
 const MOOD = moodForTimeOfDay(TIME_OF_DAY);
@@ -102,152 +110,142 @@ let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens fro
 camera.layers.enable(1);
 camera.layers.enable(2);
 
-// --- Post-processing: bloom + filmic output + MSAA ---
-const _sz = renderer.getDrawingBufferSize(new THREE.Vector2());
-const _composerTarget = new THREE.WebGLRenderTarget(_sz.x, _sz.y, {
-  type: THREE.HalfFloatType,
-  samples: 4,
+// --- Post-processing (M4/M4b WebGPU): TSL node graph ---
+// PostProcessing runs a node graph instead of the legacy EffectComposer. The graph
+// is: scene pass -> + god-ray shafts -> + bloom -> saturation -> contrast ->
+// warm/cool split-tone -> vignette. (Lens-flare + radial-blur/aberration are still
+// deferred stubs.) bloomPass exposes strength/threshold as getter/setters onto the
+// bloom node's uniforms so the existing snow-blend modulation keeps working.
+const postProcessing = new THREE.PostProcessing(renderer);
+const _scenePass = pass(scene, camera);
+// MRT: also render view normals + metalness so screen-space reflections (SSR) can
+// reflect the scene on metallic surfaces (the lakes — see scenery water material).
+_scenePass.setMRT(mrt({ output, normal: normalView, metalness }));
+const _sceneTex = _scenePass.getTextureNode("output");
+const _sceneNormal = _scenePass.getTextureNode("normal");
+const _sceneMetal = _scenePass.getTextureNode("metalness");
+const _sceneDepthTex = _scenePass.getTextureNode("depth");
+const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, threshold 0.85->0.9: less midday wash
+// Screen-space reflections — optimized: half internal resolution, a modest reflect
+// distance, only on metallic pixels (water). The reflection texture is added over
+// the scene. This is the heaviest effect; gate/tune if it costs too much.
+const _ssrPass = ssr(_sceneTex, _sceneDepthTex, _sceneNormal, _sceneMetal, camera);
+_ssrPass.resolutionScale = 0.5; // half-res SSR (already the node default)
+_ssrPass.maxDistance.value = 44; // 60 -> 44: shorter rays = fewer march steps (the heaviest effect); water reflections still read at lake scale
+_ssrPass.thickness.value = 0.4;
+_ssrPass.opacity.value = 0.85;
+const _ssrTex = _ssrPass.getTextureNode();
+// Grade: the scene was reading washed out (esp. midday), so push saturation +
+// contrast and pull the shadow-lift back to a sliver — punchier without crushing.
+const _uSat = uniform(MOOD.sat * 1.14);
+const _uContrast = uniform(MOOD.contrast * 1.07);
+const _uVignette = uniform(0.12); // eased — corners were reading too dark
+// Shadow-lift is time-of-day aware: midday wants almost none (it was washing out),
+// but sunset/night read too dark in the shadowed areas, so lift their darks more.
+// Night/sunset brightness now comes mostly from exposure + ambient (see MOODS), so
+// keep the shadow-lift modest here — too much lift greyed the blacks (washed out).
+const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.045 : TIME_OF_DAY === "sunset" ? 0.04 : 0.02;
+const _uShadowLift = uniform(_shadowLiftTOD);
+// (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
+// full-screen copy. The look held up fine without it.)
+// God-ray uniforms (driven each frame by updateAtmosphere via godrayPass.uniforms).
+const _uGSun = uniform(new THREE.Vector2(0.5, 0.7));
+const _uGVis = uniform(0);
+const _uGColor = uniform(new THREE.Color(0xffe6b0));
+const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
+// Screen-space god-rays: a radial blur of the bright sky toward the sun's screen
+// position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
+// hidden), this runs every frame — uVis just scales the result to 0. Accepted for
+// now; revisit if it costs too much on the WebGL2 fallback backend.
+const _GN = 8, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 -> 10 -> 8 samples: facing the sun is the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay + jitter keep the shaft length
+// Returns JUST the additive shaft contribution (not the scene), so it can be
+// rendered at HALF resolution and added back to the full-res scene — god-rays are
+// soft/low-frequency, so half-res is ~4x cheaper and nearly indistinguishable.
+const _godrayShafts = Fn(() => {
+  const add = vec3(0).toVar();
+  // PERF: only run the sample loop when the sun is actually visible. uVis is a
+  // uniform (same for every pixel), so this branch is coherent — the GPU skips the
+  // whole loop with no divergence cost. Makes god-rays FREE at night / facing away.
+  If(_uGVis.greaterThan(0.001), () => {
+    const delta = viewportUV.sub(_uGSun).mul(_gDensity / _GN);
+    // jitter the start so the low sample count reads as fine noise, not banded spokes
+    const jitter = viewportUV.x.mul(12.9898).add(viewportUV.y.mul(78.233)).sin().mul(43758.5453).fract();
+    const coord = viewportUV.sub(delta.mul(jitter)).toVar();
+    const illum = float(1).toVar();
+    const accum = vec3(0).toVar();
+    Loop(_GN, () => {
+      coord.subAssign(delta);
+      // Clamp the sampled scene to LDR first. The old WebGL pass ran on the
+      // tone-mapped image; here the scene pass is raw HDR (the sun is 2-3x bright),
+      // so without this the shafts blow out into "crazy rays".
+      const s = _sceneTex.uv(coord.clamp(0, 1)).rgb.clamp(0, 1);
+      const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
+      accum.addAssign(s.mul(l).mul(illum));
+      illum.mulAssign(_gDecay);
+    });
+    const raw = accum.mul(_uGWeight.div(_GN)).mul(_uGColor).mul(_uGVis);
+    // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off smoothly.
+    const cap = vec3(0.6);
+    add.assign(cap.mul(float(1).sub(raw.div(cap).negate().exp())));
+  });
+  return add; // shafts only
 });
-const composer = new EffectComposer(renderer, _composerTarget);
-composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(new THREE.Vector2(_sz.x, _sz.y), 0.45, 0.5, 0.85);
-composer.addPass(bloomPass);
-composer.addPass(new OutputPass());
+// Render the shafts to a half-resolution target (cheap), then composite over the
+// full-res scene. autoUpdate re-renders them each frame; the If-gate keeps it a
+// cheap black fill when the sun isn't visible.
+const _shaftTex = rtt(_godrayShafts());
+_shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
+{
+  let c = _sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode); // scene + SSR reflections + shafts + bloom
+  c = saturation(c, _uSat);
+  c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
+  // Lift the darkest areas so shadows don't crush to near-black (adds most to the
+  // darks, ~nothing to the highlights).
+  c = c.add(_uShadowLift.mul(c.clamp(0, 1).oneMinus()));
+  const lum = luminance(c.clamp(0, 1));
+  // Cinematic split-tone: cool shadows, warm highlights. (Cool softened so it
+  // doesn't darken the shadows as much.)
+  c = c.mul(mix(vec3(0.96, 0.99, 1.06), vec3(1.08, 1.02, 0.92), smoothstep(0.15, 0.85, lum)));
+  const d = viewportUV.sub(0.5);
+  const vig = smoothstep(0.92, 0.34, d.length());
+  c = c.mul(mix(float(1), vig, _uVignette));
+  postProcessing.outputNode = c;
+}
+// composer shim: renderFrame() calls composer.render(); drive the node graph.
+const composer = {
+  render() { postProcessing.render(); },
+  setSize() {},
+  setPixelRatio() {},
+  addPass() {},
+};
+const bloomPass = {
+  enabled: true,
+  setSize() {},
+  get strength() { return _bloomNode.strength.value; },
+  set strength(v) { _bloomNode.strength.value = v; },
+  get threshold() { return _bloomNode.threshold.value; },
+  set threshold(v) { _bloomNode.threshold.value = v; },
+};
 const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
 const BLOOM_THRESHOLD = bloomPass.threshold;
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 let _lightning = 0; // current lightning-flash intensity (decays each frame)
 let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
-
-// --- Atmosphere: screen-space god-rays (crepuscular light shafts) ---
-// A cheap radial blur of the bright sky toward the sun's screen position: where
-// dark trees/buildings interrupt the bright sky, the gaps read as light shafts.
-// No second scene render, so it stays mobile-friendly.
-const godrayPass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uSun: { value: new THREE.Vector2(0.5, 0.7) }, // sun position in screen UV
-    uVis: { value: 0 }, // 0 when sun is hidden / behind camera
-    uColor: { value: new THREE.Color(0xffe6b0) },
-    uDensity: { value: 0.8 },
-    uWeight: { value: 1.05 },
-    uDecay: { value: 0.94 },
-    uThreshold: { value: 0.67 }, // only the sun/near-sun drives shafts, not the whole bright sky
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uVis;
-    uniform vec3 uColor; uniform float uDensity; uniform float uWeight;
-    uniform float uDecay; uniform float uThreshold; varying vec2 vUv;
-    const int N = 40;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-    void main(){
-      vec3 orig = texture2D(tDiffuse, vUv).rgb;
-      if (uVis <= 0.001) { gl_FragColor = vec4(orig, 1.0); return; }
-      vec2 delta = (vUv - uSun) * (uDensity / float(N));
-      // Start each pixel at a jittered offset so the low sample count reads as
-      // fine noise instead of hard banded "spokes" along the shafts.
-      vec2 coord = vUv - delta * hash(vUv);
-      float illum = 1.0;
-      vec3 accum = vec3(0.0);
-      for (int i = 0; i < N; i++) {
-        coord -= delta;
-        vec3 s = texture2D(tDiffuse, clamp(coord, 0.0, 1.0)).rgb;
-        float l = max(0.0, max(s.r, max(s.g, s.b)) - uThreshold);
-        accum += s * l * illum;
-        illum *= uDecay;
-      }
-      accum *= uWeight / float(N);
-      // Soft saturation toward a cap (no hard clamp edge) so the glow rolls off
-      // smoothly near the sun instead of forming a flat plateau.
-      vec3 raw = accum * uColor * uVis;
-      vec3 cap = vec3(0.6);
-      vec3 add = cap * (vec3(1.0) - exp(-raw / cap));
-      gl_FragColor = vec4(orig + add, 1.0);
-    }`,
+// godrayPass: the uniform fields are now the LIVE god-ray nodes, so the existing
+// updateAtmosphere/prepareRace writes (uSun/uVis/uColor/uWeight) drive the shafts.
+// (enabled is a harmless no-op — uVis=0 already zeroes the contribution.)
+const _passStub = (uniforms) => ({ enabled: false, setSize() {}, uniforms });
+const godrayPass = { enabled: true, setSize() {}, uniforms: {
+  uSun: _uGSun, uVis: _uGVis, uColor: _uGColor, uWeight: _uGWeight,
+} };
+const flarePass = _passStub({ uVis: { value: 0 } });
+const fxPass = _passStub({
+  uAberr: { value: 0 },
+  uRadial: { value: 0 },
+  uVignette: _uVignette,
+  uSat: _uSat,
+  uContrast: _uContrast,
 });
-composer.addPass(godrayPass);
-// Punchier light shafts at sunset (the low warm sun): per-mood shaft weight.
-godrayPass.uniforms.uWeight.value = MOOD.rayWeight ?? 1.05;
-
-// --- Lens flare: a few translucent "ghosts" of the bright sun mirrored through
-// the screen centre, only while the sun is on-screen. Subtle, additive. ---
-const flarePass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uVis: { value: 0 },
-    uTint: { value: new THREE.Color(0xffdca6) },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uVis; uniform vec3 uTint; varying vec2 vUv;
-    const float TH = 0.85;
-    vec3 bright(vec2 uv){
-      if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec3(0.0);
-      return max(vec3(0.0), texture2D(tDiffuse, uv).rgb - TH) / (1.0 - TH);
-    }
-    void main(){
-      vec3 orig = texture2D(tDiffuse, vUv).rgb;
-      if (uVis <= 0.001){ gl_FragColor = vec4(orig, 1.0); return; }
-      vec2 c = vec2(0.5);
-      vec2 ghost = (c - vUv) * 0.32;        // step toward (and past) the centre
-      vec3 flare = vec3(0.0);
-      for (int i = 1; i <= 4; i++){
-        vec2 g = vUv + ghost * float(i);
-        float w = pow(max(0.0, 1.0 - length(c - g) * 1.5), 6.0); // brightest near centre
-        flare += bright(g) * w;
-      }
-      gl_FragColor = vec4(orig + min(flare * uTint * uVis * 0.28, vec3(0.3)), 1.0);
-    }`,
-});
-composer.addPass(flarePass);
-
-// Color grade (saturation + contrast + vignette) and chromatic aberration.
-// Kept on at all quality levels (cheap) so colors stay vivid; only the bloom is
-// gated by quality.
-const fxPass = new ShaderPass({
-  uniforms: {
-    tDiffuse: { value: null },
-    uAberr: { value: 0 },
-    uRadial: { value: 0 }, // radial motion blur amount (ramps with speed/boost)
-    uVignette: { value: 0.28 },
-    uSat: { value: MOOD.sat },
-    uContrast: { value: MOOD.contrast },
-  },
-  vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: `
-    uniform sampler2D tDiffuse; uniform float uAberr; uniform float uRadial;
-    uniform float uVignette; uniform float uSat; uniform float uContrast; varying vec2 vUv;
-    void main(){
-      vec2 d = vUv - 0.5;
-      // Radial (zoom) motion blur toward the screen centre + chromatic split,
-      // both ramped by speed so flat-out driving reads fast. uRadial=0 -> no blur.
-      vec3 col = vec3(0.0);
-      const int RB = 6;
-      for (int i = 0; i < RB; i++) {
-        float s = 1.0 - float(i) * (uRadial / float(RB));
-        vec2 uv = 0.5 + d * s;
-        col.r += texture2D(tDiffuse, uv + d * uAberr).r;
-        col.g += texture2D(tDiffuse, uv).g;
-        col.b += texture2D(tDiffuse, uv - d * uAberr).b;
-      }
-      col /= float(RB);
-      float l = dot(col, vec3(0.299, 0.587, 0.114));
-      col = mix(vec3(l), col, uSat);          // saturation
-      col = (col - 0.5) * uContrast + 0.5;     // contrast
-      // Cinematic split-tone: cool the shadows, warm the highlights, so light
-      // reads as warm light and shadow reads as a different (cool) colour —
-      // richer/more dramatic without actually crushing the shadows darker.
-      float lum = dot(clamp(col, 0.0, 1.0), vec3(0.299, 0.587, 0.114));
-      vec3 cool = vec3(0.90, 0.97, 1.10);
-      vec3 warm = vec3(1.10, 1.02, 0.90);
-      col *= mix(cool, warm, smoothstep(0.15, 0.85, lum));
-      float vig = smoothstep(0.92, 0.34, length(d));
-      col *= mix(1.0, vig, uVignette);
-      gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
-    }`,
-});
-composer.addPass(fxPass);
 
 const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
 track.totalLaps = TOTAL_LAPS;
@@ -256,6 +254,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
+
 // Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
 // to build, `props` stays null and the game is fine. Smashing a green CATNIP crate
 // grants that kart an 8s hands-free green boost.
@@ -263,6 +262,7 @@ let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
+  heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onCatnip: (kart, pos) => {
     kart.giveCatnip();
     effects.tootBurst(kart, 2, true); // green smash poof
@@ -285,7 +285,16 @@ initProps(scene, track, {
 // A constant light count also means the material shaders compile once and never
 // re-link mid-race. `_hlRamp` eases 0->1 once the lights go green so the packed
 // starting grid's overlapping beams don't blow out the screen.
-const HEADLIGHT_BUDGET = 3; // real road beams (player + 2 nearest); rest keep just bulbs
+// WebGPU headroom: the budget now covers the WHOLE field so every kart keeps its
+// OWN beam at night — not just the nearest 3. Reassigning a small pool to the
+// nearest karts each frame made beams visibly jump/flicker between karts as they
+// jockeyed for position. The per-frame assignment still maps the nearest karts to
+// the pool, so any extras beyond the budget (large MP lobbies) fall back to bulbs.
+// Sized to the AI roster (6) so every kart in a normal race gets its own beam with
+// ZERO spare lights — a budget of 8 left 2 spotlights always allocated but unused,
+// and every dynamic light costs per-pixel even at zero intensity. Larger MP lobbies
+// fall back to bulbs beyond the budget (the per-frame assignment handles that).
+const HEADLIGHT_BUDGET = 6; // = ROSTER size; was 8 (2 wasted always-on lights at night)
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
@@ -295,7 +304,10 @@ function buildHeadlightPool() {
   for (let i = 0; i < HEADLIGHT_BUDGET; i++) {
     const target = new THREE.Object3D();
     scene.add(target);
-    const spot = new THREE.SpotLight(0xfff2d6, 0, 75, 0.66, 0.55, 1.3);
+    // Range 75->58 and a slightly tighter cone: at the packed start grid all the
+    // beams overlap and pile up lit fragments (the worst night frame-rate hit), so a
+    // shorter throw cuts that overdraw while still lighting the road ahead.
+    const spot = new THREE.SpotLight(0xfff2d6, 0, 58, 0.6, 0.55, 1.3);
     spot.castShadow = false;
     spot.target = target;
     scene.add(spot);
@@ -332,15 +344,16 @@ function makeToonGradient() {
   return tex;
 }
 const TOON_GRADIENT = makeToonGradient();
-// Toon materials flagged for sun-driven effects collect their compiled shaders
-// so the atmosphere update can feed them the sun direction each frame. Foliage
-// (world-persistent) and karts (rebuilt each race) are kept separate so the
-// kart list can be reset on rebuild without leaking old shaders.
+// Sun-driven rim/backlight share two uniform nodes, updated once per frame in
+// updateAtmosphere: the view-space sun-travel direction and the (mood sun colour ×
+// glow) tint. (Legacy per-shader arrays kept but unused on WebGPU.)
 const backlitShaders = [];
 const rimShaders = [];
+const uSunViewNode = uniform(new THREE.Vector3(0, 0, 1));
+const uSunColNode = uniform(new THREE.Color(0x000000));
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
-  const t = new THREE.MeshToonMaterial({
+  const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
     map: m.map || null,
     gradientMap: TOON_GRADIENT,
@@ -353,32 +366,34 @@ function toToon(m) {
     emissiveIntensity: m.emissiveIntensity,
     bumpMap: m.bumpMap || null,
     bumpScale: m.bumpScale,
-  });
-  // Sun-driven add-ons, fed the view-space light direction each frame:
-  //  - backlight: foliage glows warm where you look toward the sun through it.
-  //  - rim: a warm sun rim on the hero's silhouette so it pops off the scene.
+  };
   const ud = m.userData || {};
-  if (ud.backlight || ud.rim) {
-    t.onBeforeCompile = (shader) => {
-      shader.uniforms.uSunView = { value: new THREE.Vector3(0, 0, 1) };
-      shader.uniforms.uSunCol = { value: new THREE.Color(0x000000) };
-      shader.fragmentShader =
-        "uniform vec3 uSunView;\nuniform vec3 uSunCol;\n" + shader.fragmentShader;
-      let inject = "#include <dithering_fragment>\n";
-      if (ud.backlight) {
-        inject += `float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
-         gl_FragColor.rgb += uSunCol * backlit;\n`;
-      }
-      if (ud.rim) {
-        inject += `float rimF = pow(1.0 - max(dot(normal, normalize(vViewPosition)), 0.0), 2.5);
-         rimF *= max(dot(normal, -uSunView), 0.0);
-         gl_FragColor.rgb += uSunCol * rimF * 1.6;\n`;
-      }
-      shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", inject);
-      (ud.rim ? rimShaders : backlitShaders).push(shader);
-    };
+  // Sun-driven add-ons (foliage backlight, hero rim) are added via emissiveNode,
+  // which REPLACES the material's emissive — so only apply them to MATTE materials
+  // (black emissive). Materials with a live emissive (brake lights, headlight
+  // bulbs, glowing pads) keep stock toon so their dynamic emissiveIntensity works.
+  const matte = !params.emissive || params.emissive.getHex() === 0;
+  if ((ud.backlight || ud.rim) && matte) {
+    const t = new THREE.MeshToonNodeMaterial(params);
+    let term = null;
+    if (ud.backlight) {
+      // glows warm where you look toward the sun through the foliage.
+      const backlit = positionViewDirection.negate().dot(uSunViewNode).max(0).pow(3);
+      term = uSunColNode.mul(backlit);
+    }
+    if (ud.rim) {
+      // a warm sun rim on the silhouette so the hero pops off the scene.
+      const ndv = normalView.dot(positionViewDirection).max(0);
+      const rimF = float(1).sub(ndv).pow(2.5).mul(normalView.dot(uSunViewNode.negate()).max(0));
+      const rimTerm = uSunColNode.mul(rimF.mul(1.6));
+      term = term ? term.add(rimTerm) : rimTerm;
+    }
+    t.emissiveNode = term;
+    return t;
   }
-  return t;
+  // Everything else: stock toon (auto-converted to a node material by WebGPU,
+  // keeping the gradient banding and any dynamic emissiveIntensity).
+  return new THREE.MeshToonMaterial(params);
 }
 function toonify(root) {
   root.traverse((o) => {
@@ -388,22 +403,14 @@ function toonify(root) {
 }
 toonify(scene);
 
-// --- Rear-view mirror ---
-// Render a backward-facing camera into a target, then blit it (flipped, like a
-// real mirror) into a small framed box at the top-center of the screen.
-const rearCamera = new THREE.PerspectiveCamera(74, 2.5, 0.5, 1200);
-const rearRT = new THREE.WebGLRenderTarget(640, 256);
-rearRT.texture.colorSpace = THREE.SRGBColorSpace; // match the main view's colors
-const mirrorScene = new THREE.Scene();
-const mirrorCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-const mirrorQuad = new THREE.Mesh(
-  new THREE.PlaneGeometry(2, 2),
-  new THREE.MeshBasicMaterial({ map: rearRT.texture, depthTest: false, depthWrite: false })
-);
-mirrorQuad.scale.x = -1; // horizontal flip => proper mirror
-mirrorScene.add(mirrorQuad);
-const mirrorFrame = document.getElementById("mirror-frame");
-let mirrorRect = { x: 0, y: 0, w: 1, h: 1 };
+// --- Rear threat indicator ---
+// (Replaces the old rear-view mirror, which cost a full second render of the whole
+// scene every other frame — the biggest single draw-call hit, worst on big maps.
+// A HUD warning when a kart can hairball you from behind is near-free and clearer
+// on a phone.) Lights amber when a pursuer has you in firing range/cone, and
+// pulses red when one is locked on AND ready to fire.
+const rearThreatEl = document.getElementById("rear-threat");
+let _threatState = "none"; // "none" | "warn" | "lock"
 
 // Steering indicator + recalibrate button
 const steerDot = document.getElementById("steer-dot");
@@ -734,20 +741,6 @@ function layoutStage() {
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
   applyResolution();
-
-  // Mirror box: top-center (small), kept clear of the top safe inset.
-  const mw = Math.min(150, W * 0.17);
-  const mh = mw * 0.4;
-  const mleft = (W - mw) / 2;
-  const mtop = Math.max(8, st + 4);
-  const B = 3; // must match the #mirror-frame border width in CSS
-  mirrorRect = { x: mleft + B, y: H - mtop - mh + B, w: mw - 2 * B, h: mh - 2 * B };
-  if (mirrorFrame) {
-    mirrorFrame.style.width = `${mw}px`;
-    mirrorFrame.style.height = `${mh}px`;
-    mirrorFrame.style.left = `${mleft}px`;
-    mirrorFrame.style.top = `${mtop}px`;
-  }
 }
 
 // Reads the live safe-area-inset-* values (in px) via a hidden probe element.
@@ -770,40 +763,37 @@ function readViewportInsets() {
   };
 }
 
-let mirrorTick = 0;
-function renderMirror() {
-  // Re-render the rear view every other frame (still blit every frame, so no
-  // flicker) to keep the second scene render affordable on phones.
-  if (mirrorTick++ % 2 === 0) {
-    const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
-    rearCamera.position
-      .copy(player.position)
-      .addScaledVector(fwd, 1.5)
-      .add(new THREE.Vector3(0, 4.5, 0));
-    rearCamera.lookAt(
-      new THREE.Vector3().copy(player.position).addScaledVector(fwd, -25).setY(player.position.y + 3)
-    );
-
-    renderer.autoClear = true;
-    renderer.setRenderTarget(rearRT);
-    // Hide our own kart (and its shield bubble) in the mirror so the view behind
-    // stays clear and upcoming karts are easy to see.
-    const selfVisible = player.group.visible;
-    player.group.visible = false;
-    renderer.render(scene, rearCamera);
-    player.group.visible = selfVisible;
-    renderer.setRenderTarget(null);
+// Scan for a kart that could hairball the player from behind and drive the HUD
+// warning. A pursuer is a threat when it has the player inside its firing cone and
+// range (mirrors the AI fire test in aiActions) — i.e. it's behind you, aimed at
+// you. "lock" (it can fire right now) pulses red; "warn" (in range, not yet ready
+// or not yet dead-on) is amber. Pure CPU math over karts already in memory.
+const _rtFwd = new THREE.Vector3();
+const _rtTo = new THREE.Vector3();
+function updateRearThreat() {
+  if (!rearThreatEl) return;
+  let state = "none";
+  if (player && !player.finished) {
+    const contenders = MP.enabled ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)] : karts;
+    for (const k of contenders) {
+      if (!k || k === player || k.finished || k.spinTimer > 0) continue;
+      _rtFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
+      _rtTo.subVectors(player.position, k.position);
+      const dist = _rtTo.length();
+      if (dist < 3 || dist > 50) continue; // out of hairball reach
+      const aim = _rtTo.normalize().dot(_rtFwd); // 1 = pointing straight at the player
+      if (aim < 0.78) continue; // not aimed at you
+      // Ready + dead-on + in solid range = imminent; otherwise just a warning.
+      const ready = (k.shootCooldown ?? 0) <= 0.25;
+      if (ready && aim > 0.86 && dist < 46) { state = "lock"; break; }
+      state = "warn"; // keep scanning in case another kart is a full lock
+    }
   }
-
-  // Blit the (flipped) mirror texture into just the mirror box.
-  renderer.autoClear = false;
-  renderer.setViewport(mirrorRect.x, mirrorRect.y, mirrorRect.w, mirrorRect.h);
-  renderer.setScissor(mirrorRect.x, mirrorRect.y, mirrorRect.w, mirrorRect.h);
-  renderer.setScissorTest(true);
-  renderer.render(mirrorScene, mirrorCam);
-  renderer.setScissorTest(false);
-  renderer.autoClear = true;
-  renderer.setViewport(0, 0, stageState.W, stageState.H);
+  if (state !== _threatState) {
+    _threatState = state;
+    rearThreatEl.classList.toggle("show", state !== "none");
+    rearThreatEl.classList.toggle("lock", state === "lock");
+  }
 }
 
 // Update the god-ray pass: project the sun to screen and fade it out when it's
@@ -821,6 +811,13 @@ const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
 function updateAtmosphere() {
+  // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
+  // constant depth (their radius) inside the far plane. Anchored to the world origin
+  // they'd swing out past the 2050 far plane as the player drives, getting clipped
+  // in a disc around the view centre — that clip let scene.background show through as
+  // a pale "orb" on the horizon that tracked the kart.
+  if (skyMesh) skyMesh.position.copy(camera.position);
+  if (starField) starField.position.copy(camera.position);
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
   // Direction toward the sun (invariant to the follow offset below).
@@ -872,37 +869,59 @@ function updateAtmosphere() {
   flarePass.enabled = vis > 0.001;
 
   // View-space light-travel direction + mood sun colour, shared by the backlit
-  // grass and the backlit tree foliage.
+  // tree foliage and the hero rim (the foliage/rim TSL emissive reads these nodes).
   _sunViewVec.copy(_sunDir).multiplyScalar(-1).transformDirection(camera.matrixWorldInverse);
   const sunGlow = (sunVisibleMood ? 0.5 : 0) * clear;
+  uSunViewNode.value.copy(_sunViewVec);
+  uSunColNode.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
+  // Grass keeps its own (still-GLSL, M5) backlight shader when present.
   const gsh = world.grass && world.grass.material.userData.shader;
   if (gsh && gsh.uniforms.uSunView) {
     gsh.uniforms.uSunView.value.copy(_sunViewVec);
     gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
   }
-  for (const sh of backlitShaders) {
-    sh.uniforms.uSunView.value.copy(_sunViewVec);
-    sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
-  }
-  for (const sh of rimShaders) {
-    sh.uniforms.uSunView.value.copy(_sunViewVec);
-    sh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
-  }
-  // Animate the puddles' wet-sheen shimmer.
-  if (track.puddleMesh) {
-    track.puddleMesh.material.uniforms.uTime.value = performance.now() * 0.001;
-  }
+  // Puddles now animate via the TSL `time` node (no per-frame uniform write needed;
+  // node materials drop the dummy .uniforms after they compile).
 }
 
 // Render the main view (through the post-processing composer), then overlay the
-// raw rear-view mirror while playing.
+// minimap while playing.
 function renderFrame() {
+  if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
+  renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   updateAtmosphere();
   composer.render();
   if (player && state !== State.MENU) {
-    renderMirror();
     drawMinimap();
   }
+}
+
+// One-time pipeline warm-up. During a race the camera only faces forward, so the
+// scenery behind/beside you is never drawn and its GPU pipelines never compile —
+// then a spin-out whips the camera across all of it at once, compiling many in one
+// frame = a hitch. Here we render the surrounding scenery from a full turn of
+// angles up front (every pipeline variant in the world is around the start town),
+// using the NORMAL render path (compileAsync corrupted the WebGPU post-processing
+// state, so we don't use it). All renders happen in one tick and the caller draws
+// the correct view immediately after, so nothing flashes on screen.
+let _prewarmed = false;
+function prewarmPipelines() {
+  if (_prewarmed || !player) return;
+  _prewarmed = true;
+  const savedPos = camera.position.clone();
+  const savedQuat = camera.quaternion.clone();
+  const c = player.position;
+  const N = 12;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    camera.position.set(c.x, c.y + 3, c.z);
+    camera.lookAt(c.x + Math.cos(a) * 40, c.y + 2, c.z + Math.sin(a) * 40);
+    camera.updateMatrixWorld();
+    renderFrame();
+  }
+  camera.position.copy(savedPos);
+  camera.quaternion.copy(savedQuat);
+  camera.updateMatrixWorld();
 }
 
 // --- Minimap ---
@@ -1059,19 +1078,24 @@ function triggerHit() {
 // Render the 3D at a variable internal resolution to hold a steady frame rate:
 // drop it when frames run long, probe it back up when there's headroom. The CSS
 // size (and HUD) stay full-res; only the drawing buffer scales.
-const DRS_MIN = 0.55;
+const DRS_MIN = 0.45; // give the scaler more room on the heaviest night scenes (many lights + snow are fill-bound)
 let _frameMs = 16.7;
 let _drsCooldown = 0;
 function updateDRS(rawMs, dt) {
-  _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.1; // smoothed frame interval
+  _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
-    renderScale = Math.max(DRS_MIN, renderScale - 0.1); // dropping frames -> ease off
+    // Step proportional to how far over budget we are: a big spike (turning to
+    // face the sun, cresting a hill on a big map) drops resolution HARD in one
+    // move instead of crawling down 0.1 at a time over a couple of seconds.
+    const over = _frameMs / 18.6;
+    const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
+    renderScale = Math.max(DRS_MIN, renderScale - step);
     applyResolution();
-    _drsCooldown = 0.5;
+    _drsCooldown = 0.35;
   } else if (_frameMs < 17.4 && renderScale < 1) {
-    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution
+    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
     applyResolution();
     _drsCooldown = 1.4;
   }
@@ -1260,6 +1284,44 @@ document.getElementById("open-settings")?.addEventListener("click", openSettings
 document.getElementById("open-settings-pause")?.addEventListener("click", openSettings);
 document.getElementById("settings-back")?.addEventListener("click", closeSettings);
 
+// --- FPS counter (opt-in via Settings; persisted) ---
+const FPS_KEY = "zoomies-fps";
+const fpsEl = document.getElementById("fps-counter");
+const fpsToggle = document.getElementById("set-fps-toggle");
+let showFps = false;
+try { showFps = localStorage.getItem(FPS_KEY) === "1"; } catch {}
+function applyFpsSetting() {
+  if (fpsEl) fpsEl.classList.toggle("hidden", !showFps);
+  if (fpsToggle) {
+    fpsToggle.textContent = showFps ? "On" : "Off";
+    fpsToggle.classList.toggle("off", !showFps);
+  }
+}
+fpsToggle?.addEventListener("click", () => {
+  showFps = !showFps;
+  try { localStorage.setItem(FPS_KEY, showFps ? "1" : "0"); } catch {}
+  applyFpsSetting();
+});
+applyFpsSetting();
+
+// Refresh the readout a few times a second from the smoothed frame interval the
+// DRS already tracks (_frameMs). Also reports the live backend (WGPU vs WGL2 — so
+// you can confirm which one is actually running) and the draw-call count, which
+// tells us whether a slow frame is draw-call-bound (geometry) or fill-bound.
+let _fpsAccum = 0;
+function updateFpsCounter(dt) {
+  if (!showFps || !fpsEl) return;
+  _fpsAccum += dt;
+  if (_fpsAccum < 0.2) return; // ~5 Hz so the number is readable, not a blur
+  _fpsAccum = 0;
+  const fps = Math.round(1000 / Math.max(1, _frameMs));
+  const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
+  const dc = renderer?.info?.render?.drawCalls ?? 0;
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc`;
+  fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
+  fpsEl.classList.toggle("bad", fps < 35);
+}
+
 // --- How to Play sub-menu (replaces the main menu) ---
 const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
@@ -1338,6 +1400,16 @@ refreshInstallUI();
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
 const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert"];
+// Biomes are laid out as angular wedges around the track. A small/tight loop only
+// sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
+// never visited (the reported "not all biomes show" bug). Cap the count to what a
+// map of a given size can actually display, and surface the cap in the UI.
+function maxBiomesForSize(size) {
+  if (size < 0.25) return 2;
+  if (size < 0.5) return 3;
+  if (size < 0.75) return 4;
+  return ALL_BIOMES.length; // big maps can show them all
+}
 let _trackDraft = null;
 function syncTrackPanel() {
   if (!_trackDraft) return;
@@ -1359,8 +1431,20 @@ function syncTrackPanel() {
   set("track-hilly", _trackDraft.hilliness);
   set("track-hills", _trackDraft.hills);
   set("track-size", _trackDraft.size);
+  // Enforce the size-driven biome cap: if the draft holds more than the current
+  // size allows (e.g. the user shrank the map after picking 5), trim the extras
+  // off the end, keeping the earliest-picked ones.
+  const maxBiomes = maxBiomesForSize(_trackDraft.size ?? 0.5);
+  if (_trackDraft.biomes.length > maxBiomes) _trackDraft.biomes = _trackDraft.biomes.slice(0, maxBiomes);
+  const atCap = _trackDraft.biomes.length >= maxBiomes;
+  const hint = document.getElementById("biome-max-hint");
+  if (hint) hint.textContent = maxBiomes >= ALL_BIOMES.length ? "(all available)" : `(pick up to ${maxBiomes} — bigger map = more)`;
   trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
-    chip.classList.toggle("on", _trackDraft.biomes.includes(chip.dataset.biome));
+    const on = _trackDraft.biomes.includes(chip.dataset.biome);
+    chip.classList.toggle("on", on);
+    // Grey out the chips you can't add once you're at the cap (selected ones stay
+    // interactive so you can deselect to free a slot).
+    chip.classList.toggle("locked", !on && atCap);
   });
   const tod = _trackDraft.timeOfDay || "midday";
   trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
@@ -1450,7 +1534,8 @@ document.getElementById("track-hills")?.addEventListener("input", (e) => {
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
   setTrackVal("track-size", e.target.value);
-  scheduleTrackPreview();
+  // Re-apply the biome cap and refresh the hint/locked chips as the map resizes.
+  syncTrackPanel();
 });
 document.getElementById("track-new")?.addEventListener("click", (e) => {
   _trackDraft.seed = randomSeed();
@@ -1466,6 +1551,11 @@ trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
     if (i >= 0) {
       if (_trackDraft.biomes.length > 1) _trackDraft.biomes.splice(i, 1); // keep at least one
     } else {
+      // Honour the size-driven cap: at the limit, adding a biome rolls the
+      // oldest selection out so the newest pick takes effect (rather than the
+      // click silently doing nothing).
+      const max = maxBiomesForSize(_trackDraft.size ?? 0.5);
+      if (_trackDraft.biomes.length >= max) _trackDraft.biomes.shift();
       _trackDraft.biomes.push(b);
     }
     syncTrackPanel();
@@ -2368,7 +2458,9 @@ function loop(now) {
   dt = Math.min(dt, 0.05); // clamp big frame gaps
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
+  updateFpsCounter(dt); // opt-in on-screen FPS readout
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
+  if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay
@@ -2376,6 +2468,8 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
+  if (world.groundLeaves) world.groundLeaves.update(karts, camera.position); // kick up leaves in the karts' wake
+  updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
   // Assign the small headlight-beam pool to the player + the nearest karts each
   // frame (others keep just their glowing bulbs), and ramp the beams up once the
@@ -2426,6 +2520,18 @@ function loop(now) {
       })
     );
   }
+
+  // Swing the festive string lights as karts pass under them.
+  if (world.stringLights) {
+    world.stringLights.update(
+      dt,
+      raceField().map((e) => {
+        const k = e.kart || e;
+        if (!k || !k.position) return null;
+        return { x: k.position.x, z: k.position.z, dx: Math.sin(k.heading), dz: Math.cos(k.heading), speed: Math.abs(k.speed || 0) };
+      })
+    );
+  }
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.MENU) {
@@ -2442,6 +2548,7 @@ function loop(now) {
     if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
     else countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
+    prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     const n = Math.ceil(countdown - 1);
     hud.showToast(n > 0 ? `${n}` : "GO!");
     // A beep on each 3/2/1 and a higher GO! chirp, as the number changes.
@@ -2700,7 +2807,24 @@ function loop(now) {
   renderFrame();
 }
 
-requestAnimationFrame(loop);
+// WebGPURenderer initialises asynchronously — only start the render loop once the
+// backend is ready (renderFrame() also guards on this flag for any earlier calls).
+let gpuParticles = null;
+rendererReady
+  .then(() => {
+    _rendererReady = true;
+    // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
+    const night = TIME_OF_DAY === "night";
+    initGpuParticles(scene, renderer, {
+      count: 450, // sweet spot: 650 read as "too many", 280 as "none" — this is the sparse-but-present middle
+      tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
+      // A touch more opaque so the (now fewer) specks actually catch the light.
+      opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
+      size: night ? 0.52 : 0.42,
+    }).then((p) => { gpuParticles = p; });
+  })
+  .catch((err) => console.error("[zoomies] renderer init failed:", err))
+  .finally(() => requestAnimationFrame(loop));
 
 // Browsers block audio until a user gesture, so the menu can't autoplay music on
 // load. Start it (fading in) on the player's FIRST interaction of any kind —

@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
+import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -291,12 +293,14 @@ export function buildWorld(scene, track, opts = {}) {
   buildTerrain(scene, heightAt, litLevel); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
+  const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
-  buildStringLights(scene, track, litLevel); // festive bulb strings over a few road spans
+  const stringLights = buildStringLights(scene, track, litLevel); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, lit, litLevel); // banners + a bridge spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
@@ -308,6 +312,9 @@ export function buildWorld(scene, track, opts = {}) {
 
   return {
     grass,
+    heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
+    groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
+    stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
@@ -318,8 +325,10 @@ export function buildWorld(scene, track, opts = {}) {
       for (const fl of flocks) updateFlock(fl, time);
       for (const c of _critters) updateCritter(c, dt, time, heightAt);
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
-      if (fireflies) fireflies.material.uniforms.uTime.value = time;
-      for (const w of waters) w.uniforms.uTime.value = time;
+      // (fireflies + water animate via the TSL `time` node; node materials drop the
+      // dummy .uniforms after they compile, so don't write to them.)
+      if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
+      for (const w of waters) if (w.uniforms) w.uniforms.uTime.value = time;
       const sh = grass && grass.material.userData.shader;
       if (sh) sh.uniforms.uTime.value = time;
     },
@@ -473,37 +482,38 @@ function carveLakes(lakes, x, z, h) {
 // by a per-vertex "shore" value (0 at the centre/spine, 1 at the bank) and a
 // "len" value along the water, so there's no concentric/pinwheel pattern.
 function makeWaterMaterial(darken = 1) {
-  // The water colour is shader-driven (unlit), so dim it directly at dusk/night —
-  // otherwise it glows like daylight cyan in the dark.
-  return new THREE.ShaderMaterial({
-    transparent: true,
-    side: THREE.DoubleSide,
-    uniforms: {
-      uTime: { value: 0 },
-      uDeep: { value: new THREE.Color(0x1f6f8c).multiplyScalar(darken) },
-      uShallow: { value: new THREE.Color(0x57c6d6).multiplyScalar(darken) },
-      uFoam: { value: new THREE.Color(0xeafcff).multiplyScalar(0.4 + 0.6 * darken) },
-    },
-    vertexShader: `
-      attribute float aShore; attribute float aLen;
-      varying float vShore; varying float vLen;
-      void main(){ vShore = aShore; vLen = aLen;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-    fragmentShader: `
-      uniform float uTime; uniform vec3 uDeep; uniform vec3 uShallow; uniform vec3 uFoam;
-      varying float vShore; varying float vLen;
-      void main(){
-        vec3 col = mix(uDeep, uShallow, smoothstep(0.0, 1.0, vShore));
-        float w1 = sin(vLen * 40.0 + vShore * 8.0 + uTime * 1.4);
-        float w2 = sin(vLen * 26.0 - vShore * 5.0 - uTime * 1.0);
-        float ripple = smoothstep(0.55, 0.95, w1 * 0.5 + 0.5) * 0.6
-                     + smoothstep(0.65, 0.98, w2 * 0.5 + 0.5) * 0.4;
-        col = mix(col, col * 1.18, ripple * 0.5);
-        float foam = smoothstep(0.84, 0.995, vShore);
-        col = mix(col, uFoam, foam);
-        gl_FragColor = vec4(col, 0.9);
-      }`,
-  });
+  // TSL node material (WebGPU). Now a METALLIC standard material so screen-space
+  // reflections (SSR, in main.js) mirror the scene on the lake. It keeps its
+  // stylised deep/shallow/foam colour as the base (so it reads blue, not pure
+  // mirror) and the ripples modulate roughness so the reflection shimmers. aShore:
+  // 0 at the centre/spine -> 1 at the bank. aLen: along the water. Animates off the
+  // global TSL `time`. `darken` dims it at dusk/night.
+  const mat = new THREE.MeshStandardNodeMaterial({ transparent: true, side: THREE.DoubleSide });
+  const shore = attribute("aShore");
+  const len = attribute("aLen");
+  const deep = tslColor(0x1f6f8c).mul(darken);
+  const shallow = tslColor(0x57c6d6).mul(darken);
+  const foamCol = tslColor(0xeafcff).mul(0.4 + 0.6 * darken);
+  const w1 = len.mul(40).add(shore.mul(8)).add(time.mul(1.4)).sin();
+  const w2 = len.mul(26).sub(shore.mul(5)).sub(time.mul(1.0)).sin();
+  const ripple = smoothstep(0.55, 0.95, w1.mul(0.5).add(0.5)).mul(0.6)
+    .add(smoothstep(0.65, 0.98, w2.mul(0.5).add(0.5)).mul(0.4));
+  let col = mix(deep, shallow, smoothstep(0.0, 1.0, shore));
+  col = mix(col, col.mul(1.18), ripple.mul(0.5));
+  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
+  mat.colorNode = col;
+  // Fresnel: water mirrors much more at grazing angles (looking across it) than
+  // looking straight down — the key to a realistic reflective surface. Drive the
+  // SSR metalness with it. Foam fringe stays matte so the bank doesn't mirror.
+  const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(3);
+  const shoreFade = smoothstep(0.9, 0.7, shore);
+  mat.metalnessNode = float(0.35).add(fres.mul(0.55)).mul(shoreFade);
+  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // ripples shimmer the reflection
+  mat.opacityNode = float(0.92);
+  // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
+  // harmless no-op (animation is via `time`).
+  mat.uniforms = { uTime: { value: 0 } };
+  return mat;
 }
 
 function buildWater(scene, lakes, darken = 1) {
@@ -829,6 +839,117 @@ function scatter(count, track, flatten, minFlat, range) {
   return out;
 }
 
+// Loose leaves scattered across the ground (in addition to the knockable piles) so
+// leafy biomes feel carpeted and lived-in. The shared leaf silhouette, small and
+// autumn-toned, denser in autumn/forest. They gently RUSTLE in the wind (the
+// "alive" part). Split into spatial CHUNKS so off-screen leaves frustum-cull — a
+// single track-spanning mesh could never cull, so every leaf was processed every
+// frame; chunking lets us carry far more leaves for less cost. No shadow (flat).
+const GROUND_LEAF_COLS = [0xc4471f, 0xe07b1e, 0xf0c040, 0xd23a2a, 0x9c6b1f, 0x7a2e1e, 0xe8a838];
+function buildGroundLeaves(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const placements = [];
+  const MAX = 1700;
+  for (let i = 0; i < N && placements.length < MAX; i++) {
+    const p = track._pts[i];
+    const b = biomeAt(p.x, p.z);
+    // Per-biome leaf density: autumn is carpeted, forest well-scattered, meadow a sprinkle.
+    const dens = b.name === "autumn" ? 1.0 : b.name === "forest" ? 0.7 : b.name === "meadow" ? 0.32 : 0;
+    if (dens <= 0) continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    const tries = Math.ceil(dens * 6);
+    for (let k = 0; k < tries && placements.length < MAX; k++) {
+      if (rand() > dens) continue;
+      const lat = (rand() * 2 - 1) * (track.halfWidth + 12); // on the road edges + verge
+      const x = p.x + side.x * lat + (rand() - 0.5) * 5;
+      const z = p.z + side.z * lat + (rand() - 0.5) * 5;
+      if (_inLake(x, z)) continue;
+      placements.push({ x, y: heightAt(x, z), z });
+    }
+  }
+  if (!placements.length) return null;
+
+  // Kart-wake uniforms: the few karts nearest the camera (updated each frame from
+  // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
+  // passes — all on the GPU, no per-leaf CPU physics.
+  const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
+  const uWakeR = uniform(13.0); // generous so leaves you drive near clearly react (even passing at speed)
+
+  // Shared material across all chunk meshes: wind rustle + kart-wake pop.
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
+  const _ph = hash(instanceIndex).mul(6.2832);
+  const _t = time.add(_ph);
+  const _amp = positionLocal.length().mul(0.45); // idle wind: outer edges rock more than the centre (a touch livelier so none look dead)
+  const _sway = vec3(_t.mul(2.6).sin(), _t.mul(3.3).sin().mul(0.4), _t.mul(2.1).cos()).mul(_amp);
+  // Wake lift: sum each kart's nearby influence (1 at the kart, 0 past the radius).
+  // Built as an immutable node expression (no toVar/assign — those need an Fn scope).
+  const _base = attribute("aBase"); // this leaf's world position
+  let _liftSum = float(0);
+  for (const w of wakes) {
+    const dx = _base.x.sub(w.x);
+    const dz = _base.z.sub(w.z);
+    const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
+    _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus());
+  }
+  const _lift = _liftSum.min(1.0);
+  // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
+  // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
+  const _pop = vec3(0, 1, 0).mul(_lift.mul(4.5)); // big, obvious pop when a kart passes
+  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(1.6)); // strong scatter/swirl in the wake
+  mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
+
+  // Bucket placements into coarse chunks so off-screen leaves cull as a group; each
+  // chunk gets its own geo carrying an aBase attribute (per-leaf world position).
+  const CHUNK = 130;
+  const buckets = new Map();
+  for (const s of placements) {
+    const key = Math.round(s.x / CHUNK) + "_" + Math.round(s.z / CHUNK);
+    let arr = buckets.get(key);
+    if (!arr) buckets.set(key, (arr = []));
+    arr.push(s);
+  }
+  const dummy = new THREE.Object3D();
+  const _c = new THREE.Color();
+  for (const arr of buckets.values()) {
+    const geo = makeLeafGeo();
+    geo.rotateX(-Math.PI / 2); // lie flat; instances rotate yaw-only so the wake pop stays world-up
+    const aBase = new Float32Array(arr.length * 3);
+    const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
+    arr.forEach((s, i) => {
+      dummy.position.set(s.x, s.y + 0.03, s.z);
+      dummy.rotation.set(0, rand() * Math.PI * 2, 0); // yaw only
+      dummy.scale.setScalar(0.5 + rand() * 0.5);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, _c.set(GROUND_LEAF_COLS[(rand() * GROUND_LEAF_COLS.length) | 0]));
+      aBase[i * 3] = s.x; aBase[i * 3 + 1] = s.y; aBase[i * 3 + 2] = s.z;
+    });
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase, 3));
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = false; // flat on the ground — shadow not worth the shadow-pass cost
+    mesh.receiveShadow = true;
+    mesh.layers.set(1);
+    scene.add(mesh);
+  }
+
+  // Each frame, point the wake at the karts nearest the camera (those whose wake
+  // you'd actually see kicking up leaves).
+  const _sorted = [];
+  return {
+    update(karts, camPos) {
+      _sorted.length = 0;
+      for (const k of karts) if (k && k.position) _sorted.push(k);
+      _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
+      for (let i = 0; i < wakes.length; i++) {
+        const k = _sorted[i];
+        if (k) wakes[i].value.copy(k.position);
+        else wakes[i].value.set(1e6, 1e6, 1e6);
+      }
+    },
+  };
+}
+
 function buildTrees(scene, track, heightAt, flatten) {
   // Each candidate spot is tagged with its biome, kept with that biome's tree
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
@@ -1036,49 +1157,130 @@ function buildStringLights(scene, track, level = 0) {
   const N = track.samples;
   const SPANS = 5;
   const COLS = [0xff3b30, 0xffd60a, 0x34c759, 0x0a84ff, 0xff9f0a, 0xffffff];
-  const bulbs = []; // { x, y, z, col }
   const wireMat = new THREE.LineBasicMaterial({ color: 0x2a2622, transparent: true, opacity: 0.7, fog: true });
+  const bulbGeo = new THREE.SphereGeometry(0.34, 8, 8);
+  const bulbMat = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
+
+  // Per-span data, kept so the strings can SWING (a damped spring) when karts pass
+  // under them and so the bulbs/wire/point-light all follow that sway each frame.
+  const spans = [];
+  let totalBulbs = 0;
   for (let s = 0; s < SPANS; s++) {
     const i = Math.floor(((s + 0.5) / SPANS + rand() * 0.12) * N) % N;
     const p = track._pts[i];
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
-    const ax = p.x + side.x * off, az = p.z + side.z * off, ay = p.y + 8.5;
-    const bx = p.x - side.x * off, bz = p.z - side.z * off, by = p.y + 8.5;
-    const sag = 3.0;
-    const per = 12;
-    const pts = [];
+    const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
+    const B = new THREE.Vector3(p.x - side.x * off, p.y + 8.5, p.z - side.z * off);
+    const per = 12, sag = 3.0;
+    const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize(); // sway axis
+    const base = [];
+    const cols = [];
     for (let k = 0; k <= per; k++) {
       const t = k / per;
       const dip = Math.sin(t * Math.PI) * sag; // catenary-ish droop
-      const x = ax + (bx - ax) * t;
-      const z = az + (bz - az) * t;
-      const y = ay + (by - ay) * t - dip;
-      pts.push(new THREE.Vector3(x, y, z));
-      if (k > 0 && k < per) bulbs.push({ x, y: y - 0.25, z, col: COLS[(k + s) % COLS.length] });
+      base.push(new THREE.Vector3(A.x + (B.x - A.x) * t, A.y + (B.y - A.y) * t - dip, A.z + (B.z - A.z) * t));
+      if (k > 0 && k < per) cols.push(COLS[(k + s) % COLS.length]);
     }
-    const wire = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat);
-    wire.layers.set(1);
-    scene.add(wire);
+    spans.push({
+      per, base, fwd, cols,
+      mid: new THREE.Vector3(p.x, p.y, p.z), // the road crossing point (for "kart under" test)
+      bulbStart: totalBulbs, bulbCount: per - 1,
+      swing: { x: 0, z: 0, vx: 0, vz: 0 }, phase: rand() * 6.28,
+      wire: null, wireGeo: null, light: null,
+    });
+    totalBulbs += per - 1;
   }
-  if (!bulbs.length) return;
-  const geo = new THREE.SphereGeometry(0.34, 8, 8);
-  const mat = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
-  const mesh = new THREE.InstancedMesh(geo, mat, bulbs.length);
-  const m = new THREE.Matrix4();
-  const ID = new THREE.Quaternion();
-  const sc = new THREE.Vector3(1, 1, 1);
-  const c = new THREE.Color();
-  const glow = 0.9 + level * 0.7; // 0.9 by day, brighter toward dusk/night so they bloom
-  bulbs.forEach((b, idx) => {
-    m.compose(new THREE.Vector3(b.x, b.y, b.z), ID, sc);
-    mesh.setMatrixAt(idx, m);
-    mesh.setColorAt(idx, c.set(b.col).multiplyScalar(glow));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  if (!totalBulbs) return { update() {} };
+
+  // Bulbs (instanced) — bright/unlit so they bloom.
+  const mesh = new THREE.InstancedMesh(bulbGeo, bulbMat, totalBulbs);
+  mesh.frustumCulled = false;
   mesh.layers.set(1);
+  const glow = 0.9 + level * 0.7;
+  const _c = new THREE.Color();
+  for (const sd of spans) {
+    for (let b = 0; b < sd.bulbCount; b++) mesh.setColorAt(sd.bulbStart + b, _c.set(sd.cols[b]).multiplyScalar(glow));
+  }
+  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   scene.add(mesh);
+
+  // Wires + (at dusk/night) a real warm point light per span so the strings
+  // actually illuminate the road beneath them.
+  spans.forEach((sd, si) => {
+    const geo = new THREE.BufferGeometry().setFromPoints(sd.base.map((v) => v.clone()));
+    const wire = new THREE.Line(geo, wireMat);
+    wire.layers.set(1);
+    wire.frustumCulled = false;
+    scene.add(wire);
+    sd.wire = wire; sd.wireGeo = geo;
+    // Only every other span casts a REAL light (the rest still glow via emissive
+    // bulbs + bloom). Every dynamic light is per-pixel cost at night, and the pools
+    // overlap anyway, so halving them is ~invisible but meaningfully cheaper.
+    if (level > 0.01 && si % 2 === 0) {
+      const lp = sd.base[Math.floor(sd.per / 2)];
+      const pl = new THREE.PointLight(0xfff0c8, 13 * level, 32, 1.7); // a touch brighter to cover the gaps
+      pl.position.copy(lp);
+      pl.castShadow = false;
+      scene.add(pl);
+      sd.light = pl;
+    }
+  });
+
+  const _m = new THREE.Matrix4();
+  const _id = new THREE.Quaternion();
+  const _sc = new THREE.Vector3(1, 1, 1);
+  const _v = new THREE.Vector3();
+  const K = 17, D = 2.5; // spring stiffness + damping for the swing
+  // Drive each span's swing from the karts and rebuild bulb/wire/light positions.
+  // karts: array of { x, z, dx, dz, speed } (dx,dz = horizontal heading).
+  function update(dt, karts) {
+    for (const sd of spans) {
+      const sw = sd.swing;
+      if (karts) {
+        for (const k of karts) {
+          if (!k) continue;
+          const dx = k.x - sd.mid.x, dz = k.z - sd.mid.z;
+          if (dx * dx + dz * dz < 64 && k.speed > 3) { // within ~8 units, moving
+            sw.vx += (k.dx || 0) * k.speed * 0.012; // shove in the kart's travel dir
+            sw.vz += (k.dz || 0) * k.speed * 0.012;
+          }
+        }
+      }
+      // Damped harmonic spring back to rest.
+      sw.vx += (-K * sw.x - D * sw.vx) * dt;
+      sw.vz += (-K * sw.z - D * sw.vz) * dt;
+      sw.x += sw.vx * dt;
+      sw.z += sw.vz * dt;
+      const mag = Math.hypot(sw.x, sw.z);
+      if (mag > 2.0) { sw.x *= 2.0 / mag; sw.z *= 2.0 / mag; } // cap the swing
+      // Gentle idle breeze on top so they're never dead-still.
+      const idle = Math.sin(performance.now() * 0.0011 + sd.phase) * 0.12;
+      const ox = sw.x + sd.fwd.x * idle, oz = sw.z + sd.fwd.z * idle;
+      // Apply the offset weighted by the catenary droop (max at the centre).
+      const posAttr = sd.wireGeo.attributes.position;
+      for (let kk = 0; kk <= sd.per; kk++) {
+        const w = Math.sin((kk / sd.per) * Math.PI);
+        const bp = sd.base[kk];
+        posAttr.setXYZ(kk, bp.x + ox * w, bp.y, bp.z + oz * w);
+      }
+      posAttr.needsUpdate = true;
+      for (let b = 0; b < sd.bulbCount; b++) {
+        const kk = b + 1;
+        const w = Math.sin((kk / sd.per) * Math.PI);
+        const bp = sd.base[kk];
+        _m.compose(_v.set(bp.x + ox * w, bp.y - 0.25, bp.z + oz * w), _id, _sc);
+        mesh.setMatrixAt(sd.bulbStart + b, _m);
+      }
+      if (sd.light) {
+        const lp = sd.base[Math.floor(sd.per / 2)];
+        sd.light.position.set(lp.x + ox, lp.y, lp.z + oz);
+      }
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  return { update };
 }
 
 // Overhead structures you drive UNDER: cloth welcome banners on posts, and a
@@ -1595,7 +1797,9 @@ function makeBuilding(density, biome) {
     wing = { ww, wd, wh, wx, wz };
   }
   const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
+  body.castShadow = true;
   body.receiveShadow = true;
+  body.userData.bodyWall = wall; // batchBuildings() bakes this into vertex colour to merge bodies
   g.add(body);
 
   // Everything else: solid vertex-coloured detail.
@@ -1636,9 +1840,99 @@ function makeBuilding(density, biome) {
   }
 
   const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.castShadow = true;
   solid.receiveShadow = true;
   g.add(solid);
+  g.userData.isBuilding = true; // collected + merged by batchBuildings() to slash draw calls
   return g;
+}
+
+// Shared material for all merged building BODIES: wall colour comes from baked
+// vertex colours (so every wall tint merges into one mesh) while the lit-window
+// emissive map still reads per-facade via UVs.
+let _bodyMergeMat = null;
+function bodyMergeMaterial() {
+  if (_bodyMergeMat) return _bodyMergeMat;
+  _bodyMergeMat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.94,
+    emissive: 0xffcf86,
+    emissiveMap: windowTexture(),
+    emissiveIntensity: 0.5,
+  });
+  return _bodyMergeMat;
+}
+
+// Bake a flat colour into a geometry's vertex-colour attribute (creating it).
+function bakeVertexColor(geo, hex) {
+  const c = new THREE.Color(hex);
+  const n = geo.attributes.position.count;
+  const arr = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) {
+    arr[i * 3] = c.r;
+    arr[i * 3 + 1] = c.g;
+    arr[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
+}
+
+// Draw-call slasher: the roadside town is hundreds of buildings, each 2 meshes
+// drawn again for shadows — the dominant draw-call cost. Buildings are static, so
+// here we bake every one into world space and merge them into a FEW meshes, grouped
+// into coarse spatial chunks so off-screen chunks still frustum-cull. Bodies (per-
+// wall-colour) merge via baked vertex colours + the shared window-emissive material;
+// solid detail already shares _solidMat. Collapses ~2 draw calls/building into ~2
+// per chunk. Call once after all buildings are placed.
+function batchBuildings(scene) {
+  scene.updateMatrixWorld(true);
+  const groups = [];
+  scene.traverse((o) => { if (o.userData && o.userData.isBuilding) groups.push(o); });
+  if (!groups.length) return;
+  const CHUNK = 150; // world units per merge bucket (coarse culling granularity)
+  const buckets = new Map();
+  const bucketOf = (x, z) => {
+    const key = Math.round(x / CHUNK) + "_" + Math.round(z / CHUNK);
+    let b = buckets.get(key);
+    if (!b) buckets.set(key, (b = { bodies: [], solids: [] }));
+    return b;
+  };
+  for (const g of groups) {
+    const b = bucketOf(g.position.x, g.position.z);
+    for (const child of g.children) {
+      if (!child.isMesh) continue;
+      const geo = child.geometry.clone();
+      geo.applyMatrix4(child.matrixWorld); // bake world transform
+      if (child.userData.bodyWall !== undefined) {
+        bakeVertexColor(geo, child.userData.bodyWall);
+        b.bodies.push(geo);
+      } else {
+        b.solids.push(geo); // already vertex-coloured (_solidMat)
+      }
+    }
+    g.parent && g.parent.remove(g);
+    // free the now-unused per-building geometries/materials
+    g.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (o.material !== _solidMat) o.material.dispose();
+      }
+    });
+  }
+  const addMerged = (geos, material) => {
+    if (!geos.length) return;
+    const merged = mergeGeometries(geos);
+    geos.forEach((gg) => gg.dispose());
+    if (!merged) return;
+    const mesh = new THREE.Mesh(merged, material);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.layers.set(1); // match the originals (scenery layer)
+    scene.add(mesh);
+  };
+  for (const b of buckets.values()) {
+    addMerged(b.bodies, bodyMergeMaterial());
+    addMerged(b.solids, _solidMat);
+  }
 }
 
 // Pick a town structure — mostly houses, occasionally a landmark.
@@ -2371,7 +2665,7 @@ function buildFireflies(scene, track, heightAt) {
   const up = new THREE.Vector3(0, 1, 0);
   const positions = [];
   const phases = [];
-  const want = 260;
+  const want = 170; // 260 was crowded, 110 too sparse — a present-but-gentle middle
   let tries = 0;
   while (positions.length / 3 < want && tries < want * 8) {
     tries++;
@@ -2392,31 +2686,26 @@ function buildFireflies(scene, track, heightAt) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute("aPhase", new THREE.Float32BufferAttribute(phases, 1));
-  const material = new THREE.ShaderMaterial({
+  // TSL node material (WebGPU): green fireflies that drift (positionNode sway) and
+  // twinkle (opacity), animated off the global `time`.
+  const phase = attribute("aPhase");
+  const sway = vec3(
+    time.mul(0.6).add(phase).sin().mul(1.3),
+    time.mul(0.9).add(phase.mul(1.7)).sin().mul(0.8),
+    time.mul(0.5).add(phase.mul(1.3)).cos().mul(1.3)
+  );
+  const tw = time.mul(3).add(phase.mul(5)).sin().mul(0.5).add(0.5);
+  const material = new THREE.PointsNodeMaterial({
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
-    uniforms: { uTime: { value: 0 } },
-    vertexShader: `
-      attribute float aPhase; uniform float uTime; varying float vTw;
-      void main(){
-        vec3 pos = position;
-        pos.x += sin(uTime * 0.6 + aPhase) * 1.3;
-        pos.y += sin(uTime * 0.9 + aPhase * 1.7) * 0.8;
-        pos.z += cos(uTime * 0.5 + aPhase * 1.3) * 1.3;
-        vec4 mv = modelViewMatrix * vec4(pos, 1.0);
-        vTw = 0.5 + 0.5 * sin(uTime * 3.0 + aPhase * 5.0);
-        gl_PointSize = clamp(180.0 / -mv.z, 1.0, 9.0) * (0.5 + 0.5 * vTw);
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      varying float vTw;
-      void main(){
-        float d = length(gl_PointCoord - 0.5);
-        float a = smoothstep(0.5, 0.0, d) * vTw;
-        gl_FragColor = vec4(vec3(0.75, 1.0, 0.45) * (0.6 + vTw), a);
-      }`,
+    sizeAttenuation: true,
   });
+  material.positionNode = positionLocal.add(sway);
+  material.colorNode = tslColor(0xbfff73).mul(tw.add(0.6));
+  material.opacityNode = tw;
+  material.sizeNode = tw.mul(0.5).add(0.5).mul(3);
+  material.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
   material.userData.skipToon = true;
   const pts = new THREE.Points(geo, material);
   pts.frustumCulled = false; // points are displaced in the shader

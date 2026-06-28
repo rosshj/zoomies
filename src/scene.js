@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { attribute, uniform, color as tslColor } from "three/tsl";
+import { USE_WEBGPU } from "./gpu.js";
 
 // Time-of-day moods. The chosen one (from the track's Time of Day setting) drives
 // applyMood(), which restyles the sky, sun/moon, lights, fog, stars and exposure,
@@ -14,7 +16,7 @@ export const MOODS = [
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
     hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
-    sunCore: [2.3, 2.05, 1.5], sunSize: 48, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
+    sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
     cloud: 0xffffff, sat: 1.3, contrast: 1.02,
   },
   {
@@ -22,9 +24,9 @@ export const MOODS = [
     name: "Sunset", tod: "sunset", weather: "none",
     sunDir: [0.62, 0.15, 0.42], sunColor: 0xffb066, sunI: 2.2,
     skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
-    hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.72,
-    bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.07,
-    sunCore: [2.6, 1.7, 0.9], sunSize: 86, sunVisible: true, rays: true, rayWeight: 1.7, starI: 0.15,
+    hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.84,
+    bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.13,
+    sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.4, starI: 0.15,
     cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
   },
   {
@@ -34,10 +36,10 @@ export const MOODS = [
     name: "Night", tod: "night", weather: "none",
     sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.15,
     skyTop: 0x060a1a, skyHorizon: 0x17263f, skyWarm: 0x17263f,
-    hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.42,
-    bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.06,
-    sunCore: [1.25, 1.35, 1.65], sunSize: 34, sunVisible: true, rays: false, starI: 1,
-    cloud: 0x2a3551, sat: 1.08, contrast: 1.06,
+    hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.56,
+    bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.16,
+    sunCore: [1.25, 1.35, 1.65], sunSize: 28, sunVisible: true, rays: false, starI: 1,
+    cloud: 0x2a3551, sat: 1.32, contrast: 1.1,
   },
 ];
 
@@ -51,11 +53,17 @@ export function moodForTimeOfDay(tod) {
 export function createScene() {
   const container = document.getElementById("game");
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  // WebGPU migration: WebGPURenderer (WebGL2 backend by default, WebGPU with
+  // ?webgpu=1). It auto-falls back to WebGL2 if WebGPU is unavailable.
+  const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: !USE_WEBGPU });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  // WebGPU shadow flicker: PCFSoftShadowMap's wide soft kernel is temporally
+  // unstable on WebGPU (the penumbra shimmers as the frustum follows the player).
+  // PCF (non-soft) is stable; the doubled shadow-map resolution below keeps it
+  // from looking too hard.
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.0;
   container.appendChild(renderer.domElement);
@@ -64,7 +72,10 @@ export function createScene() {
   scene.background = new THREE.Color(0xbfe3ff);
   scene.fog = new THREE.Fog(0xcfe7f2, 360, 1300);
 
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 3000);
+  // Far plane sits just past the farthest fog (max fogFar ~1850): everything beyond
+  // is 100% fog anyway, so rendering it to 3000 was pure waste. 2050 culls that
+  // invisible distance with zero visual change — a free draw-call cut on open views.
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2050);
   camera.position.set(0, 12, -18);
 
   const sunDir = new THREE.Vector3(0.4, 0.82, 0.55).normalize();
@@ -79,7 +90,7 @@ export function createScene() {
   const sun = new THREE.DirectionalLight(0xffe6b8, 2.2);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.set(2048, 2048); // 4096 was a big cost on geometry-heavy/sun-facing views; PCF keeps 2048 stable
   // A tight frustum that the game keeps centred on the player (see main loop):
   // same map budget focused around you = crisp, dramatic shadows where they show.
   // Kept fairly small so the 2048 map gives plenty of texels per unit near the
@@ -91,11 +102,13 @@ export function createScene() {
   sun.shadow.camera.bottom = -s;
   sun.shadow.camera.near = 20;
   sun.shadow.camera.far = 720;
-  // Small biases: a low normalBias keeps contact shadows attached (a high one
-  // peter-pans them so objects look like they float); the tighter, higher-res
-  // frustum keeps acne away without leaning on it.
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.18;
+  // Shadow bias (WebGPU): the old negative depth bias (-0.0005) was tuned for the
+  // WebGL renderer; on the WebGPU depth pipeline it reads differently and the
+  // shadows flicker/acne as the tight frustum follows the player. Zero the
+  // depth bias and lean on a slightly higher normalBias (offsets along the
+  // surface normal, renderer-agnostic) which is the robust anti-acne knob.
+  sun.shadow.bias = 0;
+  sun.shadow.normalBias = 0.35; // bumped again to catch any residual acne shimmer
   sun.shadow.radius = 5; // soft PCF penumbra for the gentle, toy-like look
   scene.add(sun);
   scene.add(sun.target);
@@ -119,14 +132,10 @@ export function createScene() {
     scene.add(cloud);
   }
 
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  let envRT = null;
-  const rebakeEnv = () => {
-    const next = pmrem.fromScene(scene, 0, 10, 4000);
-    scene.environment = next.texture;
-    if (envRT) envRT.dispose();
-    envRT = next;
-  };
+  // M1 WebGPU migration: skip PMREM environment baking (the env reflections add
+  // a small spec sheen but PMREM-from-scene on the new backend is unproven; the
+  // game reads fine without it). Reinstated as a node env in a later milestone.
+  const rebakeEnv = () => {};
 
   // Apply a mood: restyle everything and rebake the environment map.
   function applyMood(m) {
@@ -155,12 +164,20 @@ export function createScene() {
 
   applyMood(MOODS[0]);
 
-  return { renderer, scene, camera, sun, applyMood };
+  // WebGPURenderer initialises asynchronously (it picks/spins up the backend).
+  // Expose the promise so the main loop only starts rendering once it's ready.
+  const ready = renderer.init ? renderer.init() : Promise.resolve();
+
+  return { renderer, scene, camera, sun, applyMood, ready, skyMesh: sky.mesh, starField: stars };
 }
 
 // Gradient sky dome with a warm glow around the sun direction.
 function buildSky(scene) {
-  const R = 2200;
+  // R must stay INSIDE the camera far plane (2050) AND the dome must follow the
+  // camera each frame (see the loop) — otherwise the far plane clips the dome in a
+  // disc around the view centre and scene.background shows through as a moving
+  // "orb" on the horizon. 2000 < 2050 with margin.
+  const R = 2000;
   const geo = new THREE.SphereGeometry(R, 32, 20);
   geo.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
   const mesh = new THREE.Mesh(
@@ -185,7 +202,10 @@ function recolorSky(geo, sunDir, m) {
     const u = Math.max(0, v.y);
     c.copy(horizon).lerp(top, Math.pow(u, 0.65));
     const d = v.dot(sunDir);
-    if (m.sunVisible && d > 0.5) c.lerp(warm, smoothstep(0.5, 0.98, d) * 0.8);
+    // Warm glow around the sun. A power curve peaks softly AT the sun and fades out
+    // smoothly — the old smoothstep saturated to a flat 80% patch within ~11°, which
+    // read as a hard bright "orb" on the sky (esp. low on the horizon behind hills).
+    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 5) * 0.7);
     col.setXYZ(i, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
@@ -200,7 +220,10 @@ function buildSun(scene) {
 
   const glowTex = radialGlowTexture();
   const glows = [];
-  for (const [size, opacity] of [[1500, 0.55], [700, 0.7]]) {
+  // Sun halo. The old outer glow was 1500u at ~1900u distance = a ~43° wash across
+  // the sky that read as a big "orb"/light smear to the horizon. Tightened to a
+  // believable halo: a wide-but-soft outer + a feathered inner around the core.
+  for (const [size, opacity] of [[560, 0.4], [260, 0.6]]) {
     const sp = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: glowTex,
@@ -227,7 +250,7 @@ function buildSun(scene) {
 // the sky (renderOrder 0 vs the sky's -1) with no fog so they stay crisp.
 function buildStars(scene) {
   const N = 900;
-  const R = 2080;
+  const R = 1980; // inside the far plane (2050); the dome follows the camera (see loop)
   const pos = new Float32Array(N * 3);
   const siz = new Float32Array(N);
   for (let i = 0; i < N; i++) {
@@ -244,28 +267,23 @@ function buildStars(scene) {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute("aSize", new THREE.Float32BufferAttribute(siz, 1));
-  const material = new THREE.ShaderMaterial({
+  // TSL node material (WebGPU): an additive star field faded in at night via the
+  // uOpacity uniform (applyMood writes material.uniforms.uOpacity.value). Per-star
+  // size comes from the aSize attribute; a cheap per-star twinkle modulates it.
+  const uOpacity = uniform(0);
+  const aSizeN = attribute("aSize");
+  const tw = aSizeN.mul(12.9).sin().mul(0.4).add(0.6);
+  const material = new THREE.PointsNodeMaterial({
     transparent: true,
     depthWrite: false,
     fog: false,
     blending: THREE.AdditiveBlending,
-    uniforms: { uOpacity: { value: 0 } },
-    vertexShader: `
-      attribute float aSize; varying float vTw;
-      void main(){
-        vTw = 0.6 + 0.4 * sin(aSize * 12.9);
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = aSize;
-        gl_Position = projectionMatrix * mv;
-      }`,
-    fragmentShader: `
-      uniform float uOpacity; varying float vTw;
-      void main(){
-        float d = length(gl_PointCoord - 0.5);
-        float a = smoothstep(0.5, 0.0, d);
-        gl_FragColor = vec4(vec3(0.9, 0.93, 1.0), a * uOpacity * vTw);
-      }`,
+    sizeAttenuation: false,
   });
+  material.colorNode = tslColor(0xe6edff);
+  material.sizeNode = aSizeN;
+  material.opacityNode = uOpacity.mul(tw);
+  material.uniforms = { uOpacity }; // so applyMood's uniforms.uOpacity.value write works
   const pts = new THREE.Points(geo, material);
   pts.renderOrder = 0;
   pts.frustumCulled = false;

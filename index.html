@@ -23,8 +23,10 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.161.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.161.0/examples/jsm/",
+        "three": "https://unpkg.com/three@0.171.0/build/three.webgpu.js",
+        "three/webgpu": "https://unpkg.com/three@0.171.0/build/three.webgpu.js",
+        "three/tsl": "https://unpkg.com/three@0.171.0/build/three.tsl.js",
+        "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/",
         "partysocket": "https://esm.sh/partysocket@1.0.2",
         "ably": "https://esm.sh/ably@2"
       }
@@ -47,6 +49,9 @@
   <div id="hud" class="hidden">
     <!-- Pause (top-left) -->
     <button id="btn-pause">⏸</button>
+
+    <!-- FPS counter (opt-in via Settings) -->
+    <div id="fps-counter" class="hidden">– FPS</div>
 
     <!-- Top-right race info -->
     <div id="info">
@@ -73,8 +78,10 @@
       <button id="btn-jump" class="action-btn">⬆</button>
     </div>
 
-    <!-- Rear-view mirror frame (top center); the view is drawn by WebGL) -->
-    <div id="mirror-frame"><span>REAR</span></div>
+    <!-- Rear threat warning (top center): replaces the rear-view mirror. Lights
+         amber when a kart has you in hairball range/cone behind you, and pulses
+         red when one is locked on and ready to fire. -->
+    <div id="rear-threat"><span class="rt-icon">🐾</span><span class="rt-label">BEHIND!</span></div>
 
     <!-- Minimap (bottom-left, just right of the throttle): track outline + a
          coloured dot per kart -->
@@ -269,7 +276,7 @@
             <div class="track-row"><span class="setting-label">Size</span>
               <input id="track-size" class="slider" type="range" min="0" max="100" value="50" />
               <span class="track-val" id="track-size-val">50</span></div>
-            <div class="env-label">Environment</div>
+            <div class="env-label">Environment <span id="biome-max-hint" class="env-hint"></span></div>
             <div class="biome-pick" id="track-biomes">
               <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>
               <button data-biome="forest" class="biome-chip">🌲 Forest</button>
@@ -308,6 +315,10 @@
             <button id="set-quality-low" class="seg-btn">Low</button>
             <button id="set-quality-high" class="seg-btn is-active">High</button>
           </div>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">FPS counter</span>
+          <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
         </div>
         <div class="setting-row">
           <span class="setting-label">Music</span>

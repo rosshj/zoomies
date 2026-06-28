@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { attribute, color as tslColor, float, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
 import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -226,6 +227,7 @@ function puddleBlob(cx, cz, baseR, stretchZ) {
   const segs = 26;
   const pos = [cx, 0, cz];
   const edge = [0];
+  const nrm = [0, 1, 0]; // flat puddle faces straight up — needed for the Fresnel sky tint (normalView)
   const ph0 = Math.random() * 6.28, ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
   for (let i = 0; i < segs; i++) {
     const a = (i / segs) * Math.PI * 2;
@@ -236,11 +238,13 @@ function puddleBlob(cx, cz, baseR, stretchZ) {
     const wz = cz + Math.sin(a) * r * stretchZ;
     pos.push(wx, 0, wz);
     edge.push(1);
+    nrm.push(0, 1, 0);
   }
   const idx = [];
   for (let i = 0; i < segs; i++) idx.push(0, 1 + i, 1 + ((i + 1) % segs));
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
   g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
   g.setIndex(idx);
   return g;
@@ -446,15 +450,25 @@ export class Track {
       g.translate(0, pl.gy + 0.04, 0); // sit flush on this puddle's ground
       return g;
     });
-    const mesh = new THREE.Mesh(
-      mergeGeometries(geoms),
-      new THREE.ShaderMaterial({
-        ...PUDDLE_SHEEN_SHADER,
-        transparent: true,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      })
-    );
+    // Reflective wet puddles (WebGPU): a glossy standard node-material. SSR (main.js)
+    // mirrors the scene on them where rays hit, but puddles face UP — so most of the
+    // time the reflection ray points at sky that's off-screen and SSR misses. With a
+    // near-black albedo + high metalness that read as pure black (the reported bug).
+    // Fix: bake a Fresnel sky tint into the colour so the surface always shows the sky
+    // it's reflecting even with no SSR hit, and drop metalness so the diffuse wet base
+    // shows through. SSR then adds real scene reflections on top where available.
+    const pmat = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    const edge = attribute("aEdge");
+    const glint = positionWorld.x.mul(1.3).add(positionWorld.z.mul(1.1)).add(time.mul(1.6)).sin().mul(0.5).add(0.5);
+    // 0 looking straight down, 1 at grazing angle — water brightens toward the sky tint at the rim.
+    const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(2.5);
+    const skyTint = tslColor(0x9fb6cc); // soft daylight-sky reflection colour
+    pmat.colorNode = tslColor(0x16252f).add(skyTint.mul(fres.mul(0.7))).add(glint.mul(0.05));
+    pmat.metalnessNode = float(0.35).add(fres.mul(0.35)); // grazing edges read more mirror-like (SSR), face stays diffuse-wet
+    pmat.roughnessNode = float(0.08);
+    pmat.opacityNode = float(0.55).add(fres.mul(0.4)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
+    pmat.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
+    const mesh = new THREE.Mesh(mergeGeometries(geoms), pmat);
     mesh.renderOrder = 1;
     this.group.add(mesh);
     this.puddleMesh = mesh;
@@ -645,8 +659,13 @@ export class Track {
         geo,
         new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })
       );
+      // The "fence flicker" was really the global shadow-map instability on WebGPU
+      // (the kart shadow flickers too) — fixed at the source via the shadow bias in
+      // scene.js. So the barrier casts its shadow again (restoring the grounding it
+      // lost), but doesn't RECEIVE shadows: a thin double-sided wall self-shadowing
+      // is an easy extra source of acne for no real visual gain.
       mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      mesh.receiveShadow = false;
       this.group.add(mesh);
     }
   }
@@ -697,18 +716,15 @@ export class Track {
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
     geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
     geo.setIndex(indices);
-    const mat = new THREE.ShaderMaterial({
+    // TSL node material (WebGPU): yellow centre line whose opacity is the
+    // per-vertex aAlpha fade baked above.
+    const mat = new THREE.MeshBasicNodeMaterial({
       transparent: true,
       depthWrite: false,
       side: THREE.DoubleSide,
-      uniforms: { uColor: { value: new THREE.Color(0xf4cf3a) } },
-      vertexShader: `
-        attribute float aAlpha; varying float vA;
-        void main(){ vA = aAlpha; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-      fragmentShader: `
-        uniform vec3 uColor; varying float vA;
-        void main(){ if (vA < 0.02) discard; gl_FragColor = vec4(uColor, vA); }`,
     });
+    mat.colorNode = tslColor(0xf4cf3a);
+    mat.opacityNode = attribute("aAlpha");
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 1;
     this.group.add(mesh);
