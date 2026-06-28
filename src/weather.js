@@ -11,7 +11,7 @@ export class Weather {
     this.target = "none"; // desired weather for the player's current biome
     this.current = "none"; // what's actually showing (crossfades toward target)
     this.intensity = 0; // 0..1 fade
-    this.count = 2600;
+    this.count = 1400; // was 2600 — snow scenes were the worst frame-rate dips (CPU update of every flake + transparent overdraw); 1400 still reads as full snowfall
     this.box = { w: 150, h: 95, d: 150 };
 
     this.pos = new Float32Array(this.count * 3);

@@ -1092,22 +1092,25 @@ function buildStringLights(scene, track, level = 0) {
 
   // Wires + (at dusk/night) a real warm point light per span so the strings
   // actually illuminate the road beneath them.
-  for (const sd of spans) {
+  spans.forEach((sd, si) => {
     const geo = new THREE.BufferGeometry().setFromPoints(sd.base.map((v) => v.clone()));
     const wire = new THREE.Line(geo, wireMat);
     wire.layers.set(1);
     wire.frustumCulled = false;
     scene.add(wire);
     sd.wire = wire; sd.wireGeo = geo;
-    if (level > 0.01) {
+    // Only every other span casts a REAL light (the rest still glow via emissive
+    // bulbs + bloom). Every dynamic light is per-pixel cost at night, and the pools
+    // overlap anyway, so halving them is ~invisible but meaningfully cheaper.
+    if (level > 0.01 && si % 2 === 0) {
       const lp = sd.base[Math.floor(sd.per / 2)];
-      const pl = new THREE.PointLight(0xfff0c8, 10 * level, 30, 1.7);
+      const pl = new THREE.PointLight(0xfff0c8, 13 * level, 32, 1.7); // a touch brighter to cover the gaps
       pl.position.copy(lp);
       pl.castShadow = false;
       scene.add(pl);
       sd.light = pl;
     }
-  }
+  });
 
   const _m = new THREE.Matrix4();
   const _id = new THREE.Quaternion();

@@ -288,7 +288,11 @@ initProps(scene, track, {
 // nearest karts each frame made beams visibly jump/flicker between karts as they
 // jockeyed for position. The per-frame assignment still maps the nearest karts to
 // the pool, so any extras beyond the budget (large MP lobbies) fall back to bulbs.
-const HEADLIGHT_BUDGET = 8; // was 3 (player + 2 nearest); now every kart in a normal field gets a beam
+// Sized to the AI roster (6) so every kart in a normal race gets its own beam with
+// ZERO spare lights — a budget of 8 left 2 spotlights always allocated but unused,
+// and every dynamic light costs per-pixel even at zero intensity. Larger MP lobbies
+// fall back to bulbs beyond the budget (the per-frame assignment handles that).
+const HEADLIGHT_BUDGET = 6; // = ROSTER size; was 8 (2 wasted always-on lights at night)
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
@@ -1037,7 +1041,7 @@ function triggerHit() {
 // Render the 3D at a variable internal resolution to hold a steady frame rate:
 // drop it when frames run long, probe it back up when there's headroom. The CSS
 // size (and HUD) stay full-res; only the drawing buffer scales.
-const DRS_MIN = 0.5; // was 0.55 — give the scaler a bit more room for the worst spikes (facing the sun, big maps)
+const DRS_MIN = 0.45; // give the scaler more room on the heaviest night scenes (many lights + snow are fill-bound)
 let _frameMs = 16.7;
 let _drsCooldown = 0;
 function updateDRS(rawMs, dt) {
