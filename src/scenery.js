@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex } from "three/tsl";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 
@@ -293,7 +293,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildTerrain(scene, heightAt, litLevel); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
-  buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted)
+  const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
@@ -312,6 +312,7 @@ export function buildWorld(scene, track, opts = {}) {
 
   return {
     grass,
+    groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
@@ -866,18 +867,39 @@ function buildGroundLeaves(scene, track, heightAt) {
       placements.push({ x, y: heightAt(x, z), z });
     }
   }
-  if (!placements.length) return;
-  const geo = makeLeafGeo();
-  // Wind rustle: a per-instance phase drives a position-weighted sway so each leaf's
-  // edges rock while its centre stays put. Material shared across all chunk meshes.
+  if (!placements.length) return null;
+
+  // Kart-wake uniforms: the few karts nearest the camera (updated each frame from
+  // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
+  // passes — all on the GPU, no per-leaf CPU physics.
+  const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
+  const uWakeR = uniform(7.5);
+
+  // Shared material across all chunk meshes: wind rustle + kart-wake pop.
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
   const _ph = hash(instanceIndex).mul(6.2832);
   const _t = time.add(_ph);
   const _amp = positionLocal.length().mul(0.3); // outer edges rock more than the centre
   const _sway = vec3(_t.mul(2.6).sin(), _t.mul(3.3).sin().mul(0.4), _t.mul(2.1).cos()).mul(_amp);
-  mat.positionNode = positionLocal.add(_sway);
+  // Wake lift: sum each kart's nearby influence (1 at the kart, 0 past the radius).
+  // Built as an immutable node expression (no toVar/assign — those need an Fn scope).
+  const _base = attribute("aBase"); // this leaf's world position
+  let _liftSum = float(0);
+  for (const w of wakes) {
+    const dx = _base.x.sub(w.x);
+    const dz = _base.z.sub(w.z);
+    const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
+    _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus());
+  }
+  const _lift = _liftSum.min(1.0);
+  // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
+  // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
+  const _pop = vec3(0, 1, 0).mul(_lift.mul(1.7));
+  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(0.6));
+  mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
 
-  // Bucket placements into coarse chunks so off-screen leaves cull as a group.
+  // Bucket placements into coarse chunks so off-screen leaves cull as a group; each
+  // chunk gets its own geo carrying an aBase attribute (per-leaf world position).
   const CHUNK = 130;
   const buckets = new Map();
   for (const s of placements) {
@@ -889,23 +911,42 @@ function buildGroundLeaves(scene, track, heightAt) {
   const dummy = new THREE.Object3D();
   const _c = new THREE.Color();
   for (const arr of buckets.values()) {
+    const geo = makeLeafGeo();
+    geo.rotateX(-Math.PI / 2); // lie flat; instances rotate yaw-only so the wake pop stays world-up
+    const aBase = new Float32Array(arr.length * 3);
     const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
     arr.forEach((s, i) => {
       dummy.position.set(s.x, s.y + 0.03, s.z);
-      // Lie mostly flat (rotateX -90°) but with a wide random tilt so some leaves
-      // stand up a little and catch the light (easier to read from the chase cam).
-      dummy.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.9);
+      dummy.rotation.set(0, rand() * Math.PI * 2, 0); // yaw only
       dummy.scale.setScalar(0.5 + rand() * 0.5);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
       mesh.setColorAt(i, _c.set(GROUND_LEAF_COLS[(rand() * GROUND_LEAF_COLS.length) | 0]));
+      aBase[i * 3] = s.x; aBase[i * 3 + 1] = s.y; aBase[i * 3 + 2] = s.z;
     });
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase, 3));
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.castShadow = false; // flat on the ground — shadow not worth the shadow-pass cost
     mesh.receiveShadow = true;
     mesh.layers.set(1);
     scene.add(mesh);
   }
+
+  // Each frame, point the wake at the karts nearest the camera (those whose wake
+  // you'd actually see kicking up leaves).
+  const _sorted = [];
+  return {
+    update(karts, camPos) {
+      _sorted.length = 0;
+      for (const k of karts) if (k && k.position) _sorted.push(k);
+      _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
+      for (let i = 0; i < wakes.length; i++) {
+        const k = _sorted[i];
+        if (k) wakes[i].value.copy(k.position);
+        else wakes[i].value.set(1e6, 1e6, 1e6);
+      }
+    },
+  };
 }
 
 function buildTrees(scene, track, heightAt, flatten) {
