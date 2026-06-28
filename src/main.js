@@ -268,20 +268,32 @@ scene.add(track.group);
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
 // DEBUG (temporary): hide scene-graph layers requested via ?nofx= (the post-FX
-// layers ssr/bloom/shaft are zeroed per-frame in renderFrame instead).
+// layers ssr/bloom/shaft are zeroed per-frame in renderFrame instead). ?nofx=all
+// turns everything off at once. A visible on-screen badge confirms it's active and
+// reports how many objects each scene toggle hit (so a "0" reveals a missed layer).
+if (_NOFX.has("all")) for (const k of ["ssr", "bloom", "shaft", "clouds", "sky", "sun"]) _NOFX.add(k);
 if (_NOFX.size) {
+  let nSky = 0, nSun = 0, nCloud = 0;
   scene.traverse((o) => {
     const m = o.material;
     const isSky = o.isMesh && m && m.isMeshBasicMaterial && m.vertexColors && o.renderOrder < 0;
     const isSun = o.isMesh && m && m.isMeshBasicMaterial && m.toneMapped === false && o.geometry && o.geometry.type === "SphereGeometry" && o.geometry.parameters.radius < 100;
-    if ((_NOFX.has("sky") && isSky) || (_NOFX.has("sun") && (isSun || o.isSprite))) o.visible = false;
+    if (_NOFX.has("sky") && isSky) { o.visible = false; nSky++; }
+    if (_NOFX.has("sun") && (isSun || o.isSprite)) { o.visible = false; nSun++; }
   });
   if (_NOFX.has("clouds")) {
     for (const o of scene.children) {
-      if (o.isGroup && o.children.length && o.children.every((c) => c.isMesh && c.geometry && c.geometry.type === "SphereGeometry")) o.visible = false;
+      if (o.isGroup && o.children.length && o.children.every((c) => c.isMesh && c.geometry && c.geometry.type === "SphereGeometry")) { o.visible = false; nCloud++; }
     }
   }
-  console.log("[zoomies] DEBUG nofx:", [..._NOFX].join(","));
+  // Flat magenta background: if the glow vanishes against magenta it's the sky/bg;
+  // if it survives it's a foreground object (best combined with nofx=sky).
+  if (_NOFX.has("bg")) scene.background = new THREE.Color(0xff00ff);
+  const badge = document.createElement("div");
+  badge.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:99999;background:#b00;color:#fff;font:bold 13px monospace;padding:4px 10px;border-radius:6px;pointer-events:none";
+  badge.textContent = `NOFX ${[..._NOFX].join(",")} · sky:${nSky} sun:${nSun} cloud:${nCloud}`;
+  document.body.appendChild(badge);
+  console.log("[zoomies] DEBUG nofx:", [..._NOFX].join(","), { nSky, nSun, nCloud });
 }
 
 // Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
