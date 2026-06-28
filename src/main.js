@@ -887,6 +887,34 @@ function renderFrame() {
   }
 }
 
+// One-time pipeline warm-up. During a race the camera only faces forward, so the
+// scenery behind/beside you is never drawn and its GPU pipelines never compile —
+// then a spin-out whips the camera across all of it at once, compiling many in one
+// frame = a hitch. Here we render the surrounding scenery from a full turn of
+// angles up front (every pipeline variant in the world is around the start town),
+// using the NORMAL render path (compileAsync corrupted the WebGPU post-processing
+// state, so we don't use it). All renders happen in one tick and the caller draws
+// the correct view immediately after, so nothing flashes on screen.
+let _prewarmed = false;
+function prewarmPipelines() {
+  if (_prewarmed || !player) return;
+  _prewarmed = true;
+  const savedPos = camera.position.clone();
+  const savedQuat = camera.quaternion.clone();
+  const c = player.position;
+  const N = 12;
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    camera.position.set(c.x, c.y + 3, c.z);
+    camera.lookAt(c.x + Math.cos(a) * 40, c.y + 2, c.z + Math.sin(a) * 40);
+    camera.updateMatrixWorld();
+    renderFrame();
+  }
+  camera.position.copy(savedPos);
+  camera.quaternion.copy(savedQuat);
+  camera.updateMatrixWorld();
+}
+
 // --- Minimap ---
 // Fit the track's world XZ bounds into the canvas (preserving aspect, padded),
 // bake the centreline into a Path2D once, then each frame stroke that outline
@@ -2510,6 +2538,7 @@ function loop(now) {
     if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
     else countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
+    prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     const n = Math.ceil(countdown - 1);
     hud.showToast(n > 0 ? `${n}` : "GO!");
     // A beep on each 3/2/1 and a higher GO! chirp, as the number changes.
