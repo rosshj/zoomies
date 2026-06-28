@@ -197,31 +197,16 @@ function recolorSky(geo, sunDir, m) {
   const c = new THREE.Color();
   const pos = geo.attributes.position;
   const col = geo.attributes.color;
-  // DEBUG (temporary): build-time sky knobs (run BEFORE first render, so they
-  // actually take effect — a post-render recolour silently fails to re-upload).
-  //   ?skydim=N   scale the HORIZON-band brightness (1 = current, lower = dimmer)
-  //   ?sky=red    paint the whole dome red (litmus: confirms the visible sky IS
-  //               this dome and that fresh scene.js is running)
-  //   ?sky=flat   flat blue-grey, no gradient/warm (control)
-  //   ?sky=nowarm keep the gradient but drop the warm sun-glow lerp
-  const _p = new URLSearchParams(location.search);
-  const _sd = parseFloat(_p.get("skydim"));
-  const dim = _sd > 0 && _sd <= 2 ? _sd : 1;
-  const dbg = _p.get("sky");
   for (let i = 0; i < pos.count; i++) {
     v.fromBufferAttribute(pos, i).normalize();
     const u = Math.max(0, v.y);
-    const g = Math.pow(u, 0.65);
-    c.copy(horizon).lerp(top, g);
+    c.copy(horizon).lerp(top, Math.pow(u, 0.65));
     const d = v.dot(sunDir);
     // Warm glow around the sun. A power curve peaks softly AT the sun and fades out
     // smoothly — the old smoothstep saturated to a flat 80% patch within ~11°, which
     // read as a hard bright "orb" on the sky (esp. low on the horizon behind hills).
-    if (m.sunVisible && d > 0 && dbg !== "nowarm") c.lerp(warm, Math.pow(d, 5) * 0.7);
-    let f = dim + (1 - dim) * g; // dim at the horizon, unchanged at the top
-    if (dbg === "red") { c.setRGB(1, 0, 0); f = 1; }
-    else if (dbg === "flat") { c.setRGB(0.45, 0.55, 0.68); f = 1; }
-    col.setXYZ(i, c.r * f, c.g * f, c.b * f);
+    if (m.sunVisible && d > 0) c.lerp(warm, Math.pow(d, 5) * 0.7);
+    col.setXYZ(i, c.r, c.g, c.b);
   }
   col.needsUpdate = true;
 }

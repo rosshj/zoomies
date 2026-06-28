@@ -53,12 +53,6 @@ function saveTrackConfig(c) {
 const trackConfig = loadTrackConfig();
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
-// DEBUG (temporary): ?nofx=ssr,bloom,shaft,clouds,sky,sun isolates a render layer
-// on-device so we can pin the "horizon glow" source (this sandbox can't screenshot
-// the WebGPU backend). e.g. ...?nofx=ssr  or  ?nofx=bloom,shaft . Remove once found.
-const _NOFX = new Set(
-  (new URLSearchParams(location.search).get("nofx") || "").toLowerCase().split(",").map((s) => s.trim()).filter(Boolean)
-);
 const WORLD_SEED = (
   (trackConfig.mode === "custom" && trackConfig.seed) ||
   _seedParam ||
@@ -259,35 +253,6 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
-
-// DEBUG (temporary): hide scene-graph layers requested via ?nofx= (the post-FX
-// layers ssr/bloom/shaft are zeroed per-frame in renderFrame instead). ?nofx=all
-// turns everything off at once. A visible on-screen badge confirms it's active and
-// reports how many objects each scene toggle hit (so a "0" reveals a missed layer).
-if (_NOFX.has("all")) for (const k of ["ssr", "bloom", "shaft", "clouds", "sky", "sun"]) _NOFX.add(k);
-if (_NOFX.size) {
-  let nSky = 0, nSun = 0, nCloud = 0;
-  scene.traverse((o) => {
-    const m = o.material;
-    const isSky = o.isMesh && m && m.isMeshBasicMaterial && m.vertexColors && o.renderOrder < 0;
-    const isSun = o.isMesh && m && m.isMeshBasicMaterial && m.toneMapped === false && o.geometry && o.geometry.type === "SphereGeometry" && o.geometry.parameters.radius < 100;
-    if (_NOFX.has("sky") && isSky) { o.visible = false; nSky++; }
-    if (_NOFX.has("sun") && (isSun || o.isSprite)) { o.visible = false; nSun++; }
-  });
-  if (_NOFX.has("clouds")) {
-    for (const o of scene.children) {
-      if (o.isGroup && o.children.length && o.children.every((c) => c.isMesh && c.geometry && c.geometry.type === "SphereGeometry")) { o.visible = false; nCloud++; }
-    }
-  }
-  // Flat magenta background: if the glow vanishes against magenta it's the sky/bg;
-  // if it survives it's a foreground object (best combined with nofx=sky).
-  if (_NOFX.has("bg")) scene.background = new THREE.Color(0xff00ff);
-  const badge = document.createElement("div");
-  badge.style.cssText = "position:fixed;top:6px;left:50%;transform:translateX(-50%);z-index:99999;background:#b00;color:#fff;font:bold 13px monospace;padding:4px 10px;border-radius:6px;pointer-events:none";
-  badge.textContent = `NOFX ${[..._NOFX].join(",")} · sky:${nSky} sun:${nSun} cloud:${nCloud}`;
-  document.body.appendChild(badge);
-  console.log("[zoomies] DEBUG nofx:", [..._NOFX].join(","), { nSky, nSun, nCloud });
-}
 
 
 // Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
@@ -925,13 +890,6 @@ function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   updateAtmosphere();
-  // DEBUG (temporary): zero post-FX layers requested via ?nofx= AFTER the normal
-  // per-frame writes (god-ray uVis, snow-blend bloom) so the override sticks.
-  if (_NOFX.size) {
-    if (_NOFX.has("ssr")) _ssrPass.opacity.value = 0;
-    if (_NOFX.has("shaft") || _NOFX.has("godray") || _NOFX.has("ray")) _uGVis.value = 0;
-    if (_NOFX.has("bloom")) _bloomNode.strength.value = 0;
-  }
   composer.render();
   if (player && state !== State.MENU) {
     drawMinimap();
@@ -1429,10 +1387,7 @@ installBack?.addEventListener("click", () => closeSubScreen(installHelp));
 // and tablets until installed. Desktop keeps playing in the tab (none of those
 // issues apply there). The install screen floats over the live scene like the
 // other menus, with no way to dismiss it.
-// DEBUG (temporary): the install gate is disabled so the game plays in-browser on
-// iOS Safari — that's the only way to run the ?nofx= bisect without fighting the
-// installed-PWA cache. Restore by removing `false &&` once the glow is pinned.
-if (false && _isTouch && !_isStandalone) {
+if (_isTouch && !_isStandalone) {
   _installGate = true;
   installGateNote?.classList.remove("hidden");
   installBack?.classList.add("hidden");
