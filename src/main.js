@@ -98,7 +98,7 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
-const { renderer, scene, camera, sun, applyMood, ready: rendererReady } = createScene();
+const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
 // wipe the count between them and leave only the last pass).
@@ -846,6 +846,13 @@ const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
 function updateAtmosphere() {
+  // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
+  // constant depth (their radius) inside the far plane. Anchored to the world origin
+  // they'd swing out past the 2050 far plane as the player drives, getting clipped
+  // in a disc around the view centre — that clip let scene.background show through as
+  // a pale "orb" on the horizon that tracked the kart.
+  if (skyMesh) skyMesh.position.copy(camera.position);
+  if (starField) starField.position.copy(camera.position);
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
   // Direction toward the sun (invariant to the follow offset below).

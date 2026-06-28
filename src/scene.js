@@ -168,12 +168,16 @@ export function createScene() {
   // Expose the promise so the main loop only starts rendering once it's ready.
   const ready = renderer.init ? renderer.init() : Promise.resolve();
 
-  return { renderer, scene, camera, sun, applyMood, ready };
+  return { renderer, scene, camera, sun, applyMood, ready, skyMesh: sky.mesh, starField: stars };
 }
 
 // Gradient sky dome with a warm glow around the sun direction.
 function buildSky(scene) {
-  const R = 2200;
+  // R must stay INSIDE the camera far plane (2050) AND the dome must follow the
+  // camera each frame (see the loop) — otherwise the far plane clips the dome in a
+  // disc around the view centre and scene.background shows through as a moving
+  // "orb" on the horizon. 2000 < 2050 with margin.
+  const R = 2000;
   const geo = new THREE.SphereGeometry(R, 32, 20);
   geo.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
   const mesh = new THREE.Mesh(
@@ -261,7 +265,7 @@ function buildSun(scene) {
 // the sky (renderOrder 0 vs the sky's -1) with no fog so they stay crisp.
 function buildStars(scene) {
   const N = 900;
-  const R = 2080;
+  const R = 1980; // inside the far plane (2050); the dome follows the camera (see loop)
   const pos = new Float32Array(N * 3);
   const siz = new Float32Array(N);
   for (let i = 0; i < N; i++) {
