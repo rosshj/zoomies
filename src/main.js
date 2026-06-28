@@ -261,6 +261,7 @@ let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
+  heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onCatnip: (kart, pos) => {
     kart.giveCatnip();
     effects.tootBurst(kart, 2, true); // green smash poof

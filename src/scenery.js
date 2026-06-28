@@ -312,6 +312,7 @@ export function buildWorld(scene, track, opts = {}) {
 
   return {
     grass,
+    heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
     groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     update(time, dt = 0.016, playerPos = null) {
@@ -873,13 +874,13 @@ function buildGroundLeaves(scene, track, heightAt) {
   // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
   // passes — all on the GPU, no per-leaf CPU physics.
   const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
-  const uWakeR = uniform(7.5);
+  const uWakeR = uniform(9.5); // generous so leaves you drive near clearly react
 
   // Shared material across all chunk meshes: wind rustle + kart-wake pop.
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
   const _ph = hash(instanceIndex).mul(6.2832);
   const _t = time.add(_ph);
-  const _amp = positionLocal.length().mul(0.3); // outer edges rock more than the centre
+  const _amp = positionLocal.length().mul(0.45); // idle wind: outer edges rock more than the centre (a touch livelier so none look dead)
   const _sway = vec3(_t.mul(2.6).sin(), _t.mul(3.3).sin().mul(0.4), _t.mul(2.1).cos()).mul(_amp);
   // Wake lift: sum each kart's nearby influence (1 at the kart, 0 past the radius).
   // Built as an immutable node expression (no toVar/assign — those need an Fn scope).
@@ -894,8 +895,8 @@ function buildGroundLeaves(scene, track, heightAt) {
   const _lift = _liftSum.min(1.0);
   // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
   // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
-  const _pop = vec3(0, 1, 0).mul(_lift.mul(1.7));
-  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(0.6));
+  const _pop = vec3(0, 1, 0).mul(_lift.mul(2.8)); // higher pop so a pass clearly kicks them up
+  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(1.1)); // strong scatter/swirl in the wake
   mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
 
   // Bucket placements into coarse chunks so off-screen leaves cull as a group; each

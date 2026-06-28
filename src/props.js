@@ -39,6 +39,10 @@ function build(scene, track, opts) {
   const size = opts.size ?? 0.5;
   const catnipCount = size >= 0.55 ? 2 : 1;
   const CATNIP_RESPAWN = 8 + size * 14; // ~8s small .. ~22s big
+  // Real terrain height (incl. the road carve). groundInfo() returns the ROAD-CURVE
+  // height, which is wrong off the road (terrain rises away from it) — that's why
+  // some leaf piles floated. Prefer the terrain sampler when we have it.
+  const groundAt = opts.heightAt || ((x, z) => track.groundInfo(x, z).y);
 
   const group = new THREE.Group();
   scene.add(group);
@@ -182,7 +186,7 @@ function build(scene, track, opts) {
       const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
       if (kindRoll < 0.8) addProp(x, z, groundY, kindRoll < 0.5 ? makeCrate() : makeBarrel());
-      else addLeafPile(x, z, groundY);
+      else addLeafPile(x, z, groundAt(x, z)); // piles sit on the real ground (groundY is road-curve height -> floats off-road)
     }
   }
 
