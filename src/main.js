@@ -289,6 +289,7 @@ if (_NOFX.size) {
   console.log("[zoomies] DEBUG nofx:", [..._NOFX].join(","), { nSky, nSun, nCloud });
 }
 
+
 // Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
 // to build, `props` stays null and the game is fine. Smashing a green CATNIP crate
 // grants that kart an 8s hands-free green boost.
