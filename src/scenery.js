@@ -838,26 +838,28 @@ function scatter(count, track, flatten, minFlat, range) {
 }
 
 // Loose leaves scattered across the ground (in addition to the knockable piles) so
-// leafy biomes feel carpeted and lived-in. One instanced mesh of the shared leaf
-// silhouette — small, lying flat with random spin, autumn-toned, denser in autumn
-// and forest. Cheap (a single draw call); doesn't cast shadow (flat on the ground).
+// leafy biomes feel carpeted and lived-in. The shared leaf silhouette, small and
+// autumn-toned, denser in autumn/forest. They gently RUSTLE in the wind (the
+// "alive" part). Split into spatial CHUNKS so off-screen leaves frustum-cull — a
+// single track-spanning mesh could never cull, so every leaf was processed every
+// frame; chunking lets us carry far more leaves for less cost. No shadow (flat).
 const GROUND_LEAF_COLS = [0xc4471f, 0xe07b1e, 0xf0c040, 0xd23a2a, 0x9c6b1f, 0x7a2e1e, 0xe8a838];
 function buildGroundLeaves(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
   const placements = [];
-  const MAX = 1100;
+  const MAX = 1700;
   for (let i = 0; i < N && placements.length < MAX; i++) {
     const p = track._pts[i];
     const b = biomeAt(p.x, p.z);
-    // Per-biome leaf density: autumn is carpeted, forest scattered, meadow a sprinkle.
-    const dens = b.name === "autumn" ? 1.0 : b.name === "forest" ? 0.55 : b.name === "meadow" ? 0.2 : 0;
+    // Per-biome leaf density: autumn is carpeted, forest well-scattered, meadow a sprinkle.
+    const dens = b.name === "autumn" ? 1.0 : b.name === "forest" ? 0.7 : b.name === "meadow" ? 0.32 : 0;
     if (dens <= 0) continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const tries = Math.ceil(dens * 4);
+    const tries = Math.ceil(dens * 6);
     for (let k = 0; k < tries && placements.length < MAX; k++) {
       if (rand() > dens) continue;
-      const lat = (rand() * 2 - 1) * (track.halfWidth + 11); // on the road edges + verge
+      const lat = (rand() * 2 - 1) * (track.halfWidth + 12); // on the road edges + verge
       const x = p.x + side.x * lat + (rand() - 0.5) * 5;
       const z = p.z + side.z * lat + (rand() - 0.5) * 5;
       if (_inLake(x, z)) continue;
@@ -866,33 +868,44 @@ function buildGroundLeaves(scene, track, heightAt) {
   }
   if (!placements.length) return;
   const geo = makeLeafGeo();
-  // Node material so the leaves gently RUSTLE in the wind (the "alive" part): a
-  // per-instance phase drives a position-weighted sway, so each leaf's edges rock
-  // a little while the centre stays put. Per-instance colour via setColorAt.
+  // Wind rustle: a per-instance phase drives a position-weighted sway so each leaf's
+  // edges rock while its centre stays put. Material shared across all chunk meshes.
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
   const _ph = hash(instanceIndex).mul(6.2832);
   const _t = time.add(_ph);
   const _amp = positionLocal.length().mul(0.3); // outer edges rock more than the centre
   const _sway = vec3(_t.mul(2.6).sin(), _t.mul(3.3).sin().mul(0.4), _t.mul(2.1).cos()).mul(_amp);
   mat.positionNode = positionLocal.add(_sway);
-  const mesh = new THREE.InstancedMesh(geo, mat, placements.length);
+
+  // Bucket placements into coarse chunks so off-screen leaves cull as a group.
+  const CHUNK = 130;
+  const buckets = new Map();
+  for (const s of placements) {
+    const key = Math.round(s.x / CHUNK) + "_" + Math.round(s.z / CHUNK);
+    let arr = buckets.get(key);
+    if (!arr) buckets.set(key, (arr = []));
+    arr.push(s);
+  }
   const dummy = new THREE.Object3D();
   const _c = new THREE.Color();
-  placements.forEach((s, i) => {
-    dummy.position.set(s.x, s.y + 0.03, s.z);
-    // Lie mostly flat (rotateX -90°) but with a wider random tilt so some leaves
-    // stand up a little and catch the light (easier to read from the chase cam).
-    dummy.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.9);
-    dummy.scale.setScalar(0.5 + rand() * 0.5);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i, dummy.matrix);
-    mesh.setColorAt(i, _c.set(GROUND_LEAF_COLS[(rand() * GROUND_LEAF_COLS.length) | 0]));
-  });
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.castShadow = false; // flat on the ground — shadow not worth the shadow-pass cost
-  mesh.receiveShadow = true;
-  mesh.layers.set(1);
-  scene.add(mesh);
+  for (const arr of buckets.values()) {
+    const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
+    arr.forEach((s, i) => {
+      dummy.position.set(s.x, s.y + 0.03, s.z);
+      // Lie mostly flat (rotateX -90°) but with a wide random tilt so some leaves
+      // stand up a little and catch the light (easier to read from the chase cam).
+      dummy.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.9, rand() * Math.PI * 2, (rand() - 0.5) * 0.9);
+      dummy.scale.setScalar(0.5 + rand() * 0.5);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, _c.set(GROUND_LEAF_COLS[(rand() * GROUND_LEAF_COLS.length) | 0]));
+    });
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = false; // flat on the ground — shadow not worth the shadow-pass cost
+    mesh.receiveShadow = true;
+    mesh.layers.set(1);
+    scene.add(mesh);
+  }
 }
 
 function buildTrees(scene, track, heightAt, flatten) {
