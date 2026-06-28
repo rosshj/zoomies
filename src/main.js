@@ -1428,7 +1428,10 @@ installBack?.addEventListener("click", () => closeSubScreen(installHelp));
 // and tablets until installed. Desktop keeps playing in the tab (none of those
 // issues apply there). The install screen floats over the live scene like the
 // other menus, with no way to dismiss it.
-if (_isTouch && !_isStandalone) {
+// DEBUG (temporary): the install gate is disabled so the game plays in-browser on
+// iOS Safari — that's the only way to run the ?nofx= bisect without fighting the
+// installed-PWA cache. Restore by removing `false &&` once the glow is pinned.
+if (false && _isTouch && !_isStandalone) {
   _installGate = true;
   installGateNote?.classList.remove("hidden");
   installBack?.classList.add("hidden");
