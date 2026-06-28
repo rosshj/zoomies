@@ -16,7 +16,7 @@ export const MOODS = [
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
     hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
-    sunCore: [2.3, 2.05, 1.5], sunSize: 48, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
+    sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
     cloud: 0xffffff, sat: 1.3, contrast: 1.02,
   },
   {
@@ -26,7 +26,7 @@ export const MOODS = [
     skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
     hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.84,
     bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.13,
-    sunCore: [2.6, 1.7, 0.9], sunSize: 86, sunVisible: true, rays: true, rayWeight: 1.7, starI: 0.15,
+    sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.4, starI: 0.15,
     cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
   },
   {
@@ -38,7 +38,7 @@ export const MOODS = [
     skyTop: 0x060a1a, skyHorizon: 0x17263f, skyWarm: 0x17263f,
     hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.56,
     bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.16,
-    sunCore: [1.25, 1.35, 1.65], sunSize: 34, sunVisible: true, rays: false, starI: 1,
+    sunCore: [1.25, 1.35, 1.65], sunSize: 28, sunVisible: true, rays: false, starI: 1,
     cloud: 0x2a3551, sat: 1.32, contrast: 1.1,
   },
 ];
@@ -213,7 +213,9 @@ function buildSun(scene) {
 
   const glowTex = radialGlowTexture();
   const glows = [];
-  for (const [size, opacity] of [[1500, 0.55], [700, 0.7]]) {
+  // A tight inner glow feathers the hard core edge (so the sun reads as a soft
+  // glowing disc, not a solid ball poking over the mountains), plus the wide halos.
+  for (const [size, opacity] of [[1500, 0.55], [700, 0.7], [300, 0.85]]) {
     const sp = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: glowTex,

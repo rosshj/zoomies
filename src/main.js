@@ -157,7 +157,7 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
-const _GN = 10, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 -> 10 samples: facing the sun was the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay keep the shaft length
+const _GN = 8, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 -> 10 -> 8 samples: facing the sun is the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay + jitter keep the shaft length
 // Returns JUST the additive shaft contribution (not the scene), so it can be
 // rendered at HALF resolution and added back to the full-res scene — god-rays are
 // soft/low-frequency, so half-res is ~4x cheaper and nearly indistinguishable.
