@@ -120,7 +120,7 @@ function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
   const pitch = S / count;
   for (let i = 0; i < count; i++) {
     const c0 = (i + 0.5) * pitch + (i % 2 ? pitch * 0.12 : -pitch * 0.12); // slight wobble
-    const w = pitch * (0.42 + (i % 3) * 0.04);
+    const w = pitch * (0.3 + (i % 3) * 0.03); // thinner bars
     // 2–3 dashes along the stripe with small gaps → organic, broken look
     const segs = i % 2 ? [[0.0, 0.46], [0.54, 0.46]] : [[0.0, 0.3], [0.36, 0.3], [0.72, 0.28]];
     for (const [a, len] of segs) {
@@ -196,8 +196,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
   function coatTex(forTail) {
     if (isTabby) return forTail
-      ? makeStripeTexture(pal.fur, pal.stripe, 6, "v")  // 6 rings around the tail
-      : makeStripeTexture(pal.fur, pal.stripe, 9, "u"); // 9 vertical flank stripes
+      ? makeStripeTexture(pal.fur, pal.stripe, 6, "v")   // 6 rings around the tail
+      : makeStripeTexture(pal.fur, pal.stripe, 13, "v"); // many thin horizontal body rings
     if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe);
     return null;
   }
@@ -363,6 +363,85 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       pivot.add(new THREE.Line(g, whiskerMat));
     }
     whiskers[sx < 0 ? "L" : "R"] = pivot;
+  }
+
+  // --- Per-breed accessory: each cat wears its own thing. Hats/headwear parent
+  // to the head (so they lean with it); neckwear parents to the body. ---
+  const accMat = (hex, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m });
+  const acc = new THREE.Group();
+  if (pat === "spotted") {
+    // backwards baseball cap
+    const m = accMat(0xe23b3b);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
+    dome.position.set(0, 0.46, 0.04); dome.scale.set(1, 0.72, 1);
+    acc.add(dome);
+    const brim = new THREE.Mesh(rbox(0.66, 0.08, 0.5, 0.04), m);
+    brim.position.set(0, 0.46, -0.62);
+    acc.add(brim);
+    const btn = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), accMat(0xffffff));
+    btn.position.set(0, 0.78, 0.04); acc.add(btn);
+    head.add(acc);
+  } else if (pat === "solid") {
+    // headphones
+    const m = accMat(0x222831, 0.4);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.06, 8, 18, Math.PI), m);
+    band.position.set(0, 0.36, 0); acc.add(band);
+    for (const sx of [-1, 1]) {
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.14, 14), m);
+      cup.rotation.z = Math.PI / 2; cup.position.set(sx * 0.66, 0.02, 0);
+      acc.add(cup);
+    }
+    head.add(acc);
+  } else if (pat === "snowshoe") {
+    // bobble beanie
+    const m = accMat(0x3f7fd6);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.66, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
+    cap.position.set(0, 0.36, 0); cap.scale.set(1, 0.92, 1); acc.add(cap);
+    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 8, 18), accMat(0xffffff));
+    cuff.position.set(0, 0.4, 0); cuff.rotation.x = Math.PI / 2; acc.add(cuff);
+    const pom = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), accMat(0xffffff));
+    pom.position.set(0, 0.96, 0); acc.add(pom);
+    head.add(acc);
+  } else if (pat === "point") {
+    // flower tucked behind one ear
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), accMat(0xff7ab3));
+      petal.position.set(0.52 + Math.cos(a) * 0.13, 0.5 + Math.sin(a) * 0.13, 0.16);
+      petal.scale.set(1, 1, 0.5); acc.add(petal);
+    }
+    const ctr = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), accMat(0xffe14d));
+    ctr.position.set(0.52, 0.5, 0.2); acc.add(ctr);
+    head.add(acc);
+  } else if (pat === "mitted") {
+    // little fedora
+    const m = accMat(0x6b4a2f);
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.05, 18), m);
+    brim.position.set(0, 0.44, 0.02); acc.add(brim);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.42, 16), m);
+    crown.position.set(0, 0.64, 0.02); acc.add(crown);
+    const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.1, 16), accMat(0x2a2a2a));
+    bandm.position.set(0, 0.49, 0.02); acc.add(bandm);
+    head.add(acc);
+  } else if (pat === "tuxedo") {
+    // bowtie at the collar
+    const m = accMat(0x14161b, 0.4);
+    for (const sx of [-1, 1]) {
+      const tri = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.28, 4), m);
+      tri.rotation.z = sx * Math.PI / 2; tri.position.set(sx * 0.18, 1.62, 0.62);
+      acc.add(tri);
+    }
+    const knot = new THREE.Mesh(rbox(0.1, 0.16, 0.1, 0.03), m);
+    knot.position.set(0, 1.62, 0.64); acc.add(knot);
+    cat.add(acc);
+  } else if (pat === "tabby") {
+    // neckerchief / bandana
+    const m = accMat(0xd23b3b);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 18), m);
+    ring.position.set(0, 1.56, 0.08); ring.rotation.x = Math.PI / 2.3; acc.add(ring);
+    const knot = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 5), m);
+    knot.position.set(0, 1.42, 0.56); knot.rotation.x = 0.6; acc.add(knot);
+    cat.add(acc);
   }
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
@@ -546,12 +625,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
     group.add(roundel);
   }
-  // Centre racing stripe running nose → tail over the spine.
-  const stripeTop = new THREE.Mesh(rbox(0.42, 0.08, 4.5, 0.04), stripe);
-  stripeTop.position.set(0, 1.33, -0.1);
+  // Centre racing stripe running nose → tail — a thin flat decal sitting flush on
+  // the body surface (a hair proud to avoid z-fighting) so it reads as paint, not
+  // a raised rib.
+  const stripeTop = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 4.5), stripe);
+  stripeTop.position.set(0, 1.315, -0.1); // just on top of the spine
   group.add(stripeTop);
-  const stripeNose = new THREE.Mesh(rbox(0.42, 0.08, 1.6, 0.04), stripe);
-  stripeNose.position.set(0, 0.86, 2.6);
+  const stripeNose = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 1.6), stripe);
+  stripeNose.position.set(0, 0.855, st.noseZ + 0.6);
   group.add(stripeNose);
 
   // Seat well (where the cat sits) — sunk into the spine.
@@ -562,11 +643,15 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   seatBack.position.set(0, 1.3, -1.2);
   group.add(seatBack);
 
-  // Steering wheel
-  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), chrome);
+  // Steering wheel (black) with a small chrome hub.
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), dark);
   wheel.position.set(0, 1.4, 0.55);
   wheel.rotation.x = Math.PI / 2.6;
   group.add(wheel);
+  const wheelHub = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), chrome);
+  wheelHub.position.set(0, 1.4, 0.55);
+  wheelHub.rotation.x = Math.PI / 2.6;
+  group.add(wheelHub);
 
   // Rear deck behind the cockpit, housing the tail lights + a single wing pylon.
   const deck = new THREE.Mesh(rbox(1.7, 0.5, 1.0, 0.26), paint);
@@ -645,7 +730,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // than the rears; tyre size scales with the body style. ---
   const caliperMat = new THREE.MeshStandardMaterial({ color: 0xcf3a2e, metalness: 0.3, roughness: 0.4 });
   const wheels = [];
-  function buildWheel(radius) {
+  // `side` is the sign of the wheel's x position so the spokes / hub cap sit on
+  // the OUTER face (the visible one) on both sides of the kart.
+  function buildWheel(radius, side) {
     const w = new THREE.Group();
     const t = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 22), tire);
     t.rotation.z = Math.PI / 2;
@@ -655,13 +742,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const band = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.02, radius * 1.02, 0.34, 22), tread);
     band.rotation.z = Math.PI / 2;
     w.add(band);
-    // Hub + spokes on the outer face (a 5-spoke alloy look).
+    // Hub + 5 spokes on the outer face.
     const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.26, radius * 0.26, 0.54, 12), rimMat);
     hub.rotation.z = Math.PI / 2;
     w.add(hub);
     for (let i = 0; i < 5; i++) {
       const pivot = new THREE.Group();
-      pivot.position.x = 0.24; // outer face
+      pivot.position.x = side * 0.24; // outer face on this side
       pivot.rotation.x = (i / 5) * Math.PI * 2;
       const spoke = new THREE.Mesh(rbox(0.1, radius * 0.66, 0.1, 0.03), rimMat);
       spoke.position.y = radius * 0.36;
@@ -669,12 +756,12 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       w.add(pivot);
     }
     const cap = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.24, 12, 12), chrome);
-    cap.position.x = 0.26;
+    cap.position.x = side * 0.26;
     cap.scale.set(0.5, 1, 1);
     w.add(cap);
     // Brake caliper clamped on the inner-upper rim.
     const caliper = new THREE.Mesh(rbox(0.16, 0.24, 0.18, 0.04), caliperMat);
-    caliper.position.set(-0.12, radius * 0.62, 0.02);
+    caliper.position.set(-side * 0.12, radius * 0.62, 0.02);
     w.add(caliper);
     return w;
   }
@@ -686,7 +773,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   ];
   for (const [x, z, baseR] of wheelDefs) {
     const radius = baseR * st.tire;
-    const w = buildWheel(radius);
+    const w = buildWheel(radius, Math.sign(x));
     w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
     group.add(w);
     wheels.push(w);
