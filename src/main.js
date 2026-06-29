@@ -157,6 +157,19 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
+// AI difficulty. The hand-tuned field IS "hard"; easy/medium dial the AI down
+// across a few knobs (top speed, rubber-band catch-up, how often they shoot, how
+// well they shield, and how far they'll detour for catnip). Persisted so it sticks.
+const AI_DIFFICULTY = {
+  easy: { label: "Easy", speed: 0.82, rubber: 0.35, shoot: 0.5, shield: 0.5, catnip: 0.4 },
+  medium: { label: "Medium", speed: 0.92, rubber: 0.7, shoot: 0.8, shield: 0.8, catnip: 0.75 },
+  hard: { label: "Hard", speed: 1.0, rubber: 1.0, shoot: 1.0, shield: 1.0, catnip: 1.0 },
+};
+const DIFF_ORDER = ["easy", "medium", "hard"];
+const DIFF_KEY = "zoomies-difficulty";
+let DIFFICULTY = "hard"; // default = the current tuned field
+try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
+
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
@@ -581,8 +594,18 @@ function buildKarts() {
       [slots[i], slots[j]] = [slots[j], slots[i]];
     }
   }
+  const diff = AI_DIFFICULTY[DIFFICULTY] || AI_DIFFICULTY.hard;
   roster.forEach((cfg, i) => {
     const kart = new Kart(cfg);
+    // Scale the AI down for the chosen difficulty (hard = no change). Slower top
+    // speed + weaker rubber-band, set on baseMaxSpeed so the per-frame catch-up
+    // (aiActions) scales from it; the rest of the knobs live on kart.diff.
+    if (!cfg.isPlayer) {
+      kart.diff = diff;
+      kart.baseMaxSpeed *= diff.speed;
+      kart.maxSpeed = kart.baseMaxSpeed;
+      kart.shieldSkill *= diff.shield;
+    }
     const slotIndex = MP.enabled && cfg.isPlayer ? mpGridSlot() : slots[i];
     const slot = track.gridSlot(slotIndex);
     kart.placeAt(slot.position, slot.heading, track);
@@ -1234,6 +1257,20 @@ if (lapsBtn)
     applyLapsBtn();
   });
 applyLapsBtn();
+
+// Difficulty selector: cycles Easy -> Medium -> Hard (the tuned field). Applied
+// to the AI at race build (buildKarts) + per-frame in aiActions.
+const diffBtn = document.getElementById("difficulty-btn");
+function applyDiffBtn() {
+  if (diffBtn) diffBtn.textContent = `Difficulty: ${AI_DIFFICULTY[DIFFICULTY].label}`;
+}
+if (diffBtn)
+  diffBtn.addEventListener("click", () => {
+    DIFFICULTY = DIFF_ORDER[(DIFF_ORDER.indexOf(DIFFICULTY) + 1) % DIFF_ORDER.length];
+    try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
+    applyDiffBtn();
+  });
+applyDiffBtn();
 
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
@@ -2517,7 +2554,8 @@ function aiActions(dt) {
     const gap = player.totalProgress - k.totalProgress;
     // Catch up strongly when behind, but barely ease off when leading, so the
     // front-runners stay competitive instead of waiting for the player.
-    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)));
+    const _rb = k.diff ? k.diff.rubber : 1; // easier modes catch up less
+    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)) * _rb);
 
     if (k.boosting) effects.trickle(k, k.catnipBoosting);
     if (k.finished || k.spinTimer > 0) {
@@ -2588,7 +2626,7 @@ function aiActions(dt) {
     // --- Shoot at a kart ahead, gated by the same recharge as the player. ---
     k._aiShootTimer -= dt;
     if (k.shootCooldown <= 0 && k._aiShootTimer <= 0) {
-      k._aiShootTimer = 1.0 + Math.random() * 2.2;
+      k._aiShootTimer = (1.0 + Math.random() * 2.2) / (k.diff ? k.diff.shoot : 1); // easier = longer gaps
       for (const other of karts) {
         if (other === k || other.finished) continue;
         _aiTo.subVectors(other.position, k.position);

@@ -635,7 +635,8 @@ export class Kart {
     if (catnipTargets && catnipTargets.length && !this.catnipBoosting && this.spinTimer <= 0) {
       const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
       const behind = Math.max(0, (this.place || 1) - 3); // 0 for top-3, up to 3 for last
-      const range = 24 + behind * 18;                     // trailing karts reach much further
+      const catnipMul = this.diff ? this.diff.catnip : 1; // easier modes chase catnip less
+      const range = (24 + behind * 18) * catnipMul;       // trailing karts reach much further
       let best = null, bestD = range;
       for (const cn of catnipTargets) {
         const dx = cn.x - this.position.x, dz = cn.z - this.position.z;
