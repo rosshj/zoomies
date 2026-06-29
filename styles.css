@@ -95,16 +95,19 @@ body {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
-/* Garage: the live 3D preview kart renders to #game behind this, so keep the
-   backdrop barely tinted and pin the control card to the bottom (clear of the
-   kart, which the camera frames in the upper-centre). */
+/* Garage: the live 3D preview kart renders to #game behind this. The stage is
+   landscape, so dock the control card to the LEFT half (a narrow vertical
+   column) and let the camera frame the kart in the open RIGHT half — the two
+   never overlap. The backdrop fades left→right so the card side is legible
+   while the kart side stays clear. */
 #garage {
-  background: linear-gradient(to bottom, rgba(6, 9, 16, 0) 45%, rgba(6, 9, 16, 0.78) 100%);
-  align-items: flex-end;
+  background: linear-gradient(to right, rgba(6, 9, 16, 0.86) 0%, rgba(6, 9, 16, 0.5) 38%, rgba(6, 9, 16, 0) 62%);
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: max(14px, env(safe-area-inset-left));
 }
 #garage-panel {
-  margin-bottom: max(10px, env(safe-area-inset-bottom));
-  width: min(620px, 100%);
+  width: min(380px, 46%);
 }
 .garage-title {
   display: flex;
@@ -119,15 +122,14 @@ body {
 .garage-ico { font-size: 22px; }
 .garage-pickers {
   display: flex;
+  flex-direction: column;
   gap: 14px;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin: 12px 0;
+  margin: 14px 0;
 }
 .garage-pick {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: stretch;
   gap: 5px;
 }
 .garage-pick-label {
@@ -143,6 +145,7 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
   padding: 5px 8px;
+  justify-content: space-between;
 }
 .garage-arrow {
   font-size: 14px;
@@ -163,7 +166,8 @@ body {
   flex: 0 0 auto;
 }
 .garage-name {
-  min-width: 96px;
+  flex: 1;
+  text-align: center;
   font-weight: 700;
   font-size: 15px;
   color: #fff;

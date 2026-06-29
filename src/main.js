@@ -1708,16 +1708,25 @@ function stepGarage(which, dir) {
   syncGarageUI();
   buildGaragePreview();
 }
-// Slowly orbit the camera around the parked preview kart.
+// Slowly orbit the camera around the parked preview kart. The control card is
+// docked to the left half of the (landscape) screen, so frame the kart in the
+// open RIGHT half: orbit a touch further back (smaller kart) and pan the aim to
+// the left, which slides the kart rightward on screen.
+const _garageRight = new THREE.Vector3();
 function renderGarage(timeSec) {
   if (!_garagePreview) return;
   const p = _garagePreview.position;
-  const ang = timeSec * 0.6;
-  const r = 6.2;
-  camera.position.set(p.x + Math.sin(ang) * r, p.y + 2.9, p.z + Math.cos(ang) * r);
-  _garageLook.set(p.x, p.y + 1.15, p.z);
+  const ang = timeSec * 0.5;
+  const r = 9.6; // well back so the whole kart reads small and never clips
+  camera.position.set(p.x + Math.sin(ang) * r, p.y + 3.1, p.z + Math.cos(ang) * r);
+  if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
+  _garageLook.set(p.x, p.y + 1.25, p.z);
   camera.lookAt(_garageLook);
-  if (camera.fov !== 40) { camera.fov = 40; camera.updateProjectionMatrix(); }
+  // Pan the aim left along the camera's screen-right axis so the kart sits in
+  // the open right half (the card covers the left). Re-aim after the shift.
+  _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  _garageLook.addScaledVector(_garageRight, -3.6);
+  camera.lookAt(_garageLook);
   renderFrame();
 }
 
