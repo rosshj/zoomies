@@ -4,6 +4,21 @@ import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 
+// Projected-shadow sun parameters, set per race from the active mood's sunDir.
+// The contact shadow is a flat quad stretched + aimed along the sun so it reads
+// as a real directional cast shadow — long at sunset, short at midday — for ~1
+// draw call and zero shadow-map cost. (Real sun shadows on the karts were the
+// frame-rate killer when the field bunched up; this gives the look back cheaply.)
+let _sunAz = 0;        // world azimuth the shadow's long axis lies along
+let _sunStretch = 1;   // length multiplier (≈1 round at midday, longer at sunset)
+let _sunAlpha = 0.42;  // base opacity (a touch darker when the sun is low)
+export function setSunShadow(sunDir) {
+  const x = sunDir[0], y = Math.max(0.06, sunDir[1]), z = sunDir[2];
+  _sunAz = Math.atan2(x, z);
+  _sunStretch = Math.min(3.0, Math.max(1, 0.6 / y));
+  _sunAlpha = 0.34 + (1 - Math.min(1, y)) * 0.14;
+}
+
 // Shield bubble (WebGPU TSL): a glowing Fresnel energy orb — bright at the rim,
 // faint fill, with a travelling shimmer + gentle breathing pulse off `time`.
 function makeShieldMaterial() {
@@ -169,8 +184,11 @@ export class Kart {
     this.shieldMesh.visible = false;
     this.group.add(this.shieldMesh);
 
-    // Soft contact shadow that stays on the ground (even mid-hop).
-    this.groundShadow = new THREE.Mesh(
+    // Soft contact shadow that stays on the ground (even mid-hop). The quad sits
+    // in a holder so it can be spun to the sun azimuth independent of the kart's
+    // heading; _syncMesh stretches it with the sun's lowness for a directional
+    // cast-shadow look without any real shadow-map cost.
+    this.shadowQuad = new THREE.Mesh(
       new THREE.PlaneGeometry(4.8, 3.1),
       new THREE.MeshBasicMaterial({
         map: shadowTexture(),
@@ -179,8 +197,9 @@ export class Kart {
         toneMapped: false,
       })
     );
-    this.groundShadow.rotation.x = -Math.PI / 2;
-    this.groundShadow.position.y = 0.05;
+    this.shadowQuad.rotation.x = -Math.PI / 2;
+    this.groundShadow = new THREE.Group();
+    this.groundShadow.add(this.shadowQuad);
     this.group.add(this.groundShadow);
 
     // Cat physics signals (cornering / acceleration), smoothed in update().
@@ -521,11 +540,15 @@ export class Kart {
     // lifts while tooting).
     updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished);
 
-    // Contact shadow stays on the ground and shrinks as the kart hops.
+    // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
+    // long axis along the sun azimuth (independent of which way the kart faces),
+    // and stretch it with the sun's lowness so it reads as a real directional
+    // cast shadow. Shrinks + fades as the kart hops.
     const air = 1 / (1 + this.y * 0.16);
-    this.groundShadow.position.y = -this.y + 0.05;
-    this.groundShadow.scale.setScalar(air);
-    this.groundShadow.material.opacity = 0.5 * air;
+    this.groundShadow.position.y = -this.y + 0.04;
+    this.groundShadow.rotation.y = _sunAz - this.heading;
+    this.groundShadow.scale.set(air, 1, air * _sunStretch);
+    this.shadowQuad.material.opacity = _sunAlpha * air;
 
     // Shield bubble.
     this.shieldMesh.visible = this.shielding;

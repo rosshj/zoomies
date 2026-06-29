@@ -8,7 +8,7 @@ import { createScene, moodForTimeOfDay } from "./scene.js";
 import { initGpuParticles } from "./gpuparticles.js";
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
-import { Kart } from "./kart.js";
+import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
@@ -167,6 +167,8 @@ let _rendererReady = false; // flips true once WebGPURenderer.init() resolves
 // backdrop already shows midday / sunset / night.
 const MOOD = moodForTimeOfDay(TIME_OF_DAY);
 applyMood(MOOD);
+// Aim the karts' projected contact shadows along this race's sun (long at sunset).
+setSunShadow(MOOD.sunDir);
 const weather = new Weather(scene);
 let moodSat = MOOD.sat; // this race's base saturation (rain desaturates from it)
 let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens from it)
