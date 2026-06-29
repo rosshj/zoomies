@@ -1542,7 +1542,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert"];
+const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra"];
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
