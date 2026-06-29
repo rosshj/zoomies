@@ -167,10 +167,15 @@ function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
   ctx.fillStyle = "#" + stripeColor.getHexString();
   const pitch = S / count;
   for (let i = 0; i < count; i++) {
-    const c0 = (i + 0.5) * pitch + (i % 2 ? pitch * 0.12 : -pitch * 0.12); // slight wobble
-    const w = pitch * (0.3 + (i % 3) * 0.03); // thinner bars
-    // 2–3 dashes along the stripe with small gaps → organic, broken look
-    const segs = i % 2 ? [[0.0, 0.46], [0.54, 0.46]] : [[0.0, 0.3], [0.36, 0.3], [0.72, 0.28]];
+    const c0 = (i + 0.5) * pitch + (i % 2 ? pitch * 0.16 : -pitch * 0.16); // wobble off the grid
+    const w = pitch * (0.16 + (i % 3) * 0.02); // thin mackerel bars, not chunky bands
+    // Each stripe broken into short, offset dashes (pattern varies per stripe) so
+    // it reads like real tabby fur ticking, not an even barcode of rings.
+    const segs = i % 3 === 0
+      ? [[0.02, 0.24], [0.34, 0.2], [0.62, 0.3]]
+      : i % 3 === 1
+      ? [[0.06, 0.36], [0.5, 0.42]]
+      : [[0.0, 0.3], [0.42, 0.22], [0.72, 0.24]];
     for (const [a, len] of segs) {
       if (axis === "v") ctx.fillRect(a * S, c0 - w / 2, len * S, w);      // ring (along the tail)
       else ctx.fillRect(c0 - w / 2, a * S, w, len * S);                   // vertical flank stripe
@@ -264,8 +269,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
   function coatTex(forTail) {
     if (isTabby) return forTail
-      ? makeStripeTexture(pal.fur, pal.stripe, 6, "v")   // 6 rings around the tail
-      : makeStripeTexture(pal.fur, pal.stripe, 13, "v"); // many thin horizontal body rings
+      ? makeStripeTexture(pal.fur, pal.stripe, 7, "v")   // rings around the tail
+      : makeStripeTexture(pal.fur, pal.stripe, 18, "v"); // many fine mackerel bands
     if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe);
     return null;
   }
@@ -442,23 +447,23 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const accMat = (hex, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m });
   const acc = new THREE.Group();
   if (pat === "spotted") {
-    // backwards baseball cap
+    // forward-facing baseball cap
     const m = accMat(0xe23b3b);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
     dome.position.set(0, 0.46, 0.04); dome.scale.set(1, 0.72, 1);
     acc.add(dome);
     const brim = new THREE.Mesh(rbox(0.66, 0.08, 0.5, 0.04), m);
-    brim.position.set(0, 0.46, -0.62);
+    brim.position.set(0, 0.4, 0.62); // juts forward over the brow
     acc.add(brim);
     const btn = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), accMat(0xffffff));
     btn.position.set(0, 0.78, 0.04); acc.add(btn);  } else if (pat === "solid") {
-    // headphones
+    // headphones — band arcs over the top, cups sit on the sides (not buried)
     const m = accMat(0x222831, 0.4);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.06, 8, 18, Math.PI), m);
-    band.position.set(0, 0.36, 0); acc.add(band);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.07, 8, 20, Math.PI), m);
+    band.position.set(0, 0.28, 0); acc.add(band);
     for (const sx of [-1, 1]) {
-      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.14, 14), m);
-      cup.rotation.z = Math.PI / 2; cup.position.set(sx * 0.66, 0.02, 0);
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.18, 16), m);
+      cup.rotation.z = Math.PI / 2; cup.position.set(sx * 0.82, 0.06, 0);
       acc.add(cup);
     }  } else if (pat === "snowshoe") {
     // bobble beanie
@@ -469,23 +474,23 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     cuff.position.set(0, 0.4, 0); cuff.rotation.x = Math.PI / 2; acc.add(cuff);
     const pom = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), accMat(0xffffff));
     pom.position.set(0, 0.96, 0); acc.add(pom);  } else if (pat === "point") {
-    // flower tucked behind one ear
+    // flower tucked up by one ear — sits proud on the skull, not sunk inside it
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2;
-      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.11, 8, 8), accMat(0xff7ab3));
-      petal.position.set(0.52 + Math.cos(a) * 0.13, 0.5 + Math.sin(a) * 0.13, 0.16);
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), accMat(0xff7ab3));
+      petal.position.set(0.52 + Math.cos(a) * 0.1, 0.78 + Math.sin(a) * 0.1, 0.08);
       petal.scale.set(1, 1, 0.5); acc.add(petal);
     }
-    const ctr = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8), accMat(0xffe14d));
-    ctr.position.set(0.52, 0.5, 0.2); acc.add(ctr);  } else if (pat === "mitted") {
-    // little fedora
+    const ctr = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), accMat(0xffe14d));
+    ctr.position.set(0.52, 0.78, 0.12); acc.add(ctr);  } else if (pat === "mitted") {
+    // little fedora — rides up near the crown so the brim rests on the head
     const m = accMat(0x6b4a2f);
-    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 0.05, 18), m);
-    brim.position.set(0, 0.44, 0.02); acc.add(brim);
-    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.42, 16), m);
-    crown.position.set(0, 0.64, 0.02); acc.add(crown);
-    const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.47, 0.47, 0.1, 16), accMat(0x2a2a2a));
-    bandm.position.set(0, 0.49, 0.02); acc.add(bandm);  } else if (pat === "tuxedo") {
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.05, 20), m);
+    brim.position.set(0, 0.64, 0.02); acc.add(brim);
+    const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.48, 0.46, 18), m);
+    crown.position.set(0, 0.86, 0.02); acc.add(crown);
+    const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.49, 0.49, 0.1, 18), accMat(0x2a2a2a));
+    bandm.position.set(0, 0.7, 0.02); acc.add(bandm);  } else if (pat === "tuxedo") {
     // bowtie at the collar — red so it pops against the black coat
     const m = accMat(0xd42a2a, 0.45);
     for (const sx of [-1, 1]) {
@@ -647,8 +652,11 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   paint.userData.paint = true;
   const accent = new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.55), roughness: 0.38, metalness: 0.0 });
   accent.userData.paint = true;
-  const stripeCol = body.clone().lerp(new THREE.Color(0xffffff), 0.78);
-  const stripe = new THREE.MeshStandardMaterial({ color: stripeCol, roughness: 0.32, metalness: 0.0 });
+  // Painted racing stripe: crisp white on dark/medium bodies, a deep charcoal on
+  // very light bodies, so the stripe always reads as deliberate paint.
+  const bodyL = 0.2126 * body.r + 0.7152 * body.g + 0.0722 * body.b;
+  const stripeCol = bodyL > 0.62 ? new THREE.Color(0x2c2a27) : new THREE.Color(0xf3efe6);
+  const stripe = new THREE.MeshStandardMaterial({ color: stripeCol, roughness: 0.4, metalness: 0.0 });
   stripe.userData.paint = true;
   // Shared constant materials (matte rubber + tread, chrome, dark trim, caliper).
   const dark = _kDark;
@@ -699,13 +707,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
     group.add(roundel);
   }
-  // Centre racing stripe running nose → tail — a thin flat decal sitting flush on
-  // the body surface (a hair proud to avoid z-fighting) so it reads as paint, not
-  // a raised rib.
-  const stripeTop = add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 4.5), stripe));
-  stripeTop.position.set(0, 1.315, -0.1); // just on top of the spine
-  const stripeNose = add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 1.6), stripe));
-  stripeNose.position.set(0, 0.855, st.noseZ + 0.6);
+  // Painted racing stripe — a bold centre stripe over the nose and a matching one
+  // on the rear engine deck (the cockpit naturally breaks it, like a real GP
+  // livery). Wide, low and flush so it reads as paint, not the old thin raised rib.
+  const noseStripe = add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, st.nose + 1.3), stripe));
+  noseStripe.position.set(0, 0.93, st.noseZ + 0.35); // hugging the nose/flash top
+  const deckStripe = add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 1.05), stripe));
+  deckStripe.position.set(0, 1.13, -1.95); // on the rear deck
 
   // Seat well (where the cat sits) — sunk into the spine.
   const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
