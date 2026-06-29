@@ -373,15 +373,19 @@ function build(scene, track, opts) {
         // faster kart drags more air, lifts harder and stirs a tighter swirl.
         lp.windX = mk.dx * (6 + sp * 0.22);
         lp.windZ = mk.dz * (6 + sp * 0.22);
-        lp.windUp = 3 + sp * 0.05; // turbulent updraft keeps leaves aloft a beat
-        lp.swirl = 1.2 + sp * 0.03; // curl strength (rad/s-ish), sign is per-leaf
-        lp.windT = 1.1 + sp * 0.014; // faster pass => the gust lingers longer
+        lp.windUp = 4 + sp * 0.06; // turbulent updraft keeps leaves aloft a beat
+        lp.swirl = 3.0 + sp * 0.05; // stronger curl so the gust visibly spirals
+        lp.windT = 1.4 + sp * 0.016; // faster pass => the gust lingers longer
         for (const lf of lp.leaves) {
           if (lf.hit > 0) continue;
           const wx = lp.x + lf.mesh.position.x, wz = lp.z + lf.mesh.position.z;
-          if (segDist2(wx, wz, mk.ax, mk.az, mk.bx, mk.bz) > 10) continue; // ~3-unit kick radius
-          const blow = 4 + sp * 0.24;
-          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, 7 + Math.random() * 7 + sp * 0.04, mk.dz * blow + (Math.random() - 0.5) * 6);
+          // The WHOLE pile lifts (not just leaves right under the tyre): nearer
+          // leaves get the harder kick, the rest still flutter up — so a pass
+          // never leaves lone leaves sitting in a half-scattered pile.
+          const dPath = Math.sqrt(segDist2(wx, wz, mk.ax, mk.az, mk.bx, mk.bz));
+          const f = Math.max(0.4, 1 - dPath / (reach + 1));
+          const blow = (4 + sp * 0.24) * f;
+          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, (6 + Math.random() * 7 + sp * 0.04) * f + 2, mk.dz * blow + (Math.random() - 0.5) * 6);
           lf.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
           lf.hit = 0.25;
           lf.asleep = false;
@@ -426,9 +430,23 @@ function build(scene, track, opts) {
         // Bleed the violent launch spin down to a gentle flutter-rock over ~1s.
         lf.spin.multiplyScalar(1 - 1.4 * dt);
 
+        // Soft containment: a scattered leaf that wanders past its pile radius
+        // would orphan itself where a later pass can't reach it — nudge it back
+        // toward the pile centre so the pile stays cohesive and re-kickable.
+        const rad = Math.hypot(pp.x, pp.z);
+        const maxR = lp.r + 3;
+        if (rad > maxR) {
+          lf.vel.x -= (pp.x / rad) * (rad - maxR) * 6 * dt;
+          lf.vel.z -= (pp.z / rad) * (rad - maxR) * 6 * dt;
+        }
+
         pp.addScaledVector(lf.vel, dt);
-        if (pp.y < 0.05) {
-          pp.y = 0.05;
+        // Settle onto the REAL ground under the leaf's CURRENT spot (terrain
+        // slopes away from the pile centre), so a drifted leaf never hangs in the
+        // air or sinks into a hill. Only sampled near the deck, where it matters.
+        const floor = pp.y < 1.5 ? (groundAt(lp.x + pp.x, lp.z + pp.z) - lp.groundY) + 0.05 : 0.05;
+        if (pp.y < floor) {
+          pp.y = floor;
           lf.vel.set(lf.vel.x * 0.25, 0, lf.vel.z * 0.25);
           lf.spin.multiplyScalar(0.6);
           // Don't sleep while the wake is still blowing — leaves skitter along the
