@@ -424,8 +424,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     bandm.position.set(0, 0.49, 0.02); acc.add(bandm);
     head.add(acc);
   } else if (pat === "tuxedo") {
-    // bowtie at the collar
-    const m = accMat(0x14161b, 0.4);
+    // bowtie at the collar — red so it pops against the black coat
+    const m = accMat(0xd42a2a, 0.45);
     for (const sx of [-1, 1]) {
       const tri = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.28, 4), m);
       tri.rotation.z = sx * Math.PI / 2; tri.position.set(sx * 0.18, 1.62, 0.62);
