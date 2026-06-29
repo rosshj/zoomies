@@ -82,7 +82,10 @@ export class Input {
     // shrinks) and steering got hyper-sensitive + s-curvy; tilt back and it went
     // numb. atan2(lateral, hypot(other two)) has a clean 1:1 gain at every pitch,
     // so the feel the player dialled in at ~-56° now holds whatever the tilt.
-    const roll = Math.atan2(g.y, Math.hypot(g.x, g.z ?? 0)); // radians, pitch-independent
+    // Lateral is negated to keep the SAME steering polarity as the old measure:
+    // the old denominator (g.x) is negative in the landscape hold, which flipped
+    // the sign — switching to the always-positive hypot would otherwise invert it.
+    const roll = Math.atan2(-g.y, Math.hypot(g.x, g.z ?? 0)); // radians, pitch-independent
 
     const shortArc = (a) => {
       while (a > Math.PI) a -= Math.PI * 2;
