@@ -79,14 +79,25 @@ await page.route("**/*", async (route) => {
 
 // Enable the on-screen FPS/draw-call readout before the app boots.
 const seedTT = !!process.env.TT;
-await ctx.addInitScript((seedTT) => {
+const sel = process.env.SEL || ""; // "cat,kart" to seed the garage selection
+await ctx.addInitScript(({ seedTT, sel }) => {
   try { localStorage.setItem("zoomies-fps", "1"); } catch {}
+  if (sel) {
+    const [cat, kart] = sel.split(",").map(Number);
+    try { localStorage.setItem("zoomies-garage-v1", JSON.stringify({ cat, kart })); } catch {}
+  }
   // Seed a personal-best so the time-trial PB-delta path runs in the test.
-  if (seedTT) { try { localStorage.setItem("zoomies-timetrial-v1", JSON.stringify([{ time: 42.5, date: 1 }])); } catch {} }
+  if (seedTT) {
+    try { localStorage.setItem("zoomies-timetrial-v1", JSON.stringify([{ time: 42.5, date: 1 }])); } catch {}
+    // Seed a small ghost path so setupGhost() builds the translucent ghost kart.
+    const samples = [];
+    for (let k = 0; k < 24; k++) samples.push(k * 0.5, Math.sin(k) * 20, 0.5, Math.cos(k) * 20, k * 0.2);
+    try { localStorage.setItem("zoomies-ttghost-v1", JSON.stringify({ key: "classic", samples })); } catch {}
+  }
   window.__raf = 0;
   const o = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (cb) => o((t) => { window.__raf++; return cb(t); });
-}, seedTT);
+}, { seedTT, sel });
 
 const target = `http://127.0.0.1:${PORT}/index.html?webgl=1`;
 await page.goto(target, { waitUntil: "load" });

@@ -877,17 +877,35 @@ const GROUND_LEAF_COLS = [0xc4471f, 0xe07b1e, 0xf0c040, 0xd23a2a, 0x9c6b1f, 0x7a
 // Fallen cherry-blossom petals: candy pinks + a few near-whites, so the blossom
 // biome floor reads as a pink carpet that kicks up in the same wake as the leaves.
 const PETAL_COLS = [0xffc7dd, 0xff9fc4, 0xffd9e6, 0xf7b0cf, 0xffe3ef, 0xff8fb8];
+const FOREST_LEAF_COLS = [0x3f6b2c, 0x4f7d34, 0x6b8e3a, 0x5a4327, 0x2f5520, 0x7a5a2c];
+const MEADOW_DEBRIS_COLS = [0x9fd06a, 0x8cc457, 0xb6e07a, 0xe8e26a, 0xfbfbfb, 0xc7e08a]; // clippings + wildflower specks
+const SAVANNA_DEBRIS_COLS = [0xcdae5e, 0xb8973f, 0xd9c070, 0xa07f3a, 0xe0cb84]; // dry golden grass
+const DESERT_DEBRIS_COLS = [0xd2b074, 0xc49a5a, 0xbf8f4a, 0xddc590, 0xb98e50]; // sand + dry scrub
+const SNOW_DEBRIS_COLS = [0xeef4fa, 0xdfeaf2, 0xffffff, 0xcfe0ec, 0xe6eef5]; // frost flecks / snow tufts
+// Per-biome ground debris that scatters across the verge and kicks up in a kart's
+// wake. Every biome gets something appropriate so the whole track feels alive, not
+// just the leafy ones: snow flecks on the cold biomes, sand on the desert, dry
+// grass on the savanna, leaves/petals/clippings elsewhere. Shared wake shader.
+const GROUND_DEBRIS = {
+  autumn: { dens: 1.0, cols: GROUND_LEAF_COLS },
+  blossom: { dens: 0.9, cols: PETAL_COLS },
+  forest: { dens: 0.7, cols: FOREST_LEAF_COLS },
+  meadow: { dens: 0.36, cols: MEADOW_DEBRIS_COLS },
+  savanna: { dens: 0.5, cols: SAVANNA_DEBRIS_COLS },
+  desert: { dens: 0.26, cols: DESERT_DEBRIS_COLS },
+  alpine: { dens: 0.42, cols: SNOW_DEBRIS_COLS },
+  tundra: { dens: 0.5, cols: SNOW_DEBRIS_COLS },
+};
 function buildGroundLeaves(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
   const placements = [];
-  const MAX = 1700;
+  const MAX = 1900;
   for (let i = 0; i < N && placements.length < MAX; i++) {
     const p = track._pts[i];
     const b = biomeAt(p.x, p.z);
-    // Per-biome leaf density: autumn is carpeted, forest well-scattered, meadow a sprinkle.
-    const dens = b.name === "autumn" ? 1.0 : b.name === "blossom" ? 0.9 : b.name === "forest" ? 0.7 : b.name === "meadow" ? 0.32 : 0;
-    const petal = b.name === "blossom"; // pink petals vs autumn-toned leaves
+    const cfg = GROUND_DEBRIS[b.name];
+    const dens = cfg ? cfg.dens : 0;
     if (dens <= 0) continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const tries = Math.ceil(dens * 6);
@@ -897,7 +915,7 @@ function buildGroundLeaves(scene, track, heightAt) {
       const x = p.x + side.x * lat + (rand() - 0.5) * 5;
       const z = p.z + side.z * lat + (rand() - 0.5) * 5;
       if (_inLake(x, z)) continue;
-      placements.push({ x, y: heightAt(x, z), z, petal });
+      placements.push({ x, y: heightAt(x, z), z, cols: cfg.cols });
     }
   }
   if (!placements.length) return null;
@@ -967,7 +985,7 @@ function buildGroundLeaves(scene, track, heightAt) {
       dummy.scale.setScalar(0.5 + rand() * 0.5);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      const pal = s.petal ? PETAL_COLS : GROUND_LEAF_COLS;
+      const pal = s.cols || GROUND_LEAF_COLS;
       mesh.setColorAt(i, _c.set(pal[(rand() * pal.length) | 0]));
       aBase[i * 3] = s.x; aBase[i * 3 + 1] = s.y; aBase[i * 3 + 2] = s.z;
     });
@@ -1009,18 +1027,31 @@ function buildGroundLeaves(scene, track, heightAt) {
   };
 }
 
-// Ambient cherry-blossom rain over the blossom sectors: petals drift down, sway,
-// snap back to the top and fall again — the whole loop runs in the vertex shader
-// off `time`, so there is ZERO per-frame CPU and no buffer uploads. Each petal
-// falls within its own column (XZ fixed at spawn) so chunk bounds stay tight and
-// off-screen chunks frustum-cull as a group. Only built when blossom is in play.
+// Biomes that get ambient airborne fall, with their palette and how fast/tumbly it
+// drifts: cherry petals float slowly over blossom, autumn leaves spin down a touch
+// faster over the autumn wood. (Snow/rain are handled by the weather system.)
+const AMBIENT_FALL = {
+  blossom: { cols: PETAL_COLS, speed: 0.12, tumble: 0.18 },
+  autumn: { cols: GROUND_LEAF_COLS, speed: 0.17, tumble: 0.34 },
+};
+
+// Ambient rain of petals/leaves over the biomes that have it: each speck drifts
+// down, sways, snaps back to the top and falls again — the whole loop runs in the
+// vertex shader off `time`, so there is ZERO per-frame CPU and no buffer uploads.
+// Each speck falls within its own column (XZ fixed at spawn) so chunk bounds stay
+// tight and off-screen chunks frustum-cull as a group. One InstancedMesh field per
+// biome (shared fall material per biome), built only for biomes actually in play.
 function buildBlossomPetals(scene, track, heightAt) {
+  for (const [name, cfg] of Object.entries(AMBIENT_FALL)) buildAmbientFall(scene, track, heightAt, name, cfg);
+}
+
+function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
   const N = track.samples;
   const cols = [];
   const MAX = 460;
   for (let i = 0; i < N && cols.length < MAX; i++) {
     const p = track._pts[i];
-    if (biomeAt(p.x, p.z).name !== "blossom") continue;
+    if (biomeAt(p.x, p.z).name !== biomeName) continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], UP_Y).normalize();
     for (let k = 0; k < 5 && cols.length < MAX; k++) {
       const lat = (rand() * 2 - 1) * (track.halfWidth + 16); // over the road + verge
@@ -1030,20 +1061,20 @@ function buildBlossomPetals(scene, track, heightAt) {
       cols.push({ x, y: heightAt(x, z), z });
     }
   }
-  if (!cols.length) return; // blossom not active this map — nothing to build
+  if (!cols.length) return; // this biome not active on the map — nothing to build
 
-  const FALL_H = 9.0; // metres a petal falls before wrapping back to the top
+  const FALL_H = 9.0; // metres a speck falls before wrapping back to the top
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
   const _ph = hash(instanceIndex).mul(6.2832);
-  // Per-petal fall clock: fract() ramps 0→1 forever; (1-fract) maps it to a
+  // Per-speck fall clock: fract() ramps 0→1 forever; (1-fract) maps it to a
   // descent from FALL_H down to 0, then an instant (and visually hidden) reset.
-  const _fallClock = time.mul(0.12).add(hash(instanceIndex));
+  const _fallClock = time.mul(cfg.speed).add(hash(instanceIndex));
   const _fall = float(FALL_H).mul(_fallClock.fract().oneMinus());
   // Gentle drift + flutter. Geo is baked flat with yaw-only instances, so a local
   // +Y offset is world-up (same trick as the ground leaves).
   const _t = time.mul(1.4).add(_ph);
   const _drift = vec3(_t.sin().mul(0.9), 0, _t.mul(0.8).cos().mul(0.9));
-  const _flut = vec3(0, _t.mul(2.3).sin().mul(0.18), 0);
+  const _flut = vec3(0, _t.mul(2.3).sin().mul(cfg.tumble), 0);
   mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut);
 
   const CHUNK = 130;
@@ -1061,12 +1092,12 @@ function buildBlossomPetals(scene, track, heightAt) {
     geo.rotateX(-Math.PI / 2); // lie flat; instances rotate yaw-only so the fall stays world-up
     const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
     arr.forEach((c, i) => {
-      dummy.position.set(c.x, c.y, c.z); // column base; the shader lifts each petal by _fall
+      dummy.position.set(c.x, c.y, c.z); // column base; the shader lifts each speck by _fall
       dummy.rotation.set(0, rand() * Math.PI * 2, 0);
       dummy.scale.setScalar(0.45 + rand() * 0.4);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, _c.set(PETAL_COLS[(rand() * PETAL_COLS.length) | 0]));
+      mesh.setColorAt(i, _c.set(cfg.cols[(rand() * cfg.cols.length) | 0]));
     });
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.castShadow = false; // tiny airborne specks — not worth a shadow pass
