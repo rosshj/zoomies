@@ -68,9 +68,9 @@ const CAT_PRESETS = [
   { name: "Smokey", fur: 0x8c9298, pattern: "solid" }, // plush solid grey (Russian Blue)
   { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black & white tuxedo
   { name: "Snow", fur: 0xfbfbfb, pattern: "snowshoe" }, // white + seal mask/points
-  { name: "Biscuit", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
-  { name: "Espresso", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
-  { name: "Cream", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
+  { name: "Whiskey", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
+  { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
+  { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
 ];
 // Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy),
 // and a racing number stamped on the side roundels.

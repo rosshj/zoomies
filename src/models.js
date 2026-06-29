@@ -457,13 +457,15 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     acc.add(brim);
     const btn = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), accMat(0xffffff));
     btn.position.set(0, 0.78, 0.04); acc.add(btn);  } else if (pat === "solid") {
-    // headphones — band arcs over the top, cups sit on the sides (not buried)
+    // headphones — cups on the sides, band routed around the BACK of the head so
+    // it clears the tall cat ears instead of slicing through them.
     const m = accMat(0x222831, 0.4);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.07, 8, 20, Math.PI), m);
-    band.position.set(0, 0.28, 0); acc.add(band);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.84, 0.06, 8, 24, Math.PI), m);
+    band.rotation.x = -Math.PI / 2; // lay flat, the half-arc wraps the back (-z)
+    band.position.set(0, 0.12, 0); acc.add(band);
     for (const sx of [-1, 1]) {
-      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.18, 16), m);
-      cup.rotation.z = Math.PI / 2; cup.position.set(sx * 0.82, 0.06, 0);
+      const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.16, 16), m);
+      cup.rotation.z = Math.PI / 2; cup.position.set(sx * 0.82, 0.12, 0);
       acc.add(cup);
     }  } else if (pat === "snowshoe") {
     // bobble beanie
@@ -496,25 +498,28 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     crown.position.set(0, 0.86, 0.02); acc.add(crown);
     const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.49, 0.49, 0.1, 18), accMat(0x2a2a2a));
     bandm.position.set(0, 0.7, 0.02); acc.add(bandm);  } else if (pat === "tuxedo") {
-    // bowtie at the collar — red so it pops against the black coat
-    const m = accMat(0xd42a2a, 0.45);
+    // black wayfarer sunglasses on the face — Shadow's signature cool look
+    const m = accMat(0x0a0a0a, 0.22, 0.5);
     for (const sx of [-1, 1]) {
-      const tri = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.28, 4), m);
-      tri.rotation.z = sx * Math.PI / 2; tri.position.set(sx * 0.18, 1.62, 0.62);
-      acc.add(tri);
+      const lens = new THREE.Mesh(rbox(0.32, 0.26, 0.06, 0.06), m);
+      lens.position.set(sx * 0.3, 0.13, 0.66); lens.rotation.z = sx * -0.1; // slight wayfarer cant
+      acc.add(lens);
+      const armg = new THREE.Mesh(rbox(0.46, 0.05, 0.05, 0.02), m);
+      armg.position.set(sx * 0.5, 0.18, 0.38); armg.rotation.y = sx * 0.6; // temple arm back to the ear
+      acc.add(armg);
     }
-    const knot = new THREE.Mesh(rbox(0.1, 0.16, 0.1, 0.03), m);
-    knot.position.set(0, 1.62, 0.64); acc.add(knot);  } else if (pat === "tabby") {
+    const bridge = new THREE.Mesh(rbox(0.24, 0.07, 0.05, 0.02), m);
+    bridge.position.set(0, 0.18, 0.66); acc.add(bridge);  } else if (pat === "tabby") {
     // neckerchief / bandana
     const m = accMat(0xd23b3b);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 18), m);
     ring.position.set(0, 1.56, 0.08); ring.rotation.x = Math.PI / 2.3; acc.add(ring);
     const knot = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 5), m);
     knot.position.set(0, 1.42, 0.56); knot.rotation.x = 0.6; acc.add(knot);  }
-  // Headwear rides with the head; neckwear (tuxedo bowtie / tabby bandana) sits on
-  // the body. `acc` is at the origin, so its children's transforms already read in
-  // the right frame — route them into the matching static bucket to be merged.
-  const accToBody = pat === "tuxedo" || pat === "tabby";
+  // Headwear / eyewear ride with the head; the tabby's neckerchief sits on the
+  // body. `acc` is at the origin, so its children's transforms already read in the
+  // right frame — route them into the matching static bucket to be merged.
+  const accToBody = pat === "tabby";
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
