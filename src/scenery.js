@@ -874,6 +874,11 @@ function buildGroundLeaves(scene, track, heightAt) {
   // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
   // passes — all on the GPU, no per-leaf CPU physics.
   const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
+  // A lingering wake TRAIL behind the nearest kart: each puff is (x,y,z,strength)
+  // and decays over ~1.5s, so leaves you drive over stay kicked up and flutter
+  // back down in your wake instead of snapping flat the instant the kart passes.
+  const PUFFS = 12;
+  const puffs = Array.from({ length: PUFFS }, () => uniform(new THREE.Vector4(1e6, 1e6, 1e6, 0)));
   const uWakeR = uniform(13.0); // generous so leaves you drive near clearly react (even passing at speed)
 
   // Shared material across all chunk meshes: wind rustle + kart-wake pop.
@@ -892,11 +897,19 @@ function buildGroundLeaves(scene, track, heightAt) {
     const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
     _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus());
   }
+  // Trail puffs add their (decaying) strength, so a leaf stays lifted after the
+  // kart has gone, then eases back down as the puffs fade — reads as real flutter.
+  for (const pf of puffs) {
+    const dx = _base.x.sub(pf.x);
+    const dz = _base.z.sub(pf.z);
+    const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
+    _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus().mul(pf.w));
+  }
   const _lift = _liftSum.min(1.0);
   // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
   // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
-  const _pop = vec3(0, 1, 0).mul(_lift.mul(4.5)); // big, obvious pop when a kart passes
-  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(1.6)); // strong scatter/swirl in the wake
+  const _pop = vec3(0, 1, 0).mul(_lift.mul(5.0)); // big, obvious pop when a kart passes
+  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(2.1)); // strong scatter/swirl in the wake
   mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
 
   // Bucket placements into coarse chunks so off-screen leaves cull as a group; each
@@ -936,8 +949,10 @@ function buildGroundLeaves(scene, track, heightAt) {
   // Each frame, point the wake at the karts nearest the camera (those whose wake
   // you'd actually see kicking up leaves).
   const _sorted = [];
+  let _puffHead = 0;
+  const _lastDrop = new THREE.Vector3(1e6, 1e6, 1e6);
   return {
-    update(karts, camPos) {
+    update(karts, camPos, dt = 0.016) {
       _sorted.length = 0;
       for (const k of karts) if (k && k.position) _sorted.push(k);
       _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
@@ -945,6 +960,17 @@ function buildGroundLeaves(scene, track, heightAt) {
         const k = _sorted[i];
         if (k) wakes[i].value.copy(k.position);
         else wakes[i].value.set(1e6, 1e6, 1e6);
+      }
+      // Fade the lingering trail (~1.5s e-fold).
+      const decay = Math.exp(-dt / 0.6);
+      for (const pf of puffs) pf.value.w *= decay;
+      // Drop a fresh full-strength puff behind the nearest kart once it's moved a
+      // few units, building a trail of disturbed leaves that flutters down behind it.
+      const lead = _sorted[0];
+      if (lead && _lastDrop.distanceToSquared(lead.position) > 9) {
+        _puffHead = (_puffHead + 1) % puffs.length;
+        puffs[_puffHead].value.set(lead.position.x, lead.position.y, lead.position.z, 1);
+        _lastDrop.copy(lead.position);
       }
     },
   };
