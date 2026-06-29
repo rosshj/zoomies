@@ -95,6 +95,125 @@ body {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
+/* Garage: the live 3D preview kart renders to #game behind this. The stage is
+   landscape, so dock the control card to the LEFT half (a narrow vertical
+   column) and let the camera frame the kart in the open RIGHT half — the two
+   never overlap. The backdrop fades left→right so the card side is legible
+   while the kart side stays clear. */
+#garage {
+  background: linear-gradient(to right, rgba(6, 9, 16, 0.86) 0%, rgba(6, 9, 16, 0.5) 38%, rgba(6, 9, 16, 0) 62%);
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: max(14px, env(safe-area-inset-left));
+}
+#garage-panel {
+  width: min(380px, 46%);
+}
+.garage-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.garage-title h1 {
+  margin: 0;
+  font-size: 20px;
+}
+.garage-ico { font-size: 22px; }
+.garage-pickers {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 14px 0;
+}
+.garage-pick {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+.garage-pick-label {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  font-weight: 700;
+  color: var(--accent);
+  opacity: 0.85;
+  padding-left: 6px;
+}
+.garage-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.3));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 6px;
+  justify-content: space-between;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 14px rgba(0, 0, 0, 0.32);
+}
+.garage-arrow {
+  font-size: 13px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  box-shadow: none;
+  letter-spacing: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transition: background 0.12s, color 0.12s, transform 0.06s;
+}
+.garage-arrow:hover { background: rgba(255, 255, 255, 0.2); }
+.garage-arrow:active {
+  background: var(--accent);
+  color: #1a1206;
+  transform: scale(0.9);
+}
+.garage-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
+  flex: 0 0 auto;
+}
+.garage-name {
+  flex: 1;
+  text-align: center;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+  color: #fff;
+}
+.garage-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 4px;
+}
+/* Right-size the two actions into an even row (the default button is huge). */
+.garage-actions button {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 15px;
+  letter-spacing: 0.6px;
+  padding: 13px 12px;
+}
+#garage-back {
+  margin-top: 0;
+}
+#garage-apply {
+  box-shadow: 0 4px 0 #b97c00, 0 8px 16px rgba(0, 0, 0, 0.4);
+}
+#garage-apply:active {
+  box-shadow: 0 1px 0 #b97c00, 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+
 .menu-card {
   background: var(--panel);
   border: 2px solid rgba(255, 179, 0, 0.4);

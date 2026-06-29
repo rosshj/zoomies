@@ -153,6 +153,7 @@
         </div>
         <div class="menu-options">
           <button id="laps-btn" class="secondary small">Laps: 3</button>
+          <button id="open-garage" class="secondary small">🐱 Garage</button>
           <button id="open-track" class="secondary small">🏞 Track</button>
           <button id="howto-btn" class="secondary small">❓ How to Play</button>
           <button id="open-settings" class="secondary small">⚙ Settings</button>
@@ -160,6 +161,37 @@
         <!-- Shown only when not already installed (JS); does the native install
              prompt where supported, or opens the iOS instructions overlay. -->
         <button id="install-btn" class="secondary small hidden">📲 Add to Home Screen</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Garage: pick your cat + kart (live 3D preview renders behind) ===== -->
+  <div id="garage" class="overlay hidden">
+    <div id="garage-panel" class="menu-card">
+      <div class="garage-title"><span class="garage-ico">🐱</span><h1>Pick your racer</h1></div>
+      <div class="garage-pickers">
+        <div class="garage-pick">
+          <span class="garage-pick-label">CAT</span>
+          <div class="garage-stepper">
+            <button id="cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
+            <span class="garage-swatch" id="cat-swatch"></span>
+            <span class="garage-name" id="cat-name">Marmalade</span>
+            <button id="cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
+          </div>
+        </div>
+        <div class="garage-pick">
+          <span class="garage-pick-label">KART</span>
+          <div class="garage-stepper">
+            <button id="kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
+            <span class="garage-swatch" id="kart-swatch"></span>
+            <span class="garage-name" id="kart-name">Ember</span>
+            <button id="kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
+          </div>
+        </div>
+      </div>
+      <div class="garage-actions">
+        <button id="garage-apply">✓ Done</button>
+        <button id="garage-back" class="secondary">← Back</button>
       </div>
     </div>
   </div>
