@@ -214,6 +214,37 @@ function makeSpotTexture(furColor, spotColor) {
   return t;
 }
 
+// Eyeball texture: sclera + iris + slit pupil + catch-lights all PAINTED onto one
+// sphere (cached per eye colour), so the eye is a single clean ball an eyelid can
+// sweep over — no separate pupil/shine objects poking through a closing lid. The
+// iris is drawn at u≈0.25, which is the +z (forward-facing) point of a three.js
+// sphere, so it looks straight ahead with no mesh rotation.
+const _eyeTexCache = new Map();
+function makeEyeTexture(eyeColor) {
+  const col = new THREE.Color(eyeColor);
+  const hex = col.getHexString();
+  if (_eyeTexCache.has(hex)) return _eyeTexCache.get(hex);
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#fbfbfb"; // sclera
+  ctx.fillRect(0, 0, S, S);
+  const cx = S * 0.25, cy = S * 0.5; // forward-facing point of the sphere
+  ctx.fillStyle = "#" + hex; // iris (tall oval — cat eye)
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.2, S * 0.27, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#141414"; // vertical slit pupil
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.07, S * 0.23, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.95)"; // double catch-light
+  ctx.beginPath(); ctx.arc(cx - S * 0.07, cy - S * 0.12, S * 0.055, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + S * 0.04, cy + S * 0.09, S * 0.028, 0, Math.PI * 2); ctx.fill();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  _eyeTexCache.set(hex, t);
+  return t;
+}
+
 // Constant cat materials — never vary per cat, so a single shared instance is
 // reused by every driver (the toToon cache then collapses each to one pipeline).
 const _cDark = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5 });
@@ -261,9 +292,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const pink = _cPink;
   const white = _cWhite;
   const pawMat = whitePaws ? white : isPoint ? extremity : fur;
-  const iris = new THREE.MeshStandardMaterial({
-    color: pal.eye, emissive: pal.eye.clone().multiplyScalar(0.25), emissiveIntensity: 0.4, roughness: 0.25,
-  });
+  // Eyeball: one sphere with the iris/pupil/highlights painted on (see makeEyeTexture).
+  const eyeballMat = new THREE.MeshStandardMaterial({ map: makeEyeTexture(pal.eye), roughness: 0.32 });
   // Painted coat: vertical mackerel stripes down the flanks (tabby) or scattered
   // spots (spotted), baked into the fur so the markings read as bold and graphic.
   // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
@@ -372,37 +402,32 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
-  // Eyes — bigger and glossier, with a double catch-light for life. A vertical
-  // slit pupil and a warm/green iris read as "cat" instantly.
+  // Eyes — one painted eyeball each (iris + slit pupil + catch-lights baked into
+  // the texture), so it's a single clean ball. Merged into the head like the rest.
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), iris);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), eyeballMat);
     eye.position.set(sx * 0.31, 0.1, 0.6);
     eye.scale.set(0.96, 1.12, 0.7);
     headStatic.push(eye);
-    const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), dark);
-    pupil.position.set(sx * 0.31, 0.1, 0.74);
-    pupil.scale.set(0.42, 1.05, 1);
-    headStatic.push(pupil);
-    const shine = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), white);
-    shine.position.set(sx * 0.37, 0.2, 0.78);
-    headStatic.push(shine);
-    const shine2 = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), white);
-    shine2.position.set(sx * 0.26, 0.02, 0.78);
-    headStatic.push(shine2);
   }
 
-  // Eyelids — coat-coloured caps over each eye, used ONLY for the idle blink in
-  // the garage / post-race pan. They're hidden (visible=false) and so cost zero
-  // draw calls during a race; updateCatRig only shows + closes them when
-  // allowBlink is set. Kept separate from the merged head so they can animate.
+  // Eyelids — a coat-coloured cap that sweeps DOWN over each eyeball for the idle
+  // blink (garage / post-race only). Each lid hangs off a pivot at the TOP of the
+  // eye; scaling the pivot's Y from 0 (tucked away at the brow, hidden) to 1 draws
+  // the lid cleanly down over the ball. visible=false at rest, so zero draw-call
+  // cost while racing. updateCatRig drives the pivots when allowBlink is set.
   const eyelids = [];
   for (const sx of [-1, 1]) {
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), coat);
-    lid.position.set(sx * 0.31, 0.12, 0.62);
-    lid.scale.set(0.98, 0.001, 0.74); // flat (eye open) until a blink closes it
-    lid.visible = false;
-    head.add(lid);
-    eyelids.push(lid);
+    const pivot = new THREE.Group();
+    pivot.position.set(sx * 0.31, 0.36, 0.6); // top edge of the eye
+    pivot.scale.y = 0;
+    pivot.visible = false;
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), coat);
+    lid.position.set(0, -0.26, 0.02); // centre hangs over the eyeball when scale.y = 1
+    lid.scale.set(1.0, 1.15, 0.8);
+    pivot.add(lid);
+    head.add(pivot);
+    eyelids.push(pivot);
   }
 
   // Muzzle + nose + a tiny "ω" smile. White, except solid coats (a clean grey
@@ -648,17 +673,19 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
   if (allowBlink && lids && lids.length) {
     if (rig.blinkP > 0) {
       rig.blinkP -= dt;
-      // Close-then-open over BLINK_DUR; sin gives a smooth 0→1→0 lid travel.
+      // Lid sweeps down then back up over the blink; sin gives a smooth 0→1→0
+      // travel. The pivot sits at the brow, so scaling its Y draws the lid down
+      // over the eyeball (1 = fully closed).
       const t = 1 - Math.max(0, rig.blinkP) / 0.16;
       const v = Math.sin(Math.min(1, t) * Math.PI);
-      for (const lid of lids) { lid.visible = true; lid.scale.y = 0.001 + v * 1.05; }
-      if (rig.blinkP <= 0) { for (const lid of lids) { lid.visible = false; lid.scale.y = 0.001; } rig.blinkT = 1.8 + Math.random() * 3.5; }
+      for (const lid of lids) { lid.visible = true; lid.scale.y = v; }
+      if (rig.blinkP <= 0) { for (const lid of lids) { lid.visible = false; lid.scale.y = 0; } rig.blinkT = 1.8 + Math.random() * 3.5; }
     } else {
       rig.blinkT -= dt;
       if (rig.blinkT <= 0) rig.blinkP = 0.16; // start a blink
     }
   } else if (lids && lids.length && lids[0].visible) {
-    for (const lid of lids) { lid.visible = false; lid.scale.y = 0.001; }
+    for (const lid of lids) { lid.visible = false; lid.scale.y = 0; }
   }
 }
 
