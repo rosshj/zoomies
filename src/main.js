@@ -2890,6 +2890,10 @@ function loop(now) {
     if (player.drifting) {
       effects.driftSparks(player);
       effects.skid(player);
+    } else if (_hardTurn) {
+      // Also lay rubber when cornering hard at speed (not only while drifting),
+      // so tight turns leave marks. (_hardTurn already gates on steer + speed.)
+      effects.skid(player);
     }
     // Chromatic aberration ramps up with the boost.
     const aberrTarget = player.boosting ? 0.008 : 0;
