@@ -56,14 +56,19 @@ const trackConfig = loadTrackConfig();
 // race. Named presets so it reads like a character-select; the saved selection is
 // stored as indices into these arrays (clamped on load) and reused for solo, the
 // multiplayer broadcast identity, and to keep the AI off the player's colours.
+// Each cat is a colour + an explicit markings pattern, so the seven read as
+// distinct breeds rather than recolours: tabby (banded), tuxedo (white bib +
+// socks + tail-tip), mitted (small white socks/bib), solid (plain coat), point
+// (darker ears/muzzle/paws/tail). createCat falls back to deriving a pattern
+// from the colour when none is given (recoloured AI / multiplayer cats).
 const CAT_PRESETS = [
-  { name: "Marmalade", fur: 0xf0a830 },
-  { name: "Smokey", fur: 0x9e9e9e },
-  { name: "Shadow", fur: 0x2a2a2a },
-  { name: "Snow", fur: 0xfbfbfb },
-  { name: "Biscuit", fur: 0xd7a86e },
-  { name: "Espresso", fur: 0x4a3328 },
-  { name: "Cream", fur: 0xffe0b2 },
+  { name: "Marmalade", fur: 0xf0a830, pattern: "tabby" }, // orange tabby
+  { name: "Smokey", fur: 0x9e9e9e, pattern: "mitted" }, // grey, white paws
+  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black + white bib
+  { name: "Snow", fur: 0xfbfbfb, pattern: "solid" }, // pure white
+  { name: "Biscuit", fur: 0xd7a86e, pattern: "tabby" }, // tan tabby
+  { name: "Espresso", fur: 0x4a3328, pattern: "mitted" }, // dark brown, white paws
+  { name: "Cream", fur: 0xffe0b2, pattern: "point" }, // cream colour-point
 ];
 const KART_PRESETS = [
   { name: "Ember", color: 0xe53935 },
@@ -105,7 +110,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = CAT_PRESETS[garageConfig.cat] || CAT_PRESETS[0];
   const kart = KART_PRESETS[garageConfig.kart] || KART_PRESETS[0];
-  return { catColor: cat.fur, color: kart.color, name: cat.name };
+  return { catColor: cat.fur, catPattern: cat.pattern, color: kart.color, name: cat.name };
 }
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
@@ -526,7 +531,7 @@ function _pickUnused(palette, used) {
 // player stands out. Multiplayer / time-trial fields are the player alone.
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern };
   if (MP.enabled || timeTrial) return [playerCfg];
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
@@ -602,7 +607,7 @@ function decorateKartGroup(group) {
 // (display name = the cat's name).
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern };
 }
 
 const MP = {
@@ -1682,7 +1687,7 @@ function buildGaragePreview() {
   _clearGaragePreview();
   const cat = CAT_PRESETS[_garageDraft.cat];
   const kart = KART_PRESETS[_garageDraft.kart];
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, name: cat.name, isPlayer: false, skill: 1 });
   pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];

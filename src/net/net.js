@@ -124,7 +124,7 @@ export class Net {
       case "hello":
         if (m.id === this.id || this._peers.has(m.id)) break; // dedupe re-sent hellos
         this._peers.add(m.id);
-        this._emit("peer", { id: m.id, name: m.name, color: m.color, catColor: m.catColor });
+        this._emit("peer", { id: m.id, name: m.name, color: m.color, catColor: m.catColor, catPattern: m.catPattern });
         break;
       case "state":
         if (m.id === this.id) break;

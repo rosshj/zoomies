@@ -21,6 +21,7 @@ export class RemoteKart {
     this.kart = new Kart({
       color: identity.color,
       catColor: identity.catColor,
+      catPattern: identity.catPattern,
       name: identity.name,
       isPlayer: false,
     });

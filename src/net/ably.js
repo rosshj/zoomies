@@ -62,7 +62,7 @@ class AblyTransport {
       }
       case 'hello':
         // clientId was set to selfId at construction, so member.clientId == our id.
-        this._channel.presence.enter({ name: obj.name, color: obj.color, catColor: obj.catColor })
+        this._channel.presence.enter({ name: obj.name, color: obj.color, catColor: obj.catColor, catPattern: obj.catPattern })
           .catch(() => {});
         break;
       default:

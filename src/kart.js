@@ -59,7 +59,7 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, name, isPlayer, skill = 1 }) {
+  constructor({ color, catColor, catPattern, name, isPlayer, skill = 1 }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
@@ -152,7 +152,7 @@ export class Kart {
     this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
     this.flames = flames; // boost exhaust flames; shown/flickered while boosting
     this.group.add(kart);
-    const cat = createCat(catColor);
+    const cat = createCat(catColor, { pattern: catPattern });
     cat.scale.setScalar(0.62);
     cat.position.set(0, 0.85, -0.35);
     this.group.add(cat);
