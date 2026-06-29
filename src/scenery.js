@@ -28,6 +28,12 @@ const BIOMES = [
   { name: "alpine", weather: "snow", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
   { name: "autumn", weather: "none", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
   { name: "desert", weather: "none", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
+  // Cherry-blossom spring: fresh green ground under candy-pink canopies.
+  { name: "blossom", weather: "none", ground: 0x6fae4a, ground2: 0x5a9440, foliage: [0.92, 0.6, 0.82], style: "cone", sx: 1.05, sy: 1.05, treeDensity: 0.8, grassTint: 0xd6f0a8, grassDensity: 0.95, barrier: { a: 0xffd9e6, b: 0xff9fc0 } },
+  // Dry golden savanna: tawny earth, sparse wide acacia-ish trees, pale grass.
+  { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
+  // Frosted tundra: pale sage ground, short blue-green pines, light snow.
+  { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
 ];
 for (const b of BIOMES) {
   b.groundCol = new THREE.Color(b.ground);
@@ -186,6 +192,9 @@ const ROAD_STYLES = {
   alpine: { tint: [1.35, 1.42, 1.55], kind: "snow" },
   autumn: { tint: [1.1, 1.0, 0.85], kind: "autumn" },
   desert: { tint: [1.7, 1.45, 1.02], kind: "sand" },
+  blossom: { tint: [1.04, 0.97, 1.02], kind: "asphalt" },
+  savanna: { tint: [1.45, 1.28, 0.95], kind: "sand" },
+  tundra: { tint: [1.25, 1.32, 1.4], kind: "snow" },
 };
 export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
@@ -1777,8 +1786,8 @@ function makeBuilding(density, biome) {
   const h = floors * 2.7;
   const base = 0.6;
   const top = base + h;
-  // In the alpine (snow) biome, frost the walls and snow-cover the roof.
-  const snow = biome && biome.name === "alpine";
+  // In the snowy biomes (alpine, tundra), frost the walls and snow-cover the roof.
+  const snow = biome && (biome.name === "alpine" || biome.name === "tundra");
   let wall = pick(BUILDING_PALETTE);
   if (snow) wall = new THREE.Color(wall).lerp(new THREE.Color(0xffffff), 0.3).getHex();
   const roofCol = snow ? 0xeef4fa : pick(ROOF_PALETTE);
