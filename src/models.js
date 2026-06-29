@@ -52,15 +52,40 @@ function catPalette(furColor, override) {
   return {
     pattern,
     fur,
-    // darker tabby bands; a touch desaturated so they don't look like paint
-    stripe: fur.clone().multiplyScalar(0.52),
+    // bold tabby bands — dark and high-contrast so they read as painted-on
+    // markings, not a subtle shade. Mixed toward a deep brown-black.
+    stripe: fur.clone().multiplyScalar(0.34).lerp(new THREE.Color(0x140d08), 0.35),
     white: new THREE.Color(0xfbfbfb),
     // colour-point: warm sepia shadows on the extremities (ears/muzzle/paws/tail)
-    point: fur.clone().lerp(new THREE.Color(0x5c4636), 0.62),
+    point: fur.clone().lerp(new THREE.Color(0x4a382a), 0.74),
     // eye colour reads off the fur tone: amber on dark cats, blue on snowy
     // whites, the classic gooseberry green on everything in between
     eye: L < 0.3 ? new THREE.Color(0xffc24d) : L > 0.8 ? new THREE.Color(0x86b6ff) : new THREE.Color(0x9bdc54),
   };
+}
+
+// Painted tabby coat: bold dark bands baked into a tiny texture so the stripes
+// read as graphic markings wrapping the body/head/tail, not subtle geometry.
+// `bands` controls how many rings repeat along the surface (more for the long
+// tail). The fur colour is the base; the stripe colour is the bar. Returns a
+// CanvasTexture wrapping in V (around the body axis).
+function makeStripeTexture(furColor, stripeColor, bands = 4) {
+  const c = document.createElement("canvas");
+  c.width = 4;
+  c.height = 32;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + furColor.getHexString();
+  ctx.fillRect(0, 0, 4, 32);
+  ctx.fillStyle = "#" + stripeColor.getHexString();
+  // one bold bar per tile (~45% duty) → strong, obvious stripes
+  ctx.fillRect(0, 6, 4, 15);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(1, bands);
+  t.magFilter = THREE.NearestFilter; // crisp painted edges, no blur
+  t.needsUpdate = true;
+  return t;
 }
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
@@ -90,9 +115,17 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const iris = new THREE.MeshStandardMaterial({
     color: pal.eye, emissive: pal.eye.clone().multiplyScalar(0.25), emissiveIntensity: 0.4, roughness: 0.25,
   });
+  // Tabby coat: bold painted stripes baked into the fur (body/head share one
+  // density; the long tail gets more bands). Non-tabby coats are flat.
+  const coat = isTabby
+    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: makeStripeTexture(pal.fur, pal.stripe, 4) })
+    : fur;
+  const tailCoat = isTabby
+    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: makeStripeTexture(pal.fur, pal.stripe, 7) })
+    : extremity;
 
-  // Body (sitting torso)
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 0.78, 6, 16), fur);
+  // Body (sitting torso) — painted stripes for tabbies.
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 0.78, 6, 16), coat);
   body.position.y = 1.0;
   body.castShadow = true;
   cat.add(body);
@@ -102,16 +135,6 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   chest.position.set(0, 0.78, 0.57);
   chest.scale.set(hasBib ? 0.96 : 0.9, hasBib ? 1.12 : 1.08, hasBib ? 0.6 : 0.56);
   cat.add(chest);
-
-  // Back stripes (tabby only) — gently curved bands down the spine.
-  if (isTabby) {
-    for (let i = 0; i < 4; i++) {
-      const stripe = new THREE.Mesh(rbox(1.34 - i * 0.06, 0.13, 0.3, 0.06), stripeMat);
-      stripe.position.set(0, 1.32 - i * 0.05, -0.34 - i * 0.26);
-      stripe.rotation.x = 0.52;
-      cat.add(stripe);
-    }
-  }
 
   // Front paws on the wheel. Each arm hangs off a shoulder pivot so it can be
   // raised for a victory fist-pump; at rest (pivot identity) the pose is
@@ -143,19 +166,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   head.position.set(0, 2.06, 0.12);
   cat.add(head);
 
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.78, 20, 20), fur);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.78, 20, 20), coat);
   skull.scale.set(1.04, 0.98, 0.96);
   skull.castShadow = true;
   head.add(skull);
-  // Forehead tabby "M" + colour-point mask shading.
-  if (isTabby) {
-    for (let i = 0; i < 3; i++) {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.42 - i * 0.06, 0.08), stripeMat);
-      m.position.set((i - 1) * 0.2, 0.54 - i * 0.04, 0.52);
-      m.rotation.z = (i - 1) * 0.22;
-      head.add(m);
-    }
-  }
+  // Colour-point mask shading (tabby head markings come from the painted coat).
   if (isPoint) {
     const mask = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 14), extremity);
     mask.position.set(0, -0.06, 0.42);
@@ -267,27 +282,17 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     new THREE.Vector3(0.35, 1.0, -0.45),
     new THREE.Vector3(0.7, 1.45, -0.02),
   ]);
-  const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 28, 0.2, 10), extremity);
+  const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 28, 0.2, 10), tailCoat);
   tail.castShadow = true;
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
-  // Tail tip cap (white for tuxedo, point colour otherwise) — a soft rounded end.
-  const tipMat = pal.pattern === "tuxedo" ? white : extremity;
+  // Tail tip cap: white for tuxedo, dark for tabby (tabbies end in a black tip),
+  // point colour otherwise — a soft rounded end.
+  const tipMat = pal.pattern === "tuxedo" ? white : isTabby ? stripeMat : extremity;
   const tip = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), tipMat);
   tip.position.copy(tailCurve.getPoint(1));
   tailPivot.add(tip);
-  // Tabby tail rings threaded along the curve.
-  if (isTabby) {
-    for (let i = 1; i <= 4; i++) {
-      const t = i / 5;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.06, 8, 14), stripeMat);
-      ring.position.copy(tailCurve.getPoint(t));
-      const tan = tailCurve.getTangent(t);
-      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tan);
-      tailPivot.add(ring);
-    }
-  }
   cat.add(tailPivot);
 
   cat.userData.tail = tailPivot;
