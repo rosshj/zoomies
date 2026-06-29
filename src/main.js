@@ -429,7 +429,7 @@ function toToon(m) {
   // (black emissive). Materials with a live emissive (brake lights, headlight
   // bulbs, glowing pads) keep stock toon so their dynamic emissiveIntensity works.
   const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim) && matte) {
+  if ((ud.backlight || ud.rim || ud.paint) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
     let term = null;
     if (ud.backlight) {
@@ -443,6 +443,18 @@ function toToon(m) {
       const rimF = float(1).sub(ndv).pow(2.5).mul(normalView.dot(uSunViewNode.negate()).max(0));
       const rimTerm = uSunColNode.mul(rimF.mul(1.6));
       term = term ? term.add(rimTerm) : rimTerm;
+    }
+    if (ud.paint) {
+      // A soft, banded "toy gloss" highlight on kart paint: a single crisp
+      // specular bloom toward the sun. Toon-banded (smoothstep) so it reads as a
+      // shaped glint, not a smooth Phong lobe; kept gentle so it never blows out.
+      const lightDir = uSunViewNode.negate().normalize();
+      const half = lightDir.add(positionViewDirection).normalize();
+      const spec = normalView.dot(half).max(0).pow(22);
+      const glint = smoothstep(0.25, 0.5, spec);
+      // mostly white so the shine reads on any body colour, warmed by the sun tint
+      const paintTerm = tslColor(0xffffff).mul(0.42).add(uSunColNode).mul(glint);
+      term = term ? term.add(paintTerm) : paintTerm;
     }
     t.emissiveNode = term;
     return t;
