@@ -416,8 +416,15 @@ const backlitShaders = [];
 const rimShaders = [];
 const uSunViewNode = uniform(new THREE.Vector3(0, 0, 1));
 const uSunColNode = uniform(new THREE.Color(0x000000));
+// Cache the toon conversion per source material (WeakMap → auto-freed when the
+// source material is GC'd between races). With the merged kart/cat meshes a few
+// constant materials (chrome, tyre, dark…) are shared across every racer, so
+// caching collapses them to a single toon material / render pipeline instead of
+// one per occurrence.
+const _toonCache = new WeakMap();
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
+  if (_toonCache.has(m)) return _toonCache.get(m);
   const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
     map: m.map || null,
@@ -467,11 +474,14 @@ function toToon(m) {
       term = term ? term.add(paintTerm) : paintTerm;
     }
     t.emissiveNode = term;
+    _toonCache.set(m, t);
     return t;
   }
   // Everything else: stock toon (auto-converted to a node material by WebGPU,
   // keeping the gradient banding and any dynamic emissiveIntensity).
-  return new THREE.MeshToonMaterial(params);
+  const stock = new THREE.MeshToonMaterial(params);
+  _toonCache.set(m, stock);
+  return stock;
 }
 function toonify(root) {
   root.traverse((o) => {
