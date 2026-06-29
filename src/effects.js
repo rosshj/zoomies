@@ -10,6 +10,8 @@ import { attribute, texture, color } from "three/tsl";
 // each its own draw call (they don't batch); now it's 2 draw calls total. Per-
 // particle position/colour/scale/opacity are pushed into instanced attributes each
 // frame; the simulation (in `parts`) is unchanged.
+const _DUST_FALLBACK = new THREE.Color(0xd8c8a8); // warm tan if no biome tint supplied
+
 export class EffectsManager {
   constructor(scene) {
     this.scene = scene;
@@ -299,6 +301,43 @@ export class EffectsManager {
         .addScaledVector(kart.wallHitDir, 4 + Math.random() * 6)
         .add(new THREE.Vector3((Math.random() - 0.5) * 3, 3 + Math.random() * 4, (Math.random() - 0.5) * 3));
       this._spawn(base.clone(), col, { additive: true, spark: true, size: 0.6, life: 0.3, v, damp: 1 });
+    }
+  }
+
+  // Dust kicked off the track surface — soft, ground-coloured puffs that splay out
+  // low behind the rear wheels and settle. Heavier while skidding/drifting, a faint
+  // veil while just driving. Routed through the existing smoke field (no new draw
+  // calls) and capped by `amount` so a whole field of karts can't flood the budget.
+  dust(kart, color, amount = 1) {
+    // Probabilistic emission: `amount` scales both the chance and the puff count,
+    // so light cruising dust is a rare single puff and a hard skid is a steady plume.
+    if (Math.random() > amount * 0.9) return;
+    const n = amount > 0.6 && Math.random() < amount ? 2 : 1;
+    const right = new THREE.Vector3(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    const groundY = (kart.groundY ?? kart.y ?? 0) + 0.15;
+    for (let i = 0; i < n; i++) {
+      const side = (Math.random() < 0.5 ? -1 : 1) * (0.9 + Math.random() * 0.7);
+      const base = new THREE.Vector3()
+        .copy(kart.position)
+        .addScaledVector(fwd, -1.7 - Math.random())
+        .addScaledVector(right, side)
+        .setY(groundY);
+      const v = right
+        .clone()
+        .multiplyScalar(side * (1.4 + Math.random() * 2)) // splay outward from the tyre
+        .addScaledVector(fwd, -(1 + Math.random() * 1.8)) // and trail backward
+        .add(new THREE.Vector3(0, 0.7 + Math.random() * 1.1, 0));
+      const c = (color || _DUST_FALLBACK).clone().multiplyScalar(0.82 + Math.random() * 0.3);
+      this._spawn(base, c, {
+        size: 1.0 + Math.random() * 1.0,
+        life: 0.45 + Math.random() * 0.4,
+        grow: 2.4,
+        v,
+        damp: 2.4,
+        gravity: 2.2, // billows up then settles back to the ground
+        opacity: (0.32 + Math.random() * 0.22) * (0.6 + amount * 0.5),
+      });
     }
   }
 

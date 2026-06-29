@@ -14,7 +14,7 @@ import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeRoadStyle } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { Net } from "./net/net.js";
@@ -522,6 +522,7 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 const input = new Input();
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
+const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const hud = new HUD();
 
 // Boost (toot) meter UI reflects the player kart's own meter.
@@ -824,6 +825,10 @@ let _finishCamAngle = 0; // victory orbit angle once the player finishes
 let timeTrial = false;
 let ttLapStart = -1; // raceTime when the timed lap began (first start-line crossing)
 let _ttResult = null; // { top, entry } from the latest recorded run, for the results screen
+let ttBest = null; // personal-best lap time (s), loaded when a time trial starts
+const ttBestEl = document.getElementById("tt-best");
+const ttDeltaEl = document.getElementById("tt-delta");
+const timerEl = document.getElementById("timer");
 
 // --- Stage / orientation ---
 // We render at the true viewport size (no CSS rotation — that caused cutoff and
@@ -2004,11 +2009,21 @@ if (lobbyCopyBtn) {
 
 function startRace() {
   timeTrial = false;
+  setTimeTrialHud(false);
   beginRace();
 }
 function startTimeTrial() {
   timeTrial = true;
+  ttBest = loadTimeTrial()[0]?.time ?? null; // the lap to chase
+  setTimeTrialHud(true);
   beginRace();
+}
+// Show/hide the time-trial PB target + delta, and reset their state for a new run.
+function setTimeTrialHud(on) {
+  for (const el of [ttBestEl, ttDeltaEl]) el?.classList.toggle("hidden", !on);
+  if (ttBestEl) ttBestEl.textContent = on ? (ttBest != null ? `PB ${formatLap(ttBest)}` : "PB — (set one!)") : "";
+  if (ttDeltaEl) { ttDeltaEl.textContent = ""; ttDeltaEl.className = "hidden"; }
+  if (timerEl) timerEl.classList.remove("ahead", "behind");
 }
 function beginRace() {
   // These need the user-gesture from the click, so fire them synchronously.
@@ -2933,6 +2948,15 @@ function loop(now) {
       // so tight turns leave marks. (_hardTurn already gates on steer + speed.)
       effects.skid(player);
     }
+
+    // Dust kicked off the track, tinted to the local ground. A thick plume while
+    // sliding/cornering hard, a faint veil while just driving at speed — only when
+    // the kart is actually on the ground (no dust mid-jump). One color sample/frame.
+    if (!player.airborne && _sp > 6) {
+      biomeDustColor(player.position.x, player.position.z, _dustCol);
+      const amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      if (amt > 0.02) effects.dust(player, _dustCol, amt);
+    }
     // Chromatic aberration ramps up with the boost.
     const aberrTarget = player.boosting ? 0.008 : 0;
     fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
@@ -2990,6 +3014,14 @@ function loop(now) {
       if (k.drifting && k !== player && Math.abs(k.speed) > 8) {
         effects.driftSparks(k);
         effects.skid(k);
+      }
+      // Dust for the rest of the field, but ONLY for karts near the camera and
+      // only when they're sliding — so distant traffic and the shared particle
+      // budget stay protected (the player's own dust is handled above).
+      if (k !== player && !k.airborne && (k.drifting || k.spinTimer > 0) &&
+          k.position.distanceToSquared(camera.position) < 70 * 70) {
+        biomeDustColor(k.position.x, k.position.z, _dustCol);
+        effects.dust(k, _dustCol, 0.5);
       }
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
@@ -3078,6 +3110,23 @@ function loop(now) {
       speedKmh: Math.abs(player.speed) * 3.0,
       time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
     });
+
+    // Time-trial: race the clock against your personal best. While the timed lap
+    // runs, the timer + delta go GREEN as long as you're still under your PB time
+    // and flip RED the moment you've spent longer than it — instant "on pace?"
+    // feedback with no stored splits needed.
+    if (timeTrial && ttLapStart >= 0 && ttBest != null) {
+      const diff = raceTime - ttLapStart - ttBest;
+      const ahead = diff < 0;
+      if (ttDeltaEl) {
+        ttDeltaEl.classList.remove("hidden");
+        ttDeltaEl.textContent = (ahead ? "−" : "+") + Math.abs(diff).toFixed(2);
+        ttDeltaEl.classList.toggle("ahead", ahead);
+        ttDeltaEl.classList.toggle("behind", !ahead);
+      }
+      timerEl?.classList.toggle("ahead", ahead);
+      timerEl?.classList.toggle("behind", !ahead);
+    }
 
     updateCamera(dt);
 
