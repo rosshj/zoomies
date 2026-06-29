@@ -311,6 +311,12 @@ export class Kart {
     return { pos, dir: fwd };
   }
 
+  // Drive just the cat's idle animation (the occasional blink) for showcase
+  // views like the garage, where the kart itself isn't being simulated.
+  idleBlink(dt) {
+    updateCatRig(this.catRig, dt, 0, 0, false, false, true);
+  }
+
   update(dt, track) {
     this._dt = dt;
     if (this.finished) {
@@ -544,7 +550,9 @@ export class Kart {
 
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
     // lifts while tooting).
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished);
+    // Blink only on the post-race victory lap (the racing rig already gives a
+    // moving cat plenty of life); never mid-race.
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished);
 
     // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
     // long axis along the sun azimuth (independent of which way the kart faces),
