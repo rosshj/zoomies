@@ -517,7 +517,6 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     new THREE.Vector3(0.7, 1.45, -0.02),
   ]);
   const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 28, 0.2, 10), tailCoat);
-  tail.castShadow = true;
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
@@ -532,8 +531,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // Bake the rigid clusters: the head cluster (skull/face/eyes/headwear) rides
   // with the head; the body cluster (torso/chest/neckwear) sits on the cat root.
   // Each becomes one multi-material mesh (one draw call per material).
-  head.add(mergeMeshes(headStatic, { castShadow: true }));
-  cat.add(mergeMeshes(catStatic, { castShadow: true }));
+  // Like the kart, the cat relies on the kart's contact blob rather than casting
+  // into the sun shadow map — keeps the bunched-up field cheap.
+  head.add(mergeMeshes(headStatic, { castShadow: false }));
+  cat.add(mergeMeshes(catStatic, { castShadow: false }));
 
   cat.userData.tail = tailPivot;
   cat.userData.rig = {
@@ -760,7 +761,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   }
 
   // Bake the whole rigid shell into one mesh (≈5 draw calls — one per material).
-  const shellMesh = mergeMeshes(shell, { castShadow: true });
+  // Karts don't cast a real sun shadow: each already has a soft contact-shadow
+  // blob (kart.js), so casting into the 2048 shadow map too just doubled the
+  // field's vertex/fill cost when cars bunched up. The blob grounds them.
+  const shellMesh = mergeMeshes(shell, { castShadow: false });
   group.add(shellMesh);
 
   // Headlights, set into the nose.
@@ -824,7 +828,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const caliper = new THREE.Mesh(rbox(0.16, 0.24, 0.18, 0.04), caliperMat);
     caliper.position.set(-side * 0.12, radius * 0.62, 0.02);
     parts.push(caliper);
-    w.add(mergeMeshes(parts, { castShadow: true }));
+    w.add(mergeMeshes(parts, { castShadow: false }));
     return w;
   }
   const wheelDefs = [
