@@ -123,7 +123,7 @@ export class Kart {
     this.tootTimer = 0; // tail-lift/toot animation timer
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
-    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 8s
+    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 5s
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -271,11 +271,11 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
-  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 8s.
+  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 5s.
   // Sustained each frame in update(); reads as a green boost (cloud + flames).
   giveCatnip() {
     if (this.finished) return;
-    this.catnipTimer = 8;
+    this.catnipTimer = 5;
   }
   get catnipBoosting() {
     return this.catnipTimer > 0;
@@ -400,8 +400,8 @@ export class Kart {
       const amount = Math.max(-0.4, 0.2 + rel * 0.7);
       steer = this.driftDir * amount;
     }
-    // Catnip is fast AND lasts 8s, which makes tight corners hard — give it extra
-    // steering authority so it stays controllable through bends.
+    // Catnip is fast, which makes tight corners hard — give it extra steering
+    // authority so it stays controllable through bends.
     if (this.catnipBoosting && !this.drifting) turnRate *= 1.4;
     this.heading += steer * turnRate * speedFactor * dir * dt;
 

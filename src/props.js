@@ -63,24 +63,18 @@ function build(scene, track, opts) {
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
 
-  // A catnip crate stands out: green-stained wood with a glowing emissive leaf
-  // orb on top, so players are drawn to smash it open.
-  const catnipBody = new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.8 });
-  const catnipTop = new THREE.MeshStandardMaterial({ color: 0x6f9a4a, roughness: 0.8 });
-  const catnipGlow = new THREE.MeshStandardMaterial({ color: 0x9be86a, emissive: 0x6fe040, emissiveIntensity: 1.8 });
+  // Catnip now hides inside a perfectly ordinary-looking crate (no green tint, no
+  // glowing orb) — you can't tell which box holds it, so chasing boxes is a
+  // risk/reward gamble instead of the leader making a beeline for an obvious prize.
+  // The `catnip` flag only governs behaviour (smash + grant), not appearance.
   const makeCrate = (catnip = false) => {
     const s = 1.5 + rand() * 0.6;
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), catnip ? catnipBody : woodMat));
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), catnip ? catnipTop : woodTop);
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), woodTop);
     lid.position.y = s * 0.5;
     g.add(lid);
     g.traverse((o) => (o.castShadow = true));
-    if (catnip) {
-      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(s * 0.26, 0), catnipGlow);
-      orb.position.y = s * 0.7;
-      g.add(orb);
-    }
     return { mesh: g, rest: s / 2 };
   };
   const makeBarrel = () => {
