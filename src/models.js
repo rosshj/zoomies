@@ -452,8 +452,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
     dome.position.set(0, 0.46, 0.04); dome.scale.set(1, 0.72, 1);
     acc.add(dome);
-    const brim = new THREE.Mesh(rbox(0.66, 0.08, 0.5, 0.04), m);
-    brim.position.set(0, 0.4, 0.62); // juts forward over the brow
+    const brim = new THREE.Mesh(rbox(0.66, 0.08, 0.56, 0.04), m);
+    brim.position.set(0, 0.45, 0.66); // rear tucks under the dome, front juts over the brow
     acc.add(brim);
     const btn = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), accMat(0xffffff));
     btn.position.set(0, 0.78, 0.04); acc.add(btn);  } else if (pat === "solid") {
@@ -474,15 +474,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     cuff.position.set(0, 0.4, 0); cuff.rotation.x = Math.PI / 2; acc.add(cuff);
     const pom = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), accMat(0xffffff));
     pom.position.set(0, 0.96, 0); acc.add(pom);  } else if (pat === "point") {
-    // flower tucked up by one ear — sits proud on the skull, not sunk inside it
+    // flower tucked forward of one ear — laid on a tangent plane to the skull so
+    // the whole bloom sits flat ON the surface (never dipping into head or ear).
+    const fn = new THREE.Vector3(0.6, 0.72, 0.36).normalize();   // outward direction
+    const fc = fn.clone().multiplyScalar(0.86);                  // proud of the surface
+    const fu = new THREE.Vector3().crossVectors(fn, new THREE.Vector3(0, 1, 0)).normalize();
+    const fv = new THREE.Vector3().crossVectors(fn, fu).normalize();
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2;
       const petal = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), accMat(0xff7ab3));
-      petal.position.set(0.52 + Math.cos(a) * 0.1, 0.78 + Math.sin(a) * 0.1, 0.08);
-      petal.scale.set(1, 1, 0.5); acc.add(petal);
+      petal.position.copy(fc).addScaledVector(fu, Math.cos(a) * 0.12).addScaledVector(fv, Math.sin(a) * 0.12);
+      petal.scale.set(1, 1, 0.8); acc.add(petal);
     }
     const ctr = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), accMat(0xffe14d));
-    ctr.position.set(0.52, 0.78, 0.12); acc.add(ctr);  } else if (pat === "mitted") {
+    ctr.position.copy(fc).addScaledVector(fn, 0.05); acc.add(ctr);  } else if (pat === "mitted") {
     // little fedora — rides up near the crown so the brim rests on the head
     const m = accMat(0x6b4a2f);
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.05, 20), m);
@@ -707,13 +712,15 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
     group.add(roundel);
   }
-  // Painted racing stripe — a bold centre stripe over the nose and a matching one
-  // on the rear engine deck (the cockpit naturally breaks it, like a real GP
-  // livery). Wide, low and flush so it reads as paint, not the old thin raised rib.
-  const noseStripe = add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, st.nose + 1.3), stripe));
-  noseStripe.position.set(0, 0.93, st.noseZ + 0.35); // hugging the nose/flash top
-  const deckStripe = add(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 1.05), stripe));
-  deckStripe.position.set(0, 1.13, -1.95); // on the rear deck
+  // Painted racing stripe — flat decals lying flush on the nose flash panel and
+  // the rear deck (zero thickness, a hair proud), so it reads as paint on the
+  // bodywork rather than a raised block bolted on top.
+  const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 1.5), stripe));
+  noseStripe.rotation.x = -Math.PI / 2;
+  noseStripe.position.set(0, 0.951, st.noseZ + 0.6); // flush on the nose flash
+  const deckStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.95), stripe));
+  deckStripe.rotation.x = -Math.PI / 2;
+  deckStripe.position.set(0, 1.122, -1.95); // flush on the rear deck
 
   // Seat well (where the cat sits) — sunk into the spine.
   const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
