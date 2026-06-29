@@ -17,6 +17,35 @@ export function setLightLevel(v) {
   _lightLevel = Math.max(0, Math.min(1, v || 0));
 }
 
+// Racing-number roundel decal: a white disc with a dark ring and the kart's
+// number, drawn to a transparent canvas so it sits on a plane on each fairing.
+const _numTexCache = new Map();
+function makeNumberTexture(n) {
+  if (_numTexCache.has(n)) return _numTexCache.get(n);
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, S, S);
+  ctx.fillStyle = "#f5f5f5";
+  ctx.beginPath();
+  ctx.arc(S / 2, S / 2, S * 0.46, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = S * 0.06;
+  ctx.strokeStyle = "#1c1c20";
+  ctx.stroke();
+  ctx.fillStyle = "#1c1c20";
+  ctx.font = `bold ${S * 0.6}px system-ui, Arial, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(n), S / 2, S / 2 + S * 0.03);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.needsUpdate = true;
+  _numTexCache.set(n, t);
+  return t;
+}
+
 // Soft radial texture for the kart underglow pool.
 let _underTex = null;
 function underglowTexture() {
@@ -436,9 +465,21 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false)
 // on the lower skirt/nose, a light centre racing stripe, and a number roundel —
 // gives each kart its own paint without needing per-kart art. Returns
 // { group, wheels, brakeMat, flames }.
-export function createKartModel(bodyColor = 0xe53935) {
+export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const group = new THREE.Group();
   const body = new THREE.Color(bodyColor);
+  // Body silhouette variants (cockpit height stays constant so the cat always
+  // seats correctly; the nose, wing, tyres and roll-cage change the profile):
+  //   gp       — long nose, big rear wing, low slick tyres (default)
+  //   roadster — short nose, ducktail lip spoiler, classic rounded tail
+  //   buggy    — stubby nose, no wing, fat tyres + a roll hoop
+  const STYLES = [
+    { nose: 1.7, noseZ: 2.0, tipZ: 2.95, wing: "big", tire: 1.0, hoop: false },
+    { nose: 1.25, noseZ: 1.85, tipZ: 2.6, wing: "lip", tire: 1.06, hoop: false },
+    { nose: 1.0, noseZ: 1.75, tipZ: 2.45, wing: "none", tire: 1.2, hoop: true },
+  ];
+  const st = STYLES[opts.style ?? 0] || STYLES[0];
+  const kartNumber = opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
   // userData.paint). Accent is a darker shade of the same hue; the stripe is a
   // near-white tint so the livery reads on dark and light bodies alike.
@@ -478,33 +519,32 @@ export function createKartModel(bodyColor = 0xe53935) {
   spine.castShadow = true;
   group.add(spine);
   // Nose: a single tapering wedge flowing off the front of the pan + soft tip.
-  const nose = new THREE.Mesh(rbox(1.7, 0.46, 1.7, 0.3), paint);
-  nose.position.set(0, 0.62, 2.0);
+  // Length/reach vary by style (long GP snout vs stubby buggy).
+  const nose = new THREE.Mesh(rbox(1.7, 0.46, st.nose, 0.3), paint);
+  nose.position.set(0, 0.62, st.noseZ);
   nose.castShadow = true;
   group.add(nose);
   const noseTip = new THREE.Mesh(rbox(1.16, 0.42, 1.2, 0.42), paint);
-  noseTip.position.set(0, 0.58, 2.95);
+  noseTip.position.set(0, 0.58, st.tipZ);
   noseTip.castShadow = true;
   group.add(noseTip);
   // Nose flash (accent) over the snout.
   const flash = new THREE.Mesh(rbox(0.95, 0.2, 1.5, 0.12), accent);
-  flash.position.set(0, 0.84, 2.6);
+  flash.position.set(0, 0.84, st.noseZ + 0.6);
   group.add(flash);
-  // Side fairings — flush to the floor sides, same paint: bodywork, not pods.
+  // Side fairings — flush to the floor sides, same paint: bodywork, not pods. A
+  // numbered roundel sits on each side (a plane decal facing outward).
+  const numTex = makeNumberTexture(kartNumber);
+  const numMat = new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.5 });
   for (const sx of [-1, 1]) {
     const fairing = new THREE.Mesh(rbox(0.62, 0.5, 2.7, 0.26), paint);
     fairing.position.set(sx * 1.2, 0.64, 0.0);
     fairing.castShadow = true;
     group.add(fairing);
-    // Number roundel on each fairing: a white disc with a darker ring.
-    const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.04, 20), decal);
-    disc.rotation.z = Math.PI / 2;
-    disc.position.set(sx * 1.53, 0.78, 0.1);
-    group.add(disc);
-    const ringD = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.04, 8, 22), accent);
-    ringD.position.set(sx * 1.55, 0.78, 0.1);
-    ringD.rotation.y = Math.PI / 2;
-    group.add(ringD);
+    const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), numMat);
+    roundel.position.set(sx * 1.53, 0.8, 0.1);
+    roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
+    group.add(roundel);
   }
   // Centre racing stripe running nose → tail over the spine.
   const stripeTop = new THREE.Mesh(rbox(0.42, 0.08, 4.5, 0.04), stripe);
@@ -534,18 +574,49 @@ export function createKartModel(bodyColor = 0xe53935) {
   deck.castShadow = true;
   group.add(deck);
 
-  // Rear wing on one clean central pylon + accent end-plates.
-  const pylon = new THREE.Mesh(rbox(0.34, 0.7, 0.34, 0.1), dark);
-  pylon.position.set(0, 1.25, -2.3);
-  group.add(pylon);
-  const wing = new THREE.Mesh(rbox(2.7, 0.14, 0.74, 0.06), paint);
-  wing.position.set(0, 1.62, -2.32);
-  wing.castShadow = true;
-  group.add(wing);
-  for (const sx of [-1, 1]) {
-    const plate = new THREE.Mesh(rbox(0.08, 0.36, 0.78, 0.03), accent);
-    plate.position.set(sx * 1.32, 1.55, -2.32);
-    group.add(plate);
+  // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
+  if (st.wing === "big") {
+    const pylon = new THREE.Mesh(rbox(0.34, 0.7, 0.34, 0.1), dark);
+    pylon.position.set(0, 1.25, -2.3);
+    group.add(pylon);
+    const wing = new THREE.Mesh(rbox(2.7, 0.14, 0.74, 0.06), paint);
+    wing.position.set(0, 1.62, -2.32);
+    wing.castShadow = true;
+    group.add(wing);
+    for (const sx of [-1, 1]) {
+      const plate = new THREE.Mesh(rbox(0.08, 0.36, 0.78, 0.03), accent);
+      plate.position.set(sx * 1.32, 1.55, -2.32);
+      group.add(plate);
+    }
+  } else if (st.wing === "lip") {
+    // Ducktail lip spoiler hugging the rear deck.
+    const lip = new THREE.Mesh(rbox(2.0, 0.12, 0.5, 0.06), paint);
+    lip.position.set(0, 1.18, -2.3);
+    lip.rotation.x = -0.18;
+    lip.castShadow = true;
+    group.add(lip);
+  }
+
+  // --- Greebles: chrome roll hoop (buggy) + twin exhaust tips (all) ---
+  if (st.hoop) {
+    const hoop = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.08, 10, 20, Math.PI), chrome);
+    hoop.position.set(0, 1.32, -1.15);
+    group.add(hoop);
+    // little diagonal brace behind it
+    const brace = new THREE.Mesh(rbox(0.12, 0.12, 0.9, 0.05), chrome);
+    brace.position.set(0, 1.0, -1.55);
+    brace.rotation.x = 0.6;
+    group.add(brace);
+  }
+  for (const sx of [-0.42, 0.42]) {
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.6, 12), chrome);
+    pipe.rotation.x = Math.PI / 2; // axis along Z, poking out the back
+    pipe.position.set(sx, 0.58, -2.62);
+    group.add(pipe);
+    const pipeTip = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.12, 12), dark);
+    pipeTip.rotation.x = Math.PI / 2;
+    pipeTip.position.set(sx, 0.58, -2.92);
+    group.add(pipeTip);
   }
 
   // Headlights, set into the nose.
@@ -569,8 +640,10 @@ export function createKartModel(bodyColor = 0xe53935) {
     group.add(tl);
   }
 
-  // --- Wheels: matte tyres with a contact tread band + a body-coloured rim and
-  // chrome centre cap. Fronts a touch smaller than the rears (kart stance). ---
+  // --- Wheels: matte tyres with a contact tread band, a spoked body-coloured
+  // rim + chrome hub cap, and a brake caliper at the rim. Fronts a touch smaller
+  // than the rears; tyre size scales with the body style. ---
+  const caliperMat = new THREE.MeshStandardMaterial({ color: 0xcf3a2e, metalness: 0.3, roughness: 0.4 });
   const wheels = [];
   function buildWheel(radius) {
     const w = new THREE.Group();
@@ -582,24 +655,39 @@ export function createKartModel(bodyColor = 0xe53935) {
     const band = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.02, radius * 1.02, 0.34, 22), tread);
     band.rotation.z = Math.PI / 2;
     w.add(band);
-    // Body-coloured rim disc + chrome hub cap on the outer face.
-    const rim = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.62, radius * 0.62, 0.52, 16), rimMat);
-    rim.rotation.z = Math.PI / 2;
-    w.add(rim);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.26, 12, 12), chrome);
+    // Hub + spokes on the outer face (a 5-spoke alloy look).
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.26, radius * 0.26, 0.54, 12), rimMat);
+    hub.rotation.z = Math.PI / 2;
+    w.add(hub);
+    for (let i = 0; i < 5; i++) {
+      const pivot = new THREE.Group();
+      pivot.position.x = 0.24; // outer face
+      pivot.rotation.x = (i / 5) * Math.PI * 2;
+      const spoke = new THREE.Mesh(rbox(0.1, radius * 0.66, 0.1, 0.03), rimMat);
+      spoke.position.y = radius * 0.36;
+      pivot.add(spoke);
+      w.add(pivot);
+    }
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.24, 12, 12), chrome);
+    cap.position.x = 0.26;
     cap.scale.set(0.5, 1, 1);
     w.add(cap);
+    // Brake caliper clamped on the inner-upper rim.
+    const caliper = new THREE.Mesh(rbox(0.16, 0.24, 0.18, 0.04), caliperMat);
+    caliper.position.set(-0.12, radius * 0.62, 0.02);
+    w.add(caliper);
     return w;
   }
   const wheelDefs = [
-    [1.32, 0.55, 1.55, 0.55],
-    [-1.32, 0.55, 1.55, 0.55],
-    [1.42, 0.62, -1.6, 0.66],
-    [-1.42, 0.62, -1.6, 0.66],
+    [1.32, 1.55, 0.55],
+    [-1.32, 1.55, 0.55],
+    [1.42, -1.6, 0.66],
+    [-1.42, -1.6, 0.66],
   ];
-  for (const [x, y, z, radius] of wheelDefs) {
+  for (const [x, z, baseR] of wheelDefs) {
+    const radius = baseR * st.tire;
     const w = buildWheel(radius);
-    w.position.set(x, y, z);
+    w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
     group.add(w);
     wheels.push(w);
   }

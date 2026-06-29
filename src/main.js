@@ -72,14 +72,16 @@ const CAT_PRESETS = [
   { name: "Espresso", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
   { name: "Cream", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
 ];
+// Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy),
+// and a racing number stamped on the side roundels.
 const KART_PRESETS = [
-  { name: "Ember", color: 0xe53935 },
-  { name: "Lagoon", color: 0x1e88e5 },
-  { name: "Clover", color: 0x43a047 },
-  { name: "Tangerine", color: 0xfb8c00 },
-  { name: "Grape", color: 0x8e24aa },
-  { name: "Sunbeam", color: 0xfdd835 },
-  { name: "Teal", color: 0x00897b },
+  { name: "Ember", color: 0xe53935, style: 0, number: 5 },
+  { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7 },
+  { name: "Clover", color: 0x43a047, style: 2, number: 3 },
+  { name: "Tangerine", color: 0xfb8c00, style: 0, number: 9 },
+  { name: "Grape", color: 0x8e24aa, style: 1, number: 4 },
+  { name: "Sunbeam", color: 0xfdd835, style: 2, number: 1 },
+  { name: "Teal", color: 0x00897b, style: 0, number: 8 },
 ];
 const GARAGE_KEY = "zoomies-garage-v1";
 function loadGarageConfig() {
@@ -112,7 +114,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = CAT_PRESETS[garageConfig.cat] || CAT_PRESETS[0];
   const kart = KART_PRESETS[garageConfig.kart] || KART_PRESETS[0];
-  return { catColor: cat.fur, catPattern: cat.pattern, color: kart.color, name: cat.name };
+  return { catColor: cat.fur, catPattern: cat.pattern, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
 }
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
@@ -533,17 +535,18 @@ function _pickUnused(palette, used) {
 // player stands out. Multiplayer / time-trial fields are the player alone.
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (MP.enabled || timeTrial) return [playerCfg];
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
-  const ai = ROSTER.slice(1).map((cfg) => {
+  const ai = ROSTER.slice(1).map((cfg, i) => {
     let { color, catColor } = cfg;
     if (usedKart.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), usedKart);
     usedKart.add(color);
     if (usedCat.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), usedCat);
     usedCat.add(catColor);
-    return { ...cfg, color, catColor };
+    // Spread body styles + give each rival its own number so the field varies.
+    return { ...cfg, color, catColor, kartStyle: i % 3, kartNumber: 11 + i * 6 };
   });
   return [playerCfg, ...ai];
 }
@@ -609,7 +612,7 @@ function decorateKartGroup(group) {
 // (display name = the cat's name).
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
 }
 
 const MP = {
@@ -1689,7 +1692,7 @@ function buildGaragePreview() {
   _clearGaragePreview();
   const cat = CAT_PRESETS[_garageDraft.cat];
   const kart = KART_PRESETS[_garageDraft.kart];
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
   pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];

@@ -59,7 +59,7 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, catPattern, name, isPlayer, skill = 1 }) {
+  constructor({ color, catColor, catPattern, kartStyle, kartNumber, name, isPlayer, skill = 1 }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
@@ -147,7 +147,7 @@ export class Kart {
     // the world axis, so the kart only tilts to the grade when facing ±Z — on a
     // looping track it mostly wouldn't pitch at all.
     this.group.rotation.order = "YXZ";
-    const { group: kart, wheels, brakeMat, flames } = createKartModel(color);
+    const { group: kart, wheels, brakeMat, flames } = createKartModel(color, { style: kartStyle, number: kartNumber });
     this.wheels = wheels;
     this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
     this.flames = flames; // boost exhaust flames; shown/flickered while boosting
@@ -452,10 +452,15 @@ export class Kart {
       this.y += this.vy * dt;
       if (this.y <= 0) {
         this.y = 0;
+        // Suspension squash on touchdown, scaled by how hard we hit.
+        if (this.vy < -2) this._squash = Math.min(1, -this.vy / 14);
         this.vy = 0;
         this.airborne = false;
       }
     }
+
+    // Suspension spring: the squash impulse relaxes back with a little overshoot.
+    this._squash = (this._squash || 0) * Math.max(0, 1 - 9 * dt);
 
     // Wheel spin visual.
     this._wheelSpin = (this._wheelSpin || 0) + this.speed * dt * 1.6;
@@ -531,7 +536,18 @@ export class Kart {
       this.shieldMesh.material.uniforms.uTime.value = now * 0.001;
     }
 
-    for (const w of this.wheels) w.rotation.x = this._wheelSpin || 0;
+    // Wheels roll; the fronts (indices 0,1) also steer with the input.
+    const steerAng = (this.drifting ? this.driftDir * 0.6 : this.steerInput) * 0.45;
+    for (let i = 0; i < this.wheels.length; i++) {
+      const w = this.wheels[i];
+      w.rotation.order = "YXZ";
+      w.rotation.y = i < 2 ? steerAng : 0; // front axle steers
+      w.rotation.x = this._wheelSpin || 0; // roll
+    }
+
+    // Suspension squash: compress vertically + bulge a touch on touchdown.
+    const sq = this._squash || 0;
+    this.group.scale.set(1 + sq * 0.12, 1 - sq * 0.18, 1 + sq * 0.12);
   }
 
   // --- AI driver ---

@@ -22,6 +22,8 @@ export class RemoteKart {
       color: identity.color,
       catColor: identity.catColor,
       catPattern: identity.catPattern,
+      kartStyle: identity.kartStyle,
+      kartNumber: identity.kartNumber,
       name: identity.name,
       isPlayer: false,
     });
