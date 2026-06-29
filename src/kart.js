@@ -526,10 +526,25 @@ export class Kart {
     // Pitch with the slope (+ a slight wheelie on boost).
     this.group.rotation.x = this.slopePitch + (this.tootTimer > 0 ? -0.12 : 0);
 
-    // Lean into turns (harder while drifting).
-    const leanInput = this.drifting ? this.driftDir : this.steerInput;
-    const leanAmt = this.drifting ? 0.26 : 0.12;
-    this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
+    // Lean into turns — smoothed so the tilt builds gradually as you commit to a
+    // corner instead of snapping to a fixed angle.
+    //  - Drifting: the lean deepens the harder you steer INTO the drift, and the
+    //    kart stands back up (even tips slightly the other way) as you counter-
+    //    steer out of it — so the body language tracks the slide.
+    //  - Not drifting: sharp steering still leans the kart, with a touch of expo
+    //    so a hard flick leans more than a gentle correction.
+    const sf = Math.min(1, Math.abs(this.speed) / 40); // no lean when crawling
+    let leanTarget;
+    if (this.drifting) {
+      const rel = this.steerInput * this.driftDir; // +1 fully into, -1 full counter
+      const commit = Math.max(-0.3, Math.min(1.15, 0.45 + rel * 0.6));
+      leanTarget = this.driftDir * commit * 0.34 * sf;
+    } else {
+      const s = this.steerInput;
+      leanTarget = Math.sign(s) * Math.pow(Math.abs(s), 1.25) * 0.17 * sf;
+    }
+    this._lean = (this._lean || 0) + (leanTarget - (this._lean || 0)) * Math.min(1, (this._dt || 0.016) * 9);
+    this.group.rotation.z = -this._lean;
 
     // Boost flames: show + flicker while boosting. Catnip turns them green.
     if (this.flames) {
