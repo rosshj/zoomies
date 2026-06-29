@@ -2729,7 +2729,7 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
-  if (world.groundLeaves) world.groundLeaves.update(karts, camera.position); // kick up leaves in the karts' wake
+  if (world.groundLeaves) world.groundLeaves.update(karts, camera.position, dt); // kick up leaves in the karts' wake
   updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
   // Assign the small headlight-beam pool to the player + the nearest karts each
