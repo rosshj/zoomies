@@ -61,14 +61,16 @@ const trackConfig = loadTrackConfig();
 // socks + tail-tip), mitted (small white socks/bib), solid (plain coat), point
 // (darker ears/muzzle/paws/tail). createCat falls back to deriving a pattern
 // from the colour when none is given (recoloured AI / multiplayer cats).
+// Seven distinct breeds, each a different markings template (not just a recolour
+// of the same one): see createCat for how each pattern is drawn.
 const CAT_PRESETS = [
-  { name: "Marmalade", fur: 0xf0a830, pattern: "tabby" }, // orange tabby
-  { name: "Smokey", fur: 0x9e9e9e, pattern: "mitted" }, // grey, white paws
-  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black + white bib
-  { name: "Snow", fur: 0xfbfbfb, pattern: "solid" }, // pure white
-  { name: "Biscuit", fur: 0xd7a86e, pattern: "tabby" }, // tan tabby
-  { name: "Espresso", fur: 0x4a3328, pattern: "mitted" }, // dark brown, white paws
-  { name: "Cream", fur: 0xffe0b2, pattern: "point" }, // cream colour-point
+  { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby
+  { name: "Smokey", fur: 0x8c9298, pattern: "solid" }, // plush solid grey (Russian Blue)
+  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black & white tuxedo
+  { name: "Snow", fur: 0xfbfbfb, pattern: "snowshoe" }, // white + seal mask/points
+  { name: "Biscuit", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
+  { name: "Espresso", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
+  { name: "Cream", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
 ];
 const KART_PRESETS = [
   { name: "Ember", color: 0xe53935 },

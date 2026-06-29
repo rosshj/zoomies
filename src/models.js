@@ -49,43 +49,75 @@ function catPalette(furColor, override) {
     L < 0.30 ? "mitted" :
     L > 0.80 ? "point" : "tabby"
   );
+  // Masked breeds (Siamese point / snowshoe) wear seal-brown extremities and
+  // blue eyes; a snowshoe is white-bodied so its points must be a fixed bold
+  // brown rather than a tint of the (white) coat.
+  const masked = pattern === "point" || pattern === "snowshoe";
   return {
     pattern,
     fur,
-    // bold tabby bands — dark and high-contrast so they read as painted-on
+    // bold markings — dark and high-contrast so stripes/spots read as painted-on
     // markings, not a subtle shade. Mixed toward a deep brown-black.
-    stripe: fur.clone().multiplyScalar(0.34).lerp(new THREE.Color(0x140d08), 0.35),
+    stripe: fur.clone().multiplyScalar(0.32).lerp(new THREE.Color(0x140d08), 0.4),
     white: new THREE.Color(0xfbfbfb),
-    // colour-point: warm sepia shadows on the extremities (ears/muzzle/paws/tail)
-    point: fur.clone().lerp(new THREE.Color(0x4a382a), 0.74),
-    // eye colour reads off the fur tone: amber on dark cats, blue on snowy
-    // whites, the classic gooseberry green on everything in between
-    eye: L < 0.3 ? new THREE.Color(0xffc24d) : L > 0.8 ? new THREE.Color(0x86b6ff) : new THREE.Color(0x9bdc54),
+    // seal-brown points for masked breeds; a deep tint of the coat otherwise.
+    point: pattern === "snowshoe" ? new THREE.Color(0x6a5240) : fur.clone().lerp(new THREE.Color(0x4a382a), 0.76),
+    // eye colour: blue on masked breeds, amber on dark coats, the classic
+    // gooseberry green in between.
+    eye: masked ? new THREE.Color(0x73a9e6) : L < 0.3 ? new THREE.Color(0xffc24d) : new THREE.Color(0x9bdc54),
   };
 }
 
-// Painted tabby coat: bold dark bands baked into a tiny texture so the stripes
-// read as graphic markings wrapping the body/head/tail, not subtle geometry.
-// `bands` controls how many rings repeat along the surface (more for the long
-// tail). The fur colour is the base; the stripe colour is the bar. Returns a
-// CanvasTexture wrapping in V (around the body axis).
-function makeStripeTexture(furColor, stripeColor, bands = 4) {
-  const c = document.createElement("canvas");
-  c.width = 4;
-  c.height = 32;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#" + furColor.getHexString();
-  ctx.fillRect(0, 0, 4, 32);
-  ctx.fillStyle = "#" + stripeColor.getHexString();
-  // one bold bar per tile (~45% duty) → strong, obvious stripes
-  ctx.fillRect(0, 6, 4, 15);
+function _finishTex(c, rx, ry) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(1, bands);
+  t.repeat.set(rx, ry);
   t.magFilter = THREE.NearestFilter; // crisp painted edges, no blur
   t.needsUpdate = true;
   return t;
+}
+// Painted tabby coat: bold mackerel stripes baked into a texture. `axis` "u"
+// draws stripes that run DOWN the flanks (vertical, the classic tabby look on
+// the body/head); "v" draws rings around the tail. The stripes are slightly
+// broken/irregular so they read organic rather than like a barcode.
+function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
+  const c = document.createElement("canvas");
+  c.width = 96; c.height = 96;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + furColor.getHexString();
+  ctx.fillRect(0, 0, 96, 96);
+  ctx.fillStyle = "#" + stripeColor.getHexString();
+  // 4 bars across the tile, each broken into 2-3 dashes with a little jitter so
+  // the stripes look hand-painted; tiled `count` times around/along the surface.
+  for (let i = 0; i < 4; i++) {
+    const x = 6 + i * 24 + (i % 2 ? 3 : -3);
+    const w = 9 + (i % 2 ? 2 : 0);
+    const segs = i % 2 ? [[2, 40], [48, 44]] : [[0, 30], [36, 30], [70, 26]];
+    for (const [y, h] of segs) ctx.fillRect(x, y, w, h);
+  }
+  return axis === "v" ? _finishTex(c, 1, count) : _finishTex(c, count, 1);
+}
+// Painted spotted/rosetted coat (ocicat / spotted tabby): scattered dark blobs.
+function makeSpotTexture(furColor, spotColor, count = 4) {
+  const c = document.createElement("canvas");
+  c.width = 96; c.height = 96;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + furColor.getHexString();
+  ctx.fillRect(0, 0, 96, 96);
+  ctx.fillStyle = "#" + spotColor.getHexString();
+  // a fixed scatter (deterministic) of rounded spots, varied in size
+  const spots = [
+    [16, 14, 8], [40, 22, 6], [66, 12, 9], [86, 30, 6],
+    [10, 42, 7], [34, 52, 9], [58, 44, 7], [80, 58, 8],
+    [20, 72, 8], [46, 82, 7], [70, 80, 9], [90, 70, 6],
+  ];
+  for (const [x, y, r] of spots) {
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * 1.25, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return _finishTex(c, count, count);
 }
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
@@ -96,44 +128,61 @@ function makeStripeTexture(furColor, stripeColor, bands = 4) {
 export function createCat(furColor = 0xf0a830, opts = {}) {
   const cat = new THREE.Group();
   const pal = catPalette(furColor, opts.pattern);
-  const isPoint = pal.pattern === "point";
-  const hasBib = pal.pattern === "tuxedo" || pal.pattern === "mitted";
-  const hasSocks = pal.pattern === "tuxedo" || pal.pattern === "mitted";
-  const isTabby = pal.pattern === "tabby";
+  const pat = pal.pattern;
+  const isTabby = pat === "tabby";
+  const isSpotted = pat === "spotted";
+  const isTextured = isTabby || isSpotted;     // coat carries a painted pattern
+  const isTuxedo = pat === "tuxedo";
+  const isMitted = pat === "mitted";
+  const isSolid = pat === "solid";
+  const isPoint = pat === "point";
+  const isSnow = pat === "snowshoe";
+  const hasMask = isPoint || isSnow;           // dark face mask + colour points
+  const hasBib = isTuxedo || isMitted;         // big white chest
+  const whitePaws = isTuxedo || isMitted || isSnow;
+  const colorExtremity = isPoint || isSnow;    // ears/mask/tail take the point colour
 
   const fur = new THREE.MeshStandardMaterial({ color: pal.fur, roughness: 0.92 });
   const stripeMat = new THREE.MeshStandardMaterial({ color: pal.stripe, roughness: 0.92 });
-  // Extremity fur: colour-point cats darken at ears/muzzle/paws/tail, everyone
-  // else just reuses the base coat.
-  const extremity = isPoint
+  // Extremity fur: masked breeds darken at ears/mask/tail; everyone else reuses
+  // the base coat.
+  const extremity = colorExtremity
     ? new THREE.MeshStandardMaterial({ color: pal.point, roughness: 0.92 })
     : fur;
   const dark = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5 });
   const pink = new THREE.MeshStandardMaterial({ color: 0xff90ad, roughness: 0.6 });
   const white = new THREE.MeshStandardMaterial({ color: pal.white, roughness: 0.6 });
-  const pawMat = hasSocks ? white : isPoint ? extremity : fur;
+  const pawMat = whitePaws ? white : isPoint ? extremity : fur;
   const iris = new THREE.MeshStandardMaterial({
     color: pal.eye, emissive: pal.eye.clone().multiplyScalar(0.25), emissiveIntensity: 0.4, roughness: 0.25,
   });
-  // Tabby coat: bold painted stripes baked into the fur (body/head share one
-  // density; the long tail gets more bands). Non-tabby coats are flat.
-  const coat = isTabby
-    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: makeStripeTexture(pal.fur, pal.stripe, 4) })
+  // Painted coat: vertical mackerel stripes down the flanks (tabby) or scattered
+  // spots (spotted), baked into the fur so the markings read as bold and graphic.
+  // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
+  function coatTex(forTail) {
+    if (isTabby) return makeStripeTexture(pal.fur, pal.stripe, forTail ? 7 : 7, forTail ? "v" : "u");
+    if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe, forTail ? 4 : 3);
+    return null;
+  }
+  const coat = isTextured
+    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(false) })
     : fur;
-  const tailCoat = isTabby
-    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: makeStripeTexture(pal.fur, pal.stripe, 7) })
+  const tailCoat = isTextured
+    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(true) })
     : extremity;
 
-  // Body (sitting torso) — painted stripes for tabbies.
+  // Body (sitting torso) — painted pattern for tabbies/spotted cats.
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 0.78, 6, 16), coat);
   body.position.y = 1.0;
   body.castShadow = true;
   cat.add(body);
 
-  // Chest + belly fluff — a soft bib that widens a little for tuxedo/mitten cats.
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), white);
+  // Chest + belly fluff. Tuxedo/mitten cats get a big white bib; solid coats keep
+  // the body colour (no bib); others get a soft pale chest.
+  const chestMat = isSolid ? fur : white;
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), chestMat);
   chest.position.set(0, 0.78, 0.57);
-  chest.scale.set(hasBib ? 0.96 : 0.9, hasBib ? 1.12 : 1.08, hasBib ? 0.6 : 0.56);
+  chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.14 : 1.04, hasBib ? 0.62 : 0.54);
   cat.add(chest);
 
   // Front paws on the wheel. Each arm hangs off a shoulder pivot so it can be
@@ -170,16 +219,21 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   skull.scale.set(1.04, 0.98, 0.96);
   skull.castShadow = true;
   head.add(skull);
-  // Colour-point mask shading (tabby head markings come from the painted coat).
-  if (isPoint) {
-    const mask = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 14), extremity);
-    mask.position.set(0, -0.06, 0.42);
-    mask.scale.set(0.92, 0.78, 0.62);
+  // Masked breeds (Siamese point / snowshoe): a dark mask across the eyes +
+  // muzzle bridge. The white cheeks/muzzle below and the eyes on top leave a
+  // band of colour around the eyes — the signature masked face. (Tabby/spotted
+  // head markings come from the painted coat.)
+  if (hasMask) {
+    const mask = new THREE.Mesh(new THREE.SphereGeometry(0.54, 16, 16), extremity);
+    mask.position.set(0, 0.02, 0.46);
+    mask.scale.set(0.96, 0.84, 0.6);
     head.add(mask);
   }
-  // Cheeks — fuller floof for a rounder face.
+  // Cheeks — fuller floof for a rounder face. White, except solid coats keep the
+  // body colour so the face isn't oddly two-toned.
+  const cheekMat = isSolid ? fur : white;
   for (const sx of [-1, 1]) {
-    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), white);
+    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), cheekMat);
     cheek.position.set(sx * 0.36, -0.18, 0.52);
     cheek.scale.set(0.95, 0.74, 0.72);
     head.add(cheek);
@@ -224,8 +278,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     head.add(shine2);
   }
 
-  // Muzzle + nose + a tiny "ω" smile.
-  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), white);
+  // Muzzle + nose + a tiny "ω" smile. White, except solid coats (a clean grey
+  // face shouldn't sprout a white snout).
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), isSolid ? fur : white);
   muzzle.position.set(0, -0.2, 0.66);
   muzzle.scale.set(1.12, 0.7, 0.62);
   head.add(muzzle);
@@ -287,9 +342,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
-  // Tail tip cap: white for tuxedo, dark for tabby (tabbies end in a black tip),
-  // point colour otherwise — a soft rounded end.
-  const tipMat = pal.pattern === "tuxedo" ? white : isTabby ? stripeMat : extremity;
+  // Tail tip cap: white for tuxedo, a dark tip for tabby/spotted coats, the
+  // point colour for masked breeds, otherwise the coat colour.
+  const tipMat = isTuxedo ? white : isTextured ? stripeMat : extremity;
   const tip = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), tipMat);
   tip.position.copy(tailCurve.getPoint(1));
   tailPivot.add(tip);
