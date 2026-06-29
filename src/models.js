@@ -391,6 +391,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     headStatic.push(shine2);
   }
 
+  // Eyelids — coat-coloured caps over each eye, used ONLY for the idle blink in
+  // the garage / post-race pan. They're hidden (visible=false) and so cost zero
+  // draw calls during a race; updateCatRig only shows + closes them when
+  // allowBlink is set. Kept separate from the merged head so they can animate.
+  const eyelids = [];
+  for (const sx of [-1, 1]) {
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), coat);
+    lid.position.set(sx * 0.31, 0.12, 0.62);
+    lid.scale.set(0.98, 0.001, 0.74); // flat (eye open) until a blink closes it
+    lid.visible = false;
+    head.add(lid);
+    eyelids.push(lid);
+  }
+
   // Muzzle + nose + a tiny "ω" smile. White, except solid coats (a clean grey
   // face shouldn't sprout a white snout).
   const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), isSolid ? fur : white);
@@ -564,6 +578,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     armR: arms.R,
     glasses,
     celebT: 0,
+    eyelids, // idle-blink caps (hidden until a blink)
+    blinkT: 1.5 + Math.random() * 3, // seconds until the next blink
+    blinkP: 0, // progress through the current blink (>0 = blinking)
     tail: tailPivot,
     springs: {
       earSway: { a: 0, v: 0 },
@@ -583,7 +600,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
 // appendages lag and overshoot via simple spring-dampers so they whip around
 // corners and flatten back under acceleration. `toot` lifts the tail.
 // `celebrate` triggers the victory pose: sunglasses drop on and one paw pumps.
-export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false) {
+export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false, allowBlink = false) {
   if (!rig) return;
   const sp = rig.springs;
   const step = (s, target, k, d) => {
@@ -623,6 +640,26 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false)
     if (rig.armR) rig.armR.rotation.set(0, 0, 0);
   }
   if (rig.armL) rig.armL.rotation.set(0, 0, 0); // left paw stays on the wheel
+
+  // --- Idle blink: only in showcase contexts (garage / post-race pan), so a
+  // racing cat — already animated by the cornering rig — never blinks. The lids
+  // are hidden the rest of the time, so they cost nothing during a race. ---
+  const lids = rig.eyelids;
+  if (allowBlink && lids && lids.length) {
+    if (rig.blinkP > 0) {
+      rig.blinkP -= dt;
+      // Close-then-open over BLINK_DUR; sin gives a smooth 0→1→0 lid travel.
+      const t = 1 - Math.max(0, rig.blinkP) / 0.16;
+      const v = Math.sin(Math.min(1, t) * Math.PI);
+      for (const lid of lids) { lid.visible = true; lid.scale.y = 0.001 + v * 1.05; }
+      if (rig.blinkP <= 0) { for (const lid of lids) { lid.visible = false; lid.scale.y = 0.001; } rig.blinkT = 1.8 + Math.random() * 3.5; }
+    } else {
+      rig.blinkT -= dt;
+      if (rig.blinkT <= 0) rig.blinkP = 0.16; // start a blink
+    }
+  } else if (lids && lids.length && lids[0].visible) {
+    for (const lid of lids) { lid.visible = false; lid.scale.y = 0.001; }
+  }
 }
 
 // Constant kart materials — colour never varies per kart, so a single shared

@@ -1682,6 +1682,7 @@ const garageEl = document.getElementById("garage");
 let _garageDraft = null; // { cat, kart } in-progress; committed to garageConfig on Done
 let _garageOpen = false;
 let _garagePreview = null; // the preview kart's group in the scene
+let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
 const _garageLook = new THREE.Vector3();
 
@@ -1697,6 +1698,7 @@ function _clearGaragePreview() {
   scene.remove(_garagePreview);
   _disposeGroup(_garagePreview);
   _garagePreview = null;
+  _garagePreviewKart = null;
 }
 // Rebuild the preview kart from the current draft (cheap enough for a click, not a
 // per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
@@ -1713,6 +1715,7 @@ function buildGaragePreview() {
   toonify(pk.group);
   scene.add(pk.group);
   _garagePreview = pk.group;
+  _garagePreviewKart = pk;
 }
 function syncGarageUI() {
   const cat = CAT_PRESETS[_garageDraft.cat];
@@ -1748,8 +1751,9 @@ function stepGarage(which, dir) {
 // open RIGHT half: orbit a touch further back (smaller kart) and pan the aim to
 // the left, which slides the kart rightward on screen.
 const _garageRight = new THREE.Vector3();
-function renderGarage(timeSec) {
+function renderGarage(timeSec, dt = 0.016) {
   if (!_garagePreview) return;
+  _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
   const p = _garagePreview.position;
   const ang = timeSec * 0.5;
   const r = 9.6; // well back so the whole kart reads small and never clips
@@ -2749,7 +2753,7 @@ function loop(now) {
     if (_garageOpen) {
       // Garage sub-screen: orbit the camera around the parked preview kart so the
       // player can inspect their chosen cat + kart in 3D.
-      renderGarage(now / 1000);
+      renderGarage(now / 1000, dt);
       return;
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
