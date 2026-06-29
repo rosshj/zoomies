@@ -461,7 +461,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // it clears the tall cat ears instead of slicing through them.
     const m = accMat(0x222831, 0.4);
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.84, 0.06, 8, 24, Math.PI), m);
-    band.rotation.x = -Math.PI / 2; // lay flat, the half-arc wraps the back (-z)
+    band.rotation.x = -Math.PI / 3; // angled up-and-back so it arcs behind the ears (not flat)
     band.position.set(0, 0.12, 0); acc.add(band);
     for (const sx of [-1, 1]) {
       const cup = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.16, 16), m);
@@ -498,18 +498,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     crown.position.set(0, 0.86, 0.02); acc.add(crown);
     const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.49, 0.49, 0.1, 18), accMat(0x2a2a2a));
     bandm.position.set(0, 0.7, 0.02); acc.add(bandm);  } else if (pat === "tuxedo") {
-    // black wayfarer sunglasses on the face — Shadow's signature cool look
+    // black wayfarer sunglasses on the face — Shadow's signature cool look. The
+    // eyes are big spheres that bulge to ~z0.76, so the lenses sit further forward
+    // (z~0.84) to cover them instead of letting the eyes poke through.
     const m = accMat(0x0a0a0a, 0.22, 0.5);
     for (const sx of [-1, 1]) {
-      const lens = new THREE.Mesh(rbox(0.32, 0.26, 0.06, 0.06), m);
-      lens.position.set(sx * 0.3, 0.13, 0.66); lens.rotation.z = sx * -0.1; // slight wayfarer cant
+      const lens = new THREE.Mesh(rbox(0.36, 0.3, 0.06, 0.06), m);
+      lens.position.set(sx * 0.3, 0.1, 0.84); lens.rotation.z = sx * -0.1; // slight wayfarer cant
       acc.add(lens);
-      const armg = new THREE.Mesh(rbox(0.46, 0.05, 0.05, 0.02), m);
-      armg.position.set(sx * 0.5, 0.18, 0.38); armg.rotation.y = sx * 0.6; // temple arm back to the ear
+      const armg = new THREE.Mesh(rbox(0.5, 0.05, 0.05, 0.02), m);
+      armg.position.set(sx * 0.54, 0.16, 0.5); armg.rotation.y = sx * 0.7; // temple arm back to the ear
       acc.add(armg);
     }
-    const bridge = new THREE.Mesh(rbox(0.24, 0.07, 0.05, 0.02), m);
-    bridge.position.set(0, 0.18, 0.66); acc.add(bridge);  } else if (pat === "tabby") {
+    const bridge = new THREE.Mesh(rbox(0.26, 0.08, 0.05, 0.02), m);
+    bridge.position.set(0, 0.14, 0.85); acc.add(bridge);  } else if (pat === "tabby") {
     // neckerchief / bandana
     const m = accMat(0xd23b3b);
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 18), m);
