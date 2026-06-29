@@ -450,10 +450,11 @@ function toToon(m) {
       // shaped glint, not a smooth Phong lobe; kept gentle so it never blows out.
       const lightDir = uSunViewNode.negate().normalize();
       const half = lightDir.add(positionViewDirection).normalize();
-      const spec = normalView.dot(half).max(0).pow(22);
-      const glint = smoothstep(0.25, 0.5, spec);
-      // mostly white so the shine reads on any body colour, warmed by the sun tint
-      const paintTerm = tslColor(0xffffff).mul(0.42).add(uSunColNode).mul(glint);
+      const spec = normalView.dot(half).max(0).pow(26);
+      const glint = smoothstep(0.32, 0.58, spec);
+      // mostly white so the shine reads on any body colour, warmed by the sun
+      // tint; kept low so the paint is a soft satin, not glossy.
+      const paintTerm = tslColor(0xffffff).mul(0.22).add(uSunColNode.mul(0.6)).mul(glint);
       term = term ? term.add(paintTerm) : paintTerm;
     }
     t.emissiveNode = term;

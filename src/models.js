@@ -97,10 +97,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   body.castShadow = true;
   cat.add(body);
 
-  // Chest + belly fluff — a soft bib that widens for tuxedo/mitten cats.
+  // Chest + belly fluff — a soft bib that widens a little for tuxedo/mitten cats.
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), white);
-  chest.position.set(0, 0.8, 0.55);
-  chest.scale.set(hasBib ? 1.18 : 0.94, hasBib ? 1.32 : 1.12, hasBib ? 0.72 : 0.6);
+  chest.position.set(0, 0.78, 0.57);
+  chest.scale.set(hasBib ? 0.96 : 0.9, hasBib ? 1.12 : 1.08, hasBib ? 0.6 : 0.56);
   cat.add(chest);
 
   // Back stripes (tabby only) — gently curved bands down the spine.
