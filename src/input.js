@@ -14,6 +14,7 @@ export class Input {
     this.shielding = false; // held, not queued
     this.jumpHeld = false; // held — sustains a drift
 
+    this._g = null; // last gravity vector (for the tilt-debug readout)
     this._neutralRoll = null;
     this._neutralSamples = 0;
     this._calNeutral = 0; // baseline neutral captured at calibrate; clamp anchor
@@ -71,11 +72,20 @@ export class Input {
     const g = e.accelerationIncludingGravity;
     if (!g || g.x === null || g.y === null) return;
     this._haveMotion = true;
+    this._g = { x: g.x, y: g.y, z: g.z ?? 0 };
 
-    // Roll of the phone within the screen plane. atan2(y, x) tracks the
-    // "steering-wheel" tilt regardless of how far the phone is pitched
-    // back, which makes it robust to how the player holds the device.
-    const roll = Math.atan2(g.y, g.x); // radians
+    // True left/right roll of the phone, measured against the FULL down vector
+    // (hypot of the two non-lateral axes), so it's the actual tilt angle in
+    // radians and — crucially — independent of how far forward/back the phone is
+    // pitched. The old atan2(g.y, g.x) used only the in-plane projection, whose
+    // gain scaled with 1/|in-plane gravity|: tilt forward (that projection
+    // shrinks) and steering got hyper-sensitive + s-curvy; tilt back and it went
+    // numb. atan2(lateral, hypot(other two)) has a clean 1:1 gain at every pitch,
+    // so the feel the player dialled in at ~-56° now holds whatever the tilt.
+    // Lateral is negated to keep the SAME steering polarity as the old measure:
+    // the old denominator (g.x) is negative in the landscape hold, which flipped
+    // the sign — switching to the always-positive hypot would otherwise invert it.
+    const roll = Math.atan2(-g.y, Math.hypot(g.x, g.z ?? 0)); // radians, pitch-independent
 
     const shortArc = (a) => {
       while (a > Math.PI) a -= Math.PI * 2;
@@ -102,17 +112,20 @@ export class Input {
     // never accumulate into a real lean. On a turn-heavy track holding a steady
     // tilt would otherwise drag "neutral" along with it; the clamp caps that, and
     // straights (where you hold level) pull it back toward the calibrated value.
-    if (this._neutralSamples >= 8 && Math.abs(d) < 0.12) {
+    if (this._neutralSamples >= 8 && Math.abs(d) < 0.064) {
       this._neutralRoll += this._sign * d * 0.004;
       const drift = shortArc(this._neutralRoll - this._calNeutral);
-      const CLAMP = 0.07; // ~4°, well inside a deliberate turn
+      const CLAMP = 0.037; // ~2°, well inside a deliberate turn
       if (Math.abs(drift) > CLAMP) {
         this._neutralRoll = this._calNeutral + Math.sign(drift) * CLAMP;
       }
     }
 
-    const MAX = 0.5; // ~29° of tilt for full lock
-    const DEAD = 0.045;
+    // Tuned to the feel the player locked in at pitch ~-56°: full lock at ~15° of
+    // real roll. Because `roll` is now pitch-independent, this gain holds at any
+    // forward/back tilt (the old constants were ~1.9x larger, in projection units).
+    const MAX = 0.27; // ~15° of roll for full lock
+    const DEAD = 0.024;
     let s = d;
     if (Math.abs(s) < DEAD) s = 0;
     else s -= Math.sign(s) * DEAD;
@@ -300,6 +313,25 @@ export class Input {
 
   get hasMotion() {
     return this._haveMotion;
+  }
+
+  // Live tilt diagnostics for the on-screen debug readout. `pitch` is how far the
+  // phone is tilted forward/back from upright (deg). `mag` is the in-plane gravity
+  // (hypot(gx,gy)) — the smaller it gets (phone tilted flat), the more sensitive
+  // atan2 steering becomes, which is the s-curving the player feels. `roll` is the
+  // raw steering-wheel angle (deg) and `steer` the smoothed output. This is the
+  // data we need to pick a tilt to normalise against and lock the feel in.
+  debugTilt() {
+    const g = this._g;
+    if (!g) return null;
+    const RAD = 180 / Math.PI;
+    const mag = Math.hypot(g.x, g.y);
+    return {
+      pitch: Math.atan2(g.z, mag) * RAD, // 0 = upright, ~90 = flat
+      roll: Math.atan2(g.y, g.x) * RAD,
+      mag,
+      steer: this.steer,
+    };
   }
 
   consumeJump() {

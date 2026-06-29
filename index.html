@@ -52,6 +52,8 @@
 
     <!-- FPS counter (opt-in via Settings) -->
     <div id="fps-counter" class="hidden">– FPS</div>
+    <!-- Tilt debug readout (opt-in via Settings) -->
+    <div id="tilt-counter" class="hidden">tilt –</div>
 
     <!-- Top-right race info -->
     <div id="info">
@@ -153,6 +155,7 @@
         </div>
         <div class="menu-options">
           <button id="laps-btn" class="secondary small">Laps: 3</button>
+          <button id="difficulty-btn" class="secondary small">Difficulty: Hard</button>
           <button id="open-garage" class="secondary small">🐱 Garage</button>
           <button id="open-track" class="secondary small">🏞 Track</button>
           <button id="howto-btn" class="secondary small">❓ How to Play</button>
@@ -315,6 +318,9 @@
               <button data-biome="alpine" class="biome-chip">🏔 Alpine</button>
               <button data-biome="autumn" class="biome-chip">🍂 Autumn</button>
               <button data-biome="desert" class="biome-chip">🏜 Desert</button>
+              <button data-biome="blossom" class="biome-chip">🌸 Blossom</button>
+              <button data-biome="savanna" class="biome-chip">🦒 Savanna</button>
+              <button data-biome="tundra" class="biome-chip">❄️ Tundra</button>
             </div>
           </div>
           <!-- Outside #track-knobs so it stays available in Classic mode too. -->
@@ -351,6 +357,10 @@
         <div class="setting-row">
           <span class="setting-label">FPS counter</span>
           <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
+        </div>
+        <div class="setting-row">
+          <span class="setting-label">Tilt debug</span>
+          <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
         </div>
         <div class="setting-row">
           <span class="setting-label">Music</span>

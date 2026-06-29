@@ -157,6 +157,19 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
+// AI difficulty. The hand-tuned field IS "hard"; easy/medium dial the AI down
+// across a few knobs (top speed, rubber-band catch-up, how often they shoot, how
+// well they shield, and how far they'll detour for catnip). Persisted so it sticks.
+const AI_DIFFICULTY = {
+  easy: { label: "Easy", speed: 0.82, rubber: 0.35, shoot: 0.5, shield: 0.5, catnip: 0.4 },
+  medium: { label: "Medium", speed: 0.92, rubber: 0.7, shoot: 0.8, shield: 0.8, catnip: 0.75 },
+  hard: { label: "Hard", speed: 1.0, rubber: 1.0, shoot: 1.0, shield: 1.0, catnip: 1.0 },
+};
+const DIFF_ORDER = ["easy", "medium", "hard"];
+const DIFF_KEY = "zoomies-difficulty";
+let DIFFICULTY = "hard"; // default = the current tuned field
+try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
+
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
@@ -581,8 +594,18 @@ function buildKarts() {
       [slots[i], slots[j]] = [slots[j], slots[i]];
     }
   }
+  const diff = AI_DIFFICULTY[DIFFICULTY] || AI_DIFFICULTY.hard;
   roster.forEach((cfg, i) => {
     const kart = new Kart(cfg);
+    // Scale the AI down for the chosen difficulty (hard = no change). Slower top
+    // speed + weaker rubber-band, set on baseMaxSpeed so the per-frame catch-up
+    // (aiActions) scales from it; the rest of the knobs live on kart.diff.
+    if (!cfg.isPlayer) {
+      kart.diff = diff;
+      kart.baseMaxSpeed *= diff.speed;
+      kart.maxSpeed = kart.baseMaxSpeed;
+      kart.shieldSkill *= diff.shield;
+    }
     const slotIndex = MP.enabled && cfg.isPlayer ? mpGridSlot() : slots[i];
     const slot = track.gridSlot(slotIndex);
     kart.placeAt(slot.position, slot.heading, track);
@@ -1235,6 +1258,20 @@ if (lapsBtn)
   });
 applyLapsBtn();
 
+// Difficulty selector: cycles Easy -> Medium -> Hard (the tuned field). Applied
+// to the AI at race build (buildKarts) + per-frame in aiActions.
+const diffBtn = document.getElementById("difficulty-btn");
+function applyDiffBtn() {
+  if (diffBtn) diffBtn.textContent = `Difficulty: ${AI_DIFFICULTY[DIFFICULTY].label}`;
+}
+if (diffBtn)
+  diffBtn.addEventListener("click", () => {
+    DIFFICULTY = DIFF_ORDER[(DIFF_ORDER.indexOf(DIFFICULTY) + 1) % DIFF_ORDER.length];
+    try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
+    applyDiffBtn();
+  });
+applyDiffBtn();
+
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
   try {
@@ -1411,6 +1448,42 @@ fpsToggle?.addEventListener("click", () => {
 });
 applyFpsSetting();
 
+// --- Tilt debug readout (opt-in via Settings; persisted) ---
+// A diagnostic to chase down the steering sensitivity: it prints the live device
+// pitch (forward/back tilt), the in-plane gravity magnitude (which shrinks as the
+// phone tilts flat and is what makes atan2 steering over-sensitive), the raw roll
+// and the smoothed steer. Read it while finding the tilt that feels right so we
+// can normalise against it and lock the feel in. Does NOT change steering yet.
+const TILT_KEY = "zoomies-tiltdebug";
+const tiltEl = document.getElementById("tilt-counter");
+const tiltToggle = document.getElementById("set-tilt-toggle");
+let showTilt = false;
+try { showTilt = localStorage.getItem(TILT_KEY) === "1"; } catch {}
+function applyTiltSetting() {
+  if (tiltEl) tiltEl.classList.toggle("hidden", !showTilt);
+  if (tiltToggle) {
+    tiltToggle.textContent = showTilt ? "On" : "Off";
+    tiltToggle.classList.toggle("off", !showTilt);
+  }
+}
+tiltToggle?.addEventListener("click", () => {
+  showTilt = !showTilt;
+  try { localStorage.setItem(TILT_KEY, showTilt ? "1" : "0"); } catch {}
+  applyTiltSetting();
+});
+applyTiltSetting();
+let _tiltAccum = 0;
+function updateTiltCounter(dt) {
+  if (!showTilt || !tiltEl) return;
+  _tiltAccum += dt;
+  if (_tiltAccum < 0.1) return; // ~10 Hz
+  _tiltAccum = 0;
+  const t = input.debugTilt();
+  tiltEl.textContent = t
+    ? `pitch ${t.pitch.toFixed(0)}° · mag ${t.mag.toFixed(1)} · roll ${t.roll.toFixed(0)}° · steer ${t.steer.toFixed(2)}`
+    : "tilt: no motion";
+}
+
 // Refresh the readout a few times a second from the smoothed frame interval the
 // DRS already tracks (_frameMs). Also reports the live backend (WGPU vs WGL2 — so
 // you can confirm which one is actually running) and the draw-call count, which
@@ -1506,7 +1579,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert"];
+const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra"];
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
@@ -1682,6 +1755,7 @@ const garageEl = document.getElementById("garage");
 let _garageDraft = null; // { cat, kart } in-progress; committed to garageConfig on Done
 let _garageOpen = false;
 let _garagePreview = null; // the preview kart's group in the scene
+let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
 const _garageLook = new THREE.Vector3();
 
@@ -1697,6 +1771,7 @@ function _clearGaragePreview() {
   scene.remove(_garagePreview);
   _disposeGroup(_garagePreview);
   _garagePreview = null;
+  _garagePreviewKart = null;
 }
 // Rebuild the preview kart from the current draft (cheap enough for a click, not a
 // per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
@@ -1713,6 +1788,7 @@ function buildGaragePreview() {
   toonify(pk.group);
   scene.add(pk.group);
   _garagePreview = pk.group;
+  _garagePreviewKart = pk;
 }
 function syncGarageUI() {
   const cat = CAT_PRESETS[_garageDraft.cat];
@@ -1748,8 +1824,9 @@ function stepGarage(which, dir) {
 // open RIGHT half: orbit a touch further back (smaller kart) and pan the aim to
 // the left, which slides the kart rightward on screen.
 const _garageRight = new THREE.Vector3();
-function renderGarage(timeSec) {
+function renderGarage(timeSec, dt = 0.016) {
   if (!_garagePreview) return;
+  _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
   const p = _garagePreview.position;
   const ang = timeSec * 0.5;
   const r = 9.6; // well back so the whole kart reads small and never clips
@@ -2464,6 +2541,11 @@ function fireHairball(kart, charge = 0) {
 const _aiFwd = new THREE.Vector3();
 const _aiTo = new THREE.Vector3();
 function aiActions(dt) {
+  // Even launch: for the first beat off the line every AI floors it (like the
+  // player holding full throttle) and we skip the anti-clumping throttle cut. The
+  // starting grid is intentionally packed, so anti-clumping used to brake the
+  // whole field at GO — which is exactly why the AI felt sluggish off the line.
+  const launching = raceTime < 1.3;
   for (const k of karts) {
     if (k.isPlayer) continue;
 
@@ -2472,7 +2554,8 @@ function aiActions(dt) {
     const gap = player.totalProgress - k.totalProgress;
     // Catch up strongly when behind, but barely ease off when leading, so the
     // front-runners stay competitive instead of waiting for the player.
-    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)));
+    const _rb = k.diff ? k.diff.rubber : 1; // easier modes catch up less
+    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)) * _rb);
 
     if (k.boosting) effects.trickle(k, k.catnipBoosting);
     if (k.finished || k.spinTimer > 0) {
@@ -2482,24 +2565,28 @@ function aiActions(dt) {
 
     _aiFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
 
-    // --- Anti-clumping: ease off and steer aside when right behind another
-    // kart, so the pack doesn't pile into tight corners in a single knot. ---
-    let nearestAhead = Infinity;
-    for (const other of karts) {
-      if (other === k || other.finished) continue;
-      _aiTo.subVectors(other.position, k.position);
-      const d = _aiTo.length();
-      if (d > 0.001 && d < 16 && _aiTo.dot(_aiFwd) / d > 0.6) {
-        if (d < nearestAhead) nearestAhead = d;
-        // Steer away from the side the other kart is on (heading-relative angle).
-        let a = Math.atan2(_aiTo.x, _aiTo.z) - k.heading;
-        while (a > Math.PI) a -= Math.PI * 2;
-        while (a < -Math.PI) a += Math.PI * 2;
-        const away = Math.abs(a) < 0.05 ? (k.laneBias >= 0 ? 1 : -1) : -Math.sign(a);
-        k.steerInput = Math.max(-1, Math.min(1, k.steerInput + away * 0.35));
+    if (launching) {
+      k.throttleInput = 1; // full launch, no anti-clump braking on the packed grid
+    } else {
+      // --- Anti-clumping: ease off and steer aside when right behind another
+      // kart, so the pack doesn't pile into tight corners in a single knot. ---
+      let nearestAhead = Infinity;
+      for (const other of karts) {
+        if (other === k || other.finished) continue;
+        _aiTo.subVectors(other.position, k.position);
+        const d = _aiTo.length();
+        if (d > 0.001 && d < 16 && _aiTo.dot(_aiFwd) / d > 0.6) {
+          if (d < nearestAhead) nearestAhead = d;
+          // Steer away from the side the other kart is on (heading-relative angle).
+          let a = Math.atan2(_aiTo.x, _aiTo.z) - k.heading;
+          while (a > Math.PI) a -= Math.PI * 2;
+          while (a < -Math.PI) a += Math.PI * 2;
+          const away = Math.abs(a) < 0.05 ? (k.laneBias >= 0 ? 1 : -1) : -Math.sign(a);
+          k.steerInput = Math.max(-1, Math.min(1, k.steerInput + away * 0.35));
+        }
       }
+      if (nearestAhead < 16) k.throttleInput *= 0.55 + 0.45 * (nearestAhead / 16);
     }
-    if (nearestAhead < 16) k.throttleInput *= 0.55 + 0.45 * (nearestAhead / 16);
 
     // --- Shield: raise it when a hairball is bearing down — but imperfectly, so
     // it doesn't feel like shooting just flips their shield on. Each new threat
@@ -2539,7 +2626,7 @@ function aiActions(dt) {
     // --- Shoot at a kart ahead, gated by the same recharge as the player. ---
     k._aiShootTimer -= dt;
     if (k.shootCooldown <= 0 && k._aiShootTimer <= 0) {
-      k._aiShootTimer = 1.0 + Math.random() * 2.2;
+      k._aiShootTimer = (1.0 + Math.random() * 2.2) / (k.diff ? k.diff.shoot : 1); // easier = longer gaps
       for (const other of karts) {
         if (other === k || other.finished) continue;
         _aiTo.subVectors(other.position, k.position);
@@ -2670,6 +2757,7 @@ function loop(now) {
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
+  updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
   if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
 
@@ -2679,7 +2767,7 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
-  if (world.groundLeaves) world.groundLeaves.update(karts, camera.position); // kick up leaves in the karts' wake
+  if (world.groundLeaves) world.groundLeaves.update(karts, camera.position, dt); // kick up leaves in the karts' wake
   updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
   // Assign the small headlight-beam pool to the player + the nearest karts each
@@ -2749,7 +2837,7 @@ function loop(now) {
     if (_garageOpen) {
       // Garage sub-screen: orbit the camera around the parked preview kart so the
       // player can inspect their chosen cat + kart in 3D.
-      renderGarage(now / 1000);
+      renderGarage(now / 1000, dt);
       return;
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
@@ -2840,6 +2928,10 @@ function loop(now) {
     if (player.drifting) {
       effects.driftSparks(player);
       effects.skid(player);
+    } else if (_hardTurn) {
+      // Also lay rubber when cornering hard at speed (not only while drifting),
+      // so tight turns leave marks. (_hardTurn already gates on steer + speed.)
+      effects.skid(player);
     }
     // Chromatic aberration ramps up with the boost.
     const aberrTarget = player.boosting ? 0.008 : 0;
@@ -2854,7 +2946,10 @@ function loop(now) {
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
-    // Hand them the live catnip crate positions so they detour to grab the power-up.
+    // Hand them the catnip crate positions so they go for boxes: leaders only when
+    // one's nearly on their line, trailing karts detour further to gamble for a
+    // catch-up boost (see driveAI). Catnip stays hidden in an ordinary crate, so
+    // which box the AI targets is invisible to the player anyway.
     const catnipTargets = props ? props.catnipTargets() : null;
     for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, catnipTargets);
     aiActions(dt);

@@ -123,7 +123,7 @@ export class Kart {
     this.tootTimer = 0; // tail-lift/toot animation timer
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
-    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 8s
+    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -271,11 +271,11 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
-  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 8s.
+  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 7s.
   // Sustained each frame in update(); reads as a green boost (cloud + flames).
   giveCatnip() {
     if (this.finished) return;
-    this.catnipTimer = 8;
+    this.catnipTimer = 7;
   }
   get catnipBoosting() {
     return this.catnipTimer > 0;
@@ -309,6 +309,12 @@ export class Kart {
     const pos = new THREE.Vector3().copy(this.position).addScaledVector(fwd, 3.4);
     pos.y += this.y + 1.4;
     return { pos, dir: fwd };
+  }
+
+  // Drive just the cat's idle animation (the occasional blink) for showcase
+  // views like the garage, where the kart itself isn't being simulated.
+  idleBlink(dt) {
+    updateCatRig(this.catRig, dt, 0, 0, false, false, true);
   }
 
   update(dt, track) {
@@ -400,8 +406,8 @@ export class Kart {
       const amount = Math.max(-0.4, 0.2 + rel * 0.7);
       steer = this.driftDir * amount;
     }
-    // Catnip is fast AND lasts 8s, which makes tight corners hard — give it extra
-    // steering authority so it stays controllable through bends.
+    // Catnip is fast, which makes tight corners hard — give it extra steering
+    // authority so it stays controllable through bends.
     if (this.catnipBoosting && !this.drifting) turnRate *= 1.4;
     this.heading += steer * turnRate * speedFactor * dir * dt;
 
@@ -520,10 +526,25 @@ export class Kart {
     // Pitch with the slope (+ a slight wheelie on boost).
     this.group.rotation.x = this.slopePitch + (this.tootTimer > 0 ? -0.12 : 0);
 
-    // Lean into turns (harder while drifting).
-    const leanInput = this.drifting ? this.driftDir : this.steerInput;
-    const leanAmt = this.drifting ? 0.26 : 0.12;
-    this.group.rotation.z = -leanInput * Math.min(1, Math.abs(this.speed) / 40) * leanAmt;
+    // Lean into turns — smoothed so the tilt builds gradually as you commit to a
+    // corner instead of snapping to a fixed angle.
+    //  - Drifting: the lean deepens the harder you steer INTO the drift, and the
+    //    kart stands back up (even tips slightly the other way) as you counter-
+    //    steer out of it — so the body language tracks the slide.
+    //  - Not drifting: sharp steering still leans the kart, with a touch of expo
+    //    so a hard flick leans more than a gentle correction.
+    const sf = Math.min(1, Math.abs(this.speed) / 40); // no lean when crawling
+    let leanTarget;
+    if (this.drifting) {
+      const rel = this.steerInput * this.driftDir; // +1 fully into, -1 full counter
+      const commit = Math.max(-0.3, Math.min(1.15, 0.45 + rel * 0.6));
+      leanTarget = this.driftDir * commit * 0.34 * sf;
+    } else {
+      const s = this.steerInput;
+      leanTarget = Math.sign(s) * Math.pow(Math.abs(s), 1.25) * 0.17 * sf;
+    }
+    this._lean = (this._lean || 0) + (leanTarget - (this._lean || 0)) * Math.min(1, (this._dt || 0.016) * 9);
+    this.group.rotation.z = -this._lean;
 
     // Boost flames: show + flicker while boosting. Catnip turns them green.
     if (this.flames) {
@@ -544,7 +565,9 @@ export class Kart {
 
     // Drive the cat's ears/whiskers/tail with cornering physics (tail also
     // lifts while tooting).
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished);
+    // Blink only on the post-race victory lap (the racing rig already gives a
+    // moving cat plenty of life); never mid-race.
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished);
 
     // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
     // long axis along the sun azimuth (independent of which way the kart faces),
@@ -604,23 +627,28 @@ export class Kart {
     const lane = this.laneBias * (1 - sharp) * (track.halfWidth - 3); // hold a personal line
     target.addScaledVector(side, apex + lane);
 
-    // Catnip seeking: if an un-smashed catnip crate is just ahead and we don't
-    // already have the boost, ease our aim toward it so the field actively grabs
-    // power-ups. Crates sit near the racing line, so pulling toward one stays on
-    // the road. We only chase ones that are genuinely ahead, and commit harder the
-    // closer it gets.
+    // Crate seeking: ease the aim toward a crate to grab the (hidden) catnip.
+    // Everyone snaps at one that's nearly on their line; karts running at the back
+    // (4th+) look much further afield and commit harder, detouring to gamble for a
+    // catch-up boost. We only chase crates genuinely ahead. Since catnip hides in
+    // an ordinary crate, this just reads as the AI going for boxes.
     if (catnipTargets && catnipTargets.length && !this.catnipBoosting && this.spinTimer <= 0) {
       const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
-      let best = null, bestD = 70;
+      const behind = Math.max(0, (this.place || 1) - 3); // 0 for top-3, up to 3 for last
+      const catnipMul = this.diff ? this.diff.catnip : 1; // easier modes chase catnip less
+      const range = (24 + behind * 18) * catnipMul;       // trailing karts reach much further
+      let best = null, bestD = range;
       for (const cn of catnipTargets) {
         const dx = cn.x - this.position.x, dz = cn.z - this.position.z;
         const d = Math.hypot(dx, dz);
         if (d < 3 || d > bestD) continue;
-        if ((dx * fwx + dz * fwz) / d < 0.3) continue; // must be roughly ahead, not behind
+        if ((dx * fwx + dz * fwz) / d < 0.25) continue; // must be roughly ahead, not behind
         bestD = d; best = cn;
       }
       if (best) {
-        const pull = Math.min(0.85, (70 - bestD) / 50 * 0.85); // full commit inside ~20 units
+        // Commit harder the closer it is AND the further back we are (more willing
+        // to leave the racing line for it when there's ground to make up).
+        const pull = Math.min(0.92, (range - bestD) / range * 0.7 + 0.2 + behind * 0.08);
         target.x += (best.x - target.x) * pull;
         target.z += (best.z - target.z) * pull;
       }

@@ -28,6 +28,12 @@ const BIOMES = [
   { name: "alpine", weather: "snow", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
   { name: "autumn", weather: "none", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
   { name: "desert", weather: "none", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
+  // Cherry-blossom spring: fresh green ground under candy-pink canopies.
+  { name: "blossom", weather: "none", ground: 0x6fae4a, ground2: 0x5a9440, foliage: [0.92, 0.6, 0.82], style: "cone", sx: 1.05, sy: 1.05, treeDensity: 0.8, grassTint: 0xd6f0a8, grassDensity: 0.95, barrier: { a: 0xffd9e6, b: 0xff9fc0 } },
+  // Dry golden savanna: tawny earth, sparse wide acacia-ish trees, pale grass.
+  { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
+  // Frosted tundra: pale sage ground, short blue-green pines, light snow.
+  { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
 ];
 for (const b of BIOMES) {
   b.groundCol = new THREE.Color(b.ground);
@@ -186,6 +192,9 @@ const ROAD_STYLES = {
   alpine: { tint: [1.35, 1.42, 1.55], kind: "snow" },
   autumn: { tint: [1.1, 1.0, 0.85], kind: "autumn" },
   desert: { tint: [1.7, 1.45, 1.02], kind: "sand" },
+  blossom: { tint: [1.04, 0.97, 1.02], kind: "asphalt" },
+  savanna: { tint: [1.45, 1.28, 0.95], kind: "sand" },
+  tundra: { tint: [1.25, 1.32, 1.4], kind: "snow" },
 };
 export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
@@ -874,6 +883,11 @@ function buildGroundLeaves(scene, track, heightAt) {
   // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
   // passes — all on the GPU, no per-leaf CPU physics.
   const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
+  // A lingering wake TRAIL behind the nearest kart: each puff is (x,y,z,strength)
+  // and decays over ~1.5s, so leaves you drive over stay kicked up and flutter
+  // back down in your wake instead of snapping flat the instant the kart passes.
+  const PUFFS = 12;
+  const puffs = Array.from({ length: PUFFS }, () => uniform(new THREE.Vector4(1e6, 1e6, 1e6, 0)));
   const uWakeR = uniform(13.0); // generous so leaves you drive near clearly react (even passing at speed)
 
   // Shared material across all chunk meshes: wind rustle + kart-wake pop.
@@ -892,11 +906,19 @@ function buildGroundLeaves(scene, track, heightAt) {
     const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
     _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus());
   }
+  // Trail puffs add their (decaying) strength, so a leaf stays lifted after the
+  // kart has gone, then eases back down as the puffs fade — reads as real flutter.
+  for (const pf of puffs) {
+    const dx = _base.x.sub(pf.x);
+    const dz = _base.z.sub(pf.z);
+    const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
+    _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus().mul(pf.w));
+  }
   const _lift = _liftSum.min(1.0);
   // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
   // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
-  const _pop = vec3(0, 1, 0).mul(_lift.mul(4.5)); // big, obvious pop when a kart passes
-  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(1.6)); // strong scatter/swirl in the wake
+  const _pop = vec3(0, 1, 0).mul(_lift.mul(5.0)); // big, obvious pop when a kart passes
+  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(2.1)); // strong scatter/swirl in the wake
   mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
 
   // Bucket placements into coarse chunks so off-screen leaves cull as a group; each
@@ -936,8 +958,10 @@ function buildGroundLeaves(scene, track, heightAt) {
   // Each frame, point the wake at the karts nearest the camera (those whose wake
   // you'd actually see kicking up leaves).
   const _sorted = [];
+  let _puffHead = 0;
+  const _lastDrop = new THREE.Vector3(1e6, 1e6, 1e6);
   return {
-    update(karts, camPos) {
+    update(karts, camPos, dt = 0.016) {
       _sorted.length = 0;
       for (const k of karts) if (k && k.position) _sorted.push(k);
       _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
@@ -945,6 +969,17 @@ function buildGroundLeaves(scene, track, heightAt) {
         const k = _sorted[i];
         if (k) wakes[i].value.copy(k.position);
         else wakes[i].value.set(1e6, 1e6, 1e6);
+      }
+      // Fade the lingering trail (~1.5s e-fold).
+      const decay = Math.exp(-dt / 0.6);
+      for (const pf of puffs) pf.value.w *= decay;
+      // Drop a fresh full-strength puff behind the nearest kart once it's moved a
+      // few units, building a trail of disturbed leaves that flutters down behind it.
+      const lead = _sorted[0];
+      if (lead && _lastDrop.distanceToSquared(lead.position) > 9) {
+        _puffHead = (_puffHead + 1) % puffs.length;
+        puffs[_puffHead].value.set(lead.position.x, lead.position.y, lead.position.z, 1);
+        _lastDrop.copy(lead.position);
       }
     },
   };
@@ -1777,8 +1812,8 @@ function makeBuilding(density, biome) {
   const h = floors * 2.7;
   const base = 0.6;
   const top = base + h;
-  // In the alpine (snow) biome, frost the walls and snow-cover the roof.
-  const snow = biome && biome.name === "alpine";
+  // In the snowy biomes (alpine, tundra), frost the walls and snow-cover the roof.
+  const snow = biome && (biome.name === "alpine" || biome.name === "tundra");
   let wall = pick(BUILDING_PALETTE);
   if (snow) wall = new THREE.Color(wall).lerp(new THREE.Color(0xffffff), 0.3).getHex();
   const roofCol = snow ? 0xeef4fa : pick(ROOF_PALETTE);

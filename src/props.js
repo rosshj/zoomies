@@ -63,24 +63,18 @@ function build(scene, track, opts) {
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
 
-  // A catnip crate stands out: green-stained wood with a glowing emissive leaf
-  // orb on top, so players are drawn to smash it open.
-  const catnipBody = new THREE.MeshStandardMaterial({ color: 0x4f7a3a, roughness: 0.8 });
-  const catnipTop = new THREE.MeshStandardMaterial({ color: 0x6f9a4a, roughness: 0.8 });
-  const catnipGlow = new THREE.MeshStandardMaterial({ color: 0x9be86a, emissive: 0x6fe040, emissiveIntensity: 1.8 });
+  // Catnip now hides inside a perfectly ordinary-looking crate (no green tint, no
+  // glowing orb) — you can't tell which box holds it, so chasing boxes is a
+  // risk/reward gamble instead of the leader making a beeline for an obvious prize.
+  // The `catnip` flag only governs behaviour (smash + grant), not appearance.
   const makeCrate = (catnip = false) => {
     const s = 1.5 + rand() * 0.6;
     const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), catnip ? catnipBody : woodMat));
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), catnip ? catnipTop : woodTop);
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), woodTop);
     lid.position.y = s * 0.5;
     g.add(lid);
     g.traverse((o) => (o.castShadow = true));
-    if (catnip) {
-      const orb = new THREE.Mesh(new THREE.IcosahedronGeometry(s * 0.26, 0), catnipGlow);
-      orb.position.y = s * 0.7;
-      g.add(orb);
-    }
     return { mesh: g, rest: s / 2 };
   };
   const makeBarrel = () => {
@@ -373,15 +367,19 @@ function build(scene, track, opts) {
         // faster kart drags more air, lifts harder and stirs a tighter swirl.
         lp.windX = mk.dx * (6 + sp * 0.22);
         lp.windZ = mk.dz * (6 + sp * 0.22);
-        lp.windUp = 3 + sp * 0.05; // turbulent updraft keeps leaves aloft a beat
-        lp.swirl = 1.2 + sp * 0.03; // curl strength (rad/s-ish), sign is per-leaf
-        lp.windT = 1.1 + sp * 0.014; // faster pass => the gust lingers longer
+        lp.windUp = 4 + sp * 0.06; // turbulent updraft keeps leaves aloft a beat
+        lp.swirl = 3.0 + sp * 0.05; // stronger curl so the gust visibly spirals
+        lp.windT = 1.4 + sp * 0.016; // faster pass => the gust lingers longer
         for (const lf of lp.leaves) {
           if (lf.hit > 0) continue;
           const wx = lp.x + lf.mesh.position.x, wz = lp.z + lf.mesh.position.z;
-          if (segDist2(wx, wz, mk.ax, mk.az, mk.bx, mk.bz) > 10) continue; // ~3-unit kick radius
-          const blow = 4 + sp * 0.24;
-          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, 7 + Math.random() * 7 + sp * 0.04, mk.dz * blow + (Math.random() - 0.5) * 6);
+          // The WHOLE pile lifts (not just leaves right under the tyre): nearer
+          // leaves get the harder kick, the rest still flutter up — so a pass
+          // never leaves lone leaves sitting in a half-scattered pile.
+          const dPath = Math.sqrt(segDist2(wx, wz, mk.ax, mk.az, mk.bx, mk.bz));
+          const f = Math.max(0.4, 1 - dPath / (reach + 1));
+          const blow = (4 + sp * 0.24) * f;
+          lf.vel.set(mk.dx * blow + (Math.random() - 0.5) * 6, (6 + Math.random() * 7 + sp * 0.04) * f + 2, mk.dz * blow + (Math.random() - 0.5) * 6);
           lf.spin.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14);
           lf.hit = 0.25;
           lf.asleep = false;
@@ -426,9 +424,23 @@ function build(scene, track, opts) {
         // Bleed the violent launch spin down to a gentle flutter-rock over ~1s.
         lf.spin.multiplyScalar(1 - 1.4 * dt);
 
+        // Soft containment: a scattered leaf that wanders past its pile radius
+        // would orphan itself where a later pass can't reach it — nudge it back
+        // toward the pile centre so the pile stays cohesive and re-kickable.
+        const rad = Math.hypot(pp.x, pp.z);
+        const maxR = lp.r + 3;
+        if (rad > maxR) {
+          lf.vel.x -= (pp.x / rad) * (rad - maxR) * 6 * dt;
+          lf.vel.z -= (pp.z / rad) * (rad - maxR) * 6 * dt;
+        }
+
         pp.addScaledVector(lf.vel, dt);
-        if (pp.y < 0.05) {
-          pp.y = 0.05;
+        // Settle onto the REAL ground under the leaf's CURRENT spot (terrain
+        // slopes away from the pile centre), so a drifted leaf never hangs in the
+        // air or sinks into a hill. Only sampled near the deck, where it matters.
+        const floor = pp.y < 1.5 ? (groundAt(lp.x + pp.x, lp.z + pp.z) - lp.groundY) + 0.05 : 0.05;
+        if (pp.y < floor) {
+          pp.y = floor;
           lf.vel.set(lf.vel.x * 0.25, 0, lf.vel.z * 0.25);
           lf.spin.multiplyScalar(0.6);
           // Don't sleep while the wake is still blowing — leaves skitter along the
