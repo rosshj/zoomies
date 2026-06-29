@@ -21,19 +21,26 @@ let _inLake = () => false;
 // `weather` is the precipitation that biome brings (so weather is dictated by
 // where you are, not a per-race dice roll). Alpine's snow is handled by altitude
 // up on the pass; the wet forest brings rain; dry/open biomes stay clear.
+// `style` drives terrain logic (pine = dense woods, cactus = desert props); the
+// new `treeShape` picks the canopy silhouette so each biome reads distinctly:
+//   round   – billowy deciduous lollipop (meadow, autumn)
+//   pine    – stacked-tier conifer (forest, alpine, tundra)
+//   acacia  – flat-topped umbrella on a tall bare trunk (savanna)
+//   blossom – fluffy cherry-blossom cloud (blossom)
+//   cactus  – desert succulent (desert)
 const BIOMES = [
-  { name: "meadow", weather: "none", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0, barrier: { a: 0xfafafa, b: 0x7cb342 } },
-  { name: "forest", weather: "rain", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9, barrier: { a: 0x6b4a2b, b: 0x3f2c19 } },
+  { name: "meadow", weather: "none", ground: 0x4f9d3a, ground2: 0x3c7a2e, foliage: [0.3, 0.5, 0.34], style: "cone", treeShape: "round", sx: 1.0, sy: 1.0, treeDensity: 0.7, grassTint: 0xcfe9b0, grassDensity: 1.0, barrier: { a: 0xfafafa, b: 0x7cb342 } },
+  { name: "forest", weather: "rain", ground: 0x356b2c, ground2: 0x244f22, foliage: [0.34, 0.55, 0.24], style: "pine", treeShape: "pine", sx: 0.8, sy: 1.45, treeDensity: 1.0, grassTint: 0x9cc080, grassDensity: 0.9, barrier: { a: 0x6b4a2b, b: 0x3f2c19 } },
   // Alpine sits on the big left-side hill, so its high ground reads as snow.
-  { name: "alpine", weather: "snow", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
-  { name: "autumn", weather: "none", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
-  { name: "desert", weather: "none", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
+  { name: "alpine", weather: "snow", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", treeShape: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
+  { name: "autumn", weather: "none", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", treeShape: "round", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
+  { name: "desert", weather: "none", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", treeShape: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
   // Cherry-blossom spring: fresh green ground under candy-pink canopies.
-  { name: "blossom", weather: "none", ground: 0x6fae4a, ground2: 0x5a9440, foliage: [0.92, 0.6, 0.82], style: "cone", sx: 1.05, sy: 1.05, treeDensity: 0.8, grassTint: 0xd6f0a8, grassDensity: 0.95, barrier: { a: 0xffd9e6, b: 0xff9fc0 } },
-  // Dry golden savanna: tawny earth, sparse wide acacia-ish trees, pale grass.
-  { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
+  { name: "blossom", weather: "none", ground: 0x6fae4a, ground2: 0x5a9440, foliage: [0.92, 0.6, 0.82], style: "cone", treeShape: "blossom", sx: 1.05, sy: 1.05, treeDensity: 0.8, grassTint: 0xd6f0a8, grassDensity: 0.95, barrier: { a: 0xffd9e6, b: 0xff9fc0 } },
+  // Dry golden savanna: tawny earth, sparse wide acacia trees, pale grass.
+  { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", treeShape: "acacia", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
   // Frosted tundra: pale sage ground, short blue-green pines, light snow.
-  { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
+  { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", treeShape: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
 ];
 for (const b of BIOMES) {
   b.groundCol = new THREE.Color(b.ground);
@@ -42,6 +49,7 @@ for (const b of BIOMES) {
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const SNOW_WHITE = new THREE.Color(0xeef4fa);
+const UP_Y = new THREE.Vector3(0, 1, 0); // shared up axis for yaw-only instance rotation
 
 // Rounded box for the soft, toy-town art direction. Low segment count keeps the
 // tri budget sane across the many roadside props; radius auto-clamps to the box.
@@ -200,6 +208,16 @@ export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
 }
 
+// Tint for the dust a kart kicks up: the local ground colour, paled and warmed —
+// dust reads lighter than the soil it came from. Snow biomes stay near-white,
+// desert goes sandy, grass a muted khaki. Writes/returns `out` (caller owns it).
+const _DUST_PALE = new THREE.Color(0xe7dcc6);
+export function biomeDustColor(x, z, out = new THREE.Color()) {
+  biomeGround(x, z, out);
+  out.lerp(_DUST_PALE, 0.6);
+  return out;
+}
+
 // Terrain rises as you move away from the road, so the track sits in a shallow
 // valley with hillsides climbing on both sides — that way the scenery and
 // landmarks on those slopes are visible from the road instead of hidden in
@@ -303,6 +321,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
+  buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
@@ -310,7 +329,7 @@ export function buildWorld(scene, track, opts = {}) {
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
   const stringLights = buildStringLights(scene, track, litLevel); // festive bulb strings (swing + glow)
-  buildOverheadStructures(scene, track, lit, litLevel); // banners + a bridge spanning the road
+  buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
@@ -855,16 +874,38 @@ function scatter(count, track, flatten, minFlat, range) {
 // single track-spanning mesh could never cull, so every leaf was processed every
 // frame; chunking lets us carry far more leaves for less cost. No shadow (flat).
 const GROUND_LEAF_COLS = [0xc4471f, 0xe07b1e, 0xf0c040, 0xd23a2a, 0x9c6b1f, 0x7a2e1e, 0xe8a838];
+// Fallen cherry-blossom petals: candy pinks + a few near-whites, so the blossom
+// biome floor reads as a pink carpet that kicks up in the same wake as the leaves.
+const PETAL_COLS = [0xffc7dd, 0xff9fc4, 0xffd9e6, 0xf7b0cf, 0xffe3ef, 0xff8fb8];
+const FOREST_LEAF_COLS = [0x3f6b2c, 0x4f7d34, 0x6b8e3a, 0x5a4327, 0x2f5520, 0x7a5a2c];
+const MEADOW_DEBRIS_COLS = [0x9fd06a, 0x8cc457, 0xb6e07a, 0xe8e26a, 0xfbfbfb, 0xc7e08a]; // clippings + wildflower specks
+const SAVANNA_DEBRIS_COLS = [0xcdae5e, 0xb8973f, 0xd9c070, 0xa07f3a, 0xe0cb84]; // dry golden grass
+const DESERT_DEBRIS_COLS = [0xd2b074, 0xc49a5a, 0xbf8f4a, 0xddc590, 0xb98e50]; // sand + dry scrub
+const SNOW_DEBRIS_COLS = [0xeef4fa, 0xdfeaf2, 0xffffff, 0xcfe0ec, 0xe6eef5]; // frost flecks / snow tufts
+// Per-biome ground debris that scatters across the verge and kicks up in a kart's
+// wake. Every biome gets something appropriate so the whole track feels alive, not
+// just the leafy ones: snow flecks on the cold biomes, sand on the desert, dry
+// grass on the savanna, leaves/petals/clippings elsewhere. Shared wake shader.
+const GROUND_DEBRIS = {
+  autumn: { dens: 1.0, cols: GROUND_LEAF_COLS },
+  blossom: { dens: 0.9, cols: PETAL_COLS },
+  forest: { dens: 0.7, cols: FOREST_LEAF_COLS },
+  meadow: { dens: 0.36, cols: MEADOW_DEBRIS_COLS },
+  savanna: { dens: 0.5, cols: SAVANNA_DEBRIS_COLS },
+  desert: { dens: 0.26, cols: DESERT_DEBRIS_COLS },
+  alpine: { dens: 0.42, cols: SNOW_DEBRIS_COLS },
+  tundra: { dens: 0.5, cols: SNOW_DEBRIS_COLS },
+};
 function buildGroundLeaves(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
   const placements = [];
-  const MAX = 1700;
+  const MAX = 1900;
   for (let i = 0; i < N && placements.length < MAX; i++) {
     const p = track._pts[i];
     const b = biomeAt(p.x, p.z);
-    // Per-biome leaf density: autumn is carpeted, forest well-scattered, meadow a sprinkle.
-    const dens = b.name === "autumn" ? 1.0 : b.name === "forest" ? 0.7 : b.name === "meadow" ? 0.32 : 0;
+    const cfg = GROUND_DEBRIS[b.name];
+    const dens = cfg ? cfg.dens : 0;
     if (dens <= 0) continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const tries = Math.ceil(dens * 6);
@@ -874,7 +915,7 @@ function buildGroundLeaves(scene, track, heightAt) {
       const x = p.x + side.x * lat + (rand() - 0.5) * 5;
       const z = p.z + side.z * lat + (rand() - 0.5) * 5;
       if (_inLake(x, z)) continue;
-      placements.push({ x, y: heightAt(x, z), z });
+      placements.push({ x, y: heightAt(x, z), z, cols: cfg.cols });
     }
   }
   if (!placements.length) return null;
@@ -944,7 +985,8 @@ function buildGroundLeaves(scene, track, heightAt) {
       dummy.scale.setScalar(0.5 + rand() * 0.5);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, _c.set(GROUND_LEAF_COLS[(rand() * GROUND_LEAF_COLS.length) | 0]));
+      const pal = s.cols || GROUND_LEAF_COLS;
+      mesh.setColorAt(i, _c.set(pal[(rand() * pal.length) | 0]));
       aBase[i * 3] = s.x; aBase[i * 3 + 1] = s.y; aBase[i * 3 + 2] = s.z;
     });
     geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase, 3));
@@ -985,6 +1027,86 @@ function buildGroundLeaves(scene, track, heightAt) {
   };
 }
 
+// Biomes that get ambient airborne fall, with their palette and how fast/tumbly it
+// drifts: cherry petals float slowly over blossom, autumn leaves spin down a touch
+// faster over the autumn wood. (Snow/rain are handled by the weather system.)
+const AMBIENT_FALL = {
+  blossom: { cols: PETAL_COLS, speed: 0.12, tumble: 0.18 },
+  autumn: { cols: GROUND_LEAF_COLS, speed: 0.17, tumble: 0.34 },
+};
+
+// Ambient rain of petals/leaves over the biomes that have it: each speck drifts
+// down, sways, snaps back to the top and falls again — the whole loop runs in the
+// vertex shader off `time`, so there is ZERO per-frame CPU and no buffer uploads.
+// Each speck falls within its own column (XZ fixed at spawn) so chunk bounds stay
+// tight and off-screen chunks frustum-cull as a group. One InstancedMesh field per
+// biome (shared fall material per biome), built only for biomes actually in play.
+function buildBlossomPetals(scene, track, heightAt) {
+  for (const [name, cfg] of Object.entries(AMBIENT_FALL)) buildAmbientFall(scene, track, heightAt, name, cfg);
+}
+
+function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
+  const N = track.samples;
+  const cols = [];
+  const MAX = 460;
+  for (let i = 0; i < N && cols.length < MAX; i++) {
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== biomeName) continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], UP_Y).normalize();
+    for (let k = 0; k < 5 && cols.length < MAX; k++) {
+      const lat = (rand() * 2 - 1) * (track.halfWidth + 16); // over the road + verge
+      const x = p.x + side.x * lat + (rand() - 0.5) * 6;
+      const z = p.z + side.z * lat + (rand() - 0.5) * 6;
+      if (_inLake(x, z)) continue;
+      cols.push({ x, y: heightAt(x, z), z });
+    }
+  }
+  if (!cols.length) return; // this biome not active on the map — nothing to build
+
+  const FALL_H = 9.0; // metres a speck falls before wrapping back to the top
+  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
+  const _ph = hash(instanceIndex).mul(6.2832);
+  // Per-speck fall clock: fract() ramps 0→1 forever; (1-fract) maps it to a
+  // descent from FALL_H down to 0, then an instant (and visually hidden) reset.
+  const _fallClock = time.mul(cfg.speed).add(hash(instanceIndex));
+  const _fall = float(FALL_H).mul(_fallClock.fract().oneMinus());
+  // Gentle drift + flutter. Geo is baked flat with yaw-only instances, so a local
+  // +Y offset is world-up (same trick as the ground leaves).
+  const _t = time.mul(1.4).add(_ph);
+  const _drift = vec3(_t.sin().mul(0.9), 0, _t.mul(0.8).cos().mul(0.9));
+  const _flut = vec3(0, _t.mul(2.3).sin().mul(cfg.tumble), 0);
+  mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut);
+
+  const CHUNK = 130;
+  const buckets = new Map();
+  for (const c of cols) {
+    const key = Math.round(c.x / CHUNK) + "_" + Math.round(c.z / CHUNK);
+    let arr = buckets.get(key);
+    if (!arr) buckets.set(key, (arr = []));
+    arr.push(c);
+  }
+  const dummy = new THREE.Object3D();
+  const _c = new THREE.Color();
+  for (const arr of buckets.values()) {
+    const geo = makeLeafGeo();
+    geo.rotateX(-Math.PI / 2); // lie flat; instances rotate yaw-only so the fall stays world-up
+    const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
+    arr.forEach((c, i) => {
+      dummy.position.set(c.x, c.y, c.z); // column base; the shader lifts each speck by _fall
+      dummy.rotation.set(0, rand() * Math.PI * 2, 0);
+      dummy.scale.setScalar(0.45 + rand() * 0.4);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, _c.set(cfg.cols[(rand() * cfg.cols.length) | 0]));
+    });
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.castShadow = false; // tiny airborne specks — not worth a shadow pass
+    mesh.frustumCulled = true;
+    mesh.layers.set(1); // keep out of the rear-view mirror render
+    scene.add(mesh);
+  }
+}
+
 function buildTrees(scene, track, heightAt, flatten) {
   // Each candidate spot is tagged with its biome, kept with that biome's tree
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
@@ -993,59 +1115,124 @@ function buildTrees(scene, track, heightAt, flatten) {
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
     .filter((s) => s.y <= 30 && rand() < s.b.treeDensity);
 
-  const cones = spots.filter((s) => s.b.style !== "cactus");
-  const cacti = spots.filter((s) => s.b.style === "cactus");
-  if (cones.length) buildConeTrees(scene, cones);
+  const leafy = spots.filter((s) => s.b.treeShape !== "cactus");
+  const cacti = spots.filter((s) => s.b.treeShape === "cactus");
+  if (leafy.length) buildShapedTrees(scene, leafy);
   if (cacti.length) buildCacti(scene, cacti);
 }
 
-// Cone-style trees (meadow/forest/autumn/alpine). One shared cone+trunk geometry;
-// each biome stretches/narrows and recolours via per-instance matrix + colour.
-function buildConeTrees(scene, spots, scaleMul = 1) {
-  const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6);
-  const foliageGeo = new THREE.ConeGeometry(2.4, 6, 7);
+// Per-shape canopy geometry, baked so the canopy BASE sits at y≈0 (it meets the
+// trunk top there). Cached so every biome of the same shape shares one geometry
+// → one InstancedMesh / draw call per shape, not per tree. flatShading on the
+// shared material keeps the merged blobs reading as faceted toon foliage.
+const _foliageGeoCache = {};
+function foliageGeoFor(shape) {
+  if (_foliageGeoCache[shape]) return _foliageGeoCache[shape];
+  let g;
+  if (shape === "pine") {
+    // Stacked tiers → a proper layered conifer instead of a single cone.
+    g = mergeGeometries([
+      new THREE.ConeGeometry(2.2, 3.0, 7).translate(0, 1.5, 0),
+      new THREE.ConeGeometry(1.7, 2.6, 7).translate(0, 3.4, 0),
+      new THREE.ConeGeometry(1.15, 2.3, 7).translate(0, 5.2, 0),
+    ]);
+  } else if (shape === "acacia") {
+    // Flat-topped umbrella: a wide, thin dome with a smaller crown on top. Pairs
+    // with a tall bare trunk (trunkHmul below) for the savanna silhouette.
+    g = mergeGeometries([
+      new THREE.SphereGeometry(3.0, 10, 6).scale(1, 0.3, 1).translate(0, 0.7, 0),
+      new THREE.SphereGeometry(2.1, 9, 5).scale(1, 0.28, 1).translate(0, 1.25, 0),
+    ]);
+  } else if (shape === "blossom") {
+    // Fluffy cherry cloud: a cluster of offset blobs reads as billowy blossom.
+    const blobs = [
+      [0, 1.7, 0, 1.75], [1.3, 2.1, 0.4, 1.25], [-1.1, 2.0, -0.5, 1.3],
+      [0.3, 2.85, 0.2, 1.3], [-0.4, 1.55, 1.0, 1.1], [0.9, 1.6, -0.9, 1.05],
+    ];
+    g = mergeGeometries(blobs.map(([x, y, z, r]) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z)));
+  } else {
+    // round (deciduous): a single faceted lollipop crown.
+    g = new THREE.IcosahedronGeometry(2.3, 1).scale(1, 0.95, 1).translate(0, 2.15, 0);
+  }
+  _foliageGeoCache[shape] = g;
+  return g;
+}
+
+// How much taller/shorter the (shared) trunk stretches per shape, so acacias get a
+// long bare trunk under their umbrella while the rest keep stocky trunks.
+const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95 };
+
+// Biome-diverse trees. One shared brown trunk InstancedMesh for the whole batch,
+// plus ONE foliage InstancedMesh per distinct canopy shape present (round / pine /
+// acacia / blossom) — each shape its own silhouette, recoloured per-instance from
+// the biome's foliage HSL. Draw calls stay tiny: 1 trunk + ≤4 canopy meshes.
+function buildShapedTrees(scene, spots, scaleMul = 1) {
+  const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6); // baked base at y=0..3
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
   const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
   foliageMat.userData.backlight = true; // glow when backlit by the sun (set in toonify)
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
-  const foliage = new THREE.InstancedMesh(foliageGeo, foliageMat, spots.length);
-  foliage.castShadow = true;
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
   const col = new THREE.Color();
 
+  // Bucket spots by canopy shape so each shape fills one InstancedMesh.
+  const byShape = new Map();
+  for (const spot of spots) {
+    const shape = spot.b.treeShape || "round";
+    let arr = byShape.get(shape);
+    if (!arr) byShape.set(shape, (arr = []));
+    arr.push(spot);
+  }
+
+  // Precompute each spot's trunk-top so trunk + canopy line up.
   spots.forEach((spot, i) => {
     const { y, b } = spot;
+    const shape = b.treeShape || "round";
     const sc = (0.8 + rand() * 1.4) * scaleMul;
-    q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rand() * Math.PI);
-
-    p.set(spot.x, y + 1.5 * sc, spot.z);
-    s.set(sc, sc, sc);
+    const hmul = TRUNK_HMUL[shape] ?? 1.0;
+    spot._sc = sc;
+    spot._yaw = rand() * Math.PI;
+    spot._top = y + 3 * sc * hmul; // world Y of the trunk top (canopy base)
+    q.setFromAxisAngle(UP_Y, spot._yaw);
+    p.set(spot.x, y + 1.5 * sc * hmul, spot.z);
+    s.set(sc, sc * hmul, sc);
     m.compose(p, q, s);
     trunks.setMatrixAt(i, m);
-
-    // Foliage sits on top of the trunk; pines are taller and narrower.
-    p.set(spot.x, y + 3 * sc + 3 * b.sy * sc, spot.z);
-    s.set(b.sx * sc, b.sy * sc, b.sx * sc);
-    m.compose(p, q, s);
-    foliage.setMatrixAt(i, m);
-
-    let h = b.foliage[0];
-    if (b.name === "autumn") h += (rand() - 0.5) * 0.12; // mix red/orange/gold
-    col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.6));
-    if (b.name === "alpine") col.lerp(SNOW_WHITE, 0.45); // snow-dusted pines
-    foliage.setColorAt(i, col);
   });
   trunks.instanceMatrix.needsUpdate = true;
-  foliage.instanceMatrix.needsUpdate = true;
-  if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
   trunks.layers.set(1); // excluded from the rear-view mirror render
-  foliage.layers.set(1);
   scene.add(trunks);
-  scene.add(foliage);
+
+  // One foliage mesh per shape.
+  for (const [shape, arr] of byShape) {
+    const foliage = new THREE.InstancedMesh(foliageGeoFor(shape), foliageMat, arr.length);
+    foliage.castShadow = true;
+    foliage.layers.set(1);
+    arr.forEach((spot, i) => {
+      const { b } = spot;
+      const sc = spot._sc;
+      q.setFromAxisAngle(UP_Y, spot._yaw);
+      p.set(spot.x, spot._top - 0.2 * sc, spot.z); // tiny overlap into the trunk top
+      // Per-biome width/height tweak still applies (sx/sy), keeping the old variety.
+      s.set(b.sx * sc, b.sy * sc, b.sx * sc);
+      m.compose(p, q, s);
+      foliage.setMatrixAt(i, m);
+
+      let h = b.foliage[0];
+      if (b.name === "autumn") h += (rand() - 0.5) * 0.12; // mix red/orange/gold
+      else if (b.name === "blossom") h += (rand() - 0.5) * 0.04; // a little pink variance
+      col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.86));
+      if (b.name === "alpine") col.lerp(SNOW_WHITE, 0.45); // snow-dusted pines
+      foliage.setColorAt(i, col);
+    });
+    foliage.instanceMatrix.needsUpdate = true;
+    if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
+    scene.add(foliage);
+  }
 
   // Soft contact shadow under each tree — grounds them without the cost of a
   // real shadow pass (reads as the SSAO "occlusion" darkening at the base).
@@ -1053,7 +1240,8 @@ function buildConeTrees(scene, spots, scaleMul = 1) {
     scene,
     spots.map((spot) => {
       const sc = 0.9 * scaleMul;
-      return { x: spot.x, y: spot.y, z: spot.z, r: (2.0 + spot.b.sx) * sc };
+      const wide = spot.b.treeShape === "acacia" ? 1.5 : 1; // umbrellas shade a wider patch
+      return { x: spot.x, y: spot.y, z: spot.z, r: (2.0 + spot.b.sx) * sc * wide };
     })
   );
 }
@@ -1320,7 +1508,7 @@ function buildStringLights(scene, track, level = 0) {
 
 // Overhead structures you drive UNDER: cloth welcome banners on posts, and a
 // chunky bridge/overpass spanning the road. Seeded placement across the track.
-function buildOverheadStructures(scene, track, lit, level = 1) {
+function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   const N = track.samples;
   const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9 });
   const clothCols = [0xd9534f, 0x4a90d9, 0x4caf50, 0xe0a73a, 0x9c5ab8];
@@ -1362,43 +1550,150 @@ function buildOverheadStructures(scene, track, lit, level = 1) {
     scene.add(cloth);
   }
 
-  // --- One bridge / overpass you drive under ---
-  {
-    const { p, sx, sz, yaw } = spanAt(0.42 + rand() * 0.08);
-    const stone = new THREE.MeshStandardMaterial({ color: 0x8c8378, roughness: 1 });
-    const deckY = p.y + 13;
-    const off = track.halfWidth + 6;
-    const span = (track.halfWidth + off) * 2;
-    for (const dir of [1, -1]) {
-      const pillar = new THREE.Mesh(rbox(3.4, deckY - p.y, 4.2, 0.4), stone);
-      pillar.position.set(p.x + sx * dir * off, p.y + (deckY - p.y) / 2, p.z + sz * dir * off);
-      pillar.rotation.y = yaw;
-      pillar.castShadow = true;
-      pillar.layers.set(1);
-      scene.add(pillar);
+  // --- Wooden walking footbridges spanning the road ---
+  // Placed where they won't fight the scenery: pick the flattest candidate spans
+  // whose landings clear the lakes and avoid the dense town building-rows, so a
+  // bridge never plants a post in the water or inside a village. The whole
+  // timber structure of each bridge merges into ONE geometry (1 draw call).
+  for (const frac of pickFootbridgeSpans(track, heightAt, 2)) {
+    buildFootbridge(scene, track, heightAt, frac, postMat, lit, level);
+  }
+}
+
+// Town zones alternate with farm/open zones every 1/6 of the lap (see
+// buildRoadside): even sixths are packed towns. A bridge wants the open ones.
+function inTownZone(frac) {
+  const f = ((frac % 1) + 1) % 1;
+  return Math.floor(f * 6) % 2 === 0;
+}
+
+// Score candidate spans and return the best `count` fracs, spread apart, whose
+// landings are clear of water and (preferably) clear of town building-rows.
+function pickFootbridgeSpans(track, heightAt, count) {
+  const N = track.samples;
+  const RAMP = 15; // how far past the barrier the landings reach
+  const TRIES = 28;
+  const cands = [];
+  for (let s = 0; s < TRIES; s++) {
+    const frac = (s + 0.5) / TRIES;
+    const i = Math.floor(frac * N) % N;
+    const p = track._pts[i];
+    const t = track._tans[i];
+    const tl = Math.hypot(t.x, t.z) || 1;
+    const sx = -t.z / tl, sz = t.x / tl; // unit vector across the road
+    const reach = track.halfWidth + RAMP;
+    const lx = p.x + sx * reach, lz = p.z + sz * reach; // left landing
+    const rx = p.x - sx * reach, rz = p.z - sz * reach; // right landing
+    if (_inLake(lx, lz) || _inLake(rx, rz)) continue; // a post would stand in the lake
+    // Avoid a sharp corner — the straight deck would cut the barrier on a tight bend.
+    const t1 = track._tans[(i + 6) % N];
+    const turn = Math.abs(Math.atan2(t1.x, t1.z) - Math.atan2(t.x, t.z));
+    if (Math.min(turn, Math.PI * 2 - turn) > 0.32) continue;
+    // Prefer level landings (a big bank-height gap makes the bridge lurch).
+    const lY = heightAt(lx, lz), rY = heightAt(rx, rz);
+    let score = -Math.abs(lY - rY) - Math.abs((lY + rY) / 2 - p.y) * 0.5;
+    if (inTownZone(frac)) score -= 40; // keep clear of the packed village rows
+    cands.push({ frac, score });
+  }
+  cands.sort((a, b) => b.score - a.score);
+  const chosen = [];
+  for (const c of cands) {
+    if (chosen.length >= count) break;
+    if (chosen.every((f) => Math.abs(((c.frac - f + 1) % 1)) > 0.12 && Math.abs(((f - c.frac + 1) % 1)) > 0.12)) {
+      chosen.push(c.frac);
     }
-    const deck = new THREE.Mesh(rbox(span, 1.6, 8, 0.3), stone);
-    deck.position.set(p.x, deckY, p.z);
-    deck.rotation.y = yaw;
-    deck.castShadow = true;
-    deck.layers.set(1);
-    scene.add(deck);
-    for (const dz of [-3.4, 3.4]) {
-      const rail = new THREE.Mesh(rbox(span, 1.0, 0.4, 0.15), stone);
-      rail.position.set(p.x + Math.cos(yaw) * dz, deckY + 1.3, p.z - Math.sin(yaw) * dz);
-      rail.rotation.y = yaw;
-      rail.layers.set(1);
-      scene.add(rail);
+  }
+  return chosen;
+}
+
+// One arched plank footbridge: the walkway rises from the ground on one verge,
+// arcs over the road (high enough to drive under) and descends to the far verge,
+// with timber posts at the road edges, plank rails and balusters. Everything is
+// built in the span's local frame (X across, Z along the road, Y up; local Y=0 is
+// road height) and merged into a single mesh — 1 draw call for the whole bridge.
+function buildFootbridge(scene, track, heightAt, frac, woodMat, lit, level) {
+  const N = track.samples;
+  const i = Math.floor((frac % 1) * N) % N;
+  const p = track._pts[i];
+  const t = track._tans[i];
+  const tl = Math.hypot(t.x, t.z) || 1;
+  const sx = -t.z / tl, sz = t.x / tl; // across the road (unit)
+  const yaw = Math.atan2(t.x / tl, t.z / tl);
+  const halfW = track.halfWidth;
+  const RAMP = 15;
+  const L = halfW + RAMP; // half-span: ends out on the verges
+  const deckW = 4.2; // walkway width (along the road)
+  const CLEAR = 8.5; // deck crown height above the road (drive-under clearance)
+
+  // World terrain → local-Y helper (local Y = worldY - p.y, valid because the
+  // bridge only rotates about Y, which preserves world height). The mesh's local
+  // +X maps to -(sx,sz) in world space once rotated by yaw, so sample along -sx/-sz
+  // to keep each deck end seated on the terrain actually beneath it.
+  const worldAt = (u) => heightAt(p.x - sx * u * L, p.z - sz * u * L);
+  const endL = worldAt(-1) - p.y, endR = worldAt(1) - p.y;
+  const midBase = (endL + endR) / 2;
+  // Deck height across the span: terrain at the ends, arcing to CLEAR over the road.
+  const deckY = (u) => endL + (endR - endL) * (u + 1) / 2 + (CLEAR - midBase) * (1 - u * u);
+
+  const parts = [];
+  const box = (w, h, d, x, y, z, rotZ = 0) => {
+    const g = rbox(Math.max(0.05, w), Math.max(0.05, h), Math.max(0.05, d), 0.08, 1);
+    if (rotZ) g.rotateZ(rotZ); // tilt about the road axis (local Z) to follow the deck slope
+    g.translate(x, y, z);
+    parts.push(g);
+  };
+
+  // Deck: a run of planks following the arch. Each plank tilts to match the local
+  // slope so the walkway reads as a smooth ramp-arch, not a staircase.
+  const SEG = 30;
+  const plankLen = (2 * L) / SEG + 0.12; // slight overlap, no gaps
+  for (let k = 0; k < SEG; k++) {
+    const u = -1 + (k + 0.5) * (2 / SEG);
+    const x = u * L;
+    const y = deckY(u);
+    const slope = Math.atan2(deckY(u + 1 / SEG) - deckY(u - 1 / SEG), (2 / SEG) * L);
+    box(plankLen, 0.32, deckW, x, y, 0, slope);
+    // Side rails (top + mid) and a baluster, on both edges, every couple of planks.
+    if (k % 2 === 0) {
+      for (const dz of [-deckW / 2, deckW / 2]) {
+        box(0.22, 0.95, 0.22, x, y + 0.6, dz);          // baluster
+        box(plankLen + 0.2, 0.16, 0.18, x, y + 1.15, dz, slope); // top rail
+        box(plankLen + 0.2, 0.12, 0.14, x, y + 0.62, dz, slope); // mid rail
+      }
     }
-    if (lit) {
-      const lamp = new THREE.Mesh(
-        new THREE.SphereGeometry(0.6, 10, 8),
-        new THREE.MeshStandardMaterial({ color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: 2.4 * level })
-      );
-      lamp.position.set(p.x, deckY - 1.2, p.z);
-      lamp.layers.set(1);
-      scene.add(lamp);
+  }
+
+  // Support posts dropping to the ground just outside each barrier (never on the
+  // road), plus stout end posts at the landings.
+  for (const u of [-1, -(halfW + 1.5) / L, (halfW + 1.5) / L, 1]) {
+    const x = u * L;
+    const top = deckY(u);
+    const ground = worldAt(u) - p.y;
+    const h = Math.max(1.2, top - ground);
+    for (const dz of [-deckW / 2 + 0.2, deckW / 2 - 0.2]) {
+      box(0.5, h, 0.5, x, ground + h / 2, dz);
     }
+  }
+
+  const geo = mergeGeometries(parts);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(geo, woodMat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.position.set(p.x, p.y, p.z);
+  mesh.rotation.y = yaw;
+  mesh.layers.set(1);
+  scene.add(mesh);
+
+  // A warm lantern hung under the crown at dusk/night.
+  if (lit) {
+    const lamp = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: 2.4 * level })
+    );
+    lamp.position.set(p.x, p.y + CLEAR - 0.8, p.z);
+    lamp.layers.set(1);
+    scene.add(lamp);
   }
 }
 
@@ -1518,7 +1813,7 @@ function buildForests(scene, track, heightAt) {
       spots.push({ x, z, y: heightAt(x, z), b });
     }
   }
-  if (spots.length) buildConeTrees(scene, spots, 1.45); // taller, fuller forest trees
+  if (spots.length) buildShapedTrees(scene, spots, 1.45); // taller, fuller forest trees
 }
 
 // A craggy cliff face to drive alongside: rows of big rock chunks stacked up
@@ -2262,18 +2557,22 @@ function makeFence(color) {
 
 function makeTree(biome) {
   const b = biome || BIOMES[0];
+  const shape = b.treeShape === "cactus" ? "round" : b.treeShape || "round";
   const g = new THREE.Group();
   const s = 0.9 + rand() * 1.2;
+  const hmul = TRUNK_HMUL[shape] ?? 1.0;
   const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 6), mat(0x6b4a2b));
-  trunk.position.y = 1.5 * s;
-  trunk.scale.setScalar(s);
+  trunk.position.y = 1.5 * s * hmul;
+  trunk.scale.set(s, s * hmul, s);
   trunk.castShadow = true;
   g.add(trunk);
   let h = b.foliage[0];
   if (b.name === "autumn") h += (rand() - 0.5) * 0.12;
-  const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.6));
-  const fol = new THREE.Mesh(new THREE.ConeGeometry(2.4, 6, 7), mat(folCol.getHex(), { flatShading: true }));
-  fol.position.y = (3 + 3 * b.sy) * s;
+  else if (b.name === "blossom") h += (rand() - 0.5) * 0.04;
+  const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.86));
+  // Share the cached canopy silhouette so roadside trees match the scattered ones.
+  const fol = new THREE.Mesh(foliageGeoFor(shape), mat(folCol.getHex(), { flatShading: true }));
+  fol.position.y = 3 * s * hmul - 0.2 * s;
   fol.scale.set(b.sx * s, b.sy * s, b.sx * s);
   fol.castShadow = true;
   g.add(fol);

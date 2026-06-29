@@ -848,6 +848,28 @@ kbd {
   opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
+/* Time-trial PB target + live delta. The timer recolours (ahead/behind PB) via
+   the .ahead / .behind classes set from the game loop. */
+#tt-best {
+  font-size: 11px;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+#tt-delta {
+  font-size: 13px;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+#tt-delta.ahead,
+#timer.ahead {
+  color: #54d98b;
+  opacity: 1;
+}
+#tt-delta.behind,
+#timer.behind {
+  color: #ff7a6b;
+  opacity: 1;
+}
 
 /* Throttle slider (left). The whole strip is the touch target, so the finger
    doesn't have to land precisely on the track. Inset generously so it clears

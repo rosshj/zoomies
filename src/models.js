@@ -214,6 +214,44 @@ function makeSpotTexture(furColor, spotColor) {
   return t;
 }
 
+// Painted calico coat: a cream base broken up by big irregular ginger and black
+// patches (plus a few freckles) — the classic tortie-and-white tricolour, baked
+// once, no tiling.
+function makeCalicoTexture(baseColor) {
+  const key = `cal|${baseColor.getHexString()}`;
+  if (_coatTexCache.has(key)) return _coatTexCache.get(key);
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + baseColor.getHexString(); // cream base shows as the "white"
+  ctx.fillRect(0, 0, S, S);
+  const ginger = "#df8a2f", black = "#2c2723";
+  // [x, y, rx, ry, rotation, colour] as fractions of S — big soft patches.
+  const patches = [
+    [0.22, 0.2, 0.18, 0.15, 0.3, ginger], [0.7, 0.16, 0.16, 0.19, -0.4, black],
+    [0.5, 0.44, 0.21, 0.16, 0.2, ginger], [0.15, 0.6, 0.15, 0.19, 0.5, black],
+    [0.83, 0.56, 0.16, 0.2, -0.3, ginger], [0.4, 0.82, 0.19, 0.15, 0.1, black],
+    [0.76, 0.86, 0.14, 0.14, 0.4, ginger],
+  ];
+  for (const [x, y, rx, ry, rot, col] of patches) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(x * S, y * S, rx * S, ry * S, rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // A few small freckles straddling the patches for a hand-painted feel.
+  for (const [x, y, r, col] of [[0.34, 0.36, 0.03, black], [0.6, 0.66, 0.028, ginger], [0.5, 0.62, 0.026, black]]) {
+    ctx.fillStyle = col;
+    ctx.beginPath();
+    ctx.ellipse(x * S, y * S, r * S, r * S * 1.1, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const t = _finishTex(c);
+  _coatTexCache.set(key, t);
+  return t;
+}
+
 // Eyeball texture: sclera + iris + slit pupil + catch-lights all PAINTED onto one
 // sphere (cached per eye colour), so the eye is a single clean ball an eyelid can
 // sweep over — no separate pupil/shine objects poking through a closing lid. The
@@ -270,7 +308,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const pat = pal.pattern;
   const isTabby = pat === "tabby";
   const isSpotted = pat === "spotted";
-  const isTextured = isTabby || isSpotted;     // coat carries a painted pattern
+  const isCalico = pat === "calico";
+  const isTextured = isTabby || isSpotted || isCalico; // coat carries a painted pattern
   const isTuxedo = pat === "tuxedo";
   const isMitted = pat === "mitted";
   const isSolid = pat === "solid";
@@ -278,7 +317,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const isSnow = pat === "snowshoe";
   const hasMask = isPoint || isSnow;           // dark face mask + colour points
   const hasBib = isTuxedo || isMitted;         // big white chest
-  const whitePaws = isTuxedo || isMitted || isSnow;
+  const whitePaws = isTuxedo || isMitted || isSnow || isCalico; // calicos have white socks
   const colorExtremity = isPoint || isSnow;    // ears/mask/tail take the point colour
 
   const fur = new THREE.MeshStandardMaterial({ color: pal.fur, roughness: 0.92 });
@@ -302,6 +341,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       ? makeStripeTexture(pal.fur, pal.stripe, 7, "v")   // rings around the tail
       : makeStripeTexture(pal.fur, pal.stripe, 18, "v"); // many fine mackerel bands
     if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe);
+    if (isCalico) return makeCalicoTexture(pal.fur);     // tricolour ginger/black patches
     return null;
   }
   const coat = isTextured
@@ -556,11 +596,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 18), m);
     ring.position.set(0, 1.56, 0.08); ring.rotation.x = Math.PI / 2.3; acc.add(ring);
     const knot = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 5), m);
-    knot.position.set(0, 1.42, 0.56); knot.rotation.x = 0.6; acc.add(knot);  }
-  // Headwear / eyewear ride with the head; the tabby's neckerchief sits on the
-  // body. `acc` is at the origin, so its children's transforms already read in the
-  // right frame — route them into the matching static bucket to be merged.
-  const accToBody = pat === "tabby";
+    knot.position.set(0, 1.42, 0.56); knot.rotation.x = 0.6; acc.add(knot);  } else if (pat === "calico") {
+    // collar with a little gold bell
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 8, 20), accMat(0xd23b3b));
+    collar.position.set(0, 1.56, 0.08); collar.rotation.x = Math.PI / 2.3; acc.add(collar);
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), accMat(0xffd24d, 0.4, 0.3));
+    bell.position.set(0, 1.4, 0.52); acc.add(bell);
+    const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8), accMat(0xe0b53a, 0.4, 0.3));
+    nub.position.set(0, 1.49, 0.52); acc.add(nub);  }
+  // Headwear / eyewear ride with the head; neckwear (tabby kerchief, calico collar)
+  // sits on the body. `acc` is at the origin, so its children's transforms already
+  // read in the right frame — route them into the matching static bucket to merge.
+  const accToBody = pat === "tabby" || pat === "calico";
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
@@ -711,13 +758,15 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const body = new THREE.Color(bodyColor);
   // Body silhouette variants (cockpit height stays constant so the cat always
   // seats correctly; the nose, wing, tyres and roll-cage change the profile):
-  //   gp       — long nose, big rear wing, low slick tyres (default)
-  //   roadster — short nose, ducktail lip spoiler, classic rounded tail
-  //   buggy    — stubby nose, no wing, fat tyres + a roll hoop
+  //   gp        — long nose, big rear wing, low slick tyres (default)
+  //   roadster  — short nose, ducktail lip spoiler, classic rounded tail
+  //   buggy     — stubby nose, no wing, fat tyres + a roll hoop
+  //   speedster — longest needle nose, low slicks, twin swept rocket tail-fins
   const STYLES = [
     { nose: 1.7, noseZ: 2.0, tipZ: 2.95, wing: "big", tire: 1.0, hoop: false },
     { nose: 1.25, noseZ: 1.85, tipZ: 2.6, wing: "lip", tire: 1.06, hoop: false },
     { nose: 1.0, noseZ: 1.75, tipZ: 2.45, wing: "none", tire: 1.2, hoop: true },
+    { nose: 1.95, noseZ: 2.15, tipZ: 3.2, wing: "fin", tire: 0.94, hoop: false },
   ];
   const st = STYLES[opts.style ?? 0] || STYLES[0];
   const kartNumber = opts.number ?? 1;
@@ -826,6 +875,22 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const lip = add(new THREE.Mesh(rbox(2.0, 0.12, 0.5, 0.06), paint));
     lip.position.set(0, 1.18, -2.3);
     lip.rotation.x = -0.18;
+  } else if (st.wing === "fin") {
+    // Twin swept rocket tail-fins flanking the rear deck (body paint, accent edge),
+    // plus a small central spine fin — a jet-age speedster look.
+    for (const sx of [-1, 1]) {
+      const fin = add(new THREE.Mesh(rbox(0.16, 0.98, 1.05, 0.06), paint));
+      fin.position.set(sx * 0.72, 1.34, -2.18);
+      fin.rotation.x = -0.34; // rake the fin back
+      fin.rotation.z = sx * 0.12; // splay outward a touch
+      const edge = add(new THREE.Mesh(rbox(0.1, 0.16, 1.05, 0.04), accent));
+      edge.position.set(sx * 0.72, 1.82, -2.18);
+      edge.rotation.x = -0.34;
+      edge.rotation.z = sx * 0.12;
+    }
+    const spineFin = add(new THREE.Mesh(rbox(0.12, 0.62, 0.86, 0.05), accent));
+    spineFin.position.set(0, 1.2, -2.24);
+    spineFin.rotation.x = -0.32;
   }
 
   // --- Greebles: chrome roll hoop (buggy) + twin exhaust tips (all) ---

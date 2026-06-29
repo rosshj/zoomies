@@ -14,7 +14,7 @@ import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeRoadStyle } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { Net } from "./net/net.js";
@@ -71,9 +71,10 @@ const CAT_PRESETS = [
   { name: "Whiskey", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
   { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
   { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
+  { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
 ];
-// Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy),
-// and a racing number stamped on the side roundels.
+// Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
+// 3=finned speedster), and a racing number stamped on the side roundels.
 const KART_PRESETS = [
   { name: "Ember", color: 0xe53935, style: 0, number: 5 },
   { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7 },
@@ -82,6 +83,8 @@ const KART_PRESETS = [
   { name: "Grape", color: 0x8e24aa, style: 1, number: 4 },
   { name: "Sunbeam", color: 0xfdd835, style: 2, number: 1 },
   { name: "Teal", color: 0x00897b, style: 0, number: 8 },
+  { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
+  { name: "Nova", color: 0xec407a, style: 3, number: 6 },
 ];
 const GARAGE_KEY = "zoomies-garage-v1";
 function loadGarageConfig() {
@@ -522,6 +525,7 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 const input = new Input();
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
+const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const hud = new HUD();
 
 // Boost (toot) meter UI reflects the player kart's own meter.
@@ -824,6 +828,19 @@ let _finishCamAngle = 0; // victory orbit angle once the player finishes
 let timeTrial = false;
 let ttLapStart = -1; // raceTime when the timed lap began (first start-line crossing)
 let _ttResult = null; // { top, entry } from the latest recorded run, for the results screen
+let ttBest = null; // personal-best lap time (s), loaded when a time trial starts
+const ttBestEl = document.getElementById("tt-best");
+const ttDeltaEl = document.getElementById("tt-delta");
+const timerEl = document.getElementById("timer");
+// Ghost replay: while a time trial runs we record the player's path; on a new best
+// lap it's saved (per track) and replayed next time as a translucent ghost kart so
+// you race your own PB. ttRecord is the flat [t,x,y,z,heading,…] log of THIS lap;
+// ttGhost is the loaded best lap being replayed.
+const TT_GHOST_KEY = "zoomies-ttghost-v1";
+let ttRecord = null; // flat array being recorded this lap (null outside time trial)
+let _lastGhostSample = -1;
+let ttGhost = null; // { samples, n, cursor } currently being replayed
+let _ghostGroup = null; // the translucent ghost kart in the scene
 
 // --- Stage / orientation ---
 // We render at the true viewport size (no CSS rotation — that caused cutoff and
@@ -2004,11 +2021,21 @@ if (lobbyCopyBtn) {
 
 function startRace() {
   timeTrial = false;
+  setTimeTrialHud(false);
   beginRace();
 }
 function startTimeTrial() {
   timeTrial = true;
+  ttBest = loadTimeTrial()[0]?.time ?? null; // the lap to chase
+  setTimeTrialHud(true);
   beginRace();
+}
+// Show/hide the time-trial PB target + delta, and reset their state for a new run.
+function setTimeTrialHud(on) {
+  for (const el of [ttBestEl, ttDeltaEl]) el?.classList.toggle("hidden", !on);
+  if (ttBestEl) ttBestEl.textContent = on ? (ttBest != null ? `PB ${formatLap(ttBest)}` : "PB — (set one!)") : "";
+  if (ttDeltaEl) { ttDeltaEl.textContent = ""; ttDeltaEl.className = "hidden"; }
+  if (timerEl) timerEl.classList.remove("ahead", "behind");
 }
 function beginRace() {
   // These need the user-gesture from the click, so fire them synchronously.
@@ -2064,6 +2091,7 @@ function prepareRace() {
 
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
+  setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
   track.raceTime = 0;
@@ -2715,6 +2743,87 @@ function formatLap(sec) {
   const s = sec - m * 60;
   return m > 0 ? `${m}:${s.toFixed(2).padStart(5, "0")}` : `${s.toFixed(2)}s`;
 }
+
+// --- Time-trial ghost replay ---------------------------------------------------
+// The ghost is keyed by track identity (seed for generated maps, "classic"
+// otherwise) so a stored best lap only ever replays on the track it was set on —
+// no ghost driving through the scenery of a different map.
+function ttTrackKey() {
+  return trackConfig.mode === "custom" ? "c:" + (trackConfig.seed || "") : "classic";
+}
+function loadGhostData() {
+  try {
+    const g = JSON.parse(localStorage.getItem(TT_GHOST_KEY));
+    if (g && g.key === ttTrackKey() && Array.isArray(g.samples) && g.samples.length >= 10) return g.samples;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+function saveGhostData(samples) {
+  try {
+    localStorage.setItem(TT_GHOST_KEY, JSON.stringify({ key: ttTrackKey(), samples }));
+  } catch {
+    /* storage may be unavailable; the ghost is best-effort */
+  }
+}
+function clearGhost() {
+  if (_ghostGroup) {
+    scene.remove(_ghostGroup);
+    _disposeGroup(_ghostGroup);
+    _ghostGroup = null;
+  }
+  ttGhost = null;
+}
+// Build the translucent ghost kart (player's chosen look) for the loaded best lap,
+// or tear any existing one down. Called from prepareRace for both modes.
+function setupGhost() {
+  clearGhost();
+  ttRecord = timeTrial ? [] : null; // start recording this lap (time trial only)
+  _lastGhostSample = -1;
+  if (!timeTrial) return;
+  const samples = loadGhostData();
+  if (!samples) return;
+  const look = playerLook();
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const group = gk.group;
+  // One flat, translucent cyan material over the whole kart reads cleanly as a
+  // ghost (unlit so it renders consistently regardless of time-of-day).
+  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x8fe8ff, transparent: true, opacity: 0.32, depthWrite: false, fog: true });
+  if (gk.groundShadow) gk.groundShadow.visible = false; // a cyan shadow disc would look wrong
+  group.traverse((o) => {
+    if (o.isMesh && o !== gk.shadowQuad) { o.material = ghostMat; o.castShadow = false; o.renderOrder = 3; }
+  });
+  group.visible = false; // shown once the timed lap starts
+  scene.add(group);
+  _ghostGroup = group;
+  ttGhost = { samples, n: (samples.length / 5) | 0, cursor: 0 };
+}
+// Place the ghost at its recorded pose for `elapsed` seconds into the lap, lerping
+// between the two bracketing samples (shortest-angle for heading). Hidden before
+// the lap starts and after the ghost's own lap has ended.
+function updateGhost(elapsed) {
+  if (!ttGhost || !_ghostGroup) return;
+  const s = ttGhost.samples, n = ttGhost.n;
+  const lastT = s[(n - 1) * 5];
+  if (elapsed <= 0 || elapsed > lastT + 0.4) { _ghostGroup.visible = false; return; }
+  let i = ttGhost.cursor;
+  if (s[i * 5] > elapsed) i = 0; // lap reset — rewind the cursor
+  while (i < n - 1 && s[(i + 1) * 5] <= elapsed) i++;
+  ttGhost.cursor = i;
+  const j = Math.min(i + 1, n - 1);
+  const t0 = s[i * 5], t1 = s[j * 5];
+  const f = t1 > t0 ? (elapsed - t0) / (t1 - t0) : 0;
+  const x = s[i * 5 + 1] + (s[j * 5 + 1] - s[i * 5 + 1]) * f;
+  const y = s[i * 5 + 2] + (s[j * 5 + 2] - s[i * 5 + 2]) * f;
+  const z = s[i * 5 + 3] + (s[j * 5 + 3] - s[i * 5 + 3]) * f;
+  let dh = s[j * 5 + 4] - s[i * 5 + 4];
+  while (dh > Math.PI) dh -= Math.PI * 2;
+  while (dh < -Math.PI) dh += Math.PI * 2;
+  _ghostGroup.position.set(x, y, z);
+  _ghostGroup.rotation.y = s[i * 5 + 4] + dh * f;
+  _ghostGroup.visible = true;
+}
 function renderTimeTrialResults() {
   const yourTime = _ttResult ? _ttResult.entry.time : null;
   const top = _ttResult ? _ttResult.top : loadTimeTrial();
@@ -2933,6 +3042,15 @@ function loop(now) {
       // so tight turns leave marks. (_hardTurn already gates on steer + speed.)
       effects.skid(player);
     }
+
+    // Dust kicked off the track, tinted to the local ground. A thick plume while
+    // sliding/cornering hard, a faint veil while just driving at speed — only when
+    // the kart is actually on the ground (no dust mid-jump). One color sample/frame.
+    if (!player.airborne && _sp > 6) {
+      biomeDustColor(player.position.x, player.position.z, _dustCol);
+      const amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      if (amt > 0.02) effects.dust(player, _dustCol, amt);
+    }
     // Chromatic aberration ramps up with the boost.
     const aberrTarget = player.boosting ? 0.008 : 0;
     fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
@@ -2990,6 +3108,14 @@ function loop(now) {
       if (k.drifting && k !== player && Math.abs(k.speed) > 8) {
         effects.driftSparks(k);
         effects.skid(k);
+      }
+      // Dust for the rest of the field, but ONLY for karts near the camera and
+      // only when they're sliding — so distant traffic and the shared particle
+      // budget stay protected (the player's own dust is handled above).
+      if (k !== player && !k.airborne && (k.drifting || k.spinTimer > 0) &&
+          k.position.distanceToSquared(camera.position) < 70 * 70) {
+        biomeDustColor(k.position.x, k.position.z, _dustCol);
+        effects.dust(k, _dustCol, 0.5);
       }
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
@@ -3059,6 +3185,18 @@ function loop(now) {
     // Time trial: start the lap clock the moment we first cross the start line.
     if (timeTrial && prevPlayerLap < 0 && player.lap >= 0) ttLapStart = raceTime;
 
+    // Time-trial ghost: record this lap's path (~16 Hz, rounded to keep it small)
+    // and replay the stored best lap as the translucent ghost kart.
+    if (timeTrial && ttLapStart >= 0) {
+      const elapsed = raceTime - ttLapStart;
+      if (ttRecord && elapsed - _lastGhostSample >= 0.06) {
+        _lastGhostSample = elapsed;
+        const gp = player.group.position;
+        ttRecord.push(+elapsed.toFixed(3), +gp.x.toFixed(2), +gp.y.toFixed(2), +gp.z.toFixed(2), +player.heading.toFixed(3));
+      }
+      updateGhost(elapsed);
+    }
+
     // Lap toast for the player (normal races only)
     if (!timeTrial && player.lap !== prevPlayerLap && player.lap >= 1 && !player.finished) {
       const lapNum = player.displayLap(laps);
@@ -3079,6 +3217,23 @@ function loop(now) {
       time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
     });
 
+    // Time-trial: race the clock against your personal best. While the timed lap
+    // runs, the timer + delta go GREEN as long as you're still under your PB time
+    // and flip RED the moment you've spent longer than it — instant "on pace?"
+    // feedback with no stored splits needed.
+    if (timeTrial && ttLapStart >= 0 && ttBest != null) {
+      const diff = raceTime - ttLapStart - ttBest;
+      const ahead = diff < 0;
+      if (ttDeltaEl) {
+        ttDeltaEl.classList.remove("hidden");
+        ttDeltaEl.textContent = (ahead ? "−" : "+") + Math.abs(diff).toFixed(2);
+        ttDeltaEl.classList.toggle("ahead", ahead);
+        ttDeltaEl.classList.toggle("behind", !ahead);
+      }
+      timerEl?.classList.toggle("ahead", ahead);
+      timerEl?.classList.toggle("behind", !ahead);
+    }
+
     updateCamera(dt);
 
     // Hand off to the victory lap once the player finishes; show results after a
@@ -3089,7 +3244,10 @@ function loop(now) {
       if (timeTrial) {
         const lapTime = player.finishTime - (ttLapStart >= 0 ? ttLapStart : 0);
         _ttResult = recordTimeTrial(lapTime);
-        hud.showToast("LAP DONE!");
+        // New best lap → save this run's path as the ghost to chase next time.
+        if (ttRecord && ttRecord.length >= 10 && _ttResult.top[0] === _ttResult.entry) saveGhostData(ttRecord);
+        if (_ghostGroup) _ghostGroup.visible = false;
+        hud.showToast(_ttResult.top[0] === _ttResult.entry ? "🏁 NEW BEST!" : "LAP DONE!");
         setTimeout(showResults, 4000);
       } else {
         hud.showToast("FINISH!");
