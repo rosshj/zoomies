@@ -16,7 +16,7 @@ export function setSunShadow(sunDir) {
   const x = sunDir[0], y = Math.max(0.06, sunDir[1]), z = sunDir[2];
   _sunAz = Math.atan2(x, z);
   _sunStretch = Math.min(3.0, Math.max(1, 0.6 / y));
-  _sunAlpha = 0.34 + (1 - Math.min(1, y)) * 0.14;
+  _sunAlpha = 0.7 + (1 - Math.min(1, y)) * 0.12;
 }
 
 // Shield bubble (WebGPU TSL): a glowing Fresnel energy orb — bright at the rim,
@@ -56,8 +56,10 @@ function shadowTexture() {
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-  g.addColorStop(0, "rgba(0,0,0,0.5)");
-  g.addColorStop(0.6, "rgba(0,0,0,0.25)");
+  // Darker + a broader solid core so the shadow reads from the chase cam (the
+  // old soft 0.5 core faded out within the kart's own footprint and vanished).
+  g.addColorStop(0, "rgba(0,0,0,0.82)");
+  g.addColorStop(0.55, "rgba(0,0,0,0.6)");
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
@@ -198,6 +200,10 @@ export class Kart {
       })
     );
     this.shadowQuad.rotation.x = -Math.PI / 2;
+    // Push the shadow toward the anti-sun side (holder +Z faces the sun) so it
+    // trails out from under the chassis instead of hiding directly beneath it.
+    // The holder's Z scale (sun lowness) stretches this offset too.
+    this.shadowQuad.position.z = -1.4;
     this.groundShadow = new THREE.Group();
     this.groundShadow.add(this.shadowQuad);
     this.group.add(this.groundShadow);
