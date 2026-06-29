@@ -123,7 +123,7 @@ export class Kart {
     this.tootTimer = 0; // tail-lift/toot animation timer
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
-    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 5s
+    this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -271,11 +271,11 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
-  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 5s.
+  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 7s.
   // Sustained each frame in update(); reads as a green boost (cloud + flames).
   giveCatnip() {
     if (this.finished) return;
-    this.catnipTimer = 5;
+    this.catnipTimer = 7;
   }
   get catnipBoosting() {
     return this.catnipTimer > 0;
@@ -627,23 +627,27 @@ export class Kart {
     const lane = this.laneBias * (1 - sharp) * (track.halfWidth - 3); // hold a personal line
     target.addScaledVector(side, apex + lane);
 
-    // Catnip seeking: if an un-smashed catnip crate is just ahead and we don't
-    // already have the boost, ease our aim toward it so the field actively grabs
-    // power-ups. Crates sit near the racing line, so pulling toward one stays on
-    // the road. We only chase ones that are genuinely ahead, and commit harder the
-    // closer it gets.
+    // Crate seeking: ease the aim toward a crate to grab the (hidden) catnip.
+    // Everyone snaps at one that's nearly on their line; karts running at the back
+    // (4th+) look much further afield and commit harder, detouring to gamble for a
+    // catch-up boost. We only chase crates genuinely ahead. Since catnip hides in
+    // an ordinary crate, this just reads as the AI going for boxes.
     if (catnipTargets && catnipTargets.length && !this.catnipBoosting && this.spinTimer <= 0) {
       const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
-      let best = null, bestD = 70;
+      const behind = Math.max(0, (this.place || 1) - 3); // 0 for top-3, up to 3 for last
+      const range = 24 + behind * 18;                     // trailing karts reach much further
+      let best = null, bestD = range;
       for (const cn of catnipTargets) {
         const dx = cn.x - this.position.x, dz = cn.z - this.position.z;
         const d = Math.hypot(dx, dz);
         if (d < 3 || d > bestD) continue;
-        if ((dx * fwx + dz * fwz) / d < 0.3) continue; // must be roughly ahead, not behind
+        if ((dx * fwx + dz * fwz) / d < 0.25) continue; // must be roughly ahead, not behind
         bestD = d; best = cn;
       }
       if (best) {
-        const pull = Math.min(0.85, (70 - bestD) / 50 * 0.85); // full commit inside ~20 units
+        // Commit harder the closer it is AND the further back we are (more willing
+        // to leave the racing line for it when there's ground to make up).
+        const pull = Math.min(0.92, (range - bestD) / range * 0.7 + 0.2 + behind * 0.08);
         target.x += (best.x - target.x) * pull;
         target.z += (best.z - target.z) * pull;
       }
