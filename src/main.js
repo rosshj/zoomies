@@ -2464,6 +2464,11 @@ function fireHairball(kart, charge = 0) {
 const _aiFwd = new THREE.Vector3();
 const _aiTo = new THREE.Vector3();
 function aiActions(dt) {
+  // Even launch: for the first beat off the line every AI floors it (like the
+  // player holding full throttle) and we skip the anti-clumping throttle cut. The
+  // starting grid is intentionally packed, so anti-clumping used to brake the
+  // whole field at GO — which is exactly why the AI felt sluggish off the line.
+  const launching = raceTime < 1.3;
   for (const k of karts) {
     if (k.isPlayer) continue;
 
@@ -2482,24 +2487,28 @@ function aiActions(dt) {
 
     _aiFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
 
-    // --- Anti-clumping: ease off and steer aside when right behind another
-    // kart, so the pack doesn't pile into tight corners in a single knot. ---
-    let nearestAhead = Infinity;
-    for (const other of karts) {
-      if (other === k || other.finished) continue;
-      _aiTo.subVectors(other.position, k.position);
-      const d = _aiTo.length();
-      if (d > 0.001 && d < 16 && _aiTo.dot(_aiFwd) / d > 0.6) {
-        if (d < nearestAhead) nearestAhead = d;
-        // Steer away from the side the other kart is on (heading-relative angle).
-        let a = Math.atan2(_aiTo.x, _aiTo.z) - k.heading;
-        while (a > Math.PI) a -= Math.PI * 2;
-        while (a < -Math.PI) a += Math.PI * 2;
-        const away = Math.abs(a) < 0.05 ? (k.laneBias >= 0 ? 1 : -1) : -Math.sign(a);
-        k.steerInput = Math.max(-1, Math.min(1, k.steerInput + away * 0.35));
+    if (launching) {
+      k.throttleInput = 1; // full launch, no anti-clump braking on the packed grid
+    } else {
+      // --- Anti-clumping: ease off and steer aside when right behind another
+      // kart, so the pack doesn't pile into tight corners in a single knot. ---
+      let nearestAhead = Infinity;
+      for (const other of karts) {
+        if (other === k || other.finished) continue;
+        _aiTo.subVectors(other.position, k.position);
+        const d = _aiTo.length();
+        if (d > 0.001 && d < 16 && _aiTo.dot(_aiFwd) / d > 0.6) {
+          if (d < nearestAhead) nearestAhead = d;
+          // Steer away from the side the other kart is on (heading-relative angle).
+          let a = Math.atan2(_aiTo.x, _aiTo.z) - k.heading;
+          while (a > Math.PI) a -= Math.PI * 2;
+          while (a < -Math.PI) a += Math.PI * 2;
+          const away = Math.abs(a) < 0.05 ? (k.laneBias >= 0 ? 1 : -1) : -Math.sign(a);
+          k.steerInput = Math.max(-1, Math.min(1, k.steerInput + away * 0.35));
+        }
       }
+      if (nearestAhead < 16) k.throttleInput *= 0.55 + 0.45 * (nearestAhead / 16);
     }
-    if (nearestAhead < 16) k.throttleInput *= 0.55 + 0.45 * (nearestAhead / 16);
 
     // --- Shield: raise it when a hairball is bearing down — but imperfectly, so
     // it doesn't feel like shooting just flips their shield on. Each new threat
