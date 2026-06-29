@@ -68,56 +68,62 @@ function catPalette(furColor, override) {
   };
 }
 
-function _finishTex(c, rx, ry) {
+function _finishTex(c) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(rx, ry);
   t.magFilter = THREE.NearestFilter; // crisp painted edges, no blur
   t.needsUpdate = true;
   return t;
 }
-// Painted tabby coat: bold mackerel stripes baked into a texture. `axis` "u"
-// draws stripes that run DOWN the flanks (vertical, the classic tabby look on
-// the body/head); "v" draws rings around the tail. The stripes are slightly
-// broken/irregular so they read organic rather than like a barcode.
+// Painted tabby coat: exactly `count` bold mackerel stripes baked into the
+// texture (no tiling). `axis` "u" → stripes run DOWN the flanks (vertical, the
+// classic body/head look); "v" → rings around the tail. Each stripe is broken
+// into a few jittered dashes so it reads hand-painted, not like a barcode.
 function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
+  const S = 256;
   const c = document.createElement("canvas");
-  c.width = 96; c.height = 96;
+  c.width = c.height = S;
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#" + furColor.getHexString();
-  ctx.fillRect(0, 0, 96, 96);
+  ctx.fillRect(0, 0, S, S);
   ctx.fillStyle = "#" + stripeColor.getHexString();
-  // 4 bars across the tile, each broken into 2-3 dashes with a little jitter so
-  // the stripes look hand-painted; tiled `count` times around/along the surface.
-  for (let i = 0; i < 4; i++) {
-    const x = 6 + i * 24 + (i % 2 ? 3 : -3);
-    const w = 9 + (i % 2 ? 2 : 0);
-    const segs = i % 2 ? [[2, 40], [48, 44]] : [[0, 30], [36, 30], [70, 26]];
-    for (const [y, h] of segs) ctx.fillRect(x, y, w, h);
+  const pitch = S / count;
+  for (let i = 0; i < count; i++) {
+    const c0 = (i + 0.5) * pitch + (i % 2 ? pitch * 0.12 : -pitch * 0.12); // slight wobble
+    const w = pitch * (0.42 + (i % 3) * 0.04);
+    // 2–3 dashes along the stripe with small gaps → organic, broken look
+    const segs = i % 2 ? [[0.0, 0.46], [0.54, 0.46]] : [[0.0, 0.3], [0.36, 0.3], [0.72, 0.28]];
+    for (const [a, len] of segs) {
+      if (axis === "v") ctx.fillRect(a * S, c0 - w / 2, len * S, w);      // ring (along the tail)
+      else ctx.fillRect(c0 - w / 2, a * S, w, len * S);                   // vertical flank stripe
+    }
   }
-  return axis === "v" ? _finishTex(c, 1, count) : _finishTex(c, count, 1);
+  return _finishTex(c);
 }
-// Painted spotted/rosetted coat (ocicat / spotted tabby): scattered dark blobs.
-function makeSpotTexture(furColor, spotColor, count = 4) {
+// Painted spotted/rosetted coat (ginger spotted tabby): a deterministic scatter
+// of bold rounded spots — drawn once, no tiling.
+function makeSpotTexture(furColor, spotColor) {
+  const S = 256;
   const c = document.createElement("canvas");
-  c.width = 96; c.height = 96;
+  c.width = c.height = S;
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#" + furColor.getHexString();
-  ctx.fillRect(0, 0, 96, 96);
+  ctx.fillRect(0, 0, S, S);
   ctx.fillStyle = "#" + spotColor.getHexString();
-  // a fixed scatter (deterministic) of rounded spots, varied in size
+  // fractions of S: [x, y, radius]
   const spots = [
-    [16, 14, 8], [40, 22, 6], [66, 12, 9], [86, 30, 6],
-    [10, 42, 7], [34, 52, 9], [58, 44, 7], [80, 58, 8],
-    [20, 72, 8], [46, 82, 7], [70, 80, 9], [90, 70, 6],
+    [0.14, 0.16, 0.05], [0.4, 0.1, 0.04], [0.66, 0.15, 0.055], [0.88, 0.24, 0.04],
+    [0.1, 0.42, 0.045], [0.36, 0.4, 0.06], [0.6, 0.46, 0.045], [0.84, 0.5, 0.05],
+    [0.2, 0.68, 0.05], [0.46, 0.72, 0.045], [0.72, 0.7, 0.06], [0.92, 0.78, 0.04],
+    [0.32, 0.9, 0.045], [0.6, 0.9, 0.05],
   ];
   for (const [x, y, r] of spots) {
     ctx.beginPath();
-    ctx.ellipse(x, y, r, r * 1.25, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(x * S, y * S, r * S, r * S * 1.2, 0.4, 0, Math.PI * 2);
     ctx.fill();
   }
-  return _finishTex(c, count, count);
+  return _finishTex(c);
 }
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
@@ -160,8 +166,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // spots (spotted), baked into the fur so the markings read as bold and graphic.
   // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
   function coatTex(forTail) {
-    if (isTabby) return makeStripeTexture(pal.fur, pal.stripe, forTail ? 7 : 7, forTail ? "v" : "u");
-    if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe, forTail ? 4 : 3);
+    if (isTabby) return forTail
+      ? makeStripeTexture(pal.fur, pal.stripe, 6, "v")  // 6 rings around the tail
+      : makeStripeTexture(pal.fur, pal.stripe, 9, "u"); // 9 vertical flank stripes
+    if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe);
     return null;
   }
   const coat = isTextured
