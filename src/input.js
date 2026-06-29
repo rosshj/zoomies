@@ -14,6 +14,7 @@ export class Input {
     this.shielding = false; // held, not queued
     this.jumpHeld = false; // held — sustains a drift
 
+    this._g = null; // last gravity vector (for the tilt-debug readout)
     this._neutralRoll = null;
     this._neutralSamples = 0;
     this._calNeutral = 0; // baseline neutral captured at calibrate; clamp anchor
@@ -71,6 +72,7 @@ export class Input {
     const g = e.accelerationIncludingGravity;
     if (!g || g.x === null || g.y === null) return;
     this._haveMotion = true;
+    this._g = { x: g.x, y: g.y, z: g.z ?? 0 };
 
     // Roll of the phone within the screen plane. atan2(y, x) tracks the
     // "steering-wheel" tilt regardless of how far the phone is pitched
@@ -300,6 +302,25 @@ export class Input {
 
   get hasMotion() {
     return this._haveMotion;
+  }
+
+  // Live tilt diagnostics for the on-screen debug readout. `pitch` is how far the
+  // phone is tilted forward/back from upright (deg). `mag` is the in-plane gravity
+  // (hypot(gx,gy)) — the smaller it gets (phone tilted flat), the more sensitive
+  // atan2 steering becomes, which is the s-curving the player feels. `roll` is the
+  // raw steering-wheel angle (deg) and `steer` the smoothed output. This is the
+  // data we need to pick a tilt to normalise against and lock the feel in.
+  debugTilt() {
+    const g = this._g;
+    if (!g) return null;
+    const RAD = 180 / Math.PI;
+    const mag = Math.hypot(g.x, g.y);
+    return {
+      pitch: Math.atan2(g.z, mag) * RAD, // 0 = upright, ~90 = flat
+      roll: Math.atan2(g.y, g.x) * RAD,
+      mag,
+      steer: this.steer,
+    };
   }
 
   consumeJump() {

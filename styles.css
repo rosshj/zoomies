@@ -1134,6 +1134,24 @@ button.secondary:active {
 #fps-counter.warn { color: #ffd24d; }
 #fps-counter.bad { color: #ff5b4d; }
 
+/* Tilt debug readout: same pill as the FPS counter, parked just below it. */
+#tilt-counter {
+  position: absolute;
+  top: calc(max(8px, var(--safe-top, 0px)) + 30px);
+  left: max(12px, var(--safe-left, 0px));
+  padding: 3px 8px;
+  border-radius: 7px;
+  background: rgba(8, 12, 20, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #6fd6ff;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Rear threat warning (top center). Hidden until a pursuer can hairball you from
    behind: fades in amber for a warning, switches to a red pulse when locked on.
    Pure HUD — no render cost (replaced the rear-view mirror's second scene pass). */

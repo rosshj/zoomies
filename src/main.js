@@ -1411,6 +1411,42 @@ fpsToggle?.addEventListener("click", () => {
 });
 applyFpsSetting();
 
+// --- Tilt debug readout (opt-in via Settings; persisted) ---
+// A diagnostic to chase down the steering sensitivity: it prints the live device
+// pitch (forward/back tilt), the in-plane gravity magnitude (which shrinks as the
+// phone tilts flat and is what makes atan2 steering over-sensitive), the raw roll
+// and the smoothed steer. Read it while finding the tilt that feels right so we
+// can normalise against it and lock the feel in. Does NOT change steering yet.
+const TILT_KEY = "zoomies-tiltdebug";
+const tiltEl = document.getElementById("tilt-counter");
+const tiltToggle = document.getElementById("set-tilt-toggle");
+let showTilt = false;
+try { showTilt = localStorage.getItem(TILT_KEY) === "1"; } catch {}
+function applyTiltSetting() {
+  if (tiltEl) tiltEl.classList.toggle("hidden", !showTilt);
+  if (tiltToggle) {
+    tiltToggle.textContent = showTilt ? "On" : "Off";
+    tiltToggle.classList.toggle("off", !showTilt);
+  }
+}
+tiltToggle?.addEventListener("click", () => {
+  showTilt = !showTilt;
+  try { localStorage.setItem(TILT_KEY, showTilt ? "1" : "0"); } catch {}
+  applyTiltSetting();
+});
+applyTiltSetting();
+let _tiltAccum = 0;
+function updateTiltCounter(dt) {
+  if (!showTilt || !tiltEl) return;
+  _tiltAccum += dt;
+  if (_tiltAccum < 0.1) return; // ~10 Hz
+  _tiltAccum = 0;
+  const t = input.debugTilt();
+  tiltEl.textContent = t
+    ? `pitch ${t.pitch.toFixed(0)}° · mag ${t.mag.toFixed(1)} · roll ${t.roll.toFixed(0)}° · steer ${t.steer.toFixed(2)}`
+    : "tilt: no motion";
+}
+
 // Refresh the readout a few times a second from the smoothed frame interval the
 // DRS already tracks (_frameMs). Also reports the live backend (WGPU vs WGL2 — so
 // you can confirm which one is actually running) and the draw-call count, which
@@ -2670,6 +2706,7 @@ function loop(now) {
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
+  updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
   if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
 
