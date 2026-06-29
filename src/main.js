@@ -1,7 +1,7 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
+import { pass, mix, vec2, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
@@ -260,7 +260,25 @@ const _godrayShafts = Fn(() => {
 // cheap black fill when the sun isn't visible.
 const _shaftTex = rtt(_godrayShafts());
 _shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
+// Toon ink outline: one screen texel, the line width, and the ink strength
+// (0 disables). _uTexel is refreshed in applyResolution.
+const _uTexel = uniform(new THREE.Vector2(1 / 1280, 1 / 720));
+const _uOutline = uniform(0.9);
+const _uOutlineW = uniform(1.7);
 {
+  // --- Toon ink edges: darken where the view-normals break sharply (silhouettes
+  // against the sky read as a normal discontinuity too, so this inks both the
+  // outline and interior creases of cats / karts / scenery). ---
+  const ow = _uTexel.mul(_uOutlineW);
+  const N = (du, dv) => _sceneNormal.uv(viewportUV.add(vec2(du, dv))).xyz;
+  const n0 = N(0, 0);
+  const edge = float(4)
+    .sub(n0.dot(N(ow.x.negate(), 0)))
+    .sub(n0.dot(N(ow.x, 0)))
+    .sub(n0.dot(N(0, ow.y.negate())))
+    .sub(n0.dot(N(0, ow.y)));
+  const ink = smoothstep(0.42, 1.25, edge).mul(_uOutline);
+
   let c = _sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode); // scene + SSR reflections + shafts + bloom
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
@@ -271,6 +289,10 @@ _shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a
   // Cinematic split-tone: cool shadows, warm highlights. (Cool softened so it
   // doesn't darken the shadows as much.)
   c = c.mul(mix(vec3(0.96, 0.99, 1.06), vec3(1.08, 1.02, 0.92), smoothstep(0.15, 0.85, lum)));
+  // Lay the ink down here (after grading) so the lines stay crisp and dark and
+  // aren't lifted by the shadow-lift. Mix toward a dark tint of the pixel so the
+  // line keeps a hint of the underlying hue rather than going pure black.
+  c = mix(c, c.mul(0.08), ink);
   const d = viewportUV.sub(0.5);
   const vig = smoothstep(0.92, 0.34, d.length());
   c = c.mul(mix(float(1), vig, _uVignette));
@@ -1150,6 +1172,8 @@ function applyResolution() {
   const bw = Math.max(1, Math.round(stageState.W * pr * 0.5));
   const bh = Math.max(1, Math.round(stageState.H * pr * 0.5));
   bloomPass.setSize(bw, bh);
+  // Keep the outline's texel size in sync with the actual framebuffer.
+  _uTexel.value.set(1 / Math.max(1, stageState.W * pr), 1 / Math.max(1, stageState.H * pr));
 }
 
 window.addEventListener("resize", layoutStage);
