@@ -2908,10 +2908,12 @@ function loop(now) {
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
-    // Catnip is now hidden in an ordinary-looking crate, so the AI no longer homes
-    // in on it (that'd be an unfair advantage the player can't share) — everyone
-    // just smashes boxes and takes their chances.
-    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt);
+    // Hand them the catnip crate positions so they go for boxes: leaders only when
+    // one's nearly on their line, trailing karts detour further to gamble for a
+    // catch-up boost (see driveAI). Catnip stays hidden in an ordinary crate, so
+    // which box the AI targets is invisible to the player anyway.
+    const catnipTargets = props ? props.catnipTargets() : null;
+    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, catnipTargets);
     aiActions(dt);
 
     // Step physics
