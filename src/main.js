@@ -649,12 +649,12 @@ function decorateKartGroup(group) {
   // frame in the loop) — no per-kart light to attach.
 }
 
-// --- Multiplayer (Phase 2: "ghost race") ---------------------------------
-// Opt-in: only active when a PartyKit host is configured AND the URL has ?mp=1.
-// Remote players appear as render-only "ghost" karts driven by interpolated
-// network snapshots — they glide alongside but DON'T collide or affect the race
-// (they're deliberately kept out of `karts[]`). The room is the world seed, so
-// a link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
+// --- Multiplayer ----------------------------------------------------------
+// Opt-in: only active when the URL has ?mp=1 (and a transport key is set).
+// Remote players appear as karts driven by interpolated network snapshots; they
+// glide alongside AND collide with single-player-parity bumps (resolved locally,
+// self-authoritatively) and share placement. The room is the world seed, so a
+// link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
 // Am I the HOST (the player who created this room), not just whoever drew the
 // lowest random id? Persisted by hosted-seed so a refresh keeps hostship while a
 // joiner / invite-link opener (different seed) is correctly a guest.

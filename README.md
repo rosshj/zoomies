@@ -38,8 +38,9 @@ the barriers, so you can't drive off the track.
 
 ## Running it
 
-The game uses ES modules and loads three.js from a CDN, so it must be served
-over HTTP (not opened as a `file://`). Any static server works:
+The game uses ES modules (three.js is vendored locally under `vendor/three/`,
+so it works fully offline), so it must be served over HTTP (not opened as a
+`file://`). Any static server works:
 
 ```bash
 npm start          # serves on http://localhost:8080
