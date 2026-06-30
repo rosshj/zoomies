@@ -280,22 +280,28 @@ const _godrayShafts = Fn(() => {
 // cheap black fill when the sun isn't visible.
 const _shaftTex = rtt(_godrayShafts());
 _shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
-{
-  let c = _sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode); // scene + SSR reflections + shafts + bloom
+// Colour grade applied to whichever composite (high or low) we feed it, so both
+// quality tiers look consistent — Low just composites fewer passes into the base.
+function gradeOutput(base) {
+  let c = base;
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
-  // Lift the darkest areas so shadows don't crush to near-black (adds most to the
-  // darks, ~nothing to the highlights).
+  // Lift the darkest areas so shadows don't crush to near-black.
   c = c.add(_uShadowLift.mul(c.clamp(0, 1).oneMinus()));
   const lum = luminance(c.clamp(0, 1));
-  // Cinematic split-tone: cool shadows, warm highlights. (Cool softened so it
-  // doesn't darken the shadows as much.)
+  // Cinematic split-tone: cool shadows, warm highlights.
   c = c.mul(mix(vec3(0.96, 0.99, 1.06), vec3(1.08, 1.02, 0.92), smoothstep(0.15, 0.85, lum)));
   const d = viewportUV.sub(0.5);
   const vig = smoothstep(0.92, 0.34, d.length());
   c = c.mul(mix(float(1), vig, _uVignette));
-  postProcessing.outputNode = c;
+  return c;
 }
+// High: scene + SSR water reflections + god-ray shafts + bloom. Low: scene +
+// bloom only — drops SSR ("the heaviest effect") and the per-pixel god-ray pass,
+// which is the big GPU/memory win on weak devices (see applyQuality()).
+const _highOutput = gradeOutput(_sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode));
+const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
+postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
   render() { postProcessing.render(); },
@@ -1262,10 +1268,15 @@ input.setStageMapper(stageToLocal);
 // Default everything to High now that dynamic resolution scaling protects the
 // frame rate — it renders at full retina and only scales back if a device can't
 // keep up, so we get the high-quality look without risking stutter.
+let gpuParticles = null; // GPU ambient motes — created async once the renderer is ready
+const QUALITY_KEY = "zoomies-quality";
 let quality = "high";
+try { if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low"; } catch {}
 let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
 function baseDpr() {
-  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.5);
+  // Low caps the device-pixel-ratio harder — resolution is the biggest lever on
+  // both fill cost and render-target memory (which is what tips weak GPUs over).
+  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25);
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -1325,11 +1336,22 @@ function updateDRS(rawMs, dt) {
 }
 const qualityLowBtn = document.getElementById("set-quality-low");
 const qualityHighBtn = document.getElementById("set-quality-high");
-function applyQuality(q) {
+// Low quality strips the expensive effects to keep weak devices stable (and is
+// what the performance watchdog flips to before a device crashes):
+//   • post-FX graph drops SSR + god-rays (the heaviest passes),
+//   • god-ray render target stops updating,
+//   • GPU ambient motes hidden (skips their compute), grass hidden,
+//   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
+function applyQuality(q, persist = true) {
   quality = q;
   const high = q === "high";
+  if (persist) { try { localStorage.setItem(QUALITY_KEY, q); } catch {} }
   bloomPass.enabled = true; // marquee glow on both tiers
+  postProcessing.outputNode = high ? _highOutput : _lowOutput;
+  postProcessing.needsUpdate = true; // recompile the node graph for the new composite
+  _shaftTex.autoUpdate = high; // don't re-render the god-ray target when it's unused
   if (world.grass) world.grass.visible = high;
+  if (gpuParticles) gpuParticles.setVisible(high);
   renderScale = 1; // reset DRS on a manual quality change
   qualityLowBtn?.classList.toggle("is-active", !high);
   qualityHighBtn?.classList.toggle("is-active", high);
@@ -1337,7 +1359,7 @@ function applyQuality(q) {
 }
 qualityLowBtn?.addEventListener("click", () => applyQuality("low"));
 qualityHighBtn?.addEventListener("click", () => applyQuality("high"));
-applyQuality(quality);
+applyQuality(quality, false); // honour the persisted choice without re-writing it
 
 // Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
 const lapsBtn = document.getElementById("laps-btn");
@@ -3477,7 +3499,6 @@ function loop(now) {
 
 // WebGPURenderer initialises asynchronously — only start the render loop once the
 // backend is ready (renderFrame() also guards on this flag for any earlier calls).
-let gpuParticles = null;
 rendererReady
   .then(() => {
     _rendererReady = true;
@@ -3490,7 +3511,7 @@ rendererReady
       // A touch more opaque so the (now fewer) specks actually catch the light.
       opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
       size: night ? 0.52 : 0.42,
-    }).then((p) => { gpuParticles = p; });
+    }).then((p) => { gpuParticles = p; if (p && quality !== "high") p.setVisible(false); });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => requestAnimationFrame(loop));

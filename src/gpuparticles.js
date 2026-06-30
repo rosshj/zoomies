@@ -89,10 +89,14 @@ async function build(scene, renderer, opts) {
 
   console.log(`[zoomies] GPU particles: ${COUNT} compute motes`);
 
+  let visible = true;
   return {
     setTint(hex) { uTint.value.set(hex); },
     setOpacity(v) { uOpacity.value = v; },
+    // Low quality hides the motes AND skips the per-frame GPU compute step.
+    setVisible(v) { visible = v; mesh.visible = v; },
     update(dt, camPos) {
+      if (!visible) return;
       if (camPos) uCam.value.copy(camPos);
       renderer.compute(update); // step the simulation on the GPU
     },
