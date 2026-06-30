@@ -2033,11 +2033,17 @@ function joinGame() {
   try { input.enableMotion(); } catch {}
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
-  try { sessionStorage.setItem("mp-host-seed", ""); sessionStorage.setItem("mp-autolobby", "1"); } catch {}
+  try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
-  location.href = u.toString();
+  location.href = u.toString(); // reload into the host's world; ?mp=1 auto-opens the lobby
+}
+// Open the multiplayer lobby once the menu wiring is ready (deferred so it wins
+// over the default-visible menu on the initial frame).
+function autoOpenLobby() {
+  if (_installGate) return; // an un-installed touch device must install first
+  enterLobby();
 }
 function enterMultiplayer() {
   _mpUIMode = true;
@@ -2078,13 +2084,11 @@ if (modeToggle && resolveAblyKey()) {
   document.getElementById("mp-host-btn")?.addEventListener("click", hostGame);
   document.getElementById("mp-join-btn")?.addEventListener("click", joinGame);
   mpCodeInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") joinGame(); });
-  // Arriving via an invite link / join reload (?mp=1): show Multiplayer mode, and
-  // if we flagged an auto-lobby just before reloading, drop straight into the lobby.
+  // Anyone landing with ?mp=1 — a join reload, an invite link, or a host refresh —
+  // is here to play together, so drop straight into the lobby (no flag needed).
   if (new URLSearchParams(location.search).has("mp")) {
     _mpUIMode = true;
-    let autolobby = false;
-    try { autolobby = !!sessionStorage.getItem("mp-autolobby"); if (autolobby) sessionStorage.removeItem("mp-autolobby"); } catch { /* ignore */ }
-    if (autolobby && !_installGate) setTimeout(() => enterLobby(), 50);
+    setTimeout(autoOpenLobby, 60);
   }
   updateModeBtn();
 }
@@ -2246,9 +2250,11 @@ function prepareRace() {
 
 // --- Multiplayer lobby ---
 function renderLobby() {
-  if (!MP.enabled || !MP.net) return;
+  // Always show the room code (it's this client's world seed) even before the
+  // connection finishes, so a freshly-arrived joiner sees it immediately.
   const codeEl = document.getElementById("lobby-code");
   if (codeEl) codeEl.textContent = WORLD_SEED;
+  if (!MP.enabled || !MP.net) return; // the player list / count need a live connection
   const countEl = document.getElementById("lobby-count");
   if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS} players`;
   const list = document.getElementById("lobby-players");
