@@ -1541,6 +1541,39 @@ fpsToggle?.addEventListener("click", () => {
 });
 applyFpsSetting();
 
+// --- Compatibility mode (renderer backend) ---
+// The renderer backend is picked once at startup (gpu.js reads this same flag), so
+// an installed PWA can't switch it via a URL param — this in-app toggle is the only
+// way in. ON forces the stable WebGL2 backend (what the crash guard auto-selects
+// after a WebGPU device loss); OFF lets it use WebGPU. Changing it restarts the app.
+const WEBGL_PREF_KEY = "zoomies-prefer-webgl";
+const compatToggle = document.getElementById("set-compat-toggle");
+function readCompat() {
+  try { return localStorage.getItem(WEBGL_PREF_KEY) === "1"; } catch { return false; }
+}
+function applyCompatUI() {
+  const on = readCompat();
+  if (compatToggle) {
+    compatToggle.textContent = on ? "On" : "Off";
+    compatToggle.classList.toggle("off", !on);
+  }
+}
+compatToggle?.addEventListener("click", () => {
+  const on = !readCompat();
+  try {
+    if (on) localStorage.setItem(WEBGL_PREF_KEY, "1");
+    else localStorage.removeItem(WEBGL_PREF_KEY);
+  } catch { /* ignore */ }
+  applyCompatUI();
+  // The backend is chosen at load, so restart to apply. Drop any ?webgl/?webgpu so
+  // the localStorage flag is the single source of truth on the next load.
+  const u = new URL(location.href);
+  u.searchParams.delete("webgl");
+  u.searchParams.delete("webgpu");
+  location.replace(u.toString());
+});
+applyCompatUI();
+
 // --- Tilt debug readout (opt-in via Settings; persisted) ---
 // A diagnostic to chase down the steering sensitivity: it prints the live device
 // pitch (forward/back tilt), the in-plane gravity magnitude (which shrinks as the
