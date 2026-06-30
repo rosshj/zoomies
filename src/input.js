@@ -20,6 +20,7 @@ export class Input {
     this._calNeutral = 0; // baseline neutral captured at calibrate; clamp anchor
     this._sign = -1; // steering sign, fixed at calibrate (see calibrate())
     this._haveMotion = false;
+    this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
     this._keyboardSteering = false;
 
@@ -33,7 +34,11 @@ export class Input {
   }
 
   // Ask for motion permission (iOS 13+) and start listening to DeviceMotion.
+  // Idempotent: the listener is attached at most once per page load, so this can
+  // be called from several gestures (host START, lobby "enable tilt", a guest's
+  // first lobby touch, race start) without stacking duplicate handlers.
   async enableMotion() {
+    if (this._motionBound) return true;
     const DME = window.DeviceMotionEvent;
     const DOE = window.DeviceOrientationEvent;
     try {
@@ -48,6 +53,7 @@ export class Input {
       return false;
     }
     window.addEventListener("devicemotion", (e) => this._onMotion(e), true);
+    this._motionBound = true;
     return true;
   }
 

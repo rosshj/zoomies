@@ -2589,12 +2589,30 @@ function renderLobby() {
   if (ready) ready.style.display = host ? "none" : "";       // joiner: enable tilt first
 }
 
+// A joiner reaches the lobby via a reload, which loses the motion listener AND (on
+// iOS) the permission grant — and the host can start the race remotely before they
+// tap the explicit "Enable tilt controls" button. So arm tilt on their FIRST touch
+// anywhere in the lobby (a real user gesture, which iOS requires for the motion
+// prompt). Runs once; the explicit button still works too.
+let _guestTiltHooked = false;
+function armGuestTiltOnGesture() {
+  if (_guestTiltHooked) return;
+  _guestTiltHooked = true;
+  const arm = () => {
+    try { input.enableMotion(); input.calibrate(); } catch { /* ignore */ }
+    const b = document.getElementById("lobby-ready");
+    if (b) { b.textContent = "✓ Tilt ready"; b.disabled = true; }
+  };
+  window.addEventListener("pointerdown", arm, { once: true, capture: true });
+}
+
 function enterLobby() {
   MP.inLobby = true;
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("lobby").classList.remove("hidden");
   renderLobby();
+  if (!mpIsHost()) armGuestTiltOnGesture(); // joiner: first touch enables tilt steering
 }
 
 // Line the countdown up to the shared-clock instant `at` so every client hits
@@ -2602,6 +2620,10 @@ function enterLobby() {
 // everyone else; the state guard makes a double-trigger harmless.
 function beginSyncedRace(at) {
   if (state === State.COUNTDOWN || state === State.RACING) return;
+  // A guest reloaded into the host's world to join, which dropped the devicemotion
+  // listener — re-arm it so tilt steering works (gas/brake use the touch slider, so
+  // they kept working even when this was missed). Idempotent + no-op for the host.
+  try { input.enableMotion(); } catch { /* ignore */ }
   input.jumpHeld = false;
   input.shielding = false;
   MP.inLobby = false;
