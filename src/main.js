@@ -63,7 +63,7 @@ const trackConfig = loadTrackConfig();
 // socks + tail-tip), mitted (small white socks/bib), solid (plain coat), point
 // (darker ears/muzzle/paws/tail). createCat falls back to deriving a pattern
 // from the colour when none is given (recoloured AI / multiplayer cats).
-// Seven distinct breeds, each a different markings template (not just a recolour
+// Nine distinct breeds, each a different markings template (not just a recolour
 // of the same one): see createCat for how each pattern is drawn.
 const CAT_PRESETS = [
   { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby
@@ -74,6 +74,8 @@ const CAT_PRESETS = [
   { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
   { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
   { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
+  { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby" }, // cool silver mackerel tabby
+  { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell (ginger + black, no white)
 ];
 // Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
 // 3=finned speedster), and a racing number stamped on the side roundels.
