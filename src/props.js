@@ -42,8 +42,18 @@ function build(scene, track, opts) {
   // Catnip is special: just one crate on a small track, two on a big one, and it
   // takes longer to come back on a bigger track (you're away from it longer).
   const size = opts.size ?? 0.5;
-  const catnipCount = size >= 0.55 ? 2 : 1;
-  const CATNIP_RESPAWN = 8 + size * 14; // ~8s small .. ~22s big
+  // Floating power-up boxes: a fixed pool (more on a bigger track). When one is
+  // grabbed it sinks into an ordinary crate and, after a short beat, a roadside
+  // crate rises to take its place — so the count holds without anything spawning
+  // out of thin air.
+  const boxCount = size >= 0.55 ? 5 : 3;
+  const HOVER = 1.5;           // how high a power-up box floats above its rest spot
+  const RISE_TIME = 0.5;       // seconds to rise into / sink out of a floating box
+  const PROMOTE_DELAY = 3;     // beat after a pickup before a replacement rises
+  const PROMOTE_STAGGER = 0.5; // gap between successive replacements
+  let promoteTimer = 0;
+  // Whole power-up system on/off (time trial turns it off — no rivals to use items on).
+  let itemsEnabled = true;
   // Real terrain height (incl. the road carve). groundInfo() returns the ROAD-CURVE
   // height, which is wrong off the road (terrain rises away from it) — that's why
   // some leaf piles floated. Prefer the terrain sampler when we have it.
@@ -63,11 +73,11 @@ function build(scene, track, opts) {
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
 
-  // Catnip now hides inside a perfectly ordinary-looking crate (no green tint, no
-  // glowing orb) — you can't tell which box holds it, so chasing boxes is a
-  // risk/reward gamble instead of the leader making a beeline for an obvious prize.
-  // The `catnip` flag only governs behaviour (smash + grant), not appearance.
-  const makeCrate = (catnip = false) => {
+  // A wooden crate. The SAME art is used for grounded knockables AND the floating
+  // power-up boxes — a power-up box is just a crate that hovers. So the only tell
+  // that a box holds a power-up is that it floats; the ones sitting on the ground
+  // (which tumble when you hit them) hold nothing.
+  const makeCrate = () => {
     const s = 1.5 + rand() * 0.6;
     const g = new THREE.Group();
     g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
@@ -90,16 +100,24 @@ function build(scene, track, opts) {
     g.traverse((o) => (o.castShadow = true));
     return { mesh: g, rest: h / 2 };
   };
-  const addProp = (x, z, groundY, built, catnip = false) => {
+  // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state
+  // ("ground" knockable | "float" power-up | "rising" transition). Which grounded
+  // crate gets promoted into a floating box is decided at runtime (any settled,
+  // on-road, non-spent crate is eligible — see promoteOne).
+  const addProp = (x, z, groundY, built, o = {}) => {
     const mesh = built.mesh;
-    mesh.position.set(x, groundY + built.rest, z);
+    const restY = groundY + built.rest;
+    mesh.position.set(x, restY, z);
     group.add(mesh);
-    props.push({
-      mesh, rest: built.rest, hit: 0, asleep: true, settle: false, catnip, dead: 0,
-      ox2: x, oz2: z, groundY,
-      pos: new THREE.Vector3(x, groundY + built.rest, z),
+    const pr = {
+      mesh, rest: built.rest, hit: 0, asleep: true, settle: false,
+      kind: o.kind || "crate", mode: o.mode || "ground", spent: false,
+      groundY, phase: rand() * Math.PI * 2, t: 0,
+      pos: new THREE.Vector3(x, restY, z),
       vel: new THREE.Vector3(), angVel: new THREE.Vector3(), quat: new THREE.Quaternion(),
-    });
+    };
+    if (pr.mode === "float") mesh.position.y = restY + HOVER; // start hovering, no pop
+    props.push(pr);
   };
 
   // Leaf piles: a mound of little leaf-shaped cards that BURST upward and scatter
@@ -145,35 +163,17 @@ function build(scene, track, opts) {
   // props with ones just off the verge.
   const up = new THREE.Vector3(0, 1, 0);
 
-  // A spot near the racing line at a track fraction (so catnip is naturally in
-  // reach). Reused for the initial placement AND for respawns (which pick a NEW
-  // spot, so catnip never comes back in the same place).
-  const catnipSpot = (frac) => {
+  // Floating power-up boxes sit ON the racing line (a row you drive through),
+  // evenly spaced around the lap so there's always one coming up. They're plain
+  // crates that hover (mode "float"); the bob/spin in update() sells the float.
+  for (let b = 0; b < boxCount; b++) {
+    const frac = (b + 0.5) / boxCount + (rand() - 0.5) * 0.04;
     const idx = Math.floor(((frac % 1) + 1) % 1 * N) % N;
     const p = track._pts[idx];
     const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
-    const lat = (rand() * 2 - 1) * (track.halfWidth * 0.6);
+    const lat = (rand() * 2 - 1) * (track.halfWidth * 0.45); // near the centre line
     const x = p.x + side.x * lat, z = p.z + side.z * lat;
-    return { x, z, gy: track.groundInfo(x, z).y };
-  };
-  // Pick a fresh spot well away from a previous one and from the other catnip crate.
-  const freshCatnipSpot = (avoidX, avoidZ) => {
-    let best = null, bestScore = -1;
-    for (let t = 0; t < 6; t++) {
-      const s = catnipSpot(rand());
-      let d = avoidX === undefined ? 999 : Math.hypot(s.x - avoidX, s.z - avoidZ);
-      for (const pr of props) {
-        if (pr.catnip && pr.dead <= 0) d = Math.min(d, Math.hypot(s.x - pr.pos.x, s.z - pr.pos.z));
-      }
-      if (d > bestScore) { bestScore = d; best = s; }
-      if (d > 80) break; // good enough
-    }
-    return best;
-  };
-  const catnipFracs = catnipCount >= 2 ? [0.2 + rand() * 0.1, 0.62 + rand() * 0.12] : [0.4 + rand() * 0.2];
-  for (const f of catnipFracs) {
-    const s = catnipSpot(f);
-    addProp(s.x, s.z, s.gy, makeCrate(true), true);
+    addProp(x, z, track.groundInfo(x, z).y, makeCrate(), { kind: "crate", mode: "float" });
   }
 
   const MAX = 64;
@@ -193,8 +193,10 @@ function build(scene, track, opts) {
       const x = p.x + side.x * lat + fwd.x * along;
       const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
-      if (kindRoll < 0.8) addProp(x, z, groundY, kindRoll < 0.5 ? makeCrate() : makeBarrel());
-      else addLeafPile(x, z, groundAt(x, z)); // piles sit on the real ground (groundY is road-curve height -> floats off-road)
+      if (kindRoll < 0.8) {
+        if (kindRoll < 0.5) addProp(x, z, groundY, makeCrate(), { kind: "crate" });
+        else addProp(x, z, groundY, makeBarrel(), { kind: "barrel" });
+      } else addLeafPile(x, z, groundAt(x, z)); // piles sit on the real ground (groundY is road-curve height -> floats off-road)
     }
   }
 
@@ -295,25 +297,43 @@ function build(scene, track, opts) {
         const speed = Math.hypot(vx, vz);
         if (speed < 2.5) continue;
         // Extend the swept segment a little past the nose so the kart's length is
-        // accounted for (not just its centre point). Carry the kart ref so a catnip
-        // crate can grant the power-up to whoever smashed it.
+        // accounted for (not just its centre point). Carry the kart ref so a
+        // floating box can grant the power-up to whoever drove through it.
         moving.push({ ax, az, bx: k.x + (vx / speed) * 2.5, bz: k.z + (vz / speed) * 2.5, dx: vx / speed, dz: vz / speed, speed, kart: k.kart });
       }
     }
 
-    // Crates / barrels: fling the ones a kart drives into, scaling hard with speed.
-    // Catnip crates instead SMASH (release the power-up to the kart and vanish,
-    // respawning after a while so it's grabbable again later in the race).
+    // Floating boxes grant a power-up (and sink into an ordinary crate); grounded
+    // crates / barrels get FLUNG, scaling hard with speed. Rising/sinking crates
+    // are mid-transition and ignore contact.
     for (const mk of moving) {
       for (const pr of props) {
-        if (pr.dead > 0 || pr.hit > 0) continue;
+        if (pr.hit > 0) continue;
         if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > HIT_R * HIT_R) continue;
-        if (pr.catnip) {
-          pr.dead = CATNIP_RESPAWN; // hidden, then respawns (longer on bigger tracks)
-          pr.mesh.visible = false;
-          if (opts.onCatnip && mk.kart) opts.onCatnip(mk.kart, pr.pos);
+        if (pr.kind === "crate" && pr.mode === "float") {
+          // onItem returns false when the kart is on its pickup cooldown — leave
+          // the box floating for the next eligible kart.
+          if (itemsEnabled && opts.onItem && mk.kart && opts.onItem(mk.kart, pr.pos)) {
+            // Used: knock it out of the air. It becomes an ordinary crate and
+            // tumbles with physics (from its hover height) to rest on the ground —
+            // a spent box, no longer floating. A roadside crate rises to replace it.
+            pr.quat.copy(pr.mesh.quaternion); // continue from its current spun pose
+            pr.pos.y = pr.groundY + pr.rest + HOVER; // fall from the hover height
+            pr.mode = "ground";
+            pr.spent = true; // a used box never floats again
+            pr.asleep = false;
+            pr.settle = false;
+            const launch = 13 + Math.min(mk.speed, 150) * 0.8;
+            const lift = 5 + Math.min(mk.speed, 120) * 0.05;
+            pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
+            const sm = 10 + Math.random() * 9; // tumble end-over-end
+            pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
+            pr.hit = 0.4;
+            promoteTimer = Math.max(promoteTimer, PROMOTE_DELAY);
+          }
           continue;
         }
+        if (pr.mode !== "ground") continue; // rising / sinking: not knockable
         const launch = 16 + Math.min(mk.speed, 150) * 0.95;
         const lift = 7 + Math.min(mk.speed, 120) * 0.06;
         pr.asleep = false;
@@ -326,28 +346,44 @@ function build(scene, track, opts) {
     }
     for (const pr of props) {
       if (pr.hit > 0) pr.hit -= dt;
-      if (pr.dead > 0) {
-        pr.dead -= dt;
-        if (pr.dead <= 0) {
-          // Respawn the catnip crate at a NEW spot (never the same place), upright
-          // and asleep.
-          const s = freshCatnipSpot(pr.ox2, pr.oz2);
-          pr.ox2 = s.x;
-          pr.oz2 = s.z;
-          pr.groundY = s.gy;
-          pr.pos.set(s.x, s.gy + pr.rest, s.z);
-          pr.quat.identity();
-          pr.vel.set(0, 0, 0);
-          pr.angVel.set(0, 0, 0);
-          pr.asleep = true;
-          pr.settle = false;
-          pr.mesh.position.copy(pr.pos);
-          pr.mesh.quaternion.copy(pr.quat);
-          pr.mesh.visible = true;
+      // Floating-box lifecycle (crates only): hover, or ride a rise/sink ramp.
+      if (pr.kind === "crate" && pr.mode !== "ground") {
+        pr.phase += dt;
+        const restY = pr.groundY + pr.rest, floatY = restY + HOVER;
+        if (pr.mode === "float") {
+          // Hover + slow spin in place (never tumbles); a gentle tilt adds life.
+          pr.mesh.position.set(pr.pos.x, floatY + Math.sin(pr.phase * 1.8) * 0.22, pr.pos.z);
+          pr.mesh.rotation.y += dt * 1.0;
+          pr.mesh.rotation.x = Math.sin(pr.phase * 0.9) * 0.1;
+        } else {
+          // Rising (ground→float) or sinking (float→ground) over RISE_TIME.
+          pr.t = Math.min(1, pr.t + dt / RISE_TIME);
+          const u = pr.mode === "rising" ? pr.t : 1 - pr.t; // 0 grounded .. 1 floating
+          const ease = u * u * (3 - 2 * u);
+          pr.mesh.position.set(pr.pos.x, restY + (floatY - restY) * ease, pr.pos.z);
+          pr.mesh.rotation.y += dt * 1.0;
+          if (pr.t >= 1) {
+            if (pr.mode === "rising") { pr.mode = "float"; pr.t = 0; }
+            else { // landed — back to an ordinary, upright, knockable crate
+              pr.mode = "ground"; pr.t = 0; pr.asleep = true; pr.settle = false;
+              pr.quat.identity(); pr.angVel.set(0, 0, 0); pr.vel.set(0, 0, 0);
+              pr.pos.y = restY; pr.mesh.position.copy(pr.pos); pr.mesh.rotation.set(0, 0, 0);
+            }
+          }
         }
         continue;
       }
       stepProp(pr, dt);
+    }
+
+    // Keep the floating pool topped up: after a pickup (and a short beat), promote
+    // a roadside crate so a used box is replaced by one rising from the ground
+    // rather than popping in from nowhere.
+    if (promoteTimer > 0) promoteTimer -= dt;
+    if (itemsEnabled) {
+      let floatingNow = 0;
+      for (const pr of props) if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) floatingNow++;
+      if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
     }
 
     // Leaf piles: each leaf is its own particle. Any kart driving through kicks
@@ -456,14 +492,51 @@ function build(scene, track, opts) {
     }
   }
 
-  // Active (not-yet-smashed) catnip crate positions, so the AI drivers can seek
-  // them out and grab the power-up instead of ignoring it.
-  function catnipTargets() {
+  // Promote a roadside crate into a floating box, picking the eligible crate
+  // FARTHEST from the existing floating boxes so the pool stays spread around the
+  // lap. Returns false if nothing's eligible (the pool just stays a touch short).
+  function promoteOne() {
+    let best = null, bestScore = -1;
+    for (const pr of props) {
+      // Any settled, on-the-road crate can rise — EXCEPT a spent box (a used one
+      // never floats again). On-road-now also excludes crates knocked into the weeds.
+      if (pr.kind !== "crate" || pr.mode !== "ground" || pr.spent || pr.hit > 0) continue;
+      if (!pr.asleep) continue; // still tumbling — wait until it has settled
+      if (track.distanceToCenter(pr.pos.x, pr.pos.z) > track.halfWidth + 1) continue;
+      let d = 1e9;
+      for (const q of props) {
+        if (q !== pr && q.kind === "crate" && (q.mode === "float" || q.mode === "rising")) {
+          d = Math.min(d, Math.hypot(pr.pos.x - q.pos.x, pr.pos.z - q.pos.z));
+        }
+      }
+      if (d > bestScore) { bestScore = d; best = pr; }
+    }
+    if (!best) return false;
+    best.mode = "rising"; best.t = 0; best.asleep = true; best.settle = false;
+    best.groundY = track.groundInfo(best.pos.x, best.pos.z).y; // re-anchor: it may have moved
+    best.quat.identity(); best.pos.y = best.groundY + best.rest;
+    best.mesh.quaternion.identity();
+    return true;
+  }
+
+  // Current floating-box positions, so the AI drivers can seek them out and grab a
+  // power-up instead of ignoring them.
+  function boxTargets() {
     const out = [];
-    for (const pr of props) if (pr.catnip && pr.dead <= 0) out.push({ x: pr.pos.x, z: pr.pos.z });
+    for (const pr of props) if (pr.kind === "crate" && pr.mode === "float") out.push({ x: pr.pos.x, z: pr.pos.z });
     return out;
   }
 
-  console.log(`[zoomies] knockable props: ${props.length} crates/barrels + ${leafPiles.length} leaf piles`);
-  return { update, group, count: props.length + leafPiles.length, catnipTargets };
+  // Turn the floating power-up boxes on/off (time trial runs with them off). Off
+  // hides the current boxes and stops grants + replenishment; on restores them.
+  function setItemsEnabled(on) {
+    itemsEnabled = !!on;
+    for (const pr of props) {
+      if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) pr.mesh.visible = itemsEnabled;
+    }
+  }
+
+  const groundN = props.filter((p) => p.kind === "crate" && p.mode === "ground").length + props.filter((p) => p.kind === "barrel").length;
+  console.log(`[zoomies] knockable props: ${groundN} crates/barrels + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`);
+  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled };
 }

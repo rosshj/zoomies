@@ -76,6 +76,10 @@ body {
   position: absolute;
   inset: 0;
   z-index: 50;
+  /* The global `* { touch-action: none }` (for steering gestures) also kills
+     touch-scroll on menus — so a tall menu couldn't be dragged to reveal its lower
+     rows. Re-allow vertical panning inside overlays so they scroll on touch. */
+  touch-action: pan-y;
   display: flex;
   /* flex-start (not center) + a scrollable overlay + margin:auto on the card lets a
      tall menu SCROLL instead of clipping its top/bottom (center-aligned flex items
@@ -87,6 +91,12 @@ body {
   background: radial-gradient(circle at 50% 30%, #1b2540, #070a12 80%);
   padding: 10px;
   text-align: center;
+}
+
+/* Children of an overlay must also allow vertical pan, or a drag that STARTS on a
+   button/row/slider won't scroll the menu (touch-action is per-target). */
+.overlay * {
+  touch-action: pan-y;
 }
 
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
@@ -112,7 +122,12 @@ body {
   padding-left: max(14px, env(safe-area-inset-left));
 }
 #garage-panel {
-  width: min(380px, 46%);
+  width: min(360px, 46%);
+  /* Dock to the LEFT (the camera frames the cat in the open right half). The base
+     .menu-card uses `margin: auto`, which would CENTRE the card over the cat —
+     override it: 0 on the left, auto on the right pins the card to the left edge.
+     Auto top/bottom keeps it vertically centred when it fits. */
+  margin: auto auto auto 0;
 }
 .garage-title {
   display: flex;
@@ -195,6 +210,96 @@ body {
   letter-spacing: 0.3px;
   color: #fff;
 }
+/* Custom cat/kart creator — revealed when a stepper lands on the "Custom" slot. */
+.creator {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 9px;
+  padding: 11px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.creator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.creator-label {
+  flex: 0 0 64px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.swatch-grid {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.swatch-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s, border-color 0.12s;
+}
+.swatch-dot:active { transform: scale(0.88); }
+.swatch-dot.selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+.mini-stepper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 4px;
+}
+.mini-stepper .garage-arrow {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+.mini-name {
+  flex: 1;
+  text-align: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+}
+.creator-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+.creator-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.creator-rand {
+  align-self: stretch;
+  margin-top: 2px;
+}
+
 .garage-actions {
   display: flex;
   gap: 10px;
@@ -1149,6 +1254,43 @@ kbd {
 }
 
 /* Pause button: right side, under the lap/speed box, clear of the top bar */
+/* Active power-up pills (top-left): one per live item-box power-up, shown only
+   while active, with the remaining time or shot count. */
+#powerups {
+  position: absolute;
+  top: calc(max(8px, var(--safe-top, 0px)) + 6px);
+  left: max(12px, var(--safe-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 6;
+}
+.powerup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.38);
+  animation: pu-pop 0.18s ease-out;
+}
+.powerup .pu-ico { font-size: 15px; line-height: 1; }
+.powerup .pu-val { letter-spacing: 0.3px; min-width: 1.4em; }
+#pu-shield { border-color: rgba(120, 180, 255, 0.55); }
+#pu-tri { border-color: rgba(255, 180, 90, 0.55); }
+#pu-catnip { border-color: rgba(120, 224, 90, 0.55); }
+/* Pulse when a timed power-up is about to run out. */
+.powerup.expiring { animation: pu-blink 0.6s steps(1) infinite; }
+@keyframes pu-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes pu-blink { 50% { opacity: 0.4; } }
+
 #btn-pause {
   position: absolute;
   top: calc(max(8px, var(--safe-top, 0px)) + 76px);
@@ -1272,6 +1414,30 @@ button.secondary:active {
   0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.55); }
   50% { box-shadow: 0 0 14px 4px rgba(255, 59, 48, 0.85); transform: translateX(-50%) scale(1.06); }
 }
+
+/* Opening furball-charge countdown (top center). Shares the rear-threat pill
+   look but in a calm "charging" cyan, and sits just below it. */
+#shoot-lock {
+  position: absolute;
+  top: calc(var(--safe-top, 0px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px 5px 10px;
+  border-radius: 999px;
+  background: rgba(8, 18, 24, 0.66);
+  border: 2px solid #49c7e0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  color: #bfeefa;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  font-size: 12px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+#shoot-lock .sl-ico { font-size: 15px; opacity: 0.85; }
 
 /* Small secondary button (e.g. graphics toggle on the menu) */
 button.small {

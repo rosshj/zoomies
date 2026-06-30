@@ -88,10 +88,22 @@
       <button id="btn-jump" class="action-btn">⬆</button>
     </div>
 
+    <!-- Active power-ups (top-left): a pill per live item-box power-up, with its
+         remaining time or shot count. Each is shown only while active. -->
+    <div id="powerups">
+      <div id="pu-shield" class="powerup hidden"><span class="pu-ico">🛡️</span><span class="pu-val"></span></div>
+      <div id="pu-tri" class="powerup hidden"><span class="pu-ico">🐾</span><span class="pu-val"></span></div>
+      <div id="pu-catnip" class="powerup hidden"><span class="pu-ico">🌿</span><span class="pu-val"></span></div>
+    </div>
+
     <!-- Rear threat warning (top center): replaces the rear-view mirror. Lights
          amber when a kart has you in hairball range/cone behind you, and pulses
          red when one is locked on and ready to fire. -->
     <div id="rear-threat"><span class="rt-icon">🐾</span><span class="rt-label">BEHIND!</span></div>
+
+    <!-- Opening grace (top center): furballs are charging for the first seconds of
+         a race, so the start is a driving battle, not an instant hairball brawl. -->
+    <div id="shoot-lock" class="hidden"><span class="sl-ico">🐾</span><span class="sl-text"></span></div>
 
     <!-- Minimap (bottom-left, just right of the throttle): track outline + a
          coloured dot per kart -->
@@ -192,6 +204,33 @@
             <span class="garage-name" id="cat-name">Marmalade</span>
             <button id="cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
           </div>
+          <div id="cat-custom" class="creator hidden">
+            <div class="creator-row">
+              <span class="creator-label">Colour</span>
+              <div class="swatch-grid" id="cat-color-grid"></div>
+            </div>
+            <div class="creator-row">
+              <span class="creator-label">Pattern</span>
+              <div class="mini-stepper">
+                <button id="cat-pat-prev" class="garage-arrow" aria-label="Previous pattern">◀</button>
+                <span class="mini-name" id="cat-pat-name">Spotted</span>
+                <button id="cat-pat-next" class="garage-arrow" aria-label="Next pattern">▶</button>
+              </div>
+            </div>
+            <div class="creator-row">
+              <span class="creator-label">Accessory</span>
+              <div class="mini-stepper">
+                <button id="cat-acc-prev" class="garage-arrow" aria-label="Previous accessory">◀</button>
+                <span class="mini-name" id="cat-acc-name">Cap</span>
+                <button id="cat-acc-next" class="garage-arrow" aria-label="Next accessory">▶</button>
+              </div>
+            </div>
+            <div class="creator-row">
+              <span class="creator-label">Name</span>
+              <input id="cat-custom-name" class="creator-input" maxlength="14" placeholder="My Cat" />
+            </div>
+            <button id="cat-randomize" class="secondary small creator-rand">🎲 Surprise me</button>
+          </div>
         </div>
         <div class="garage-pick">
           <span class="garage-pick-label">KART</span>
@@ -200,6 +239,33 @@
             <span class="garage-swatch" id="kart-swatch"></span>
             <span class="garage-name" id="kart-name">Ember</span>
             <button id="kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
+          </div>
+          <div id="kart-custom" class="creator hidden">
+            <div class="creator-row">
+              <span class="creator-label">Colour</span>
+              <div class="swatch-grid" id="kart-color-grid"></div>
+            </div>
+            <div class="creator-row">
+              <span class="creator-label">Body</span>
+              <div class="mini-stepper">
+                <button id="kart-style-prev" class="garage-arrow" aria-label="Previous body">◀</button>
+                <span class="mini-name" id="kart-style-name">GP</span>
+                <button id="kart-style-next" class="garage-arrow" aria-label="Next body">▶</button>
+              </div>
+            </div>
+            <div class="creator-row">
+              <span class="creator-label">Number</span>
+              <div class="mini-stepper">
+                <button id="kart-num-prev" class="garage-arrow" aria-label="Lower number">◀</button>
+                <span class="mini-name" id="kart-num-name">0</span>
+                <button id="kart-num-next" class="garage-arrow" aria-label="Higher number">▶</button>
+              </div>
+            </div>
+            <div class="creator-row">
+              <span class="creator-label">Name</span>
+              <input id="kart-custom-name" class="creator-input" maxlength="14" placeholder="My Kart" />
+            </div>
+            <button id="kart-randomize" class="secondary small creator-rand">🎲 Surprise me</button>
           </div>
         </div>
       </div>

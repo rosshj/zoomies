@@ -1,13 +1,17 @@
-# Multiplayer (Phase 2: the "ghost race")
+# Multiplayer
 
-This is the first networking milestone: players in the same room see each other's
-karts **glide around smoothly in real time**. Remote karts are render-only
-"ghosts" — they do **not** collide, carry items, or affect placement yet. The
-point is to prove the netcode *feels* good before building race rules on top.
+Players in the same room race against each other live: karts **glide around
+smoothly in real time**, **collide** with single-player-parity bumps, and share
+**placement** (`2nd / N`). The host is the player who created the room, and the
+race countdown is synchronized off a shared clock so everyone launches together.
 
-It's **opt-in and isolated**: with no host configured, the game is exactly
-single-player. None of the networking code (or the `partysocket` client) is even
-loaded until you turn it on.
+Remote karts are driven by an interpolation buffer (with dead-reckoning to ride
+out jitter), but collisions are resolved locally and self-authoritatively, so a
+bump feels the same as it does against an AI rival.
+
+It's **opt-in and isolated**: with multiplayer off, the game is exactly
+single-player. None of the networking code (or the transport client) is even
+loaded until you add `&mp=1`.
 
 ## Architecture at a glance
 
@@ -96,13 +100,19 @@ rival kart: it should glide, not teleport or stutter, even when your bars drop.
   buffering, and clock-sync math are unit-tested; the full presence + clock +
   state-relay flow is tested end-to-end against the loopback server with
   simulated latency, jitter, and a skewed server clock.
-- **Needs your account:** PartyKit deploy and the real on-device feel test.
-  The adapter/server are written to the same protocol the tests exercise, but
-  haven't been run against live PartyKit yet.
+- **Live against Ably:** the lobby, host election, synchronized countdown,
+  collisions, and shared placement have been exercised on real Ably channels
+  across multiple clients. Plug in your own key (above) to run it yourself.
+- **Needs your account:** the real on-device feel test on cellular — only you
+  can judge that, and it's the test that matters (see "How to actually validate
+  it" above).
 
-## Known Phase-2 limitations (by design)
+## Current scope
 
-- No collisions, hairball/item sync, or shared lap/placement — ghosts only.
-- Local AI rivals still fill the field; remote players are *added on top*.
-- No polished lobby UI yet (that's Phase 3), no reconnection/host-migration.
-- Each client picks its own random cat appearance for now.
+- Up to 6 humans per room; the host is the room creator, and a new host is
+  elected if they leave.
+- Collisions are resolved locally with single-player-parity physics (no item/
+  hairball sync yet — projectiles are local).
+- Multiplayer races are humans-only; AI rivals only fill the field in
+  single-player.
+- Each client picks its own cat/kart appearance from its garage.

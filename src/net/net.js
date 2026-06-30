@@ -81,13 +81,14 @@ export class Net {
   }
 
   // Broadcast that I fired a hairball, so others can render the projectile.
-  sendShoot(pos, dir, charge) {
+  sendShoot(pos, dir, charge, tri = false) {
     if (!this.connected) return;
     this.transport.send({
       type: "shoot", id: this.id,
       px: pos.x, py: pos.y, pz: pos.z,
       dx: dir.x, dy: dir.y, dz: dir.z,
       c: charge || 0,
+      t: tri ? 1 : 0, // tri-furball: replicate the 3-way fan on the other clients
     });
   }
 
@@ -140,7 +141,7 @@ export class Net {
         this._emit("start", m.at);
         break;
       case "shoot":
-        this._emit("shoot", { px: m.px, py: m.py, pz: m.pz, dx: m.dx, dy: m.dy, dz: m.dz, c: m.c });
+        this._emit("shoot", { px: m.px, py: m.py, pz: m.pz, dx: m.dx, dy: m.dy, dz: m.dz, c: m.c, t: m.t });
         break;
       case "hit":
         this._emit("hit", { target: m.target, hx: m.hx, hz: m.hz });

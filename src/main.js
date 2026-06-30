@@ -11,10 +11,10 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart, setSunShadow } from "./kart.js";
-import { setLightLevel } from "./models.js";
+import { setLightLevel, CAT_PATTERNS, CAT_ACCESSORIES } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
-import { HairballManager } from "./hairball.js";
+import { HairballManager, TRI_FAN } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
@@ -63,7 +63,7 @@ const trackConfig = loadTrackConfig();
 // socks + tail-tip), mitted (small white socks/bib), solid (plain coat), point
 // (darker ears/muzzle/paws/tail). createCat falls back to deriving a pattern
 // from the colour when none is given (recoloured AI / multiplayer cats).
-// Seven distinct breeds, each a different markings template (not just a recolour
+// Nine distinct breeds, each a different markings template (not just a recolour
 // of the same one): see createCat for how each pattern is drawn.
 const CAT_PRESETS = [
   { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby
@@ -74,6 +74,8 @@ const CAT_PRESETS = [
   { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
   { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
   { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
+  { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby" }, // cool silver mackerel tabby
+  { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell (ginger + black, no white)
 ];
 // Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
 // 3=finned speedster), and a racing number stamped on the side roundels.
@@ -88,20 +90,52 @@ const KART_PRESETS = [
   { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
   { name: "Nova", color: 0xec407a, style: 3, number: 6 },
 ];
+// A "Custom" slot sits one past the last preset in each stepper; landing on it
+// reveals the creator (colour / pattern / accessory / name) and the look is read
+// from garageConfig.customCat / .customKart instead of the preset arrays.
+const CUSTOM_CAT_IDX = CAT_PRESETS.length;
+const CUSTOM_KART_IDX = KART_PRESETS.length;
+const KART_STYLE_COUNT = 4; // GP / roadster / buggy / finned (see createKartModel STYLES)
+const DEFAULT_CUSTOM_CAT = { name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap" };
+const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0 };
 const GARAGE_KEY = "zoomies-garage-v1";
+const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
+const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
+const _clampName = (v, dflt) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 14) : dflt);
+function sanitizeCustomCat(c) {
+  c = c && typeof c === "object" ? c : {};
+  return {
+    name: _clampName(c.name, DEFAULT_CUSTOM_CAT.name),
+    fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
+    pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
+    accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
+  };
+}
+function sanitizeCustomKart(k) {
+  k = k && typeof k === "object" ? k : {};
+  return {
+    name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
+    color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
+    style: _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style),
+    number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
+  };
+}
 function loadGarageConfig() {
   try {
     const c = JSON.parse(localStorage.getItem(GARAGE_KEY));
     if (c && typeof c === "object") {
       return {
-        cat: clampIdx(c.cat, CAT_PRESETS.length),
-        kart: clampIdx(c.kart, KART_PRESETS.length),
+        cat: clampIdx(c.cat, CAT_PRESETS.length + 1), // +1: the Custom slot is valid
+        kart: clampIdx(c.kart, KART_PRESETS.length + 1),
+        customCat: sanitizeCustomCat(c.customCat),
+        customKart: sanitizeCustomKart(c.customKart),
       };
     }
   } catch {
     /* ignore */
   }
-  return { cat: 0, kart: 0 }; // Marmalade in the Ember kart (the original "You")
+  // Marmalade in the Ember kart (the original "You"), with sensible custom defaults.
+  return { cat: 0, kart: 0, customCat: sanitizeCustomCat(), customKart: sanitizeCustomKart() };
 }
 function clampIdx(v, n) {
   v = Number.isInteger(v) ? v : 0;
@@ -114,12 +148,29 @@ function saveGarageConfig(c) {
     /* ignore */
   }
 }
+// Resolve a garage config (live or draft) to the concrete cat / kart look,
+// transparently handling the Custom slot.
+function catSpec(cfg) {
+  if (cfg.cat === CUSTOM_CAT_IDX) {
+    const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
+    return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory };
+  }
+  const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
+  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: undefined };
+}
+function kartSpec(cfg) {
+  if (cfg.kart === CUSTOM_KART_IDX) {
+    const k = cfg.customKart || DEFAULT_CUSTOM_KART;
+    return { name: k.name, color: k.color, style: k.style, number: k.number };
+  }
+  return KART_PRESETS[cfg.kart] || KART_PRESETS[0];
+}
 const garageConfig = loadGarageConfig();
 // The chosen look as concrete colours + a display name (the cat's name).
 function playerLook() {
-  const cat = CAT_PRESETS[garageConfig.cat] || CAT_PRESETS[0];
-  const kart = KART_PRESETS[garageConfig.kart] || KART_PRESETS[0];
-  return { catColor: cat.fur, catPattern: cat.pattern, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  const cat = catSpec(garageConfig);
+  const kart = kartSpec(garageConfig);
+  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
 }
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
@@ -280,22 +331,28 @@ const _godrayShafts = Fn(() => {
 // cheap black fill when the sun isn't visible.
 const _shaftTex = rtt(_godrayShafts());
 _shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
-{
-  let c = _sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode); // scene + SSR reflections + shafts + bloom
+// Colour grade applied to whichever composite (high or low) we feed it, so both
+// quality tiers look consistent — Low just composites fewer passes into the base.
+function gradeOutput(base) {
+  let c = base;
   c = saturation(c, _uSat);
   c = c.sub(0.5).mul(_uContrast).add(0.5); // contrast around mid-grey
-  // Lift the darkest areas so shadows don't crush to near-black (adds most to the
-  // darks, ~nothing to the highlights).
+  // Lift the darkest areas so shadows don't crush to near-black.
   c = c.add(_uShadowLift.mul(c.clamp(0, 1).oneMinus()));
   const lum = luminance(c.clamp(0, 1));
-  // Cinematic split-tone: cool shadows, warm highlights. (Cool softened so it
-  // doesn't darken the shadows as much.)
+  // Cinematic split-tone: cool shadows, warm highlights.
   c = c.mul(mix(vec3(0.96, 0.99, 1.06), vec3(1.08, 1.02, 0.92), smoothstep(0.15, 0.85, lum)));
   const d = viewportUV.sub(0.5);
   const vig = smoothstep(0.92, 0.34, d.length());
   c = c.mul(mix(float(1), vig, _uVignette));
-  postProcessing.outputNode = c;
+  return c;
 }
+// High: scene + SSR water reflections + god-ray shafts + bloom. Low: scene +
+// bloom only — drops SSR ("the heaviest effect") and the per-pixel god-ray pass,
+// which is the big GPU/memory win on weak devices (see applyQuality()).
+const _highOutput = gradeOutput(_sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode));
+const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
+postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
   render() { postProcessing.render(); },
@@ -340,23 +397,57 @@ scene.add(track.group);
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
 
-// Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
-// to build, `props` stays null and the game is fine. Smashing a green CATNIP crate
-// grants that kart an 8s hands-free green boost.
+// Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
+// BOXES on the racing line. Best-effort: if it fails to build, `props` stays null
+// and the game is fine. Grounded crates just tumble; only the floating boxes hold
+// a power-up — driving through one rolls a position-weighted item (see grantItem).
 let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
-  onCatnip: (kart, pos) => {
-    kart.giveCatnip();
-    effects.tootBurst(kart, 2, true); // green smash poof
-    audio.boost(kart === player ? null : kart.position);
-    if (kart === player) hud.showToast("🌿 Catnip!");
-  },
+  onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
   props = p;
 });
+
+const BOX_COOLDOWN = 3; // s — a kart can't vacuum up boxes back-to-back
+
+// Power-up box pickup. The roll is POSITION-WEIGHTED to keep races tight: the
+// leader mostly gets a defensive shield (which doesn't extend a lead in distance),
+// while trailing karts get catch-up speed (catnip) and offence (tri-furball). The
+// three weights interpolate by race position and always sum to 1. Returns false if
+// the box shouldn't be consumed (kart on cooldown), so it stays floating.
+function grantItem(kart) {
+  if (timeTrial) return false; // no power-ups in a solo time trial
+  // Multiplayer rivals are render-only ghosts; their real power-up is granted on
+  // THEIR client. Let the box sink here, but don't apply gameplay effects to a
+  // ghost (a phantom shield would wrongly block our shots).
+  if (kart.isRemote) return true;
+  if (kart.boxCooldown > 0) return false; // still cooling down — leave the box
+  kart.boxCooldown = BOX_COOLDOWN;
+
+  const n = Math.max(2, _fieldCount);
+  const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
+  const wShield = 0.65 - 0.5 * f; // 0.65 (leader) .. 0.15 (last)
+  const wTri = 0.25 + 0.15 * f;   // 0.25 (leader) .. 0.40 (last)
+  // catnip takes the remainder: 0.10 (leader) .. 0.45 (last)
+
+  effects.tootBurst(kart, 2, false); // a sparkly grab poof
+  audio.boost(kart === player ? null : kart.position);
+  const r = Math.random();
+  if (r < wShield) {
+    kart.giveShield(15);
+    if (kart === player) hud.showToast("🛡️ Shield — 15s!");
+  } else if (r < wShield + wTri) {
+    kart.giveTriShots(3);
+    if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
+  } else {
+    kart.giveCatnip();
+    if (kart === player) hud.showToast("🌿 Catnip boost!");
+  }
+  return true;
+}
 
 // Kart headlights (night/dusk only): REAL shadowless spotlights aimed forward and
 // down, so they actually illuminate the road and any props ahead — the lit pool a
@@ -566,7 +657,7 @@ function _pickUnused(palette, used) {
 // player stands out. Multiplayer / time-trial fields are the player alone.
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (MP.enabled || timeTrial) return [playerCfg];
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
@@ -643,12 +734,12 @@ function decorateKartGroup(group) {
   // frame in the loop) — no per-kart light to attach.
 }
 
-// --- Multiplayer (Phase 2: "ghost race") ---------------------------------
-// Opt-in: only active when a PartyKit host is configured AND the URL has ?mp=1.
-// Remote players appear as render-only "ghost" karts driven by interpolated
-// network snapshots — they glide alongside but DON'T collide or affect the race
-// (they're deliberately kept out of `karts[]`). The room is the world seed, so
-// a link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
+// --- Multiplayer ----------------------------------------------------------
+// Opt-in: only active when the URL has ?mp=1 (and a transport key is set).
+// Remote players appear as karts driven by interpolated network snapshots; they
+// glide alongside AND collide with single-player-parity bumps (resolved locally,
+// self-authoritatively) and share placement. The room is the world seed, so a
+// link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
 // Am I the HOST (the player who created this room), not just whoever drew the
 // lowest random id? Persisted by hosted-seed so a refresh keeps hostship while a
 // joiner / invite-link opener (different seed) is correctly a guest.
@@ -659,7 +750,7 @@ try { _amHost = sessionStorage.getItem("mp-host-seed") === WORLD_SEED; } catch {
 // (display name = the cat's name), plus whether I'm the room's host.
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
 // Up to 6 players share a race (you + 5 others). The grid, headlight pool and
@@ -770,11 +861,15 @@ function initMultiplayer() {
       });
       net.on("start", (at) => beginSyncedRace(at));
       net.on("shoot", (s) => {
-        hairballs.spawnAt(
-          new THREE.Vector3(s.px, s.py, s.pz),
-          new THREE.Vector3(s.dx, s.dy, s.dz),
-          s.c || 0
-        );
+        const pos = new THREE.Vector3(s.px, s.py, s.pz);
+        const dir = new THREE.Vector3(s.dx, s.dy, s.dz);
+        if (s.t) {
+          // Tri-furball: fan into three, matching the shooter's local spread.
+          const up = new THREE.Vector3(0, 1, 0);
+          for (const a of TRI_FAN) hairballs.spawnAt(pos, dir.clone().applyAxisAngle(up, a), s.c || 0);
+        } else {
+          hairballs.spawnAt(pos, dir, s.c || 0);
+        }
       });
       net.on("hit", (h) => {
         // Only the targeted client reacts; the victim's own shield gets last say.
@@ -892,6 +987,7 @@ const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4 };
 let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
+let _furballsArmed = false; // becomes true once the opening furball grace ends
 let countdownCalibrated = false;
 let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 // Finish celebration: fireworks from the arch when the leader crosses the line,
@@ -912,7 +1008,9 @@ const timerEl = document.getElementById("timer");
 // lap it's saved (per track) and replayed next time as a translucent ghost kart so
 // you race your own PB. ttRecord is the flat [t,x,y,z,heading,…] log of THIS lap;
 // ttGhost is the loaded best lap being replayed.
-const TT_GHOST_KEY = "zoomies-ttghost-v1";
+// v2: time trials no longer have power-ups, so any v1 ghost/PB recorded with them
+// is invalid — bumping the key drops the old saves and starts these clean.
+const TT_GHOST_KEY = "zoomies-ttghost-v2";
 let ttRecord = null; // flat array being recorded this lap (null outside time trial)
 let _lastGhostSample = -1;
 let ttGhost = null; // { samples, n, cursor } currently being replayed
@@ -996,7 +1094,9 @@ const _rtTo = new THREE.Vector3();
 function updateRearThreat() {
   if (!rearThreatEl) return;
   let state = "none";
-  if (player && !player.finished) {
+  // During the opening furball grace, nobody can fire — so don't flash a
+  // misleading "BEHIND!" threat warning.
+  if (player && !player.finished && raceTime >= SHOOT_OPENING_LOCKOUT) {
     const contenders = MP.enabled ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)] : karts;
     for (const k of contenders) {
       if (!k || k === player || k.finished || k.spinTimer > 0) continue;
@@ -1262,10 +1362,15 @@ input.setStageMapper(stageToLocal);
 // Default everything to High now that dynamic resolution scaling protects the
 // frame rate — it renders at full retina and only scales back if a device can't
 // keep up, so we get the high-quality look without risking stutter.
+let gpuParticles = null; // GPU ambient motes — created async once the renderer is ready
+const QUALITY_KEY = "zoomies-quality";
 let quality = "high";
+try { if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low"; } catch {}
 let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
 function baseDpr() {
-  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.5);
+  // Low caps the device-pixel-ratio harder — resolution is the biggest lever on
+  // both fill cost and render-target memory (which is what tips weak GPUs over).
+  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25);
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -1304,8 +1409,33 @@ function triggerHit() {
 const DRS_MIN = 0.45; // give the scaler more room on the heaviest night scenes (many lights + snow are fill-bound)
 let _frameMs = 16.7;
 let _drsCooldown = 0;
+
+// --- Performance watchdog ---
+// Last-resort net BEFORE a crash: if frames stay long even after dynamic-resolution
+// scaling has bottomed out (the device genuinely can't cope at High), auto-drop to
+// Low quality, which sheds SSR/god-rays/particles and lowers the render-target
+// memory — the kind of sustained pressure that precedes an out-of-memory blank.
+// Disabled with ?nowd=1 so the headless perf harness measures the chosen tier.
+const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
+let _wdAccum = 0;
+function perfWatchdog(dt) {
+  if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
+  // Only when DRS has already bottomed out AND frames are still very long (~25 fps).
+  if (_frameMs > 40 && renderScale <= DRS_MIN + 0.02) {
+    _wdAccum += dt;
+    if (_wdAccum >= 4) {
+      _wdAccum = 0;
+      applyQuality("low"); // persists, so a struggling device stays Low next launch
+      hud.showToast?.("Graphics lowered for a smoother race");
+    }
+  } else {
+    _wdAccum = Math.max(0, _wdAccum - dt * 0.6); // recover slowly from brief spikes
+  }
+}
+
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
+  perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
@@ -1325,11 +1455,22 @@ function updateDRS(rawMs, dt) {
 }
 const qualityLowBtn = document.getElementById("set-quality-low");
 const qualityHighBtn = document.getElementById("set-quality-high");
-function applyQuality(q) {
+// Low quality strips the expensive effects to keep weak devices stable (and is
+// what the performance watchdog flips to before a device crashes):
+//   • post-FX graph drops SSR + god-rays (the heaviest passes),
+//   • god-ray render target stops updating,
+//   • GPU ambient motes hidden (skips their compute), grass hidden,
+//   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
+function applyQuality(q, persist = true) {
   quality = q;
   const high = q === "high";
+  if (persist) { try { localStorage.setItem(QUALITY_KEY, q); } catch {} }
   bloomPass.enabled = true; // marquee glow on both tiers
+  postProcessing.outputNode = high ? _highOutput : _lowOutput;
+  postProcessing.needsUpdate = true; // recompile the node graph for the new composite
+  _shaftTex.autoUpdate = high; // don't re-render the god-ray target when it's unused
   if (world.grass) world.grass.visible = high;
+  if (gpuParticles) gpuParticles.setVisible(high);
   renderScale = 1; // reset DRS on a manual quality change
   qualityLowBtn?.classList.toggle("is-active", !high);
   qualityHighBtn?.classList.toggle("is-active", high);
@@ -1337,7 +1478,7 @@ function applyQuality(q) {
 }
 qualityLowBtn?.addEventListener("click", () => applyQuality("low"));
 qualityHighBtn?.addEventListener("click", () => applyQuality("high"));
-applyQuality(quality);
+applyQuality(quality, false); // honour the persisted choice without re-writing it
 
 // Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
 const lapsBtn = document.getElementById("laps-btn");
@@ -1582,6 +1723,12 @@ advToggle?.addEventListener("click", () => {
   const open = advSettings.classList.toggle("hidden") === false;
   advToggle.textContent = open ? "Advanced ▾" : "Advanced ▸";
   advToggle.setAttribute("aria-expanded", String(open));
+  // The revealed rows + Back button can fall below the fold on a short landscape
+  // screen — scroll the settings overlay down so they're not stranded off-screen.
+  if (open) {
+    const ov = document.getElementById("settings");
+    setTimeout(() => { if (ov) ov.scrollTo({ top: ov.scrollHeight, behavior: "smooth" }); }, 60);
+  }
 });
 
 // --- Tilt debug readout (opt-in via Settings; persisted) ---
@@ -1913,9 +2060,9 @@ function _clearGaragePreview() {
 // per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
 function buildGaragePreview() {
   _clearGaragePreview();
-  const cat = CAT_PRESETS[_garageDraft.cat];
-  const kart = KART_PRESETS[_garageDraft.kart];
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const cat = catSpec(_garageDraft);
+  const kart = kartSpec(_garageDraft);
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
   pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
@@ -1926,21 +2073,88 @@ function buildGaragePreview() {
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
 }
+
+// --- Custom creator -------------------------------------------------------
+// Curated fur tones (real cat colours) and bold kart liveries the swatch grids
+// offer. Custom picks aren't limited to these — they just seed quick choices.
+const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
+const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
+const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned"];
+const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
+const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
+const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
+const _cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// Build a row of colour swatch buttons once; clicks set the draft colour.
+function _buildSwatchGrid(gridId, palette, onPick) {
+  const grid = document.getElementById(gridId);
+  if (!grid || grid.childElementCount) return;
+  for (const c of palette) {
+    const b = document.createElement("button");
+    b.className = "swatch-dot";
+    b.style.background = _hex6(c);
+    b.dataset.color = c;
+    b.setAttribute("aria-label", "Colour " + _hex6(c));
+    b.addEventListener("click", () => onPick(c));
+    grid.appendChild(b);
+  }
+}
+function _markSelectedSwatch(gridId, color) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === color);
+}
+
+// Refresh the creator panels: show the one whose stepper is on the Custom slot,
+// and mirror the draft's custom values into its controls.
+function syncCreators() {
+  const catCustom = _garageDraft.cat === CUSTOM_CAT_IDX;
+  const kartCustom = _garageDraft.kart === CUSTOM_KART_IDX;
+  document.getElementById("cat-custom").classList.toggle("hidden", !catCustom);
+  document.getElementById("kart-custom").classList.toggle("hidden", !kartCustom);
+  if (catCustom) {
+    const c = _garageDraft.customCat;
+    document.getElementById("cat-pat-name").textContent = _cap(c.pattern);
+    document.getElementById("cat-acc-name").textContent = _cap(c.accessory);
+    const ni = document.getElementById("cat-custom-name");
+    if (ni.value !== c.name) ni.value = c.name;
+    _markSelectedSwatch("cat-color-grid", c.fur);
+  }
+  if (kartCustom) {
+    const k = _garageDraft.customKart;
+    document.getElementById("kart-style-name").textContent = KART_STYLE_NAMES[k.style] || "GP";
+    document.getElementById("kart-num-name").textContent = String(k.number);
+    const ni = document.getElementById("kart-custom-name");
+    if (ni.value !== k.name) ni.value = k.name;
+    _markSelectedSwatch("kart-color-grid", k.color);
+  }
+}
 function syncGarageUI() {
-  const cat = CAT_PRESETS[_garageDraft.cat];
-  const kart = KART_PRESETS[_garageDraft.kart];
-  const hex = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
+  const cat = catSpec(_garageDraft);
+  const kart = kartSpec(_garageDraft);
   document.getElementById("cat-name").textContent = cat.name;
   document.getElementById("kart-name").textContent = kart.name;
-  document.getElementById("cat-swatch").style.background = hex(cat.fur);
-  document.getElementById("kart-swatch").style.background = hex(kart.color);
+  document.getElementById("cat-swatch").style.background = _hex6(cat.fur);
+  document.getElementById("kart-swatch").style.background = _hex6(kart.color);
+  syncCreators();
 }
 function openGaragePanel() {
-  _garageDraft = { cat: garageConfig.cat, kart: garageConfig.kart };
+  _garageDraft = {
+    cat: garageConfig.cat,
+    kart: garageConfig.kart,
+    customCat: { ...garageConfig.customCat },
+    customKart: { ...garageConfig.customKart },
+  };
   const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
   _garageAnchor.copy(slot.position);
   syncGarageUI();
   buildGaragePreview();
+  // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
+  // would otherwise hang over the live preview as a doubled "ghost" of the level.
+  if (menuXfade) menuXfade.style.opacity = 0;
+  _menuPhase = "hold";
+  _menuShotT = 0;
   _garageOpen = true;
   openSubScreen(garageEl);
 }
@@ -1950,10 +2164,29 @@ function closeGarage() {
   closeSubScreen(garageEl);
 }
 function stepGarage(which, dir) {
-  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
+  // +1 slot: one past the last preset is the Custom slot.
+  const n = (which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length) + 1;
   _garageDraft[which] = (_garageDraft[which] + dir + n) % n;
   syncGarageUI();
   buildGaragePreview();
+}
+// Mutate the draft's custom cat/kart, then refresh UI + preview. `rebuild=false`
+// skips the (model-irrelevant) preview rebuild for pure name edits.
+function editCustomCat(patch, rebuild = true) {
+  Object.assign(_garageDraft.customCat, patch);
+  syncGarageUI();
+  if (rebuild) buildGaragePreview();
+}
+function editCustomKart(patch, rebuild = true) {
+  Object.assign(_garageDraft.customKart, patch);
+  syncGarageUI();
+  if (rebuild) buildGaragePreview();
+}
+function stepCustom(which, list, dir) {
+  if (which === "pattern" || which === "accessory") {
+    const i = list.indexOf(_garageDraft.customCat[which]);
+    editCustomCat({ [which]: list[(i + dir + list.length) % list.length] });
+  }
 }
 // Slowly orbit the camera around the parked preview kart. The control card is
 // docked to the left half of the (landscape) screen, so frame the kart in the
@@ -1983,9 +2216,34 @@ document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage(
 document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
 document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
 document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
+
+// Custom-cat creator controls.
+_buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
+document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
+document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
+document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
+document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
+document.getElementById("cat-custom-name")?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
+document.getElementById("cat-randomize")?.addEventListener("click", () => editCustomCat({
+  fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory: _pick(CAT_ACCESSORIES), name: _pick(CUSTOM_CAT_NAMES),
+}));
+
+// Custom-kart creator controls.
+_buildSwatchGrid("kart-color-grid", KART_COLOR_SWATCHES, (c) => editCustomKart({ color: c }));
+document.getElementById("kart-style-prev")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + KART_STYLE_COUNT - 1) % KART_STYLE_COUNT }));
+document.getElementById("kart-style-next")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + 1) % KART_STYLE_COUNT }));
+document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
+document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
+document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
+document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
+  color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
+}));
+
 document.getElementById("garage-apply")?.addEventListener("click", () => {
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
+  garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
+  garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
   closeGarage();
 });
@@ -2267,7 +2525,12 @@ function prepareRace() {
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   updateBoostUI(); // karts start with an empty boost meter
+  // Power-up boxes are a competitive item — off in time trial (a solo run against
+  // the clock has no rivals to use them on, and they'd pollute the ghost lap).
+  props?.setItemsEnabled?.(!timeTrial);
   raceTime = 0;
+  _furballsArmed = false;
+  hud.setShootLock(0); // clear any leftover charge banner from a previous race
   track.raceTime = 0;
   prevPlayerLap = -1; // so the time-trial lap-start crossing is detected cleanly
   ttLapStart = -1;
@@ -2326,12 +2589,30 @@ function renderLobby() {
   if (ready) ready.style.display = host ? "none" : "";       // joiner: enable tilt first
 }
 
+// A joiner reaches the lobby via a reload, which loses the motion listener AND (on
+// iOS) the permission grant — and the host can start the race remotely before they
+// tap the explicit "Enable tilt controls" button. So arm tilt on their FIRST touch
+// anywhere in the lobby (a real user gesture, which iOS requires for the motion
+// prompt). Runs once; the explicit button still works too.
+let _guestTiltHooked = false;
+function armGuestTiltOnGesture() {
+  if (_guestTiltHooked) return;
+  _guestTiltHooked = true;
+  const arm = () => {
+    try { input.enableMotion(); input.calibrate(); } catch { /* ignore */ }
+    const b = document.getElementById("lobby-ready");
+    if (b) { b.textContent = "✓ Tilt ready"; b.disabled = true; }
+  };
+  window.addEventListener("pointerdown", arm, { once: true, capture: true });
+}
+
 function enterLobby() {
   MP.inLobby = true;
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("lobby").classList.remove("hidden");
   renderLobby();
+  if (!mpIsHost()) armGuestTiltOnGesture(); // joiner: first touch enables tilt steering
 }
 
 // Line the countdown up to the shared-clock instant `at` so every client hits
@@ -2339,6 +2620,10 @@ function enterLobby() {
 // everyone else; the state guard makes a double-trigger harmless.
 function beginSyncedRace(at) {
   if (state === State.COUNTDOWN || state === State.RACING) return;
+  // A guest reloaded into the host's world to join, which dropped the devicemotion
+  // listener — re-arm it so tilt steering works (gas/brake use the touch slider, so
+  // they kept working even when this was missed). Idempotent + no-op for the host.
+  try { input.enableMotion(); } catch { /* ignore */ }
   input.jumpHeld = false;
   input.shielding = false;
   MP.inLobby = false;
@@ -2574,13 +2859,16 @@ function updateCamera(dt, snap = false) {
   const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
   if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
 
-  // FOV kick when boosting for a sense of speed.
-  const targetFov = 62 + (player.boosting ? 7 : 0);
+  // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
+  // a rush — but only a touch, so the road stays readable and easy to drive.
+  const targetFov = 62 + (player.boosting ? 7 : 0) + (player.catnipBoosting ? 4 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
   camera.updateProjectionMatrix();
 
-  // Screen shake (decays).
+  // Screen shake (decays). Catnip keeps a faint constant rumble going (minor, so
+  // it reads as raw speed without fighting your steering).
   shakeMag *= 1 - Math.min(1, 6 * dt);
+  if (player.catnipBoosting) shakeMag = Math.max(shakeMag, 0.14);
   camera.position.copy(camPos);
   if (shakeMag > 0.001) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
@@ -2734,25 +3022,32 @@ function updatePlacement() {
     return b.totalProgress - a.totalProgress;
   });
   field.forEach((k, idx) => (k.place = idx + 1));
+  _fieldCount = field.length; // size of the field, for position-weighted item rolls
 }
+let _fieldCount = 1;
 
 const SHOOT_CHARGE_TIME = 0.7; // seconds of hold for a full-power shot
 const SHOOT_RECHARGE = 1.2; // min seconds between shots (no spamming)
 // Longer grace at the green light so the race doesn't open with everyone pelting
 // each other on the start line — first hairball isn't ready until this elapses.
-const SHOOT_OPENING_LOCKOUT = SHOOT_RECHARGE * 2;
+// Opening grace: furballs are "charging" for the first stretch of a race, so the
+// start is decided by driving (and creating a gap) rather than an instant hairball
+// brawl off the line. Firing is gated by the cooldown; the HUD shows the countdown.
+const SHOOT_OPENING_LOCKOUT = 15;
 
 // Fire a hairball if allowed (recharge done, not spun out), and start the
 // recharge. Shared by the player and the AI so the rules are identical.
 function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
+  const wasTri = kart.triShots > 0; // capture before spawn() consumes the charge
   hairballs.spawn(kart, charge);
   audio.shoot(kart === player ? null : kart.position);
   kart.shootCooldown = SHOOT_RECHARGE;
-  // Tell other players about the shot so they can see the projectile fly.
+  // Tell other players about the shot so they can see the projectile fly (and fan
+  // it into three on their side when it was a tri-furball).
   if (MP.enabled && MP.net && kart === player) {
     const m = kart.muzzle();
-    MP.net.sendShoot(m.pos, m.dir, charge);
+    MP.net.sendShoot(m.pos, m.dir, charge, wasTri);
   }
   return true;
 }
@@ -2907,7 +3202,7 @@ function formatClock(sec) {
 }
 
 // --- Time trial: local best-lap leaderboard (localStorage; swap for a DB later) ---
-const TT_KEY = "zoomies-timetrial-v1";
+const TT_KEY = "zoomies-timetrial-v2"; // v2: reset — TT lap times pre-date the no-power-ups change
 function loadTimeTrial() {
   try {
     const v = JSON.parse(localStorage.getItem(TT_KEY));
@@ -2977,7 +3272,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).
@@ -3226,12 +3521,14 @@ function loop(now) {
 
     // Rainbow boost trail + drift sparks/skids for the player.
     if (player.boosting) effects.trickle(player, player.catnipBoosting);
+    const _catnipBurnout = player.catnipBoosting && _sp > 10 && !player.airborne;
     if (player.drifting) {
       effects.driftSparks(player);
       effects.skid(player);
-    } else if (_hardTurn) {
+    } else if (_hardTurn || _catnipBurnout) {
       // Also lay rubber when cornering hard at speed (not only while drifting),
-      // so tight turns leave marks. (_hardTurn already gates on steer + speed.)
+      // so tight turns leave marks — and catnip's raw torque scorches the road
+      // even on the straights. (_hardTurn already gates on steer + speed.)
       effects.skid(player);
     }
 
@@ -3240,7 +3537,8 @@ function loop(now) {
     // the kart is actually on the ground (no dust mid-jump). One color sample/frame.
     if (!player.airborne && _sp > 6) {
       biomeDustColor(player.position.x, player.position.z, _dustCol);
-      const amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      let amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
       if (amt > 0.02) effects.dust(player, _dustCol, amt);
     }
     // Chromatic aberration ramps up with the boost.
@@ -3256,12 +3554,11 @@ function loop(now) {
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
-    // Hand them the catnip crate positions so they go for boxes: leaders only when
-    // one's nearly on their line, trailing karts detour further to gamble for a
-    // catch-up boost (see driveAI). Catnip stays hidden in an ordinary crate, so
-    // which box the AI targets is invisible to the player anyway.
-    const catnipTargets = props ? props.catnipTargets() : null;
-    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, catnipTargets);
+    // Hand them the floating power-up box positions so they go for them: leaders
+    // only when one's nearly on their line, trailing karts detour further for a
+    // catch-up item (see driveAI).
+    const boxTargets = props ? props.boxTargets() : null;
+    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, boxTargets);
     aiActions(dt);
 
     // Step physics
@@ -3408,6 +3705,16 @@ function loop(now) {
       speedKmh: Math.abs(player.speed) * 3.0,
       time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
     });
+    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer);
+
+    // Opening furball grace: count down the charge, then announce "armed". Skipped
+    // in time trial (there's no one to shoot).
+    const shootLockLeft = timeTrial ? 0 : SHOOT_OPENING_LOCKOUT - raceTime;
+    hud.setShootLock(shootLockLeft);
+    if (!timeTrial && !_furballsArmed && shootLockLeft <= 0) {
+      _furballsArmed = true;
+      hud.showToast("🐾 Furballs armed!");
+    }
 
     // Time-trial: race the clock against your personal best. While the timed lap
     // runs, the timer + delta go GREEN as long as you're still under your PB time
@@ -3471,7 +3778,6 @@ function loop(now) {
 
 // WebGPURenderer initialises asynchronously — only start the render loop once the
 // backend is ready (renderFrame() also guards on this flag for any earlier calls).
-let gpuParticles = null;
 rendererReady
   .then(() => {
     _rendererReady = true;
@@ -3484,7 +3790,7 @@ rendererReady
       // A touch more opaque so the (now fewer) specks actually catch the light.
       opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
       size: night ? 0.52 : 0.42,
-    }).then((p) => { gpuParticles = p; });
+    }).then((p) => { gpuParticles = p; if (p && quality !== "high") p.setVisible(false); });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => requestAnimationFrame(loop));

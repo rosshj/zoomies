@@ -26,7 +26,24 @@ to release the boost. **Boost** is a recharging meter — about three turbos whe
 full — so there's always a way to claw back into the race.
 
 Getting hit by a hairball makes a kart **spin out and stop**. First kart to
-finish **3 laps** wins.
+finish **3 laps** wins. Furballs are **locked for the first 15 seconds** of a
+race (a countdown shows while they charge), so the start is decided by driving
+and making a gap — not an instant hairball brawl off the line.
+
+**Power-up boxes** are crates that **float** along the racing line (the ones
+sitting on the ground just tumble when you hit them — only the floating ones hold
+anything). Drive through one for a power-up:
+
+- 🛡️ **Shield** — a 15-second bubble that blocks hairballs, no button to hold.
+- 🐾 **Tri-furball** — your next three shots fan into a wide three-way blast.
+- 🌿 **Catnip boost** — a hands-free speed surge with a little extra rush (wider
+  FOV, a faint rumble, and a thick dust/skid trail).
+
+The roll is **position-weighted** to keep races tight: the leader mostly draws a
+defensive shield, while karts further back are more likely to get the catnip
+(catch-up speed) or tri-furball (offence). A grabbed box sinks back into an
+ordinary crate, and a roadside crate **rises to replace it**, so the pool stays
+steady without anything popping in from nowhere.
 
 Steering reads the phone's gravity/tilt, so hold the device like a steering
 wheel and tilt left/right. If centre drifts, tap **"↺ center steering"** at the
@@ -38,8 +55,9 @@ the barriers, so you can't drive off the track.
 
 ## Running it
 
-The game uses ES modules and loads three.js from a CDN, so it must be served
-over HTTP (not opened as a `file://`). Any static server works:
+The game uses ES modules (three.js is vendored locally under `vendor/three/`,
+so it works fully offline), so it must be served over HTTP (not opened as a
+`file://`). Any static server works:
 
 ```bash
 npm start          # serves on http://localhost:8080
@@ -93,8 +111,6 @@ src/
 
 ### Ideas for later
 
-- More tracks, karts, and cat breeds
-- Item boxes / power-ups beyond hairballs
-- Drifting + mini-turbo boost
-- Online multiplayer
+- More tracks and biomes
 - Loading real GLTF cat/kart models in place of the procedural ones
+- Item/hazard variety beyond the current three power-ups

@@ -22,11 +22,13 @@ export class RemoteKart {
       color: identity.color,
       catColor: identity.catColor,
       catPattern: identity.catPattern,
+      catAccessory: identity.catAccessory,
       kartStyle: identity.kartStyle,
       kartNumber: identity.kartNumber,
       name: identity.name,
       isPlayer: false,
     });
+    this.kart.isRemote = true; // ghost: power-up boxes sink but grant no local effect
     this.group = this.kart.group;
     this.buffer = []; // sorted snapshots { t, x, y, z, h, p, s, f }
     this._prevH = 0;

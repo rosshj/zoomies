@@ -57,11 +57,11 @@ await ctx.addInitScript(({ seedTT, sel }) => {
   }
   // Seed a personal-best so the time-trial PB-delta path runs in the test.
   if (seedTT) {
-    try { localStorage.setItem("zoomies-timetrial-v1", JSON.stringify([{ time: 42.5, date: 1 }])); } catch {}
+    try { localStorage.setItem("zoomies-timetrial-v2", JSON.stringify([{ time: 42.5, date: 1 }])); } catch {}
     // Seed a small ghost path so setupGhost() builds the translucent ghost kart.
     const samples = [];
     for (let k = 0; k < 24; k++) samples.push(k * 0.5, Math.sin(k) * 20, 0.5, Math.cos(k) * 20, k * 0.2);
-    try { localStorage.setItem("zoomies-ttghost-v1", JSON.stringify({ key: "classic", samples })); } catch {}
+    try { localStorage.setItem("zoomies-ttghost-v2", JSON.stringify({ key: "classic", samples })); } catch {}
   }
   window.__raf = 0;
   const o = window.requestAnimationFrame.bind(window);
@@ -70,7 +70,7 @@ await ctx.addInitScript(({ seedTT, sel }) => {
 
 // nosw=1 keeps the service worker out of the gameplay check (a dedicated offline
 // test exercises the SW separately).
-const target = `http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1`;
+const target = `http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`;
 await page.goto(target, { waitUntil: "load" });
 
 // Start the race.
