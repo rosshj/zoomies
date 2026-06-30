@@ -70,7 +70,7 @@ await ctx.addInitScript(({ seedTT, sel }) => {
 
 // nosw=1 keeps the service worker out of the gameplay check (a dedicated offline
 // test exercises the SW separately).
-const target = `http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1`;
+const target = `http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`;
 await page.goto(target, { waitUntil: "load" });
 
 // Start the race.

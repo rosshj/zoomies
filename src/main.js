@@ -1315,8 +1315,33 @@ function triggerHit() {
 const DRS_MIN = 0.45; // give the scaler more room on the heaviest night scenes (many lights + snow are fill-bound)
 let _frameMs = 16.7;
 let _drsCooldown = 0;
+
+// --- Performance watchdog ---
+// Last-resort net BEFORE a crash: if frames stay long even after dynamic-resolution
+// scaling has bottomed out (the device genuinely can't cope at High), auto-drop to
+// Low quality, which sheds SSR/god-rays/particles and lowers the render-target
+// memory — the kind of sustained pressure that precedes an out-of-memory blank.
+// Disabled with ?nowd=1 so the headless perf harness measures the chosen tier.
+const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
+let _wdAccum = 0;
+function perfWatchdog(dt) {
+  if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
+  // Only when DRS has already bottomed out AND frames are still very long (~25 fps).
+  if (_frameMs > 40 && renderScale <= DRS_MIN + 0.02) {
+    _wdAccum += dt;
+    if (_wdAccum >= 4) {
+      _wdAccum = 0;
+      applyQuality("low"); // persists, so a struggling device stays Low next launch
+      hud.showToast?.("Graphics lowered for a smoother race");
+    }
+  } else {
+    _wdAccum = Math.max(0, _wdAccum - dt * 0.6); // recover slowly from brief spikes
+  }
+}
+
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
+  perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
