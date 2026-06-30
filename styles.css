@@ -1304,6 +1304,15 @@ button.small {
   margin-top: 0; /* the seg-toggle's default top margin is for the menu, not here */
 }
 
+/* A small explanatory line under a setting row (e.g. Compatibility mode). */
+.setting-note {
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0.6;
+  margin: -4px 0 6px;
+  text-align: left;
+}
+
 .setting-label {
   font-size: 14px;
   font-weight: bold;

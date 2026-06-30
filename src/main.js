@@ -6,6 +6,8 @@ import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { initGpuParticles } from "./gpuparticles.js";
+import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
+installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart, setSunShadow } from "./kart.js";
@@ -1538,6 +1540,39 @@ fpsToggle?.addEventListener("click", () => {
   applyFpsSetting();
 });
 applyFpsSetting();
+
+// --- Compatibility mode (renderer backend) ---
+// The renderer backend is picked once at startup (gpu.js reads this same flag), so
+// an installed PWA can't switch it via a URL param — this in-app toggle is the only
+// way in. ON forces the stable WebGL2 backend (what the crash guard auto-selects
+// after a WebGPU device loss); OFF lets it use WebGPU. Changing it restarts the app.
+const WEBGL_PREF_KEY = "zoomies-prefer-webgl";
+const compatToggle = document.getElementById("set-compat-toggle");
+function readCompat() {
+  try { return localStorage.getItem(WEBGL_PREF_KEY) === "1"; } catch { return false; }
+}
+function applyCompatUI() {
+  const on = readCompat();
+  if (compatToggle) {
+    compatToggle.textContent = on ? "On" : "Off";
+    compatToggle.classList.toggle("off", !on);
+  }
+}
+compatToggle?.addEventListener("click", () => {
+  const on = !readCompat();
+  try {
+    if (on) localStorage.setItem(WEBGL_PREF_KEY, "1");
+    else localStorage.removeItem(WEBGL_PREF_KEY);
+  } catch { /* ignore */ }
+  applyCompatUI();
+  // The backend is chosen at load, so restart to apply. Drop any ?webgl/?webgpu so
+  // the localStorage flag is the single source of truth on the next load.
+  const u = new URL(location.href);
+  u.searchParams.delete("webgl");
+  u.searchParams.delete("webgpu");
+  location.replace(u.toString());
+});
+applyCompatUI();
 
 // --- Tilt debug readout (opt-in via Settings; persisted) ---
 // A diagnostic to chase down the steering sensitivity: it prints the live device
@@ -3430,6 +3465,7 @@ let gpuParticles = null;
 rendererReady
   .then(() => {
     _rendererReady = true;
+    watchGpu(renderer); // recover from a GPU device/context loss instead of hard-crashing
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
@@ -3442,6 +3478,38 @@ rendererReady
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => requestAnimationFrame(loop));
+
+// If the previous load ended in a crash, tell the player (and log the detail so we
+// can diagnose). When the crash guard downgraded us to the WebGL2 backend, say so.
+{
+  const crash = consumeLastCrash();
+  if (crash) {
+    console.warn("[zoomies] recovered from a crash:", crash);
+    const onWebGLNow = new URLSearchParams(location.search).has("webgl");
+    const msg = crash.type && crash.type.indexOf("webgpu") === 0
+      ? onWebGLNow
+        ? "Recovered from a graphics glitch — switched to Compatibility mode for stability."
+        : "Recovered from a graphics glitch."
+      : "Recovered after an unexpected restart.";
+    showRecoveryNote(msg);
+  }
+}
+function showRecoveryNote(text) {
+  try {
+    const el = document.createElement("div");
+    el.textContent = text;
+    el.style.cssText =
+      "position:fixed;left:50%;top:max(10px,env(safe-area-inset-top));transform:translateX(-50%);" +
+      "z-index:99999;max-width:90%;background:rgba(20,26,40,.92);color:#cfe0ff;" +
+      "border:1px solid rgba(255,179,0,.5);border-radius:10px;padding:8px 14px;" +
+      "font:13px/1.3 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.5);text-align:center";
+    el.addEventListener("click", () => el.remove());
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 9000);
+  } catch {
+    /* ignore */
+  }
+}
 
 // Browsers block audio until a user gesture, so the menu can't autoplay music on
 // load. Start it (fading in) on the player's FIRST interaction of any kind —
