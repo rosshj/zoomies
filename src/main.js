@@ -654,11 +654,18 @@ function makeMpIdentity() {
   return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
 }
 
+// Up to 6 players share a race (you + 5 others). The grid, headlight pool and
+// placement all scale to this; a late 7th joiner is kept out of the rendered field.
+const MAX_PLAYERS = 6;
 const MP = {
   enabled: false, net: null, remotes: new Map(),
   sendAcc: 0, hudAcc: 0, hud: null,
   inLobby: false, startAt: 0, connState: null,
 };
+// Total humans currently in the room (me + rendered remotes).
+function mpPlayerCount() {
+  return 1 + MP.remotes.size;
+}
 
 // Host election: the lowest connection id is host. Every client derives this
 // from the same member set, so they all agree with no negotiation. The same
@@ -682,6 +689,11 @@ function mpGridSlot() {
 
 function mpSpawn(identity) {
   if (MP.remotes.has(identity.id)) return;
+  // Cap the rendered field at MAX_PLAYERS (you + MAX_PLAYERS-1 remotes). Beyond
+  // that the grid/headlight pool run out, so extra joiners aren't drawn into the
+  // race. (Realistically a friends' room is ≤6; a true server-side cap would need
+  // room logic Ably's client-side presence doesn't provide.)
+  if (MP.remotes.size >= MAX_PLAYERS - 1) return;
   const r = new RemoteKart(identity);
   decorateKartGroup(r.group);
   scene.add(r.group);
@@ -2206,6 +2218,8 @@ function renderLobby() {
   if (!MP.enabled || !MP.net) return;
   const codeEl = document.getElementById("lobby-code");
   if (codeEl) codeEl.textContent = WORLD_SEED;
+  const countEl = document.getElementById("lobby-count");
+  if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS} players`;
   const list = document.getElementById("lobby-players");
   if (list) {
     list.innerHTML = "";
