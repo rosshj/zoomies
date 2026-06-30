@@ -2548,6 +2548,14 @@ function updateCamera(dt, snap = false) {
 // Heavier karts (the player) shove lighter ones aside and barely slow down, so
 // you can push your way through traffic. Impulses go into each kart's decaying
 // `knock` velocity for a springy bumper-car feel.
+// Shared kart-vs-kart collision constants, used by BOTH single-player and the
+// multiplayer remote-kart path so the two can never drift out of parity.
+const KART_COLLIDE_MIN = 4.4; // contact diameter
+function kartBumpPower(aSpeed, bSpeed) {
+  // Bumper impulse, scaled by how fast the pair is moving.
+  return 10 + (Math.abs(aSpeed) + Math.abs(bSpeed)) * 0.4;
+}
+
 function resolveCollisions() {
   for (let i = 0; i < karts.length; i++) {
     for (let j = i + 1; j < karts.length; j++) {
@@ -2556,7 +2564,7 @@ function resolveCollisions() {
       const dx = b.position.x - a.position.x;
       const dz = b.position.z - a.position.z;
       const distSq = dx * dx + dz * dz;
-      const min = 4.4;
+      const min = KART_COLLIDE_MIN;
       if (distSq <= 0.0001 || distSq >= min * min) continue;
 
       const dist = Math.sqrt(distSq);
@@ -2577,7 +2585,7 @@ function resolveCollisions() {
       b.position.z += nz * overlap * sb;
 
       // Bumper impulse scaled by how fast they're moving.
-      const power = 10 + (Math.abs(a.speed) + Math.abs(b.speed)) * 0.4;
+      const power = kartBumpPower(a.speed, b.speed);
       a.knock.x -= nx * power * sa;
       a.knock.z -= nz * power * sa;
       b.knock.x += nx * power * sb;
@@ -2608,7 +2616,7 @@ function resolveCollisions() {
 // collision against our ghost, so both sides agree without any referee.
 function resolveRemoteCollisions() {
   if (!MP.enabled || !player) return;
-  const min = 4.4;
+  const min = KART_COLLIDE_MIN;
   for (const [rid, r] of MP.remotes) {
     if (!r._ready) continue; // no real pose yet — don't collide at the origin
     const g = r.kart;
@@ -2622,31 +2630,34 @@ function resolveRemoteCollisions() {
     const nz = dz / dist;
     const overlap = min - dist;
 
-    // Fully separate the player from the ghost (the ghost can't move
-    // authoritatively, so the player takes the whole correction). Resolving the
-    // overlap in one frame stops impulses piling up over multiple frames of
-    // contact — that pile-up was flinging ghosts off the track.
-    player.position.x -= nx * overlap;
-    player.position.z -= nz * overlap;
-
-    // The player's knock is the AUTHORITATIVE reaction: it moves the player's
-    // real position (wall-contained, gradual decay), which propagates over the
-    // network and is exactly what the other client sees this kart do.
+    // The masses match single-player (you're 1.35, the ghost is 1.0 — same as
+    // you-vs-AI), so the shares below are EXACTLY what resolveCollisions() uses.
     const ima = 1 / player.mass;
     const img = 1 / g.mass;
     const inv = ima + img;
     const sp = ima / inv; // player's share
     const sg = img / inv; // ghost's share
 
-    const power = 10 + (Math.abs(player.speed) + Math.abs(g.speed)) * 0.4;
-    player.knock.x -= nx * power * sp * 1.8;
-    player.knock.z -= nz * power * sp * 1.8;
-    player.speed *= 0.99;
+    // Position: the player still takes the WHOLE separation (the ghost can't move
+    // authoritatively, and clearing the overlap in one frame keeps repeated
+    // contact from flinging the ghost). This is a position detail, not the carom.
+    player.position.x -= nx * overlap;
+    player.position.z -= nz * overlap;
 
-    // Small, brief local nudge on the ghost for instant feedback only — sized to
-    // roughly match the real slide that lands over the network ~250ms later, so
-    // the handoff is seamless and the ghost never flies off.
-    r.bump(nx, nz, power * sg * 0.8);
+    // Carom: the player's knock is now the SAME mass-share bumper impulse as
+    // single-player (no amplification), so ramming a rival online feels exactly
+    // like ramming an AI. This knock moves the player's real position, which
+    // propagates over the network — the other client independently resolves the
+    // mirror contact against its ghost of us, so both sides feel a bump with no
+    // referee (they needn't match exactly).
+    const power = kartBumpPower(player.speed, g.speed);
+    player.knock.x -= nx * power * sp;
+    player.knock.z -= nz * power * sp;
+    player.speed *= 0.99; // same tiny scrub as single-player
+
+    // Cosmetic-only nudge on the ghost (instant local feedback) at the ghost's
+    // mass share — the authoritative slide arrives over the network shortly after.
+    r.bump(nx, nz, power * sg);
 
     // Catnip ram across the network: tell the rival to spin out (their client
     // honours their own shield). Debounced so contact doesn't spam hits.
