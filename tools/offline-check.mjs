@@ -17,8 +17,16 @@ const MIME = {
   ".mp3": "audio/mpeg", ".ico": "image/x-icon",
 };
 const server = http.createServer((req, res) => {
-  let urlPath = decodeURIComponent(req.url.split("?")[0]);
+  const [rawPath, query] = req.url.split("?");
+  let urlPath = decodeURIComponent(rawPath);
   if (urlPath === "/favicon.ico") { res.writeHead(204); res.end(); return; }
+  // Mimic Vercel's cleanUrls: /index.html 308-redirects to / (preserving query).
+  // This is the exact redirect that poisoned the SW cache and broke iOS offline.
+  if (urlPath === "/index.html") {
+    res.writeHead(308, { location: "/" + (query ? "?" + query : "") });
+    res.end();
+    return;
+  }
   if (urlPath === "/") urlPath = "/index.html";
   fs.readFile(path.join(ROOT, urlPath), (err, data) => {
     if (err) { res.writeHead(404); res.end(); return; }
@@ -44,9 +52,12 @@ await page.reload({ waitUntil: "load" });
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
 await page.waitForTimeout(8000); // let all module + asset fetches populate the cache
 
-const cachedCount = await page.evaluate(async () => {
-  const c = await caches.open("zoomies-v1");
-  return (await c.keys()).length;
+const cacheInfo = await page.evaluate(async () => {
+  const c = await caches.open("zoomies-v2");
+  const keys = await c.keys();
+  // No cached navigation/shell response may be a redirect (Safari rejects those).
+  const shell = (await c.match("./index.html")) || (await c.match("./"));
+  return { count: keys.length, shellRedirected: shell ? shell.redirected : null };
 });
 
 // 3) Go OFFLINE and reload from a cold page — everything must come from cache.
@@ -75,12 +86,13 @@ const worldLog = logs.some((l) => /world seed/i.test(l));
 const loadErrors = errors.filter((e) => /Failed to load|Importing|module|MIME|404|net::/i.test(e));
 
 console.log(JSON.stringify({
-  cachedCount,
+  cachedCount: cacheInfo.count,
+  shellRedirected: cacheInfo.shellRedirected, // must be false — Safari rejects redirected nav responses
   offlineGoto: gotoErr ? "FAILED: " + gotoErr : "ok",
   startBtnVisible: booted,
   worldBuilt: worldLog,
   loadErrors,
-  pass: !gotoErr && booted && worldLog && loadErrors.length === 0,
+  pass: !gotoErr && booted && worldLog && loadErrors.length === 0 && cacheInfo.shellRedirected === false,
 }, null, 2));
 
 await browser.close();

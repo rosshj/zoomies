@@ -12,7 +12,21 @@
 //     full body, so audio plays offline too.
 //
 // Bump CACHE when the shell list or caching logic changes to retire old caches.
-const CACHE = "zoomies-v1";
+// v2: never store/serve REDIRECTED responses — iOS Safari refuses to serve a
+// redirected response from a SW for a navigation ("Response served by service
+// worker has redirections"), which broke offline relaunch because Vercel's
+// cleanUrls 308-redirects /index.html → /. We rebuild such responses so the
+// redirected flag is cleared. The bump also purges any poisoned v1 cache.
+const CACHE = "zoomies-v2";
+
+// Strip the "redirected" flag by rebuilding the response from its body. A Response
+// with redirected===true cannot be returned from a SW navigation on Safari; a
+// freshly-constructed Response has redirected===false. No-op for normal responses.
+async function deredirect(res) {
+  if (!res || !res.redirected) return res;
+  const body = await res.blob();
+  return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
 
 // A small, reliable core precached on install. Everything else (the rest of src/,
 // the vendored three files, audio) is cached on first fetch by the handlers below,
@@ -32,8 +46,16 @@ const SHELL = [
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE).then(async (cache) => {
-      // Cache each shell item individually so one failure can't abort the install.
-      await Promise.all(SHELL.map((u) => cache.add(u).catch(() => {})));
+      // Cache each shell item individually (so one failure can't abort the install),
+      // and de-redirect first so the cached page is never a redirected response.
+      await Promise.all(SHELL.map(async (u) => {
+        try {
+          const res = await fetch(u, { cache: "reload" });
+          if (res && res.ok) await cache.put(u, await deredirect(res));
+        } catch {
+          /* offline at install / item missing — best-effort */
+        }
+      }));
       await self.skipWaiting();
     })
   );
@@ -78,17 +100,19 @@ async function cacheFirst(req) {
 
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
+  const isNav = req.mode === "navigate";
   try {
     const res = await fetch(req);
-    if (res && res.ok) cache.put(req, res.clone());
-    return res;
+    if (res && res.ok) cache.put(req, await deredirect(res.clone())); // store a clean copy
+    // A navigation must never hand back a redirected response (Safari rejects it).
+    return isNav ? deredirect(res) : res;
   } catch {
     const hit = await cache.match(req);
-    if (hit) return hit;
+    if (hit) return isNav ? deredirect(hit) : hit;
     // Navigations fall back to the cached shell so a deep link still opens offline.
-    if (req.mode === "navigate") {
-      const shell = await cache.match("./index.html");
-      if (shell) return shell;
+    if (isNav) {
+      const shell = (await cache.match("./index.html")) || (await cache.match("./"));
+      if (shell) return deredirect(shell);
     }
     return Response.error();
   }
