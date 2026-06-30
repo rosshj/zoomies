@@ -647,11 +647,17 @@ function decorateKartGroup(group) {
 // network snapshots — they glide alongside but DON'T collide or affect the race
 // (they're deliberately kept out of `karts[]`). The room is the world seed, so
 // a link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
+// Am I the HOST (the player who created this room), not just whoever drew the
+// lowest random id? Persisted by hosted-seed so a refresh keeps hostship while a
+// joiner / invite-link opener (different seed) is correctly a guest.
+let _amHost = false;
+try { _amHost = sessionStorage.getItem("mp-host-seed") === WORLD_SEED; } catch { /* ignore */ }
+
 // Broadcast the player's garage selection so rivals see the cat + kart they chose
-// (display name = the cat's name).
+// (display name = the cat's name), plus whether I'm the room's host.
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
 // Up to 6 players share a race (you + 5 others). The grid, headlight pool and
@@ -667,20 +673,25 @@ function mpPlayerCount() {
   return 1 + MP.remotes.size;
 }
 
-// Host election: the lowest connection id is host. Every client derives this
-// from the same member set, so they all agree with no negotiation. The same
-// sorted order also assigns starting-grid slots, so players don't stack up.
+// The same sorted id order assigns starting-grid slots so players don't stack up.
 function mpOrderedIds() {
   const ids = [MP.net && MP.net.id, ...MP.remotes.keys()].filter(Boolean);
   ids.sort();
   return ids;
 }
+// The host is simply the player who CREATED the room (clicked Host Game) — not
+// whoever drew the lowest id. `_amHost` is authoritative for me; the same flag
+// rides in every identity so I can tag the host (👑) in the player list. No
+// lowest-id election (that was the bug), so a guest never transiently sees Start.
+// (If the host leaves, the room just can't launch — host migration is a separate
+// feature.)
 function mpHostId() {
-  const ids = mpOrderedIds();
-  return ids.length ? ids[0] : null;
+  if (_amHost && MP.net && MP.net.id) return MP.net.id;
+  for (const r of MP.remotes.values()) if (r.host) return r.id;
+  return null;
 }
 function mpIsHost() {
-  return !!(MP.net && MP.net.id && mpHostId() === MP.net.id);
+  return !!(MP.enabled && _amHost);
 }
 function mpGridSlot() {
   const i = MP.net ? mpOrderedIds().indexOf(MP.net.id) : 0;
@@ -695,6 +706,7 @@ function mpSpawn(identity) {
   // room logic Ably's client-side presence doesn't provide.)
   if (MP.remotes.size >= MAX_PLAYERS - 1) return;
   const r = new RemoteKart(identity);
+  r.host = !!identity.host; // remember who the room's host is (for the 👑 + Start)
   decorateKartGroup(r.group);
   scene.add(r.group);
   MP.remotes.set(identity.id, r);
@@ -2019,7 +2031,9 @@ function joinGame() {
   if (code === WORLD_SEED && MP.enabled) { beginRace(); return; } // already in this room
   audio.unlock();
   try { input.enableMotion(); } catch {}
-  try { sessionStorage.setItem("mp-autolobby", "1"); } catch {}
+  // I'm joining someone else's room → I'm a guest, not the host (clear any prior
+  // hosted-seed so a refresh in this tab doesn't wrongly crown me).
+  try { sessionStorage.setItem("mp-host-seed", ""); sessionStorage.setItem("mp-autolobby", "1"); } catch {}
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
@@ -2027,6 +2041,8 @@ function joinGame() {
 }
 function enterMultiplayer() {
   _mpUIMode = true;
+  _amHost = true; // I'm creating this room → I'm the host (survives a refresh below)
+  try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
   audio.unlock();
   const u = new URL(location.href);
   u.searchParams.set("mp", "1");
