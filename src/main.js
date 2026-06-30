@@ -1981,74 +1981,71 @@ window.addEventListener("keydown", (e) => {
 document.getElementById("start-btn").addEventListener("click", startRace);
 // "Race again" repeats whichever mode you were just in.
 document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
-// Time trial is solo-only; hide it in multiplayer.
+// Time trial is solo-only; updateModeBtn() hides it in multiplayer. Always attach
+// the handler (even if we loaded straight into MP) so it works after a Solo switch.
 const timeTrialBtn = document.getElementById("time-trial-btn");
-if (timeTrialBtn) {
-  if (MP.enabled) timeTrialBtn.classList.add("hidden");
-  else timeTrialBtn.addEventListener("click", startTimeTrial);
-}
+timeTrialBtn?.addEventListener("click", startTimeTrial);
 
-// Solo / Multiplayer toggle. Only offered when an Ably key is configured.
-// Switches mode at RUNTIME (no page reload, so no jarring flash): entering
-// connects and drops you straight into the lobby; leaving tears the connection
-// down and returns to the menu. The ?mp flag is kept in sync via replaceState so
-// the invite link stays shareable and a refresh lands in the same mode.
+// Solo / Multiplayer mode. Only offered when an Ably key is configured. Picking
+// Multiplayer reveals the HOST / JOIN choices (it does NOT connect yet):
+//   • Host Game → connect to your own room and drop into the lobby with a share code.
+//   • Join → reload into a friend's room by code and land in their lobby.
 const modeToggle = document.getElementById("mode-toggle");
 const modeSoloBtn = document.getElementById("mode-solo");
 const modeMpBtn = document.getElementById("mode-mp");
-const mpJoin = document.getElementById("mp-join");
-const mpMyCode = document.getElementById("mp-mycode");
 const mpCodeInput = document.getElementById("mp-code");
+let _mpUIMode = false; // showing the multiplayer host/join panel (separate from "connected")
 function updateModeBtn() {
-  modeSoloBtn?.classList.toggle("is-active", !MP.enabled);
-  modeMpBtn?.classList.toggle("is-active", MP.enabled);
-  // Show the join field in Multiplayer mode; surface this client's room code.
-  mpJoin?.classList.toggle("hidden", !MP.enabled);
-  if (mpMyCode) mpMyCode.textContent = WORLD_SEED;
+  modeSoloBtn?.classList.toggle("is-active", !_mpUIMode);
+  modeMpBtn?.classList.toggle("is-active", _mpUIMode);
+  document.getElementById("mp-actions")?.classList.toggle("hidden", !_mpUIMode);
+  // In multiplayer the lobby is where you launch a race, so hide the solo buttons.
+  document.getElementById("start-btn")?.classList.toggle("hidden", _mpUIMode);
+  if (timeTrialBtn) timeTrialBtn.classList.toggle("hidden", _mpUIMode);
 }
-// Join a friend's lobby by code: their code IS the world seed + room, so we
-// reload into that world with multiplayer on. In a PWA this navigation stays in
-// the installed app (no Safari hop), which is why a typed code beats a link.
-function joinByCode() {
+
+// Host: connect to my own room (= my world seed) and go straight into the lobby.
+// The click is the user gesture beginRace needs for fullscreen + motion permission.
+function hostGame() {
+  if (!MP.enabled) enterMultiplayer();
+  beginRace(); // gesture setup + (MP.enabled) enterLobby
+}
+// Join by code: a friend's code IS their world seed, so reload into that world
+// with multiplayer on and auto-open the lobby. enableMotion() here grabs iOS
+// motion permission inside the gesture so it survives the reload.
+function joinGame() {
   const code = (mpCodeInput?.value || "").trim().toUpperCase();
-  if (!code || code === WORLD_SEED) return;
+  if (!/^[A-Z0-9]{2,6}$/.test(code)) { mpCodeInput?.focus(); return; }
+  if (code === WORLD_SEED && MP.enabled) { beginRace(); return; } // already in this room
+  audio.unlock();
+  try { input.enableMotion(); } catch {}
+  try { sessionStorage.setItem("mp-autolobby", "1"); } catch {}
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
   location.href = u.toString();
 }
-document.getElementById("mp-join-btn")?.addEventListener("click", joinByCode);
-mpCodeInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") joinByCode();
-});
 function enterMultiplayer() {
+  _mpUIMode = true;
   audio.unlock();
   const u = new URL(location.href);
   u.searchParams.set("mp", "1");
   u.searchParams.set("seed", WORLD_SEED);
   history.replaceState(null, "", u);
-  initMultiplayer(); // connects (async) in the background while we stay on the menu
+  initMultiplayer(); // connects (async) in the background
   updateModeBtn();
-  // Stay on the main menu — START then takes you to the lobby (beginRace handles
-  // the fullscreen/motion gesture setup there, as in solo).
 }
 function exitMultiplayer() {
   if (MP.net) {
-    try {
-      MP.net.close();
-    } catch {
-      /* ignore */
-    }
+    try { MP.net.close(); } catch { /* ignore */ }
     MP.net = null;
   }
   for (const id of [...MP.remotes.keys()]) mpDespawn(id);
   MP.enabled = false;
   MP.inLobby = false;
   MP.startAt = 0;
-  if (MP.hud) {
-    MP.hud.remove();
-    MP.hud = null;
-  }
+  if (MP.hud) { MP.hud.remove(); MP.hud = null; }
+  _mpUIMode = false;
   const u = new URL(location.href);
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
@@ -2057,13 +2054,23 @@ function exitMultiplayer() {
 }
 if (modeToggle && resolveAblyKey()) {
   modeToggle.classList.remove("hidden");
-  updateModeBtn();
   modeSoloBtn?.addEventListener("click", () => {
     if (MP.enabled) exitMultiplayer();
+    else { _mpUIMode = false; updateModeBtn(); }
   });
-  modeMpBtn?.addEventListener("click", () => {
-    if (!MP.enabled) enterMultiplayer();
-  });
+  modeMpBtn?.addEventListener("click", () => { _mpUIMode = true; updateModeBtn(); });
+  document.getElementById("mp-host-btn")?.addEventListener("click", hostGame);
+  document.getElementById("mp-join-btn")?.addEventListener("click", joinGame);
+  mpCodeInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") joinGame(); });
+  // Arriving via an invite link / join reload (?mp=1): show Multiplayer mode, and
+  // if we flagged an auto-lobby just before reloading, drop straight into the lobby.
+  if (new URLSearchParams(location.search).has("mp")) {
+    _mpUIMode = true;
+    let autolobby = false;
+    try { autolobby = !!sessionStorage.getItem("mp-autolobby"); if (autolobby) sessionStorage.removeItem("mp-autolobby"); } catch { /* ignore */ }
+    if (autolobby && !_installGate) setTimeout(() => enterLobby(), 50);
+  }
+  updateModeBtn();
 }
 
 // A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
@@ -2102,8 +2109,8 @@ function wireCopyButton(btn, label) {
   });
 }
 wireCopyButton(document.getElementById("lobby-copy"), "📋 Copy invite link");
-for (const id of ["lobby-share", "mp-share"]) {
-  const btn = document.getElementById(id);
+{
+  const btn = document.getElementById("lobby-share");
   if (btn && navigator.share) {
     btn.classList.remove("hidden");
     btn.addEventListener("click", async () => {
@@ -2112,6 +2119,14 @@ for (const id of ["lobby-share", "mp-share"]) {
     });
   }
 }
+// Joiner's pre-race gesture: re-grab fullscreen + tilt (the join reload drops the
+// host's gesture). Optional — the race still runs without it (touch controls).
+document.getElementById("lobby-ready")?.addEventListener("click", () => {
+  audio.unlock();
+  try { enterFullscreenLandscape(); input.enableMotion(); input.calibrate(); } catch { /* ignore */ }
+  const b = document.getElementById("lobby-ready");
+  if (b) { b.textContent = "✓ Tilt ready"; b.disabled = true; }
+});
 
 function startRace() {
   timeTrial = false;
@@ -2235,10 +2250,13 @@ function renderLobby() {
       list.appendChild(li);
     }
   }
+  const host = mpIsHost();
   const startBtn = document.getElementById("lobby-start");
   const waiting = document.getElementById("lobby-waiting");
-  if (startBtn) startBtn.style.display = mpIsHost() ? "" : "none";
-  if (waiting) waiting.style.display = mpIsHost() ? "none" : "";
+  const ready = document.getElementById("lobby-ready");
+  if (startBtn) startBtn.style.display = host ? "" : "none"; // only the host launches
+  if (waiting) waiting.style.display = host ? "none" : "";   // others wait for the host
+  if (ready) ready.style.display = host ? "none" : "";       // joiner: enable tilt first
 }
 
 function enterLobby() {

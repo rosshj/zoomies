@@ -77,8 +77,13 @@ body {
   inset: 0;
   z-index: 50;
   display: flex;
-  align-items: center;
+  /* flex-start (not center) + a scrollable overlay + margin:auto on the card lets a
+     tall menu SCROLL instead of clipping its top/bottom (center-aligned flex items
+     taller than the container can't be scrolled into view). */
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: radial-gradient(circle at 50% 30%, #1b2540, #070a12 80%);
   padding: 10px;
   text-align: center;
@@ -220,8 +225,7 @@ body {
   border-radius: 18px;
   padding: 16px 22px;
   max-width: min(560px, 100%);
-  max-height: 97%;
-  overflow-y: auto;
+  margin: auto; /* centre when it fits the viewport; the overlay scrolls when it doesn't */
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   /* Frosted glass so the live 3D scene reads through behind the menu. */
   backdrop-filter: blur(7px) saturate(1.15);
@@ -807,6 +811,39 @@ kbd {
 #lobby-code {
   letter-spacing: 2px;
   color: var(--accent);
+}
+/* Big, copyable share code in the lobby. */
+.lobby-code-big {
+  display: inline-block;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 6px;
+  color: var(--accent);
+  background: rgba(255, 179, 0, 0.1);
+  border: 1px dashed rgba(255, 179, 0, 0.55);
+  border-radius: 12px;
+  padding: 6px 16px;
+  margin: 2px auto 10px;
+  user-select: all;
+  -webkit-user-select: all;
+}
+.lobby-share-label,
+.lobby-players-label {
+  font-size: 13px;
+  opacity: 0.8;
+  margin: 8px 0 2px;
+}
+/* Menu Host/Join panel. */
+.mp-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+.mp-or {
+  font-size: 12px;
+  opacity: 0.6;
+  margin: 6px 0 2px;
 }
 /* Live connection state in the lobby — green when connected, red on failure. */
 .lobby-status {
