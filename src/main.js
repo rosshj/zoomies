@@ -657,7 +657,7 @@ function makeMpIdentity() {
 const MP = {
   enabled: false, net: null, remotes: new Map(),
   sendAcc: 0, hudAcc: 0, hud: null,
-  inLobby: false, startAt: 0,
+  inLobby: false, startAt: 0, connState: null,
 };
 
 // Host election: the lowest connection id is host. Every client derives this
@@ -712,9 +712,10 @@ function initMultiplayer() {
   if (MP.enabled) return; // already connected (idempotent for runtime toggling)
   MP.enabled = true;
   MP.hud = mpDebugHud();
-  MP.hud.textContent = "MP · connecting…";
+  MP.connState = "connecting";
+  setMpStatus("connecting");
   const transportP = ablyKey
-    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED })
+    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
     : createPartyTransport({ host, room: WORLD_SEED });
   transportP
     .then((transport) => {
@@ -722,17 +723,21 @@ function initMultiplayer() {
       MP.net = net;
       net.on("peer", (identity) => {
         mpSpawn(identity);
+        setMpStatus("connected"); // refresh the "N friends here" count immediately
         if (MP.inLobby) renderLobby();
       });
       net.on("peerleave", (id) => {
         mpDespawn(id);
+        setMpStatus("connected");
         if (MP.inLobby) renderLobby();
       });
       // Once our own connection is acknowledged, fill in the lobby (it may have
       // been opened before the socket finished connecting).
       net.on("open", () => {
+        setMpStatus("connected");
         if (MP.inLobby) renderLobby();
       });
+      net.on("close", () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"));
       net.on("state", (id, pose) => {
         const r = MP.remotes.get(id);
         if (r) r.pushState(pose);
@@ -766,9 +771,54 @@ function initMultiplayer() {
     })
     .catch((err) => {
       console.warn("[zoomies] multiplayer failed to start:", err);
-      MP.enabled = false;
-      if (MP.hud) MP.hud.textContent = "MP · failed";
+      // Keep MP.enabled so the lobby/menu can SHOW the failure instead of silently
+      // reverting to solo (a dead button is exactly what reads as "doesn't work").
+      const code = err && err.code;
+      const msg =
+        code === "NO_KEY" ? "Multiplayer isn't configured (no key)" :
+        code === "SDK_LOAD" ? "Couldn't load multiplayer (check your connection)" :
+        code === "AUTH" ? "Multiplayer key rejected — it may be expired" :
+        code === "TIMEOUT" ? "Couldn't reach the server — check your connection" :
+        (err && err.message) || "Multiplayer failed to connect";
+      MP.connState = "failed";
+      setMpStatus("failed", msg);
     });
+}
+
+// Friendly multiplayer connection status, shown in BOTH the bottom-left readout
+// and the lobby, so a player always knows whether they're actually connected
+// (silent failure was the main reason MP "looked broken"). Ably drives this live.
+function setMpStatus(state, reason) {
+  MP.connState = state;
+  const label =
+    state === "connected" ? "Connected" :
+    state === "connecting" ? "Connecting…" :
+    state === "disconnected" ? "Reconnecting…" :
+    state === "suspended" ? "Connection lost — retrying…" :
+    state === "failed" ? (reason || "Connection failed") :
+    state === "closed" ? "Disconnected" :
+    "…";
+  if (MP.hud) {
+    const live = state === "connected";
+    MP.hud.textContent = live
+      ? `MP · peers ${MP.remotes.size} · ping ${MP.net ? Math.round(MP.net.clock.rtt) : "—"}ms · live`
+      : `MP · ${label}`;
+    MP.hud.style.color = state === "failed" ? "#ff9a8a" : "#cdf";
+  }
+  // Connected? show the peer count so a host SEES friends arrive (the clearest
+  // possible "it's working" signal). Otherwise show the friendly state label.
+  const peers = MP.remotes.size;
+  const detail = state === "connected"
+    ? (peers > 0 ? `Connected · ${peers} ${peers === 1 ? "friend" : "friends"} here` : "Connected · waiting for friends…")
+    : label;
+  for (const id of ["lobby-status", "mp-menu-status"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = detail;
+    el.classList.toggle("error", state === "failed");
+    el.classList.toggle("ok", state === "connected");
+  }
+  if (state === "failed" && reason && typeof hud !== "undefined" && hud) hud.showToast?.(reason);
 }
 
 // Broadcast my pose (~18 Hz) and interpolate every ghost kart. Runs every frame
@@ -803,9 +853,9 @@ function updateMultiplayer(dt) {
   MP.hudAcc += dt;
   if (MP.hudAcc >= 0.5 && MP.hud) {
     MP.hudAcc = 0;
-    MP.hud.textContent = `MP · peers ${MP.remotes.size} · ping ${Math.round(net.clock.rtt)}ms · ${
-      net.connected ? "live" : "…"
-    }`;
+    // Refresh the readout through the shared status formatter so peers/ping update
+    // while connected and the live connection state shows otherwise.
+    setMpStatus(net.connected ? "connected" : MP.connState || "connecting");
   }
 }
 
@@ -2004,19 +2054,51 @@ if (modeToggle && resolveAblyKey()) {
   });
 }
 
-// Lobby: copy the invite link (already carries ?seed=…&mp=1) to the clipboard.
-const lobbyCopyBtn = document.getElementById("lobby-copy");
-if (lobbyCopyBtn) {
-  lobbyCopyBtn.addEventListener("click", async () => {
-    const label = "📋 Copy invite link";
+// A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
+// independent of whatever junk is on location.href right now.
+function inviteURL() {
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", WORLD_SEED);
+  u.searchParams.set("mp", "1");
+  return u.toString();
+}
+
+// Native share (phones) where available, else copy to clipboard. Wired to both the
+// menu and lobby invite buttons; the share buttons reveal themselves only when the
+// Web Share API exists.
+async function shareInvite() {
+  const url = inviteURL();
+  const data = { title: "Zoomies GP", text: `Join my race! Room code ${WORLD_SEED}`, url };
+  try {
+    if (navigator.share) { await navigator.share(data); return true; }
+  } catch {
+    /* user cancelled or share failed — fall through to copy */
+  }
+  try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+  return false;
+}
+function wireCopyButton(btn, label) {
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(location.href);
-      lobbyCopyBtn.textContent = "✓ Link copied!";
+      await navigator.clipboard.writeText(inviteURL());
+      btn.textContent = "✓ Link copied!";
     } catch {
-      lobbyCopyBtn.textContent = "⚠ Copy failed — copy the URL";
+      btn.textContent = "⚠ Copy failed — copy the URL";
     }
-    setTimeout(() => (lobbyCopyBtn.textContent = label), 1800);
+    setTimeout(() => (btn.textContent = label), 1800);
   });
+}
+wireCopyButton(document.getElementById("lobby-copy"), "📋 Copy invite link");
+for (const id of ["lobby-share", "mp-share"]) {
+  const btn = document.getElementById(id);
+  if (btn && navigator.share) {
+    btn.classList.remove("hidden");
+    btn.addEventListener("click", async () => {
+      const ok = await shareInvite();
+      if (!ok) { btn.textContent = "✓ Link copied!"; setTimeout(() => (btn.textContent = "📤 Share invite"), 1800); }
+    });
+  }
 }
 
 function startRace() {

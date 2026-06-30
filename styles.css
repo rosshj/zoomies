@@ -808,6 +808,21 @@ kbd {
   letter-spacing: 2px;
   color: var(--accent);
 }
+/* Live connection state in the lobby — green when connected, red on failure. */
+.lobby-status {
+  font-size: 13px;
+  margin: 2px 0 8px;
+  opacity: 0.85;
+  font-weight: 600;
+}
+.lobby-status.ok { color: #54d98b; }
+.lobby-status.error { color: #ff7a6b; opacity: 1; }
+.mp-share-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
 
 /* ===== HUD ===== */
 #hud {

@@ -149,12 +149,17 @@
         <!-- Multiplayer: host shares their code (START to host); a friend types it
              in to join that lobby. Shown only in Multiplayer mode. -->
         <div id="mp-join" class="mp-join hidden">
-          <p class="hint">Your code: <strong id="mp-mycode">—</strong> · START to host</p>
+          <p class="hint">Your room code: <strong id="mp-mycode">—</strong></p>
+          <p id="mp-menu-status" class="lobby-status">Connecting…</p>
           <div class="mp-join-row">
             <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
                    autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter friend's code" />
             <button id="mp-join-btn" class="secondary small">Join</button>
           </div>
+          <div class="mp-share-row">
+            <button id="mp-share" class="secondary small hidden">📤 Share invite</button>
+          </div>
+          <p class="hint">Share your code (or invite link); then press START to race together.</p>
         </div>
         <div class="menu-options">
           <button id="laps-btn" class="secondary small">Laps: 3</button>
@@ -254,11 +259,15 @@
     <div class="menu-card">
       <h1>🏁 Lobby</h1>
       <p class="tagline">Room <strong id="lobby-code">—</strong></p>
+      <p id="lobby-status" class="lobby-status">Connecting…</p>
       <ol id="lobby-players"></ol>
       <button id="lobby-start">START RACE</button>
-      <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+      <div class="mp-share-row">
+        <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
+        <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+      </div>
       <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
-      <p class="hint">Share the invite link to add players.</p>
+      <p class="hint">Friends join by entering your room code, or open the invite link.</p>
       <button id="lobby-back" class="secondary small">← Main Menu</button>
     </div>
   </div>
