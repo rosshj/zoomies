@@ -1625,7 +1625,10 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat
     new THREE.MeshStandardMaterial({ map: makeBannerTexture(texIndex), roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
   );
   banner.position.set(p.x, midY, p.z);
-  banner.rotation.y = yaw;
+  // Face the readable side at oncoming traffic: the plane's front (+Z) sits along
+  // the tangent (the way you drive), so without the flip you'd approach its BACK
+  // and read the text mirrored. +π turns the readable face toward the racers.
+  banner.rotation.y = yaw + Math.PI;
   banner.castShadow = true;
   banner.layers.set(1);
   scene.add(banner);
