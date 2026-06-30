@@ -77,6 +77,26 @@ function build(scene, track, opts) {
     g.traverse((o) => (o.castShadow = true));
     return { mesh: g, rest: s / 2 };
   };
+  // Item box: a hovering, slowly-spinning translucent cube with a glowing core —
+  // the classic "drive through it for a power-up" pickup. Unlike crates it doesn't
+  // tumble; it bobs in place (see the box animation in update) and vanishes when
+  // grabbed, respawning in the same spot a few seconds later.
+  const boxShellMat = new THREE.MeshStandardMaterial({
+    color: 0xffd23b, emissive: 0xff9500, emissiveIntensity: 0.55,
+    roughness: 0.35, metalness: 0.25, transparent: true, opacity: 0.82,
+  });
+  const boxCoreMat = new THREE.MeshStandardMaterial({ color: 0xfff4c2, emissive: 0xfff0a0, emissiveIntensity: 1.5, roughness: 0.4 });
+  const makeItemBox = () => {
+    const s = 2.0;
+    const g = new THREE.Group();
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), boxShellMat);
+    shell.castShadow = true;
+    g.add(shell);
+    // A bright floating core so the box reads as "holding something" and glows at night.
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), boxCoreMat);
+    g.add(core);
+    return { mesh: g, rest: 2.4 }; // rest > half-height => it floats clear of the ground
+  };
   const makeBarrel = () => {
     const r = 0.7 + rand() * 0.2;
     const h = 1.9 + rand() * 0.3;
@@ -90,13 +110,13 @@ function build(scene, track, opts) {
     g.traverse((o) => (o.castShadow = true));
     return { mesh: g, rest: h / 2 };
   };
-  const addProp = (x, z, groundY, built, catnip = false) => {
+  const addProp = (x, z, groundY, built, catnip = false, box = false) => {
     const mesh = built.mesh;
     mesh.position.set(x, groundY + built.rest, z);
     group.add(mesh);
     props.push({
-      mesh, rest: built.rest, hit: 0, asleep: true, settle: false, catnip, dead: 0,
-      ox2: x, oz2: z, groundY,
+      mesh, rest: built.rest, hit: 0, asleep: true, settle: false, catnip, box, dead: 0,
+      ox2: x, oz2: z, groundY, hoverY: groundY + built.rest, phase: rand() * Math.PI * 2,
       pos: new THREE.Vector3(x, groundY + built.rest, z),
       vel: new THREE.Vector3(), angVel: new THREE.Vector3(), quat: new THREE.Quaternion(),
     });
@@ -174,6 +194,20 @@ function build(scene, track, opts) {
   for (const f of catnipFracs) {
     const s = catnipSpot(f);
     addProp(s.x, s.z, s.gy, makeCrate(true), true);
+  }
+
+  // Item boxes sit ON the racing line (a row you drive through), evenly spaced
+  // around the lap so there's always one coming up. More on a bigger track.
+  const BOX_RESPAWN = 5; // seconds hidden after a pickup before it comes back
+  const boxCount = size >= 0.55 ? 5 : 3;
+  for (let b = 0; b < boxCount; b++) {
+    const frac = (b + 0.5) / boxCount + (rand() - 0.5) * 0.04;
+    const idx = Math.floor(((frac % 1) + 1) % 1 * N) % N;
+    const p = track._pts[idx];
+    const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
+    const lat = (rand() * 2 - 1) * (track.halfWidth * 0.45); // near the centre line
+    const x = p.x + side.x * lat, z = p.z + side.z * lat;
+    addProp(x, z, track.groundInfo(x, z).y, makeItemBox(), false, true);
   }
 
   const MAX = 64;
@@ -314,6 +348,12 @@ function build(scene, track, opts) {
           if (opts.onCatnip && mk.kart) opts.onCatnip(mk.kart, pr.pos);
           continue;
         }
+        if (pr.box) {
+          pr.dead = BOX_RESPAWN; // vanish, respawn in the same spot after a beat
+          pr.mesh.visible = false;
+          if (opts.onItem && mk.kart) opts.onItem(mk.kart, pr.pos);
+          continue;
+        }
         const launch = 16 + Math.min(mk.speed, 150) * 0.95;
         const lift = 7 + Math.min(mk.speed, 120) * 0.06;
         pr.asleep = false;
@@ -329,6 +369,7 @@ function build(scene, track, opts) {
       if (pr.dead > 0) {
         pr.dead -= dt;
         if (pr.dead <= 0) {
+          if (pr.box) { pr.mesh.visible = true; continue; } // boxes come back in place
           // Respawn the catnip crate at a NEW spot (never the same place), upright
           // and asleep.
           const s = freshCatnipSpot(pr.ox2, pr.oz2);
@@ -345,6 +386,14 @@ function build(scene, track, opts) {
           pr.mesh.quaternion.copy(pr.quat);
           pr.mesh.visible = true;
         }
+        continue;
+      }
+      if (pr.box) {
+        // Hover + slow spin in place (never tumbles); a gentle tilt adds life.
+        pr.phase += dt;
+        pr.mesh.position.set(pr.pos.x, pr.hoverY + Math.sin(pr.phase * 1.8) * 0.22, pr.pos.z);
+        pr.mesh.rotation.y += dt * 1.1;
+        pr.mesh.rotation.x = Math.sin(pr.phase * 0.9) * 0.12;
         continue;
       }
       stepProp(pr, dt);
@@ -464,6 +513,7 @@ function build(scene, track, opts) {
     return out;
   }
 
-  console.log(`[zoomies] knockable props: ${props.length} crates/barrels + ${leafPiles.length} leaf piles`);
+  const boxN = props.filter((p) => p.box).length;
+  console.log(`[zoomies] knockable props: ${props.length - boxN} crates/barrels + ${leafPiles.length} leaf piles + ${boxN} item boxes`);
   return { update, group, count: props.length + leafPiles.length, catnipTargets };
 }

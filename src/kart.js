@@ -130,6 +130,8 @@ export class Kart {
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
     this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
+    this.shieldTimer = 0; // item-box shield: hands-free protection (no button held)
+    this.triShots = 0; // item-box tri-furball: this many upcoming shots fire a wide 3-way fan
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -286,6 +288,17 @@ export class Kart {
   get catnipBoosting() {
     return this.catnipTimer > 0;
   }
+  // Item-box shield: hands-free hairball protection for `secs` (no button held).
+  // The bubble shows and blocks hits for the duration (see update()).
+  giveShield(secs = 15) {
+    if (this.finished) return;
+    this.shieldTimer = Math.max(this.shieldTimer, secs);
+  }
+  // Item-box tri-furball: the next `n` shots each fire a wide 3-way fan.
+  giveTriShots(n = 3) {
+    if (this.finished) return;
+    this.triShots = Math.max(this.triShots, n);
+  }
 
   // Spin out — keep the kart's momentum so it slides out realistically and
   // the spin decays, rather than whipping around in place. `impactDir` (xz)
@@ -340,6 +353,13 @@ export class Kart {
     if (this.catnipTimer > 0) {
       this.catnipTimer -= dt;
       this.applyBoost(1.5, 0.18, true);
+    }
+    // Item-box shield: force the bubble on for the duration, whatever the button
+    // says. Runs after the input/AI assignment of `shielding` so it can't be
+    // cleared mid-duration; the bubble + hit-blocking read from `shielding`.
+    if (this.shieldTimer > 0) {
+      this.shieldTimer -= dt;
+      this.shielding = true;
     }
 
     if (this.spinTimer > 0) {

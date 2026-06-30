@@ -28,6 +28,16 @@ full — so there's always a way to claw back into the race.
 Getting hit by a hairball makes a kart **spin out and stop**. First kart to
 finish **3 laps** wins.
 
+**Item boxes** float along the racing line — drive through one for a random
+power-up:
+
+- 🛡️ **Shield** — a 15-second bubble that blocks hairballs, no button to hold.
+- 🐾 **Tri-furball** — your next three shots fan into a wide three-way blast.
+- 🌿 **Catnip boost** — a hands-free speed surge with a little extra rush (wider
+  FOV, a faint rumble, and a thick dust/skid trail).
+
+Smashing a hidden **catnip crate** also grants the catnip boost.
+
 Steering reads the phone's gravity/tilt, so hold the device like a steering
 wheel and tilt left/right. If centre drifts, tap **"↺ center steering"** at the
 bottom of the screen to recalibrate neutral. The karts are kept on the road by
@@ -94,8 +104,6 @@ src/
 
 ### Ideas for later
 
-- More tracks, karts, and cat breeds
-- Item boxes / power-ups beyond hairballs
-- Drifting + mini-turbo boost
-- Online multiplayer
+- More tracks and biomes
 - Loading real GLTF cat/kart models in place of the procedural ones
+- Item/hazard variety beyond the current three power-ups

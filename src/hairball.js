@@ -1,5 +1,7 @@
 import * as THREE from "three";
 
+const UP = new THREE.Vector3(0, 1, 0);
+
 // Manages flying hairballs and their collisions with karts.
 export class HairballManager {
   constructor(scene) {
@@ -17,7 +19,18 @@ export class HairballManager {
   // shot flies faster, flatter and further.
   spawn(owner, charge = 0) {
     const { pos, dir } = owner.muzzle();
-    this._add(pos, dir, charge, owner, false);
+    // Tri-furball power-up: each of the next few shots fans into a wide 3-way
+    // blast (a centre shot plus two spread either side), so it's far easier to
+    // tag a rival. Consumes one charge per trigger-pull.
+    if (owner.triShots > 0) {
+      owner.triShots--;
+      const SPREAD = 0.2; // radians off-centre
+      for (const a of [-SPREAD, 0, SPREAD]) {
+        this._add(pos, dir.clone().applyAxisAngle(UP, a), charge, owner, false);
+      }
+    } else {
+      this._add(pos, dir, charge, owner, false);
+    }
   }
 
   // A network-replicated hairball from a remote player: visual only (the firing

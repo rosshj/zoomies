@@ -397,9 +397,10 @@ scene.add(track.group);
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
 
-// Knockable roadside props (crates/barrels/leaf piles). Best-effort: if it fails
-// to build, `props` stays null and the game is fine. Smashing a green CATNIP crate
-// grants that kart an 8s hands-free green boost.
+// Knockable roadside props (crates/barrels/leaf piles) plus floating ITEM BOXES
+// on the racing line. Best-effort: if it fails to build, `props` stays null and
+// the game is fine. Smashing a hidden CATNIP crate grants that kart a hands-free
+// green boost; driving through an item box rolls a random power-up (see grantItem).
 let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
@@ -411,9 +412,28 @@ initProps(scene, track, {
     audio.boost(kart === player ? null : kart.position);
     if (kart === player) hud.showToast("🌿 Catnip!");
   },
+  onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
   props = p;
 });
+
+// Item-box pickup: roll one of three power-ups for whoever drove through the box.
+// Each is "fire-and-forget" — no button to hold — so it never adds control load.
+function grantItem(kart) {
+  const roll = Math.random();
+  effects.tootBurst(kart, 2, false); // a sparkly grab poof
+  audio.boost(kart === player ? null : kart.position);
+  if (roll < 0.34) {
+    kart.giveShield(15);
+    if (kart === player) hud.showToast("🛡️ Shield — 15s!");
+  } else if (roll < 0.67) {
+    kart.giveTriShots(3);
+    if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
+  } else {
+    kart.giveCatnip();
+    if (kart === player) hud.showToast("🌿 Catnip boost!");
+  }
+}
 
 // Kart headlights (night/dusk only): REAL shadowless spotlights aimed forward and
 // down, so they actually illuminate the road and any props ahead — the lit pool a
@@ -2784,13 +2804,16 @@ function updateCamera(dt, snap = false) {
   const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
   if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
 
-  // FOV kick when boosting for a sense of speed.
-  const targetFov = 62 + (player.boosting ? 7 : 0);
+  // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
+  // a rush — but only a touch, so the road stays readable and easy to drive.
+  const targetFov = 62 + (player.boosting ? 7 : 0) + (player.catnipBoosting ? 4 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
   camera.updateProjectionMatrix();
 
-  // Screen shake (decays).
+  // Screen shake (decays). Catnip keeps a faint constant rumble going (minor, so
+  // it reads as raw speed without fighting your steering).
   shakeMag *= 1 - Math.min(1, 6 * dt);
+  if (player.catnipBoosting) shakeMag = Math.max(shakeMag, 0.14);
   camera.position.copy(camPos);
   if (shakeMag > 0.001) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
@@ -3436,12 +3459,14 @@ function loop(now) {
 
     // Rainbow boost trail + drift sparks/skids for the player.
     if (player.boosting) effects.trickle(player, player.catnipBoosting);
+    const _catnipBurnout = player.catnipBoosting && _sp > 10 && !player.airborne;
     if (player.drifting) {
       effects.driftSparks(player);
       effects.skid(player);
-    } else if (_hardTurn) {
+    } else if (_hardTurn || _catnipBurnout) {
       // Also lay rubber when cornering hard at speed (not only while drifting),
-      // so tight turns leave marks. (_hardTurn already gates on steer + speed.)
+      // so tight turns leave marks — and catnip's raw torque scorches the road
+      // even on the straights. (_hardTurn already gates on steer + speed.)
       effects.skid(player);
     }
 
@@ -3450,7 +3475,8 @@ function loop(now) {
     // the kart is actually on the ground (no dust mid-jump). One color sample/frame.
     if (!player.airborne && _sp > 6) {
       biomeDustColor(player.position.x, player.position.z, _dustCol);
-      const amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      let amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
       if (amt > 0.02) effects.dust(player, _dustCol, amt);
     }
     // Chromatic aberration ramps up with the boost.
