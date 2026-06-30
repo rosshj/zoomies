@@ -397,42 +397,55 @@ scene.add(track.group);
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 
 
-// Knockable roadside props (crates/barrels/leaf piles) plus floating ITEM BOXES
-// on the racing line. Best-effort: if it fails to build, `props` stays null and
-// the game is fine. Smashing a hidden CATNIP crate grants that kart a hands-free
-// green boost; driving through an item box rolls a random power-up (see grantItem).
+// Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
+// BOXES on the racing line. Best-effort: if it fails to build, `props` stays null
+// and the game is fine. Grounded crates just tumble; only the floating boxes hold
+// a power-up — driving through one rolls a position-weighted item (see grantItem).
 let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
-  onCatnip: (kart, pos) => {
-    kart.giveCatnip();
-    effects.tootBurst(kart, 2, true); // green smash poof
-    audio.boost(kart === player ? null : kart.position);
-    if (kart === player) hud.showToast("🌿 Catnip!");
-  },
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
   props = p;
 });
 
-// Item-box pickup: roll one of three power-ups for whoever drove through the box.
-// Each is "fire-and-forget" — no button to hold — so it never adds control load.
+const BOX_COOLDOWN = 3; // s — a kart can't vacuum up boxes back-to-back
+
+// Power-up box pickup. The roll is POSITION-WEIGHTED to keep races tight: the
+// leader mostly gets a defensive shield (which doesn't extend a lead in distance),
+// while trailing karts get catch-up speed (catnip) and offence (tri-furball). The
+// three weights interpolate by race position and always sum to 1. Returns false if
+// the box shouldn't be consumed (kart on cooldown), so it stays floating.
 function grantItem(kart) {
-  const roll = Math.random();
+  // Multiplayer rivals are render-only ghosts; their real power-up is granted on
+  // THEIR client. Let the box sink here, but don't apply gameplay effects to a
+  // ghost (a phantom shield would wrongly block our shots).
+  if (kart.isRemote) return true;
+  if (kart.boxCooldown > 0) return false; // still cooling down — leave the box
+  kart.boxCooldown = BOX_COOLDOWN;
+
+  const n = Math.max(2, _fieldCount);
+  const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
+  const wShield = 0.65 - 0.5 * f; // 0.65 (leader) .. 0.15 (last)
+  const wTri = 0.25 + 0.15 * f;   // 0.25 (leader) .. 0.40 (last)
+  // catnip takes the remainder: 0.10 (leader) .. 0.45 (last)
+
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
-  if (roll < 0.34) {
+  const r = Math.random();
+  if (r < wShield) {
     kart.giveShield(15);
     if (kart === player) hud.showToast("🛡️ Shield — 15s!");
-  } else if (roll < 0.67) {
+  } else if (r < wShield + wTri) {
     kart.giveTriShots(3);
     if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
   } else {
     kart.giveCatnip();
     if (kart === player) hud.showToast("🌿 Catnip boost!");
   }
+  return true;
 }
 
 // Kart headlights (night/dusk only): REAL shadowless spotlights aimed forward and
@@ -2967,7 +2980,9 @@ function updatePlacement() {
     return b.totalProgress - a.totalProgress;
   });
   field.forEach((k, idx) => (k.place = idx + 1));
+  _fieldCount = field.length; // size of the field, for position-weighted item rolls
 }
+let _fieldCount = 1;
 
 const SHOOT_CHARGE_TIME = 0.7; // seconds of hold for a full-power shot
 const SHOOT_RECHARGE = 1.2; // min seconds between shots (no spamming)
@@ -3492,12 +3507,11 @@ function loop(now) {
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
-    // Hand them the catnip crate positions so they go for boxes: leaders only when
-    // one's nearly on their line, trailing karts detour further to gamble for a
-    // catch-up boost (see driveAI). Catnip stays hidden in an ordinary crate, so
-    // which box the AI targets is invisible to the player anyway.
-    const catnipTargets = props ? props.catnipTargets() : null;
-    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, catnipTargets);
+    // Hand them the floating power-up box positions so they go for them: leaders
+    // only when one's nearly on their line, trailing karts detour further for a
+    // catch-up item (see driveAI).
+    const boxTargets = props ? props.boxTargets() : null;
+    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, boxTargets);
     aiActions(dt);
 
     // Step physics

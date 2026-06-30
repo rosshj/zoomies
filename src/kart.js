@@ -132,6 +132,7 @@ export class Kart {
     this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
     this.shieldTimer = 0; // item-box shield: hands-free protection (no button held)
     this.triShots = 0; // item-box tri-furball: this many upcoming shots fire a wide 3-way fan
+    this.boxCooldown = 0; // brief lockout after grabbing a power-up box (no vacuuming)
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -346,6 +347,7 @@ export class Kart {
     }
 
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
+    if (this.boxCooldown > 0) this.boxCooldown -= dt;
     if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
     this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
