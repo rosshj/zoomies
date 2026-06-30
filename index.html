@@ -19,14 +19,19 @@
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 
   <link rel="stylesheet" href="./styles.css" />
-  <!-- three.js via import map so modules can `import ... from "three"` -->
+  <!-- three.js via import map so modules can `import ... from "three"`. Vendored
+       LOCALLY (minified build) instead of a CDN: removes the unpkg dependency AND
+       the external greggman.github.io debug import the non-min build pulls in, so
+       the game loads reliably and works fully offline once the service worker has
+       cached it. Multiplayer's ably/partysocket stay on a CDN (they need the
+       network to relay anyway). -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.171.0/build/three.webgpu.js",
-        "three/webgpu": "https://unpkg.com/three@0.171.0/build/three.webgpu.js",
-        "three/tsl": "https://unpkg.com/three@0.171.0/build/three.tsl.js",
-        "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/",
+        "three": "./vendor/three/three.webgpu.min.js",
+        "three/webgpu": "./vendor/three/three.webgpu.min.js",
+        "three/tsl": "./vendor/three/three.tsl.min.js",
+        "three/addons/": "./vendor/three/addons/",
         "partysocket": "https://esm.sh/partysocket@1.0.2",
         "ably": "https://esm.sh/ably@2"
       }
@@ -393,6 +398,15 @@
 
   </div><!-- /#stage -->
 
+  <!-- Register the offline service worker (skipped with ?nosw=1 for tests). It
+       caches the app shell so the installed PWA launches and plays with no network. -->
+  <script>
+    if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("[zoomies] SW register failed:", e));
+      });
+    }
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

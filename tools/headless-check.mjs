@@ -18,22 +18,13 @@ const MIME = {
   ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon",
 };
 
-// Map the unpkg three.js URLs (from index.html's importmap) to vendored files.
-function vendoredThree(urlPath) {
-  // /vendor/three/build/three.webgpu.js  etc.
-  const rel = urlPath.replace(/^\/vendor\/three\//, "");
-  return path.join(ROOT, "node_modules/three", rel);
-}
-
+// three.js is now vendored under ./vendor/three/ and served straight from the
+// repo, so the harness just serves the working tree — no CDN interception needed.
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(req.url.split("?")[0]);
   if (urlPath === "/favicon.ico") { res.writeHead(204); res.end(); return; }
-  let file;
-  if (urlPath.startsWith("/vendor/three/")) file = vendoredThree(urlPath);
-  else {
-    if (urlPath === "/") urlPath = "/index.html";
-    file = path.join(ROOT, urlPath);
-  }
+  if (urlPath === "/") urlPath = "/index.html";
+  const file = path.join(ROOT, urlPath);
   fs.readFile(file, (err, data) => {
     if (err) { if (process.env.DIAG) console.error("NODE404:", urlPath); res.writeHead(404); res.end("not found: " + urlPath); return; }
     res.writeHead(200, { "content-type": MIME[path.extname(file)] || "application/octet-stream" });
@@ -54,28 +45,6 @@ page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 if (process.env.DIAG) page.on("console", (m) => console.error("PAGE:", m.type(), m.text().slice(0, 200)));
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 page.on("response", (r) => { if (r.status() >= 400) console.error("HTTP", r.status(), r.url()); });
-
-// Rewrite the importmap so `three` resolves to our local vendor route instead of unpkg.
-await page.route("**/*", async (route) => {
-  const url = route.request().url();
-  if (url.includes("unpkg.com/three")) {
-    const m = url.match(/three@[\d.]+\/(.*?)(?:\?.*)?$/);
-    const rel = m ? m[1] : "";
-    const file = path.join(ROOT, "node_modules/three", rel);
-    try {
-      const body = fs.readFileSync(file);
-      return route.fulfill({
-        status: 200,
-        contentType: "text/javascript",
-        headers: { "access-control-allow-origin": "*" },
-        body,
-      });
-    } catch {
-      return route.fulfill({ status: 404, body: "missing vendor: " + rel });
-    }
-  }
-  return route.continue();
-});
 
 // Enable the on-screen FPS/draw-call readout before the app boots.
 const seedTT = !!process.env.TT;
@@ -99,7 +68,9 @@ await ctx.addInitScript(({ seedTT, sel }) => {
   window.requestAnimationFrame = (cb) => o((t) => { window.__raf++; return cb(t); });
 }, { seedTT, sel });
 
-const target = `http://127.0.0.1:${PORT}/index.html?webgl=1`;
+// nosw=1 keeps the service worker out of the gameplay check (a dedicated offline
+// test exercises the SW separately).
+const target = `http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1`;
 await page.goto(target, { waitUntil: "load" });
 
 // Start the race.
