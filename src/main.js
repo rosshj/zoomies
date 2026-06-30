@@ -419,6 +419,7 @@ const BOX_COOLDOWN = 3; // s — a kart can't vacuum up boxes back-to-back
 // three weights interpolate by race position and always sum to 1. Returns false if
 // the box shouldn't be consumed (kart on cooldown), so it stays floating.
 function grantItem(kart) {
+  if (timeTrial) return false; // no power-ups in a solo time trial
   // Multiplayer rivals are render-only ghosts; their real power-up is granted on
   // THEIR client. Let the box sink here, but don't apply gameplay effects to a
   // ghost (a phantom shield would wrongly block our shots).
@@ -1007,7 +1008,9 @@ const timerEl = document.getElementById("timer");
 // lap it's saved (per track) and replayed next time as a translucent ghost kart so
 // you race your own PB. ttRecord is the flat [t,x,y,z,heading,…] log of THIS lap;
 // ttGhost is the loaded best lap being replayed.
-const TT_GHOST_KEY = "zoomies-ttghost-v1";
+// v2: time trials no longer have power-ups, so any v1 ghost/PB recorded with them
+// is invalid — bumping the key drops the old saves and starts these clean.
+const TT_GHOST_KEY = "zoomies-ttghost-v2";
 let ttRecord = null; // flat array being recorded this lap (null outside time trial)
 let _lastGhostSample = -1;
 let ttGhost = null; // { samples, n, cursor } currently being replayed
@@ -2522,6 +2525,9 @@ function prepareRace() {
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   updateBoostUI(); // karts start with an empty boost meter
+  // Power-up boxes are a competitive item — off in time trial (a solo run against
+  // the clock has no rivals to use them on, and they'd pollute the ghost lap).
+  props?.setItemsEnabled?.(!timeTrial);
   raceTime = 0;
   _furballsArmed = false;
   hud.setShootLock(0); // clear any leftover charge banner from a previous race
@@ -3174,7 +3180,7 @@ function formatClock(sec) {
 }
 
 // --- Time trial: local best-lap leaderboard (localStorage; swap for a DB later) ---
-const TT_KEY = "zoomies-timetrial-v1";
+const TT_KEY = "zoomies-timetrial-v2"; // v2: reset — TT lap times pre-date the no-power-ups change
 function loadTimeTrial() {
   try {
     const v = JSON.parse(localStorage.getItem(TT_KEY));

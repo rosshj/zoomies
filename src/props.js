@@ -52,6 +52,8 @@ function build(scene, track, opts) {
   const PROMOTE_DELAY = 3;     // beat after a pickup before a replacement rises
   const PROMOTE_STAGGER = 0.5; // gap between successive replacements
   let promoteTimer = 0;
+  // Whole power-up system on/off (time trial turns it off — no rivals to use items on).
+  let itemsEnabled = true;
   // Real terrain height (incl. the road carve). groundInfo() returns the ROAD-CURVE
   // height, which is wrong off the road (terrain rises away from it) — that's why
   // some leaf piles floated. Prefer the terrain sampler when we have it.
@@ -99,9 +101,9 @@ function build(scene, track, opts) {
     return { mesh: g, rest: h / 2 };
   };
   // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state
-  // ("ground" knockable | "float" power-up | "rising"/"sinking" transitions);
-  // `o.nearLine` marks a crate close enough to the racing line to be promoted into
-  // a floating box later.
+  // ("ground" knockable | "float" power-up | "rising" transition). Which grounded
+  // crate gets promoted into a floating box is decided at runtime (any settled,
+  // on-road, non-spent crate is eligible — see promoteOne).
   const addProp = (x, z, groundY, built, o = {}) => {
     const mesh = built.mesh;
     const restY = groundY + built.rest;
@@ -109,7 +111,7 @@ function build(scene, track, opts) {
     group.add(mesh);
     const pr = {
       mesh, rest: built.rest, hit: 0, asleep: true, settle: false,
-      kind: o.kind || "crate", mode: o.mode || "ground", nearLine: !!o.nearLine,
+      kind: o.kind || "crate", mode: o.mode || "ground", spent: false,
       groundY, phase: rand() * Math.PI * 2, t: 0,
       pos: new THREE.Vector3(x, restY, z),
       vel: new THREE.Vector3(), angVel: new THREE.Vector3(), quat: new THREE.Quaternion(),
@@ -171,7 +173,7 @@ function build(scene, track, opts) {
     const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
     const lat = (rand() * 2 - 1) * (track.halfWidth * 0.45); // near the centre line
     const x = p.x + side.x * lat, z = p.z + side.z * lat;
-    addProp(x, z, track.groundInfo(x, z).y, makeCrate(), { kind: "crate", mode: "float", nearLine: true });
+    addProp(x, z, track.groundInfo(x, z).y, makeCrate(), { kind: "crate", mode: "float" });
   }
 
   const MAX = 64;
@@ -192,7 +194,7 @@ function build(scene, track, opts) {
       const z = p.z + side.z * lat + fwd.z * along;
       const groundY = track.groundInfo(x, z).y;
       if (kindRoll < 0.8) {
-        if (kindRoll < 0.5) addProp(x, z, groundY, makeCrate(), { kind: "crate", nearLine: onRoad });
+        if (kindRoll < 0.5) addProp(x, z, groundY, makeCrate(), { kind: "crate" });
         else addProp(x, z, groundY, makeBarrel(), { kind: "barrel" });
       } else addLeafPile(x, z, groundAt(x, z)); // piles sit on the real ground (groundY is road-curve height -> floats off-road)
     }
@@ -311,8 +313,22 @@ function build(scene, track, opts) {
         if (pr.kind === "crate" && pr.mode === "float") {
           // onItem returns false when the kart is on its pickup cooldown — leave
           // the box floating for the next eligible kart.
-          if (opts.onItem && mk.kart && opts.onItem(mk.kart, pr.pos)) {
-            pr.mode = "sinking"; pr.t = 0;
+          if (itemsEnabled && opts.onItem && mk.kart && opts.onItem(mk.kart, pr.pos)) {
+            // Used: knock it out of the air. It becomes an ordinary crate and
+            // tumbles with physics (from its hover height) to rest on the ground —
+            // a spent box, no longer floating. A roadside crate rises to replace it.
+            pr.quat.copy(pr.mesh.quaternion); // continue from its current spun pose
+            pr.pos.y = pr.groundY + pr.rest + HOVER; // fall from the hover height
+            pr.mode = "ground";
+            pr.spent = true; // a used box never floats again
+            pr.asleep = false;
+            pr.settle = false;
+            const launch = 13 + Math.min(mk.speed, 150) * 0.8;
+            const lift = 5 + Math.min(mk.speed, 120) * 0.05;
+            pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
+            const sm = 10 + Math.random() * 9; // tumble end-over-end
+            pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
+            pr.hit = 0.4;
             promoteTimer = Math.max(promoteTimer, PROMOTE_DELAY);
           }
           continue;
@@ -322,7 +338,6 @@ function build(scene, track, opts) {
         const lift = 7 + Math.min(mk.speed, 120) * 0.06;
         pr.asleep = false;
         pr.settle = false;
-        pr.nearLine = false; // knocked off its spot — no longer a tidy float candidate
         pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
         const sm = 11 + Math.random() * 10; // tumble end-over-end about the across axis
         pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
@@ -365,9 +380,11 @@ function build(scene, track, opts) {
     // a roadside crate so a used box is replaced by one rising from the ground
     // rather than popping in from nowhere.
     if (promoteTimer > 0) promoteTimer -= dt;
-    let floatingNow = 0;
-    for (const pr of props) if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) floatingNow++;
-    if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
+    if (itemsEnabled) {
+      let floatingNow = 0;
+      for (const pr of props) if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) floatingNow++;
+      if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
+    }
 
     // Leaf piles: each leaf is its own particle. Any kart driving through kicks
     // the leaves it touches (settled ones included), so a pile can be scattered
@@ -481,7 +498,11 @@ function build(scene, track, opts) {
   function promoteOne() {
     let best = null, bestScore = -1;
     for (const pr of props) {
-      if (pr.kind !== "crate" || pr.mode !== "ground" || !pr.nearLine || pr.hit > 0) continue;
+      // Any settled, on-the-road crate can rise — EXCEPT a spent box (a used one
+      // never floats again). On-road-now also excludes crates knocked into the weeds.
+      if (pr.kind !== "crate" || pr.mode !== "ground" || pr.spent || pr.hit > 0) continue;
+      if (!pr.asleep) continue; // still tumbling — wait until it has settled
+      if (track.distanceToCenter(pr.pos.x, pr.pos.z) > track.halfWidth + 1) continue;
       let d = 1e9;
       for (const q of props) {
         if (q !== pr && q.kind === "crate" && (q.mode === "float" || q.mode === "rising")) {
@@ -492,6 +513,7 @@ function build(scene, track, opts) {
     }
     if (!best) return false;
     best.mode = "rising"; best.t = 0; best.asleep = true; best.settle = false;
+    best.groundY = track.groundInfo(best.pos.x, best.pos.z).y; // re-anchor: it may have moved
     best.quat.identity(); best.pos.y = best.groundY + best.rest;
     best.mesh.quaternion.identity();
     return true;
@@ -505,7 +527,16 @@ function build(scene, track, opts) {
     return out;
   }
 
+  // Turn the floating power-up boxes on/off (time trial runs with them off). Off
+  // hides the current boxes and stops grants + replenishment; on restores them.
+  function setItemsEnabled(on) {
+    itemsEnabled = !!on;
+    for (const pr of props) {
+      if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) pr.mesh.visible = itemsEnabled;
+    }
+  }
+
   const groundN = props.filter((p) => p.kind === "crate" && p.mode === "ground").length + props.filter((p) => p.kind === "barrel").length;
   console.log(`[zoomies] knockable props: ${groundN} crates/barrels + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`);
-  return { update, group, count: props.length + leafPiles.length, boxTargets };
+  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled };
 }

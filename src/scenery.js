@@ -328,7 +328,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
-  const stringLights = buildStringLights(scene, track, litLevel); // festive bulb strings (swing + glow)
+  const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
@@ -1375,7 +1375,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
 // Festive bulb strings strung in a catenary over a few road spans. The bulbs are
 // bright un-tonemapped colours, so bloom makes them twinkle/glow at night while
 // still reading as little fairy lights by day. One instanced mesh for all bulbs.
-function buildStringLights(scene, track, level = 0) {
+function buildStringLights(scene, track, level = 0, heightAt = null) {
   const up = new THREE.Vector3(0, 1, 0);
   const N = track.samples;
   const SPANS = 5;
@@ -1383,6 +1383,9 @@ function buildStringLights(scene, track, level = 0) {
   const wireMat = new THREE.LineBasicMaterial({ color: 0x2a2622, transparent: true, opacity: 0.7, fog: true });
   const bulbGeo = new THREE.SphereGeometry(0.34, 8, 8);
   const bulbMat = new THREE.MeshBasicMaterial({ toneMapped: false, fog: false });
+  // Each string hangs between two wooden posts (one per end). Collected here as
+  // [x, z, topY] and built into one instanced mesh after the spans are laid out.
+  const postSpots = [];
 
   // Per-span data, kept so the strings can SWING (a damped spring) when karts pass
   // under them and so the bulbs/wire/point-light all follow that sway each frame.
@@ -1395,6 +1398,7 @@ function buildStringLights(scene, track, level = 0) {
     const off = track.halfWidth + 4;
     const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
     const B = new THREE.Vector3(p.x - side.x * off, p.y + 8.5, p.z - side.z * off);
+    postSpots.push([A.x, A.z, A.y], [B.x, B.z, B.y]);
     const per = 12, sag = 3.0;
     const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize(); // sway axis
     const base = [];
@@ -1427,6 +1431,26 @@ function buildStringLights(scene, track, level = 0) {
   }
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   scene.add(mesh);
+
+  // Wooden support posts at each string end (the strings used to float unsupported).
+  // One instanced mesh of tapered poles, each scaled from the ground up to its wire
+  // anchor. Static — the wire endpoints don't swing, so the posts stay aligned.
+  if (postSpots.length) {
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x4a3829, roughness: 0.92 });
+    const postGeo = new THREE.CylinderGeometry(0.15, 0.22, 1, 8); // unit height; Y-scaled per post
+    const posts = new THREE.InstancedMesh(postGeo, postMat, postSpots.length);
+    posts.frustumCulled = false;
+    const pm = new THREE.Matrix4(), pq = new THREE.Quaternion(), psc = new THREE.Vector3(), pv = new THREE.Vector3();
+    for (let i = 0; i < postSpots.length; i++) {
+      const [x, z, topY] = postSpots[i];
+      const gy = heightAt ? heightAt(x, z) : topY - 8.5; // stand on the real ground
+      const h = Math.max(2, topY - gy + 0.3); // up to just above the wire join
+      pm.compose(pv.set(x, gy + h / 2, z), pq, psc.set(1, h, 1));
+      posts.setMatrixAt(i, pm);
+    }
+    posts.instanceMatrix.needsUpdate = true;
+    scene.add(posts);
+  }
 
   // Wires + (at dusk/night) a real warm point light per span so the strings
   // actually illuminate the road beneath them.

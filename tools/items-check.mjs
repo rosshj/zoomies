@@ -49,15 +49,18 @@ function check(name, cond) {
   const before = props.boxTargets().length;
   check("3 floating boxes on a small track", before === 3);
 
+  // Drive through one box (at its own position) so we don't bulldoze the whole
+  // field — it grants to the driver and stops floating (it tumbles off as a spent
+  // crate), dropping the pool to 2.
   const kart = { name: "P1" };
-  for (let x = -6; x < LEN + 6; x += 3) props.update(0.05, [{ x, z: 0, kart }]);
-  check("all three boxes grabbed", picks.length === 3);
-  check("each grant went to the driver", picks.every((n) => n === "P1"));
-  check("pool empties right after pickup", props.boxTargets().length === 0);
+  const target = props.boxTargets()[0];
+  for (let s = -6; s <= 6; s += 3) props.update(0.05, [{ x: target.x + s, z: target.z, kart }]);
+  check("driving through a box grants it to the driver", picks.length === 1 && picks[0] === "P1");
+  check("the used box stops floating", props.boxTargets().length === 2);
 
-  // Idle ~12s: a roadside crate should rise to refill the pool back to 3.
-  for (let t = 0; t < 240; t++) props.update(0.05, []);
-  check("pool refills to 3 from rising ground crates", props.boxTargets().length === 3);
+  // Idle ~15s: a roadside crate should rise to refill the pool back to 3.
+  for (let t = 0; t < 300; t++) props.update(0.05, []);
+  check("pool refills to 3 from a rising ground crate", props.boxTargets().length === 3);
 
   // A kart on cooldown (onItem returns false) must NOT consume the box.
   const props2 = await initProps({ add() {}, remove() {} }, track, {

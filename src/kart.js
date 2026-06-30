@@ -194,6 +194,9 @@ export class Kart {
     this.shieldMesh.position.y = 1.2;
     this.shieldMesh.visible = false;
     this.group.add(this.shieldMesh);
+    // Bouncy pop-in/out: an under-damped spring on the orb's "presence" (0 hidden,
+    // ~1 shown, overshooting past 1 on the way up for a springy pop).
+    this._shieldS = { a: 0, v: 0 };
 
     // Soft contact shadow that stays on the ground (even mid-hop). The quad sits
     // in a holder so it can be spun to the sun azimuth independent of the kart's
@@ -607,12 +610,26 @@ export class Kart {
     this.groundShadow.scale.set(air, 1, air * _sunStretch);
     this.shadowQuad.material.opacity = _sunAlpha * air;
 
-    // Shield bubble.
-    this.shieldMesh.visible = this.shielding;
-    if (this.shielding) {
+    // Shield bubble: springy pop in/out (never an instant snap), plus a little
+    // sway/lean as the kart corners so the orb feels like it has weight.
+    const sdt = Math.min(this._dt || 0.016, 0.05);
+    const sp = this._shieldS;
+    const target = this.shielding ? 1 : 0;
+    sp.v += (target - sp.a) * 320 * sdt; // stiff spring → quick, bouncy response
+    sp.v *= Math.max(0, 1 - 11 * sdt);   // light damping → a touch of overshoot
+    sp.a += sp.v * sdt;
+    if (sp.a < 0) { sp.a = 0; sp.v = 0; } // clamp the pop-out floor
+    const showing = this.shielding || sp.a > 0.01;
+    this.shieldMesh.visible = showing;
+    if (showing) {
       const now = performance.now();
-      const s = 1 + Math.sin(now * 0.01) * 0.04;
-      this.shieldMesh.scale.setScalar(s);
+      const breathe = 1 + Math.sin(now * 0.01) * 0.04; // gentle idle pulse
+      this.shieldMesh.scale.setScalar(Math.max(0, sp.a) * breathe);
+      // Lean opposite the turn (inertia) with a tiny vertical wobble from the spring.
+      const lat = this._lat || 0;
+      this.shieldMesh.position.x = -lat * 0.55;
+      this.shieldMesh.position.y = 1.2 + sp.v * 0.04;
+      this.shieldMesh.rotation.z = lat * 0.18;
       this.shieldMesh.material.uniforms.uTime.value = now * 0.001;
     }
 
