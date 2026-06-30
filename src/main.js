@@ -11,7 +11,7 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart, setSunShadow } from "./kart.js";
-import { setLightLevel } from "./models.js";
+import { setLightLevel, CAT_PATTERNS, CAT_ACCESSORIES } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager } from "./hairball.js";
@@ -90,20 +90,52 @@ const KART_PRESETS = [
   { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
   { name: "Nova", color: 0xec407a, style: 3, number: 6 },
 ];
+// A "Custom" slot sits one past the last preset in each stepper; landing on it
+// reveals the creator (colour / pattern / accessory / name) and the look is read
+// from garageConfig.customCat / .customKart instead of the preset arrays.
+const CUSTOM_CAT_IDX = CAT_PRESETS.length;
+const CUSTOM_KART_IDX = KART_PRESETS.length;
+const KART_STYLE_COUNT = 4; // GP / roadster / buggy / finned (see createKartModel STYLES)
+const DEFAULT_CUSTOM_CAT = { name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap" };
+const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0 };
 const GARAGE_KEY = "zoomies-garage-v1";
+const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
+const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
+const _clampName = (v, dflt) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 14) : dflt);
+function sanitizeCustomCat(c) {
+  c = c && typeof c === "object" ? c : {};
+  return {
+    name: _clampName(c.name, DEFAULT_CUSTOM_CAT.name),
+    fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
+    pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
+    accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
+  };
+}
+function sanitizeCustomKart(k) {
+  k = k && typeof k === "object" ? k : {};
+  return {
+    name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
+    color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
+    style: _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style),
+    number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
+  };
+}
 function loadGarageConfig() {
   try {
     const c = JSON.parse(localStorage.getItem(GARAGE_KEY));
     if (c && typeof c === "object") {
       return {
-        cat: clampIdx(c.cat, CAT_PRESETS.length),
-        kart: clampIdx(c.kart, KART_PRESETS.length),
+        cat: clampIdx(c.cat, CAT_PRESETS.length + 1), // +1: the Custom slot is valid
+        kart: clampIdx(c.kart, KART_PRESETS.length + 1),
+        customCat: sanitizeCustomCat(c.customCat),
+        customKart: sanitizeCustomKart(c.customKart),
       };
     }
   } catch {
     /* ignore */
   }
-  return { cat: 0, kart: 0 }; // Marmalade in the Ember kart (the original "You")
+  // Marmalade in the Ember kart (the original "You"), with sensible custom defaults.
+  return { cat: 0, kart: 0, customCat: sanitizeCustomCat(), customKart: sanitizeCustomKart() };
 }
 function clampIdx(v, n) {
   v = Number.isInteger(v) ? v : 0;
@@ -116,12 +148,29 @@ function saveGarageConfig(c) {
     /* ignore */
   }
 }
+// Resolve a garage config (live or draft) to the concrete cat / kart look,
+// transparently handling the Custom slot.
+function catSpec(cfg) {
+  if (cfg.cat === CUSTOM_CAT_IDX) {
+    const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
+    return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory };
+  }
+  const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
+  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: undefined };
+}
+function kartSpec(cfg) {
+  if (cfg.kart === CUSTOM_KART_IDX) {
+    const k = cfg.customKart || DEFAULT_CUSTOM_KART;
+    return { name: k.name, color: k.color, style: k.style, number: k.number };
+  }
+  return KART_PRESETS[cfg.kart] || KART_PRESETS[0];
+}
 const garageConfig = loadGarageConfig();
 // The chosen look as concrete colours + a display name (the cat's name).
 function playerLook() {
-  const cat = CAT_PRESETS[garageConfig.cat] || CAT_PRESETS[0];
-  const kart = KART_PRESETS[garageConfig.kart] || KART_PRESETS[0];
-  return { catColor: cat.fur, catPattern: cat.pattern, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  const cat = catSpec(garageConfig);
+  const kart = kartSpec(garageConfig);
+  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
 }
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
@@ -574,7 +623,7 @@ function _pickUnused(palette, used) {
 // player stands out. Multiplayer / time-trial fields are the player alone.
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (MP.enabled || timeTrial) return [playerCfg];
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
@@ -667,7 +716,7 @@ try { _amHost = sessionStorage.getItem("mp-host-seed") === WORLD_SEED; } catch {
 // (display name = the cat's name), plus whether I'm the room's host.
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
 // Up to 6 players share a race (you + 5 others). The grid, headlight pool and
@@ -1968,9 +2017,9 @@ function _clearGaragePreview() {
 // per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
 function buildGaragePreview() {
   _clearGaragePreview();
-  const cat = CAT_PRESETS[_garageDraft.cat];
-  const kart = KART_PRESETS[_garageDraft.kart];
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const cat = catSpec(_garageDraft);
+  const kart = kartSpec(_garageDraft);
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
   pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
@@ -1981,17 +2030,79 @@ function buildGaragePreview() {
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
 }
+
+// --- Custom creator -------------------------------------------------------
+// Curated fur tones (real cat colours) and bold kart liveries the swatch grids
+// offer. Custom picks aren't limited to these — they just seed quick choices.
+const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
+const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
+const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned"];
+const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
+const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
+const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
+const _cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// Build a row of colour swatch buttons once; clicks set the draft colour.
+function _buildSwatchGrid(gridId, palette, onPick) {
+  const grid = document.getElementById(gridId);
+  if (!grid || grid.childElementCount) return;
+  for (const c of palette) {
+    const b = document.createElement("button");
+    b.className = "swatch-dot";
+    b.style.background = _hex6(c);
+    b.dataset.color = c;
+    b.setAttribute("aria-label", "Colour " + _hex6(c));
+    b.addEventListener("click", () => onPick(c));
+    grid.appendChild(b);
+  }
+}
+function _markSelectedSwatch(gridId, color) {
+  const grid = document.getElementById(gridId);
+  if (!grid) return;
+  for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === color);
+}
+
+// Refresh the creator panels: show the one whose stepper is on the Custom slot,
+// and mirror the draft's custom values into its controls.
+function syncCreators() {
+  const catCustom = _garageDraft.cat === CUSTOM_CAT_IDX;
+  const kartCustom = _garageDraft.kart === CUSTOM_KART_IDX;
+  document.getElementById("cat-custom").classList.toggle("hidden", !catCustom);
+  document.getElementById("kart-custom").classList.toggle("hidden", !kartCustom);
+  if (catCustom) {
+    const c = _garageDraft.customCat;
+    document.getElementById("cat-pat-name").textContent = _cap(c.pattern);
+    document.getElementById("cat-acc-name").textContent = _cap(c.accessory);
+    const ni = document.getElementById("cat-custom-name");
+    if (ni.value !== c.name) ni.value = c.name;
+    _markSelectedSwatch("cat-color-grid", c.fur);
+  }
+  if (kartCustom) {
+    const k = _garageDraft.customKart;
+    document.getElementById("kart-style-name").textContent = KART_STYLE_NAMES[k.style] || "GP";
+    document.getElementById("kart-num-name").textContent = String(k.number);
+    const ni = document.getElementById("kart-custom-name");
+    if (ni.value !== k.name) ni.value = k.name;
+    _markSelectedSwatch("kart-color-grid", k.color);
+  }
+}
 function syncGarageUI() {
-  const cat = CAT_PRESETS[_garageDraft.cat];
-  const kart = KART_PRESETS[_garageDraft.kart];
-  const hex = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
+  const cat = catSpec(_garageDraft);
+  const kart = kartSpec(_garageDraft);
   document.getElementById("cat-name").textContent = cat.name;
   document.getElementById("kart-name").textContent = kart.name;
-  document.getElementById("cat-swatch").style.background = hex(cat.fur);
-  document.getElementById("kart-swatch").style.background = hex(kart.color);
+  document.getElementById("cat-swatch").style.background = _hex6(cat.fur);
+  document.getElementById("kart-swatch").style.background = _hex6(kart.color);
+  syncCreators();
 }
 function openGaragePanel() {
-  _garageDraft = { cat: garageConfig.cat, kart: garageConfig.kart };
+  _garageDraft = {
+    cat: garageConfig.cat,
+    kart: garageConfig.kart,
+    customCat: { ...garageConfig.customCat },
+    customKart: { ...garageConfig.customKart },
+  };
   const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
   _garageAnchor.copy(slot.position);
   syncGarageUI();
@@ -2005,10 +2116,29 @@ function closeGarage() {
   closeSubScreen(garageEl);
 }
 function stepGarage(which, dir) {
-  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
+  // +1 slot: one past the last preset is the Custom slot.
+  const n = (which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length) + 1;
   _garageDraft[which] = (_garageDraft[which] + dir + n) % n;
   syncGarageUI();
   buildGaragePreview();
+}
+// Mutate the draft's custom cat/kart, then refresh UI + preview. `rebuild=false`
+// skips the (model-irrelevant) preview rebuild for pure name edits.
+function editCustomCat(patch, rebuild = true) {
+  Object.assign(_garageDraft.customCat, patch);
+  syncGarageUI();
+  if (rebuild) buildGaragePreview();
+}
+function editCustomKart(patch, rebuild = true) {
+  Object.assign(_garageDraft.customKart, patch);
+  syncGarageUI();
+  if (rebuild) buildGaragePreview();
+}
+function stepCustom(which, list, dir) {
+  if (which === "pattern" || which === "accessory") {
+    const i = list.indexOf(_garageDraft.customCat[which]);
+    editCustomCat({ [which]: list[(i + dir + list.length) % list.length] });
+  }
 }
 // Slowly orbit the camera around the parked preview kart. The control card is
 // docked to the left half of the (landscape) screen, so frame the kart in the
@@ -2038,9 +2168,34 @@ document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage(
 document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
 document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
 document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
+
+// Custom-cat creator controls.
+_buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
+document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
+document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
+document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
+document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
+document.getElementById("cat-custom-name")?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
+document.getElementById("cat-randomize")?.addEventListener("click", () => editCustomCat({
+  fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory: _pick(CAT_ACCESSORIES), name: _pick(CUSTOM_CAT_NAMES),
+}));
+
+// Custom-kart creator controls.
+_buildSwatchGrid("kart-color-grid", KART_COLOR_SWATCHES, (c) => editCustomKart({ color: c }));
+document.getElementById("kart-style-prev")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + KART_STYLE_COUNT - 1) % KART_STYLE_COUNT }));
+document.getElementById("kart-style-next")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + 1) % KART_STYLE_COUNT }));
+document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
+document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
+document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
+document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
+  color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
+}));
+
 document.getElementById("garage-apply")?.addEventListener("click", () => {
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
+  garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
+  garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
   closeGarage();
 });
@@ -3032,7 +3187,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).

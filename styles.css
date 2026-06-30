@@ -205,6 +205,96 @@ body {
   letter-spacing: 0.3px;
   color: #fff;
 }
+/* Custom cat/kart creator — revealed when a stepper lands on the "Custom" slot. */
+.creator {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 9px;
+  padding: 11px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.26);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.creator-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.creator-label {
+  flex: 0 0 64px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.85;
+}
+.swatch-grid {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.swatch-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s, border-color 0.12s;
+}
+.swatch-dot:active { transform: scale(0.88); }
+.swatch-dot.selected {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--accent), 0 2px 5px rgba(0, 0, 0, 0.4);
+}
+.mini-stepper {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 4px;
+}
+.mini-stepper .garage-arrow {
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+}
+.mini-name {
+  flex: 1;
+  text-align: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+}
+.creator-input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  padding: 8px 11px;
+}
+.creator-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.creator-rand {
+  align-self: stretch;
+  margin-top: 2px;
+}
+
 .garage-actions {
   display: flex;
   gap: 10px;

@@ -22,6 +22,7 @@ export class RemoteKart {
       color: identity.color,
       catColor: identity.catColor,
       catPattern: identity.catPattern,
+      catAccessory: identity.catAccessory,
       kartStyle: identity.kartStyle,
       kartNumber: identity.kartNumber,
       name: identity.name,
