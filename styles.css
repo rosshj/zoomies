@@ -122,7 +122,12 @@ body {
   padding-left: max(14px, env(safe-area-inset-left));
 }
 #garage-panel {
-  width: min(380px, 46%);
+  width: min(360px, 46%);
+  /* Dock to the LEFT (the camera frames the cat in the open right half). The base
+     .menu-card uses `margin: auto`, which would CENTRE the card over the cat —
+     override it: 0 on the left, auto on the right pins the card to the left edge.
+     Auto top/bottom keeps it vertically centred when it fits. */
+  margin: auto auto auto 0;
 }
 .garage-title {
   display: flex;

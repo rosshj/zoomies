@@ -2140,6 +2140,11 @@ function openGaragePanel() {
   _garageAnchor.copy(slot.position);
   syncGarageUI();
   buildGaragePreview();
+  // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
+  // would otherwise hang over the live preview as a doubled "ghost" of the level.
+  if (menuXfade) menuXfade.style.opacity = 0;
+  _menuPhase = "hold";
+  _menuShotT = 0;
   _garageOpen = true;
   openSubScreen(garageEl);
 }
