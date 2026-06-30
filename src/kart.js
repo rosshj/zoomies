@@ -29,11 +29,17 @@ function makeShieldMaterial() {
     side: THREE.DoubleSide,
   });
   const ndv = normalView.dot(positionViewDirection).clamp(0, 1);
-  const fres = ndv.oneMinus().clamp(0.001, 1).pow(2.4);
+  // Tighter fresnel (higher power) concentrates the glow into a thin RIM and leaves
+  // the centre clear, so you can still see the kart and the track through the bubble
+  // instead of a solid white orb.
+  const fres = ndv.oneMinus().clamp(0.001, 1).pow(3.2);
   const band = time.mul(4).sin().mul(0.5).add(0.5); // travelling shimmer
-  const pulse = time.mul(2.5).sin().mul(0.15).add(0.85); // gentle breathing
-  mat.colorNode = tslColor(0x6fd6ff).mul(fres.mul(1.7).add(0.12).mul(pulse).add(band.mul(fres).mul(0.5)));
-  mat.opacityNode = fres.mul(0.9).add(0.08).add(band.mul(fres).mul(0.3)).clamp(0, 1);
+  const pulse = time.mul(2.5).sin().mul(0.12).add(0.88); // gentle breathing
+  // Mostly rim, only a whisper of fill through the body — a glowing bubble, not a
+  // bright fill. Lower base brightness keeps it from washing out over light tracks.
+  mat.colorNode = tslColor(0x7fdcff).mul(fres.mul(1.25).add(0.03).mul(pulse).add(band.mul(fres).mul(0.4)));
+  // Near-transparent centre, glowing rim, never fully opaque (caps at 0.8).
+  mat.opacityNode = fres.mul(0.6).add(0.02).add(band.mul(fres).mul(0.2)).clamp(0, 0.8);
   // Dummy uniforms bag: the update loop writes material.uniforms.uTime.value.
   mat.uniforms = { uTime: { value: 0 } };
   return mat;
