@@ -76,6 +76,10 @@ body {
   position: absolute;
   inset: 0;
   z-index: 50;
+  /* The global `* { touch-action: none }` (for steering gestures) also kills
+     touch-scroll on menus — so a tall menu couldn't be dragged to reveal its lower
+     rows. Re-allow vertical panning inside overlays so they scroll on touch. */
+  touch-action: pan-y;
   display: flex;
   /* flex-start (not center) + a scrollable overlay + margin:auto on the card lets a
      tall menu SCROLL instead of clipping its top/bottom (center-aligned flex items
@@ -87,6 +91,12 @@ body {
   background: radial-gradient(circle at 50% 30%, #1b2540, #070a12 80%);
   padding: 10px;
   text-align: center;
+}
+
+/* Children of an overlay must also allow vertical pan, or a drag that STARTS on a
+   button/row/slider won't scroll the menu (touch-action is per-target). */
+.overlay * {
+  touch-action: pan-y;
 }
 
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera

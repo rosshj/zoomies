@@ -1582,6 +1582,12 @@ advToggle?.addEventListener("click", () => {
   const open = advSettings.classList.toggle("hidden") === false;
   advToggle.textContent = open ? "Advanced ▾" : "Advanced ▸";
   advToggle.setAttribute("aria-expanded", String(open));
+  // The revealed rows + Back button can fall below the fold on a short landscape
+  // screen — scroll the settings overlay down so they're not stranded off-screen.
+  if (open) {
+    const ov = document.getElementById("settings");
+    setTimeout(() => { if (ov) ov.scrollTo({ top: ov.scrollHeight, behavior: "smooth" }); }, 60);
+  }
 });
 
 // --- Tilt debug readout (opt-in via Settings; persisted) ---
