@@ -14,7 +14,7 @@ import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel, CAT_PATTERNS, CAT_ACCESSORIES } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
-import { HairballManager } from "./hairball.js";
+import { HairballManager, TRI_FAN } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
@@ -860,11 +860,15 @@ function initMultiplayer() {
       });
       net.on("start", (at) => beginSyncedRace(at));
       net.on("shoot", (s) => {
-        hairballs.spawnAt(
-          new THREE.Vector3(s.px, s.py, s.pz),
-          new THREE.Vector3(s.dx, s.dy, s.dz),
-          s.c || 0
-        );
+        const pos = new THREE.Vector3(s.px, s.py, s.pz);
+        const dir = new THREE.Vector3(s.dx, s.dy, s.dz);
+        if (s.t) {
+          // Tri-furball: fan into three, matching the shooter's local spread.
+          const up = new THREE.Vector3(0, 1, 0);
+          for (const a of TRI_FAN) hairballs.spawnAt(pos, dir.clone().applyAxisAngle(up, a), s.c || 0);
+        } else {
+          hairballs.spawnAt(pos, dir, s.c || 0);
+        }
       });
       net.on("hit", (h) => {
         // Only the targeted client reacts; the victim's own shield gets last say.
@@ -2999,13 +3003,15 @@ const SHOOT_OPENING_LOCKOUT = SHOOT_RECHARGE * 2;
 // recharge. Shared by the player and the AI so the rules are identical.
 function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
+  const wasTri = kart.triShots > 0; // capture before spawn() consumes the charge
   hairballs.spawn(kart, charge);
   audio.shoot(kart === player ? null : kart.position);
   kart.shootCooldown = SHOOT_RECHARGE;
-  // Tell other players about the shot so they can see the projectile fly.
+  // Tell other players about the shot so they can see the projectile fly (and fan
+  // it into three on their side when it was a tri-furball).
   if (MP.enabled && MP.net && kart === player) {
     const m = kart.muzzle();
-    MP.net.sendShoot(m.pos, m.dir, charge);
+    MP.net.sendShoot(m.pos, m.dir, charge, wasTri);
   }
   return true;
 }
@@ -3663,6 +3669,7 @@ function loop(now) {
       speedKmh: Math.abs(player.speed) * 3.0,
       time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
     });
+    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer);
 
     // Time-trial: race the clock against your personal best. While the timed lap
     // runs, the timer + delta go GREEN as long as you're still under your PB time

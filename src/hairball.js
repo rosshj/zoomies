@@ -1,6 +1,9 @@
 import * as THREE from "three";
 
 const UP = new THREE.Vector3(0, 1, 0);
+// Tri-furball fan: a centre shot plus two spread either side (radians off-centre).
+// Exported so the multiplayer replication path fans identically to the local shot.
+export const TRI_FAN = [-0.2, 0, 0.2];
 
 // Manages flying hairballs and their collisions with karts.
 export class HairballManager {
@@ -24,8 +27,7 @@ export class HairballManager {
     // tag a rival. Consumes one charge per trigger-pull.
     if (owner.triShots > 0) {
       owner.triShots--;
-      const SPREAD = 0.2; // radians off-centre
-      for (const a of [-SPREAD, 0, SPREAD]) {
+      for (const a of TRI_FAN) {
         this._add(pos, dir.clone().applyAxisAngle(UP, a), charge, owner, false);
       }
     } else {

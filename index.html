@@ -88,6 +88,14 @@
       <button id="btn-jump" class="action-btn">⬆</button>
     </div>
 
+    <!-- Active power-ups (top-left): a pill per live item-box power-up, with its
+         remaining time or shot count. Each is shown only while active. -->
+    <div id="powerups">
+      <div id="pu-shield" class="powerup hidden"><span class="pu-ico">🛡️</span><span class="pu-val"></span></div>
+      <div id="pu-tri" class="powerup hidden"><span class="pu-ico">🐾</span><span class="pu-val"></span></div>
+      <div id="pu-catnip" class="powerup hidden"><span class="pu-ico">🌿</span><span class="pu-val"></span></div>
+    </div>
+
     <!-- Rear threat warning (top center): replaces the rear-view mirror. Lights
          amber when a kart has you in hairball range/cone behind you, and pulses
          red when one is locked on and ready to fire. -->

@@ -1254,6 +1254,43 @@ kbd {
 }
 
 /* Pause button: right side, under the lap/speed box, clear of the top bar */
+/* Active power-up pills (top-left): one per live item-box power-up, shown only
+   while active, with the remaining time or shot count. */
+#powerups {
+  position: absolute;
+  top: calc(max(8px, var(--safe-top, 0px)) + 6px);
+  left: max(12px, var(--safe-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  z-index: 6;
+}
+.powerup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  background: rgba(8, 12, 20, 0.66);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.38);
+  animation: pu-pop 0.18s ease-out;
+}
+.powerup .pu-ico { font-size: 15px; line-height: 1; }
+.powerup .pu-val { letter-spacing: 0.3px; min-width: 1.4em; }
+#pu-shield { border-color: rgba(120, 180, 255, 0.55); }
+#pu-tri { border-color: rgba(255, 180, 90, 0.55); }
+#pu-catnip { border-color: rgba(120, 224, 90, 0.55); }
+/* Pulse when a timed power-up is about to run out. */
+.powerup.expiring { animation: pu-blink 0.6s steps(1) infinite; }
+@keyframes pu-pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes pu-blink { 50% { opacity: 0.4; } }
+
 #btn-pause {
   position: absolute;
   top: calc(max(8px, var(--safe-top, 0px)) + 76px);

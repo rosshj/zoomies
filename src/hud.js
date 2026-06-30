@@ -7,6 +7,27 @@ export class HUD {
     this.timer = document.getElementById("timer");
     this.toast = document.getElementById("toast");
     this._lastToast = "";
+    this.puShield = document.getElementById("pu-shield");
+    this.puTri = document.getElementById("pu-tri");
+    this.puCatnip = document.getElementById("pu-catnip");
+  }
+
+  // Reflect the player's active item-box power-ups as top-left pills. Timed ones
+  // (shield / catnip) show whole seconds remaining and blink in the last 3s; the
+  // tri-furball shows how many fan-shots are left.
+  setPowerups(shieldT, triN, catnipT) {
+    this._pu(this.puShield, shieldT > 0, Math.ceil(shieldT) + "s", shieldT > 0 && shieldT <= 3);
+    this._pu(this.puTri, triN > 0, "×" + triN, false);
+    this._pu(this.puCatnip, catnipT > 0, Math.ceil(catnipT) + "s", catnipT > 0 && catnipT <= 3);
+  }
+
+  _pu(el, on, text, expiring) {
+    if (!el) return;
+    el.classList.toggle("hidden", !on);
+    if (!on) return;
+    const v = el.querySelector(".pu-val");
+    if (v && v.textContent !== text) v.textContent = text;
+    el.classList.toggle("expiring", !!expiring);
   }
 
   update({ lapNum, totalLaps, place, totalKarts, speedKmh, time }) {
