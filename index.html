@@ -19,14 +19,19 @@
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 
   <link rel="stylesheet" href="./styles.css" />
-  <!-- three.js via import map so modules can `import ... from "three"` -->
+  <!-- three.js via import map so modules can `import ... from "three"`. Vendored
+       LOCALLY (minified build) instead of a CDN: removes the unpkg dependency AND
+       the external greggman.github.io debug import the non-min build pulls in, so
+       the game loads reliably and works fully offline once the service worker has
+       cached it. Multiplayer's ably/partysocket stay on a CDN (they need the
+       network to relay anyway). -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.171.0/build/three.webgpu.js",
-        "three/webgpu": "https://unpkg.com/three@0.171.0/build/three.webgpu.js",
-        "three/tsl": "https://unpkg.com/three@0.171.0/build/three.tsl.js",
-        "three/addons/": "https://unpkg.com/three@0.171.0/examples/jsm/",
+        "three": "./vendor/three/three.webgpu.min.js",
+        "three/webgpu": "./vendor/three/three.webgpu.min.js",
+        "three/tsl": "./vendor/three/three.tsl.min.js",
+        "three/addons/": "./vendor/three/addons/",
         "partysocket": "https://esm.sh/partysocket@1.0.2",
         "ably": "https://esm.sh/ably@2"
       }
@@ -146,15 +151,18 @@
           <button id="mode-solo" class="seg-btn is-active">👤 Solo</button>
           <button id="mode-mp" class="seg-btn">🎮 Multiplayer</button>
         </div>
-        <!-- Multiplayer: host shares their code (START to host); a friend types it
-             in to join that lobby. Shown only in Multiplayer mode. -->
-        <div id="mp-join" class="mp-join hidden">
-          <p class="hint">Your code: <strong id="mp-mycode">—</strong> · START to host</p>
+        <!-- Multiplayer (shown only in Multiplayer mode; START/Time Trial hide).
+             HOST drops you into a lobby with a share code; JOIN takes a friend's
+             code. The room code + sharing live in the lobby, not here. -->
+        <div id="mp-actions" class="mp-actions hidden">
+          <button id="mp-host-btn">🎮 Host Game</button>
+          <p class="mp-or">— or join a friend —</p>
           <div class="mp-join-row">
             <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
-                   autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter friend's code" />
+                   autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
             <button id="mp-join-btn" class="secondary small">Join</button>
           </div>
+          <p id="mp-menu-status" class="lobby-status"></p>
         </div>
         <div class="menu-options">
           <button id="laps-btn" class="secondary small">Laps: 3</button>
@@ -253,12 +261,21 @@
   <div id="lobby" class="overlay hidden">
     <div class="menu-card">
       <h1>🏁 Lobby</h1>
-      <p class="tagline">Room <strong id="lobby-code">—</strong></p>
+      <p id="lobby-status" class="lobby-status">Connecting…</p>
+      <!-- Big, obvious share code — friends type this to join. -->
+      <p class="lobby-share-label">Share this code with friends:</p>
+      <div id="lobby-code" class="lobby-code-big">—</div>
+      <div class="mp-share-row">
+        <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
+        <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+      </div>
+      <p class="lobby-players-label">Players <span id="lobby-count">1 / 6</span></p>
       <ol id="lobby-players"></ol>
       <button id="lobby-start">START RACE</button>
-      <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+      <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
+           host launches (the join reload drops fullscreen). -->
+      <button id="lobby-ready" class="secondary small hidden">🎮 Enable tilt controls</button>
       <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
-      <p class="hint">Share the invite link to add players.</p>
       <button id="lobby-back" class="secondary small">← Main Menu</button>
     </div>
   </div>
@@ -384,6 +401,15 @@
 
   </div><!-- /#stage -->
 
+  <!-- Register the offline service worker (skipped with ?nosw=1 for tests). It
+       caches the app shell so the installed PWA launches and plays with no network. -->
+  <script>
+    if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("[zoomies] SW register failed:", e));
+      });
+    }
+  </script>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>

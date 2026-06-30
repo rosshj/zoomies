@@ -6,7 +6,8 @@
   "scripts": {
     "start": "npx --yes serve -l 8080 .",
     "dev": "npx --yes serve -l 8080 .",
-    "check": "node tools/headless-check.mjs"
+    "check": "node tools/headless-check.mjs",
+    "check:offline": "node tools/offline-check.mjs"
   },
   "license": "MIT",
   "devDependencies": {

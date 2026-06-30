@@ -37,6 +37,7 @@ class AblyTransport {
     this._queue = [];
     this.onopen = null;
     this.onclose = null;
+    this.onstate = null; // (state:string, reason?:string) — live connection state for the UI
   }
 
   get onmessage() { return this._onmessage; }
@@ -80,14 +81,38 @@ class AblyTransport {
 
 // Returns a transport that is already connected and has 'welcome' queued.
 // Net.connect() drains the queue, triggering the normal hello/ping sequence.
-export async function createAblyTransport({ key, room }) {
-  const mod = await import('ably');
+export async function createAblyTransport({ key, room, onState }) {
+  if (!key || !/.+\..+:.+/.test(key)) {
+    // A real Ably key looks like "appId.keyId:secret". A blank/placeholder one
+    // would otherwise fail deep inside the SDK with a cryptic message.
+    const e = new Error("Multiplayer key is missing or malformed");
+    e.code = "NO_KEY";
+    throw e;
+  }
+  let mod;
+  try {
+    mod = await import('ably');
+  } catch (err) {
+    // The SDK is loaded from a CDN; a blocked/offline network fails it here.
+    const e = new Error("Couldn't load the multiplayer library (offline or blocked network?)");
+    e.code = "SDK_LOAD";
+    throw e;
+  }
   const Realtime = mod.Realtime ?? mod.default?.Realtime ?? mod.default;
   const selfId = getClientId();
 
   const client = new Realtime({ key, clientId: selfId });
   const channel = client.channels.get(`zoomies:${room}`);
   const transport = new AblyTransport(client, channel, selfId);
+  if (onState) transport.onstate = onState;
+
+  // Report EVERY connection-state transition (connecting / connected /
+  // disconnected / suspended / failed / closed) so the UI can show live status
+  // and a real reason instead of a silent dead button. Auth failures land here
+  // with reason.code 401xx; this is how a bad key becomes visible.
+  client.connection.on((change) => {
+    if (transport.onstate) transport.onstate(change.current, change.reason && change.reason.message);
+  });
 
   // Presence as a SET, not a stream of deltas. Relying on individual
   // enter/leave events is fragile — a missed event or a brief reconnect leaves
@@ -119,7 +144,14 @@ export async function createAblyTransport({ key, room }) {
   }
 
   await new Promise((resolve, reject) => {
+    // Don't hang on "connecting…" forever if the network silently stalls.
+    const timeout = setTimeout(() => {
+      const e = new Error("Multiplayer connection timed out");
+      e.code = "TIMEOUT";
+      reject(e);
+    }, 15000);
     client.connection.once('connected', async () => {
+      clearTimeout(timeout);
       try {
         // Synthetic welcome — lets Net assign our id and kick off hello + pings.
         transport._emit({ type: 'welcome', id: selfId });
@@ -141,7 +173,14 @@ export async function createAblyTransport({ key, room }) {
         reject(e);
       }
     });
-    client.connection.once('failed', () => reject(new Error('Ably connection failed')));
+    client.connection.once('failed', (change) => {
+      clearTimeout(timeout);
+      const reason = change && change.reason;
+      const e = new Error(reason && reason.message ? reason.message : "Multiplayer connection failed");
+      // Ably auth errors are 401xx — flag them so the UI can say "check the key".
+      e.code = reason && reason.code && String(reason.code).startsWith("401") ? "AUTH" : "FAILED";
+      reject(e);
+    });
   });
 
   // A dropped-and-resumed connection can miss presence deltas; re-sync on every

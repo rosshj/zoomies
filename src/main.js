@@ -647,33 +647,51 @@ function decorateKartGroup(group) {
 // network snapshots — they glide alongside but DON'T collide or affect the race
 // (they're deliberately kept out of `karts[]`). The room is the world seed, so
 // a link like ?seed=ABC123&mp=1 puts everyone in the same world and lobby.
+// Am I the HOST (the player who created this room), not just whoever drew the
+// lowest random id? Persisted by hosted-seed so a refresh keeps hostship while a
+// joiner / invite-link opener (different seed) is correctly a guest.
+let _amHost = false;
+try { _amHost = sessionStorage.getItem("mp-host-seed") === WORLD_SEED; } catch { /* ignore */ }
+
 // Broadcast the player's garage selection so rivals see the cat + kart they chose
-// (display name = the cat's name).
+// (display name = the cat's name), plus whether I'm the room's host.
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
+// Up to 6 players share a race (you + 5 others). The grid, headlight pool and
+// placement all scale to this; a late 7th joiner is kept out of the rendered field.
+const MAX_PLAYERS = 6;
 const MP = {
   enabled: false, net: null, remotes: new Map(),
   sendAcc: 0, hudAcc: 0, hud: null,
-  inLobby: false, startAt: 0,
+  inLobby: false, startAt: 0, connState: null,
 };
+// Total humans currently in the room (me + rendered remotes).
+function mpPlayerCount() {
+  return 1 + MP.remotes.size;
+}
 
-// Host election: the lowest connection id is host. Every client derives this
-// from the same member set, so they all agree with no negotiation. The same
-// sorted order also assigns starting-grid slots, so players don't stack up.
+// The same sorted id order assigns starting-grid slots so players don't stack up.
 function mpOrderedIds() {
   const ids = [MP.net && MP.net.id, ...MP.remotes.keys()].filter(Boolean);
   ids.sort();
   return ids;
 }
+// The host is simply the player who CREATED the room (clicked Host Game) — not
+// whoever drew the lowest id. `_amHost` is authoritative for me; the same flag
+// rides in every identity so I can tag the host (👑) in the player list. No
+// lowest-id election (that was the bug), so a guest never transiently sees Start.
+// (If the host leaves, the room just can't launch — host migration is a separate
+// feature.)
 function mpHostId() {
-  const ids = mpOrderedIds();
-  return ids.length ? ids[0] : null;
+  if (_amHost && MP.net && MP.net.id) return MP.net.id;
+  for (const r of MP.remotes.values()) if (r.host) return r.id;
+  return null;
 }
 function mpIsHost() {
-  return !!(MP.net && MP.net.id && mpHostId() === MP.net.id);
+  return !!(MP.enabled && _amHost);
 }
 function mpGridSlot() {
   const i = MP.net ? mpOrderedIds().indexOf(MP.net.id) : 0;
@@ -682,7 +700,13 @@ function mpGridSlot() {
 
 function mpSpawn(identity) {
   if (MP.remotes.has(identity.id)) return;
+  // Cap the rendered field at MAX_PLAYERS (you + MAX_PLAYERS-1 remotes). Beyond
+  // that the grid/headlight pool run out, so extra joiners aren't drawn into the
+  // race. (Realistically a friends' room is ≤6; a true server-side cap would need
+  // room logic Ably's client-side presence doesn't provide.)
+  if (MP.remotes.size >= MAX_PLAYERS - 1) return;
   const r = new RemoteKart(identity);
+  r.host = !!identity.host; // remember who the room's host is (for the 👑 + Start)
   decorateKartGroup(r.group);
   scene.add(r.group);
   MP.remotes.set(identity.id, r);
@@ -712,9 +736,10 @@ function initMultiplayer() {
   if (MP.enabled) return; // already connected (idempotent for runtime toggling)
   MP.enabled = true;
   MP.hud = mpDebugHud();
-  MP.hud.textContent = "MP · connecting…";
+  MP.connState = "connecting";
+  setMpStatus("connecting");
   const transportP = ablyKey
-    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED })
+    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
     : createPartyTransport({ host, room: WORLD_SEED });
   transportP
     .then((transport) => {
@@ -722,17 +747,21 @@ function initMultiplayer() {
       MP.net = net;
       net.on("peer", (identity) => {
         mpSpawn(identity);
+        setMpStatus("connected"); // refresh the "N friends here" count immediately
         if (MP.inLobby) renderLobby();
       });
       net.on("peerleave", (id) => {
         mpDespawn(id);
+        setMpStatus("connected");
         if (MP.inLobby) renderLobby();
       });
       // Once our own connection is acknowledged, fill in the lobby (it may have
       // been opened before the socket finished connecting).
       net.on("open", () => {
+        setMpStatus("connected");
         if (MP.inLobby) renderLobby();
       });
+      net.on("close", () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"));
       net.on("state", (id, pose) => {
         const r = MP.remotes.get(id);
         if (r) r.pushState(pose);
@@ -766,9 +795,54 @@ function initMultiplayer() {
     })
     .catch((err) => {
       console.warn("[zoomies] multiplayer failed to start:", err);
-      MP.enabled = false;
-      if (MP.hud) MP.hud.textContent = "MP · failed";
+      // Keep MP.enabled so the lobby/menu can SHOW the failure instead of silently
+      // reverting to solo (a dead button is exactly what reads as "doesn't work").
+      const code = err && err.code;
+      const msg =
+        code === "NO_KEY" ? "Multiplayer isn't configured (no key)" :
+        code === "SDK_LOAD" ? "Couldn't load multiplayer (check your connection)" :
+        code === "AUTH" ? "Multiplayer key rejected — it may be expired" :
+        code === "TIMEOUT" ? "Couldn't reach the server — check your connection" :
+        (err && err.message) || "Multiplayer failed to connect";
+      MP.connState = "failed";
+      setMpStatus("failed", msg);
     });
+}
+
+// Friendly multiplayer connection status, shown in BOTH the bottom-left readout
+// and the lobby, so a player always knows whether they're actually connected
+// (silent failure was the main reason MP "looked broken"). Ably drives this live.
+function setMpStatus(state, reason) {
+  MP.connState = state;
+  const label =
+    state === "connected" ? "Connected" :
+    state === "connecting" ? "Connecting…" :
+    state === "disconnected" ? "Reconnecting…" :
+    state === "suspended" ? "Connection lost — retrying…" :
+    state === "failed" ? (reason || "Connection failed") :
+    state === "closed" ? "Disconnected" :
+    "…";
+  if (MP.hud) {
+    const live = state === "connected";
+    MP.hud.textContent = live
+      ? `MP · peers ${MP.remotes.size} · ping ${MP.net ? Math.round(MP.net.clock.rtt) : "—"}ms · live`
+      : `MP · ${label}`;
+    MP.hud.style.color = state === "failed" ? "#ff9a8a" : "#cdf";
+  }
+  // Connected? show the peer count so a host SEES friends arrive (the clearest
+  // possible "it's working" signal). Otherwise show the friendly state label.
+  const peers = MP.remotes.size;
+  const detail = state === "connected"
+    ? (peers > 0 ? `Connected · ${peers} ${peers === 1 ? "friend" : "friends"} here` : "Connected · waiting for friends…")
+    : label;
+  for (const id of ["lobby-status", "mp-menu-status"]) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = detail;
+    el.classList.toggle("error", state === "failed");
+    el.classList.toggle("ok", state === "connected");
+  }
+  if (state === "failed" && reason && typeof hud !== "undefined" && hud) hud.showToast?.(reason);
 }
 
 // Broadcast my pose (~18 Hz) and interpolate every ghost kart. Runs every frame
@@ -803,9 +877,9 @@ function updateMultiplayer(dt) {
   MP.hudAcc += dt;
   if (MP.hudAcc >= 0.5 && MP.hud) {
     MP.hudAcc = 0;
-    MP.hud.textContent = `MP · peers ${MP.remotes.size} · ping ${Math.round(net.clock.rtt)}ms · ${
-      net.connected ? "live" : "…"
-    }`;
+    // Refresh the readout through the shared status formatter so peers/ping update
+    // while connected and the live connection state shows otherwise.
+    setMpStatus(net.connected ? "connected" : MP.connState || "connecting");
   }
 }
 
@@ -1919,74 +1993,81 @@ window.addEventListener("keydown", (e) => {
 document.getElementById("start-btn").addEventListener("click", startRace);
 // "Race again" repeats whichever mode you were just in.
 document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
-// Time trial is solo-only; hide it in multiplayer.
+// Time trial is solo-only; updateModeBtn() hides it in multiplayer. Always attach
+// the handler (even if we loaded straight into MP) so it works after a Solo switch.
 const timeTrialBtn = document.getElementById("time-trial-btn");
-if (timeTrialBtn) {
-  if (MP.enabled) timeTrialBtn.classList.add("hidden");
-  else timeTrialBtn.addEventListener("click", startTimeTrial);
-}
+timeTrialBtn?.addEventListener("click", startTimeTrial);
 
-// Solo / Multiplayer toggle. Only offered when an Ably key is configured.
-// Switches mode at RUNTIME (no page reload, so no jarring flash): entering
-// connects and drops you straight into the lobby; leaving tears the connection
-// down and returns to the menu. The ?mp flag is kept in sync via replaceState so
-// the invite link stays shareable and a refresh lands in the same mode.
+// Solo / Multiplayer mode. Only offered when an Ably key is configured. Picking
+// Multiplayer reveals the HOST / JOIN choices (it does NOT connect yet):
+//   • Host Game → connect to your own room and drop into the lobby with a share code.
+//   • Join → reload into a friend's room by code and land in their lobby.
 const modeToggle = document.getElementById("mode-toggle");
 const modeSoloBtn = document.getElementById("mode-solo");
 const modeMpBtn = document.getElementById("mode-mp");
-const mpJoin = document.getElementById("mp-join");
-const mpMyCode = document.getElementById("mp-mycode");
 const mpCodeInput = document.getElementById("mp-code");
+let _mpUIMode = false; // showing the multiplayer host/join panel (separate from "connected")
 function updateModeBtn() {
-  modeSoloBtn?.classList.toggle("is-active", !MP.enabled);
-  modeMpBtn?.classList.toggle("is-active", MP.enabled);
-  // Show the join field in Multiplayer mode; surface this client's room code.
-  mpJoin?.classList.toggle("hidden", !MP.enabled);
-  if (mpMyCode) mpMyCode.textContent = WORLD_SEED;
+  modeSoloBtn?.classList.toggle("is-active", !_mpUIMode);
+  modeMpBtn?.classList.toggle("is-active", _mpUIMode);
+  document.getElementById("mp-actions")?.classList.toggle("hidden", !_mpUIMode);
+  // In multiplayer the lobby is where you launch a race, so hide the solo buttons.
+  document.getElementById("start-btn")?.classList.toggle("hidden", _mpUIMode);
+  if (timeTrialBtn) timeTrialBtn.classList.toggle("hidden", _mpUIMode);
 }
-// Join a friend's lobby by code: their code IS the world seed + room, so we
-// reload into that world with multiplayer on. In a PWA this navigation stays in
-// the installed app (no Safari hop), which is why a typed code beats a link.
-function joinByCode() {
+
+// Host: connect to my own room (= my world seed) and go straight into the lobby.
+// The click is the user gesture beginRace needs for fullscreen + motion permission.
+function hostGame() {
+  if (!MP.enabled) enterMultiplayer();
+  beginRace(); // gesture setup + (MP.enabled) enterLobby
+}
+// Join by code: a friend's code IS their world seed, so reload into that world
+// with multiplayer on and auto-open the lobby. enableMotion() here grabs iOS
+// motion permission inside the gesture so it survives the reload.
+function joinGame() {
   const code = (mpCodeInput?.value || "").trim().toUpperCase();
-  if (!code || code === WORLD_SEED) return;
+  if (!/^[A-Z0-9]{2,6}$/.test(code)) { mpCodeInput?.focus(); return; }
+  if (code === WORLD_SEED && MP.enabled) { beginRace(); return; } // already in this room
+  audio.unlock();
+  try { input.enableMotion(); } catch {}
+  // I'm joining someone else's room → I'm a guest, not the host (clear any prior
+  // hosted-seed so a refresh in this tab doesn't wrongly crown me).
+  try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
-  location.href = u.toString();
+  location.href = u.toString(); // reload into the host's world; ?mp=1 auto-opens the lobby
 }
-document.getElementById("mp-join-btn")?.addEventListener("click", joinByCode);
-mpCodeInput?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") joinByCode();
-});
+// Open the multiplayer lobby once the menu wiring is ready (deferred so it wins
+// over the default-visible menu on the initial frame).
+function autoOpenLobby() {
+  if (_installGate) return; // an un-installed touch device must install first
+  enterLobby();
+}
 function enterMultiplayer() {
+  _mpUIMode = true;
+  _amHost = true; // I'm creating this room → I'm the host (survives a refresh below)
+  try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
   audio.unlock();
   const u = new URL(location.href);
   u.searchParams.set("mp", "1");
   u.searchParams.set("seed", WORLD_SEED);
   history.replaceState(null, "", u);
-  initMultiplayer(); // connects (async) in the background while we stay on the menu
+  initMultiplayer(); // connects (async) in the background
   updateModeBtn();
-  // Stay on the main menu — START then takes you to the lobby (beginRace handles
-  // the fullscreen/motion gesture setup there, as in solo).
 }
 function exitMultiplayer() {
   if (MP.net) {
-    try {
-      MP.net.close();
-    } catch {
-      /* ignore */
-    }
+    try { MP.net.close(); } catch { /* ignore */ }
     MP.net = null;
   }
   for (const id of [...MP.remotes.keys()]) mpDespawn(id);
   MP.enabled = false;
   MP.inLobby = false;
   MP.startAt = 0;
-  if (MP.hud) {
-    MP.hud.remove();
-    MP.hud = null;
-  }
+  if (MP.hud) { MP.hud.remove(); MP.hud = null; }
+  _mpUIMode = false;
   const u = new URL(location.href);
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
@@ -1995,29 +2076,77 @@ function exitMultiplayer() {
 }
 if (modeToggle && resolveAblyKey()) {
   modeToggle.classList.remove("hidden");
-  updateModeBtn();
   modeSoloBtn?.addEventListener("click", () => {
     if (MP.enabled) exitMultiplayer();
+    else { _mpUIMode = false; updateModeBtn(); }
   });
-  modeMpBtn?.addEventListener("click", () => {
-    if (!MP.enabled) enterMultiplayer();
-  });
+  modeMpBtn?.addEventListener("click", () => { _mpUIMode = true; updateModeBtn(); });
+  document.getElementById("mp-host-btn")?.addEventListener("click", hostGame);
+  document.getElementById("mp-join-btn")?.addEventListener("click", joinGame);
+  mpCodeInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") joinGame(); });
+  // Anyone landing with ?mp=1 — a join reload, an invite link, or a host refresh —
+  // is here to play together, so drop straight into the lobby (no flag needed).
+  if (new URLSearchParams(location.search).has("mp")) {
+    _mpUIMode = true;
+    setTimeout(autoOpenLobby, 60);
+  }
+  updateModeBtn();
 }
 
-// Lobby: copy the invite link (already carries ?seed=…&mp=1) to the clipboard.
-const lobbyCopyBtn = document.getElementById("lobby-copy");
-if (lobbyCopyBtn) {
-  lobbyCopyBtn.addEventListener("click", async () => {
-    const label = "📋 Copy invite link";
+// A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
+// independent of whatever junk is on location.href right now.
+function inviteURL() {
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", WORLD_SEED);
+  u.searchParams.set("mp", "1");
+  return u.toString();
+}
+
+// Native share (phones) where available, else copy to clipboard. Wired to both the
+// menu and lobby invite buttons; the share buttons reveal themselves only when the
+// Web Share API exists.
+async function shareInvite() {
+  const url = inviteURL();
+  const data = { title: "Zoomies GP", text: `Join my race! Room code ${WORLD_SEED}`, url };
+  try {
+    if (navigator.share) { await navigator.share(data); return true; }
+  } catch {
+    /* user cancelled or share failed — fall through to copy */
+  }
+  try { await navigator.clipboard.writeText(url); } catch { /* ignore */ }
+  return false;
+}
+function wireCopyButton(btn, label) {
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(location.href);
-      lobbyCopyBtn.textContent = "✓ Link copied!";
+      await navigator.clipboard.writeText(inviteURL());
+      btn.textContent = "✓ Link copied!";
     } catch {
-      lobbyCopyBtn.textContent = "⚠ Copy failed — copy the URL";
+      btn.textContent = "⚠ Copy failed — copy the URL";
     }
-    setTimeout(() => (lobbyCopyBtn.textContent = label), 1800);
+    setTimeout(() => (btn.textContent = label), 1800);
   });
 }
+wireCopyButton(document.getElementById("lobby-copy"), "📋 Copy invite link");
+{
+  const btn = document.getElementById("lobby-share");
+  if (btn && navigator.share) {
+    btn.classList.remove("hidden");
+    btn.addEventListener("click", async () => {
+      const ok = await shareInvite();
+      if (!ok) { btn.textContent = "✓ Link copied!"; setTimeout(() => (btn.textContent = "📤 Share invite"), 1800); }
+    });
+  }
+}
+// Joiner's pre-race gesture: re-grab fullscreen + tilt (the join reload drops the
+// host's gesture). Optional — the race still runs without it (touch controls).
+document.getElementById("lobby-ready")?.addEventListener("click", () => {
+  audio.unlock();
+  try { enterFullscreenLandscape(); input.enableMotion(); input.calibrate(); } catch { /* ignore */ }
+  const b = document.getElementById("lobby-ready");
+  if (b) { b.textContent = "✓ Tilt ready"; b.disabled = true; }
+});
 
 function startRace() {
   timeTrial = false;
@@ -2121,9 +2250,13 @@ function prepareRace() {
 
 // --- Multiplayer lobby ---
 function renderLobby() {
-  if (!MP.enabled || !MP.net) return;
+  // Always show the room code (it's this client's world seed) even before the
+  // connection finishes, so a freshly-arrived joiner sees it immediately.
   const codeEl = document.getElementById("lobby-code");
   if (codeEl) codeEl.textContent = WORLD_SEED;
+  if (!MP.enabled || !MP.net) return; // the player list / count need a live connection
+  const countEl = document.getElementById("lobby-count");
+  if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS} players`;
   const list = document.getElementById("lobby-players");
   if (list) {
     list.innerHTML = "";
@@ -2139,10 +2272,13 @@ function renderLobby() {
       list.appendChild(li);
     }
   }
+  const host = mpIsHost();
   const startBtn = document.getElementById("lobby-start");
   const waiting = document.getElementById("lobby-waiting");
-  if (startBtn) startBtn.style.display = mpIsHost() ? "" : "none";
-  if (waiting) waiting.style.display = mpIsHost() ? "none" : "";
+  const ready = document.getElementById("lobby-ready");
+  if (startBtn) startBtn.style.display = host ? "" : "none"; // only the host launches
+  if (waiting) waiting.style.display = host ? "none" : "";   // others wait for the host
+  if (ready) ready.style.display = host ? "none" : "";       // joiner: enable tilt first
 }
 
 function enterLobby() {
