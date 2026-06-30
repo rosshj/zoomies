@@ -1574,6 +1574,16 @@ compatToggle?.addEventListener("click", () => {
 });
 applyCompatUI();
 
+// "Advanced" expander hides the debug toggles (FPS counter, Tilt debug) so the
+// settings menu stays tidy for normal players.
+const advToggle = document.getElementById("adv-toggle");
+const advSettings = document.getElementById("adv-settings");
+advToggle?.addEventListener("click", () => {
+  const open = advSettings.classList.toggle("hidden") === false;
+  advToggle.textContent = open ? "Advanced ▾" : "Advanced ▸";
+  advToggle.setAttribute("aria-expanded", String(open));
+});
+
 // --- Tilt debug readout (opt-in via Settings; persisted) ---
 // A diagnostic to chase down the steering sensitivity: it prints the live device
 // pitch (forward/back tilt), the in-plane gravity magnitude (which shrinks as the
