@@ -1530,12 +1530,115 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   return { update };
 }
 
-// Overhead structures you drive UNDER: cloth welcome banners on posts, and a
+// Printed street-banner faces: a bold event banner (border, checkered-flag end
+// caps, a slogan with paw accents), one design per index. Cached per design.
+const BANNER_DESIGNS = [
+  { bg: "#d23b34", fg: "#fff7e6", text: "ZOOMIES GP" },
+  { bg: "#2f6fb0", fg: "#ffffff", text: "CAT KART CUP" },
+  { bg: "#3a9d4e", fg: "#fffceb", text: "WELCOME RACERS" },
+  { bg: "#e0a73a", fg: "#3a2410", text: "FURBALL DERBY" },
+];
+const _bannerTexCache = new Map();
+function makeBannerTexture(i) {
+  if (_bannerTexCache.has(i)) return _bannerTexCache.get(i);
+  const d = BANNER_DESIGNS[i % BANNER_DESIGNS.length];
+  const W = 1024, H = 192;
+  const c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = d.bg; ctx.fillRect(0, 0, W, H);
+  // Inner border frame.
+  ctx.strokeStyle = d.fg; ctx.lineWidth = 9;
+  ctx.strokeRect(14, 14, W - 28, H - 28);
+  // Checkered-flag caps at each end (two columns, inset within the frame).
+  const sq = 21, cols = 2, top = 26, rows = Math.floor((H - 52) / sq);
+  for (const x0 of [26, W - 26 - sq * cols]) {
+    for (let r = 0; r < rows; r++) {
+      for (let cc = 0; cc < cols; cc++) {
+        ctx.fillStyle = (r + cc) % 2 ? "#15110d" : "#f3f0e6";
+        ctx.fillRect(x0 + cc * sq, top + r * sq, sq, sq);
+      }
+    }
+  }
+  // Slogan with paw accents, centred. Auto-shrink so long slogans stay clear of
+  // the checkered caps instead of colliding with them.
+  ctx.fillStyle = d.fg;
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  const label = `🐾  ${d.text}  🐾`;
+  let fs = 96;
+  ctx.font = `bold ${fs}px system-ui, Arial, sans-serif`;
+  while (fs > 44 && ctx.measureText(label).width > W - 200) {
+    fs -= 4; ctx.font = `bold ${fs}px system-ui, Arial, sans-serif`;
+  }
+  ctx.fillText(label, W / 2, H / 2 + 4);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 4;
+  _bannerTexCache.set(i, t);
+  return t;
+}
+
+// One street banner: two ground poles, a top + bottom bar holding a taut printed
+// banner between them (with a gentle billow), spanning across the road.
+function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, texIndex) {
+  const off = track.halfWidth + 3;
+  const topY = p.y + 9.6, botY = p.y + 6.2;        // banner band clears the karts below
+  const bannerW = off * 2 - 1.4, bannerH = topY - botY;
+  const midY = (topY + botY) / 2;
+  // Poles (grounded on the real terrain, each side), with a small cap.
+  for (const dir of [1, -1]) {
+    const px = p.x + sx * dir * off, pz = p.z + sz * dir * off;
+    const gy = heightAt ? heightAt(px, pz) : p.y;
+    const poleTop = topY + 0.9;
+    const h = Math.max(3, poleTop - gy);
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.3, h, 10), poleMat);
+    pole.position.set(px, gy + h / 2, pz);
+    pole.castShadow = true; pole.layers.set(1);
+    scene.add(pole);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.34, 10, 8), barMat);
+    cap.position.set(px, poleTop, pz); cap.layers.set(1);
+    scene.add(cap);
+  }
+  // Top + bottom bars the banner laces onto (so it reads taut, not floating).
+  for (const by of [topY, botY]) {
+    const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, off * 2, 8), barMat);
+    bar.rotation.z = Math.PI / 2;        // lie horizontal (along local X)...
+    bar.rotation.y = 0;
+    const bargrp = new THREE.Group();
+    bargrp.add(bar);
+    bargrp.position.set(p.x, by, p.z);
+    bargrp.rotation.y = yaw;             // ...then yaw to lie across the road
+    bargrp.layers.set(1);
+    bar.layers.set(1);
+    scene.add(bargrp);
+  }
+  // The taut banner: a segmented plane with a gentle billow baked in.
+  const geo = new THREE.PlaneGeometry(bannerW, bannerH, 24, 1);
+  const pos = geo.attributes.position;
+  for (let v = 0; v < pos.count; v++) {
+    const x = pos.getX(v);
+    pos.setZ(v, Math.sin((x / bannerW) * Math.PI * 3) * 0.22); // bow in/out across the width
+  }
+  geo.computeVertexNormals();
+  const banner = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ map: makeBannerTexture(texIndex), roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
+  );
+  banner.position.set(p.x, midY, p.z);
+  banner.rotation.y = yaw;
+  banner.castShadow = true;
+  banner.layers.set(1);
+  scene.add(banner);
+}
+
+// Overhead structures you drive UNDER: printed street banners on poles, and a
 // chunky bridge/overpass spanning the road. Seeded placement across the track.
 function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   const N = track.samples;
   const postMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 0.9 });
-  const clothCols = [0xd9534f, 0x4a90d9, 0x4caf50, 0xe0a73a, 0x9c5ab8];
+  // Street-banner poles read as painted metal posts (darker, a touch of sheen).
+  const poleMat = new THREE.MeshStandardMaterial({ color: 0x3c4047, roughness: 0.5, metalness: 0.45 });
+  const barMat = new THREE.MeshStandardMaterial({ color: 0x2d3036, roughness: 0.45, metalness: 0.55 });
 
   const spanAt = (frac) => {
     const i = Math.floor((frac % 1) * N) % N;
@@ -1545,34 +1648,11 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
     return { p, sx: -t.z / tl, sz: t.x / tl, yaw: Math.atan2(t.x / tl, t.z / tl) };
   };
 
-  // --- Cloth banners (2) ---
-  for (const frac of [0.2 + rand() * 0.1, 0.66 + rand() * 0.1]) {
+  // --- Printed street banners (2) ---
+  [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
     const { p, sx, sz, yaw } = spanAt(frac);
-    const off = track.halfWidth + 3;
-    const postH = 11;
-    for (const dir of [1, -1]) {
-      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.45, postH, 8), postMat);
-      post.position.set(p.x + sx * dir * off, p.y + postH / 2, p.z + sz * dir * off);
-      post.castShadow = true;
-      post.layers.set(1);
-      scene.add(post);
-    }
-    const width = (track.halfWidth + off) * 2;
-    const crossbar = new THREE.Mesh(rbox(width, 0.4, 0.4, 0.15), postMat);
-    crossbar.position.set(p.x, p.y + postH, p.z);
-    crossbar.rotation.y = yaw;
-    crossbar.layers.set(1);
-    scene.add(crossbar);
-    const cloth = new THREE.Mesh(
-      new THREE.PlaneGeometry(width * 0.86, 3.2),
-      new THREE.MeshStandardMaterial({ color: clothCols[(rand() * clothCols.length) | 0], roughness: 1, side: THREE.DoubleSide })
-    );
-    cloth.position.set(p.x, p.y + postH - 2.0, p.z);
-    cloth.rotation.y = yaw;
-    cloth.castShadow = true;
-    cloth.layers.set(1);
-    scene.add(cloth);
-  }
+    addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_DESIGNS.length) | 0));
+  });
 
   // --- Wooden walking footbridges spanning the road ---
   // Placed where they won't fight the scenery: pick the flattest candidate spans
