@@ -26,7 +26,9 @@ to release the boost. **Boost** is a recharging meter — about three turbos whe
 full — so there's always a way to claw back into the race.
 
 Getting hit by a hairball makes a kart **spin out and stop**. First kart to
-finish **3 laps** wins.
+finish **3 laps** wins. Furballs are **locked for the first 15 seconds** of a
+race (a countdown shows while they charge), so the start is decided by driving
+and making a gap — not an instant hairball brawl off the line.
 
 **Power-up boxes** are crates that **float** along the racing line (the ones
 sitting on the ground just tumble when you hit them — only the floating ones hold

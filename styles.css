@@ -1415,6 +1415,30 @@ button.secondary:active {
   50% { box-shadow: 0 0 14px 4px rgba(255, 59, 48, 0.85); transform: translateX(-50%) scale(1.06); }
 }
 
+/* Opening furball-charge countdown (top center). Shares the rear-threat pill
+   look but in a calm "charging" cyan, and sits just below it. */
+#shoot-lock {
+  position: absolute;
+  top: calc(var(--safe-top, 0px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 13px 5px 10px;
+  border-radius: 999px;
+  background: rgba(8, 18, 24, 0.66);
+  border: 2px solid #49c7e0;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  color: #bfeefa;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  font-size: 12px;
+  pointer-events: none;
+  font-variant-numeric: tabular-nums;
+}
+#shoot-lock .sl-ico { font-size: 15px; opacity: 0.85; }
+
 /* Small secondary button (e.g. graphics toggle on the menu) */
 button.small {
   font-size: 13px;

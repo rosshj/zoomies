@@ -10,6 +10,20 @@ export class HUD {
     this.puShield = document.getElementById("pu-shield");
     this.puTri = document.getElementById("pu-tri");
     this.puCatnip = document.getElementById("pu-catnip");
+    this.shootLock = document.getElementById("shoot-lock");
+    this._shootLockText = this.shootLock?.querySelector(".sl-text");
+  }
+
+  // Opening grace: while `secs` > 0, show the furball-charging countdown; hide it
+  // once furballs are armed.
+  setShootLock(secs) {
+    if (!this.shootLock) return;
+    const on = secs > 0;
+    this.shootLock.classList.toggle("hidden", !on);
+    if (on && this._shootLockText) {
+      const t = `Furballs arm in ${Math.ceil(secs)}s`;
+      if (this._shootLockText.textContent !== t) this._shootLockText.textContent = t;
+    }
   }
 
   // Reflect the player's active item-box power-ups as top-left pills. Timed ones

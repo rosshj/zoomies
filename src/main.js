@@ -986,6 +986,7 @@ const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4 };
 let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
+let _furballsArmed = false; // becomes true once the opening furball grace ends
 let countdownCalibrated = false;
 let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 // Finish celebration: fireworks from the arch when the leader crosses the line,
@@ -1090,7 +1091,9 @@ const _rtTo = new THREE.Vector3();
 function updateRearThreat() {
   if (!rearThreatEl) return;
   let state = "none";
-  if (player && !player.finished) {
+  // During the opening furball grace, nobody can fire — so don't flash a
+  // misleading "BEHIND!" threat warning.
+  if (player && !player.finished && raceTime >= SHOOT_OPENING_LOCKOUT) {
     const contenders = MP.enabled ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)] : karts;
     for (const k of contenders) {
       if (!k || k === player || k.finished || k.spinTimer > 0) continue;
@@ -2520,6 +2523,8 @@ function prepareRace() {
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   updateBoostUI(); // karts start with an empty boost meter
   raceTime = 0;
+  _furballsArmed = false;
+  hud.setShootLock(0); // clear any leftover charge banner from a previous race
   track.raceTime = 0;
   prevPlayerLap = -1; // so the time-trial lap-start crossing is detected cleanly
   ttLapStart = -1;
@@ -2997,7 +3002,10 @@ const SHOOT_CHARGE_TIME = 0.7; // seconds of hold for a full-power shot
 const SHOOT_RECHARGE = 1.2; // min seconds between shots (no spamming)
 // Longer grace at the green light so the race doesn't open with everyone pelting
 // each other on the start line — first hairball isn't ready until this elapses.
-const SHOOT_OPENING_LOCKOUT = SHOOT_RECHARGE * 2;
+// Opening grace: furballs are "charging" for the first stretch of a race, so the
+// start is decided by driving (and creating a gap) rather than an instant hairball
+// brawl off the line. Firing is gated by the cooldown; the HUD shows the countdown.
+const SHOOT_OPENING_LOCKOUT = 15;
 
 // Fire a hairball if allowed (recharge done, not spun out), and start the
 // recharge. Shared by the player and the AI so the rules are identical.
@@ -3670,6 +3678,15 @@ function loop(now) {
       time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
     });
     hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer);
+
+    // Opening furball grace: count down the charge, then announce "armed". Skipped
+    // in time trial (there's no one to shoot).
+    const shootLockLeft = timeTrial ? 0 : SHOOT_OPENING_LOCKOUT - raceTime;
+    hud.setShootLock(shootLockLeft);
+    if (!timeTrial && !_furballsArmed && shootLockLeft <= 0) {
+      _furballsArmed = true;
+      hud.showToast("🐾 Furballs armed!");
+    }
 
     // Time-trial: race the clock against your personal best. While the timed lap
     // runs, the timer + delta go GREEN as long as you're still under your PB time
