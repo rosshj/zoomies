@@ -245,6 +245,40 @@ function makeSpotTexture(furColor, spotColor) {
   return t;
 }
 
+// Classic bandana print: the chosen base colour tiled with a subtle white paisley-
+// ish motif (a dot ringed by a little diamond), staggered row to row so it reads as
+// cloth, not a grid. Cached per colour.
+function makeBandanaTexture(baseHex) {
+  const base = new THREE.Color(baseHex);
+  const key = `band|${base.getHexString()}`;
+  if (_coatTexCache.has(key)) return _coatTexCache.get(key);
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + base.getHexString();
+  ctx.fillRect(0, 0, S, S);
+  const cell = S / 4;
+  for (let gy = 0; gy < 4; gy++) {
+    for (let gx = 0; gx < 4; gx++) {
+      const x = (gx * cell + cell / 2 + (gy % 2 ? cell / 2 : 0)) % S;
+      const y = gy * cell + cell / 2;
+      ctx.fillStyle = "rgba(255,255,255,0.92)";
+      ctx.beginPath(); ctx.arc(x, y, S * 0.03, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.7)";
+      ctx.lineWidth = S * 0.015;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+      const d = S * 0.075;
+      ctx.strokeRect(-d, -d, 2 * d, 2 * d);
+      ctx.restore();
+    }
+  }
+  const t = _finishTex(c);
+  t.repeat.set(3, 2);
+  _coatTexCache.set(key, t);
+  return t;
+}
+
 // Painted calico coat: a cream base broken up by big irregular ginger and black
 // patches (plus a few freckles) — the classic tortie-and-white tricolour, baked
 // once, no tiling.
@@ -678,26 +712,32 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     }
     const bridge = new THREE.Mesh(rbox(0.3, 0.08, 0.05, 0.02), m);
     bridge.position.set(0, 0.14, 0.85); acc.add(bridge);  } else if (accId === "bandana") {
-    // neckerchief: a band around the neck + a knotted triangular flap on the chest.
-    // The band is a torus sized to the TORSO (radius ~0.86, the body is ~0.86 wide
-    // at the neckline) so it rings the neck instead of vanishing inside it.
-    const m = accMat(accCol);
-    const band = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.08, 10, 26), m);
-    band.position.set(0, 1.62, 0.12); band.rotation.x = Math.PI / 2 + 0.12; acc.add(band);
-    const flap = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.62, 3), m); // 3-sided → triangle
-    flap.position.set(0, 1.15, 0.86); flap.rotation.x = Math.PI; flap.scale.set(1.05, 1, 0.42);
+    // neckerchief: a printed band around the neck + a knotted triangular flap on
+    // the chest. The band is a torus a touch WIDER than the torso (radius 0.98 vs
+    // the ~0.87 body) and sits CONCENTRIC with the body (centre near z0) so the
+    // whole ring — front AND back — clears the body surface instead of the back
+    // arc plunging inside it. A near-level tilt keeps the back from riding down.
+    // Printed cloth: a white-mapped material so the base colour + subtle white
+    // paisley motif come from the texture; band and flap share it.
+    const cloth = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, map: makeBandanaTexture(accCol) });
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.07, 12, 30), cloth);
+    band.position.set(0, 1.62, 0.02); band.rotation.x = Math.PI / 2 + 0.09; acc.add(band);
+    const flap = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.66, 3), cloth); // 3-sided → triangle
+    flap.position.set(0, 1.12, 1.0); flap.rotation.x = Math.PI; flap.scale.set(1.05, 1, 0.34);
     acc.add(flap);
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark));
-    knot.position.set(0, 1.5, 0.95); acc.add(knot);  } else if (accId === "collar") {
-    // collar with a little gold bell — the band is torso-sized (radius ~0.86) so it
-    // wraps the neck and reads, rather than sitting buried inside the body.
+    knot.position.set(0, 1.5, 0.97); acc.add(knot);  } else if (accId === "collar") {
+    // collar with a little gold bell. The band is a torus a touch wider than the
+    // torso (radius 0.98 vs the ~0.87 body) and CONCENTRIC with the body (centre
+    // near z0) with a near-level tilt, so the whole ring clears the body surface
+    // front and back — no more back arc dipping down into / through the body.
     const m = accMat(accCol);
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.075, 10, 28), m);
-    collar.position.set(0, 1.62, 0.12); collar.rotation.x = Math.PI / 2 + 0.12; acc.add(collar);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.98, 0.07, 12, 30), m);
+    collar.position.set(0, 1.62, 0.02); collar.rotation.x = Math.PI / 2 + 0.09; acc.add(collar);
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
-    bell.position.set(0, 1.34, 0.95); acc.add(bell);
+    bell.position.set(0, 1.33, 0.95); acc.add(bell);
     const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8), accMat(0xe0b53a, 0.4, 0.35));
-    nub.position.set(0, 1.46, 0.95); acc.add(nub);  } else if (accId === "bow") {
+    nub.position.set(0, 1.44, 0.96); acc.add(nub);  } else if (accId === "bow") {
     // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
     // on the upper chest in the body frame (a real bow tie, not a hair bow).
     const m = accMat(accCol);
