@@ -35,7 +35,7 @@ export function acceptAblyState(peer) {
   return !(peer && peer.ready);
 }
 
-class WebRTCTransport {
+export class WebRTCTransport {
   constructor(ably) {
     this._ably = ably;
     this._selfId = null;
