@@ -122,7 +122,13 @@ export class WebRTCTransport {
 
     pc.onicecandidate = (e) => { if (e.candidate) this._signal(peerId, { kind: "ice", cand: e.candidate }); };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === "failed" || pc.connectionState === "closed") rec.ready = false;
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        // A dead connection can't recover (no ICE restart here) — tear it down and
+        // forget the record, so state falls back to Ably and a fresh handshake can
+        // rebuild the link if the peer reappears. Without this, failed peers and
+        // their buffered ICE candidates lingered in the map for the whole session.
+        this._dropPeer(peerId);
+      }
     };
 
     const wire = (dc) => {
@@ -161,8 +167,10 @@ export class WebRTCTransport {
       pc.setRemoteDescription(m.sdp).then(() => this._flushIce(rec)).catch(() => {});
     } else if (m.kind === "ice") {
       // Candidates can arrive before the remote description is set — buffer them.
+      // Capped: if the offer/answer never lands (lost signalling), the buffer
+      // must not grow forever off a peer that keeps trickling candidates.
       if (pc.remoteDescription) pc.addIceCandidate(m.cand).catch(() => {});
-      else rec.pendingIce.push(m.cand);
+      else if (rec.pendingIce.length < 64) rec.pendingIce.push(m.cand);
     }
   }
 
