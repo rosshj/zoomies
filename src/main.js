@@ -22,6 +22,7 @@ import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { Net } from "./net/net.js";
 import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
+import { createWebRTCTransport } from "./net/webrtc.js";
 import { resolveHost, resolveAblyKey } from "./net/config.js";
 import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
 import { audio } from "./audio.js";
@@ -758,9 +759,12 @@ function makeMpIdentity() {
 const MAX_PLAYERS = 6;
 const MP = {
   enabled: false, net: null, remotes: new Map(),
+  parked: new Map(), // id -> { r, since } — soft-despawned ghosts held for revival
   sendAcc: 0, hudAcc: 0, hud: null,
+  // (adaptive interpolation delay lives in _interpDelay, below)
   inLobby: false, startAt: 0, connState: null,
 };
+let _interpDelay = INTERP_DELAY; // adaptive: eased toward a target from the live ping
 // Total humans currently in the room (me + rendered remotes).
 function mpPlayerCount() {
   return 1 + MP.remotes.size;
@@ -791,8 +795,27 @@ function mpGridSlot() {
   return Math.max(0, i);
 }
 
+// Soft-despawn grace: a peer whose presence flaps (a mobile reconnect) is "parked"
+// hidden for this long and REVIVED on rejoin, instead of being destroyed and
+// rebuilt. The old destroy/recreate churned a fresh Kart every blip — and
+// dispose() only removes from the scene (it can't free the cat's shared materials
+// safely), so that churn leaked GPU memory until the tab crashed. Parked ghosts
+// live OUTSIDE MP.remotes, so peer counts / placement / rendering see only the
+// active field, unchanged.
+const REMOTE_GRACE_MS = 12000;
+
 function mpSpawn(identity) {
   if (MP.remotes.has(identity.id)) return;
+  // Revive a parked ghost (peer flapped and returned) — reuse the Kart and its
+  // interpolation buffer instead of churning a new one.
+  const parked = MP.parked.get(identity.id);
+  if (parked) {
+    MP.parked.delete(identity.id);
+    parked.r.host = !!identity.host;
+    parked.r.group.visible = true;
+    MP.remotes.set(identity.id, parked.r);
+    return;
+  }
   // Cap the rendered field at MAX_PLAYERS (you + MAX_PLAYERS-1 remotes). Beyond
   // that the grid/headlight pool run out, so extra joiners aren't drawn into the
   // race. (Realistically a friends' room is ≤6; a true server-side cap would need
@@ -804,12 +827,20 @@ function mpSpawn(identity) {
   scene.add(r.group);
   MP.remotes.set(identity.id, r);
 }
-function mpDespawn(id) {
-  const r = MP.remotes.get(id);
-  if (r) {
+// `force` tears the ghost down immediately (leaving multiplayer); otherwise it's a
+// soft despawn — parked for possible revival within the grace window, then reaped
+// by the sweeper in updateMultiplayer.
+function mpDespawn(id, force = false) {
+  const r = MP.remotes.get(id) || (MP.parked.get(id) && MP.parked.get(id).r);
+  if (!r) return;
+  MP.remotes.delete(id);
+  if (force) {
+    MP.parked.delete(id);
     r.dispose(scene);
-    MP.remotes.delete(id);
+    return;
   }
+  if (r.group) r.group.visible = false;
+  MP.parked.set(id, { r, since: performance.now() });
 }
 
 function mpDebugHud() {
@@ -822,6 +853,17 @@ function mpDebugHud() {
   return el;
 }
 
+// Peer-to-peer opt-in. A URL param (?rtc=1) can't be set from inside an installed
+// PWA (no address bar; it launches from a fixed start_url), so a persisted flag
+// (Settings → Advanced) is how PWA players enable it. Either source counts.
+const RTC_KEY = "zoomies-rtc";
+function readRtcPref() {
+  try { return localStorage.getItem(RTC_KEY) === "1"; } catch { return false; }
+}
+function rtcEnabled() {
+  return new URLSearchParams(location.search).has("rtc") || readRtcPref();
+}
+
 function initMultiplayer() {
   const ablyKey = resolveAblyKey();
   const host = resolveHost();
@@ -831,9 +873,15 @@ function initMultiplayer() {
   MP.hud = mpDebugHud();
   MP.connState = "connecting";
   setMpStatus("connecting");
-  const transportP = ablyKey
-    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
-    : createPartyTransport({ host, room: WORLD_SEED });
+  // ?rtc=1 selects the peer-to-peer transport (pose stream goes P2P over WebRTC;
+  // Ably still handles signalling / presence / clock / events). Needs an Ably key
+  // for the signalling backbone. Falls back to plain Ably without it.
+  const useRtc = ablyKey && rtcEnabled();
+  const transportP = useRtc
+    ? createWebRTCTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
+    : ablyKey
+      ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
+      : createPartyTransport({ host, room: WORLD_SEED });
   transportP
     .then((transport) => {
       const net = new Net(transport, makeMpIdentity());
@@ -921,8 +969,13 @@ function setMpStatus(state, reason) {
     "…";
   if (MP.hud) {
     const live = state === "connected";
+    // On the P2P transport, always show N/peers direct links so it's obvious
+    // whether it upgraded past the Ably fallback: "p2p 1/1" = direct, "p2p 0/1"
+    // = still relaying (peer not on P2P, or the network blocked a direct link).
+    const rtc = MP.net && MP.net.transport && typeof MP.net.transport.p2pCount === "function";
+    const p2pStr = rtc ? ` · p2p ${MP.net.transport.p2pCount()}/${MP.remotes.size}` : "";
     MP.hud.textContent = live
-      ? `MP · peers ${MP.remotes.size} · ping ${MP.net ? Math.round(MP.net.clock.rtt) : "—"}ms · live`
+      ? `MP · peers ${MP.remotes.size} · ping ${MP.net ? Math.round(MP.net.clock.rtt) : "—"}ms${p2pStr} · live`
       : `MP · ${label}`;
     MP.hud.style.color = state === "failed" ? "#ff9a8a" : "#cdf";
   }
@@ -949,7 +1002,11 @@ function updateMultiplayer(dt) {
   const net = MP.net;
   if (net.connected && player) {
     MP.sendAcc += dt;
-    if (MP.sendAcc >= 1 / 25) {
+    // ~16 Hz. Interpolation (with the 200ms delay) reconstructs smooth motion from
+    // this, and the lower rate roughly halves the per-channel message load vs the
+    // old 25 Hz — easing the relay so a busy room is less likely to drop/throttle
+    // a player's updates (which froze their kart on everyone else's screen).
+    if (MP.sendAcc >= 1 / 16) {
       MP.sendAcc = 0;
       let f = 0;
       if (player.drifting) f |= FLAG.DRIFT;
@@ -968,8 +1025,22 @@ function updateMultiplayer(dt) {
       });
     }
   }
-  const rt = net.now() - INTERP_DELAY; // render remote karts slightly in the past
+  // Adapt the interpolation delay to the live connection: cover roughly one-way
+  // latency (half the round-trip) plus a jitter margin, so a laggy link buffers
+  // more (smoother, fewer dead-reckon snaps) and a snappy link buffers less (more
+  // responsive). Eased slowly so the render time never lurches.
+  const rttMs = net.clock && Number.isFinite(net.clock.rtt) ? net.clock.rtt : 0;
+  const targetDelay = Math.max(180, Math.min(280, rttMs * 0.5 + 150));
+  _interpDelay += (targetDelay - _interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
+  const rt = net.now() - _interpDelay; // render remote karts slightly in the past
   for (const r of MP.remotes.values()) r.update(rt, dt);
+  // Reap parked ghosts whose grace has elapsed (peer really left, not a flap).
+  if (MP.parked.size) {
+    const nowMs = performance.now();
+    for (const [id, p] of MP.parked) {
+      if (nowMs - p.since > REMOTE_GRACE_MS) { p.r.dispose(scene); MP.parked.delete(id); }
+    }
+  }
 
   MP.hudAcc += dt;
   if (MP.hudAcc >= 0.5 && MP.hud) {
@@ -1476,8 +1547,11 @@ function applyQuality(q, persist = true) {
   qualityHighBtn?.classList.toggle("is-active", high);
   layoutStage(); // applies the resolution
 }
-qualityLowBtn?.addEventListener("click", () => applyQuality("low"));
-qualityHighBtn?.addEventListener("click", () => applyQuality("high"));
+qualityLowBtn?.addEventListener("click", () => { _mpWantsHigh = false; applyQuality("low"); });
+qualityHighBtn?.addEventListener("click", () => {
+  if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; } // opt out of MP's forced-Low this session
+  applyQuality("high");
+});
 applyQuality(quality, false); // honour the persisted choice without re-writing it
 
 // Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
@@ -1715,6 +1789,26 @@ compatToggle?.addEventListener("click", () => {
 });
 applyCompatUI();
 
+// Peer-to-peer multiplayer toggle UI (the flag helpers live up near initMultiplayer,
+// which reads them at connect time).
+const rtcToggle = document.getElementById("set-rtc-toggle");
+function applyRtcUI() {
+  const on = rtcEnabled();
+  if (rtcToggle) {
+    rtcToggle.textContent = on ? "On" : "Off";
+    rtcToggle.classList.toggle("off", !on);
+  }
+}
+rtcToggle?.addEventListener("click", () => {
+  const on = !readRtcPref();
+  try {
+    if (on) localStorage.setItem(RTC_KEY, "1");
+    else localStorage.removeItem(RTC_KEY);
+  } catch { /* ignore */ }
+  applyRtcUI();
+});
+applyRtcUI();
+
 // "Advanced" expander hides the debug toggles (FPS counter, Tilt debug) so the
 // settings menu stays tidy for normal players.
 const advToggle = document.getElementById("adv-toggle");
@@ -1807,6 +1901,30 @@ const _isStandalone =
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+
+// Multiplayer favours performance over looks: two extra ghost karts + the realtime
+// client on an already heavy scene means a higher, steadier frame rate (and no iOS
+// WebGPU device-loss) matters more than SSR/god-rays. So while in a multiplayer
+// race, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
+// ratio, no GPU motes) on EVERY device. NON-persisted — single-player and the saved
+// preference are untouched, and it's restored when leaving multiplayer. A player
+// who bumps the Settings toggle to High mid-session opts out for that session
+// (_mpWantsHigh), so the toggle still works.
+let _mpForcedLow = false;
+let _mpWantsHigh = false;
+function applyMpQuality() {
+  const wantLow = MP.enabled && !_mpWantsHigh;
+  if (wantLow && quality === "high") {
+    _mpForcedLow = true;
+    applyQuality("low", false);
+    hud.showToast?.("Graphics set to Low for smoother multiplayer");
+  } else if (!wantLow && _mpForcedLow) {
+    _mpForcedLow = false;
+    let saved = "high";
+    try { if (localStorage.getItem(QUALITY_KEY) === "low") saved = "low"; } catch {}
+    applyQuality(saved, false);
+  }
+}
 let _deferredInstall = null;
 let _installGate = false; // mandatory-install mode (touch device, not installed)
 
@@ -2365,8 +2483,12 @@ function exitMultiplayer() {
     try { MP.net.close(); } catch { /* ignore */ }
     MP.net = null;
   }
-  for (const id of [...MP.remotes.keys()]) mpDespawn(id);
+  for (const id of [...MP.remotes.keys()]) mpDespawn(id, true);
+  for (const [, p] of MP.parked) p.r.dispose(scene); // drop any parked ghosts too
+  MP.parked.clear();
   MP.enabled = false;
+  _mpWantsHigh = false; // next MP session re-defaults to lean
+  applyMpQuality(); // restore the pre-multiplayer graphics setting
   MP.inLobby = false;
   MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
@@ -2402,6 +2524,9 @@ function inviteURL() {
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", WORLD_SEED);
   u.searchParams.set("mp", "1");
+  // Carry the peer-to-peer flag so friends who open the link join the same P2P
+  // room (host + guests must agree on the transport to get direct connections).
+  if (rtcEnabled()) u.searchParams.set("rtc", "1");
   return u.toString();
 }
 
@@ -2525,6 +2650,7 @@ function prepareRace() {
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   updateBoostUI(); // karts start with an empty boost meter
+  applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against
   // the clock has no rivals to use them on, and they'd pollute the ghost lap).
   props?.setItemsEnabled?.(!timeTrial);

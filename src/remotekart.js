@@ -5,9 +5,16 @@ import { sampleBuffer, pushSnapshot, lerpAngle } from "./net/interp.js";
 // Pose flag bitmask shared by sender (main loop) and receiver (RemoteKart).
 export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8 };
 
-// How far in the past we render remote karts. 150ms gives the buffer enough
-// headroom at ~100ms ping so interpolation always has snapshots to work between.
-export const INTERP_DELAY = 150; // ms
+// How far in the past we render remote karts. On mobile/cellular one-way latency
+// plus jitter regularly exceeds 150ms, which left the buffer dry — so the ghost
+// dead-reckoned and snapped on every late packet (the "jumpy" report). 200ms keeps
+// interpolation working between real snapshots far more of the time.
+export const INTERP_DELAY = 200; // ms (starting point; main.js adapts it to the ping)
+
+// If a peer's snapshots stop arriving for this long, their kart is effectively
+// gone (a bad stall or a silent drop) — hide it rather than leave a confusing
+// frozen kart parked on the track. It reappears the instant fresh data resumes.
+const STALE_HIDE_MS = 2500;
 
 // A remote player's kart: a render-only puppet. It reuses the entire Kart visual
 // (chassis, cat rig, lean, contact shadow, shield bubble, spinning wheels) but
@@ -34,6 +41,13 @@ export class RemoteKart {
     this._prevH = 0;
     this._prevS = 0;
     this._ready = false;
+    // Render-smoothing state: the displayed pose eases toward the sampled (interp/
+    // dead-reckoned) pose, so a late-packet correction is spread over a few frames
+    // instead of teleporting — kills the residual jitter. A big delta (respawn /
+    // first sample) snaps instead of smearing.
+    this._rinit = false;
+    this._rx = 0; this._rz = 0; this._ry = 0; this._rh = 0;
+    this._lastRecv = 0; // wall-clock (performance.now) of the last snapshot received
     // Local collision "bump": a transient offset added on top of the interpolated
     // pose so the ghost visibly springs away when you ram it, instead of sitting
     // there like a wall. It decays back to zero, letting the authoritative network
@@ -51,6 +65,7 @@ export class RemoteKart {
 
   // A pose snapshot arrived from the network (already in shared-clock time).
   pushState(pose) {
+    this._lastRecv = performance.now();
     pushSnapshot(this.buffer, pose);
     // Progress isn't interpolated through the buffer — latest value wins. It only
     // feeds placement, which doesn't need sub-frame accuracy.
@@ -70,6 +85,12 @@ export class RemoteKart {
 
   // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
   update(renderTime, dt) {
+    // Hide (don't freeze) a peer whose updates have dried up; show it again the
+    // moment data resumes. Uses wall-clock so it's independent of the shared clock.
+    const stale = performance.now() - this._lastRecv > STALE_HIDE_MS;
+    this.group.visible = !stale;
+    if (stale) return;
+
     const s = sampleBuffer(this.buffer, renderTime, 250);
     if (!s) return; // nothing buffered yet
     const k = this.kart;
@@ -82,13 +103,27 @@ export class RemoteKart {
     this.bumpOff.multiplyScalar(1 - Math.min(1, 1.5 * dt)); // ease back to true path
     this.bumpOff.clampLength(0, 5); // safety only
 
-    // Drop the puppet onto the interpolated pose, plus the transient bump offset.
-    k.position.x = s.x + this.bumpOff.x;
-    k.position.z = s.z + this.bumpOff.z;
-    k.groundY = s.y; // sender already did ground-follow; y is absolute world height
+    // Ease the rendered pose toward the sampled one (render smoothing). Snap on a
+    // big jump (first sample / respawn / spin-out reposition) so we don't smear
+    // across the map.
+    if (!this._rinit || Math.hypot(s.x - this._rx, s.z - this._rz) > 6) {
+      this._rx = s.x; this._rz = s.z; this._ry = s.y; this._rh = s.h;
+      this._rinit = true;
+    } else {
+      const a = 1 - Math.exp(-dt / 0.06); // catch up ~95% in ~3-4 frames
+      this._rx += (s.x - this._rx) * a;
+      this._rz += (s.z - this._rz) * a;
+      this._ry += (s.y - this._ry) * a;
+      this._rh = lerpAngle(this._rh, s.h, a);
+    }
+
+    // Drop the puppet onto the smoothed pose, plus the transient bump offset.
+    k.position.x = this._rx + this.bumpOff.x;
+    k.position.z = this._rz + this.bumpOff.z;
+    k.groundY = this._ry; // sender already did ground-follow; y is absolute world height
     k.y = 0; // hops are baked into the sender's y; no separate jump offset
-    k.position.y = s.y;
-    k.heading = s.h;
+    k.position.y = this._ry;
+    k.heading = this._rh;
     k.slopePitch = s.p;
     k.speed = s.s;
 
@@ -100,7 +135,7 @@ export class RemoteKart {
 
     // Derive lean + cat-rig cornering from how fast the heading is turning, so
     // the puppet leans into bends and the cat reacts without extra bandwidth.
-    const yawRate = dt > 0 ? lerpAngle(this._prevH, s.h, 1) - this._prevH : 0;
+    const yawRate = dt > 0 ? lerpAngle(this._prevH, this._rh, 1) - this._prevH : 0;
     const turn = Math.max(-1, Math.min(1, (yawRate / Math.max(dt, 0.001)) * 0.5));
     k.steerInput = turn;
     k.driftDir = turn >= 0 ? 1 : -1;
@@ -109,7 +144,7 @@ export class RemoteKart {
     k._dt = dt;
     k._wheelSpin = (k._wheelSpin || 0) + s.s * dt * 1.6;
 
-    this._prevH = s.h;
+    this._prevH = this._rh;
     this._prevS = s.s;
     this._ready = true;
     k._syncMesh();

@@ -25,8 +25,8 @@ loaded until you add `&mp=1`.
 - **Your own kart** runs the normal local physics — zero input lag, unchanged.
 - **Rival karts** are `RemoteKart` puppets: the full kart visual, but driven by
   interpolated network snapshots instead of physics.
-- **Transport is abstracted** (`src/net/net.js`). PartyKit today; the same Net
-  facade could drive WebRTC later with no gameplay changes.
+- **Transport is abstracted** (`src/net/net.js`). Ably (cloud relay) by default,
+  or a WebRTC peer-to-peer transport — same facade, no gameplay changes.
 
 ### Files
 
@@ -36,11 +36,38 @@ loaded until you add `&mp=1`.
 | `src/net/clock.js` | NTP-style shared-clock sync (pure, unit-tested) |
 | `src/net/net.js` | Transport-agnostic facade: presence, clock, send/receive |
 | `src/net/loopback.js` | In-process fake server for tests/local dev (latency/jitter/clock-skew sim) |
-| `src/net/partysocket.js` | PartyKit client adapter |
-| `src/net/config.js` | `PARTY_HOST` setting + `?host=` override |
+| `src/net/ably.js` | Ably realtime adapter (default cloud transport) |
+| `src/net/webrtc.js` | WebRTC peer-to-peer transport (`?rtc=1`; pose stream goes direct) |
+| `src/net/partysocket.js` | PartyKit client adapter (legacy) |
+| `src/net/config.js` | `ABLY_KEY` / `PARTY_HOST` settings + URL overrides |
 | `src/remotekart.js` | Render-only ghost kart driven by the interpolation buffer |
 | `party/zoomies.js` | PartyKit server (relay + presence + clock) |
 | `partykit.json` | PartyKit project config |
+
+## Peer-to-peer mode (`?rtc=1`) — lower latency
+
+Add `&rtc=1` to the URL (alongside `&mp=1`) for a **peer-to-peer** transport.
+Instead of relaying every pose through Ably's cloud (~50–150 ms round trip), the
+high-frequency pose stream travels **directly between players** over WebRTC data
+channels — on the same Wi-Fi/LAN that's a ~1–5 ms hop, so remote karts feel far
+more immediate.
+
+What still uses Ably (all latency-tolerant): the **connection handshake**
+(signalling), **presence** (who's in the room), the **shared clock**, and the
+occasional **events** (race start, hairball shots, hits, finishes). Only the
+continuous pose stream is peer-to-peer. So you still need the Ably key set and a
+little internet **to connect** — the gameplay traffic is what goes direct.
+
+- The **invite link** carries `rtc=1`, so friends who open it join the same P2P
+  room. (Host and guests must agree on the transport to form direct links.)
+- It's **backward-compatible**: a peer that never opens a data channel just stays
+  on the Ably path, and a peer still connecting falls back to Ably until its P2P
+  link is live (the receiver drops the duplicate once it is).
+- Peers form a **full mesh** (fine at 2–6 players). A public STUN server is used
+  for connection setup; on a pure LAN, local candidates connect without it.
+
+`tools/net-check.mjs` (`npm run check:net`) unit-tests the pure routing decisions
+(who initiates, and the Ably-fallback de-dup). The live mesh needs real devices.
 
 ## Turn it on — Ably (recommended, ≈3 minutes, no server)
 
