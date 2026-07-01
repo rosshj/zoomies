@@ -758,6 +758,7 @@ function makeMpIdentity() {
 const MAX_PLAYERS = 6;
 const MP = {
   enabled: false, net: null, remotes: new Map(),
+  parked: new Map(), // id -> { r, since } — soft-despawned ghosts held for revival
   sendAcc: 0, hudAcc: 0, hud: null,
   inLobby: false, startAt: 0, connState: null,
 };
@@ -791,8 +792,27 @@ function mpGridSlot() {
   return Math.max(0, i);
 }
 
+// Soft-despawn grace: a peer whose presence flaps (a mobile reconnect) is "parked"
+// hidden for this long and REVIVED on rejoin, instead of being destroyed and
+// rebuilt. The old destroy/recreate churned a fresh Kart every blip — and
+// dispose() only removes from the scene (it can't free the cat's shared materials
+// safely), so that churn leaked GPU memory until the tab crashed. Parked ghosts
+// live OUTSIDE MP.remotes, so peer counts / placement / rendering see only the
+// active field, unchanged.
+const REMOTE_GRACE_MS = 12000;
+
 function mpSpawn(identity) {
   if (MP.remotes.has(identity.id)) return;
+  // Revive a parked ghost (peer flapped and returned) — reuse the Kart and its
+  // interpolation buffer instead of churning a new one.
+  const parked = MP.parked.get(identity.id);
+  if (parked) {
+    MP.parked.delete(identity.id);
+    parked.r.host = !!identity.host;
+    parked.r.group.visible = true;
+    MP.remotes.set(identity.id, parked.r);
+    return;
+  }
   // Cap the rendered field at MAX_PLAYERS (you + MAX_PLAYERS-1 remotes). Beyond
   // that the grid/headlight pool run out, so extra joiners aren't drawn into the
   // race. (Realistically a friends' room is ≤6; a true server-side cap would need
@@ -804,12 +824,20 @@ function mpSpawn(identity) {
   scene.add(r.group);
   MP.remotes.set(identity.id, r);
 }
-function mpDespawn(id) {
-  const r = MP.remotes.get(id);
-  if (r) {
+// `force` tears the ghost down immediately (leaving multiplayer); otherwise it's a
+// soft despawn — parked for possible revival within the grace window, then reaped
+// by the sweeper in updateMultiplayer.
+function mpDespawn(id, force = false) {
+  const r = MP.remotes.get(id) || (MP.parked.get(id) && MP.parked.get(id).r);
+  if (!r) return;
+  MP.remotes.delete(id);
+  if (force) {
+    MP.parked.delete(id);
     r.dispose(scene);
-    MP.remotes.delete(id);
+    return;
   }
+  if (r.group) r.group.visible = false;
+  MP.parked.set(id, { r, since: performance.now() });
 }
 
 function mpDebugHud() {
@@ -949,7 +977,11 @@ function updateMultiplayer(dt) {
   const net = MP.net;
   if (net.connected && player) {
     MP.sendAcc += dt;
-    if (MP.sendAcc >= 1 / 25) {
+    // ~16 Hz. Interpolation (with the 200ms delay) reconstructs smooth motion from
+    // this, and the lower rate roughly halves the per-channel message load vs the
+    // old 25 Hz — easing the relay so a busy room is less likely to drop/throttle
+    // a player's updates (which froze their kart on everyone else's screen).
+    if (MP.sendAcc >= 1 / 16) {
       MP.sendAcc = 0;
       let f = 0;
       if (player.drifting) f |= FLAG.DRIFT;
@@ -970,6 +1002,13 @@ function updateMultiplayer(dt) {
   }
   const rt = net.now() - INTERP_DELAY; // render remote karts slightly in the past
   for (const r of MP.remotes.values()) r.update(rt, dt);
+  // Reap parked ghosts whose grace has elapsed (peer really left, not a flap).
+  if (MP.parked.size) {
+    const nowMs = performance.now();
+    for (const [id, p] of MP.parked) {
+      if (nowMs - p.since > REMOTE_GRACE_MS) { p.r.dispose(scene); MP.parked.delete(id); }
+    }
+  }
 
   MP.hudAcc += dt;
   if (MP.hudAcc >= 0.5 && MP.hud) {
@@ -2365,7 +2404,9 @@ function exitMultiplayer() {
     try { MP.net.close(); } catch { /* ignore */ }
     MP.net = null;
   }
-  for (const id of [...MP.remotes.keys()]) mpDespawn(id);
+  for (const id of [...MP.remotes.keys()]) mpDespawn(id, true);
+  for (const [, p] of MP.parked) p.r.dispose(scene); // drop any parked ghosts too
+  MP.parked.clear();
   MP.enabled = false;
   MP.inLobby = false;
   MP.startAt = 0;
