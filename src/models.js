@@ -780,11 +780,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const m = accMat(accCol);
     for (const sx of [-1, 1]) {
       const loop = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), m);
-      loop.position.set(sx * 0.26, 1.5, 0.92); loop.scale.set(1.0, 0.66, 0.42);
+      // flatter, less bulbous: shallow depth (z 0.22) so it lies against the chest
+      loop.position.set(sx * 0.26, 1.5, 0.9); loop.scale.set(1.0, 0.62, 0.22);
       acc.add(loop);
     }
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark));
-    knot.position.set(0, 1.5, 0.98); acc.add(knot);  }
+    knot.position.set(0, 1.5, 0.94); knot.scale.set(0.9, 1.0, 0.55); acc.add(knot);  }
   // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie) sits
   // on the body. `acc` is at the origin, so its children's transforms already read
   // in the right frame — route them into the matching static bucket to merge.
