@@ -3,6 +3,10 @@ import { color as tslColor, time, normalView, positionViewDirection } from "thre
 import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
+// Scratch vectors for the per-frame integrator — shared by every kart (each is
+// fully written before it's read, and karts update sequentially).
+const _iFwd = new THREE.Vector3();
+const _iProbe = new THREE.Vector3();
 
 // Projected-shadow sun parameters, set per race from the active mood's sunDir.
 // The contact shadow is a flat quad stretched + aimed along the sun so it reads
@@ -456,7 +460,7 @@ export class Kart {
   }
 
   _integrate(dt, track, finishing) {
-    const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    const fwd = _iFwd.set(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.position.addScaledVector(fwd, this.speed * dt);
 
     // Bumper-car knockback (decaying positional impulse). The decay is gentle so
@@ -495,12 +499,8 @@ export class Kart {
     // body is lifted by the wheel-contact offset so the tyres rest on the road,
     // and the pitch follows quickly so it stays glued through slope changes.
     const half = 1.55; // matches the front/rear wheel positions
-    const frontY = track.project(
-      new THREE.Vector3().copy(this.position).addScaledVector(fwd, half)
-    ).groundY;
-    const rearY = track.project(
-      new THREE.Vector3().copy(this.position).addScaledVector(fwd, -half)
-    ).groundY;
+    const frontY = track.project(_iProbe.copy(this.position).addScaledVector(fwd, half)).groundY;
+    const rearY = track.project(_iProbe.copy(this.position).addScaledVector(fwd, -half)).groundY;
     this.groundY = (frontY + rearY) * 0.5 + 0.08; // lift so the tyres rest on, not in, the road
     const targetPitch = Math.atan2(rearY - frontY, 2 * half);
     // Track the slope quickly so the kart stays glued through crests/dips instead
