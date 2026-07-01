@@ -1228,6 +1228,9 @@ const _sunViewVec = new THREE.Vector3();
 const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
+// Frozen shadow-frustum centre, in integer texel coordinates along the light's
+// basis. Infinity forces the first refresh.
+let _shCr = Infinity, _shCu = 0, _shCf = 0;
 function updateAtmosphere() {
   // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
   // constant depth (their radius) inside the far plane. Anchored to the world origin
@@ -1241,28 +1244,44 @@ function updateAtmosphere() {
   // Direction toward the sun (invariant to the follow offset below).
   _sunDir.copy(sun.position).sub(sun.target.position).normalize();
 
-  // Keep the tight shadow frustum centred on the player so its crisp shadows
-  // are always where they show. Snap the centre to shadow-map texels (in the
-  // light's own view basis) so the now-tighter, crisper shadows don't swim or
-  // shimmer as the player moves. Light + target move together, preserving the
-  // sun direction.
+  // Freeze-and-step shadow following. The tight frustum stays centred near the
+  // player, but the camera only MOVES — and the map only RE-RENDERS — when the
+  // player has drifted a good chunk of texels from the frozen centre. Between
+  // refreshes the shadow camera and the depth map are bit-frozen, so shadows
+  // cannot shimmer no matter what the rasteriser/precision does (every mapped
+  // caster is static scenery; karts use projected quads). At a refresh the
+  // ortho camera jumps by EXACT texel multiples (all three axes, so stored
+  // depths also step discretely instead of sliding), which lands the static
+  // casters on identical texels just shifted — a seamless scroll. Bonus: the
+  // shadow pass stops re-rendering an identical 2048² map every frame (~17Hz at
+  // top speed, 0Hz parked).
   if (player) {
     const cam = sun.shadow.camera;
     const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
     _shRight.crossVectors(_shUp, _sunDir).normalize();
     _shUpL.crossVectors(_sunDir, _shRight).normalize();
     const p = player.position;
-    const dr = Math.round(p.dot(_shRight) / texel) * texel;
-    const du = Math.round(p.dot(_shUpL) / texel) * texel;
-    const df = p.dot(_sunDir);
-    sun.target.position
-      .set(0, 0, 0)
-      .addScaledVector(_shRight, dr)
-      .addScaledVector(_shUpL, du)
-      .addScaledVector(_sunDir, df);
-    sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
-    sun.target.updateMatrixWorld();
-    sun.updateMatrixWorld();
+    const tr = Math.round(p.dot(_shRight) / texel);
+    const tu = Math.round(p.dot(_shUpL) / texel);
+    const tf = Math.round(p.dot(_sunDir) / texel);
+    const STEP = 24; // texels of drift before re-centring (~2u — tiny vs the 85u half-frustum)
+    if (Math.abs(tr - _shCr) > STEP || Math.abs(tu - _shCu) > STEP || Math.abs(tf - _shCf) > STEP) {
+      _shCr = tr; _shCu = tu; _shCf = tf;
+      sun.target.position
+        .set(0, 0, 0)
+        .addScaledVector(_shRight, tr * texel)
+        .addScaledVector(_shUpL, tu * texel)
+        .addScaledVector(_sunDir, tf * texel);
+      sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
+      sun.target.updateMatrixWorld();
+      sun.updateMatrixWorld();
+      sun.shadow.needsUpdate = true;
+    }
+  } else {
+    // Menus/garage (no follow target): keep the map live so freshly built worlds
+    // and mood changes always show shadows. The camera is static here, so the
+    // per-frame re-render draws identical content — stable by the same argument.
+    sun.shadow.needsUpdate = true;
   }
 
   _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);

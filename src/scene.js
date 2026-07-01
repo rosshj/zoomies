@@ -109,6 +109,11 @@ export function createScene() {
   // surface normal, renderer-agnostic) which is the robust anti-acne knob.
   sun.shadow.bias = 0;
   sun.shadow.normalBias = 0.35; // bumped again to catch any residual acne shimmer
+  // The shadow map renders ON DEMAND (see the follow/refresh logic in main.js):
+  // every mapped caster is static scenery — karts use projected-quad shadows —
+  // so between re-centres the map is bit-frozen and shadows cannot shimmer.
+  sun.shadow.autoUpdate = false;
+  sun.shadow.needsUpdate = true; // first frame renders the initial map
   // PCF penumbra width. The WebGPU PCF filter is a fixed 17-tap kernel whose taps
   // spread across ±radius TEXELS — at 5, taps sat up to 2.5 texels apart, so soft
   // edges were built from sparse samples and crawled/flickered on building walls
