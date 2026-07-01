@@ -719,27 +719,30 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // radius 0.92 (a touch wider than the ~0.87 torso so it never clips). Printed:
     // a white-mapped material carries the base colour + subtle white paisley motif.
     const cloth = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol) });
+    // The band is tilted (rotation.x 0.26) so its BACK arc rides UP toward the nape
+    // / head instead of flaring down onto the upper back; the front dips to the
+    // throat, as a real neckerchief sits.
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.18, 32, 1, true), cloth);
-    band.position.set(0, 1.6, 0.04); band.rotation.x = 0.12; acc.add(band);
-    // Kerchief: two top corners spread to the sides of the neck, tapering to a
-    // point down the chest. Its top edge sits at the band front and the knot
-    // covers the seam, so it reads as tied cloth, not a separate hanging triangle.
+    band.position.set(0, 1.64, 0.05); band.rotation.x = 0.26; acc.add(band);
+    // Kerchief: two top corners spread to the sides of the neck (same width as
+    // before), tapering to a point — but SHORTER now, and with its top edge tucked
+    // up behind the band front so it reads as one tied cloth (no knot ball).
     const tri = new THREE.Shape();
-    tri.moveTo(-0.54, 0); tri.lineTo(0.54, 0); tri.lineTo(0, -0.86); tri.closePath();
+    tri.moveTo(-0.54, 0); tri.lineTo(0.54, 0); tri.lineTo(0, -0.58); tri.closePath();
     const flap = new THREE.Mesh(new THREE.ShapeGeometry(tri), cloth);
-    flap.position.set(0, 1.56, 0.92); flap.rotation.x = -0.16; acc.add(flap);
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 10), accMat(accColDark));
-    knot.position.set(0, 1.55, 0.97); knot.scale.set(1.3, 1, 0.8); acc.add(knot);  } else if (accId === "collar") {
+    flap.position.set(0, 1.46, 0.85); flap.rotation.x = -0.1; acc.add(flap);  } else if (accId === "collar") {
     // collar: a flat fabric band (a thin open cylinder wall — a strip, not a
     // rounded tube) around the neck, with a little gold bell at the throat. Radius
-    // 0.92 sits just proud of the ~0.87 torso so the whole band clears it.
+    // 0.92 sits just proud of the ~0.87 torso so the whole band clears it. Tilted
+    // (rotation.x 0.26) so the BACK of the band rides up near the head rather than
+    // drooping down the back; the throat side dips low where the bell hangs.
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.55, side: THREE.DoubleSide });
     const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.17, 32, 1, true), m);
-    collar.position.set(0, 1.6, 0.04); collar.rotation.x = 0.12; acc.add(collar);
+    collar.position.set(0, 1.64, 0.05); collar.rotation.x = 0.26; acc.add(collar);
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
-    bell.position.set(0, 1.35, 0.93); acc.add(bell);
+    bell.position.set(0, 1.2, 0.86); acc.add(bell);
     const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8), accMat(0xe0b53a, 0.4, 0.35));
-    nub.position.set(0, 1.45, 0.93); acc.add(nub);  } else if (accId === "bow") {
+    nub.position.set(0, 1.3, 0.87); acc.add(nub);  } else if (accId === "bow") {
     // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
     // on the upper chest in the body frame (a real bow tie, not a hair bow).
     const m = accMat(accCol);
