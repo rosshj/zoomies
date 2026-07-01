@@ -1524,8 +1524,11 @@ function applyQuality(q, persist = true) {
   qualityHighBtn?.classList.toggle("is-active", high);
   layoutStage(); // applies the resolution
 }
-qualityLowBtn?.addEventListener("click", () => applyQuality("low"));
-qualityHighBtn?.addEventListener("click", () => applyQuality("high"));
+qualityLowBtn?.addEventListener("click", () => { _mpWantsHigh = false; applyQuality("low"); });
+qualityHighBtn?.addEventListener("click", () => {
+  if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; } // opt out of MP's forced-Low this session
+  applyQuality("high");
+});
 applyQuality(quality, false); // honour the persisted choice without re-writing it
 
 // Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
@@ -1856,16 +1859,18 @@ const _isStandalone =
   window.navigator.standalone === true;
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
-// iOS WebGPU can hit a GPU device-loss under memory pressure, and multiplayer
-// piles two extra ghost karts + the realtime client onto an already heavy scene —
-// which is exactly when iOS guests were getting reloaded to the menu mid-race
-// (the crash-guard catching the device loss). So while in a multiplayer race on
-// iOS, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
-// ratio). NON-persisted, so single-player and the saved preference are untouched;
-// restored when leaving multiplayer.
+// Multiplayer favours performance over looks: two extra ghost karts + the realtime
+// client on an already heavy scene means a higher, steadier frame rate (and no iOS
+// WebGPU device-loss) matters more than SSR/god-rays. So while in a multiplayer
+// race, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
+// ratio, no GPU motes) on EVERY device. NON-persisted — single-player and the saved
+// preference are untouched, and it's restored when leaving multiplayer. A player
+// who bumps the Settings toggle to High mid-session opts out for that session
+// (_mpWantsHigh), so the toggle still works.
 let _mpForcedLow = false;
+let _mpWantsHigh = false;
 function applyMpQuality() {
-  const wantLow = _isIOS && MP.enabled;
+  const wantLow = MP.enabled && !_mpWantsHigh;
   if (wantLow && quality === "high") {
     _mpForcedLow = true;
     applyQuality("low", false);
@@ -2439,7 +2444,8 @@ function exitMultiplayer() {
   for (const [, p] of MP.parked) p.r.dispose(scene); // drop any parked ghosts too
   MP.parked.clear();
   MP.enabled = false;
-  applyMpQuality(); // restore the pre-multiplayer graphics setting (iOS Low override)
+  _mpWantsHigh = false; // next MP session re-defaults to lean
+  applyMpQuality(); // restore the pre-multiplayer graphics setting
   MP.inLobby = false;
   MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
