@@ -8,7 +8,8 @@
     "dev": "npx --yes serve -l 8080 .",
     "check": "node tools/headless-check.mjs",
     "check:offline": "node tools/offline-check.mjs",
-    "check:items": "node tools/items-check.mjs"
+    "check:items": "node tools/items-check.mjs",
+    "check:net": "node tools/net-check.mjs"
   },
   "license": "MIT",
   "devDependencies": {

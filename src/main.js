@@ -22,6 +22,7 @@ import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { Net } from "./net/net.js";
 import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
+import { createWebRTCTransport } from "./net/webrtc.js";
 import { resolveHost, resolveAblyKey } from "./net/config.js";
 import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
 import { audio } from "./audio.js";
@@ -861,9 +862,15 @@ function initMultiplayer() {
   MP.hud = mpDebugHud();
   MP.connState = "connecting";
   setMpStatus("connecting");
-  const transportP = ablyKey
-    ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
-    : createPartyTransport({ host, room: WORLD_SEED });
+  // ?rtc=1 selects the peer-to-peer transport (pose stream goes P2P over WebRTC;
+  // Ably still handles signalling / presence / clock / events). Needs an Ably key
+  // for the signalling backbone. Falls back to plain Ably without it.
+  const useRtc = ablyKey && new URLSearchParams(location.search).has("rtc");
+  const transportP = useRtc
+    ? createWebRTCTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
+    : ablyKey
+      ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
+      : createPartyTransport({ host, room: WORLD_SEED });
   transportP
     .then((transport) => {
       const net = new Net(transport, makeMpIdentity());
@@ -2481,6 +2488,9 @@ function inviteURL() {
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", WORLD_SEED);
   u.searchParams.set("mp", "1");
+  // Carry the peer-to-peer flag so friends who open the link join the same P2P
+  // room (host + guests must agree on the transport to get direct connections).
+  if (new URLSearchParams(location.search).has("rtc")) u.searchParams.set("rtc", "1");
   return u.toString();
 }
 
