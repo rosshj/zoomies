@@ -114,6 +114,27 @@ function underglowTexture() {
 // patterns, plus the accessory each preset breed wears.
 export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie"];
 export const CAT_ACCESSORIES = ["none", "cap", "headphones", "beanie", "flower", "fedora", "sunglasses", "bandana", "collar", "bow"];
+// Human-facing labels (ids stay stable for saved garages / breed defaults).
+export const ACCESSORY_LABELS = {
+  none: "None", cap: "Cap", headphones: "Headphones", beanie: "Beanie", flower: "Flower",
+  fedora: "Fedora", sunglasses: "Sunglasses", bandana: "Bandana", collar: "Collar", bow: "Bow tie",
+};
+// A sensible colour palette per accessory type — the FIRST entry is the natural
+// default (used when a cat doesn't pick a colour), the rest are the swatches the
+// creator offers. Single source of truth: createCat reads [0], the garage UI
+// renders the whole list.
+export const ACCESSORY_COLORS = {
+  none: [],
+  cap: [0xe23b3b, 0x2f6fd6, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xf0f0f0],       // team-cap colours
+  headphones: [0x222831, 0xf0f0f0, 0xe23b3b, 0x2f6fd6, 0xff5fa2],         // gadget colours
+  beanie: [0x3f7fd6, 0xe23b3b, 0x37b24d, 0x8a8f98, 0xff5fa2],             // knit colours
+  flower: [0xff7ab3, 0xe23b3b, 0xffe14d, 0xa259ff, 0xf5f5f5],             // bloom colours
+  fedora: [0x6b4a2f, 0x1a1a1a, 0x8a8f98, 0xcaa472],                       // felt-hat tones
+  sunglasses: [0x0a0a0a, 0x5a3b1e, 0x2f6fd6, 0xe23b3b],                   // frame colours (black/tortoise/…)
+  bandana: [0xd23b3b, 0x2f6fd6, 0x37b24d, 0x1a1a1a, 0xff8c1a],            // kerchief colours
+  collar: [0xd23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0x1a1a1a],            // collar colours
+  bow: [0xff5fa2, 0xe23b3b, 0x2f6fd6, 0x1a1a1a, 0xa259ff, 0x18b6a6],      // bow-tie colours
+};
 const PATTERN_ACCESSORY = {
   spotted: "cap", solid: "headphones", snowshoe: "beanie", point: "flower",
   mitted: "fedora", tuxedo: "sunglasses", tabby: "bandana", calico: "collar", tortie: "bow",
@@ -577,11 +598,19 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // can list them. Hats/headwear parent to the head (so they lean with it);
   // neckwear parents to the body. ---
   const accId = opts.accessory || PATTERN_ACCESSORY[pat] || "none";
+  // Each accessory has a natural default colour (the first swatch in its palette);
+  // a custom cat can recolour it via opts.accessoryColor. Accent bits that read as
+  // "not the main fabric" — a gold bell, a white pom/button, a yellow flower centre
+  // — keep their own fixed colours so recolouring still reads.
+  const accCol = (opts.accessoryColor != null && opts.accessoryColor !== "")
+    ? new THREE.Color(opts.accessoryColor).getHex()
+    : (ACCESSORY_COLORS[accId]?.[0] ?? 0xffffff);
+  const accColDark = new THREE.Color(accCol).multiplyScalar(0.8).getHex(); // shade for knots/accents
   const accMat = (hex, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m });
   const acc = new THREE.Group();
   if (accId === "cap") {
     // forward-facing baseball cap
-    const m = accMat(0xe23b3b);
+    const m = accMat(accCol);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
     dome.position.set(0, 0.46, 0.04); dome.scale.set(1, 0.72, 1);
     acc.add(dome);
@@ -592,7 +621,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     btn.position.set(0, 0.78, 0.04); acc.add(btn);  } else if (accId === "headphones") {
     // headphones — cups on the sides, band routed around the BACK of the head so
     // it clears the tall cat ears instead of slicing through them.
-    const m = accMat(0x222831, 0.4);
+    const m = accMat(accCol, 0.4);
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.84, 0.06, 8, 24, Math.PI), m);
     band.rotation.x = -Math.PI / 3; // angled up-and-back so it arcs behind the ears (not flat)
     band.position.set(0, 0.12, 0); acc.add(band);
@@ -602,7 +631,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       acc.add(cup);
     }  } else if (accId === "beanie") {
     // bobble beanie
-    const m = accMat(0x3f7fd6);
+    const m = accMat(accCol);
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.66, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
     cap.position.set(0, 0.36, 0); cap.scale.set(1, 0.92, 1); acc.add(cap);
     const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 8, 18), accMat(0xffffff));
@@ -617,60 +646,72 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const fv = new THREE.Vector3().crossVectors(fn, fu).normalize();
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2;
-      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), accMat(0xff7ab3));
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), accMat(accCol));
       petal.position.copy(fc).addScaledVector(fu, Math.cos(a) * 0.12).addScaledVector(fv, Math.sin(a) * 0.12);
       petal.scale.set(1, 1, 0.8); acc.add(petal);
     }
     const ctr = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), accMat(0xffe14d));
     ctr.position.copy(fc).addScaledVector(fn, 0.05); acc.add(ctr);  } else if (accId === "fedora") {
     // little fedora — rides up near the crown so the brim rests on the head
-    const m = accMat(0x6b4a2f);
+    const m = accMat(accCol);
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.05, 20), m);
     brim.position.set(0, 0.64, 0.02); acc.add(brim);
     const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.48, 0.46, 18), m);
     crown.position.set(0, 0.86, 0.02); acc.add(crown);
     const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.49, 0.49, 0.1, 18), accMat(0x2a2a2a));
     bandm.position.set(0, 0.7, 0.02); acc.add(bandm);  } else if (accId === "sunglasses") {
-    // black wayfarer sunglasses on the face — Shadow's signature cool look. The
-    // eyes are big spheres that bulge to ~z0.76, so the lenses sit further forward
-    // (z~0.84) to cover them instead of letting the eyes poke through.
-    const m = accMat(0x0a0a0a, 0.22, 0.5);
+    // wayfarer sunglasses on the face. The eyes are big spheres bulging to ~z0.76
+    // and out to ~x0.53, so the lenses sit forward (z~0.84) and WIDER (spanning
+    // x0.12–0.56), and each temple arm hinges at the lens's outer edge and runs
+    // straight back to the ear — staying outboard of the eyeball the whole way
+    // rather than sweeping across it.
+    const m = accMat(accCol, 0.22, 0.5);
     for (const sx of [-1, 1]) {
-      const lens = new THREE.Mesh(rbox(0.36, 0.3, 0.06, 0.06), m);
-      lens.position.set(sx * 0.3, 0.1, 0.84); lens.rotation.z = sx * -0.1; // slight wayfarer cant
+      const lens = new THREE.Mesh(rbox(0.44, 0.34, 0.06, 0.06), m);
+      lens.position.set(sx * 0.34, 0.1, 0.84); lens.rotation.z = sx * -0.08; // slight wayfarer cant
       acc.add(lens);
-      const armg = new THREE.Mesh(rbox(0.5, 0.05, 0.05, 0.02), m);
-      armg.position.set(sx * 0.54, 0.16, 0.5); armg.rotation.y = sx * 0.7; // temple arm back to the ear
+      const armg = new THREE.Mesh(rbox(0.66, 0.05, 0.05, 0.02), m);
+      // hinged at the lens's outer-top corner (x0.56, z0.84), running back to the
+      // ear (x0.72, z0.20) — the whole arm stays at x >= 0.56, clear of the eye.
+      armg.position.set(sx * 0.64, 0.17, 0.52); armg.rotation.y = sx * 1.33;
       acc.add(armg);
     }
-    const bridge = new THREE.Mesh(rbox(0.26, 0.08, 0.05, 0.02), m);
+    const bridge = new THREE.Mesh(rbox(0.3, 0.08, 0.05, 0.02), m);
     bridge.position.set(0, 0.14, 0.85); acc.add(bridge);  } else if (accId === "bandana") {
-    // neckerchief / bandana
-    const m = accMat(0xd23b3b);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 18), m);
-    ring.position.set(0, 1.56, 0.08); ring.rotation.x = Math.PI / 2.3; acc.add(ring);
-    const knot = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 5), m);
-    knot.position.set(0, 1.42, 0.56); knot.rotation.x = 0.6; acc.add(knot);  } else if (accId === "collar") {
-    // collar with a little gold bell
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 8, 20), accMat(0xd23b3b));
-    collar.position.set(0, 1.56, 0.08); collar.rotation.x = Math.PI / 2.3; acc.add(collar);
-    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), accMat(0xffd24d, 0.4, 0.3));
-    bell.position.set(0, 1.4, 0.52); acc.add(bell);
-    const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8), accMat(0xe0b53a, 0.4, 0.3));
-    nub.position.set(0, 1.49, 0.52); acc.add(nub);  } else if (accId === "bow") {
-    // a little hair bow perched on the crown — two pinched loops + a knot.
-    const m = accMat(0xff7aa8);
+    // neckerchief: a band around the neck + a knotted triangular flap on the chest.
+    // The band is a torus sized to the TORSO (radius ~0.86, the body is ~0.86 wide
+    // at the neckline) so it rings the neck instead of vanishing inside it.
+    const m = accMat(accCol);
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.08, 10, 26), m);
+    band.position.set(0, 1.62, 0.12); band.rotation.x = Math.PI / 2 + 0.12; acc.add(band);
+    const flap = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.62, 3), m); // 3-sided → triangle
+    flap.position.set(0, 1.15, 0.86); flap.rotation.x = Math.PI; flap.scale.set(1.05, 1, 0.42);
+    acc.add(flap);
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark));
+    knot.position.set(0, 1.5, 0.95); acc.add(knot);  } else if (accId === "collar") {
+    // collar with a little gold bell — the band is torso-sized (radius ~0.86) so it
+    // wraps the neck and reads, rather than sitting buried inside the body.
+    const m = accMat(accCol);
+    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.86, 0.075, 10, 28), m);
+    collar.position.set(0, 1.62, 0.12); collar.rotation.x = Math.PI / 2 + 0.12; acc.add(collar);
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
+    bell.position.set(0, 1.34, 0.95); acc.add(bell);
+    const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8), accMat(0xe0b53a, 0.4, 0.35));
+    nub.position.set(0, 1.46, 0.95); acc.add(nub);  } else if (accId === "bow") {
+    // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
+    // on the upper chest in the body frame (a real bow tie, not a hair bow).
+    const m = accMat(accCol);
     for (const sx of [-1, 1]) {
-      const loop = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), m);
-      loop.position.set(sx * 0.26, 0.56, 0.08); loop.scale.set(1, 0.62, 0.5);
+      const loop = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), m);
+      loop.position.set(sx * 0.26, 1.5, 0.92); loop.scale.set(1.0, 0.66, 0.42);
       acc.add(loop);
     }
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(0xe65f90));
-    knot.position.set(0, 0.56, 0.08); acc.add(knot);  }
-  // Headwear / eyewear ride with the head; neckwear (tabby kerchief, calico collar)
-  // sits on the body. `acc` is at the origin, so its children's transforms already
-  // read in the right frame — route them into the matching static bucket to merge.
-  const accToBody = accId === "bandana" || accId === "collar";
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark));
+    knot.position.set(0, 1.5, 0.98); acc.add(knot);  }
+  // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie) sits
+  // on the body. `acc` is at the origin, so its children's transforms already read
+  // in the right frame — route them into the matching static bucket to merge.
+  const accToBody = accId === "bandana" || accId === "collar" || accId === "bow";
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
