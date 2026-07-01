@@ -1229,12 +1229,59 @@ const _sunViewVec = new THREE.Vector3();
 const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
-// Frozen shadow-frustum centre, in integer texel coordinates along the light's
-// basis. Infinity forces the first refresh. _shTargetExp remembers where WE last
-// put the sun target, so an external re-anchor (applyMood resets it to the
-// origin) is detected and the frozen centre invalidated.
-let _shCr = Infinity, _shCu = 0, _shCf = 0;
+// _shTargetExp remembers where fitSunShadow last put the sun target, so an
+// external re-anchor (applyMood resets it to the origin) is detected and the
+// frustum refitted. NaN guarantees the first frame fits.
 const _shTargetExp = new THREE.Vector3(NaN, 0, 0);
+const _shCorner = new THREE.Vector3();
+
+// Fit the sun's shadow camera around the WHOLE world (track bounds + the
+// scenery strip + head-room for hills/buildings), projected into the light's
+// basis, and queue a single shadow-map render. Called once per world/mood.
+function fitSunShadow() {
+  const cam = sun.shadow.camera;
+  // World bounds from the track's sampled points (they carry the hills' y).
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const q of track._pts || []) {
+    if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+    if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y;
+    if (q.z < minZ) minZ = q.z; if (q.z > maxZ) maxZ = q.z;
+  }
+  if (!Number.isFinite(minX)) { minX = minZ = -400; maxX = maxZ = 400; minY = 0; maxY = 0; }
+  const M = 80; // roadside scenery strip (towns/trees sit within this of the track)
+  minX -= M; maxX += M; minZ -= M; maxZ += M;
+  minY -= 12; maxY += 45; // below bridges/dips + above buildings/treetops
+  // Project the world box's 8 corners into the light basis and fit the ortho
+  // bounds exactly around them.
+  _shRight.crossVectors(_shUp, _sunDir).normalize();
+  _shUpL.crossVectors(_sunDir, _shRight).normalize();
+  let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, f0 = Infinity, f1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    _shCorner.set(i & 1 ? maxX : minX, i & 2 ? maxY : minY, i & 4 ? maxZ : minZ);
+    const r = _shCorner.dot(_shRight), u = _shCorner.dot(_shUpL), f = _shCorner.dot(_sunDir);
+    if (r < r0) r0 = r; if (r > r1) r1 = r;
+    if (u < u0) u0 = u; if (u > u1) u1 = u;
+    if (f < f0) f0 = f; if (f > f1) f1 = f;
+  }
+  sun.target.position
+    .set(0, 0, 0)
+    .addScaledVector(_shRight, (r0 + r1) / 2)
+    .addScaledVector(_shUpL, (u0 + u1) / 2)
+    .addScaledVector(_sunDir, (f0 + f1) / 2);
+  const halfF = (f1 - f0) / 2;
+  sun.position.copy(sun.target.position).addScaledVector(_sunDir, halfF + 60);
+  cam.left = -(r1 - r0) / 2;
+  cam.right = (r1 - r0) / 2;
+  cam.bottom = -(u1 - u0) / 2;
+  cam.top = (u1 - u0) / 2;
+  cam.near = 40;
+  cam.far = halfF * 2 + 100;
+  cam.updateProjectionMatrix();
+  _shTargetExp.copy(sun.target.position);
+  sun.target.updateMatrixWorld();
+  sun.updateMatrixWorld();
+  sun.shadow.needsUpdate = true;
+}
 function updateAtmosphere() {
   // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
   // constant depth (their radius) inside the far plane. Anchored to the world origin
@@ -1246,62 +1293,26 @@ function updateAtmosphere() {
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
   // Direction toward the sun. Derived from the light/target positions but
-  // CACHED: the follow logic below moves BOTH ends using this very direction, so
-  // re-deriving through normalize() every frame lets FP rounding random-walk the
-  // value — which slowly ROTATES the shadow basis, visibly nudging every shadow
-  // edge at each frustum re-centre. Only accept a genuinely new direction (a
-  // mood change, ~degrees), never sub-noise drift; on a real change, invalidate
-  // the frozen shadow centre so the map re-renders in the new basis.
+  // CACHED: the shadow fit below repositions both ends using this very
+  // direction, and re-deriving through normalize() every frame lets FP rounding
+  // random-walk the value. Only accept a genuinely new direction (a mood
+  // change, ~degrees), never sub-noise drift.
   _sunDirRaw.copy(sun.position).sub(sun.target.position).normalize();
-  if (_sunDirRaw.distanceToSquared(_sunDir) > 1e-8) {
-    _sunDir.copy(_sunDirRaw);
-    _shCr = Infinity;
-  }
+  const sunDirChanged = _sunDirRaw.distanceToSquared(_sunDir) > 1e-8;
+  if (sunDirChanged) _sunDir.copy(_sunDirRaw);
 
-  // Freeze-and-step shadow following. The tight frustum stays centred near the
-  // player, but the camera only MOVES — and the map only RE-RENDERS — when the
-  // player has drifted a good chunk of texels from the frozen centre. Between
-  // refreshes the shadow camera and the depth map are bit-frozen, so shadows
-  // cannot shimmer no matter what the rasteriser/precision does (every mapped
-  // caster is static scenery; karts use projected quads). At a refresh the
-  // ortho camera jumps by EXACT texel multiples (all three axes, so stored
-  // depths also step discretely instead of sliding), which lands the static
-  // casters on identical texels just shifted — a seamless scroll. Bonus: the
-  // shadow pass stops re-rendering an identical 2048² map every frame (~17Hz at
-  // top speed, 0Hz parked).
-  if (player) {
-    // If something else re-anchored the light since our last refresh (applyMood
-    // resets the target to the origin on a mood change), the frozen centre is
-    // stale — invalidate so this frame re-centres and re-renders.
-    if (!sun.target.position.equals(_shTargetExp)) _shCr = Infinity;
-    const cam = sun.shadow.camera;
-    const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
-    _shRight.crossVectors(_shUp, _sunDir).normalize();
-    _shUpL.crossVectors(_sunDir, _shRight).normalize();
-    const p = player.position;
-    const tr = Math.round(p.dot(_shRight) / texel);
-    const tu = Math.round(p.dot(_shUpL) / texel);
-    const tf = Math.round(p.dot(_sunDir) / texel);
-    const STEP = 24; // texels of drift before re-centring (~2u — tiny vs the 85u half-frustum)
-    if (Math.abs(tr - _shCr) > STEP || Math.abs(tu - _shCu) > STEP || Math.abs(tf - _shCf) > STEP) {
-      _shCr = tr; _shCu = tu; _shCf = tf;
-      sun.target.position
-        .set(0, 0, 0)
-        .addScaledVector(_shRight, tr * texel)
-        .addScaledVector(_shUpL, tu * texel)
-        .addScaledVector(_sunDir, tf * texel);
-      sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
-      _shTargetExp.copy(sun.target.position);
-      sun.target.updateMatrixWorld();
-      sun.updateMatrixWorld();
-      sun.shadow.needsUpdate = true;
-    }
-  } else {
-    // Menus/garage (no follow target): keep the map live so freshly built worlds
-    // and mood changes always show shadows. The camera is static here, so the
-    // per-frame re-render draws identical content — stable by the same argument.
-    sun.shadow.needsUpdate = true;
-  }
+  // Fixed, world-sized shadow frustum, fitted + rendered ONCE per world/mood.
+  // A follow frustum — however cleverly snapped or stepped — has a MOVING
+  // BOUNDARY, and at sunset the long building/fence shadows crossing it visibly
+  // popped in and lurched at every re-centre. Every mapped caster is static
+  // scenery (karts use projected quads), so the frustum is instead fitted to
+  // the whole track once: the camera and depth map never change during play —
+  // nothing can pop, jump, or shimmer, and the shadow pass costs ~zero frames.
+  // The trade-off is texel density (the map covers the world, not 170u), which
+  // the soft toon look absorbs. Refit triggers: first frame, a mood change
+  // (new sun direction), or anything else re-anchoring the target (applyMood
+  // resets it to the origin).
+  if (sunDirChanged || !sun.target.position.equals(_shTargetExp)) fitSunShadow();
 
   _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facing = _sunDir.dot(_camFwd);

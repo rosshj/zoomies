@@ -90,11 +90,16 @@ export function createScene() {
   const sun = new THREE.DirectionalLight(0xffe6b8, 2.2);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048); // 4096 was a big cost on geometry-heavy/sun-facing views; PCF keeps 2048 stable
-  // A tight frustum that the game keeps centred on the player (see main loop):
-  // same map budget focused around you = crisp, dramatic shadows where they show.
-  // Kept fairly small so the 2048 map gives plenty of texels per unit near the
-  // kart (crisp edges); distant scenery shadows fall outside it but read tiny.
+  // The frustum is fitted ONCE around the whole world and the map rendered once
+  // per world/mood (fitSunShadow in main.js) — all mapped casters are static
+  // scenery, so a static map can't flicker/pop and costs ~zero frames. Since it
+  // renders once, resolution is purely a MEMORY choice: 4096 (64MB) keeps edges
+  // reasonably crisp over a whole track on High; devices persisted on Low get
+  // 2048. (The old per-frame 4096 render cost that forced 2048 no longer exists.)
+  let shadowSz = 4096;
+  try { if (localStorage.getItem("zoomies-quality") === "low") shadowSz = 2048; } catch { /* default high */ }
+  sun.shadow.mapSize.set(shadowSz, shadowSz);
+  // Initial bounds are placeholders — fitSunShadow overwrites them on frame one.
   const s = 85;
   sun.shadow.camera.left = -s;
   sun.shadow.camera.right = s;
