@@ -760,8 +760,10 @@ const MP = {
   enabled: false, net: null, remotes: new Map(),
   parked: new Map(), // id -> { r, since } — soft-despawned ghosts held for revival
   sendAcc: 0, hudAcc: 0, hud: null,
+  // (adaptive interpolation delay lives in _interpDelay, below)
   inLobby: false, startAt: 0, connState: null,
 };
+let _interpDelay = INTERP_DELAY; // adaptive: eased toward a target from the live ping
 // Total humans currently in the room (me + rendered remotes).
 function mpPlayerCount() {
   return 1 + MP.remotes.size;
@@ -1000,7 +1002,14 @@ function updateMultiplayer(dt) {
       });
     }
   }
-  const rt = net.now() - INTERP_DELAY; // render remote karts slightly in the past
+  // Adapt the interpolation delay to the live connection: cover roughly one-way
+  // latency (half the round-trip) plus a jitter margin, so a laggy link buffers
+  // more (smoother, fewer dead-reckon snaps) and a snappy link buffers less (more
+  // responsive). Eased slowly so the render time never lurches.
+  const rttMs = net.clock && Number.isFinite(net.clock.rtt) ? net.clock.rtt : 0;
+  const targetDelay = Math.max(180, Math.min(280, rttMs * 0.5 + 150));
+  _interpDelay += (targetDelay - _interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
+  const rt = net.now() - _interpDelay; // render remote karts slightly in the past
   for (const r of MP.remotes.values()) r.update(rt, dt);
   // Reap parked ghosts whose grace has elapsed (peer really left, not a flap).
   if (MP.parked.size) {

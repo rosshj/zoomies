@@ -9,7 +9,12 @@ export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8 };
 // plus jitter regularly exceeds 150ms, which left the buffer dry — so the ghost
 // dead-reckoned and snapped on every late packet (the "jumpy" report). 200ms keeps
 // interpolation working between real snapshots far more of the time.
-export const INTERP_DELAY = 200; // ms
+export const INTERP_DELAY = 200; // ms (starting point; main.js adapts it to the ping)
+
+// If a peer's snapshots stop arriving for this long, their kart is effectively
+// gone (a bad stall or a silent drop) — hide it rather than leave a confusing
+// frozen kart parked on the track. It reappears the instant fresh data resumes.
+const STALE_HIDE_MS = 2500;
 
 // A remote player's kart: a render-only puppet. It reuses the entire Kart visual
 // (chassis, cat rig, lean, contact shadow, shield bubble, spinning wheels) but
@@ -42,6 +47,7 @@ export class RemoteKart {
     // first sample) snaps instead of smearing.
     this._rinit = false;
     this._rx = 0; this._rz = 0; this._ry = 0; this._rh = 0;
+    this._lastRecv = 0; // wall-clock (performance.now) of the last snapshot received
     // Local collision "bump": a transient offset added on top of the interpolated
     // pose so the ghost visibly springs away when you ram it, instead of sitting
     // there like a wall. It decays back to zero, letting the authoritative network
@@ -59,6 +65,7 @@ export class RemoteKart {
 
   // A pose snapshot arrived from the network (already in shared-clock time).
   pushState(pose) {
+    this._lastRecv = performance.now();
     pushSnapshot(this.buffer, pose);
     // Progress isn't interpolated through the buffer — latest value wins. It only
     // feeds placement, which doesn't need sub-frame accuracy.
@@ -78,6 +85,12 @@ export class RemoteKart {
 
   // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
   update(renderTime, dt) {
+    // Hide (don't freeze) a peer whose updates have dried up; show it again the
+    // moment data resumes. Uses wall-clock so it's independent of the shared clock.
+    const stale = performance.now() - this._lastRecv > STALE_HIDE_MS;
+    this.group.visible = !stale;
+    if (stale) return;
+
     const s = sampleBuffer(this.buffer, renderTime, 250);
     if (!s) return; // nothing buffered yet
     const k = this.kart;
