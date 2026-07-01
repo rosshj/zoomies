@@ -329,11 +329,18 @@ const _godrayShafts = Fn(() => {
   });
   return add; // shafts only
 });
-// Render the shafts to a half-resolution target (cheap), then composite over the
-// full-res scene. autoUpdate re-renders them each frame; the If-gate keeps it a
-// cheap black fill when the sun isn't visible.
+// Render the shafts to a LOW-RES target (0.42× the drawing buffer, ~18% of the
+// pixels) and composite over the full-res scene — shafts are soft/low-frequency,
+// so the downsample is invisible. The target is sized EXPLICITLY in
+// applyResolution(): with RTTNode's autoSize (no explicit size), updateBefore
+// overwrites .pixelRatio with the renderer's every frame, so the old
+// `_shaftTex.pixelRatio = 0.42` was silently ignored and the shafts rendered at
+// FULL resolution — the main facing-the-sun frame cost. Updates are also driven
+// manually at half rate (see updateAtmosphere) instead of every frame.
 const _shaftTex = rtt(_godrayShafts());
-_shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
+_shaftTex.autoUpdate = false;
+let _shaftFlip = false; // half-rate refresh parity
+let _shaftLive = true;  // whether the target still needs a final black fill
 // Colour grade applied to whichever composite (high or low) we feed it, so both
 // quality tiers look consistent — Low just composites fewer passes into the base.
 function gradeOutput(base) {
@@ -1272,6 +1279,18 @@ function updateAtmosphere() {
   vis *= clear;
   godrayPass.uniforms.uVis.value = vis;
   flarePass.uniforms.uVis.value = vis;
+  // Refresh the shaft target every OTHER frame while the sun shows (soft, low-
+  // frequency content — half rate is invisible but halves the worst facing-the-
+  // sun cost). Once the sun goes hidden, one last refresh writes the gated black
+  // fill and updates stop entirely.
+  _shaftFlip = !_shaftFlip;
+  if (vis > 0.001) {
+    if (_shaftFlip) _shaftTex.textureNeedsUpdate = true;
+    _shaftLive = true;
+  } else if (_shaftLive) {
+    _shaftTex.textureNeedsUpdate = true;
+    _shaftLive = false;
+  }
   // PERF: both are full-screen shader passes that output the frame unchanged when
   // the sun isn't visible (night, or facing away) — skip them entirely then. Saves
   // two full-frame passes every night frame. fxPass stays last, so the
@@ -1471,6 +1490,14 @@ function applyResolution() {
   const bw = Math.max(1, Math.round(stageState.W * pr * 0.5));
   const bh = Math.max(1, Math.round(stageState.H * pr * 0.5));
   bloomPass.setSize(bw, bh);
+  // God-ray shaft target: explicit size (0.42× the drawing buffer) so RTTNode's
+  // autoSize path — which stomps .pixelRatio back to the renderer's every frame —
+  // never runs. See the note at _shaftTex's creation.
+  _shaftTex.pixelRatio = 1;
+  _shaftTex.setSize(
+    Math.max(1, Math.round(stageState.W * pr * 0.42)),
+    Math.max(1, Math.round(stageState.H * pr * 0.42))
+  );
 }
 
 window.addEventListener("resize", layoutStage);

@@ -109,7 +109,13 @@ export function createScene() {
   // surface normal, renderer-agnostic) which is the robust anti-acne knob.
   sun.shadow.bias = 0;
   sun.shadow.normalBias = 0.35; // bumped again to catch any residual acne shimmer
-  sun.shadow.radius = 5; // soft PCF penumbra for the gentle, toy-like look
+  // PCF penumbra width. The WebGPU PCF filter is a fixed 17-tap kernel whose taps
+  // spread across ±radius TEXELS — at 5, taps sat up to 2.5 texels apart, so soft
+  // edges were built from sparse samples and crawled/flickered on building walls
+  // and thin fence rails whenever the (texel-snapped) map re-rendered. At 2 the
+  // taps are ≤1 texel apart — a fully-covered, temporally stable kernel — at the
+  // cost of a slightly tighter (still soft) penumbra.
+  sun.shadow.radius = 2;
   scene.add(sun);
   scene.add(sun.target);
 
