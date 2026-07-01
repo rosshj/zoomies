@@ -19,4 +19,15 @@ try {
   /* storage unavailable — just use the URL/default */
 }
 
-export const USE_WEBGPU = !_params.has("webgl") && !_preferWebGL;
+// iOS + multiplayer → start on WebGL2 instead of WebGPU. Multiplayer piles two
+// extra karts + the realtime client onto an already heavy scene, and iOS's WebGPU
+// is the backend that loses its device under that memory pressure (the reported
+// guest crash). WebGL2 is the battle-tested path there. Scoped to iOS-in-MP so
+// single-player keeps WebGPU's headroom; a guest loads with ?mp=1 in the URL, so
+// this resolves before the renderer is created. ?webgpu=1 overrides to retry.
+const _isIOS =
+  /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const _iosMultiplayer = _isIOS && _params.has("mp") && !_params.has("webgpu");
+
+export const USE_WEBGPU = !_params.has("webgl") && !_preferWebGL && !_iosMultiplayer;
