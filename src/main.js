@@ -1846,6 +1846,28 @@ const _isStandalone =
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+
+// iOS WebGPU can hit a GPU device-loss under memory pressure, and multiplayer
+// piles two extra ghost karts + the realtime client onto an already heavy scene —
+// which is exactly when iOS guests were getting reloaded to the menu mid-race
+// (the crash-guard catching the device loss). So while in a multiplayer race on
+// iOS, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
+// ratio). NON-persisted, so single-player and the saved preference are untouched;
+// restored when leaving multiplayer.
+let _mpForcedLow = false;
+function applyMpQuality() {
+  const wantLow = _isIOS && MP.enabled;
+  if (wantLow && quality === "high") {
+    _mpForcedLow = true;
+    applyQuality("low", false);
+    hud.showToast?.("Graphics set to Low for smoother multiplayer");
+  } else if (!wantLow && _mpForcedLow) {
+    _mpForcedLow = false;
+    let saved = "high";
+    try { if (localStorage.getItem(QUALITY_KEY) === "low") saved = "low"; } catch {}
+    applyQuality(saved, false);
+  }
+}
 let _deferredInstall = null;
 let _installGate = false; // mandatory-install mode (touch device, not installed)
 
@@ -2408,6 +2430,7 @@ function exitMultiplayer() {
   for (const [, p] of MP.parked) p.r.dispose(scene); // drop any parked ghosts too
   MP.parked.clear();
   MP.enabled = false;
+  applyMpQuality(); // restore the pre-multiplayer graphics setting (iOS Low override)
   MP.inLobby = false;
   MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
@@ -2566,6 +2589,7 @@ function prepareRace() {
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   updateBoostUI(); // karts start with an empty boost meter
+  applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against
   // the clock has no rivals to use them on, and they'd pollute the ghost lap).
   props?.setItemsEnabled?.(!timeTrial);
