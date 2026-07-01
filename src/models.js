@@ -245,12 +245,14 @@ function makeSpotTexture(furColor, spotColor) {
   return t;
 }
 
-// Classic bandana print: the chosen base colour tiled with a subtle white paisley-
-// ish motif (a dot ringed by a little diamond), staggered row to row so it reads as
-// cloth, not a grid. Cached per colour.
-function makeBandanaTexture(baseHex) {
+// Classic bandana print: the chosen base colour tiled with a white paisley-ish
+// motif (a dot ringed by a little diamond), staggered row to row so it reads as
+// cloth, not a grid. Cached per colour AND repeat, so the band and the drape can
+// each get a texture instance with its own tiling (distinct instances, not clones
+// — cloned textures don't reliably carry their own repeat on the WebGPU backend).
+function makeBandanaTexture(baseHex, rx = 3, ry = 2) {
   const base = new THREE.Color(baseHex);
-  const key = `band|${base.getHexString()}`;
+  const key = `band|${base.getHexString()}|${rx}x${ry}`;
   if (_coatTexCache.has(key)) return _coatTexCache.get(key);
   const S = 128;
   const c = document.createElement("canvas");
@@ -263,18 +265,18 @@ function makeBandanaTexture(baseHex) {
     for (let gx = 0; gx < 4; gx++) {
       const x = (gx * cell + cell / 2 + (gy % 2 ? cell / 2 : 0)) % S;
       const y = gy * cell + cell / 2;
-      ctx.fillStyle = "rgba(255,255,255,0.92)";
-      ctx.beginPath(); ctx.arc(x, y, S * 0.03, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(255,255,255,0.7)";
-      ctx.lineWidth = S * 0.015;
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.beginPath(); ctx.arc(x, y, S * 0.036, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = S * 0.017;
       ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4);
-      const d = S * 0.075;
+      const d = S * 0.082;
       ctx.strokeRect(-d, -d, 2 * d, 2 * d);
       ctx.restore();
     }
   }
   const t = _finishTex(c);
-  t.repeat.set(3, 2);
+  t.repeat.set(rx, ry);
   _coatTexCache.set(key, t);
   return t;
 }
@@ -720,15 +722,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // a white-mapped material carries the base colour + subtle white paisley motif.
     // One continuous printed cloth: the band, the chest drape, and the tie (knot +
     // tails) at the nape all use the same white-mapped paisley material — the band
-    // and the drape get their own texture repeats so the print reads at each scale
-    // yet feels like the same fabric wrapping round to the drape.
-    const mkClothMat = (rx, ry) => {
-      const t = makeBandanaTexture(accCol).clone();
-      t.needsUpdate = true; t.repeat.set(rx, ry);
-      return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: t });
-    };
-    const bandMat = mkClothMat(9, 1.3);    // a row of motifs wrapping the thin band
-    const clothMat = mkClothMat(2.4, 2.4); // drape / knot / tails
+    // and the drape get their own texture instances with their own tiling so the
+    // print reads at each scale yet feels like the same fabric.
+    const clothMatOf = (rx, ry) =>
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol, rx, ry) });
+    const bandMat = clothMatOf(9, 1.4);    // a row of motifs wrapping the thin band
+    const clothMat = clothMatOf(2.4, 2.4); // drape / knot / tails
     // The band is tilted (rotation.x 0.26) so its BACK arc rides UP toward the nape
     // (where it's tied) instead of flaring down onto the upper back; the front dips
     // to the throat, as a real neckerchief sits.
@@ -750,16 +749,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fgeo.computeVertexNormals();
     const flap = new THREE.Mesh(fgeo, clothMat);
     flap.position.set(0, 1.42, 0.82); acc.add(flap);
-    // The tie at the nape: a little knot with two pointed tails, as when a bandana
-    // is knotted at the back of the neck.
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), clothMat);
-    knot.position.set(0, 1.85, -0.83); knot.scale.set(1.5, 1.1, 0.9); acc.add(knot);
+    // The tie at the nape: a knot with two pointed tails, as when a bandana is
+    // knotted at the back of the neck. Pushed well behind the neck (z ~ -0.95) so
+    // it sits PROUD of the torso's back (which reaches ~z-0.85 here) instead of
+    // being buried inside it.
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), clothMat);
+    knot.position.set(0, 1.86, -0.95); knot.scale.set(1.5, 1.2, 1.0); acc.add(knot);
     for (const sx of [-1, 1]) {
-      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.42, 4), clothMat);
-      tail.position.set(sx * 0.17, 1.68, -0.82);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.52, 4), clothMat);
+      tail.position.set(sx * 0.2, 1.6, -0.96);
       tail.rotation.z = sx * -2.5; // apex swings down-and-out to the side
       tail.rotation.y = sx * 0.3;
-      tail.scale.set(1, 1, 0.5);   // flatten like cloth
+      tail.scale.set(1, 1, 0.55);  // flatten like cloth
       acc.add(tail);
     }  } else if (accId === "collar") {
     // collar: a flat fabric band (a thin open cylinder wall — a strip, not a
