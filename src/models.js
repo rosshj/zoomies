@@ -718,11 +718,21 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // The band is a thin open cylinder wall (a fabric strip, not a rounded tube),
     // radius 0.92 (a touch wider than the ~0.87 torso so it never clips). Printed:
     // a white-mapped material carries the base colour + subtle white paisley motif.
-    const cloth = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol) });
+    // One continuous printed cloth: the band, the chest drape, and the tie (knot +
+    // tails) at the nape all use the same white-mapped paisley material — the band
+    // and the drape get their own texture repeats so the print reads at each scale
+    // yet feels like the same fabric wrapping round to the drape.
+    const mkClothMat = (rx, ry) => {
+      const t = makeBandanaTexture(accCol).clone();
+      t.needsUpdate = true; t.repeat.set(rx, ry);
+      return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: t });
+    };
+    const bandMat = mkClothMat(9, 1.3);    // a row of motifs wrapping the thin band
+    const clothMat = mkClothMat(2.4, 2.4); // drape / knot / tails
     // The band is tilted (rotation.x 0.26) so its BACK arc rides UP toward the nape
-    // / head instead of flaring down onto the upper back; the front dips to the
-    // throat, as a real neckerchief sits.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.18, 32, 1, true), cloth);
+    // (where it's tied) instead of flaring down onto the upper back; the front dips
+    // to the throat, as a real neckerchief sits.
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.18, 32, 1, true), bandMat);
     band.position.set(0, 1.64, 0.05); band.rotation.x = 0.26; acc.add(band);
     // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
     // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
@@ -738,8 +748,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fgeo.setAttribute("uv", new THREE.Float32BufferAttribute(fuv, 2));
     fgeo.setIndex([0, 2, 1, 0, 3, 2, 2, 3, 1]);
     fgeo.computeVertexNormals();
-    const flap = new THREE.Mesh(fgeo, cloth);
-    flap.position.set(0, 1.42, 0.82); acc.add(flap);  } else if (accId === "collar") {
+    const flap = new THREE.Mesh(fgeo, clothMat);
+    flap.position.set(0, 1.42, 0.82); acc.add(flap);
+    // The tie at the nape: a little knot with two pointed tails, as when a bandana
+    // is knotted at the back of the neck.
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), clothMat);
+    knot.position.set(0, 1.85, -0.83); knot.scale.set(1.5, 1.1, 0.9); acc.add(knot);
+    for (const sx of [-1, 1]) {
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.42, 4), clothMat);
+      tail.position.set(sx * 0.17, 1.68, -0.82);
+      tail.rotation.z = sx * -2.5; // apex swings down-and-out to the side
+      tail.rotation.y = sx * 0.3;
+      tail.scale.set(1, 1, 0.5);   // flatten like cloth
+      acc.add(tail);
+    }  } else if (accId === "collar") {
     // collar: a flat fabric band (a thin open cylinder wall — a strip, not a
     // rounded tube) around the neck, with a little gold bell at the throat. Radius
     // 0.92 sits just proud of the ~0.87 torso so the whole band clears it. Tilted
