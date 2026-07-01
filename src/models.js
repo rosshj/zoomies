@@ -724,13 +724,22 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // throat, as a real neckerchief sits.
     const band = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.18, 32, 1, true), cloth);
     band.position.set(0, 1.64, 0.05); band.rotation.x = 0.26; acc.add(band);
-    // Kerchief: two top corners spread to the sides of the neck (same width as
-    // before), tapering to a point — but SHORTER now, and with its top edge tucked
-    // up behind the band front so it reads as one tied cloth (no knot ball).
-    const tri = new THREE.Shape();
-    tri.moveTo(-0.54, 0); tri.lineTo(0.54, 0); tri.lineTo(0, -0.58); tri.closePath();
-    const flap = new THREE.Mesh(new THREE.ShapeGeometry(tri), cloth);
-    flap.position.set(0, 1.46, 0.85); flap.rotation.x = -0.1; acc.add(flap);  } else if (accId === "collar") {
+    // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
+    // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
+    // instead of the chest bulging through a flat plane. Top edge tucks behind the
+    // band; the two top corners and the point hang back at the sides.
+    //   TL ── TR      (top edge, at the band, z 0)
+    //     \ MC /       (centre bulged forward, +z, riding over the chest)
+    //       BP         (point, forward a little)
+    const fp = [-0.54, 0, 0,  0.54, 0, 0,  0, -0.30, 0.22,  0, -0.60, 0.16];
+    const fuv = [0, 1,  1, 1,  0.5, 0.5,  0.5, 0];
+    const fgeo = new THREE.BufferGeometry();
+    fgeo.setAttribute("position", new THREE.Float32BufferAttribute(fp, 3));
+    fgeo.setAttribute("uv", new THREE.Float32BufferAttribute(fuv, 2));
+    fgeo.setIndex([0, 2, 1, 0, 3, 2, 2, 3, 1]);
+    fgeo.computeVertexNormals();
+    const flap = new THREE.Mesh(fgeo, cloth);
+    flap.position.set(0, 1.42, 0.82); acc.add(flap);  } else if (accId === "collar") {
     // collar: a flat fabric band (a thin open cylinder wall — a strip, not a
     // rounded tube) around the neck, with a little gold bell at the throat. Radius
     // 0.92 sits just proud of the ~0.87 torso so the whole band clears it. Tilted
