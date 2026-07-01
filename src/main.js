@@ -1217,7 +1217,8 @@ function updateRearThreat() {
 // Update the god-ray pass: project the sun to screen and fade it out when it's
 // hidden by the weather or behind the camera.
 let sunVisibleMood = MOOD.rays ?? MOOD.sunVisible;
-const _sunDir = new THREE.Vector3();
+const _sunDir = new THREE.Vector3(); // stable CACHED sun direction (see updateAtmosphere)
+const _sunDirRaw = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
 const _sunScreen = new THREE.Vector3();
 const _ss = (a, b, x) => {
@@ -1229,8 +1230,11 @@ const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
 // Frozen shadow-frustum centre, in integer texel coordinates along the light's
-// basis. Infinity forces the first refresh.
+// basis. Infinity forces the first refresh. _shTargetExp remembers where WE last
+// put the sun target, so an external re-anchor (applyMood resets it to the
+// origin) is detected and the frozen centre invalidated.
 let _shCr = Infinity, _shCu = 0, _shCf = 0;
+const _shTargetExp = new THREE.Vector3(NaN, 0, 0);
 function updateAtmosphere() {
   // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
   // constant depth (their radius) inside the far plane. Anchored to the world origin
@@ -1241,8 +1245,18 @@ function updateAtmosphere() {
   if (starField) starField.position.copy(camera.position);
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-  // Direction toward the sun (invariant to the follow offset below).
-  _sunDir.copy(sun.position).sub(sun.target.position).normalize();
+  // Direction toward the sun. Derived from the light/target positions but
+  // CACHED: the follow logic below moves BOTH ends using this very direction, so
+  // re-deriving through normalize() every frame lets FP rounding random-walk the
+  // value — which slowly ROTATES the shadow basis, visibly nudging every shadow
+  // edge at each frustum re-centre. Only accept a genuinely new direction (a
+  // mood change, ~degrees), never sub-noise drift; on a real change, invalidate
+  // the frozen shadow centre so the map re-renders in the new basis.
+  _sunDirRaw.copy(sun.position).sub(sun.target.position).normalize();
+  if (_sunDirRaw.distanceToSquared(_sunDir) > 1e-8) {
+    _sunDir.copy(_sunDirRaw);
+    _shCr = Infinity;
+  }
 
   // Freeze-and-step shadow following. The tight frustum stays centred near the
   // player, but the camera only MOVES — and the map only RE-RENDERS — when the
@@ -1256,6 +1270,10 @@ function updateAtmosphere() {
   // shadow pass stops re-rendering an identical 2048² map every frame (~17Hz at
   // top speed, 0Hz parked).
   if (player) {
+    // If something else re-anchored the light since our last refresh (applyMood
+    // resets the target to the origin on a mood change), the frozen centre is
+    // stale — invalidate so this frame re-centres and re-renders.
+    if (!sun.target.position.equals(_shTargetExp)) _shCr = Infinity;
     const cam = sun.shadow.camera;
     const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
     _shRight.crossVectors(_shUp, _sunDir).normalize();
@@ -1273,6 +1291,7 @@ function updateAtmosphere() {
         .addScaledVector(_shUpL, tu * texel)
         .addScaledVector(_sunDir, tf * texel);
       sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
+      _shTargetExp.copy(sun.target.position);
       sun.target.updateMatrixWorld();
       sun.updateMatrixWorld();
       sun.shadow.needsUpdate = true;
