@@ -70,6 +70,13 @@ class WebRTCTransport {
     }
   }
 
+  // How many peers are on a live direct data channel right now (for the debug HUD).
+  p2pCount() {
+    let n = 0;
+    for (const p of this._peers.values()) if (p.ready) n++;
+    return n;
+  }
+
   close() {
     for (const p of this._peers.values()) this._closePeer(p);
     this._peers.clear();

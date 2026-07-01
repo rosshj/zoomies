@@ -958,8 +958,11 @@ function setMpStatus(state, reason) {
     "…";
   if (MP.hud) {
     const live = state === "connected";
+    // Show how many peers are on a live peer-to-peer link (WebRTC transport), so
+    // it's visible whether ?rtc=1 actually upgraded past the Ably fallback.
+    const p2p = MP.net && MP.net.transport && MP.net.transport.p2pCount ? MP.net.transport.p2pCount() : 0;
     MP.hud.textContent = live
-      ? `MP · peers ${MP.remotes.size} · ping ${MP.net ? Math.round(MP.net.clock.rtt) : "—"}ms · live`
+      ? `MP · peers ${MP.remotes.size} · ping ${MP.net ? Math.round(MP.net.clock.rtt) : "—"}ms${p2p ? ` · p2p ${p2p}` : ""} · live`
       : `MP · ${label}`;
     MP.hud.style.color = state === "failed" ? "#ff9a8a" : "#cdf";
   }
