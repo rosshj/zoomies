@@ -185,7 +185,43 @@ function _finishTex(c) {
 // texture (no tiling). `axis` "u" → stripes run DOWN the flanks (vertical, the
 // classic body/head look); "v" → rings around the tail. Each stripe is broken
 // into a few jittered dashes so it reads hand-painted, not like a barcode.
+// Both caches are insertion-ordered Maps capped by evicting the OLDEST entry —
+// without a cap, arbitrary multiplayer colours would grow them forever (each coat
+// texture is a 256² canvas). Evicted entries are NOT disposed: a kart still on
+// track may reference them; once unreferenced, GC reclaims them.
 const _coatTexCache = new Map();
+const COAT_TEX_CAP = 64;
+function _cacheTex(key, tex) {
+  if (_coatTexCache.size >= COAT_TEX_CAP) _coatTexCache.delete(_coatTexCache.keys().next().value);
+  _coatTexCache.set(key, tex);
+  return tex;
+}
+// Colour-keyed shared materials: two karts/cats with the same colours get the SAME
+// material instance, so the toon conversion (cached per source material) collapses
+// them to one render pipeline, and teardown knows not to dispose them (shared flag).
+const _matCache = new Map();
+const MAT_CACHE_CAP = 256;
+export function sharedMat(key, make) {
+  let m = _matCache.get(key);
+  if (!m) {
+    if (_matCache.size >= MAT_CACHE_CAP) _matCache.delete(_matCache.keys().next().value);
+    m = make();
+    m.userData.shared = true;
+    _matCache.set(key, m);
+  }
+  return m;
+}
+// Free a discarded kart/cat group's GPU resources: geometries are always
+// per-instance (merged fresh per kart) so they always dispose; materials flagged
+// shared (colour-keyed cache above, module constants, and their toon conversions)
+// are still used by other karts and are skipped.
+export function disposeGroup(root) {
+  root.traverse((o) => {
+    if (o.geometry) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) if (!m?.userData?.shared) m?.dispose?.();
+  });
+}
 function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
   const key = `s|${furColor.getHexString()}|${stripeColor.getHexString()}|${count}|${axis}`;
   if (_coatTexCache.has(key)) return _coatTexCache.get(key);
@@ -213,8 +249,7 @@ function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
     }
   }
   const t = _finishTex(c);
-  _coatTexCache.set(key, t);
-  return t;
+  return _cacheTex(key, t);
 }
 // Painted spotted/rosetted coat (ginger spotted tabby): a deterministic scatter
 // of bold rounded spots — drawn once, no tiling.
@@ -241,8 +276,7 @@ function makeSpotTexture(furColor, spotColor) {
     ctx.fill();
   }
   const t = _finishTex(c);
-  _coatTexCache.set(key, t);
-  return t;
+  return _cacheTex(key, t);
 }
 
 // Classic bandana print: the chosen base colour tiled with a white paisley-ish
@@ -277,8 +311,7 @@ function makeBandanaTexture(baseHex, rx = 3, ry = 2) {
   }
   const t = _finishTex(c);
   t.repeat.set(rx, ry);
-  _coatTexCache.set(key, t);
-  return t;
+  return _cacheTex(key, t);
 }
 
 // Painted calico coat: a cream base broken up by big irregular ginger and black
@@ -315,8 +348,7 @@ function makeCalicoTexture(baseColor) {
     ctx.fill();
   }
   const t = _finishTex(c);
-  _coatTexCache.set(key, t);
-  return t;
+  return _cacheTex(key, t);
 }
 
 // Painted tortoiseshell coat: like a calico but with NO white — a dense mottled
@@ -354,8 +386,7 @@ function makeTortieTexture(baseColor) {
     ctx.fill();
   }
   const t = _finishTex(c);
-  _coatTexCache.set(key, t);
-  return t;
+  return _cacheTex(key, t);
 }
 
 // Eyeball texture: sclera + iris + slit pupil + catch-lights all PAINTED onto one
@@ -385,18 +416,21 @@ function makeEyeTexture(eyeColor) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.needsUpdate = true;
+  if (_eyeTexCache.size >= COAT_TEX_CAP) _eyeTexCache.delete(_eyeTexCache.keys().next().value);
   _eyeTexCache.set(hex, t);
   return t;
 }
 
 // Constant cat materials — never vary per cat, so a single shared instance is
 // reused by every driver (the toToon cache then collapses each to one pipeline).
-const _cDark = new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5 });
-const _cPink = new THREE.MeshStandardMaterial({ color: 0xff90ad, roughness: 0.6 });
-const _cWhite = new THREE.MeshStandardMaterial({ color: 0xfbfbfb, roughness: 0.6 });
-const _cWhisker = new THREE.LineBasicMaterial({ color: 0xf0f0f0 });
-const _cMouth = new THREE.LineBasicMaterial({ color: 0x6b4a4a });
-const _cShade = new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.4 });
+// Flagged shared so kart teardown (disposeGroup) never disposes them.
+const _shared = (m) => { m.userData.shared = true; return m; };
+const _cDark = _shared(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.5 }));
+const _cPink = _shared(new THREE.MeshStandardMaterial({ color: 0xff90ad, roughness: 0.6 }));
+const _cWhite = _shared(new THREE.MeshStandardMaterial({ color: 0xfbfbfb, roughness: 0.6 }));
+const _cWhisker = _shared(new THREE.LineBasicMaterial({ color: 0xf0f0f0 }));
+const _cMouth = _shared(new THREE.LineBasicMaterial({ color: 0x6b4a4a }));
+const _cShade = _shared(new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.4 }));
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
 // origin sits at the seat base. `furColor` tints the fur; `opts.pattern` can
@@ -427,19 +461,22 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const whitePaws = isTuxedo || isMitted || isSnow || isCalico; // calicos have white socks
   const colorExtremity = isPoint || isSnow;    // ears/mask/tail take the point colour
 
-  const fur = new THREE.MeshStandardMaterial({ color: pal.fur, roughness: 0.92 });
-  const stripeMat = new THREE.MeshStandardMaterial({ color: pal.stripe, roughness: 0.92 });
+  // Colour-dependent materials come from the shared cache: two cats with the same
+  // palette share instances (one toon pipeline for both, safe-skipped on teardown).
+  const furHex = pal.fur.getHexString();
+  const fur = sharedMat(`cfur|${furHex}`, () => new THREE.MeshStandardMaterial({ color: pal.fur, roughness: 0.92 }));
+  const stripeMat = sharedMat(`cstripe|${pal.stripe.getHexString()}`, () => new THREE.MeshStandardMaterial({ color: pal.stripe, roughness: 0.92 }));
   // Extremity fur: masked breeds darken at ears/mask/tail; everyone else reuses
   // the base coat.
   const extremity = colorExtremity
-    ? new THREE.MeshStandardMaterial({ color: pal.point, roughness: 0.92 })
+    ? sharedMat(`cpoint|${pal.point.getHexString()}`, () => new THREE.MeshStandardMaterial({ color: pal.point, roughness: 0.92 }))
     : fur;
   const dark = _cDark;
   const pink = _cPink;
   const white = _cWhite;
   const pawMat = whitePaws ? white : isPoint ? extremity : fur;
   // Eyeball: one sphere with the iris/pupil/highlights painted on (see makeEyeTexture).
-  const eyeballMat = new THREE.MeshStandardMaterial({ map: makeEyeTexture(pal.eye), roughness: 0.32 });
+  const eyeballMat = sharedMat(`ceye|${pal.eye.getHexString()}`, () => new THREE.MeshStandardMaterial({ map: makeEyeTexture(pal.eye), roughness: 0.32 }));
   // Painted coat: vertical mackerel stripes down the flanks (tabby) or scattered
   // spots (spotted), baked into the fur so the markings read as bold and graphic.
   // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
@@ -452,11 +489,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     if (isTortie) return makeTortieTexture(pal.fur);     // mottled ginger/black, no white
     return null;
   }
+  const coatKey = `${pat}|${furHex}|${pal.stripe.getHexString()}`;
   const coat = isTextured
-    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(false) })
+    ? sharedMat(`ccoat|${coatKey}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(false) }))
     : fur;
   const tailCoat = isTextured
-    ? new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(true) })
+    ? sharedMat(`ctail|${coatKey}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(true) }))
     : extremity;
 
   // Rigid clusters are collected and baked at the end: `catStatic` sits on the
@@ -641,8 +679,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const accCol = (opts.accessoryColor != null && opts.accessoryColor !== "")
     ? new THREE.Color(opts.accessoryColor).getHex()
     : (ACCESSORY_COLORS[accId]?.[0] ?? 0xffffff);
-  const accColDark = new THREE.Color(accCol).multiplyScalar(0.8).getHex(); // shade for knots/accents
-  const accMat = (hex, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m });
+  // Accessory materials come from the shared cache (keyed by colour + surface
+  // params): every cat wearing e.g. a red collar shares one material/pipeline.
+  const accMat = (hex, r = 0.6, m = 0) =>
+    sharedMat(`acc|${hex}|${r}|${m}`, () => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m }));
+  // Shade for knots/accents — only the bow tie uses it, so derive lazily there.
+  const accColDark = () => new THREE.Color(accCol).multiplyScalar(0.8).getHex();
   const acc = new THREE.Group();
   if (accId === "cap") {
     // forward-facing baseball cap
@@ -731,7 +773,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // and the drape get their own texture instances with their own tiling so the
     // print reads at each scale yet feels like the same fabric.
     const clothMatOf = (rx, ry) =>
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol, rx, ry) });
+      sharedMat(`cloth|${accCol}|${rx}x${ry}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol, rx, ry) }));
     const bandMat = clothMatOf(9, 1.4);    // a row of motifs wrapping the thin band
     const clothMat = clothMatOf(2.4, 2.4); // drape / knot / tails
     // The band is tilted (rotation.x 0.26) so its BACK arc rides UP toward the nape
@@ -790,7 +832,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       loop.position.set(sx * 0.26, 1.5, 0.9); loop.scale.set(1.0, 0.62, 0.22);
       acc.add(loop);
     }
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark));
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark()));
     knot.position.set(0, 1.5, 0.94); knot.scale.set(0.9, 1.0, 0.55); acc.add(knot);  }
   // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie) sits
   // on the body. `acc` is at the origin, so its children's transforms already read
@@ -927,11 +969,12 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
 // Constant kart materials — colour never varies per kart, so a single shared
 // instance is reused by every racer. Combined with the toToon cache, each
 // collapses to ONE render pipeline for the whole field instead of one per kart.
-const _kDark = new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughness: 0.6 });
-const _kTire = new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 1.0, metalness: 0.0 });
-const _kTread = new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 1.0, metalness: 0.0 });
-const _kChrome = new THREE.MeshStandardMaterial({ color: 0xd2dadf, metalness: 0.9, roughness: 0.22 });
-const _kCaliper = new THREE.MeshStandardMaterial({ color: 0xcf3a2e, metalness: 0.3, roughness: 0.4 });
+// Flagged shared so kart teardown (disposeGroup) never disposes them.
+const _kDark = _shared(new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughness: 0.6 }));
+const _kTire = _shared(new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 1.0, metalness: 0.0 }));
+const _kTread = _shared(new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 1.0, metalness: 0.0 }));
+const _kChrome = _shared(new THREE.MeshStandardMaterial({ color: 0xd2dadf, metalness: 0.9, roughness: 0.22 }));
+const _kCaliper = _shared(new THREE.MeshStandardMaterial({ color: 0xcf3a2e, metalness: 0.3, roughness: 0.4 }));
 
 // Builds a chunky go-kart as ONE cohesive moulded shell (floor pan → cockpit
 // spine → tapering nose → rear deck, with the side fairings flush to the body
@@ -960,28 +1003,38 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const kartNumber = opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
   // userData.paint). Accent is a darker shade of the same hue; the stripe is a
-  // near-white tint so the livery reads on dark and light bodies alike.
-  const paint = new THREE.MeshStandardMaterial({ color: body.clone(), roughness: 0.34, metalness: 0.0 });
-  paint.userData.paint = true;
-  const accent = new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.55), roughness: 0.38, metalness: 0.0 });
-  accent.userData.paint = true;
+  // near-white tint so the livery reads on dark and light bodies alike. All the
+  // livery materials come from the shared colour-keyed cache: two karts painted
+  // the same colour share instances (one toon pipeline for the pair, and teardown
+  // knows to leave them alone).
+  const bodyHex = body.getHexString();
+  const paintMat = (tag, make) => sharedMat(`k${tag}|${bodyHex}`, () => {
+    const m = make();
+    m.userData.paint = true;
+    return m;
+  });
+  const paint = paintMat("paint", () => new THREE.MeshStandardMaterial({ color: body.clone(), roughness: 0.34, metalness: 0.0 }));
+  const accent = paintMat("accent", () => new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.55), roughness: 0.38, metalness: 0.0 }));
   // Painted racing stripe: crisp white on dark/medium bodies, a deep charcoal on
   // very light bodies, so the stripe always reads as deliberate paint.
   const bodyL = 0.2126 * body.r + 0.7152 * body.g + 0.0722 * body.b;
-  const stripeCol = bodyL > 0.62 ? new THREE.Color(0x2c2a27) : new THREE.Color(0xf3efe6);
-  const stripe = new THREE.MeshStandardMaterial({ color: stripeCol, roughness: 0.4, metalness: 0.0 });
-  stripe.userData.paint = true;
+  const stripeHex = bodyL > 0.62 ? 0x2c2a27 : 0xf3efe6;
+  const stripe = sharedMat(`kstripe|${stripeHex}`, () => {
+    const m = new THREE.MeshStandardMaterial({ color: stripeHex, roughness: 0.4, metalness: 0.0 });
+    m.userData.paint = true;
+    return m;
+  });
   // Shared constant materials (matte rubber + tread, chrome, dark trim, caliper).
   const dark = _kDark;
   const tire = _kTire;
   const tread = _kTread;
   const chrome = _kChrome;
-  const rimMat = new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.85), roughness: 0.35, metalness: 0.3 });
-  rimMat.userData.paint = true;
-  // Headlights glow much brighter at night (bloom picks them up).
-  const glass = new THREE.MeshStandardMaterial({
+  const rimMat = paintMat("rim", () => new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.85), roughness: 0.35, metalness: 0.3 }));
+  // Headlights glow much brighter at night (bloom picks them up). The intensity is
+  // baked at creation from the current light level, so the level is in the key.
+  const glass = sharedMat(`kglass|${_lightLevel}`, () => new THREE.MeshStandardMaterial({
     color: 0xfff4d0, emissive: 0xfff0c0, emissiveIntensity: 0.4 + _lightLevel * 2.3,
-  });
+  }));
 
   // --- Moulded shell ---
   // Every rigid, opaque body part is collected here and baked into ONE
@@ -1010,8 +1063,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   flash.position.set(0, 0.84, st.noseZ + 0.6);
   // Side fairings — flush to the floor sides, same paint: bodywork, not pods. A
   // numbered roundel sits on each side (a plane decal facing outward).
-  const numTex = makeNumberTexture(kartNumber);
-  const numMat = new THREE.MeshStandardMaterial({ map: numTex, transparent: true, roughness: 0.5 });
+  const numMat = sharedMat(`knum|${kartNumber}`, () =>
+    new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
   for (const sx of [-1, 1]) {
     const fairing = add(new THREE.Mesh(rbox(0.62, 0.5, 2.7, 0.26), paint));
     fairing.position.set(sx * 1.2, 0.64, 0.0);

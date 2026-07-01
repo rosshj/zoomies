@@ -11,7 +11,7 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Kart, setSunShadow } from "./kart.js";
-import { setLightLevel, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
+import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
@@ -525,9 +525,7 @@ function makeToonGradient() {
 const TOON_GRADIENT = makeToonGradient();
 // Sun-driven rim/backlight share two uniform nodes, updated once per frame in
 // updateAtmosphere: the view-space sun-travel direction and the (mood sun colour ×
-// glow) tint. (Legacy per-shader arrays kept but unused on WebGPU.)
-const backlitShaders = [];
-const rimShaders = [];
+// glow) tint.
 const uSunViewNode = uniform(new THREE.Vector3(0, 0, 1));
 const uSunColNode = uniform(new THREE.Color(0x000000));
 // Cache the toon conversion per source material (WeakMap → auto-freed when the
@@ -588,12 +586,17 @@ function toToon(m) {
       term = term ? term.add(paintTerm) : paintTerm;
     }
     t.emissiveNode = term;
+    // A toon made from a shared source is itself shared across karts (the cache
+    // hands the same instance to every user) — carry the flag so teardown code
+    // (_disposeGroup) knows not to dispose it out from under the others.
+    if (ud.shared) t.userData.shared = true;
     _toonCache.set(m, t);
     return t;
   }
   // Everything else: stock toon (auto-converted to a node material by WebGPU,
   // keeping the gradient banding and any dynamic emissiveIntensity).
   const stock = new THREE.MeshToonMaterial(params);
+  if (ud.shared) stock.userData.shared = true;
   _toonCache.set(m, stock);
   return stock;
 }
@@ -677,10 +680,15 @@ function raceRoster() {
 }
 
 function buildKarts() {
-  for (const k of karts) scene.remove(k.group);
+  // Tear down last race's karts properly: freeing the merged geometries + the
+  // per-kart materials (shared ones are skipped) releases their GPU buffers
+  // instead of leaking them each rebuild.
+  for (const k of karts) {
+    scene.remove(k.group);
+    _disposeGroup(k.group);
+  }
   karts = [];
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
-  rimShaders.length = 0; // drop last race's kart shaders before rebuilding
   // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
   // humans-only and time trial is solo, so both are just the player's kart.
   const roster = raceRoster();
@@ -767,6 +775,11 @@ const MP = {
   inLobby: false, startAt: 0, connState: null,
 };
 let _interpDelay = INTERP_DELAY; // adaptive: eased toward a target from the live ping
+// Scratch vectors for incoming shoot messages (spawnAt copies its args).
+const UP_Y = new THREE.Vector3(0, 1, 0);
+const _mpShotPos = new THREE.Vector3();
+const _mpShotDir = new THREE.Vector3();
+const _mpShotFan = new THREE.Vector3();
 // Total humans currently in the room (me + rendered remotes).
 function mpPlayerCount() {
   return 1 + MP.remotes.size;
@@ -911,14 +924,15 @@ function initMultiplayer() {
       });
       net.on("start", (at) => beginSyncedRace(at));
       net.on("shoot", (s) => {
-        const pos = new THREE.Vector3(s.px, s.py, s.pz);
-        const dir = new THREE.Vector3(s.dx, s.dy, s.dz);
+        // spawnAt copies both vectors, so these scratch temps are safe to reuse
+        // across messages.
+        _mpShotPos.set(s.px, s.py, s.pz);
+        _mpShotDir.set(s.dx, s.dy, s.dz);
         if (s.t) {
           // Tri-furball: fan into three, matching the shooter's local spread.
-          const up = new THREE.Vector3(0, 1, 0);
-          for (const a of TRI_FAN) hairballs.spawnAt(pos, dir.clone().applyAxisAngle(up, a), s.c || 0);
+          for (const a of TRI_FAN) hairballs.spawnAt(_mpShotPos, _mpShotFan.copy(_mpShotDir).applyAxisAngle(UP_Y, a), s.c || 0);
         } else {
-          hairballs.spawnAt(pos, dir, s.c || 0);
+          hairballs.spawnAt(_mpShotPos, _mpShotDir, s.c || 0);
         }
       });
       net.on("hit", (h) => {
@@ -1068,6 +1082,7 @@ let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 let _fireworksDone = false; // leader's finish fireworks fired once per race
 let _fwTimer = 0; // remaining celebration time (keeps launching bursts)
 let _fwNext = 0; // countdown to the next burst
+const _fwPos = new THREE.Vector3(); // scratch for burst origins (burst copies it)
 let _finishCamAngle = 0; // victory orbit angle once the player finishes
 // Time-trial mode: solo, single timed lap, local best-times leaderboard.
 let timeTrial = false;
@@ -2127,7 +2142,10 @@ document.getElementById("track-new")?.addEventListener("click", (e) => {
   btn.textContent = "🎲 New shape ✓";
   setTimeout(() => (btn.textContent = "🎲 Reroll shape"), 1100);
 });
-trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
+// Scoped to #track-biomes: the time-of-day chips share the .biome-chip class and
+// live in the same panel — an unscoped bind would fire this handler on tod clicks
+// too, pushing `undefined` into the biome list (and evicting a real biome at cap).
+trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
     const b = chip.dataset.biome;
     const i = _trackDraft.biomes.indexOf(b);
@@ -2162,13 +2180,8 @@ let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
 const _garageLook = new THREE.Vector3();
 
-function _disposeGroup(g) {
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-    for (const m of mats) m.dispose?.();
-  });
-}
+// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
+// materials, skipping the shared colour-keyed/constant ones other karts use.)
 function _clearGaragePreview() {
   if (!_garagePreview) return;
   scene.remove(_garagePreview);
@@ -2813,6 +2826,11 @@ if (lobbyStartBtn) {
 // --- Camera follow ---
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
+// Scratch vectors for updateCamera — reused every frame so the camera path
+// allocates nothing per frame. (_camFwd is shared with updateAtmosphere's
+// facing test; both write before they read, so the reuse is safe.)
+const _camDesired = new THREE.Vector3();
+const _camLook = new THREE.Vector3();
 let shakeMag = 0;
 // Boost pads: a short speed kick (and its rainbow trail) when a kart drives over
 // a chevron pad, with a per-kart cooldown so it fires once per pass.
@@ -2857,10 +2875,11 @@ function updateFireworks(dt) {
     _fwNext -= dt;
     if (_fwNext <= 0) {
       _fwNext = 0.22 + Math.random() * 0.28;
-      const o = track.archApex
-        .clone()
-        .add(new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 3, (Math.random() - 0.5) * 2));
-      effects.fireworkBurst(o);
+      _fwPos.copy(track.archApex); // fireworkBurst copies it, so the scratch is safe
+      _fwPos.x += (Math.random() - 0.5) * 7;
+      _fwPos.y += Math.random() * 3;
+      _fwPos.z += (Math.random() - 0.5) * 2;
+      effects.fireworkBurst(_fwPos);
     }
   }
 }
@@ -2987,15 +3006,15 @@ function updateCamera(dt, snap = false) {
   if (player.finished) {
     _finishCamAngle += dt * 0.45;
     const r = 12;
-    const desired = new THREE.Vector3(
+    _camDesired.set(
       player.position.x + Math.sin(_finishCamAngle) * r,
       player.position.y + 6,
       player.position.z + Math.cos(_finishCamAngle) * r
     );
-    const look = new THREE.Vector3(player.position.x, player.position.y + 1.5, player.position.z);
+    _camLook.set(player.position.x, player.position.y + 1.5, player.position.z);
     const lerp = snap ? 1 : 1 - Math.pow(0.02, dt);
-    camPos.lerp(desired, lerp);
-    camTarget.lerp(look, lerp);
+    camPos.lerp(_camDesired, lerp);
+    camTarget.lerp(_camLook, lerp);
     camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     camera.position.copy(camPos);
@@ -3003,19 +3022,15 @@ function updateCamera(dt, snap = false) {
     return;
   }
 
-  const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
-  const desired = new THREE.Vector3()
-    .copy(player.position)
-    .addScaledVector(fwd, -13)
-    .add(new THREE.Vector3(0, 7 + player.y * 0.5, 0));
-  const look = new THREE.Vector3()
-    .copy(player.position)
-    .addScaledVector(fwd, 6)
-    .add(new THREE.Vector3(0, 1.5 + player.y, 0));
+  _camFwd.set(Math.sin(player.heading), 0, Math.cos(player.heading));
+  _camDesired.copy(player.position).addScaledVector(_camFwd, -13);
+  _camDesired.y += 7 + player.y * 0.5;
+  _camLook.copy(player.position).addScaledVector(_camFwd, 6);
+  _camLook.y += 1.5 + player.y;
 
   const lerp = snap ? 1 : 1 - Math.pow(0.001, dt);
-  camPos.lerp(desired, lerp);
-  camTarget.lerp(look, lerp);
+  camPos.lerp(_camDesired, lerp);
+  camTarget.lerp(_camLook, lerp);
 
   // Keep the camera above the track surface beneath it: on a steep descent the
   // spot behind the kart is up-slope (higher ground), which could otherwise leave

@@ -11,6 +11,21 @@ import { attribute, texture, color } from "three/tsl";
 // particle position/colour/scale/opacity are pushed into instanced attributes each
 // frame; the simulation (in `parts`) is unchanged.
 const _DUST_FALLBACK = new THREE.Color(0xd8c8a8); // warm tan if no biome tint supplied
+// Scratch objects reused by every emitter, so spawning particles allocates
+// nothing per call: _spawn clones pos/v and unpacks the colour into scalars, so
+// none of these are ever retained. (_rearPos/_rearFwd are _rear()'s own pair so
+// callers can keep using _fwd/_vel across a _rear call.)
+const _fwd = new THREE.Vector3();
+const _right = new THREE.Vector3();
+const _pos = new THREE.Vector3();
+const _vel = new THREE.Vector3();
+const _col = new THREE.Color();
+const _rearFwd = new THREE.Vector3();
+const _rearPos = new THREE.Vector3();
+const _skidCur = [new THREE.Vector3(), new THREE.Vector3()]; // per-wheel contact scratch
+// Constant UVs for one skid quad (U across the width for soft edges, V along it).
+const _SKID_UVS = [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1];
+const _skidVerts = new Array(6); // scratch vert list for one quad
 
 export class EffectsManager {
   constructor(scene) {
@@ -51,7 +66,10 @@ export class EffectsManager {
     this.skidMesh.renderOrder = 1;
     this.skidMesh.layers.set(0);
     scene.add(this.skidMesh);
-    this._skidPrev = new Map(); // kart -> { c:[Vec3,Vec3], e:[edge|null, edge|null] } per rear wheel
+    // kart -> { c:[Vec3,Vec3], e:[edge|null,…], s:[edge, edge] } per rear wheel.
+    // WeakMap: karts are rebuilt every race, so a strong Map would pin each old
+    // field's entries (and their vectors) for the whole session.
+    this._skidPrev = new WeakMap();
     this._hue = 0;
   }
 
@@ -106,18 +124,15 @@ export class EffectsManager {
     });
   }
 
+  // Returns a shared scratch vector — callers hand it straight to _spawn (which
+  // clones) and must not retain it.
   _rear(kart, spread) {
-    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
-    return new THREE.Vector3()
-      .copy(kart.position)
-      .addScaledVector(fwd, -2.6)
-      .add(
-        new THREE.Vector3(
-          (Math.random() - 0.5) * spread,
-          kart.y + 0.7 + Math.random() * 0.3,
-          (Math.random() - 0.5) * spread
-        )
-      );
+    _rearFwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _rearPos.copy(kart.position).addScaledVector(_rearFwd, -2.6);
+    _rearPos.x += (Math.random() - 0.5) * spread;
+    _rearPos.y += kart.y + 0.7 + Math.random() * 0.3;
+    _rearPos.z += (Math.random() - 0.5) * spread;
+    return _rearPos;
   }
 
   // Boost cloud burst, coloured by how much was charged (matching the drift-
@@ -127,23 +142,20 @@ export class EffectsManager {
   tootBurst(kart, charge = 2, green = false) {
     const rainbow = !green && charge > 1.5;
     const tier = charge > 0.8 ? 0xffd54f : 0xbfe3ff;
-    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
     for (let i = 0; i < 16; i++) {
-      const col = green
-        ? new THREE.Color().setHSL(0.28, 0.85, 0.4 + Math.random() * 0.2)
-        : rainbow
-        ? new THREE.Color().setHSL((this._hue + i / 16) % 1, 1, 0.6)
-        : new THREE.Color(tier);
-      const v = fwd
-        .clone()
-        .multiplyScalar(-(5 + Math.random() * 6))
-        .add(new THREE.Vector3((Math.random() - 0.5) * 6, 1 + Math.random() * 3, (Math.random() - 0.5) * 6));
-      this._spawn(this._rear(kart, 1.6), col, {
+      if (green) _col.setHSL(0.28, 0.85, 0.4 + Math.random() * 0.2);
+      else if (rainbow) _col.setHSL((this._hue + i / 16) % 1, 1, 0.6);
+      else _col.setHex(tier);
+      _vel
+        .set((Math.random() - 0.5) * 6, 1 + Math.random() * 3, (Math.random() - 0.5) * 6)
+        .addScaledVector(_fwd, -(5 + Math.random() * 6));
+      this._spawn(this._rear(kart, 1.6), _col, {
         additive: true,
         size: 2.2 + Math.random(),
         life: 0.7 + Math.random() * 0.5,
         grow: 4,
-        v,
+        v: _vel,
         opacity: 0.85,
       });
     }
@@ -152,19 +164,18 @@ export class EffectsManager {
 
   // Continuous trail while boosting — rainbow normally, green for a catnip boost.
   trickle(kart, green = false) {
-    let col;
     if (green) {
-      col = new THREE.Color().setHSL(0.28, 0.85, 0.45 + Math.random() * 0.12);
+      _col.setHSL(0.28, 0.85, 0.45 + Math.random() * 0.12);
     } else {
       this._hue = (this._hue + 0.05) % 1;
-      col = new THREE.Color().setHSL(this._hue, 1, 0.6);
+      _col.setHSL(this._hue, 1, 0.6);
     }
-    this._spawn(this._rear(kart, 0.8), col, {
+    this._spawn(this._rear(kart, 0.8), _col, {
       additive: true,
       size: 1.6,
       life: 0.55,
       grow: 3,
-      v: new THREE.Vector3(0, 1.5, 0),
+      v: _vel.set(0, 1.5, 0),
       opacity: 0.8,
     });
   }
@@ -180,36 +191,35 @@ export class EffectsManager {
     const rate = maxed ? 0.92 : charge > 0.8 ? 0.7 : 0.42;
     if (Math.random() > rate) return;
 
-    let col;
     let size = 0.6 + Math.min(charge, 2) * 0.18;
     if (maxed) {
       this._hue = (this._hue + 0.07) % 1;
-      col = new THREE.Color().setHSL(this._hue, 1, 0.62);
+      _col.setHSL(this._hue, 1, 0.62);
       size += 0.25;
     } else if (charge > 0.8) {
-      col = new THREE.Color(0xffd54f);
+      _col.setHex(0xffd54f);
     } else {
-      col = new THREE.Color(0xbfe3ff);
+      _col.setHex(0xbfe3ff);
     }
-    const v = new THREE.Vector3((Math.random() - 0.5) * 8, 2 + Math.random() * 3, (Math.random() - 0.5) * 8);
-    this._spawn(this._rear(kart, 0.6), col, {
+    _vel.set((Math.random() - 0.5) * 8, 2 + Math.random() * 3, (Math.random() - 0.5) * 8);
+    this._spawn(this._rear(kart, 0.6), _col, {
       additive: true,
       spark: true,
       size,
       life: 0.32,
-      v,
+      v: _vel,
       damp: 1,
     });
 
     // At full charge, add the occasional soft rainbow puff so the kart visibly
     // brims with the colour it's about to unleash.
     if (maxed && Math.random() < 0.3) {
-      this._spawn(this._rear(kart, 0.9), col.clone(), {
+      this._spawn(this._rear(kart, 0.9), _col, {
         additive: true,
         size: 1.3,
         life: 0.4,
         grow: 2,
-        v: new THREE.Vector3(0, 1.6, 0),
+        v: _vel.set(0, 1.6, 0),
         opacity: 0.5,
       });
     }
@@ -221,7 +231,7 @@ export class EffectsManager {
   fireworkBurst(origin) {
     const baseHue = Math.random();
     // Bright flash core that pops and fades fast (the "glow").
-    this._spawn(origin.clone(), new THREE.Color().setHSL(baseHue, 0.5, 0.92), {
+    this._spawn(origin, _col.setHSL(baseHue, 0.5, 0.92), {
       additive: true,
       size: 3.5,
       life: 0.32,
@@ -232,36 +242,36 @@ export class EffectsManager {
     // Main spray.
     const n = 46;
     for (let i = 0; i < n; i++) {
-      const col = new THREE.Color().setHSL((baseHue + Math.random() * 0.18) % 1, 1, 0.62);
+      _col.setHSL((baseHue + Math.random() * 0.18) % 1, 1, 0.62);
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const sp = 14 + Math.random() * 13;
-      const dir = new THREE.Vector3(
+      _vel.set(
         Math.sin(phi) * Math.cos(theta),
         Math.abs(Math.cos(phi)) * 0.7 + 0.5, // bias the spray upward
         Math.sin(phi) * Math.sin(theta)
       ).multiplyScalar(sp);
-      this._spawn(origin.clone(), col, {
+      this._spawn(origin, _col, {
         additive: true,
         spark: true,
         size: 1.2 + Math.random() * 0.8,
         life: 1.1 + Math.random() * 0.9,
-        v: dir,
+        v: _vel,
         damp: 0.5,
         gravity: 9,
       });
     }
     // A few fat, slow trailing comets for extra drama.
     for (let i = 0; i < 7; i++) {
-      const col = new THREE.Color().setHSL((baseHue + 0.5 + Math.random() * 0.2) % 1, 1, 0.66);
+      _col.setHSL((baseHue + 0.5 + Math.random() * 0.2) % 1, 1, 0.66);
       const a = Math.random() * Math.PI * 2;
-      const v = new THREE.Vector3(Math.cos(a) * 6, 9 + Math.random() * 6, Math.sin(a) * 6);
-      this._spawn(origin.clone(), col, {
+      _vel.set(Math.cos(a) * 6, 9 + Math.random() * 6, Math.sin(a) * 6);
+      this._spawn(origin, _col, {
         additive: true,
         size: 2.0 + Math.random(),
         life: 1.4 + Math.random() * 0.8,
         grow: 1.5,
-        v,
+        v: _vel,
         damp: 0.4,
         gravity: 11,
         opacity: 0.95,
@@ -274,11 +284,13 @@ export class EffectsManager {
     for (let i = 0; i < 7; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 2 + Math.random() * 3.5;
-      const v = new THREE.Vector3(Math.cos(a) * sp, 2.5 + Math.random() * 2.5, Math.sin(a) * sp);
-      this._spawn(pos.clone().setY(pos.y + 0.2), new THREE.Color(0xcfe8ff), {
+      _vel.set(Math.cos(a) * sp, 2.5 + Math.random() * 2.5, Math.sin(a) * sp);
+      _pos.copy(pos);
+      _pos.y += 0.2;
+      this._spawn(_pos, _col.setHex(0xcfe8ff), {
         size: 0.35 + Math.random() * 0.3,
         life: 0.4,
-        v,
+        v: _vel,
         damp: 1.4,
         gravity: 13,
         opacity: 0.8,
@@ -288,19 +300,16 @@ export class EffectsManager {
 
   wallSparks(kart) {
     const n = 4 + Math.floor(Math.random() * 4);
-    const along = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
-    const base = new THREE.Vector3()
-      .copy(kart.position)
-      .addScaledVector(kart.wallHitDir, kart.radius)
-      .setY(kart.position.y + 0.6);
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _pos.copy(kart.position).addScaledVector(kart.wallHitDir, kart.radius);
+    _pos.y = kart.position.y + 0.6;
     for (let i = 0; i < n; i++) {
-      const col = new THREE.Color(Math.random() < 0.5 ? 0xffe082 : 0xff8a3d);
-      const v = along
-        .clone()
-        .multiplyScalar(-(Math.random() * 6))
-        .addScaledVector(kart.wallHitDir, 4 + Math.random() * 6)
-        .add(new THREE.Vector3((Math.random() - 0.5) * 3, 3 + Math.random() * 4, (Math.random() - 0.5) * 3));
-      this._spawn(base.clone(), col, { additive: true, spark: true, size: 0.6, life: 0.3, v, damp: 1 });
+      _col.setHex(Math.random() < 0.5 ? 0xffe082 : 0xff8a3d);
+      _vel
+        .set((Math.random() - 0.5) * 3, 3 + Math.random() * 4, (Math.random() - 0.5) * 3)
+        .addScaledVector(_fwd, -(Math.random() * 6))
+        .addScaledVector(kart.wallHitDir, 4 + Math.random() * 6);
+      this._spawn(_pos, _col, { additive: true, spark: true, size: 0.6, life: 0.3, v: _vel, damp: 1 });
     }
   }
 
@@ -313,27 +322,26 @@ export class EffectsManager {
     // so light cruising dust is a rare single puff and a hard skid is a steady plume.
     if (Math.random() > amount * 0.9) return;
     const n = amount > 0.6 && Math.random() < amount ? 2 : 1;
-    const right = new THREE.Vector3(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
-    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
     const groundY = (kart.groundY ?? kart.y ?? 0) + 0.15;
     for (let i = 0; i < n; i++) {
       const side = (Math.random() < 0.5 ? -1 : 1) * (0.9 + Math.random() * 0.7);
-      const base = new THREE.Vector3()
+      _pos
         .copy(kart.position)
-        .addScaledVector(fwd, -1.7 - Math.random())
-        .addScaledVector(right, side)
-        .setY(groundY);
-      const v = right
-        .clone()
-        .multiplyScalar(side * (1.4 + Math.random() * 2)) // splay outward from the tyre
-        .addScaledVector(fwd, -(1 + Math.random() * 1.8)) // and trail backward
-        .add(new THREE.Vector3(0, 0.7 + Math.random() * 1.1, 0));
-      const c = (color || _DUST_FALLBACK).clone().multiplyScalar(0.82 + Math.random() * 0.3);
-      this._spawn(base, c, {
+        .addScaledVector(_fwd, -1.7 - Math.random())
+        .addScaledVector(_right, side);
+      _pos.y = groundY;
+      _vel
+        .set(0, 0.7 + Math.random() * 1.1, 0)
+        .addScaledVector(_right, side * (1.4 + Math.random() * 2)) // splay outward from the tyre
+        .addScaledVector(_fwd, -(1 + Math.random() * 1.8)); // and trail backward
+      _col.copy(color || _DUST_FALLBACK).multiplyScalar(0.82 + Math.random() * 0.3);
+      this._spawn(_pos, _col, {
         size: 1.0 + Math.random() * 1.0,
         life: 0.45 + Math.random() * 0.4,
         grow: 2.4,
-        v,
+        v: _vel,
         damp: 2.4,
         gravity: 2.2, // billows up then settles back to the ground
         opacity: (0.32 + Math.random() * 0.22) * (0.6 + amount * 0.5),
@@ -346,24 +354,29 @@ export class EffectsManager {
   // quad's far edge as its near edge, so the trail is one unbroken streak even
   // through a sideways slide, instead of a chain of separate dashes.
   skid(kart) {
-    const right = new THREE.Vector3(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
-    const fwd = new THREE.Vector3(Math.sin(kart.heading), 0, Math.cos(kart.heading));
-    const cur = [-1.3, 1.3].map((o) =>
-      new THREE.Vector3()
+    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    // Current contact point behind each rear wheel (shared scratch pair).
+    for (let i = 0; i < 2; i++) {
+      _skidCur[i]
         .copy(kart.position)
-        .addScaledVector(right, o)
-        .addScaledVector(fwd, -1.4)
-        .setY(kart.groundY + 0.05)
-    );
+        .addScaledVector(_right, i === 0 ? -1.3 : 1.3)
+        .addScaledVector(_fwd, -1.4)
+        .setY(kart.groundY + 0.05);
+    }
     let st = this._skidPrev.get(kart);
     if (!st) {
-      this._skidPrev.set(kart, { c: [cur[0].clone(), cur[1].clone()], e: [null, null] });
+      // Per-kart state keeps its own vectors (they persist across frames): the
+      // live far edge `e` and a spare pair `s` that swaps with it each quad, so
+      // laying marks allocates nothing after this first touch.
+      const edge = () => ({ L: new THREE.Vector3(), R: new THREE.Vector3() });
+      this._skidPrev.set(kart, { c: [_skidCur[0].clone(), _skidCur[1].clone()], e: [null, null], s: [edge(), edge()] });
       return;
     }
     const HALF = 0.3; // half the mark width
     for (let i = 0; i < 2; i++) {
       const a = st.c[i];
-      const b = cur[i];
+      const b = _skidCur[i];
       const step = a.distanceToSquared(b);
       if (step < 0.12) continue; // too little movement — let it accumulate (no degenerate quad)
       if (step > 36) {
@@ -376,12 +389,20 @@ export class EffectsManager {
       const dx = b.x - a.x, dz = b.z - a.z;
       const inv = HALF / Math.hypot(dx, dz);
       const px = dz * inv, pz = -dx * inv;
-      const bL = new THREE.Vector3(b.x + px, b.y, b.z + pz);
-      const bR = new THREE.Vector3(b.x - px, b.y, b.z - pz);
       // Near edge = the previous quad's far edge (continuous), or seed it at `a`.
-      const near = st.e[i] || { L: new THREE.Vector3(a.x + px, a.y, a.z + pz), R: new THREE.Vector3(a.x - px, a.y, a.z - pz) };
-      this._appendSkidQuad(near.L, near.R, bL, bR);
-      st.e[i] = { L: bL, R: bR };
+      if (!st.e[i]) {
+        st.e[i] = st.s[i];
+        st.e[i].L.set(a.x + px, a.y, a.z + pz);
+        st.e[i].R.set(a.x - px, a.y, a.z - pz);
+        st.s[i] = { L: new THREE.Vector3(), R: new THREE.Vector3() };
+      }
+      const near = st.e[i];
+      const far = st.s[i];
+      far.L.set(b.x + px, b.y, b.z + pz);
+      far.R.set(b.x - px, b.y, b.z - pz);
+      this._appendSkidQuad(near.L, near.R, far.L, far.R);
+      st.s[i] = near; // recycle the consumed near edge as the next spare
+      st.e[i] = far;
       a.copy(b);
     }
   }
@@ -391,14 +412,15 @@ export class EffectsManager {
     const q = this.skidHead;
     const P = this.skidPos, U = this.skidUV;
     const pB = q * 18, uB = q * 12;
-    const verts = [aL, aR, bR, aL, bR, bL]; // tri1: aL,aR,bR  tri2: aL,bR,bL
-    const uvs = [0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]; // U across width (soft edges), V along length
+    // tri1: aL,aR,bR  tri2: aL,bR,bL — written via the module scratch list.
+    _skidVerts[0] = aL; _skidVerts[1] = aR; _skidVerts[2] = bR;
+    _skidVerts[3] = aL; _skidVerts[4] = bR; _skidVerts[5] = bL;
     for (let k = 0; k < 6; k++) {
-      P[pB + k * 3] = verts[k].x;
-      P[pB + k * 3 + 1] = verts[k].y;
-      P[pB + k * 3 + 2] = verts[k].z;
-      U[uB + k * 2] = uvs[k * 2];
-      U[uB + k * 2 + 1] = uvs[k * 2 + 1];
+      P[pB + k * 3] = _skidVerts[k].x;
+      P[pB + k * 3 + 1] = _skidVerts[k].y;
+      P[pB + k * 3 + 2] = _skidVerts[k].z;
+      U[uB + k * 2] = _SKID_UVS[k * 2];
+      U[uB + k * 2 + 1] = _SKID_UVS[k * 2 + 1];
     }
     this.skidHead = (this.skidHead + 1) % this.skidMax;
     this.skidFill = Math.min(this.skidFill + 1, this.skidMax);

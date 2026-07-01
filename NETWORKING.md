@@ -16,10 +16,10 @@ loaded until you add `&mp=1`.
 ## Architecture at a glance
 
 ```
-   your kart          the wire                 a rival's kart
-  (local, instant) ── sendState 18Hz ─► PartyKit room ─► onState ─► interpolation
-                                          (relay +                    buffer (~100ms)
-   RemoteKart  ◄── interpolate/dead-reckon ── shared clock)          + dead-reckoning
+   your kart          the wire                    a rival's kart
+  (local, instant) ── sendState ~16Hz ─► Ably relay ─► onState ─► interpolation
+                                     (or WebRTC P2P               buffer (adaptive
+   RemoteKart  ◄── interpolate/dead-reckon ── + shared clock)     ~200ms) + dead-reckoning
 ```
 
 - **Your own kart** runs the normal local physics — zero input lag, unchanged.
