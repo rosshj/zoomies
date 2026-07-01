@@ -853,6 +853,17 @@ function mpDebugHud() {
   return el;
 }
 
+// Peer-to-peer opt-in. A URL param (?rtc=1) can't be set from inside an installed
+// PWA (no address bar; it launches from a fixed start_url), so a persisted flag
+// (Settings → Advanced) is how PWA players enable it. Either source counts.
+const RTC_KEY = "zoomies-rtc";
+function readRtcPref() {
+  try { return localStorage.getItem(RTC_KEY) === "1"; } catch { return false; }
+}
+function rtcEnabled() {
+  return new URLSearchParams(location.search).has("rtc") || readRtcPref();
+}
+
 function initMultiplayer() {
   const ablyKey = resolveAblyKey();
   const host = resolveHost();
@@ -865,7 +876,7 @@ function initMultiplayer() {
   // ?rtc=1 selects the peer-to-peer transport (pose stream goes P2P over WebRTC;
   // Ably still handles signalling / presence / clock / events). Needs an Ably key
   // for the signalling backbone. Falls back to plain Ably without it.
-  const useRtc = ablyKey && new URLSearchParams(location.search).has("rtc");
+  const useRtc = ablyKey && rtcEnabled();
   const transportP = useRtc
     ? createWebRTCTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
     : ablyKey
@@ -1776,6 +1787,26 @@ compatToggle?.addEventListener("click", () => {
 });
 applyCompatUI();
 
+// Peer-to-peer multiplayer toggle UI (the flag helpers live up near initMultiplayer,
+// which reads them at connect time).
+const rtcToggle = document.getElementById("set-rtc-toggle");
+function applyRtcUI() {
+  const on = rtcEnabled();
+  if (rtcToggle) {
+    rtcToggle.textContent = on ? "On" : "Off";
+    rtcToggle.classList.toggle("off", !on);
+  }
+}
+rtcToggle?.addEventListener("click", () => {
+  const on = !readRtcPref();
+  try {
+    if (on) localStorage.setItem(RTC_KEY, "1");
+    else localStorage.removeItem(RTC_KEY);
+  } catch { /* ignore */ }
+  applyRtcUI();
+});
+applyRtcUI();
+
 // "Advanced" expander hides the debug toggles (FPS counter, Tilt debug) so the
 // settings menu stays tidy for normal players.
 const advToggle = document.getElementById("adv-toggle");
@@ -2493,7 +2524,7 @@ function inviteURL() {
   u.searchParams.set("mp", "1");
   // Carry the peer-to-peer flag so friends who open the link join the same P2P
   // room (host + guests must agree on the transport to get direct connections).
-  if (new URLSearchParams(location.search).has("rtc")) u.searchParams.set("rtc", "1");
+  if (rtcEnabled()) u.searchParams.set("rtc", "1");
   return u.toString();
 }
 
