@@ -701,18 +701,24 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // x0.12–0.56), and each temple arm hinges at the lens's outer edge and runs
     // straight back to the ear — staying outboard of the eyeball the whole way
     // rather than sweeping across it.
-    const m = accMat(accCol, 0.22, 0.5);
+    // The frame (rims, temple arms, bridge) takes the accessory colour; the LENSES
+    // are always black, inset as a smaller panel sitting just proud of each rim.
+    const frameMat = accMat(accCol, 0.4, 0.3);
+    const lensMat = accMat(0x0a0a0a, 0.15, 0.6);
     for (const sx of [-1, 1]) {
-      const lens = new THREE.Mesh(rbox(0.44, 0.34, 0.06, 0.06), m);
-      lens.position.set(sx * 0.34, 0.1, 0.84); lens.rotation.z = sx * -0.08; // slight wayfarer cant
+      const rim = new THREE.Mesh(rbox(0.44, 0.34, 0.06, 0.06), frameMat);
+      rim.position.set(sx * 0.34, 0.1, 0.84); rim.rotation.z = sx * -0.08; // slight wayfarer cant
+      acc.add(rim);
+      const lens = new THREE.Mesh(rbox(0.34, 0.24, 0.05, 0.05), lensMat);
+      lens.position.set(sx * 0.34, 0.1, 0.88); lens.rotation.z = sx * -0.08; // black lens, proud of the rim
       acc.add(lens);
-      const armg = new THREE.Mesh(rbox(0.66, 0.05, 0.05, 0.02), m);
+      const armg = new THREE.Mesh(rbox(0.66, 0.05, 0.05, 0.02), frameMat);
       // hinged at the lens's outer-top corner (x0.56, z0.84), running back to the
       // ear (x0.72, z0.20) — the whole arm stays at x >= 0.56, clear of the eye.
       armg.position.set(sx * 0.64, 0.17, 0.52); armg.rotation.y = sx * 1.33;
       acc.add(armg);
     }
-    const bridge = new THREE.Mesh(rbox(0.3, 0.08, 0.05, 0.02), m);
+    const bridge = new THREE.Mesh(rbox(0.3, 0.08, 0.05, 0.02), frameMat);
     bridge.position.set(0, 0.14, 0.85); acc.add(bridge);  } else if (accId === "bandana") {
     // bandana: a flat printed cloth band around the neck with a WIDE inverted-
     // triangle kerchief whose top edge tucks right under the band and drapes down
