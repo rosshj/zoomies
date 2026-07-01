@@ -114,6 +114,27 @@ function underglowTexture() {
 // patterns, plus the accessory each preset breed wears.
 export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie"];
 export const CAT_ACCESSORIES = ["none", "cap", "headphones", "beanie", "flower", "fedora", "sunglasses", "bandana", "collar", "bow"];
+// Human-facing labels (ids stay stable for saved garages / breed defaults).
+export const ACCESSORY_LABELS = {
+  none: "None", cap: "Cap", headphones: "Headphones", beanie: "Beanie", flower: "Flower",
+  fedora: "Fedora", sunglasses: "Sunglasses", bandana: "Bandana", collar: "Collar", bow: "Bow tie",
+};
+// A sensible colour palette per accessory type — the FIRST entry is the natural
+// default (used when a cat doesn't pick a colour), the rest are the swatches the
+// creator offers. Single source of truth: createCat reads [0], the garage UI
+// renders the whole list.
+export const ACCESSORY_COLORS = {
+  none: [],
+  cap:        [0xe23b3b, 0x2f6fd6, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xf0f0f0, 0xff8c1a, 0xa259ff, 0x18b6a6], // team-cap colours
+  headphones: [0x222831, 0xf0f0f0, 0xe23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0xf5c518, 0xa259ff, 0x18b6a6], // gadget colours
+  beanie:     [0x3f7fd6, 0xe23b3b, 0x37b24d, 0x8a8f98, 0xff5fa2, 0xf5c518, 0xa259ff, 0xff8c1a, 0xf0f0f0], // knit colours
+  flower:     [0xff7ab3, 0xe23b3b, 0xffe14d, 0xa259ff, 0xf0f0f0, 0xff8c1a, 0x2f6fd6, 0x18b6a6, 0x37b24d], // bloom colours
+  fedora:     [0x6b4a2f, 0x1a1a1a, 0x8a8f98, 0xcaa472, 0x3a2f2a, 0x2f4a6b, 0x6b2f3a, 0x24614a, 0xf0f0f0], // felt-hat tones
+  sunglasses: [0x0a0a0a, 0x5a3b1e, 0x2f6fd6, 0xe23b3b, 0xf5c518, 0xf0f0f0, 0xa259ff, 0x18b6a6, 0xff5fa2], // frame colours (lenses stay black)
+  bandana:    [0xd23b3b, 0x2f6fd6, 0x37b24d, 0x1a1a1a, 0xff8c1a, 0xa259ff, 0x18b6a6, 0xf5c518, 0xff5fa2], // kerchief colours
+  collar:     [0xd23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xa259ff, 0x18b6a6, 0xff8c1a], // collar colours
+  bow:        [0xff5fa2, 0xe23b3b, 0x2f6fd6, 0x1a1a1a, 0xa259ff, 0x18b6a6, 0xf5c518, 0x37b24d, 0xff8c1a], // bow-tie colours
+};
 const PATTERN_ACCESSORY = {
   spotted: "cap", solid: "headphones", snowshoe: "beanie", point: "flower",
   mitted: "fedora", tuxedo: "sunglasses", tabby: "bandana", calico: "collar", tortie: "bow",
@@ -220,6 +241,42 @@ function makeSpotTexture(furColor, spotColor) {
     ctx.fill();
   }
   const t = _finishTex(c);
+  _coatTexCache.set(key, t);
+  return t;
+}
+
+// Classic bandana print: the chosen base colour tiled with a white paisley-ish
+// motif (a dot ringed by a little diamond), staggered row to row so it reads as
+// cloth, not a grid. Cached per colour AND repeat, so the band and the drape can
+// each get a texture instance with its own tiling (distinct instances, not clones
+// — cloned textures don't reliably carry their own repeat on the WebGPU backend).
+function makeBandanaTexture(baseHex, rx = 3, ry = 2) {
+  const base = new THREE.Color(baseHex);
+  const key = `band|${base.getHexString()}|${rx}x${ry}`;
+  if (_coatTexCache.has(key)) return _coatTexCache.get(key);
+  const S = 128;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + base.getHexString();
+  ctx.fillRect(0, 0, S, S);
+  const cell = S / 4;
+  for (let gy = 0; gy < 4; gy++) {
+    for (let gx = 0; gx < 4; gx++) {
+      const x = (gx * cell + cell / 2 + (gy % 2 ? cell / 2 : 0)) % S;
+      const y = gy * cell + cell / 2;
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.beginPath(); ctx.arc(x, y, S * 0.036, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = S * 0.017;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+      const d = S * 0.082;
+      ctx.strokeRect(-d, -d, 2 * d, 2 * d);
+      ctx.restore();
+    }
+  }
+  const t = _finishTex(c);
+  t.repeat.set(rx, ry);
   _coatTexCache.set(key, t);
   return t;
 }
@@ -577,11 +634,19 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // can list them. Hats/headwear parent to the head (so they lean with it);
   // neckwear parents to the body. ---
   const accId = opts.accessory || PATTERN_ACCESSORY[pat] || "none";
+  // Each accessory has a natural default colour (the first swatch in its palette);
+  // a custom cat can recolour it via opts.accessoryColor. Accent bits that read as
+  // "not the main fabric" — a gold bell, a white pom/button, a yellow flower centre
+  // — keep their own fixed colours so recolouring still reads.
+  const accCol = (opts.accessoryColor != null && opts.accessoryColor !== "")
+    ? new THREE.Color(opts.accessoryColor).getHex()
+    : (ACCESSORY_COLORS[accId]?.[0] ?? 0xffffff);
+  const accColDark = new THREE.Color(accCol).multiplyScalar(0.8).getHex(); // shade for knots/accents
   const accMat = (hex, r = 0.6, m = 0) => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m });
   const acc = new THREE.Group();
   if (accId === "cap") {
     // forward-facing baseball cap
-    const m = accMat(0xe23b3b);
+    const m = accMat(accCol);
     const dome = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
     dome.position.set(0, 0.46, 0.04); dome.scale.set(1, 0.72, 1);
     acc.add(dome);
@@ -592,7 +657,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     btn.position.set(0, 0.78, 0.04); acc.add(btn);  } else if (accId === "headphones") {
     // headphones — cups on the sides, band routed around the BACK of the head so
     // it clears the tall cat ears instead of slicing through them.
-    const m = accMat(0x222831, 0.4);
+    const m = accMat(accCol, 0.4);
     const band = new THREE.Mesh(new THREE.TorusGeometry(0.84, 0.06, 8, 24, Math.PI), m);
     band.rotation.x = -Math.PI / 3; // angled up-and-back so it arcs behind the ears (not flat)
     band.position.set(0, 0.12, 0); acc.add(band);
@@ -602,7 +667,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       acc.add(cup);
     }  } else if (accId === "beanie") {
     // bobble beanie
-    const m = accMat(0x3f7fd6);
+    const m = accMat(accCol);
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.66, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
     cap.position.set(0, 0.36, 0); cap.scale.set(1, 0.92, 1); acc.add(cap);
     const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 8, 18), accMat(0xffffff));
@@ -617,60 +682,120 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const fv = new THREE.Vector3().crossVectors(fn, fu).normalize();
     for (let i = 0; i < 5; i++) {
       const a = (i / 5) * Math.PI * 2;
-      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), accMat(0xff7ab3));
+      const petal = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), accMat(accCol));
       petal.position.copy(fc).addScaledVector(fu, Math.cos(a) * 0.12).addScaledVector(fv, Math.sin(a) * 0.12);
       petal.scale.set(1, 1, 0.8); acc.add(petal);
     }
     const ctr = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), accMat(0xffe14d));
     ctr.position.copy(fc).addScaledVector(fn, 0.05); acc.add(ctr);  } else if (accId === "fedora") {
     // little fedora — rides up near the crown so the brim rests on the head
-    const m = accMat(0x6b4a2f);
+    const m = accMat(accCol);
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.82, 0.05, 20), m);
     brim.position.set(0, 0.64, 0.02); acc.add(brim);
     const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.48, 0.46, 18), m);
     crown.position.set(0, 0.86, 0.02); acc.add(crown);
     const bandm = new THREE.Mesh(new THREE.CylinderGeometry(0.49, 0.49, 0.1, 18), accMat(0x2a2a2a));
     bandm.position.set(0, 0.7, 0.02); acc.add(bandm);  } else if (accId === "sunglasses") {
-    // black wayfarer sunglasses on the face — Shadow's signature cool look. The
-    // eyes are big spheres that bulge to ~z0.76, so the lenses sit further forward
-    // (z~0.84) to cover them instead of letting the eyes poke through.
-    const m = accMat(0x0a0a0a, 0.22, 0.5);
+    // wayfarer sunglasses on the face. The eyes are big spheres bulging to ~z0.76
+    // and out to ~x0.53, so the lenses sit forward (z~0.84) and WIDER (spanning
+    // x0.12–0.56), and each temple arm hinges at the lens's outer edge and runs
+    // straight back to the ear — staying outboard of the eyeball the whole way
+    // rather than sweeping across it.
+    // The frame (rims, temple arms, bridge) takes the accessory colour; the LENSES
+    // are always black, inset as a smaller panel sitting just proud of each rim.
+    const frameMat = accMat(accCol, 0.4, 0.3);
+    const lensMat = accMat(0x0a0a0a, 0.15, 0.6);
     for (const sx of [-1, 1]) {
-      const lens = new THREE.Mesh(rbox(0.36, 0.3, 0.06, 0.06), m);
-      lens.position.set(sx * 0.3, 0.1, 0.84); lens.rotation.z = sx * -0.1; // slight wayfarer cant
+      const rim = new THREE.Mesh(rbox(0.44, 0.34, 0.06, 0.06), frameMat);
+      rim.position.set(sx * 0.34, 0.1, 0.84); rim.rotation.z = sx * -0.08; // slight wayfarer cant
+      acc.add(rim);
+      const lens = new THREE.Mesh(rbox(0.34, 0.24, 0.05, 0.05), lensMat);
+      lens.position.set(sx * 0.34, 0.1, 0.88); lens.rotation.z = sx * -0.08; // black lens, proud of the rim
       acc.add(lens);
-      const armg = new THREE.Mesh(rbox(0.5, 0.05, 0.05, 0.02), m);
-      armg.position.set(sx * 0.54, 0.16, 0.5); armg.rotation.y = sx * 0.7; // temple arm back to the ear
+      const armg = new THREE.Mesh(rbox(0.66, 0.05, 0.05, 0.02), frameMat);
+      // hinged at the lens's outer-top corner (x0.56, z0.84), running back to the
+      // ear (x0.72, z0.20) — the whole arm stays at x >= 0.56, clear of the eye.
+      armg.position.set(sx * 0.64, 0.17, 0.52); armg.rotation.y = sx * 1.33;
       acc.add(armg);
     }
-    const bridge = new THREE.Mesh(rbox(0.26, 0.08, 0.05, 0.02), m);
+    const bridge = new THREE.Mesh(rbox(0.3, 0.08, 0.05, 0.02), frameMat);
     bridge.position.set(0, 0.14, 0.85); acc.add(bridge);  } else if (accId === "bandana") {
-    // neckerchief / bandana
-    const m = accMat(0xd23b3b);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.1, 8, 18), m);
-    ring.position.set(0, 1.56, 0.08); ring.rotation.x = Math.PI / 2.3; acc.add(ring);
-    const knot = new THREE.Mesh(new THREE.ConeGeometry(0.17, 0.32, 5), m);
-    knot.position.set(0, 1.42, 0.56); knot.rotation.x = 0.6; acc.add(knot);  } else if (accId === "collar") {
-    // collar with a little gold bell
-    const collar = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.07, 8, 20), accMat(0xd23b3b));
-    collar.position.set(0, 1.56, 0.08); collar.rotation.x = Math.PI / 2.3; acc.add(collar);
-    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 12), accMat(0xffd24d, 0.4, 0.3));
-    bell.position.set(0, 1.4, 0.52); acc.add(bell);
-    const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 8), accMat(0xe0b53a, 0.4, 0.3));
-    nub.position.set(0, 1.49, 0.52); acc.add(nub);  } else if (accId === "bow") {
-    // a little hair bow perched on the crown — two pinched loops + a knot.
-    const m = accMat(0xff7aa8);
+    // bandana: a flat printed cloth band around the neck with a WIDE inverted-
+    // triangle kerchief whose top edge tucks right under the band and drapes down
+    // the chest — one continuous cloth, not a ring with a triangle floating below.
+    // The band is a thin open cylinder wall (a fabric strip, not a rounded tube),
+    // radius 0.92 (a touch wider than the ~0.87 torso so it never clips). Printed:
+    // a white-mapped material carries the base colour + subtle white paisley motif.
+    // One continuous printed cloth: the band, the chest drape, and the tie (knot +
+    // tails) at the nape all use the same white-mapped paisley material — the band
+    // and the drape get their own texture instances with their own tiling so the
+    // print reads at each scale yet feels like the same fabric.
+    const clothMatOf = (rx, ry) =>
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol, rx, ry) });
+    const bandMat = clothMatOf(9, 1.4);    // a row of motifs wrapping the thin band
+    const clothMat = clothMatOf(2.4, 2.4); // drape / knot / tails
+    // The band is tilted (rotation.x 0.26) so its BACK arc rides UP toward the nape
+    // (where it's tied) instead of flaring down onto the upper back; the front dips
+    // to the throat, as a real neckerchief sits.
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.18, 32, 1, true), bandMat);
+    band.position.set(0, 1.64, 0.05); band.rotation.x = 0.26; acc.add(band);
+    // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
+    // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
+    // instead of the chest bulging through a flat plane. Top edge tucks behind the
+    // band; the two top corners and the point hang back at the sides.
+    //   TL ── TR      (top edge, at the band, z 0)
+    //     \ MC /       (centre bulged forward, +z, riding over the chest)
+    //       BP         (point, forward a little)
+    const fp = [-0.54, 0, 0,  0.54, 0, 0,  0, -0.30, 0.22,  0, -0.60, 0.16];
+    const fuv = [0, 1,  1, 1,  0.5, 0.5,  0.5, 0];
+    const fgeo = new THREE.BufferGeometry();
+    fgeo.setAttribute("position", new THREE.Float32BufferAttribute(fp, 3));
+    fgeo.setAttribute("uv", new THREE.Float32BufferAttribute(fuv, 2));
+    fgeo.setIndex([0, 2, 1, 0, 3, 2, 2, 3, 1]);
+    fgeo.computeVertexNormals();
+    const flap = new THREE.Mesh(fgeo, clothMat);
+    flap.position.set(0, 1.42, 0.82); acc.add(flap);
+    // The tie at the nape: a knot with two pointed tails, as when a bandana is
+    // knotted at the back of the neck. Pushed well behind the neck (z ~ -0.95) so
+    // it sits PROUD of the torso's back (which reaches ~z-0.85 here) instead of
+    // being buried inside it.
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), clothMat);
+    knot.position.set(0, 1.86, -0.95); knot.scale.set(1.5, 1.2, 1.0); acc.add(knot);
     for (const sx of [-1, 1]) {
-      const loop = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), m);
-      loop.position.set(sx * 0.26, 0.56, 0.08); loop.scale.set(1, 0.62, 0.5);
+      const tail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.52, 4), clothMat);
+      tail.position.set(sx * 0.2, 1.6, -0.96);
+      tail.rotation.z = sx * -2.5; // apex swings down-and-out to the side
+      tail.rotation.y = sx * 0.3;
+      tail.scale.set(1, 1, 0.55);  // flatten like cloth
+      acc.add(tail);
+    }  } else if (accId === "collar") {
+    // collar: a flat fabric band (a thin open cylinder wall — a strip, not a
+    // rounded tube) around the neck, with a little gold bell at the throat. Radius
+    // 0.92 sits just proud of the ~0.87 torso so the whole band clears it. Tilted
+    // (rotation.x 0.26) so the BACK of the band rides up near the head rather than
+    // drooping down the back; the throat side dips low where the bell hangs.
+    const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.55, side: THREE.DoubleSide });
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.17, 32, 1, true), m);
+    collar.position.set(0, 1.64, 0.05); collar.rotation.x = 0.26; acc.add(collar);
+    const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
+    bell.position.set(0, 1.2, 0.86); acc.add(bell);
+    const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8), accMat(0xe0b53a, 0.4, 0.35));
+    nub.position.set(0, 1.3, 0.87); acc.add(nub);  } else if (accId === "bow") {
+    // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
+    // on the upper chest in the body frame (a real bow tie, not a hair bow).
+    const m = accMat(accCol);
+    for (const sx of [-1, 1]) {
+      const loop = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), m);
+      // flatter, less bulbous: shallow depth (z 0.22) so it lies against the chest
+      loop.position.set(sx * 0.26, 1.5, 0.9); loop.scale.set(1.0, 0.62, 0.22);
       acc.add(loop);
     }
-    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(0xe65f90));
-    knot.position.set(0, 0.56, 0.08); acc.add(knot);  }
-  // Headwear / eyewear ride with the head; neckwear (tabby kerchief, calico collar)
-  // sits on the body. `acc` is at the origin, so its children's transforms already
-  // read in the right frame — route them into the matching static bucket to merge.
-  const accToBody = accId === "bandana" || accId === "collar";
+    const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark));
+    knot.position.set(0, 1.5, 0.94); knot.scale.set(0.9, 1.0, 0.55); acc.add(knot);  }
+  // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie) sits
+  // on the body. `acc` is at the origin, so its children's transforms already read
+  // in the right frame — route them into the matching static bucket to merge.
+  const accToBody = accId === "bandana" || accId === "collar" || accId === "bow";
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
