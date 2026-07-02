@@ -37,8 +37,38 @@
       }
     }
   </script>
+
+  <!-- Critical loading-screen CSS, inlined so it paints INSTANTLY on a cold load
+       — before styles.css or the large three.js module have downloaded — instead
+       of showing a blank/black screen while the renderer boots. Removed by JS
+       (main.js) once the first frame has rendered. -->
+  <style>
+    #loading{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:14px;
+      background:radial-gradient(125% 125% at 50% 32%,#1b2547 0%,#0e1320 72%);
+      color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+      -webkit-user-select:none;user-select:none;transition:opacity .45s ease;}
+    #loading.done{opacity:0;pointer-events:none;}
+    #loading .ls-title{font-size:clamp(30px,6vw,54px);font-weight:800;letter-spacing:.03em;
+      margin:0;text-shadow:0 3px 20px rgba(0,0,0,.55);}
+    #loading .ls-tag{font-size:clamp(12px,2.3vw,17px);opacity:.7;margin:0;
+      letter-spacing:.22em;text-transform:uppercase;}
+    #loading .ls-ring{width:44px;height:44px;border-radius:50%;margin-top:12px;
+      border:4px solid rgba(255,255,255,.16);border-top-color:#ffd54f;
+      animation:ls-spin .85s linear infinite;}
+    @keyframes ls-spin{to{transform:rotate(360deg);}}
+    @media (prefers-reduced-motion:reduce){#loading .ls-ring{animation:none;
+      border-top-color:rgba(255,213,79,.6);}}
+  </style>
 </head>
 <body>
+  <!-- First paint: a branded loading screen (see inline CSS above) so a cold
+       start never flashes a blank screen while the renderer initialises. -->
+  <div id="loading">
+    <p class="ls-title">🐱 ZOOMIES GP</p>
+    <p class="ls-tag">Cat Kart Racing</p>
+    <div class="ls-ring" role="progressbar" aria-label="Loading"></div>
+  </div>
   <!-- Everything lives inside #stage, which we counter-rotate so the game
        always presents in landscape no matter how the OS orients the page. -->
   <div id="stage">

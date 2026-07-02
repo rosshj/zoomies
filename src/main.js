@@ -1380,6 +1380,15 @@ function renderFrame() {
   if (player && state !== State.MENU) {
     drawMinimap();
   }
+  // First real frame is on screen — fade out the boot loading screen to reveal it.
+  if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
+}
+let _loadHidden = false;
+function hideLoadingScreen() {
+  const el = document.getElementById("loading");
+  if (!el) return;
+  el.classList.add("done"); // CSS opacity transition
+  setTimeout(() => el.remove(), 550);
 }
 
 // One-time pipeline warm-up. During a race the camera only faces forward, so the
