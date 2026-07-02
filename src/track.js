@@ -917,11 +917,16 @@ export class Track {
         ["green", 0x2ecc55, 0.8],
       ];
       for (const [key, col, s] of lampDefs) {
+        // Built UNLIT: a dark lens (like a real traffic light that's off) —
+        // setStartLight() swaps in the full lens colour + a strong emissive when
+        // the lamp is live, so the active light clearly GLOWS while the others
+        // read as off, instead of three permanently-coloured dots.
         const lamp = new THREE.Mesh(
           new THREE.SphereGeometry(0.3, 12, 10),
-          new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.12, roughness: 0.4 })
+          new THREE.MeshStandardMaterial({ color: 0x23262b, emissive: col, emissiveIntensity: 0, roughness: 0.4 })
         );
         lamp.position.copy(pt(s, 6.1));
+        lamp.userData.lensCol = col;
         this.group.add(lamp);
         this._lamps[key] = lamp;
       }
@@ -952,13 +957,21 @@ export class Track {
     }
   }
 
-  // Drive the start-light panel: "off" | "red" | "amber" | "green". Writes go
-  // through mesh.material (toonify replaces the material instances post-build).
+  // Drive the start-light panel: "off" | "red" | "amber" | "green". The live
+  // lamp gets its lens colour + a strong emissive (bright enough to bloom) and
+  // pops slightly larger; the rest go dark like unlit traffic-light lenses.
+  // Writes go through mesh.material (toonify replaces the instances post-build).
   setStartLight(stage) {
     if (!this._lamps) return;
     for (const key of ["red", "amber", "green"]) {
-      const m = this._lamps[key].material;
-      if (m && m.emissiveIntensity !== undefined) m.emissiveIntensity = stage === key ? 2.6 : 0.12;
+      const lamp = this._lamps[key];
+      const m = lamp.material;
+      const on = stage === key;
+      if (m && m.color) m.color.setHex(on ? lamp.userData.lensCol : 0x23262b);
+      // Red runs a touch lower: at full 3.4 tone mapping blows saturated red
+      // toward orange, which made it read like a second amber.
+      if (m && m.emissiveIntensity !== undefined) m.emissiveIntensity = on ? (key === "red" ? 2.4 : 3.4) : 0;
+      lamp.scale.setScalar(on ? 1.25 : 1);
     }
   }
 
