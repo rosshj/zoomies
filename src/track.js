@@ -739,24 +739,27 @@ export class Track {
     const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
     // Bold black/white CHECKERED LINE across the full road: one crisp
-    // canvas-textured plane (3 rows of big squares) instead of the old 22 small
-    // cell meshes — reads like a real circuit line and costs 1 draw, not 22.
+    // canvas-textured plane instead of the old 22 small cell meshes. The cells
+    // are true SQUARES (~0.8u) in world space — depth/rows fixes the cell size,
+    // cols derives from the road width so the pattern stays square on any track.
     {
-      const cols = 12, rows = 3, cell = 64;
+      const depth = 3.2, rows = 4, px = 32;
+      const cellSize = depth / rows;
+      const cols = Math.max(2, Math.round(this.width / cellSize));
       const c = document.createElement("canvas");
-      c.width = cols * cell;
-      c.height = rows * cell;
+      c.width = cols * px;
+      c.height = rows * px;
       const ctx = c.getContext("2d");
       for (let x = 0; x < cols; x++)
         for (let y = 0; y < rows; y++) {
           ctx.fillStyle = (x + y) % 2 === 0 ? "#101010" : "#f8f8f8";
-          ctx.fillRect(x * cell, y * cell, cell, cell);
+          ctx.fillRect(x * px, y * px, px, px);
         }
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.magFilter = THREE.NearestFilter; // keep the squares razor-crisp
       const line = new THREE.Mesh(
-        new THREE.PlaneGeometry(this.width, 3.2),
+        new THREE.PlaneGeometry(cols * cellSize, depth),
         new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 })
       );
       line.position.set(p.x, p.y + 0.06, p.z);
@@ -765,90 +768,98 @@ export class Track {
       this.group.add(line);
     }
 
-    // Archway over the track: a single tube that rises as a post on each side
-    // and curves over the road into a rounded arch. The apex is recorded so the
-    // finish fireworks can burst from it.
+    // START GATE: the same pole-and-band construction as the street banners
+    // around the map (dark metal poles, top + bottom bars, a taut billowed
+    // cloth) — but carrying the "ZOOMIES GP" print. Replaces the old red tube
+    // arch. archApex is kept (above the banner) for the fireworks proximity gate.
     const up = new THREE.Vector3(0, 1, 0);
-    const W = this.halfWidth + 1.6; // post offset from centre
-    const postH = 5.5; // straight post height before the arch curves
-    const archRise = 5.0; // how high the arch bulges above the posts
+    const W = this.halfWidth + 3; // pole offset from centre (matches street banners)
     const pt = (s, y) => new THREE.Vector3().copy(p).addScaledVector(side, s).addScaledVector(up, y);
-    const archPts = [pt(-W, 0)]; // left base
-    const ARCSEG = 16;
-    for (let k = 0; k <= ARCSEG; k++) {
-      const a = Math.PI * (1 - k / ARCSEG); // left shoulder -> apex -> right shoulder
-      archPts.push(pt(W * Math.cos(a), postH + archRise * Math.sin(a)));
+    const topY = 9.4, botY = 6.7; // banner band clears the karts below
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x3c4047, roughness: 0.5, metalness: 0.45 });
+    const barMat = new THREE.MeshStandardMaterial({ color: 0x2d3036, roughness: 0.45, metalness: 0.55 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
+    this.archApex = pt(0, topY + 0.6);
+    for (const s of [-W, W]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.34, topY + 0.9, 10), poleMat);
+      pole.position.copy(pt(s, (topY + 0.9) / 2));
+      pole.castShadow = true;
+      this.group.add(pole);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), capMat);
+      cap.position.copy(pt(s, topY + 0.9));
+      this.group.add(cap);
     }
-    archPts.push(pt(W, 0)); // right base
-    const archGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(archPts), 90, 0.55, 12, false);
-    const arch = new THREE.Mesh(
-      archGeo,
-      new THREE.MeshStandardMaterial({ color: 0xe53935, roughness: 0.55, metalness: 0.1 })
-    );
-    arch.castShadow = true;
-    this.group.add(arch);
-
-    // Golden finials at the apex and shoulders for a fairground gate look.
-    const finialMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
-    this.archApex = pt(0, postH + archRise);
-    for (const s of [-W, 0, W]) {
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 12), finialMat);
-      ball.position.copy(pt(s, s === 0 ? postH + archRise : postH));
-      ball.castShadow = true;
-      this.group.add(ball);
+    const yaw = Math.atan2(tan.x, tan.z);
+    for (const by of [topY, botY]) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, W * 2, 8), barMat);
+      bar.rotation.z = Math.PI / 2;
+      const grp = new THREE.Group();
+      grp.add(bar);
+      grp.position.copy(pt(0, by));
+      grp.rotation.y = yaw;
+      this.group.add(grp);
     }
 
-    // "ZOOMIES GP" BANNER hung across the arch: navy with a gold border, white
-    // lettering, and checker strips at both ends. Double-sided so it reads on
-    // the run-up from either direction.
+    // The printed cloth: navy with a gold border, checker strips at the ends and
+    // "ZOOMIES GP" lettering, with the same gentle billow as the street banners.
     {
+      const bw = W * 2 - 1.4;
+      const bh = topY - botY;
+      const cw = 1536, ch = Math.round(cw * (bh / bw)); // canvas matches the cloth's aspect
       const c = document.createElement("canvas");
-      c.width = 1024;
-      c.height = 128;
+      c.width = cw;
+      c.height = ch;
       const ctx = c.getContext("2d");
       ctx.fillStyle = "#1c2340";
-      ctx.fillRect(0, 0, 1024, 128);
+      ctx.fillRect(0, 0, cw, ch);
       ctx.strokeStyle = "#ffd54f";
       ctx.lineWidth = 10;
-      ctx.strokeRect(5, 5, 1014, 118);
-      // checker strips at both ends
-      for (const x0 of [26, 1024 - 26 - 64]) {
+      ctx.strokeRect(5, 5, cw - 10, ch - 10);
+      const sq = Math.floor((ch - 24) / 3); // checker strips at both ends
+      for (const x0 of [22, cw - 22 - sq * 2]) {
         for (let x = 0; x < 2; x++)
           for (let y = 0; y < 3; y++) {
             ctx.fillStyle = (x + y) % 2 === 0 ? "#f8f8f8" : "#101010";
-            ctx.fillRect(x0 + x * 32, 16 + y * 32, 32, 32);
+            ctx.fillRect(x0 + x * sq, 12 + y * sq, sq, sq);
           }
       }
       ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 78px system-ui, sans-serif";
+      ctx.font = `bold ${Math.round(ch * 0.58)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("ZOOMIES GP", 512, 70);
+      ctx.fillText("ZOOMIES GP", cw / 2, ch / 2 + 4);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
-      const bw = this.width * 0.72;
+      const geo = new THREE.PlaneGeometry(bw, bh, 24, 1);
+      const pos = geo.attributes.position;
+      for (let v = 0; v < pos.count; v++) {
+        pos.setZ(v, Math.sin((pos.getX(v) / bw) * Math.PI * 3) * 0.22); // gentle billow
+      }
+      geo.computeVertexNormals();
       const banner = new THREE.Mesh(
-        new THREE.PlaneGeometry(bw, bw * (128 / 1024)),
-        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, side: THREE.DoubleSide })
+        geo,
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide })
       );
       // Front face toward -tangent: karts ALWAYS approach the line from the grid
       // side (the lap loops back around), so that's the side the text must read on.
-      banner.position.copy(pt(0, 8.1));
-      banner.rotation.y = Math.atan2(tan.x, tan.z) + Math.PI;
+      banner.position.copy(pt(0, (topY + botY) / 2));
+      banner.rotation.y = yaw + Math.PI;
       banner.castShadow = true;
       this.group.add(banner);
+    }
 
-      // START LIGHTS: a small 3-lamp panel (red / amber / green) hanging under
-      // the banner, driven by setStartLight() from the race countdown. The lamp
-      // meshes are stored (not their materials) because toonify() swaps material
-      // instances after the track is built — mesh.material is always the live one.
+    // START LIGHTS: a small 3-lamp panel (red / amber / green) hanging under
+    // the banner's bottom bar, driven by setStartLight() from the race
+    // countdown. The lamp meshes are stored (not their materials) because
+    // toonify() swaps material instances post-build — mesh.material stays live.
+    {
       const panel = new THREE.Mesh(
         new THREE.BoxGeometry(2.6, 0.95, 0.42),
         new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.6 })
       );
-      panel.position.copy(pt(0, 6.4));
-      panel.rotation.y = Math.atan2(tan.x, tan.z);
+      panel.position.copy(pt(0, 6.1));
+      panel.rotation.y = yaw;
       panel.castShadow = true;
       this.group.add(panel);
       this._lamps = {};
@@ -862,7 +873,7 @@ export class Track {
           new THREE.SphereGeometry(0.3, 12, 10),
           new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.12, roughness: 0.4 })
         );
-        lamp.position.copy(pt(s, 6.4));
+        lamp.position.copy(pt(s, 6.1));
         this.group.add(lamp);
         this._lamps[key] = lamp;
       }

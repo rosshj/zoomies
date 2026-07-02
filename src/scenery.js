@@ -1736,59 +1736,15 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   return { update };
 }
 
-// Printed street-banner faces: a bold event banner (border, checkered-flag end
-// caps, a slogan with paw accents), one design per index. Cached per design.
-const BANNER_DESIGNS = [
-  { bg: "#d23b34", fg: "#fff7e6", text: "ZOOMIES GP" },
-  { bg: "#2f6fb0", fg: "#ffffff", text: "CAT KART CUP" },
-  { bg: "#3a9d4e", fg: "#fffceb", text: "WELCOME RACERS" },
-  { bg: "#e0a73a", fg: "#3a2410", text: "FURBALL DERBY" },
-];
-const _bannerTexCache = new Map();
-function makeBannerTexture(i) {
-  if (_bannerTexCache.has(i)) return _bannerTexCache.get(i);
-  const d = BANNER_DESIGNS[i % BANNER_DESIGNS.length];
-  const W = 1024, H = 192;
-  const c = document.createElement("canvas");
-  c.width = W; c.height = H;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = d.bg; ctx.fillRect(0, 0, W, H);
-  // Inner border frame.
-  ctx.strokeStyle = d.fg; ctx.lineWidth = 9;
-  ctx.strokeRect(14, 14, W - 28, H - 28);
-  // Checkered-flag caps at each end (two columns, inset within the frame).
-  const sq = 21, cols = 2, top = 26, rows = Math.floor((H - 52) / sq);
-  for (const x0 of [26, W - 26 - sq * cols]) {
-    for (let r = 0; r < rows; r++) {
-      for (let cc = 0; cc < cols; cc++) {
-        ctx.fillStyle = (r + cc) % 2 ? "#15110d" : "#f3f0e6";
-        ctx.fillRect(x0 + cc * sq, top + r * sq, sq, sq);
-      }
-    }
-  }
-  // Slogan with paw accents, centred. Auto-shrink so long slogans stay clear of
-  // the checkered caps instead of colliding with them.
-  ctx.fillStyle = d.fg;
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const label = `🐾  ${d.text}  🐾`;
-  let fs = 96;
-  ctx.font = `bold ${fs}px system-ui, Arial, sans-serif`;
-  while (fs > 44 && ctx.measureText(label).width > W - 200) {
-    fs -= 4; ctx.font = `bold ${fs}px system-ui, Arial, sans-serif`;
-  }
-  ctx.fillText(label, W / 2, H / 2 + 4);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  _bannerTexCache.set(i, t);
-  return t;
-}
+// Street-banner cloth colours: simple solid bands (no printing) — the only
+// lettered banner on the map is the start gate's "ZOOMIES GP".
+const BANNER_COLS = [0xd23b34, 0x2f6fb0, 0x3a9d4e, 0xe0a73a];
 
-// One street banner: two ground poles, a top + bottom bar holding a taut printed
-// banner between them (with a gentle billow), spanning across the road.
+// One street banner: two ground poles, a top + bottom bar holding a taut SKINNY
+// plain band between them (with a gentle billow), spanning across the road.
 function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, texIndex) {
   const off = track.halfWidth + 3;
-  const topY = p.y + 9.6, botY = p.y + 6.2;        // banner band clears the karts below
+  const topY = p.y + 8.9, botY = p.y + 7.7;        // a slim band, well clear of the karts below
   const bannerW = off * 2 - 1.4, bannerH = topY - botY;
   const midY = (topY + botY) / 2;
   // Poles (grounded on the real terrain, each side), with a small cap.
@@ -1818,7 +1774,8 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat
     bar.layers.set(1);
     scene.add(bargrp);
   }
-  // The taut banner: a segmented plane with a gentle billow baked in.
+  // The taut band: a segmented plane with a gentle billow baked in. Plain solid
+  // cloth — no printing — so it reads as simple trackside dressing.
   const geo = new THREE.PlaneGeometry(bannerW, bannerH, 24, 1);
   const pos = geo.attributes.position;
   for (let v = 0; v < pos.count; v++) {
@@ -1828,12 +1785,9 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat
   geo.computeVertexNormals();
   const banner = new THREE.Mesh(
     geo,
-    new THREE.MeshStandardMaterial({ map: makeBannerTexture(texIndex), roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
+    new THREE.MeshStandardMaterial({ color: BANNER_COLS[texIndex % BANNER_COLS.length], roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
   );
   banner.position.set(p.x, midY, p.z);
-  // Face the readable side at oncoming traffic: the plane's front (+Z) sits along
-  // the tangent (the way you drive), so without the flip you'd approach its BACK
-  // and read the text mirrored. +π turns the readable face toward the racers.
   banner.rotation.y = yaw + Math.PI;
   banner.castShadow = true;
   banner.layers.set(1);
@@ -1860,7 +1814,7 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   // --- Printed street banners (2) ---
   [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
     const { p, sx, sz, yaw } = spanAt(frac);
-    addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_DESIGNS.length) | 0));
+    addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_COLS.length) | 0));
   });
 
   // --- Wooden walking footbridges spanning the road ---
