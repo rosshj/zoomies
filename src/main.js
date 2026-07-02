@@ -230,6 +230,9 @@ let DIFFICULTY = "hard"; // default = the current tuned field
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
+// Debug hook (console / headless tooling): inspect the live scene graph and
+// renderer counters without instrumenting a build.
+window.__zoomies = { scene, camera, renderer };
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
 // wipe the count between them and leave only the last pass).
@@ -329,11 +332,18 @@ const _godrayShafts = Fn(() => {
   });
   return add; // shafts only
 });
-// Render the shafts to a half-resolution target (cheap), then composite over the
-// full-res scene. autoUpdate re-renders them each frame; the If-gate keeps it a
-// cheap black fill when the sun isn't visible.
+// Render the shafts to a LOW-RES target (0.42× the drawing buffer, ~18% of the
+// pixels) and composite over the full-res scene — shafts are soft/low-frequency,
+// so the downsample is invisible. The target is sized EXPLICITLY in
+// applyResolution(): with RTTNode's autoSize (no explicit size), updateBefore
+// overwrites .pixelRatio with the renderer's every frame, so the old
+// `_shaftTex.pixelRatio = 0.42` was silently ignored and the shafts rendered at
+// FULL resolution — the main facing-the-sun frame cost. Updates are also driven
+// manually at half rate (see updateAtmosphere) instead of every frame.
 const _shaftTex = rtt(_godrayShafts());
-_shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
+_shaftTex.autoUpdate = false;
+let _shaftFlip = false; // half-rate refresh parity
+let _shaftLive = true;  // whether the target still needs a final black fill
 // Colour grade applied to whichever composite (high or low) we feed it, so both
 // quality tiers look consistent — Low just composites fewer passes into the base.
 function gradeOutput(base) {
@@ -1210,7 +1220,8 @@ function updateRearThreat() {
 // Update the god-ray pass: project the sun to screen and fade it out when it's
 // hidden by the weather or behind the camera.
 let sunVisibleMood = MOOD.rays ?? MOOD.sunVisible;
-const _sunDir = new THREE.Vector3();
+const _sunDir = new THREE.Vector3(); // stable CACHED sun direction (see updateAtmosphere)
+const _sunDirRaw = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
 const _sunScreen = new THREE.Vector3();
 const _ss = (a, b, x) => {
@@ -1221,6 +1232,59 @@ const _sunViewVec = new THREE.Vector3();
 const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
+// _shTargetExp remembers where fitSunShadow last put the sun target, so an
+// external re-anchor (applyMood resets it to the origin) is detected and the
+// frustum refitted. NaN guarantees the first frame fits.
+const _shTargetExp = new THREE.Vector3(NaN, 0, 0);
+const _shCorner = new THREE.Vector3();
+
+// Fit the sun's shadow camera around the WHOLE world (track bounds + the
+// scenery strip + head-room for hills/buildings), projected into the light's
+// basis, and queue a single shadow-map render. Called once per world/mood.
+function fitSunShadow() {
+  const cam = sun.shadow.camera;
+  // World bounds from the track's sampled points (they carry the hills' y).
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const q of track._pts || []) {
+    if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+    if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y;
+    if (q.z < minZ) minZ = q.z; if (q.z > maxZ) maxZ = q.z;
+  }
+  if (!Number.isFinite(minX)) { minX = minZ = -400; maxX = maxZ = 400; minY = 0; maxY = 0; }
+  const M = 80; // roadside scenery strip (towns/trees sit within this of the track)
+  minX -= M; maxX += M; minZ -= M; maxZ += M;
+  minY -= 12; maxY += 45; // below bridges/dips + above buildings/treetops
+  // Project the world box's 8 corners into the light basis and fit the ortho
+  // bounds exactly around them.
+  _shRight.crossVectors(_shUp, _sunDir).normalize();
+  _shUpL.crossVectors(_sunDir, _shRight).normalize();
+  let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, f0 = Infinity, f1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    _shCorner.set(i & 1 ? maxX : minX, i & 2 ? maxY : minY, i & 4 ? maxZ : minZ);
+    const r = _shCorner.dot(_shRight), u = _shCorner.dot(_shUpL), f = _shCorner.dot(_sunDir);
+    if (r < r0) r0 = r; if (r > r1) r1 = r;
+    if (u < u0) u0 = u; if (u > u1) u1 = u;
+    if (f < f0) f0 = f; if (f > f1) f1 = f;
+  }
+  sun.target.position
+    .set(0, 0, 0)
+    .addScaledVector(_shRight, (r0 + r1) / 2)
+    .addScaledVector(_shUpL, (u0 + u1) / 2)
+    .addScaledVector(_sunDir, (f0 + f1) / 2);
+  const halfF = (f1 - f0) / 2;
+  sun.position.copy(sun.target.position).addScaledVector(_sunDir, halfF + 60);
+  cam.left = -(r1 - r0) / 2;
+  cam.right = (r1 - r0) / 2;
+  cam.bottom = -(u1 - u0) / 2;
+  cam.top = (u1 - u0) / 2;
+  cam.near = 40;
+  cam.far = halfF * 2 + 100;
+  cam.updateProjectionMatrix();
+  _shTargetExp.copy(sun.target.position);
+  sun.target.updateMatrixWorld();
+  sun.updateMatrixWorld();
+  sun.shadow.needsUpdate = true;
+}
 function updateAtmosphere() {
   // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
   // constant depth (their radius) inside the far plane. Anchored to the world origin
@@ -1231,35 +1295,32 @@ function updateAtmosphere() {
   if (starField) starField.position.copy(camera.position);
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-  // Direction toward the sun (invariant to the follow offset below).
-  _sunDir.copy(sun.position).sub(sun.target.position).normalize();
+  // Direction toward the sun. Derived from the light/target positions but
+  // CACHED: the shadow fit below repositions both ends using this very
+  // direction, and re-deriving through normalize() every frame lets FP rounding
+  // random-walk the value. Only accept a genuinely new direction (a mood
+  // change, ~degrees), never sub-noise drift.
+  _sunDirRaw.copy(sun.position).sub(sun.target.position).normalize();
+  const sunDirChanged = _sunDirRaw.distanceToSquared(_sunDir) > 1e-8;
+  if (sunDirChanged) _sunDir.copy(_sunDirRaw);
 
-  // Keep the tight shadow frustum centred on the player so its crisp shadows
-  // are always where they show. Snap the centre to shadow-map texels (in the
-  // light's own view basis) so the now-tighter, crisper shadows don't swim or
-  // shimmer as the player moves. Light + target move together, preserving the
-  // sun direction.
-  if (player) {
-    const cam = sun.shadow.camera;
-    const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
-    _shRight.crossVectors(_shUp, _sunDir).normalize();
-    _shUpL.crossVectors(_sunDir, _shRight).normalize();
-    const p = player.position;
-    const dr = Math.round(p.dot(_shRight) / texel) * texel;
-    const du = Math.round(p.dot(_shUpL) / texel) * texel;
-    const df = p.dot(_sunDir);
-    sun.target.position
-      .set(0, 0, 0)
-      .addScaledVector(_shRight, dr)
-      .addScaledVector(_shUpL, du)
-      .addScaledVector(_sunDir, df);
-    sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
-    sun.target.updateMatrixWorld();
-    sun.updateMatrixWorld();
-  }
+  // Fixed, world-sized shadow frustum, fitted + rendered ONCE per world/mood.
+  // A follow frustum — however cleverly snapped or stepped — has a MOVING
+  // BOUNDARY, and at sunset the long building/fence shadows crossing it visibly
+  // popped in and lurched at every re-centre. Every mapped caster is static
+  // scenery (karts use projected quads), so the frustum is instead fitted to
+  // the whole track once: the camera and depth map never change during play —
+  // nothing can pop, jump, or shimmer, and the shadow pass costs ~zero frames.
+  // The trade-off is texel density (the map covers the world, not 170u), which
+  // the soft toon look absorbs. Refit triggers: first frame, a mood change
+  // (new sun direction), or anything else re-anchoring the target (applyMood
+  // resets it to the origin).
+  if (sunDirChanged || !sun.target.position.equals(_shTargetExp)) fitSunShadow();
 
   _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facing = _sunDir.dot(_camFwd);
+  // Camera-to-sun angle for the FPS debug readout (0° = looking dead at the sun).
+  _sunFaceDeg = Math.acos(Math.max(-1, Math.min(1, facing))) * (180 / Math.PI);
   let vis = 0;
   if (sunVisibleMood && facing > 0.02) {
     _sunScreen.copy(_sunDir).multiplyScalar(3000).add(camera.position).project(camera);
@@ -1272,6 +1333,18 @@ function updateAtmosphere() {
   vis *= clear;
   godrayPass.uniforms.uVis.value = vis;
   flarePass.uniforms.uVis.value = vis;
+  // Refresh the shaft target every OTHER frame while the sun shows (soft, low-
+  // frequency content — half rate is invisible but halves the worst facing-the-
+  // sun cost). Once the sun goes hidden, one last refresh writes the gated black
+  // fill and updates stop entirely.
+  _shaftFlip = !_shaftFlip;
+  if (vis > 0.001) {
+    if (_shaftFlip) _shaftTex.textureNeedsUpdate = true;
+    _shaftLive = true;
+  } else if (_shaftLive) {
+    _shaftTex.textureNeedsUpdate = true;
+    _shaftLive = false;
+  }
   // PERF: both are full-screen shader passes that output the frame unchanged when
   // the sun isn't visible (night, or facing away) — skip them entirely then. Saves
   // two full-frame passes every night frame. fxPass stays last, so the
@@ -1471,6 +1544,14 @@ function applyResolution() {
   const bw = Math.max(1, Math.round(stageState.W * pr * 0.5));
   const bh = Math.max(1, Math.round(stageState.H * pr * 0.5));
   bloomPass.setSize(bw, bh);
+  // God-ray shaft target: explicit size (0.42× the drawing buffer) so RTTNode's
+  // autoSize path — which stomps .pixelRatio back to the renderer's every frame —
+  // never runs. See the note at _shaftTex's creation.
+  _shaftTex.pixelRatio = 1;
+  _shaftTex.setSize(
+    Math.max(1, Math.round(stageState.W * pr * 0.42)),
+    Math.max(1, Math.round(stageState.H * pr * 0.42))
+  );
 }
 
 window.addEventListener("resize", layoutStage);
@@ -1521,24 +1602,37 @@ function perfWatchdog(dt) {
   }
 }
 
+let _drsOverT = 0; // how long we've been continuously over budget
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
-    // Step proportional to how far over budget we are: a big spike (turning to
-    // face the sun, cresting a hill on a big map) drops resolution HARD in one
-    // move instead of crawling down 0.1 at a time over a couple of seconds.
+    // Only step down after the budget has been blown for a SUSTAINED beat. A
+    // transient spike — a jump's brief draw-call burst, a first-use shader
+    // compile — recovers on its own, and stepping down means REALLOCATING every
+    // render target, which is itself a hitch: reacting to a spike with a resize
+    // used to cascade spike → resize hitch → another "spike" → resize storm
+    // (and the allocation churn is exactly what pressures iOS toward device loss).
+    _drsOverT += dt;
+    if (_drsOverT < 0.5) return;
+    _drsOverT = 0;
+    // Step proportional to how far over budget we are: genuinely sustained
+    // overload (a big map's heavy stretch) drops resolution HARD in one move
+    // instead of crawling down 0.1 at a time over a couple of seconds.
     const over = _frameMs / 18.6;
     const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
     renderScale = Math.max(DRS_MIN, renderScale - step);
     applyResolution();
     _drsCooldown = 0.35;
-  } else if (_frameMs < 17.4 && renderScale < 1) {
-    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
-    applyResolution();
-    _drsCooldown = 1.4;
+  } else {
+    _drsOverT = 0;
+    if (_frameMs < 17.4 && renderScale < 1) {
+      renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
+      applyResolution();
+      _drsCooldown = 1.4;
+    }
   }
 }
 const qualityLowBtn = document.getElementById("set-quality-low");
@@ -1883,6 +1977,7 @@ function updateTiltCounter(dt) {
 // you can confirm which one is actually running) and the draw-call count, which
 // tells us whether a slow frame is draw-call-bound (geometry) or fill-bound.
 let _fpsAccum = 0;
+let _sunFaceDeg = 0; // camera-to-sun angle (set each frame in updateAtmosphere)
 function updateFpsCounter(dt) {
   if (!showFps || !fpsEl) return;
   _fpsAccum += dt;
@@ -1891,7 +1986,12 @@ function updateFpsCounter(dt) {
   const fps = Math.round(1000 / Math.max(1, _frameMs));
   const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
   const dc = renderer?.info?.render?.drawCalls ?? 0;
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc`;
+  // sun N° — angle between the camera's view direction and the sun (0° = staring
+  // straight into it). For correlating frame dips with view direction: if dips
+  // track a low angle, the cost is the sun-facing path (god rays / glow / bloom);
+  // if they track a specific WORLD direction regardless of the sun, it's geometry
+  // (draw calls — watch dc) in that part of the map.
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}°`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }

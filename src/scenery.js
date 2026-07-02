@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
+import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -327,6 +328,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
+  batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
   const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
@@ -334,7 +336,7 @@ export function buildWorld(scene, track, opts = {}) {
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
-  const flocks = buildBirds(scene);
+  const birds = buildBirds(scene);
   const fireflies = buildFireflies(scene, track, heightAt);
   const pigeonFlocks = buildPigeons(scene, track, heightAt);
 
@@ -350,8 +352,17 @@ export function buildWorld(scene, track, opts = {}) {
       }
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
-      for (const fl of flocks) updateFlock(fl, time);
-      for (const c of _critters) updateCritter(c, dt, time, heightAt);
+      for (const fl of birds.flocks) updateFlock(fl, time);
+      syncBirdWings(birds);
+      for (const c of _critters) {
+        // Far-off animals freeze in place — an amble is invisible from 220u+,
+        // and freezing (vs culling) means they're right there when you return.
+        if (playerPos) {
+          const dx = c.base.x - playerPos.x, dz = c.base.z - playerPos.z;
+          if (dx * dx + dz * dz > 220 * 220) continue;
+        }
+        updateCritter(c, dt, time, heightAt);
+      }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
       // dummy .uniforms after they compile, so don't write to them.)
@@ -800,19 +811,24 @@ function buildMountains(scene, heightAt, track) {
   const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
 
+  // Peaks never move — collect every cone and bake the lot into ONE
+  // multi-material mesh at the end (~50 draw calls → 1). The ring surrounds the
+  // camera so half of it is in view from anywhere; per-peak frustum culling
+  // bought little, and the whole ring is only a few thousand triangles.
+  const peakMeshes = [];
   const peak = (x, z, h, rad, bury) => {
     const desert = biomeAt(x, z).name === "desert";
     const base = heightAt(x, z) + h / 2 - bury;
     const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 18), desert ? rockDesert : rockN);
     m.position.set(x, base, z);
     m.rotation.y = rand() * Math.PI;
-    scene.add(m);
+    peakMeshes.push(m);
     // No snow caps in the desert — snowy peaks behind cacti look wrong.
     if (!desert) {
       const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 18), snow);
       cap.position.set(x, base + h * 0.5 - h * 0.15, z);
       cap.rotation.y = m.rotation.y;
-      scene.add(cap);
+      peakMeshes.push(cap);
     }
   };
 
@@ -849,6 +865,12 @@ function buildMountains(scene, heightAt, track) {
         break;
       }
     }
+  }
+  if (peakMeshes.length) {
+    const merged = mergeMeshes(peakMeshes, { castShadow: false });
+    merged.receiveShadow = false;
+    merged.frustumCulled = false; // the ring surrounds every viewpoint anyway
+    scene.add(merged);
   }
 }
 
@@ -1482,8 +1504,23 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   // Drive each span's swing from the karts and rebuild bulb/wire/light positions.
   // karts: array of { x, z, dx, dz, speed } (dx,dz = horizontal heading).
   function update(dt, karts) {
+    let wrote = false;
     for (const sd of spans) {
       const sw = sd.swing;
+      // Distance gate: a span nobody is near doesn't rebuild its wire verts +
+      // bulb matrices this frame — the sway is invisible from 200u+ and the pose
+      // freezes harmlessly. A span still swinging from a recent pass keeps
+      // animating (wherever the karts went) until the spring settles.
+      let near = false;
+      if (karts) {
+        for (const k of karts) {
+          if (!k) continue;
+          const dx = k.x - sd.mid.x, dz = k.z - sd.mid.z;
+          if (dx * dx + dz * dz < 200 * 200) { near = true; break; }
+        }
+      }
+      if (!near && Math.abs(sw.x) + Math.abs(sw.z) + Math.abs(sw.vx) + Math.abs(sw.vz) < 0.02) continue;
+      wrote = true;
       if (karts) {
         for (const k of karts) {
           if (!k) continue;
@@ -1524,7 +1561,7 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
         sd.light.position.set(lp.x + ox, lp.y, lp.z + oz);
       }
     }
-    mesh.instanceMatrix.needsUpdate = true;
+    if (wrote) mesh.instanceMatrix.needsUpdate = true;
   }
 
   return { update };
@@ -2088,6 +2125,11 @@ function buildRoadside(scene, track, heightAt) {
       : rand() * Math.PI * 2;
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
+    // Anything that never moves is merged by batchStaticProps() after placement
+    // (a bench/fence/bush is 2-6 meshes each — hundreds of draw calls that all
+    // collapse into a few per area). Animated props (wandering animals, spinning
+    // windmill sails) keep their own meshes.
+    if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
     if (prop.userData.wander && _critters.length < 48) {
       _critters.push({
@@ -2372,6 +2414,81 @@ function batchBuildings(scene) {
   }
 }
 
+// Merge the static street/farm props (benches, fences, bushes, planters, market
+// stalls, signs, hay bales…) the way batchBuildings merges houses. Each prop is
+// 2-6 little meshes; a town sightline used to submit HUNDREDS of them as
+// individual draw calls. Props share no material INSTANCES (mat() mints one per
+// call), so meshes are grouped by a key of the material's properties and merged
+// per 150u chunk — one draw call per (chunk, look) instead of one per plank.
+function batchStaticProps(scene) {
+  scene.updateMatrixWorld(true);
+  const groups = [];
+  scene.traverse((o) => { if (o.userData && o.userData.staticProp) groups.push(o); });
+  if (!groups.length) return;
+  const CHUNK = 150; // world units per merge bucket (coarse culling granularity)
+  const buckets = new Map();
+  const keep = []; // meshes that can't merge (textured/exotic) — reparent, don't drop
+  const _underLive = (o, root) => {
+    for (let p = o; p && p !== root.parent; p = p.parent) if (p.userData.keepLive) return true;
+    return false;
+  };
+  for (const g of groups) {
+    const bKey = Math.round(g.position.x / CHUNK) + "_" + Math.round(g.position.z / CHUNK);
+    let bucket = buckets.get(bKey);
+    if (!bucket) buckets.set(bKey, (bucket = new Map()));
+    g.traverse((o) => {
+      // keepLive subtrees (a windmill's spinning sail hub) stay animated — the
+      // whole subtree is re-attached to the scene before the group is removed.
+      if (o.userData.keepLive) { keep.push(o); return; }
+      if (!o.isMesh || _underLive(o, g)) return;
+      const m = o.material;
+      // Only plain, un-textured standard materials merge safely; anything else
+      // (maps, node materials, arrays) survives as its own mesh.
+      if (!m || Array.isArray(m) || !m.isMeshStandardMaterial || m.map || m.transparent) {
+        keep.push(o);
+        return;
+      }
+      const mKey = `${m.color.getHexString()}|${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}`;
+      let entry = bucket.get(mKey);
+      if (!entry) bucket.set(mKey, (entry = { material: m, geos: [] }));
+      let geo = o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld); // bake world transform
+      if (geo.index) geo = geo.toNonIndexed(); // mergeGeometries can't mix indexed/non
+      for (const a of Object.keys(geo.attributes)) {
+        if (a !== "position" && a !== "normal" && a !== "uv") geo.deleteAttribute(a);
+      }
+      entry.geos.push(geo);
+    });
+  }
+  for (const o of keep) scene.attach(o); // preserve world transform outside the doomed group
+  // Materials are minted per call by mat(); each look keeps ONE representative
+  // (referenced by the merged mesh below) and the duplicates are disposed.
+  const heldMats = new Set();
+  for (const bucket of buckets.values()) for (const e of bucket.values()) heldMats.add(e.material);
+  for (const g of groups) {
+    g.parent && g.parent.remove(g);
+    g.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (!heldMats.has(o.material)) o.material.dispose?.();
+      }
+    });
+  }
+  for (const bucket of buckets.values()) {
+    for (const { material, geos } of bucket.values()) {
+      if (!geos.length) continue;
+      const merged = mergeGeometries(geos, false);
+      geos.forEach((gg) => gg.dispose());
+      if (!merged) continue;
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.layers.set(1); // match the originals (scenery layer, out of the mirror)
+      scene.add(mesh);
+    }
+  }
+}
+
 // Pick a town structure — mostly houses, occasionally a landmark.
 function makeTownStructure(density, biome) {
   const r = rand();
@@ -2422,18 +2539,19 @@ function makeWindmill() {
   part(parts, new THREE.CylinderGeometry(1.1, 1.8, tH, 10).translate(0, tH / 2, 0), 0xe6dcc6);
   part(parts, new THREE.ConeGeometry(1.6, 1.6, 10).translate(0, tH + 0.8, 0), 0x7a4a36);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  // sails — a cross of blades at the front that actually turns in the wind
+  // sails — a cross of blades at the front that actually turns in the wind. The
+  // four blades spin as ONE unit, so they bake into a single mesh on the hub
+  // (1 draw instead of 4); the hub is tagged keepLive so the static-prop batch
+  // merges the tower but leaves the spinning sails their own subtree.
   const sailMat = mat(0xf4efe2);
   const hub = new THREE.Group();
   hub.position.set(0, tH, 1.7);
+  const bladeGeos = [];
   for (let i = 0; i < 4; i++) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 0.1), sailMat);
-    blade.position.y = 2;
-    const arm = new THREE.Group();
-    arm.add(blade);
-    arm.rotation.z = (i / 4) * Math.PI * 2;
-    hub.add(arm);
+    bladeGeos.push(new THREE.BoxGeometry(0.5, 4, 0.1).translate(0, 2, 0).rotateZ((i / 4) * Math.PI * 2));
   }
+  hub.add(new THREE.Mesh(mergeGeometries(bladeGeos), sailMat));
+  hub.userData.keepLive = true;
   g.add(hub);
   _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28 });
   return g;
@@ -2700,47 +2818,52 @@ function makeBush() {
 }
 
 function makeCow() {
+  // The whole cow wanders as a unit, so its parts are rigid relative to each
+  // other — bake them into ONE multi-material mesh (2 draws) instead of 7 meshes.
   const g = new THREE.Group();
   const white = mat(0xf2f2f2);
   const dark = mat(0x3a2f2a);
+  const parts = [];
   const body = new THREE.Mesh(rbox(3, 1.6, 1.5, 0.45), white);
   body.position.y = 1.5;
-  body.castShadow = true;
-  g.add(body);
+  parts.push(body);
   const patch = new THREE.Mesh(rbox(1.1, 1.62, 1.0, 0.3), dark);
   patch.position.set(0.6, 1.5, 0);
-  g.add(patch);
+  parts.push(patch);
   const head = new THREE.Mesh(rbox(0.9, 0.9, 0.9, 0.28), white);
   head.position.set(-1.7, 1.7, 0);
-  g.add(head);
+  parts.push(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const leg = new THREE.Mesh(rbox(0.3, 1.5, 0.3, 0.12), dark);
       leg.position.set(sx * 1.1, 0.75, sz * 0.5);
-      g.add(leg);
+      parts.push(leg);
     }
+  g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 4, speed: 1.1, bob: 0.06 }; // cows graze slowly
   return g;
 }
 
 function makeSheep() {
+  // Rigid like the cow: one multi-material mesh (2 draws) instead of 6 meshes.
   const g = new THREE.Group();
   const wool = mat(0xf6f4ef, { flatShading: true });
   const dark = mat(0x2b2b2b);
+  const parts = [];
   const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 0), wool);
   body.position.y = 1.4;
   body.scale.set(1.3, 1, 1);
-  body.castShadow = true;
-  g.add(body);
+  parts.push(body);
   const head = new THREE.Mesh(rbox(0.7, 0.7, 0.6, 0.22), dark);
   head.position.set(-1.4, 1.5, 0);
-  g.add(head);
+  parts.push(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const leg = new THREE.Mesh(rbox(0.22, 1.1, 0.22, 0.09), dark);
       leg.position.set(sx * 0.7, 0.55, sz * 0.45);
-      g.add(leg);
+      parts.push(leg);
     }
+  g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 5, speed: 1.6, bob: 0.16 }; // sheep bounce more
   return g;
 }
@@ -3017,10 +3140,15 @@ function makeBigWindmill() {
 }
 
 // ---- Birds ----
-// A few flocks of simple birds circling high in the sky, wings flapping.
+// A few flocks of simple birds circling high in the sky, wings flapping. All the
+// wings across every flock render as ONE InstancedMesh (they used to be ~70
+// individual meshes — always in frustum on sky-filled vistas, one draw each).
+// The flock→bird→wing-pivot group hierarchy still exists and animates exactly as
+// before, but the pivots hold invisible markers whose world matrices are copied
+// into the instance buffer after the flock update.
 function buildBirds(scene) {
   const flocks = [];
-  const birdMat = mat(0x33373d, { flatShading: true });
+  const markers = [];
   for (let f = 0; f < 6; f++) {
     const flock = new THREE.Group();
     const wings = [];
@@ -3029,11 +3157,12 @@ function buildBirds(scene) {
       const bird = new THREE.Group();
       for (const sx of [-1, 1]) {
         const wg = new THREE.Group();
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat);
-        wing.position.x = sx * 1.1;
-        wg.add(wing);
+        const marker = new THREE.Object3D();
+        marker.position.x = sx * 1.1;
+        wg.add(marker);
         bird.add(wg);
         wings.push({ wg, sx, phase: rand() * 6.28 });
+        markers.push(marker);
       }
       bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
       bird.scale.setScalar(0.7 + rand() * 0.6);
@@ -3051,7 +3180,20 @@ function buildBirds(scene) {
       phase: rand() * 6.28,
     });
   }
-  return flocks;
+  const birdMat = mat(0x33373d, { flatShading: true });
+  const wingMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat, markers.length);
+  wingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  wingMesh.frustumCulled = false; // flocks span the whole sky; it's 1 draw regardless
+  wingMesh.layers.set(1);
+  scene.add(wingMesh);
+  return { flocks, wingMesh, markers };
+}
+// Copy every wing marker's world matrix into the instance buffer (call after all
+// updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
+function syncBirdWings(birds) {
+  for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
+  for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
+  birds.wingMesh.instanceMatrix.needsUpdate = true;
 }
 
 function updateFlock(fl, time) {
@@ -3243,6 +3385,14 @@ function buildPigeons(scene, track, heightAt) {
 
 function updatePigeons(flock, dt, time, playerPos) {
   if (!flock.scattered) {
+    // Idle flocks the player isn't near don't even bob — a 4cm hop is invisible
+    // from 180u, and the scatter trigger only fires within a few units anyway.
+    // (A scattered flock keeps animating until it lands, wherever the player is.)
+    if (playerPos) {
+      const dx = playerPos.x - flock.center.x;
+      const dz = playerPos.z - flock.center.z;
+      if (dx * dx + dz * dz > 180 * 180) return;
+    }
     for (const b of flock.birds) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded

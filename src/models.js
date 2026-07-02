@@ -23,7 +23,7 @@ function rbox(w, h, d, r = 0.18, seg = 4) {
 // Returns a single THREE.Mesh (material is a single material or an array), or
 // null when given nothing. Materials are reused by reference so toonify() still
 // maps them and dynamic refs (brake/flames) are unaffected.
-function mergeMeshes(meshes, { castShadow = false, receiveShadow = false } = {}) {
+export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false } = {}) {
   if (!meshes.length) return null;
   const order = [];          // material instances, in first-seen order
   const byMat = new Map();   // material -> [baked geometry]

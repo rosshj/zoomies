@@ -199,8 +199,12 @@ export class Kart {
     this.shieldMesh.visible = false;
     this.group.add(this.shieldMesh);
     // Bouncy pop-in/out: an under-damped spring on the orb's "presence" (0 hidden,
-    // ~1 shown, overshooting past 1 on the way up for a springy pop).
-    this._shieldS = { a: 0, v: 0 };
+    // ~1 shown, overshooting past 1 on the way up for a springy pop). Seeded
+    // slightly OPEN (a barely-visible dot for the first few frames, e.g. during
+    // the countdown): the orb's TSL material only compiles its render pipeline
+    // the first time the mesh is actually rendered, so without the warm-up the
+    // first shield press mid-race stalled the frame on a shader compile.
+    this._shieldS = { a: 0.02, v: 0 };
 
     // Soft contact shadow that stays on the ground (even mid-hop). The quad sits
     // in a holder so it can be spun to the sun azimuth independent of the kart's
