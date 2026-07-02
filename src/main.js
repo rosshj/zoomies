@@ -1094,6 +1094,7 @@ let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 let _fireworksDone = false; // leader's finish fireworks fired once per race
 let _fwTimer = 0; // remaining celebration time (keeps launching bursts)
 let _fwNext = 0; // countdown to the next burst
+let _fwSide = 0; // which mortar pot fired last (bursts alternate left/right)
 const _fwPos = new THREE.Vector3(); // scratch for burst origins (burst copies it)
 let _finishCamAngle = 0; // victory orbit angle once the player finishes
 // Time-trial mode: solo, single timed lap, local best-times leaderboard.
@@ -2790,6 +2791,7 @@ function beginRace() {
   countdown = 3.999;
   countdownCalibrated = false;
   prevCountN = 99;
+  track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
 }
 
@@ -2931,6 +2933,7 @@ function beginSyncedRace(at) {
   countdown = Math.max(0.3, (at - MP.net.now()) / 1000);
   countdownCalibrated = false;
   prevCountN = 99;
+  track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
 }
 
@@ -2997,10 +3000,24 @@ function updateFireworks(dt) {
     _fwNext -= dt;
     if (_fwNext <= 0) {
       _fwNext = 0.22 + Math.random() * 0.28;
-      _fwPos.copy(track.archApex); // fireworkBurst copies it, so the scratch is safe
-      _fwPos.x += (Math.random() - 0.5) * 7;
-      _fwPos.y += Math.random() * 3;
-      _fwPos.z += (Math.random() - 0.5) * 2;
+      // Two firework sets, alternating LEFT/RIGHT from the mortar pots flanking
+      // the arch (shells burst in a column above each pot) — instead of popping
+      // out of the arch itself.
+      const pots = track.fwLaunchers;
+      if (pots && pots.length === 2) {
+        _fwSide = 1 - _fwSide;
+        const base = pots[_fwSide];
+        _fwPos.set(
+          base.x + (Math.random() - 0.5) * 2.5,
+          base.y + 5 + Math.random() * 5,
+          base.z + (Math.random() - 0.5) * 2.5
+        );
+      } else {
+        _fwPos.copy(track.archApex); // fallback: burst from the arch
+        _fwPos.x += (Math.random() - 0.5) * 7;
+        _fwPos.y += Math.random() * 3;
+        _fwPos.z += (Math.random() - 0.5) * 2;
+      }
       effects.fireworkBurst(_fwPos);
     }
   }
@@ -3753,9 +3770,12 @@ function loop(now) {
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     const n = Math.ceil(countdown - 1);
     hud.showToast(n > 0 ? `${n}` : "GO!");
-    // A beep on each 3/2/1 and a higher GO! chirp, as the number changes.
+    // A beep on each 3/2/1 and a higher GO! chirp, as the number changes — and
+    // the start-light gantry steps through its traffic-light sequence with it:
+    // red through 3/2, amber at 1, green on GO.
     if (n !== prevCountN && n <= 3) {
       audio.countdownBeep(Math.max(0, n));
+      track.setStartLight?.(n >= 2 ? "red" : n === 1 ? "amber" : "green");
       prevCountN = n;
     }
     // Re-zero steering near the end of the countdown, once the player has
