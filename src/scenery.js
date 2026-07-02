@@ -338,7 +338,10 @@ export function buildWorld(scene, track, opts = {}) {
   const balloons = buildBalloons(scene, heightAt);
   const birds = buildBirds(scene);
   const fireflies = buildFireflies(scene, track, heightAt);
+  buildAmbientFlyers(scene, track, heightAt, litLevel); // butterflies/dragonflies (day) or moths (night) — GPU-animated, no per-frame CPU
+  buildWindDebris(scene, track, heightAt); // tumbleweed (desert) + seed-fluff (savanna), GPU-animated wind buffeting
   const pigeonFlocks = buildPigeons(scene, track, heightAt);
+  const spectators = buildSpectators(scene, track, heightAt); // roadside cheering cats (sleep-proxy + distance gate)
 
   return {
     grass,
@@ -364,6 +367,7 @@ export function buildWorld(scene, track, opts = {}) {
         updateCritter(c, dt, time, heightAt);
       }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
+      for (const cl of spectators) updateSpectators(cl, dt, time, playerPos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
       // dummy .uniforms after they compile, so don't write to them.)
       if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
@@ -1135,6 +1139,96 @@ function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
     mesh.layers.set(1); // keep out of the rear-view mirror render
     scene.add(mesh);
   }
+}
+
+// A scribbly tumbleweed ball and a soft seed-fluff dot, drawn to canvases and
+// cached — the sprites for the wind-blown debris.
+let _debrisTex = {};
+function debrisTexture(kind) {
+  if (_debrisTex[kind]) return _debrisTex[kind];
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const ctx = c.getContext("2d");
+  if (kind === "tumbleweed") {
+    // A tangle of dry twigs: several overlapping arcs reading as a woven ball.
+    ctx.strokeStyle = "#c9a86a";
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 11; i++) {
+      const a = (i / 11) * Math.PI;
+      ctx.beginPath();
+      ctx.ellipse(24, 24, 18, 6 + (i % 4) * 3, a, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else {
+    // Soft fluffy seed: a fading radial puff.
+    const g = ctx.createRadialGradient(24, 24, 0, 24, 24, 22);
+    g.addColorStop(0, "rgba(255,255,255,0.95)");
+    g.addColorStop(0.5, "rgba(245,240,225,0.55)");
+    g.addColorStop(1, "rgba(245,240,225,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(24, 24, 22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  return (_debrisTex[kind] = tex);
+}
+
+// Wind-blown debris: tumbleweed buffeting across the DESERT and pale seed-fluff
+// drifting over the SAVANNA. Each mote is buffeted around its home point by a
+// smooth two-axis gust + (tumbleweed) a ground-hugging bounce — all in the vertex
+// shader off `time`, so each biome's field is ONE draw with zero per-frame CPU
+// and no visible wrap/snap. Nothing here is precipitation (that's the weather
+// system); this is dry-biome atmosphere the leafy biomes already get from leaves.
+function buildWindDebris(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const build = (kind, biome, cfg) => {
+    const bases = [];
+    let tries = 0;
+    while (bases.length / 3 < cfg.want && tries < cfg.want * 9) {
+      tries++;
+      const i = Math.floor(rand() * N);
+      const p = track._pts[i];
+      if (biomeAt(p.x, p.z).name !== biome) continue;
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const dirS = rand() < 0.5 ? 1 : -1;
+      const dist = track.halfWidth + 3 + rand() * 40;
+      const x = p.x + side.x * dirS * dist + (rand() - 0.5) * 10;
+      const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 10;
+      if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
+      if (_inLake(x, z)) continue;
+      bases.push(x, heightAt(x, z) + cfg.baseLift, z);
+    }
+    if (!bases.length) return;
+    const count = bases.length / 3;
+    const geo = new THREE.PlaneGeometry(cfg.size, cfg.size);
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(new Float32Array(bases), 3));
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+    mat.map = debrisTexture(kind);
+    mat.color = new THREE.Color(cfg.tint);
+    mat.opacity = cfg.opacity;
+    const b = attribute("aBase");
+    const ph = hash(instanceIndex).mul(6.2832);
+    const t = time.add(ph);
+    // Smooth two-axis gust buffeting (no linear wrap → no snap) + a bounce.
+    const gust = vec3(
+      t.mul(cfg.gustSpd).sin().mul(cfg.amp).add(t.mul(cfg.gustSpd * 2.3).sin().mul(cfg.amp * 0.3)),
+      t.mul(cfg.bounceSpd).sin().abs().mul(cfg.bounce),
+      t.mul(cfg.gustSpd * 0.8).cos().mul(cfg.amp * 0.7)
+    );
+    mat.positionNode = b.add(gust);
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    mesh.renderOrder = 3;
+    mesh.layers.set(1);
+    scene.add(mesh);
+  };
+  // Tumbleweed: bigger, tan, hops along the ground with wide horizontal gusts.
+  build("tumbleweed", "desert", { want: 34, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, gustSpd: 0.45, amp: 5.5, bounceSpd: 3.2, bounce: 1.6 });
+  // Seed-fluff: small, pale, floats higher and drifts more gently.
+  build("fluff", "savanna", { want: 90, size: 0.7, baseLift: 1.6, tint: 0xf2ecd8, opacity: 0.7, gustSpd: 0.35, amp: 3.2, bounceSpd: 1.4, bounce: 0.5 });
 }
 
 function buildTrees(scene, track, heightAt, flatten) {
@@ -3304,6 +3398,121 @@ function buildFireflies(scene, track, heightAt) {
   return { mesh: pts, material };
 }
 
+// A butterfly/moth silhouette (two mirrored wing pairs + a slim body) drawn to a
+// canvas, used as the sprite for the ambient flyers. Cached per kind.
+let _flyerTex = {};
+function flyerTexture(kind) {
+  if (_flyerTex[kind]) return _flyerTex[kind];
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#ffffff";
+  if (kind === "dragonfly") {
+    // Four slim, swept wings + a long thin body (reads as a dragonfly/damsel).
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(24 + sx * 9, 18, 12, 3.5, sx * 0.5, 0, Math.PI * 2);
+      ctx.ellipse(24 + sx * 9, 30, 11, 3, sx * -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#2a2a2a";
+    ctx.fillRect(23, 8, 2, 34);
+  } else {
+    // Two rounded wing pairs + a short body (a butterfly/moth).
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(24 + sx * 8, 18, 8, 11, sx * 0.5, 0, Math.PI * 2);
+      ctx.ellipse(24 + sx * 6.5, 31, 6, 8, sx * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#3a3a3a";
+    ctx.fillRect(23, 12, 2, 24);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  return (_flyerTex[kind] = tex);
+}
+
+// Ambient flyers: butterflies over warm, vegetated verges by day; pale moths by
+// night. The ENTIRE flight — a lazy wandering loop, a gentle bob, and a quick
+// wing-flutter jitter — runs in the vertex shader off the global `time` node, so
+// the whole field is ONE draw call with zero per-frame CPU (the same idea as the
+// forest fireflies, but textured, camera-facing sprites tinted per instance).
+const FLYER_PALETTES = {
+  meadow: [0xf5c542, 0xe8912b, 0xf0e0a0],
+  blossom: [0xff9fc0, 0xffd9e6, 0xffffff],
+  autumn: [0xe0842a, 0xd0a53a, 0xc25a2a],
+  savanna: [0xf0e0a0, 0xe8c060, 0xffffff],
+  desert: [0xf0d090, 0xe8b060],
+  forest: null, // gets dragonflies (cool palette), handled below
+};
+const DRAGONFLY_COLS = [0x66c2e8, 0x8fd6b0, 0x9fb6ff];
+function buildAmbientFlyers(scene, track, heightAt, litLevel) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const night = litLevel > 0.8;
+  // Two fields so butterflies and (cooler, slimmer) dragonflies read distinctly
+  // — still just 2 draws for the whole map. At night both collapse to pale moths.
+  const build = (kind) => {
+    const isDragon = kind === "dragonfly";
+    const bases = [];
+    const cols = [];
+    const want = night ? 55 : isDragon ? 70 : 130;
+    let tries = 0;
+    const _c = new THREE.Color();
+    while (bases.length / 3 < want && tries < want * 9) {
+      tries++;
+      const i = Math.floor(rand() * N);
+      const p = track._pts[i];
+      const b = biomeAt(p.x, p.z);
+      // Dragonflies hug the wet forest (and near water); butterflies take the
+      // other warm biomes. Cold/snow biomes get neither.
+      let pal;
+      if (night) pal = [0xf0f0e0, 0xe8e8d8, 0xd8d8c8];
+      else if (isDragon) pal = b.name === "forest" ? DRAGONFLY_COLS : null;
+      else pal = FLYER_PALETTES[b.name];
+      if (!pal) continue;
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const dirS = rand() < 0.5 ? 1 : -1;
+      const dist = track.halfWidth + 4 + rand() * 34;
+      const x = p.x + side.x * dirS * dist + (rand() - 0.5) * 8;
+      const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 8;
+      if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue;
+      if (_inLake(x, z)) continue;
+      bases.push(x, heightAt(x, z) + 0.9 + rand() * 2.3, z);
+      _c.set(pal[(rand() * pal.length) | 0]);
+      cols.push(_c.r, _c.g, _c.b);
+    }
+    if (!bases.length) return;
+    const count = bases.length / 3;
+    const geo = new THREE.PlaneGeometry(isDragon ? 1.25 : 1.0, isDragon ? 1.25 : 1.0);
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(new Float32Array(bases), 3));
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+    mat.map = flyerTexture(kind);
+    const b = attribute("aBase");
+    const ph = hash(instanceIndex).mul(6.2832);
+    const t = time.add(ph);
+    // Lazy wandering loop (broad) + a slow bob + a fast, small wingbeat flutter.
+    const wander = vec3(
+      t.mul(0.5).sin().mul(2.3).add(t.mul(1.3).sin().mul(0.5)),
+      t.mul(1.7).sin().mul(0.32).add(t.mul(7.0).sin().mul(0.12)),
+      t.mul(0.43).cos().mul(2.3).add(t.mul(1.1).cos().mul(0.5))
+    );
+    mat.positionNode = b.add(wander);
+    mat.opacity = night ? 0.72 : 0.95;
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    const _c2 = new THREE.Color();
+    for (let i = 0; i < count; i++) mesh.setColorAt(i, _c2.setRGB(cols[i * 3], cols[i * 3 + 1], cols[i * 3 + 2]));
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.frustumCulled = false; // billboards are displaced in the shader
+    mesh.castShadow = false;
+    mesh.renderOrder = 3;
+    mesh.layers.set(1); // keep out of the rear-view mirror
+    scene.add(mesh);
+  };
+  build("butterfly");
+  build("dragonfly");
+}
+
 // A single grey pigeon (perched, wings foldable). Returns { group, wings }.
 let _pigeonMats = null;
 function makePigeon() {
@@ -3493,6 +3702,146 @@ function updatePigeons(flock, dt, time, playerPos) {
         }
       }
     }
+  }
+}
+
+// Bake a whole articulated group into ONE merged mesh (one draw per material) in
+// its current pose, positioned where the group sits. The sleep proxy stands in
+// for the live group while it's too far to see move (pigeons + spectators).
+function bakeMergedProxy(scene, group) {
+  group.updateMatrixWorld(true);
+  const inv = new THREE.Matrix4().copy(group.matrixWorld).invert();
+  const rel = new THREE.Matrix4();
+  const matOrder = [];
+  const geosByMat = new Map();
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    let g = o.geometry.clone();
+    g.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+    if (g.index) g = g.toNonIndexed();
+    if (!geosByMat.has(o.material)) { geosByMat.set(o.material, []); matOrder.push(o.material); }
+    geosByMat.get(o.material).push(g);
+  });
+  const perMat = matOrder.map((m) => mergeGeometries(geosByMat.get(m), false));
+  const proxy = new THREE.Mesh(mergeGeometries(perMat, true), matOrder);
+  proxy.castShadow = true;
+  proxy.layers.set(1);
+  proxy.position.copy(group.position);
+  proxy.rotation.copy(group.rotation);
+  scene.add(proxy);
+  return proxy;
+}
+
+// Roadside spectators: little seated cats on the verge that idle-wave a paw and
+// perk up (faster wave + bob) as you pass — a cheering crowd. Each cluster is
+// ~40 tiny meshes while you're beside it, but perches motionless the rest of the
+// lap, so it bakes into ONE merged proxy (a few draws) and only swaps in the
+// live, articulated cats within 60u. Same sleep-proxy trick as the pigeons.
+const SPECTATOR_FUR = [0xe8a24a, 0xd9d2c4, 0x6b6b6b, 0x3a3a3a, 0xf0e6d2, 0xc27a3a, 0x9a9a9a];
+let _spectatorShared = null;
+const _furMatCache = new Map();
+function furMat(hex) {
+  let m = _furMatCache.get(hex);
+  if (!m) { m = mat(hex); _furMatCache.set(hex, m); }
+  return m;
+}
+// One seated cat. Returns { group, pivot, phase } — pivot is the waving forearm.
+function makeSpectator(furHex) {
+  if (!_spectatorShared) _spectatorShared = { belly: mat(0xf7f0e2), earIn: mat(0xf0b8c0), eye: mat(0x2a2a2a) };
+  const fur = furMat(furHex);
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 10, 8), fur);
+  body.scale.set(1, 1.15, 0.9); body.position.y = 0.42; body.castShadow = true;
+  g.add(body);
+  const belly = new THREE.Mesh(new THREE.SphereGeometry(0.26, 8, 8), _spectatorShared.belly);
+  belly.scale.set(1, 1.15, 0.7); belly.position.set(0, 0.36, 0.22);
+  g.add(belly);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 10, 8), fur);
+  head.position.set(0, 0.92, 0.06); g.add(head);
+  for (const sx of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.24, 5), fur);
+    ear.position.set(sx * 0.17, 1.14, 0.02); g.add(ear);
+    const inner = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.13, 5), _spectatorShared.earIn);
+    inner.position.set(sx * 0.17, 1.14, 0.055); g.add(inner);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6), _spectatorShared.eye);
+    eye.position.set(sx * 0.1, 0.94, 0.31); g.add(eye);
+  }
+  const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 0.55, 6), fur);
+  tail.rotation.z = Math.PI / 2.2; tail.position.set(0.3, 0.16, 0.24); g.add(tail);
+  // Waving forearm on a shoulder pivot (rest pose bakes into the proxy).
+  const pivot = new THREE.Group();
+  pivot.position.set(0.2, 0.56, 0.26);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.055, 0.4, 6), fur);
+  arm.position.y = 0.2; pivot.add(arm);
+  const paw = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), fur);
+  paw.position.y = 0.4; pivot.add(paw);
+  pivot.rotation.x = -0.5; // resting: forearm up-ish
+  g.add(pivot);
+  return { group: g, pivot, phase: rand() * 6.28 };
+}
+
+function buildSpectators(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const clusters = [];
+  // A handful of cheer spots spaced around the lap.
+  for (const tStart of [0.14, 0.32, 0.5, 0.68, 0.86]) {
+    let bx, bz, px, pz, ok = false;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const i = Math.floor(((tStart + attempt * 0.03) % 1) * N);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const cx = p.x + side.x * outward * (track.halfWidth + 4.5);
+      const cz = p.z + side.z * outward * (track.halfWidth + 4.5);
+      if (attempt < 9 && (track.distanceToCenter(cx, cz) < track.halfWidth + 3 || _inLake(cx, cz))) continue;
+      bx = cx; bz = cz; px = p.x; pz = p.z; ok = true; break;
+    }
+    if (!ok) continue;
+    const by = heightAt(bx, bz);
+    const group = new THREE.Group();
+    group.position.set(bx, by, bz);
+    group.rotation.y = Math.atan2(px - bx, pz - bz); // face the road
+    scene.add(group);
+    const cats = [];
+    const n = 3 + Math.floor(rand() * 2); // 3-4 cats
+    for (let k = 0; k < n; k++) {
+      const sp = makeSpectator(SPECTATOR_FUR[(rand() * SPECTATOR_FUR.length) | 0]);
+      const homeY = (k % 2) * 0.12; // slight stagger so a back row peeks over
+      sp.group.position.set((k - (n - 1) / 2) * 0.95 + (rand() - 0.5) * 0.2, homeY, (rand() - 0.5) * 0.5);
+      sp.group.rotation.y = (rand() - 0.5) * 0.5;
+      sp.group.traverse((o) => o.layers.set(1));
+      group.add(sp.group);
+      cats.push({ group: sp.group, pivot: sp.pivot, phase: sp.phase, homeY });
+    }
+    const proxy = bakeMergedProxy(scene, group);
+    group.visible = false; // live cats start asleep behind the proxy
+    clusters.push({ center: new THREE.Vector3(bx, by, bz), group, proxy, cats, liveOn: false });
+  }
+  return clusters;
+}
+
+function updateSpectators(cl, dt, time, playerPos) {
+  let near = true;
+  if (playerPos) {
+    const dx = playerPos.x - cl.center.x, dz = playerPos.z - cl.center.z;
+    near = dx * dx + dz * dz < 60 * 60;
+  }
+  if (near !== cl.liveOn) {
+    cl.liveOn = near;
+    cl.group.visible = near;
+    cl.proxy.visible = !near;
+  }
+  if (!near) return;
+  // Perk up (faster wave + a bigger bob) when the player is right alongside.
+  let spd = 4, amp = 0.5;
+  if (playerPos) {
+    const dx = playerPos.x - cl.center.x, dz = playerPos.z - cl.center.z;
+    if (dx * dx + dz * dz < 30 * 30) { spd = 9; amp = 0.85; }
+  }
+  for (const c of cl.cats) {
+    c.pivot.rotation.x = Math.sin(time * spd + c.phase) * amp - 0.6;
+    c.group.position.y = c.homeY + Math.abs(Math.sin(time * spd * 0.5 + c.phase)) * 0.06;
   }
 }
 
