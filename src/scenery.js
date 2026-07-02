@@ -1491,14 +1491,10 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
     wire.frustumCulled = false;
     scene.add(wire);
     sd.wire = wire; sd.wireGeo = geo;
-    // Only SOME spans cast a REAL light (the rest still glow via emissive bulbs
-    // + bloom). Every dynamic light is per-pixel cost on every lit fragment, and
-    // the pools overlap anyway. At night (level 1) every other span lights; at
-    // sunset the sky still carries the scene, so every third is plenty — sunset
-    // is the mode that hovers nearest the frame budget (lights + god rays +
-    // weather), and shedding a third of its point lights is ~invisible.
-    const lightEvery = level >= 0.9 ? 2 : 3;
-    if (level > 0.01 && si % lightEvery === 0) {
+    // Only every other span casts a REAL light (the rest still glow via emissive
+    // bulbs + bloom). Every dynamic light is per-pixel cost at night, and the pools
+    // overlap anyway, so halving them is ~invisible but meaningfully cheaper.
+    if (level > 0.01 && si % 2 === 0) {
       const lp = sd.base[Math.floor(sd.per / 2)];
       const pl = new THREE.PointLight(0xfff0c8, 13 * level, 32, 1.7); // a touch brighter to cover the gaps
       pl.position.copy(lp);

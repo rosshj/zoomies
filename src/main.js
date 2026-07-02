@@ -478,11 +478,7 @@ function grantItem(kart) {
 // ZERO spare lights — a budget of 8 left 2 spotlights always allocated but unused,
 // and every dynamic light costs per-pixel even at zero intensity. Larger MP lobbies
 // fall back to bulbs beyond the budget (the per-frame assignment handles that).
-// Night: every kart gets a beam (= roster size). Sunset: the sky still lights
-// the road, beams are accent — player + 3 nearest karts read the same, and each
-// spotlight is per-fragment cost across the whole screen (sunset already runs
-// nearest the frame budget: god rays + weather + string lights).
-const HEADLIGHT_BUDGET = LIGHT_LEVEL >= 0.9 ? 6 : 4;
+const HEADLIGHT_BUDGET = 6; // = ROSTER size; was 8 (2 wasted always-on lights at night)
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
