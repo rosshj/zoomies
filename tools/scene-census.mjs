@@ -32,10 +32,16 @@ const census = await page.evaluate(() => {
     while (anc && !name) { name = anc.name || ""; anc = anc.parent; }
     const col = o.material?.color?.getHexString?.() || "-";
     const key = `${kind}|${o.geometry?.type || "-"}|#${col}`;
+    if (!window.__samples) window.__samples = {};
+    if (!window.__samples[key]) {
+      const p = new (o.position.constructor)();
+      o.getWorldPosition(p);
+      window.__samples[key] = { x: Math.round(p.x), y: Math.round(p.y), z: Math.round(p.z), mat: o.material?.type, prm: JSON.stringify(o.geometry?.parameters || {}).slice(0, 60) };
+    }
     byKey.set(key, (byKey.get(key) || 0) + 1);
   });
   const top = [...byKey.entries()].sort((a, b) => b[1] - a[1]).slice(0, 28);
-  return { meshes, instanced, sprites, lines, pts, top };
+  return { meshes, instanced, sprites, lines, pts, top, samples: window.__samples };
 });
 console.log(JSON.stringify(census, null, 1));
 await browser.close(); server.close();

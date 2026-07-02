@@ -803,19 +803,24 @@ function buildMountains(scene, heightAt, track) {
   const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
 
+  // Peaks never move — collect every cone and bake the lot into ONE
+  // multi-material mesh at the end (~50 draw calls → 1). The ring surrounds the
+  // camera so half of it is in view from anywhere; per-peak frustum culling
+  // bought little, and the whole ring is only a few thousand triangles.
+  const peakMeshes = [];
   const peak = (x, z, h, rad, bury) => {
     const desert = biomeAt(x, z).name === "desert";
     const base = heightAt(x, z) + h / 2 - bury;
     const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 18), desert ? rockDesert : rockN);
     m.position.set(x, base, z);
     m.rotation.y = rand() * Math.PI;
-    scene.add(m);
+    peakMeshes.push(m);
     // No snow caps in the desert — snowy peaks behind cacti look wrong.
     if (!desert) {
       const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 18), snow);
       cap.position.set(x, base + h * 0.5 - h * 0.15, z);
       cap.rotation.y = m.rotation.y;
-      scene.add(cap);
+      peakMeshes.push(cap);
     }
   };
 
@@ -852,6 +857,12 @@ function buildMountains(scene, heightAt, track) {
         break;
       }
     }
+  }
+  if (peakMeshes.length) {
+    const merged = mergeMeshes(peakMeshes, { castShadow: false });
+    merged.receiveShadow = false;
+    merged.frustumCulled = false; // the ring surrounds every viewpoint anyway
+    scene.add(merged);
   }
 }
 
