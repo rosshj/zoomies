@@ -89,16 +89,18 @@ function build(scene, track, opts) {
     return { mesh: g, rest: s / 2 };
   };
   const makeBarrel = () => {
+    // The barrel tumbles as one rigid body, so body + bands bake into a single
+    // multi-material mesh (2 draws instead of 3 meshes).
     const r = 0.7 + rand() * 0.2;
     const h = 1.9 + rand() * 0.3;
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat));
+    const parts = [new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat)];
     for (const yy of [-h * 0.3, h * 0.3]) {
       const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, h * 0.12, 12), bandMat);
       band.position.y = yy;
-      g.add(band);
+      parts.push(band);
     }
-    g.traverse((o) => (o.castShadow = true));
+    const g = new THREE.Group();
+    g.add(mergeMeshes(parts, { castShadow: true }));
     return { mesh: g, rest: h / 2 };
   };
   // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state

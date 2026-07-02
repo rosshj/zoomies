@@ -354,7 +354,15 @@ export function buildWorld(scene, track, opts = {}) {
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
       for (const fl of birds.flocks) updateFlock(fl, time);
       syncBirdWings(birds);
-      for (const c of _critters) updateCritter(c, dt, time, heightAt);
+      for (const c of _critters) {
+        // Far-off animals freeze in place — an amble is invisible from 220u+,
+        // and freezing (vs culling) means they're right there when you return.
+        if (playerPos) {
+          const dx = c.base.x - playerPos.x, dz = c.base.z - playerPos.z;
+          if (dx * dx + dz * dz > 220 * 220) continue;
+        }
+        updateCritter(c, dt, time, heightAt);
+      }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
       // dummy .uniforms after they compile, so don't write to them.)
@@ -1496,8 +1504,23 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   // Drive each span's swing from the karts and rebuild bulb/wire/light positions.
   // karts: array of { x, z, dx, dz, speed } (dx,dz = horizontal heading).
   function update(dt, karts) {
+    let wrote = false;
     for (const sd of spans) {
       const sw = sd.swing;
+      // Distance gate: a span nobody is near doesn't rebuild its wire verts +
+      // bulb matrices this frame — the sway is invisible from 200u+ and the pose
+      // freezes harmlessly. A span still swinging from a recent pass keeps
+      // animating (wherever the karts went) until the spring settles.
+      let near = false;
+      if (karts) {
+        for (const k of karts) {
+          if (!k) continue;
+          const dx = k.x - sd.mid.x, dz = k.z - sd.mid.z;
+          if (dx * dx + dz * dz < 200 * 200) { near = true; break; }
+        }
+      }
+      if (!near && Math.abs(sw.x) + Math.abs(sw.z) + Math.abs(sw.vx) + Math.abs(sw.vz) < 0.02) continue;
+      wrote = true;
       if (karts) {
         for (const k of karts) {
           if (!k) continue;
@@ -1538,7 +1561,7 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
         sd.light.position.set(lp.x + ox, lp.y, lp.z + oz);
       }
     }
-    mesh.instanceMatrix.needsUpdate = true;
+    if (wrote) mesh.instanceMatrix.needsUpdate = true;
   }
 
   return { update };
@@ -3362,6 +3385,14 @@ function buildPigeons(scene, track, heightAt) {
 
 function updatePigeons(flock, dt, time, playerPos) {
   if (!flock.scattered) {
+    // Idle flocks the player isn't near don't even bob — a 4cm hop is invisible
+    // from 180u, and the scatter trigger only fires within a few units anyway.
+    // (A scattered flock keeps animating until it lands, wherever the player is.)
+    if (playerPos) {
+      const dx = playerPos.x - flock.center.x;
+      const dz = playerPos.z - flock.center.z;
+      if (dx * dx + dz * dz > 180 * 180) return;
+    }
     for (const b of flock.birds) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
