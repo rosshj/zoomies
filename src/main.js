@@ -232,7 +232,7 @@ try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DI
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
 // Debug hook (console / headless tooling): inspect the live scene graph and
 // renderer counters without instrumenting a build.
-window.__zoomies = { scene, camera, renderer };
+window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
 // wipe the count between them and leave only the last pass).
@@ -408,6 +408,7 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+Object.assign(window.__zoomies, { world, track });
 
 
 // Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
@@ -546,6 +547,12 @@ const uSunColNode = uniform(new THREE.Color(0x000000));
 const _toonCache = new WeakMap();
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
+  // TSL-authored materials (leaf wake pop, water ripples, puddle fresnel, petal
+  // fall) carry their behaviour in node graphs that a MeshToonMaterial can't
+  // hold — converting one silently strips its vertex/colour animation. (Node
+  // materials still pass the isMeshStandardMaterial check above: they copy that
+  // flag from the defaults they're initialised with.)
+  if (m.isNodeMaterial) return m;
   if (_toonCache.has(m)) return _toonCache.get(m);
   const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
@@ -741,6 +748,7 @@ function buildKarts() {
   });
   _boostLight = null;
   attachBoostLight(player); // player's exhaust glow while boosting
+  window.__zoomies.karts = karts;
 }
 
 // Cel-shade a kart group the same way buildKarts does (rim light + toon bands),

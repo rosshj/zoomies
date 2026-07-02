@@ -1027,7 +1027,9 @@ function buildGroundLeaves(scene, track, heightAt) {
   return {
     update(karts, camPos, dt = 0.016) {
       _sorted.length = 0;
-      for (const k of karts) if (k && k.position) _sorted.push(k);
+      // Only moving karts kick leaves (same 2.5 u/s gate as the leaf piles) —
+      // otherwise the grid at the start line levitates its leaf carpet.
+      for (const k of karts) if (k && k.position && Math.abs(k.speed || 0) > 2.5) _sorted.push(k);
       _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
       for (let i = 0; i < wakes.length; i++) {
         const k = _sorted[i];
