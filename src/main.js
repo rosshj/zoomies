@@ -1993,7 +1993,13 @@ function updateFpsCounter(dt) {
   // track a low angle, the cost is the sun-facing path (god rays / glow / bloom);
   // if they track a specific WORLD direction regardless of the sun, it's geometry
   // (draw calls — watch dc) in that part of the map.
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}°`;
+  // NNx = dynamic-resolution scale (1.0 = full res; at 0.45 the scaler has
+  // bottomed out) + quality tier H/L. Together they say what a dip means: a dip
+  // at 1.0x is a transient the scaler hasn't reacted to; a dip AT 0.45x means
+  // pixel scaling can't help (vertex/CPU-bound — or the phone is thermally
+  // throttling, which looks exactly like this after minutes of sustained load).
+  const rs = renderScale.toFixed(2).replace(/0$/, "");
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality === "high" ? "H" : "L"}`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
