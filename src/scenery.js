@@ -2055,10 +2055,12 @@ function buildForests(scene, track, heightAt) {
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     for (let r = 0; r < reps; r++) {
       const dir = rand() < 0.5 ? 1 : -1;
-      const dist = halfW + 5 + rand() * 115;
+      const dist = halfW + 8 + rand() * 112;
       const x = p.x + side.x * dir * dist + (rand() - 0.5) * 9;
       const z = p.z + side.z * dir * dist + (rand() - 0.5) * 9;
-      if (track.distanceToCenter(x, z) < halfW + 4) continue;
+      // Guard on the tree CENTRE, with headroom for the canopy (up to ~5.6 radius)
+      // so a pine's foliage never leans out over the tarmac/barrier.
+      if (track.distanceToCenter(x, z) < halfW + 7) continue;
       if (_inLake(x, z)) continue;
       const b = biomeAt(x, z);
       if (b.style !== "pine") continue;
@@ -2266,9 +2268,12 @@ function buildRoadside(scene, track, heightAt) {
 
     for (const dir of [1, -1]) {
       if (town) {
-        // Front shops right by the road.
+        // Front shops by the road. Placed at halfW+9.. (not +5): a town building's
+        // overhanging pyramid roof reaches ~6.65 back toward the road from its
+        // centre, so the old +5 let roof corners (and awnings/L-wings) hang over
+        // the tarmac. +9 keeps the whole footprint clear of the barrier.
         if (rand() < 0.62 + density * 0.32)
-          place((b) => makeTownStructure(density, b), halfW + 5 + rand() * 2.5, dir, p, side, true);
+          place((b) => makeTownStructure(density, b), halfW + 9 + rand() * 3, dir, p, side, true);
         // Several rows of houses stacking back up the hillside, thinning with
         // depth so the town recedes into the hills instead of being a thin strip.
         const rows = [13, 24, 36, 50, 66];
@@ -3022,17 +3027,27 @@ function buildLandmarks(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
   makers.forEach((make, k) => {
-    const i = Math.floor(((k + 0.5) / makers.length) * N) % N;
-    const p = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    // Outward = the side that points away from the world centre (the infield).
-    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-    const dist = 78 + rand() * 30;
-    const x = p.x + side.x * outward * dist;
-    const z = p.z + side.z * outward * dist;
+    // Landmarks are LARGE (castle/ferris wheel footprints reach ~15-20u), so the
+    // outward offset from one road point can, on a curvy/folded loop, land the
+    // structure near a DIFFERENT road segment. Search out from the nominal spot,
+    // pushing further each attempt, until the position clears every road segment
+    // by a wide margin (distanceToCenter ≥ 45) so it never intrudes on the track.
+    let x = 0, z = 0, fx = 0, fz = 0, ok = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const i = Math.floor(((((k + 0.5) / makers.length) + attempt * 0.045) % 1) * N);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const dist = 82 + rand() * 28 + attempt * 6; // push further out each retry
+      const cx = p.x + side.x * outward * dist;
+      const cz = p.z + side.z * outward * dist;
+      if (track.distanceToCenter(cx, cz) < 45 || _inLake(cx, cz)) continue;
+      x = cx; z = cz; fx = p.x; fz = p.z; ok = true; break;
+    }
+    if (!ok) return; // no clear spot on this map layout — skip rather than intrude
     const obj = make();
     obj.position.set(x, heightAt(x, z), z);
-    obj.rotation.y = Math.atan2(p.x - x, p.z - z); // face back toward the road
+    obj.rotation.y = Math.atan2(fx - x, fz - z); // face back toward the road
     scene.add(obj);
   });
 }
