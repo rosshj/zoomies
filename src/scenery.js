@@ -4,6 +4,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
+import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -335,7 +336,7 @@ export function buildWorld(scene, track, opts = {}) {
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
-  const flocks = buildBirds(scene);
+  const birds = buildBirds(scene);
   const fireflies = buildFireflies(scene, track, heightAt);
   const pigeonFlocks = buildPigeons(scene, track, heightAt);
 
@@ -351,7 +352,8 @@ export function buildWorld(scene, track, opts = {}) {
       }
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
-      for (const fl of flocks) updateFlock(fl, time);
+      for (const fl of birds.flocks) updateFlock(fl, time);
+      syncBirdWings(birds);
       for (const c of _critters) updateCritter(c, dt, time, heightAt);
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
@@ -2392,12 +2394,19 @@ function batchStaticProps(scene) {
   const CHUNK = 150; // world units per merge bucket (coarse culling granularity)
   const buckets = new Map();
   const keep = []; // meshes that can't merge (textured/exotic) — reparent, don't drop
+  const _underLive = (o, root) => {
+    for (let p = o; p && p !== root.parent; p = p.parent) if (p.userData.keepLive) return true;
+    return false;
+  };
   for (const g of groups) {
     const bKey = Math.round(g.position.x / CHUNK) + "_" + Math.round(g.position.z / CHUNK);
     let bucket = buckets.get(bKey);
     if (!bucket) buckets.set(bKey, (bucket = new Map()));
     g.traverse((o) => {
-      if (!o.isMesh) return;
+      // keepLive subtrees (a windmill's spinning sail hub) stay animated — the
+      // whole subtree is re-attached to the scene before the group is removed.
+      if (o.userData.keepLive) { keep.push(o); return; }
+      if (!o.isMesh || _underLive(o, g)) return;
       const m = o.material;
       // Only plain, un-textured standard materials merge safely; anything else
       // (maps, node materials, arrays) survives as its own mesh.
@@ -2496,21 +2505,21 @@ function makeWindmill() {
   part(parts, new THREE.CylinderGeometry(1.1, 1.8, tH, 10).translate(0, tH / 2, 0), 0xe6dcc6);
   part(parts, new THREE.ConeGeometry(1.6, 1.6, 10).translate(0, tH + 0.8, 0), 0x7a4a36);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  // sails — a cross of blades at the front that actually turns in the wind
+  // sails — a cross of blades at the front that actually turns in the wind. The
+  // four blades spin as ONE unit, so they bake into a single mesh on the hub
+  // (1 draw instead of 4); the hub is tagged keepLive so the static-prop batch
+  // merges the tower but leaves the spinning sails their own subtree.
   const sailMat = mat(0xf4efe2);
   const hub = new THREE.Group();
   hub.position.set(0, tH, 1.7);
+  const bladeGeos = [];
   for (let i = 0; i < 4; i++) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 0.1), sailMat);
-    blade.position.y = 2;
-    const arm = new THREE.Group();
-    arm.add(blade);
-    arm.rotation.z = (i / 4) * Math.PI * 2;
-    hub.add(arm);
+    bladeGeos.push(new THREE.BoxGeometry(0.5, 4, 0.1).translate(0, 2, 0).rotateZ((i / 4) * Math.PI * 2));
   }
+  hub.add(new THREE.Mesh(mergeGeometries(bladeGeos), sailMat));
+  hub.userData.keepLive = true;
   g.add(hub);
   _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28 });
-  g.userData.animated = true; // the sail hub spins — keep out of the static-prop batch
   return g;
 }
 
@@ -2775,47 +2784,52 @@ function makeBush() {
 }
 
 function makeCow() {
+  // The whole cow wanders as a unit, so its parts are rigid relative to each
+  // other — bake them into ONE multi-material mesh (2 draws) instead of 7 meshes.
   const g = new THREE.Group();
   const white = mat(0xf2f2f2);
   const dark = mat(0x3a2f2a);
+  const parts = [];
   const body = new THREE.Mesh(rbox(3, 1.6, 1.5, 0.45), white);
   body.position.y = 1.5;
-  body.castShadow = true;
-  g.add(body);
+  parts.push(body);
   const patch = new THREE.Mesh(rbox(1.1, 1.62, 1.0, 0.3), dark);
   patch.position.set(0.6, 1.5, 0);
-  g.add(patch);
+  parts.push(patch);
   const head = new THREE.Mesh(rbox(0.9, 0.9, 0.9, 0.28), white);
   head.position.set(-1.7, 1.7, 0);
-  g.add(head);
+  parts.push(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const leg = new THREE.Mesh(rbox(0.3, 1.5, 0.3, 0.12), dark);
       leg.position.set(sx * 1.1, 0.75, sz * 0.5);
-      g.add(leg);
+      parts.push(leg);
     }
+  g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 4, speed: 1.1, bob: 0.06 }; // cows graze slowly
   return g;
 }
 
 function makeSheep() {
+  // Rigid like the cow: one multi-material mesh (2 draws) instead of 6 meshes.
   const g = new THREE.Group();
   const wool = mat(0xf6f4ef, { flatShading: true });
   const dark = mat(0x2b2b2b);
+  const parts = [];
   const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 0), wool);
   body.position.y = 1.4;
   body.scale.set(1.3, 1, 1);
-  body.castShadow = true;
-  g.add(body);
+  parts.push(body);
   const head = new THREE.Mesh(rbox(0.7, 0.7, 0.6, 0.22), dark);
   head.position.set(-1.4, 1.5, 0);
-  g.add(head);
+  parts.push(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const leg = new THREE.Mesh(rbox(0.22, 1.1, 0.22, 0.09), dark);
       leg.position.set(sx * 0.7, 0.55, sz * 0.45);
-      g.add(leg);
+      parts.push(leg);
     }
+  g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 5, speed: 1.6, bob: 0.16 }; // sheep bounce more
   return g;
 }
@@ -3092,10 +3106,15 @@ function makeBigWindmill() {
 }
 
 // ---- Birds ----
-// A few flocks of simple birds circling high in the sky, wings flapping.
+// A few flocks of simple birds circling high in the sky, wings flapping. All the
+// wings across every flock render as ONE InstancedMesh (they used to be ~70
+// individual meshes — always in frustum on sky-filled vistas, one draw each).
+// The flock→bird→wing-pivot group hierarchy still exists and animates exactly as
+// before, but the pivots hold invisible markers whose world matrices are copied
+// into the instance buffer after the flock update.
 function buildBirds(scene) {
   const flocks = [];
-  const birdMat = mat(0x33373d, { flatShading: true });
+  const markers = [];
   for (let f = 0; f < 6; f++) {
     const flock = new THREE.Group();
     const wings = [];
@@ -3104,11 +3123,12 @@ function buildBirds(scene) {
       const bird = new THREE.Group();
       for (const sx of [-1, 1]) {
         const wg = new THREE.Group();
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat);
-        wing.position.x = sx * 1.1;
-        wg.add(wing);
+        const marker = new THREE.Object3D();
+        marker.position.x = sx * 1.1;
+        wg.add(marker);
         bird.add(wg);
         wings.push({ wg, sx, phase: rand() * 6.28 });
+        markers.push(marker);
       }
       bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
       bird.scale.setScalar(0.7 + rand() * 0.6);
@@ -3126,7 +3146,20 @@ function buildBirds(scene) {
       phase: rand() * 6.28,
     });
   }
-  return flocks;
+  const birdMat = mat(0x33373d, { flatShading: true });
+  const wingMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat, markers.length);
+  wingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  wingMesh.frustumCulled = false; // flocks span the whole sky; it's 1 draw regardless
+  wingMesh.layers.set(1);
+  scene.add(wingMesh);
+  return { flocks, wingMesh, markers };
+}
+// Copy every wing marker's world matrix into the instance buffer (call after all
+// updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
+function syncBirdWings(birds) {
+  for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
+  for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
+  birds.wingMesh.instanceMatrix.needsUpdate = true;
 }
 
 function updateFlock(fl, time) {
