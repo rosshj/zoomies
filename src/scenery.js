@@ -2902,6 +2902,32 @@ function makeFarmProp(biome) {
     if (r < 0.93) return makeWindmill();
     return makeSilo();
   }
+  // Biome-appropriate wildlife + dressing.
+  if (b.name === "beach") {
+    // Seaside: crabs and gulls on the sand, parasols, driftwood rocks + palms.
+    if (r < 0.24) return makeCrab();
+    if (r < 0.44) return makeGull();
+    if (r < 0.60) return makeParasol();
+    if (r < 0.74) return makeTree(b); // a stray palm
+    if (r < 0.88) return makeRockProp();
+    return makeBush();
+  }
+  if (b.name === "forest" || b.name === "alpine" || b.name === "tundra") {
+    // Woodland: deer among the trees, rocks, rustic fences.
+    if (r < 0.26) return makeDeer();
+    if (r < 0.46) return makeTree(b);
+    if (r < 0.60) return makeBush();
+    if (r < 0.74) return makeRockProp();
+    if (r < 0.88) return makeFence(0x6b4a2b);
+    return makeHayBale();
+  }
+  if (b.name === "city") {
+    // Downtown verge: planters and street trees, not livestock.
+    if (r < 0.5) return makeBush();
+    if (r < 0.8) return makeTree(b);
+    return makeRockProp();
+  }
+  // Pastoral (meadow / autumn / blossom / savanna): cows, sheep, farm buildings.
   if (r < 0.24) return makeTree(b);
   if (r < 0.4) return makeBush();
   if (r < 0.5) return makeCow();
@@ -3081,6 +3107,96 @@ function makeSheep() {
     }
   g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 5, speed: 1.6, bob: 0.16 }; // sheep bounce more
+  return g;
+}
+
+// A deer for the woodland biomes (forest / alpine / tundra): tan body on tall
+// legs, a raised head, and a small fork of antlers.
+function makeDeer() {
+  const g = new THREE.Group();
+  const tan = mat(0x9c6a3c);
+  const dark = mat(0x5a3a22);
+  const parts = [];
+  const body = new THREE.Mesh(rbox(2.2, 1.2, 1.0, 0.4), tan);
+  body.position.y = 1.7; parts.push(body);
+  const neck = new THREE.Mesh(rbox(0.5, 1.1, 0.5, 0.2), tan);
+  neck.position.set(-1.05, 2.15, 0); neck.rotation.z = 0.5; parts.push(neck);
+  const head = new THREE.Mesh(rbox(0.8, 0.55, 0.5, 0.2), tan);
+  head.position.set(-1.55, 2.7, 0); parts.push(head);
+  for (const sx of [-1, 1]) { // antler forks
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.6, 4), dark);
+    a.position.set(-1.6, 3.1, sx * 0.14); a.rotation.z = 0.3; parts.push(a);
+    const a2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.3, 4), dark);
+    a2.position.set(-1.72, 3.35, sx * 0.22); a2.rotation.z = 0.9; parts.push(a2);
+  }
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(rbox(0.22, 1.5, 0.22, 0.09), dark);
+      leg.position.set(sx * 0.8, 0.75, sz * 0.35); parts.push(leg);
+    }
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  g.userData.wander = { range: 6, speed: 2.2, bob: 0.12 }; // deer step lightly
+  return g;
+}
+
+// A little crab for the beach: a wide flat shell, two eyestalks, two claws, that
+// scuttles quickly in short hops.
+function makeCrab() {
+  const g = new THREE.Group();
+  const shell = mat(0xe0663a, { flatShading: true });
+  const parts = [];
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), shell);
+  body.scale.set(1.5, 0.6, 1.1); body.position.y = 0.35; parts.push(body);
+  for (const sx of [-1, 1]) {
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.28, 4), shell);
+    stalk.position.set(sx * 0.18, 0.62, 0.3); parts.push(stalk);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), mat(0x1a1a1a));
+    eye.position.set(sx * 0.18, 0.78, 0.3); parts.push(eye);
+    const claw = new THREE.Mesh(rbox(0.34, 0.24, 0.2, 0.08), shell);
+    claw.position.set(sx * 0.82, 0.32, 0.1); parts.push(claw);
+    for (let l = 0; l < 3; l++) { // walking legs
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4), shell);
+      leg.position.set(sx * 0.6, 0.18, -0.1 - l * 0.18); leg.rotation.z = sx * 0.9; parts.push(leg);
+    }
+  }
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  g.scale.setScalar(1.1);
+  g.userData.wander = { range: 3.5, speed: 3.2, bob: 0.02 }; // scuttles fast, low
+  return g;
+}
+
+// A seaside gull that struts along the sand: white body, grey back, orange beak.
+function makeGull() {
+  const g = new THREE.Group();
+  const white = mat(0xf4f6f8);
+  const grey = mat(0x9aa4ac);
+  const parts = [];
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), white);
+  body.scale.set(1, 0.9, 1.5); body.position.y = 0.7; parts.push(body);
+  const back = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), grey);
+  back.scale.set(1, 0.5, 1.4); back.position.set(0, 0.86, -0.1); parts.push(back);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), white);
+  head.position.set(0, 1.05, 0.42); parts.push(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 5), mat(0xe0a52a));
+  beak.rotation.x = Math.PI / 2; beak.position.set(0, 1.02, 0.68); parts.push(beak);
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.44, 4), mat(0xe0a52a));
+    leg.position.set(sx * 0.12, 0.26, 0.1); parts.push(leg);
+  }
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  g.userData.wander = { range: 4, speed: 2.0, bob: 0.05 };
+  return g;
+}
+
+// A beach parasol (static prop): a pole and a tilted candy-striped canopy.
+const PARASOL_COLS = [0xe0533a, 0x3a86c8, 0x2ea86a, 0xe0a52a, 0xd05a9a];
+function makeParasol() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 6), mat(0xf0ead8));
+  pole.position.y = 1.6; g.add(pole);
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 10), mat(pick(PARASOL_COLS), { side: THREE.DoubleSide, flatShading: true }));
+  canopy.position.y = 3.2; canopy.rotation.z = 0.18; canopy.castShadow = true;
+  g.add(canopy);
   return g;
 }
 
