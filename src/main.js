@@ -1316,6 +1316,8 @@ function updateAtmosphere() {
 
   _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facing = _sunDir.dot(_camFwd);
+  // Camera-to-sun angle for the FPS debug readout (0° = looking dead at the sun).
+  _sunFaceDeg = Math.acos(Math.max(-1, Math.min(1, facing))) * (180 / Math.PI);
   let vis = 0;
   if (sunVisibleMood && facing > 0.02) {
     _sunScreen.copy(_sunDir).multiplyScalar(3000).add(camera.position).project(camera);
@@ -1959,6 +1961,7 @@ function updateTiltCounter(dt) {
 // you can confirm which one is actually running) and the draw-call count, which
 // tells us whether a slow frame is draw-call-bound (geometry) or fill-bound.
 let _fpsAccum = 0;
+let _sunFaceDeg = 0; // camera-to-sun angle (set each frame in updateAtmosphere)
 function updateFpsCounter(dt) {
   if (!showFps || !fpsEl) return;
   _fpsAccum += dt;
@@ -1967,7 +1970,12 @@ function updateFpsCounter(dt) {
   const fps = Math.round(1000 / Math.max(1, _frameMs));
   const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
   const dc = renderer?.info?.render?.drawCalls ?? 0;
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc`;
+  // sun N° — angle between the camera's view direction and the sun (0° = staring
+  // straight into it). For correlating frame dips with view direction: if dips
+  // track a low angle, the cost is the sun-facing path (god rays / glow / bloom);
+  // if they track a specific WORLD direction regardless of the sun, it's geometry
+  // (draw calls — watch dc) in that part of the map.
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}°`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
