@@ -867,10 +867,15 @@ export class Track {
         ell(0.6, 0.55, 0.02, 0.06, "#111111");
         tri([0.47, 0.62, 0.53, 0.62, 0.5, 0.67], "#ff6f9b"); // nose
       };
-      const fs = ch * 1.06; // face box; the drawn face fills ~3/4 of it
+      // Face box slightly smaller than the band. The drawn face's CONTENT spans
+      // v 0.10..0.86 of its box (ear tips to chin), so its visual midpoint sits
+      // at v=0.48 — draw the box offset so that midpoint lands exactly on the
+      // band's centreline.
+      const fs = ch * 0.92;
       const gap = fs * 0.62;
-      face(cw / 2 - m.width / 2 - gap, ch / 2 + ch * 0.03, fs);
-      face(cw / 2 + m.width / 2 + gap, ch / 2 + ch * 0.03, fs);
+      const faceY = ch / 2 + (0.5 - 0.48) * fs;
+      face(cw / 2 - m.width / 2 - gap, faceY, fs);
+      face(cw / 2 + m.width / 2 + gap, faceY, fs);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
