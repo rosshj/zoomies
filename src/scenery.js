@@ -1323,24 +1323,24 @@ function foliageGeoFor(shape) {
     ];
     g = mergeGeometries(blobs.map(([x, y, z, r]) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z)));
   } else if (shape === "palm") {
-    // A crown of long drooping fronds radiating from the trunk top: elongated,
-    // flattened cones tilted outward + down, ringed around Y (a palm silhouette).
+    // A crown of long fronds that attach at the trunk top and ARCH down and out,
+    // like a real palm — each is a thin flat blade whose WIDE end sits at the
+    // crown and whose tip droops well below horizontal. No central hub (that read
+    // as a spiky star before). Ringed around Y with a little length/droop variety.
     const fronds = [];
-    const n = 8;
+    const n = 9;
     for (let i = 0; i < n; i++) {
-      const f = new THREE.ConeGeometry(0.42, 3.4, 4);
-      f.scale(1, 1, 0.5); // flatten into a frond blade
-      f.rotateZ(Math.PI / 2); // lay it pointing +X
-      f.translate(1.9, 0, 0); // push out from the centre
-      f.rotateZ(-0.42 - (i % 2) * 0.12); // droop (alternating a touch)
-      f.rotateY((i / n) * Math.PI * 2);
+      const len = 3.4 + (i % 3) * 0.4;
+      const f = new THREE.ConeGeometry(0.5, len, 3); // 3-sided → a flat-ish blade
+      f.scale(1, 1, 0.16); // flatten into a frond
+      f.rotateZ(Math.PI / 2); // lay it along +X (tip outward)
+      f.translate(len / 2, 0, 0); // pivot at the WIDE base (crown), tip out at +len
+      f.rotateZ(-0.7 - (i % 2) * 0.12); // arch: base stays at crown, tip droops down
+      f.rotateY((i / n) * Math.PI * 2 + (i % 2) * 0.18);
       fronds.push(f);
     }
-    // Hub is a Sphere (indexed) to match the Cone fronds (also indexed) — mixing
-    // an indexed + non-indexed geometry makes mergeGeometries return null.
-    fronds.push(new THREE.SphereGeometry(0.5, 6, 5).translate(0, 0.1, 0));
     g = mergeGeometries(fronds);
-    g.translate(0, 0.4, 0);
+    g.translate(0, 0.5, 0); // sit the crown at the trunk top
   } else {
     // round (deciduous): a single faceted lollipop crown.
     g = new THREE.IcosahedronGeometry(2.3, 1).scale(1, 0.95, 1).translate(0, 2.15, 0);
@@ -2327,20 +2327,28 @@ function buildRoadside(scene, track, heightAt) {
     const p = pts[i];
     const side = new THREE.Vector3().crossVectors(tans[i], up).normalize();
 
+    // Decide "is this a CITY stretch" from the ROAD point, not each offset
+    // placement — biomeAt flips to the neighbour right at a wedge seam, which is
+    // what let a rural house appear at the city's edge. Keyed off the road point,
+    // a whole city stretch stays consistently urban.
+    const roadCity = biomeAt(p.x, p.z).name === "city";
+    // City buildings: mostly towers with some low storefronts for ground-level life.
+    const cityFront = () => (rand() < 0.4 ? makeCityStore() : makeTower(density));
+    const cityRow = () => (rand() < 0.22 ? makeCityStore() : makeTower(density));
     for (const dir of [1, -1]) {
       if (town) {
-        // Front structures by the road. City sectors get tall glass TOWERS; every
-        // other biome gets the small-town building. Placed at halfW+9.. (not +5):
-        // a town building's overhanging pyramid roof reaches ~6.65 back toward the
-        // road, so the old +5 let roof corners hang over the tarmac. +9 clears it.
+        // Front structures by the road. City stretches get towers + storefronts;
+        // every other biome gets the small-town building. Placed at halfW+9.. (not
+        // +5): a town building's overhanging pyramid roof reaches ~6.65 back toward
+        // the road, so the old +5 let roof corners hang over the tarmac. +9 clears it.
         if (rand() < 0.62 + density * 0.32)
-          place((b) => (b.name === "city" ? makeTower(density) : makeTownStructure(density, b)), halfW + 9 + rand() * 3, dir, p, side, true);
+          place((b) => (roadCity ? cityFront() : makeTownStructure(density, b)), halfW + 9 + rand() * 3, dir, p, side, true);
         // Several rows stacking back from the road, thinning with depth so the town
         // (or skyline) recedes into the distance instead of being a thin strip.
         const rows = [13, 24, 36, 50, 66];
         for (let r = 0; r < rows.length; r++) {
           if (rand() < (0.52 + density * 0.4) * (1 - r * 0.15))
-            place((b) => (b.name === "city" ? makeTower(density) : makeBuilding(density, b)), halfW + rows[r] + rand() * 7, dir, p, side, true);
+            place((b) => (roadCity ? cityRow() : makeBuilding(density, b)), halfW + rows[r] + rand() * 7, dir, p, side, true);
         }
         if (rand() < 0.5)
           place(makeStreetProp, halfW + 3.2 + rand() * 1.4, dir, p, side, true);
@@ -2534,6 +2542,48 @@ function makeTower(density) {
   part(parts, new THREE.BoxGeometry(w + 0.2, 0.5, d + 0.2).translate(0, top + 0.25, 0), trim); // roof parapet
   part(parts, new THREE.BoxGeometry(w * 0.42, 1.0, d * 0.42).translate((rand() - 0.5) * w * 0.3, top + 0.9, (rand() - 0.5) * d * 0.3), 0x555b63); // rooftop unit
   if (rand() < 0.5) part(parts, new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5).translate(w * 0.22, top + 1.7, d * 0.2), 0x2a2a2a); // antenna
+  const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.castShadow = true;
+  solid.receiveShadow = true;
+  g.add(solid);
+  g.userData.isBuilding = true;
+  return g;
+}
+
+// A low CITY storefront: a flat-roofed 1-2 storey shop with a glass storefront,
+// a coloured awning and a rooftop sign — mixed in with the towers so the city
+// has ground-level street life, not just a wall of high-rises. Same 2-mesh
+// structure as the other buildings so batchBuildings() merges it.
+const STORE_WALLS = [0xb8837a, 0x8a9db0, 0xc2a86a, 0x9a8f86, 0xa86b6b, 0x7d95a0, 0xcabf9a];
+const STORE_ACCENT = [0xd0503a, 0x3a86c8, 0x2ea86a, 0xe0a52a, 0xc44a8a, 0x39434f];
+function makeCityStore() {
+  const g = new THREE.Group();
+  const w = 7 + rand() * 5;
+  const d = 6 + rand() * 3;
+  const floors = rand() < 0.4 ? 2 : 1;
+  const fh = 3.0;
+  const h = floors * fh + 0.6; // taller ground floor for the storefront
+  const base = 0.3;
+  const top = base + h;
+  const wall = pick(STORE_WALLS);
+  const trim = pick(CITY_TRIM);
+  const accent = pick(STORE_ACCENT);
+  const body = new THREE.Mesh(roundedColumn(w, h, d, 0.4).translate(0, base + h / 2, 0), bodyMaterial(wall));
+  body.castShadow = true;
+  body.receiveShadow = true;
+  body.userData.bodyWall = wall;
+  g.add(body);
+
+  const parts = [];
+  part(parts, new THREE.BoxGeometry(w + 0.4, base, d + 0.4).translate(0, base / 2, 0), 0x40454d); // plinth
+  part(parts, new THREE.BoxGeometry(w * 0.86, 2.0, 0.22).translate(0, base + 1.2, d / 2 + 0.05), 0x2a3038); // dark glass storefront
+  const awn = new THREE.BoxGeometry(w * 0.9, 0.24, 1.4);
+  awn.rotateX(-0.22);
+  awn.translate(0, base + 2.5, d / 2 + 0.72);
+  part(parts, awn, accent); // awning
+  part(parts, new THREE.BoxGeometry(w + 0.2, 0.5, d + 0.2).translate(0, top + 0.25, 0), trim); // flat-roof parapet
+  part(parts, new THREE.BoxGeometry(w * 0.5, 0.9, 0.28).translate(0, top + 0.85, d / 2 - 0.2), accent); // rooftop sign
+  if (floors === 2) part(parts, new THREE.BoxGeometry(w + 0.08, 0.14, d + 0.08).translate(0, base + fh + 0.6, 0), trim); // floor band
   const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
   solid.castShadow = true;
   solid.receiveShadow = true;
@@ -2922,10 +2972,14 @@ function makeFarmProp(biome) {
     return makeHayBale();
   }
   if (b.name === "city") {
-    // Downtown verge: planters and street trees, not livestock.
-    if (r < 0.5) return makeBush();
-    if (r < 0.8) return makeTree(b);
-    return makeRockProp();
+    // Downtown verge: urban street furniture, not grey trees or livestock. (A
+    // makeTree here rendered a GREY lollipop because the city foliage HSL is
+    // desaturated — replaced with planters/benches/hydrants/signs.)
+    if (r < 0.32) return makePlanter();
+    if (r < 0.52) return makeBench();
+    if (r < 0.70) return makeHydrant();
+    if (r < 0.85) return makeSign();
+    return makeBush();
   }
   // Pastoral (meadow / autumn / blossom / savanna): cows, sheep, farm buildings.
   if (r < 0.24) return makeTree(b);
