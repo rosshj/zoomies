@@ -450,13 +450,12 @@ export class Track {
       g.translate(0, pl.gy + 0.04, 0); // sit flush on this puddle's ground
       return g;
     });
-    // Reflective wet puddles (WebGPU): a glossy standard node-material. SSR (main.js)
-    // mirrors the scene on them where rays hit, but puddles face UP — so most of the
-    // time the reflection ray points at sky that's off-screen and SSR misses. With a
-    // near-black albedo + high metalness that read as pure black (the reported bug).
-    // Fix: bake a Fresnel sky tint into the colour so the surface always shows the sky
-    // it's reflecting even with no SSR hit, and drop metalness so the diffuse wet base
-    // shows through. SSR then adds real scene reflections on top where available.
+    // Wet puddles: a glossy node-material whose "reflection" is a Fresnel sky
+    // tint baked into the colour — the surface brightens toward the sky at
+    // grazing angles, the cue that sells wetness. (These used to also carry SSR
+    // metalness, but puddles face UP so the rays mostly pointed at off-screen
+    // sky and missed; the SSR pass has since been removed entirely — see
+    // main.js — so the baked tint is the whole effect, kept metalness-free.)
     const pmat = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
     const edge = attribute("aEdge");
     const glint = positionWorld.x.mul(1.3).add(positionWorld.z.mul(1.1)).add(time.mul(1.6)).sin().mul(0.5).add(0.5);
@@ -464,8 +463,7 @@ export class Track {
     const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(2.5);
     const skyTint = tslColor(0x9fb6cc); // soft daylight-sky reflection colour
     pmat.colorNode = tslColor(0x16252f).add(skyTint.mul(fres.mul(0.7))).add(glint.mul(0.05));
-    pmat.metalnessNode = float(0.35).add(fres.mul(0.35)); // grazing edges read more mirror-like (SSR), face stays diffuse-wet
-    pmat.roughnessNode = float(0.08);
+    pmat.roughnessNode = float(0.08); // tight sun glints keep the surface reading glossy
     pmat.opacityNode = float(0.55).add(fres.mul(0.4)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
     pmat.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
     const mesh = new THREE.Mesh(mergeGeometries(geoms), pmat);

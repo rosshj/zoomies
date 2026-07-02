@@ -1,9 +1,8 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
-import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { initGpuParticles } from "./gpuparticles.js";
 import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
@@ -260,23 +259,18 @@ camera.layers.enable(2);
 // bloom node's uniforms so the existing snow-blend modulation keeps working.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
-// MRT: also render view normals + metalness so screen-space reflections (SSR) can
-// reflect the scene on metallic surfaces (the lakes — see scenery water material).
-_scenePass.setMRT(mrt({ output, normal: normalView, metalness }));
+// No MRT: the scene renders a single colour attachment (+ depth for the god
+// rays). Normals + metalness used to be rendered too, feeding a half-res SSR
+// pass — but its only consumers were the lakes and puddles, both of which face
+// UP, so at driving angles the reflected bank slid off-screen and the march
+// collapsed into blocky miss-patches (the reported "gaps in the lake"). Both
+// surfaces now bake a fresnel sky tint into their colour instead (see
+// makeWaterMaterial / _buildPuddles), which reads just as reflective — so SSR,
+// its ray march, and two full-screen MRT attachments are gone. On mobile the
+// MRT bandwidth alone was a meaningful slice of the frame.
 const _sceneTex = _scenePass.getTextureNode("output");
-const _sceneNormal = _scenePass.getTextureNode("normal");
-const _sceneMetal = _scenePass.getTextureNode("metalness");
 const _sceneDepthTex = _scenePass.getTextureNode("depth");
 const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, threshold 0.85->0.9: less midday wash
-// Screen-space reflections — optimized: half internal resolution, a modest reflect
-// distance, only on metallic pixels (water). The reflection texture is added over
-// the scene. This is the heaviest effect; gate/tune if it costs too much.
-const _ssrPass = ssr(_sceneTex, _sceneDepthTex, _sceneNormal, _sceneMetal, camera);
-_ssrPass.resolutionScale = 0.5; // half-res SSR (already the node default)
-_ssrPass.maxDistance.value = 44; // 60 -> 44: shorter rays = fewer march steps (the heaviest effect); water reflections still read at lake scale
-_ssrPass.thickness.value = 0.4;
-_ssrPass.opacity.value = 0.85;
-const _ssrTex = _ssrPass.getTextureNode();
 // Grade: the scene was reading washed out (esp. midday), so push saturation +
 // contrast and pull the shadow-lift back to a sliver — punchier without crushing.
 const _uSat = uniform(MOOD.sat * 1.14);
@@ -360,10 +354,10 @@ function gradeOutput(base) {
   c = c.mul(mix(float(1), vig, _uVignette));
   return c;
 }
-// High: scene + SSR water reflections + god-ray shafts + bloom. Low: scene +
-// bloom only — drops SSR ("the heaviest effect") and the per-pixel god-ray pass,
-// which is the big GPU/memory win on weak devices (see applyQuality()).
-const _highOutput = gradeOutput(_sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode));
+// High: scene + god-ray shafts + bloom. Low: scene + bloom only — drops the
+// per-pixel god-ray pass, the big GPU/memory win on weak devices (see
+// applyQuality()).
+const _highOutput = gradeOutput(_sceneTex.add(_shaftTex).add(_bloomNode));
 const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
@@ -1590,7 +1584,7 @@ let _drsCooldown = 0;
 // --- Performance watchdog ---
 // Last-resort net BEFORE a crash: if frames stay long even after dynamic-resolution
 // scaling has bottomed out (the device genuinely can't cope at High), auto-drop to
-// Low quality, which sheds SSR/god-rays/particles and lowers the render-target
+// Low quality, which sheds god-rays/particles and lowers the render-target
 // memory — the kind of sustained pressure that precedes an out-of-memory blank.
 // Disabled with ?nowd=1 so the headless perf harness measures the chosen tier.
 const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
@@ -1647,7 +1641,7 @@ const qualityLowBtn = document.getElementById("set-quality-low");
 const qualityHighBtn = document.getElementById("set-quality-high");
 // Low quality strips the expensive effects to keep weak devices stable (and is
 // what the performance watchdog flips to before a device crashes):
-//   • post-FX graph drops SSR + god-rays (the heaviest passes),
+//   • post-FX graph drops the god rays (the heaviest pass),
 //   • god-ray render target stops updating,
 //   • GPU ambient motes hidden (skips their compute), grass hidden,
 //   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
@@ -2029,8 +2023,8 @@ const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").mat
 
 // Multiplayer favours performance over looks: two extra ghost karts + the realtime
 // client on an already heavy scene means a higher, steadier frame rate (and no iOS
-// WebGPU device-loss) matters more than SSR/god-rays. So while in a multiplayer
-// race, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
+// WebGPU device-loss) matters more than god-rays. So while in a multiplayer
+// race, force the memory-lean Low profile (no god-ray target, capped pixel
 // ratio, no GPU motes) on EVERY device. NON-persisted — single-player and the saved
 // preference are untouched, and it's restored when leaving multiplayer. A player
 // who bumps the Settings toggle to High mid-session opts out for that session

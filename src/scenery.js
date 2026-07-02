@@ -3399,13 +3399,39 @@ function buildPigeons(scene, track, heightAt) {
       pg.group.scale.setScalar(1.2); // a touch bigger so they read at race speed
       pg.group.traverse((o) => o.layers.set(1));
       flockGroup.add(pg.group);
+      for (const w of pg.wings) w.wg.rotation.z = w.sx * 0.12; // folded, so the proxy bakes the perched pose
       birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
     }
+    // Sleep proxy: a flock is ~42 small meshes, but it perches motionless for
+    // almost the whole race. Bake the perched pose into ONE merged mesh (one
+    // draw per shared pigeon material) and show THAT by default; the live,
+    // articulated birds only swap in when the player is close enough to see
+    // them bob / scatter (see updatePigeons). Same pattern as the leaf piles.
+    flockGroup.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(flockGroup.matrixWorld).invert();
+    const rel = new THREE.Matrix4();
+    const matOrder = [];
+    const geosByMat = new Map();
+    flockGroup.traverse((o) => {
+      if (!o.isMesh) return;
+      let g = o.geometry.clone();
+      g.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+      if (g.index) g = g.toNonIndexed();
+      if (!geosByMat.has(o.material)) { geosByMat.set(o.material, []); matOrder.push(o.material); }
+      geosByMat.get(o.material).push(g);
+    });
+    const perMat = matOrder.map((m) => mergeGeometries(geosByMat.get(m), false));
+    const proxy = new THREE.Mesh(mergeGeometries(perMat, true), matOrder);
+    proxy.castShadow = true; // stands in for the birds in the one-shot world shadow bake
+    proxy.layers.set(1);
+    proxy.position.copy(flockGroup.position);
+    scene.add(proxy);
+    flockGroup.visible = false; // live birds start asleep behind the proxy
     // The trigger must reach the road: the loft sits halfWidth+7.5 off the
     // CENTERLINE, so anything under that radius could never fire from a normal
     // racing line (the old value, 14, was why nobody ever saw them scatter).
     // halfWidth+24 covers the full road width in front of the loft.
-    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds });
+    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds, group: flockGroup, proxy, liveOn: false });
   };
   makeLoftAt(0.08);
   makeLoftAt(0.55);
@@ -3414,14 +3440,23 @@ function buildPigeons(scene, track, heightAt) {
 
 function updatePigeons(flock, dt, time, playerPos) {
   if (!flock.scattered) {
-    // Idle flocks the player isn't near don't even bob — a 4cm hop is invisible
-    // from 180u, and the scatter trigger only fires within a few units anyway.
-    // (A scattered flock keeps animating until it lands, wherever the player is.)
+    // Perched flocks far from the player sleep as the merged proxy mesh — the
+    // 4cm idle bob is invisible from distance, and the ~42 live meshes only
+    // swap in close up (past the scatter trigger's reach, so the handoff is
+    // never visible mid-burst). A scattered flock keeps its live birds until
+    // it lands, wherever the player is.
+    let near = true;
     if (playerPos) {
       const dx = playerPos.x - flock.center.x;
       const dz = playerPos.z - flock.center.z;
-      if (dx * dx + dz * dz > 180 * 180) return;
+      near = dx * dx + dz * dz < 60 * 60;
     }
+    if (near !== flock.liveOn) {
+      flock.liveOn = near;
+      flock.group.visible = near;
+      flock.proxy.visible = !near;
+    }
+    if (!near) return;
     for (const b of flock.birds) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
