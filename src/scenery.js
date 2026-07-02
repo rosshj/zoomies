@@ -42,9 +42,10 @@ const BIOMES = [
   { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", treeShape: "acacia", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
   // Frosted tundra: pale sage ground, short blue-green pines, light snow.
   { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", treeShape: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
-  // Downtown: grey asphalt boulevard lined with tall towers, no natural trees,
-  // hazard-striped barriers. Buildings come from the urban path in buildRoadside.
-  { name: "city", weather: "none", ground: 0x6b6f76, ground2: 0x565a61, foliage: [0.55, 0.1, 0.4], style: "urban", treeShape: "none", sx: 1.0, sy: 1.0, treeDensity: 0, grassTint: 0x8a9488, grassDensity: 0.05, barrier: { a: 0xf2c94c, b: 0x2b2b2b } },
+  // Downtown: a grey asphalt boulevard lined with tall towers, hazard-striped
+  // barriers. Only the ROAD is grey (see ROAD_STYLES) — the surrounding hills
+  // are a muted urban-park green, like a city sitting in ordinary countryside.
+  { name: "city", weather: "none", ground: 0x5d8a47, ground2: 0x4a6f3c, foliage: [0.3, 0.35, 0.38], style: "urban", treeShape: "none", sx: 1.0, sy: 1.0, treeDensity: 0, grassTint: 0xa8c290, grassDensity: 0.25, barrier: { a: 0xf2c94c, b: 0x2b2b2b } },
   // Seaside: pale sand, tall palms, and a shoreline (the sea is a large sandy-shored
   // lake placed in the beach sectors — see makeLakes). Sea-blue + sand barriers.
   { name: "beach", weather: "none", ground: 0xe6d6a2, ground2: 0xd4bf84, foliage: [0.28, 0.5, 0.42], style: "beach", treeShape: "palm", sx: 0.7, sy: 1.6, treeDensity: 0.22, grassTint: 0xdccf9a, grassDensity: 0.22, barrier: { a: 0xe8cf96, b: 0x5aa0cf } },
@@ -210,6 +211,10 @@ const ROAD_STYLES = {
   blossom: { tint: [1.04, 0.97, 1.02], kind: "asphalt" },
   savanna: { tint: [1.45, 1.28, 0.95], kind: "sand" },
   tundra: { tint: [1.25, 1.32, 1.4], kind: "snow" },
+  // City keeps the grey on the ROAD (a cool, fresh-laid asphalt) now that its
+  // terrain is green; beach tarmac reads sun-bleached and sandy.
+  city: { tint: [0.92, 0.95, 1.04], kind: "asphalt" },
+  beach: { tint: [1.5, 1.35, 1.05], kind: "sand" },
 };
 export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
@@ -324,7 +329,19 @@ export function buildWorld(scene, track, opts = {}) {
 
   const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
 
-  buildTerrain(scene, heightAt, litLevel); // night/dusk darkening (snow handled hard inside)
+  // The terrain mesh gets an EXTRA drop under the road corridor (tapering to
+  // zero by the sand trim's outer edge, so the visible verge is unchanged).
+  // The terrain grid is coarse (~4-5u cells) and its base sits only ~0.25 under
+  // the road; on crests the linear interpolation between cells poked ABOVE the
+  // road surface — invisible while terrain and asphalt were similar colours,
+  // glaring once the city's ground went green (green patches on the tarmac).
+  // Only the terrain uses this sampler; placements keep the true heightAt.
+  const terrainHeight = (x, z) => {
+    const d = track.groundInfo(x, z).dist;
+    const u = clamp(1 - (d - track.halfWidth) / 3, 0, 1);
+    return heightAt(x, z) - 1.2 * (u * u * (3 - 2 * u));
+  };
+  buildTerrain(scene, terrainHeight, litLevel); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
