@@ -3886,15 +3886,46 @@ function buildPigeons(scene, track, heightAt) {
 
     const loft = new THREE.Group();
     const wallH = 4;
-    const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
-    body.position.y = wallH / 2;
-    body.castShadow = true;
-    loft.add(body);
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
-    roof.rotation.y = Math.PI / 4;
-    roof.position.y = wallH + 1.2;
-    roof.castShadow = true;
-    loft.add(roof);
+    // In the city the pigeons perch on a flat-roofed brick building with a small
+    // rooftop coop, instead of the rural cottage (a pitched-roof cottage looked
+    // out of place downtown). wallH stays 4 so the birds' perch heights are the
+    // same either way.
+    if (biomeAt(bx, bz).name === "city") {
+      const wall = pick(STORE_WALLS);
+      const body = new THREE.Mesh(roundedColumn(5.5, wallH, 5, 0.4), mat(wall));
+      body.position.y = wallH / 2;
+      body.castShadow = true;
+      loft.add(body);
+      const parapet = new THREE.Mesh(new THREE.BoxGeometry(5.7, 0.5, 5.2), mat(0x39434f));
+      parapet.position.y = wallH + 0.22;
+      parapet.castShadow = true;
+      loft.add(parapet);
+      const store = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.9, 0.14), mat(0x2a3038)); // glass storefront
+      store.position.set(0, 1.2, 5 / 2 + 0.02);
+      loft.add(store);
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.2, 1.0), mat(pick(STORE_ACCENT)));
+      awning.position.set(0, 2.35, 5 / 2 + 0.4);
+      awning.rotation.x = -0.2;
+      loft.add(awning);
+      // rooftop pigeon coop
+      const coop = new THREE.Mesh(rbox(1.6, 1.0, 1.2, 0.14), mat(0x8a5a3a));
+      coop.position.set(1.3, wallH + 0.9, -0.9);
+      coop.castShadow = true;
+      loft.add(coop);
+      const coopRoof = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.16, 1.45), mat(0x5a3a22));
+      coopRoof.position.set(1.3, wallH + 1.45, -0.9);
+      loft.add(coopRoof);
+    } else {
+      const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
+      body.position.y = wallH / 2;
+      body.castShadow = true;
+      loft.add(body);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
+      roof.rotation.y = Math.PI / 4;
+      roof.position.y = wallH + 1.2;
+      roof.castShadow = true;
+      loft.add(roof);
+    }
     loft.position.set(bx, by, bz);
     loft.rotation.y = Math.atan2(px - bx, pz - bz);
     loft.traverse((o) => o.layers.set(1));
