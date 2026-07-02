@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, uniform, color as tslColor } from "three/tsl";
 import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 
@@ -132,24 +133,31 @@ export function createScene() {
   scene.add(sun);
   scene.add(sun.target);
 
-  // A few clouds for depth.
+  // A few clouds for depth. They ring the whole map high up and never move, so
+  // some are in frame from every camera angle — as individual puff meshes that
+  // was ~60-75 draw calls every frame. Bake every puff into ONE merged mesh
+  // (they all share cloudMat, which applyMood recolours) for a single draw.
   const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const puffGeos = [];
   for (let i = 0; i < 16; i++) {
-    const cloud = new THREE.Group();
-    const n = 3 + Math.floor(Math.random() * 3);
-    for (let j = 0; j < n; j++) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8), cloudMat);
-      puff.position.set((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
-      cloud.add(puff);
-    }
     // Sit them out beyond the playable hills and high up, so they read as
     // distant sky and never clip the track (the alpine hill rises high).
     const a = Math.random() * Math.PI * 2;
     const r = 520 + Math.random() * 440;
-    cloud.position.set(Math.cos(a) * r, 150 + Math.random() * 90, Math.sin(a) * r);
-    cloud.scale.setScalar(1.6 + Math.random() * 1.2); // bigger since they're farther
-    scene.add(cloud);
+    const cx = Math.cos(a) * r, cy = 150 + Math.random() * 90, cz = Math.sin(a) * r;
+    const s = 1.6 + Math.random() * 1.2; // bigger since they're farther
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let j = 0; j < n; j++) {
+      const geo = new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8);
+      geo.translate((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
+      geo.scale(s, s, s);
+      geo.translate(cx, cy, cz);
+      puffGeos.push(geo);
+    }
   }
+  const clouds = new THREE.Mesh(mergeGeometries(puffGeos), cloudMat);
+  clouds.frustumCulled = false; // the ring spans the sky — it's always partly visible
+  scene.add(clouds);
 
   // M1 WebGPU migration: skip PMREM environment baking (the env reflections add
   // a small spec sheen but PMREM-from-scene on the new backend is unproven; the

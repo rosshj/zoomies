@@ -1,9 +1,8 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
-import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { initGpuParticles } from "./gpuparticles.js";
 import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
@@ -232,7 +231,7 @@ try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DI
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
 // Debug hook (console / headless tooling): inspect the live scene graph and
 // renderer counters without instrumenting a build.
-window.__zoomies = { scene, camera, renderer };
+window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
 // wipe the count between them and leave only the last pass).
@@ -260,23 +259,18 @@ camera.layers.enable(2);
 // bloom node's uniforms so the existing snow-blend modulation keeps working.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
-// MRT: also render view normals + metalness so screen-space reflections (SSR) can
-// reflect the scene on metallic surfaces (the lakes — see scenery water material).
-_scenePass.setMRT(mrt({ output, normal: normalView, metalness }));
+// No MRT: the scene renders a single colour attachment (+ depth for the god
+// rays). Normals + metalness used to be rendered too, feeding a half-res SSR
+// pass — but its only consumers were the lakes and puddles, both of which face
+// UP, so at driving angles the reflected bank slid off-screen and the march
+// collapsed into blocky miss-patches (the reported "gaps in the lake"). Both
+// surfaces now bake a fresnel sky tint into their colour instead (see
+// makeWaterMaterial / _buildPuddles), which reads just as reflective — so SSR,
+// its ray march, and two full-screen MRT attachments are gone. On mobile the
+// MRT bandwidth alone was a meaningful slice of the frame.
 const _sceneTex = _scenePass.getTextureNode("output");
-const _sceneNormal = _scenePass.getTextureNode("normal");
-const _sceneMetal = _scenePass.getTextureNode("metalness");
 const _sceneDepthTex = _scenePass.getTextureNode("depth");
 const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, threshold 0.85->0.9: less midday wash
-// Screen-space reflections — optimized: half internal resolution, a modest reflect
-// distance, only on metallic pixels (water). The reflection texture is added over
-// the scene. This is the heaviest effect; gate/tune if it costs too much.
-const _ssrPass = ssr(_sceneTex, _sceneDepthTex, _sceneNormal, _sceneMetal, camera);
-_ssrPass.resolutionScale = 0.5; // half-res SSR (already the node default)
-_ssrPass.maxDistance.value = 44; // 60 -> 44: shorter rays = fewer march steps (the heaviest effect); water reflections still read at lake scale
-_ssrPass.thickness.value = 0.4;
-_ssrPass.opacity.value = 0.85;
-const _ssrTex = _ssrPass.getTextureNode();
 // Grade: the scene was reading washed out (esp. midday), so push saturation +
 // contrast and pull the shadow-lift back to a sliver — punchier without crushing.
 const _uSat = uniform(MOOD.sat * 1.14);
@@ -360,10 +354,10 @@ function gradeOutput(base) {
   c = c.mul(mix(float(1), vig, _uVignette));
   return c;
 }
-// High: scene + SSR water reflections + god-ray shafts + bloom. Low: scene +
-// bloom only — drops SSR ("the heaviest effect") and the per-pixel god-ray pass,
-// which is the big GPU/memory win on weak devices (see applyQuality()).
-const _highOutput = gradeOutput(_sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode));
+// High: scene + god-ray shafts + bloom. Low: scene + bloom only — drops the
+// per-pixel god-ray pass, the big GPU/memory win on weak devices (see
+// applyQuality()).
+const _highOutput = gradeOutput(_sceneTex.add(_shaftTex).add(_bloomNode));
 const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
@@ -408,6 +402,7 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+Object.assign(window.__zoomies, { world, track });
 
 
 // Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
@@ -546,6 +541,12 @@ const uSunColNode = uniform(new THREE.Color(0x000000));
 const _toonCache = new WeakMap();
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
+  // TSL-authored materials (leaf wake pop, water ripples, puddle fresnel, petal
+  // fall) carry their behaviour in node graphs that a MeshToonMaterial can't
+  // hold — converting one silently strips its vertex/colour animation. (Node
+  // materials still pass the isMeshStandardMaterial check above: they copy that
+  // flag from the defaults they're initialised with.)
+  if (m.isNodeMaterial) return m;
   if (_toonCache.has(m)) return _toonCache.get(m);
   const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
@@ -741,6 +742,7 @@ function buildKarts() {
   });
   _boostLight = null;
   attachBoostLight(player); // player's exhaust glow while boosting
+  window.__zoomies.karts = karts;
 }
 
 // Cel-shade a kart group the same way buildKarts does (rim light + toon bands),
@@ -1582,19 +1584,24 @@ let _drsCooldown = 0;
 // --- Performance watchdog ---
 // Last-resort net BEFORE a crash: if frames stay long even after dynamic-resolution
 // scaling has bottomed out (the device genuinely can't cope at High), auto-drop to
-// Low quality, which sheds SSR/god-rays/particles and lowers the render-target
+// Low quality, which sheds god-rays/particles and lowers the render-target
 // memory — the kind of sustained pressure that precedes an out-of-memory blank.
 // Disabled with ?nowd=1 so the headless perf harness measures the chosen tier.
 const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
 let _wdAccum = 0;
 function perfWatchdog(dt) {
   if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
-  // Only when DRS has already bottomed out AND frames are still very long (~25 fps).
-  if (_frameMs > 40 && renderScale <= DRS_MIN + 0.02) {
+  // Only when DRS has already bottomed out AND frames are still long (~30 fps).
+  // 40ms (25 fps) never fired in practice: real dips hover in the 25-45 fps
+  // band — heavy sunset scenes and a thermally throttling phone both land
+  // there — which is exactly when shedding the High-tier effects helps most.
+  if (_frameMs > 33 && renderScale <= DRS_MIN + 0.02) {
     _wdAccum += dt;
-    if (_wdAccum >= 4) {
+    if (_wdAccum >= 5) {
       _wdAccum = 0;
-      applyQuality("low"); // persists, so a struggling device stays Low next launch
+      // Session-only (no persist): a capable phone that's merely hot shouldn't
+      // be locked to Low forever — next launch starts fresh on the saved tier.
+      applyQuality("low", false);
       hud.showToast?.("Graphics lowered for a smoother race");
     }
   } else {
@@ -1639,7 +1646,7 @@ const qualityLowBtn = document.getElementById("set-quality-low");
 const qualityHighBtn = document.getElementById("set-quality-high");
 // Low quality strips the expensive effects to keep weak devices stable (and is
 // what the performance watchdog flips to before a device crashes):
-//   • post-FX graph drops SSR + god-rays (the heaviest passes),
+//   • post-FX graph drops the god rays (the heaviest pass),
 //   • god-ray render target stops updating,
 //   • GPU ambient motes hidden (skips their compute), grass hidden,
 //   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
@@ -1991,7 +1998,13 @@ function updateFpsCounter(dt) {
   // track a low angle, the cost is the sun-facing path (god rays / glow / bloom);
   // if they track a specific WORLD direction regardless of the sun, it's geometry
   // (draw calls — watch dc) in that part of the map.
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}°`;
+  // NNx = dynamic-resolution scale (1.0 = full res; at 0.45 the scaler has
+  // bottomed out) + quality tier H/L. Together they say what a dip means: a dip
+  // at 1.0x is a transient the scaler hasn't reacted to; a dip AT 0.45x means
+  // pixel scaling can't help (vertex/CPU-bound — or the phone is thermally
+  // throttling, which looks exactly like this after minutes of sustained load).
+  const rs = renderScale.toFixed(2).replace(/0$/, "");
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality === "high" ? "H" : "L"}`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
@@ -2021,8 +2034,8 @@ const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").mat
 
 // Multiplayer favours performance over looks: two extra ghost karts + the realtime
 // client on an already heavy scene means a higher, steadier frame rate (and no iOS
-// WebGPU device-loss) matters more than SSR/god-rays. So while in a multiplayer
-// race, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
+// WebGPU device-loss) matters more than god-rays. So while in a multiplayer
+// race, force the memory-lean Low profile (no god-ray target, capped pixel
 // ratio, no GPU motes) on EVERY device. NON-persisted — single-player and the saved
 // preference are untouched, and it's restored when leaving multiplayer. A player
 // who bumps the Settings toggle to High mid-session opts out for that session

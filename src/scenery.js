@@ -539,15 +539,21 @@ function makeWaterMaterial(darken = 1) {
     .add(smoothstep(0.65, 0.98, w2.mul(0.5).add(0.5)).mul(0.4));
   let col = mix(deep, shallow, smoothstep(0.0, 1.0, shore));
   col = mix(col, col.mul(1.18), ripple.mul(0.5));
-  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
-  mat.colorNode = col;
-  // Fresnel: water mirrors much more at grazing angles (looking across it) than
-  // looking straight down — the key to a realistic reflective surface. Drive the
-  // SSR metalness with it. Foam fringe stays matte so the bank doesn't mirror.
+  // Fresnel "reflection": water brightens toward a sky tint at grazing angles
+  // (looking across it) — the cue that sells a reflective surface. This used to
+  // drive SSR metalness instead, but a flat up-facing plane viewed at grazing
+  // angles while driving past is SSR's worst case: the reflected bank slides
+  // off-screen and the half-res march collapses into blocky miss-patches that
+  // read as holes in the water (the same failure the puddles hit — see
+  // track.js _buildPuddles). Bake the sky tint like the puddles do and keep the
+  // lakes off the SSR path. Foam fringe stays matte so the bank doesn't tint.
   const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(3);
   const shoreFade = smoothstep(0.9, 0.7, shore);
-  mat.metalnessNode = float(0.35).add(fres.mul(0.55)).mul(shoreFade);
-  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // ripples shimmer the reflection
+  const skyTint = tslColor(0xcfe6f2).mul(0.4 + 0.6 * darken);
+  col = mix(col, skyTint, fres.mul(0.55).mul(shoreFade));
+  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
+  mat.colorNode = col;
+  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // tight sun glints; ripples shimmer them
   mat.opacityNode = float(0.92);
   // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
   // harmless no-op (animation is via `time`).
@@ -1027,7 +1033,9 @@ function buildGroundLeaves(scene, track, heightAt) {
   return {
     update(karts, camPos, dt = 0.016) {
       _sorted.length = 0;
-      for (const k of karts) if (k && k.position) _sorted.push(k);
+      // Only moving karts kick leaves (same 2.5 u/s gate as the leaf piles) —
+      // otherwise the grid at the start line levitates its leaf carpet.
+      for (const k of karts) if (k && k.position && Math.abs(k.speed || 0) > 2.5) _sorted.push(k);
       _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
       for (let i = 0; i < wakes.length; i++) {
         const k = _sorted[i];
@@ -3297,26 +3305,35 @@ function buildFireflies(scene, track, heightAt) {
 }
 
 // A single grey pigeon (perched, wings foldable). Returns { group, wings }.
+let _pigeonMats = null;
 function makePigeon() {
+  // One shared material set for every pigeon (they're all the same bird) — one
+  // toon pipeline per part instead of five fresh materials per pigeon.
+  if (!_pigeonMats) {
+    _pigeonMats = {
+      body: mat(0x9aa3ad), head: mat(0xb0b8c0), beak: mat(0xe0a52a),
+      tail: mat(0x7e878f), wing: mat(0x868f98),
+    };
+  }
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x9aa3ad));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), _pigeonMats.body);
   body.scale.set(1, 0.9, 1.4);
   body.castShadow = true;
   g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat(0xb0b8c0));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), _pigeonMats.head);
   head.position.set(0, 0.22, 0.34);
   g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), mat(0xe0a52a));
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), _pigeonMats.beak);
   beak.rotation.x = Math.PI / 2;
   beak.position.set(0, 0.2, 0.5);
   g.add(beak);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), mat(0x7e878f));
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), _pigeonMats.tail);
   tail.position.set(0, 0.02, -0.42);
   g.add(tail);
   const wings = [];
   for (const sx of [-1, 1]) {
     const wg = new THREE.Group();
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), mat(0x868f98));
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), _pigeonMats.wing);
     wing.position.x = sx * 0.3;
     wg.add(wing);
     wg.position.set(sx * 0.1, 0.05, 0);
@@ -3331,68 +3348,115 @@ function makePigeon() {
 function buildPigeons(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-  // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold in
-  // the loop doesn't drop this building onto a different stretch of road.
-  let bx, bz, px, pz;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const i = Math.floor(((0.08 + attempt * 0.07) % 1) * N);
-    const p = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-    const cx = p.x + side.x * outward * (track.halfWidth + 9);
-    const cz = p.z + side.z * outward * (track.halfWidth + 9);
-    if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 6) continue;
-    bx = cx;
-    bz = cz;
-    px = p.x; // road point the loft faces
-    pz = p.z;
-    break;
-  }
-  const by = heightAt(bx, bz);
+  const flocks = [];
+  // One loft on each half of the lap, so every race actually passes pigeons.
+  const makeLoftAt = (tStart) => {
+    // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold
+    // in the loop doesn't drop this building onto a different stretch of road.
+    let bx, bz, px, pz;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const i = Math.floor(((tStart + attempt * 0.07) % 1) * N);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const cx = p.x + side.x * outward * (track.halfWidth + 7.5);
+      const cz = p.z + side.z * outward * (track.halfWidth + 7.5);
+      if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 5) continue;
+      bx = cx;
+      bz = cz;
+      px = p.x; // road point the loft faces
+      pz = p.z;
+      break;
+    }
+    const by = heightAt(bx, bz);
 
-  const loft = new THREE.Group();
-  const wallH = 4;
-  const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
-  body.position.y = wallH / 2;
-  body.castShadow = true;
-  loft.add(body);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
-  roof.rotation.y = Math.PI / 4;
-  roof.position.y = wallH + 1.2;
-  roof.castShadow = true;
-  loft.add(roof);
-  loft.position.set(bx, by, bz);
-  loft.rotation.y = Math.atan2(px - bx, pz - bz);
-  loft.traverse((o) => o.layers.set(1));
-  scene.add(loft);
+    const loft = new THREE.Group();
+    const wallH = 4;
+    const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
+    body.position.y = wallH / 2;
+    body.castShadow = true;
+    loft.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = wallH + 1.2;
+    roof.castShadow = true;
+    loft.add(roof);
+    loft.position.set(bx, by, bz);
+    loft.rotation.y = Math.atan2(px - bx, pz - bz);
+    loft.traverse((o) => o.layers.set(1));
+    scene.add(loft);
 
-  const flockGroup = new THREE.Group();
-  flockGroup.position.set(bx, by, bz);
-  scene.add(flockGroup);
-  const birds = [];
-  const n = 7;
-  for (let k = 0; k < n; k++) {
-    const pg = makePigeon();
-    const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
-    pg.group.position.copy(home);
-    pg.group.rotation.y = (rand() - 0.5) * 1.2;
-    pg.group.traverse((o) => o.layers.set(1));
-    flockGroup.add(pg.group);
-    birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
-  }
-  return [{ center: new THREE.Vector3(bx, by, bz), triggerR: 14, scattered: false, timer: 0, birds }];
+    const flockGroup = new THREE.Group();
+    flockGroup.position.set(bx, by, bz);
+    scene.add(flockGroup);
+    const birds = [];
+    const n = 7;
+    for (let k = 0; k < n; k++) {
+      const pg = makePigeon();
+      const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
+      pg.group.position.copy(home);
+      pg.group.rotation.y = (rand() - 0.5) * 1.2;
+      pg.group.scale.setScalar(1.2); // a touch bigger so they read at race speed
+      pg.group.traverse((o) => o.layers.set(1));
+      flockGroup.add(pg.group);
+      for (const w of pg.wings) w.wg.rotation.z = w.sx * 0.12; // folded, so the proxy bakes the perched pose
+      birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
+    }
+    // Sleep proxy: a flock is ~42 small meshes, but it perches motionless for
+    // almost the whole race. Bake the perched pose into ONE merged mesh (one
+    // draw per shared pigeon material) and show THAT by default; the live,
+    // articulated birds only swap in when the player is close enough to see
+    // them bob / scatter (see updatePigeons). Same pattern as the leaf piles.
+    flockGroup.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(flockGroup.matrixWorld).invert();
+    const rel = new THREE.Matrix4();
+    const matOrder = [];
+    const geosByMat = new Map();
+    flockGroup.traverse((o) => {
+      if (!o.isMesh) return;
+      let g = o.geometry.clone();
+      g.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+      if (g.index) g = g.toNonIndexed();
+      if (!geosByMat.has(o.material)) { geosByMat.set(o.material, []); matOrder.push(o.material); }
+      geosByMat.get(o.material).push(g);
+    });
+    const perMat = matOrder.map((m) => mergeGeometries(geosByMat.get(m), false));
+    const proxy = new THREE.Mesh(mergeGeometries(perMat, true), matOrder);
+    proxy.castShadow = true; // stands in for the birds in the one-shot world shadow bake
+    proxy.layers.set(1);
+    proxy.position.copy(flockGroup.position);
+    scene.add(proxy);
+    flockGroup.visible = false; // live birds start asleep behind the proxy
+    // The trigger must reach the road: the loft sits halfWidth+7.5 off the
+    // CENTERLINE, so anything under that radius could never fire from a normal
+    // racing line (the old value, 14, was why nobody ever saw them scatter).
+    // halfWidth+24 covers the full road width in front of the loft.
+    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds, group: flockGroup, proxy, liveOn: false });
+  };
+  makeLoftAt(0.08);
+  makeLoftAt(0.55);
+  return flocks;
 }
 
 function updatePigeons(flock, dt, time, playerPos) {
   if (!flock.scattered) {
-    // Idle flocks the player isn't near don't even bob — a 4cm hop is invisible
-    // from 180u, and the scatter trigger only fires within a few units anyway.
-    // (A scattered flock keeps animating until it lands, wherever the player is.)
+    // Perched flocks far from the player sleep as the merged proxy mesh — the
+    // 4cm idle bob is invisible from distance, and the ~42 live meshes only
+    // swap in close up (past the scatter trigger's reach, so the handoff is
+    // never visible mid-burst). A scattered flock keeps its live birds until
+    // it lands, wherever the player is.
+    let near = true;
     if (playerPos) {
       const dx = playerPos.x - flock.center.x;
       const dz = playerPos.z - flock.center.z;
-      if (dx * dx + dz * dz > 180 * 180) return;
+      near = dx * dx + dz * dz < 60 * 60;
     }
+    if (near !== flock.liveOn) {
+      flock.liveOn = near;
+      flock.group.visible = near;
+      flock.proxy.visible = !near;
+    }
+    if (!near) return;
     for (const b of flock.birds) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
