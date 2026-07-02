@@ -3297,26 +3297,35 @@ function buildFireflies(scene, track, heightAt) {
 }
 
 // A single grey pigeon (perched, wings foldable). Returns { group, wings }.
+let _pigeonMats = null;
 function makePigeon() {
+  // One shared material set for every pigeon (they're all the same bird) — one
+  // toon pipeline per part instead of five fresh materials per pigeon.
+  if (!_pigeonMats) {
+    _pigeonMats = {
+      body: mat(0x9aa3ad), head: mat(0xb0b8c0), beak: mat(0xe0a52a),
+      tail: mat(0x7e878f), wing: mat(0x868f98),
+    };
+  }
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x9aa3ad));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), _pigeonMats.body);
   body.scale.set(1, 0.9, 1.4);
   body.castShadow = true;
   g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat(0xb0b8c0));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), _pigeonMats.head);
   head.position.set(0, 0.22, 0.34);
   g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), mat(0xe0a52a));
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), _pigeonMats.beak);
   beak.rotation.x = Math.PI / 2;
   beak.position.set(0, 0.2, 0.5);
   g.add(beak);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), mat(0x7e878f));
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), _pigeonMats.tail);
   tail.position.set(0, 0.02, -0.42);
   g.add(tail);
   const wings = [];
   for (const sx of [-1, 1]) {
     const wg = new THREE.Group();
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), mat(0x868f98));
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), _pigeonMats.wing);
     wing.position.x = sx * 0.3;
     wg.add(wing);
     wg.position.set(sx * 0.1, 0.05, 0);
@@ -3331,56 +3340,68 @@ function makePigeon() {
 function buildPigeons(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-  // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold in
-  // the loop doesn't drop this building onto a different stretch of road.
-  let bx, bz, px, pz;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const i = Math.floor(((0.08 + attempt * 0.07) % 1) * N);
-    const p = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-    const cx = p.x + side.x * outward * (track.halfWidth + 9);
-    const cz = p.z + side.z * outward * (track.halfWidth + 9);
-    if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 6) continue;
-    bx = cx;
-    bz = cz;
-    px = p.x; // road point the loft faces
-    pz = p.z;
-    break;
-  }
-  const by = heightAt(bx, bz);
+  const flocks = [];
+  // One loft on each half of the lap, so every race actually passes pigeons.
+  const makeLoftAt = (tStart) => {
+    // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold
+    // in the loop doesn't drop this building onto a different stretch of road.
+    let bx, bz, px, pz;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const i = Math.floor(((tStart + attempt * 0.07) % 1) * N);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const cx = p.x + side.x * outward * (track.halfWidth + 7.5);
+      const cz = p.z + side.z * outward * (track.halfWidth + 7.5);
+      if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 5) continue;
+      bx = cx;
+      bz = cz;
+      px = p.x; // road point the loft faces
+      pz = p.z;
+      break;
+    }
+    const by = heightAt(bx, bz);
 
-  const loft = new THREE.Group();
-  const wallH = 4;
-  const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
-  body.position.y = wallH / 2;
-  body.castShadow = true;
-  loft.add(body);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
-  roof.rotation.y = Math.PI / 4;
-  roof.position.y = wallH + 1.2;
-  roof.castShadow = true;
-  loft.add(roof);
-  loft.position.set(bx, by, bz);
-  loft.rotation.y = Math.atan2(px - bx, pz - bz);
-  loft.traverse((o) => o.layers.set(1));
-  scene.add(loft);
+    const loft = new THREE.Group();
+    const wallH = 4;
+    const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
+    body.position.y = wallH / 2;
+    body.castShadow = true;
+    loft.add(body);
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
+    roof.rotation.y = Math.PI / 4;
+    roof.position.y = wallH + 1.2;
+    roof.castShadow = true;
+    loft.add(roof);
+    loft.position.set(bx, by, bz);
+    loft.rotation.y = Math.atan2(px - bx, pz - bz);
+    loft.traverse((o) => o.layers.set(1));
+    scene.add(loft);
 
-  const flockGroup = new THREE.Group();
-  flockGroup.position.set(bx, by, bz);
-  scene.add(flockGroup);
-  const birds = [];
-  const n = 7;
-  for (let k = 0; k < n; k++) {
-    const pg = makePigeon();
-    const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
-    pg.group.position.copy(home);
-    pg.group.rotation.y = (rand() - 0.5) * 1.2;
-    pg.group.traverse((o) => o.layers.set(1));
-    flockGroup.add(pg.group);
-    birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
-  }
-  return [{ center: new THREE.Vector3(bx, by, bz), triggerR: 14, scattered: false, timer: 0, birds }];
+    const flockGroup = new THREE.Group();
+    flockGroup.position.set(bx, by, bz);
+    scene.add(flockGroup);
+    const birds = [];
+    const n = 7;
+    for (let k = 0; k < n; k++) {
+      const pg = makePigeon();
+      const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
+      pg.group.position.copy(home);
+      pg.group.rotation.y = (rand() - 0.5) * 1.2;
+      pg.group.scale.setScalar(1.2); // a touch bigger so they read at race speed
+      pg.group.traverse((o) => o.layers.set(1));
+      flockGroup.add(pg.group);
+      birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
+    }
+    // The trigger must reach the road: the loft sits halfWidth+7.5 off the
+    // CENTERLINE, so anything under that radius could never fire from a normal
+    // racing line (the old value, 14, was why nobody ever saw them scatter).
+    // halfWidth+24 covers the full road width in front of the loft.
+    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds });
+  };
+  makeLoftAt(0.08);
+  makeLoftAt(0.55);
+  return flocks;
 }
 
 function updatePigeons(flock, dt, time, playerPos) {
