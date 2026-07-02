@@ -539,15 +539,21 @@ function makeWaterMaterial(darken = 1) {
     .add(smoothstep(0.65, 0.98, w2.mul(0.5).add(0.5)).mul(0.4));
   let col = mix(deep, shallow, smoothstep(0.0, 1.0, shore));
   col = mix(col, col.mul(1.18), ripple.mul(0.5));
-  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
-  mat.colorNode = col;
-  // Fresnel: water mirrors much more at grazing angles (looking across it) than
-  // looking straight down — the key to a realistic reflective surface. Drive the
-  // SSR metalness with it. Foam fringe stays matte so the bank doesn't mirror.
+  // Fresnel "reflection": water brightens toward a sky tint at grazing angles
+  // (looking across it) — the cue that sells a reflective surface. This used to
+  // drive SSR metalness instead, but a flat up-facing plane viewed at grazing
+  // angles while driving past is SSR's worst case: the reflected bank slides
+  // off-screen and the half-res march collapses into blocky miss-patches that
+  // read as holes in the water (the same failure the puddles hit — see
+  // track.js _buildPuddles). Bake the sky tint like the puddles do and keep the
+  // lakes off the SSR path. Foam fringe stays matte so the bank doesn't tint.
   const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(3);
   const shoreFade = smoothstep(0.9, 0.7, shore);
-  mat.metalnessNode = float(0.35).add(fres.mul(0.55)).mul(shoreFade);
-  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // ripples shimmer the reflection
+  const skyTint = tslColor(0xcfe6f2).mul(0.4 + 0.6 * darken);
+  col = mix(col, skyTint, fres.mul(0.55).mul(shoreFade));
+  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
+  mat.colorNode = col;
+  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // tight sun glints; ripples shimmer them
   mat.opacityNode = float(0.92);
   // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
   // harmless no-op (animation is via `time`).
