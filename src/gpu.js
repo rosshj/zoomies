@@ -28,6 +28,9 @@ try {
 const _isIOS =
   /iphone|ipad|ipod/i.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+// Shared: iOS gets conservative GPU-memory choices elsewhere (its WebGPU device
+// loss under memory pressure is this game's one hard-crash mode).
+export const IS_IOS = _isIOS;
 const _iosMultiplayer = _isIOS && _params.has("mp") && !_params.has("webgpu");
 
 export const USE_WEBGPU = !_params.has("webgl") && !_preferWebGL && !_iosMultiplayer;

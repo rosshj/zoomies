@@ -1599,24 +1599,37 @@ function perfWatchdog(dt) {
   }
 }
 
+let _drsOverT = 0; // how long we've been continuously over budget
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
-    // Step proportional to how far over budget we are: a big spike (turning to
-    // face the sun, cresting a hill on a big map) drops resolution HARD in one
-    // move instead of crawling down 0.1 at a time over a couple of seconds.
+    // Only step down after the budget has been blown for a SUSTAINED beat. A
+    // transient spike — a jump's brief draw-call burst, a first-use shader
+    // compile — recovers on its own, and stepping down means REALLOCATING every
+    // render target, which is itself a hitch: reacting to a spike with a resize
+    // used to cascade spike → resize hitch → another "spike" → resize storm
+    // (and the allocation churn is exactly what pressures iOS toward device loss).
+    _drsOverT += dt;
+    if (_drsOverT < 0.5) return;
+    _drsOverT = 0;
+    // Step proportional to how far over budget we are: genuinely sustained
+    // overload (a big map's heavy stretch) drops resolution HARD in one move
+    // instead of crawling down 0.1 at a time over a couple of seconds.
     const over = _frameMs / 18.6;
     const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
     renderScale = Math.max(DRS_MIN, renderScale - step);
     applyResolution();
     _drsCooldown = 0.35;
-  } else if (_frameMs < 17.4 && renderScale < 1) {
-    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
-    applyResolution();
-    _drsCooldown = 1.4;
+  } else {
+    _drsOverT = 0;
+    if (_frameMs < 17.4 && renderScale < 1) {
+      renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
+      applyResolution();
+      _drsCooldown = 1.4;
+    }
   }
 }
 const qualityLowBtn = document.getElementById("set-quality-low");

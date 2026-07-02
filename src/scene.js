@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { attribute, uniform, color as tslColor } from "three/tsl";
-import { USE_WEBGPU } from "./gpu.js";
+import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 
 // Time-of-day moods. The chosen one (from the track's Time of Day setting) drives
 // applyMood(), which restyles the sky, sun/moon, lights, fog, stars and exposure,
@@ -94,10 +94,13 @@ export function createScene() {
   // per world/mood (fitSunShadow in main.js) — all mapped casters are static
   // scenery, so a static map can't flicker/pop and costs ~zero frames. Since it
   // renders once, resolution is purely a MEMORY choice: 4096 (64MB) keeps edges
-  // reasonably crisp over a whole track on High; devices persisted on Low get
-  // 2048. (The old per-frame 4096 render cost that forced 2048 no longer exists.)
-  let shadowSz = 4096;
-  try { if (localStorage.getItem("zoomies-quality") === "low") shadowSz = 2048; } catch { /* default high */ }
+  // reasonably crisp over a whole track on High. iOS is capped at 2048 whatever
+  // the tier — its WebGPU loses the device under memory pressure (the game's one
+  // hard-crash mode; repeated jumps mid-race triggered it on a 4096 map), and
+  // 16MB vs 64MB is exactly the kind of headroom that decides it. Low tier gets
+  // 2048 everywhere.
+  let shadowSz = IS_IOS ? 2048 : 4096;
+  try { if (localStorage.getItem("zoomies-quality") === "low") shadowSz = 2048; } catch { /* keep default */ }
   sun.shadow.mapSize.set(shadowSz, shadowSz);
   // Initial bounds are placeholders — fitSunShadow overwrites them on frame one.
   const s = 85;
