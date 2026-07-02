@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { attribute, color as tslColor, float, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
+import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
 import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -450,21 +450,26 @@ export class Track {
       g.translate(0, pl.gy + 0.04, 0); // sit flush on this puddle's ground
       return g;
     });
-    // Wet puddles: a glossy node-material whose "reflection" is a Fresnel sky
-    // tint baked into the colour — the surface brightens toward the sky at
-    // grazing angles, the cue that sells wetness. (These used to also carry SSR
-    // metalness, but puddles face UP so the rays mostly pointed at off-screen
-    // sky and missed; the SSR pass has since been removed entirely — see
-    // main.js — so the baked tint is the whole effect, kept metalness-free.)
+    // Wet puddles reflect the SKY (they face up), so the "reflection" is a bright
+    // sky tint baked into the colour. The earlier version only showed it at
+    // grazing angles via a steep fresnel — but you drive over puddles looking
+    // DOWN at them, where fresnel≈0, so they read as flat dark patches (the
+    // reported "no longer reflective"). Now the sky mirror shows at ALL angles
+    // (a base 55% blend), brightens further toward grazing, and a moving glint
+    // shimmers across it — a convincing wet mirror without the SSR pass.
     const pmat = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
     const edge = attribute("aEdge");
     const glint = positionWorld.x.mul(1.3).add(positionWorld.z.mul(1.1)).add(time.mul(1.6)).sin().mul(0.5).add(0.5);
-    // 0 looking straight down, 1 at grazing angle — water brightens toward the sky tint at the rim.
-    const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(2.5);
-    const skyTint = tslColor(0x9fb6cc); // soft daylight-sky reflection colour
-    pmat.colorNode = tslColor(0x16252f).add(skyTint.mul(fres.mul(0.7))).add(glint.mul(0.05));
-    pmat.roughnessNode = float(0.08); // tight sun glints keep the surface reading glossy
-    pmat.opacityNode = float(0.55).add(fres.mul(0.4)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
+    // 0 looking straight down, 1 at grazing — softer power so the sky reflection
+    // is strong even from the near-overhead driving view.
+    const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(1.5);
+    const skyRefl = tslColor(0x8fb2d4); // the daytime sky the puddle mirrors
+    const wetDark = tslColor(0x14212c); // wet-asphalt tone seen straight down
+    const sky = float(0.5).add(fres.mul(0.42)); // 50% sky top-down → ~92% at grazing
+    pmat.colorNode = mix(wetDark, skyRefl, sky).add(glint.mul(0.16));
+    pmat.metalnessNode = float(0); // no env/SSR to catch — the reflection is baked in colour
+    pmat.roughnessNode = float(0.06); // glossy so the sun glint stays tight
+    pmat.opacityNode = float(0.74).add(fres.mul(0.22)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
     pmat.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
     const mesh = new THREE.Mesh(mergeGeometries(geoms), pmat);
     mesh.renderOrder = 1;
