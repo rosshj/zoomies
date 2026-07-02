@@ -333,6 +333,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
@@ -1566,6 +1567,71 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
 // Festive bulb strings strung in a catenary over a few road spans. The bulbs are
 // bright un-tonemapped colours, so bloom makes them twinkle/glow at night while
 // still reading as little fairy lights by day. One instanced mesh for all bulbs.
+// City traffic signals: a dark metal pole with a mast arm reaching over the
+// road edge and a 3-lens head (red / amber / green) — always showing GREEN
+// (this is a race, nobody stops). One every ~60u of city road, alternating
+// sides. Static + shared materials, so batchStaticProps() merges the lot into
+// a few draws; the green lens is emissive so it glows at dusk/night.
+let _tlMats = null;
+function buildTrafficLights(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  if (!_tlMats) {
+    _tlMats = {
+      pole: mat(0x3c4047, { roughness: 0.5, metalness: 0.45 }),
+      head: mat(0x1f2327, { roughness: 0.6 }),
+      red: mat(0x4a2a28, { roughness: 0.4 }), // unlit dark-red lens
+      amber: mat(0x4a3d20, { roughness: 0.4 }), // unlit dark-amber lens
+      green: mat(0x2ecc55, { roughness: 0.4, emissive: 0x2ecc55, emissiveIntensity: 1.9 }), // LIT
+    };
+  }
+  const spacing = track.length / N;
+  const step = Math.max(1, Math.round(60 / spacing));
+  let flip = 1;
+  for (let i = 0; i < N; i += step) {
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== "city") continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    flip = -flip; // alternate sides down the boulevard
+    const off = track.halfWidth + 2.2;
+    const x = p.x + side.x * flip * off;
+    const z = p.z + side.z * flip * off;
+    if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
+    if (_inLake(x, z)) continue;
+
+    const g = new THREE.Group();
+    const armY = 7.8, armLen = 4.6;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, armY + 0.2, 8), _tlMats.pole);
+    pole.position.y = (armY + 0.2) / 2;
+    pole.castShadow = true;
+    g.add(pole);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, armLen, 8), _tlMats.pole);
+    arm.rotation.x = Math.PI / 2; // lie along local +Z (toward the road)
+    arm.position.set(0, armY, armLen / 2);
+    arm.castShadow = true;
+    g.add(arm);
+    // Signal head hanging near the arm's end: dark housing + three lenses that
+    // poke out of BOTH faces (readable from either driving direction).
+    const headZ = armLen - 0.5;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.5, 0.52), _tlMats.head);
+    head.position.set(0, armY - 0.85, headZ);
+    head.castShadow = true;
+    g.add(head);
+    const lensDefs = [[_tlMats.red, 0.46], [_tlMats.amber, 0], [_tlMats.green, -0.46]];
+    for (const [m, dy] of lensDefs) {
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), m);
+      lens.position.set(0, armY - 0.85 + dy, headZ);
+      g.add(lens);
+    }
+    g.position.set(x, heightAt(x, z), z);
+    // Local +Z points from the pole back toward the road centre.
+    g.rotation.y = Math.atan2(-side.x * flip, -side.z * flip);
+    g.traverse((o) => o.layers.set(1));
+    g.userData.staticProp = true; // merged by batchStaticProps()
+    scene.add(g);
+  }
+}
+
 function buildStringLights(scene, track, level = 0, heightAt = null) {
   const up = new THREE.Vector3(0, 1, 0);
   const N = track.samples;
@@ -1585,6 +1651,9 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   for (let s = 0; s < SPANS; s++) {
     const i = Math.floor(((s + 0.5) / SPANS + rand() * 0.12) * N) % N;
     const p = track._pts[i];
+    // Festive bulb strings don't belong downtown — city stretches get traffic
+    // lights instead (buildTrafficLights).
+    if (biomeAt(p.x, p.z).name === "city") continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
     const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
