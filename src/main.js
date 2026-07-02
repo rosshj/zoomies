@@ -2788,7 +2788,7 @@ function beginRace() {
   }
 
   prepareRace();
-  countdown = 3.999;
+  countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
   countdownCalibrated = false;
   prevCountN = 99;
   track.setStartLight?.("off"); // gantry dark until the countdown's first red
@@ -3768,14 +3768,16 @@ function loop(now) {
     else countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
-    const n = Math.ceil(countdown - 1);
-    hud.showToast(n > 0 ? `${n}` : "GO!");
-    // A beep on each 3/2/1 and a higher GO! chirp, as the number changes — and
-    // the start-light gantry steps through its traffic-light sequence with it:
-    // red through 3/2, amber at 1, green on GO.
-    if (n !== prevCountN && n <= 3) {
-      audio.countdownBeep(Math.max(0, n));
-      track.setStartLight?.(n >= 2 ? "red" : n === 1 ? "amber" : "green");
+    // The whole GO moment — toast, chirp, GREEN light — fires at the actual
+    // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
+    // lit the light early) for the final ~1s while input was still locked.
+    const n = Math.ceil(countdown);
+    if (n >= 1 && n <= 3) hud.showToast(`${n}`);
+    // A beep on each 3/2/1 as the number changes, and the start-light gantry
+    // steps with it: red through 3/2, amber at 1. Green comes with GO.
+    if (n !== prevCountN && n >= 1 && n <= 3) {
+      audio.countdownBeep(n);
+      track.setStartLight?.(n >= 2 ? "red" : "amber");
       prevCountN = n;
     }
     // Re-zero steering near the end of the countdown, once the player has
@@ -3787,6 +3789,9 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      hud.showToast("GO!");
+      audio.countdownBeep(0); // the higher GO! chirp, exactly as control unlocks
+      track.setStartLight?.("green"); // green means green: karts can move NOW
       audio.startEngine(); // engines fire up on the green light
       audio.playMusic("bg");
       // Hold everyone's first shot for an opening grace period.
