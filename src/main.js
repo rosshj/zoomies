@@ -478,7 +478,11 @@ function grantItem(kart) {
 // ZERO spare lights — a budget of 8 left 2 spotlights always allocated but unused,
 // and every dynamic light costs per-pixel even at zero intensity. Larger MP lobbies
 // fall back to bulbs beyond the budget (the per-frame assignment handles that).
-const HEADLIGHT_BUDGET = 6; // = ROSTER size; was 8 (2 wasted always-on lights at night)
+// Night: every kart gets a beam (= roster size). Sunset: the sky still lights
+// the road, beams are accent — player + 3 nearest karts read the same, and each
+// spotlight is per-fragment cost across the whole screen (sunset already runs
+// nearest the frame budget: god rays + weather + string lights).
+const HEADLIGHT_BUDGET = LIGHT_LEVEL >= 0.9 ? 6 : 4;
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
@@ -1591,12 +1595,17 @@ const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
 let _wdAccum = 0;
 function perfWatchdog(dt) {
   if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
-  // Only when DRS has already bottomed out AND frames are still very long (~25 fps).
-  if (_frameMs > 40 && renderScale <= DRS_MIN + 0.02) {
+  // Only when DRS has already bottomed out AND frames are still long (~30 fps).
+  // 40ms (25 fps) never fired in practice: real dips hover in the 25-45 fps
+  // band — heavy sunset scenes and a thermally throttling phone both land
+  // there — which is exactly when shedding the High-tier effects helps most.
+  if (_frameMs > 33 && renderScale <= DRS_MIN + 0.02) {
     _wdAccum += dt;
-    if (_wdAccum >= 4) {
+    if (_wdAccum >= 5) {
       _wdAccum = 0;
-      applyQuality("low"); // persists, so a struggling device stays Low next launch
+      // Session-only (no persist): a capable phone that's merely hot shouldn't
+      // be locked to Low forever — next launch starts fresh on the saved tier.
+      applyQuality("low", false);
       hud.showToast?.("Graphics lowered for a smoother race");
     }
   } else {
