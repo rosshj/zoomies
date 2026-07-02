@@ -417,6 +417,7 @@ initProps(scene, track, {
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
   props = p;
+  window.__zoomies.props = p; // debug hook (headless probes target live box positions)
 });
 
 const BOX_COOLDOWN = 3; // s — a kart can't vacuum up boxes back-to-back

@@ -62,9 +62,10 @@ export const BOOST_RECHARGE = 1 / 16;
 // inflection, don't each pop a boost on the straight.
 const MIN_DRIFT_CHARGE = 0.5;
 
-// Soft radial blob used as a contact/grounding shadow under each kart.
+// Soft radial blob used as a contact/grounding shadow under each kart (also
+// shared by the prop/item-box shadows in props.js, so they match).
 let _shadowTex = null;
-function shadowTexture() {
+export function shadowTexture() {
   if (_shadowTex) return _shadowTex;
   const c = document.createElement("canvas");
   c.width = c.height = 64;
