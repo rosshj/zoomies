@@ -823,11 +823,54 @@ export class Track {
             ctx.fillRect(x0 + x * sq, 12 + y * sq, sq, sq);
           }
       }
+      // Lettering, vertically centred from MEASURED font metrics ("middle"
+      // baseline sits visibly high for system fonts, which is what made the old
+      // text ride above centre on the banner).
       ctx.fillStyle = "#ffffff";
-      ctx.font = `bold ${Math.round(ch * 0.58)}px system-ui, sans-serif`;
+      ctx.font = `bold ${Math.round(ch * 0.56)}px system-ui, sans-serif`;
       ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText("ZOOMIES GP", cw / 2, ch / 2 + 4);
+      ctx.textBaseline = "alphabetic";
+      const m = ctx.measureText("ZOOMIES GP");
+      const asc = m.actualBoundingBoxAscent ?? ch * 0.4;
+      const desc = m.actualBoundingBoxDescent ?? 0;
+      ctx.fillText("ZOOMIES GP", cw / 2, ch / 2 + (asc - desc) / 2);
+
+      // The app-icon cat face on each side of the lettering (same shapes as
+      // tools/gen-icons.mjs, drawn as paths in the icon's normalized coords).
+      const face = (cx, cy, s) => {
+        const X = (u) => cx + (u - 0.5) * s;
+        const Y = (v) => cy + (v - 0.5) * s;
+        const tri = (t, col) => {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(X(t[0]), Y(t[1]));
+          ctx.lineTo(X(t[2]), Y(t[3]));
+          ctx.lineTo(X(t[4]), Y(t[5]));
+          ctx.closePath();
+          ctx.fill();
+        };
+        const ell = (u, v, ru, rv, col) => {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.ellipse(X(u), Y(v), ru * s, rv * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+        };
+        tri([0.27, 0.42, 0.33, 0.1, 0.47, 0.32], "#f4a93a"); // ears
+        tri([0.73, 0.42, 0.67, 0.1, 0.53, 0.32], "#f4a93a");
+        ell(0.5, 0.57, 0.3, 0.29, "#f4a93a"); // head
+        tri([0.32, 0.4, 0.35, 0.18, 0.43, 0.33], "#ff8fab"); // inner ears
+        tri([0.68, 0.4, 0.65, 0.18, 0.57, 0.33], "#ff8fab");
+        ell(0.5, 0.66, 0.16, 0.1, "#ffe7c7"); // muzzle
+        ell(0.4, 0.55, 0.055, 0.08, "#9ccc65"); // eyes
+        ell(0.6, 0.55, 0.055, 0.08, "#9ccc65");
+        ell(0.4, 0.55, 0.02, 0.06, "#111111"); // pupils
+        ell(0.6, 0.55, 0.02, 0.06, "#111111");
+        tri([0.47, 0.62, 0.53, 0.62, 0.5, 0.67], "#ff6f9b"); // nose
+      };
+      const fs = ch * 1.06; // face box; the drawn face fills ~3/4 of it
+      const gap = fs * 0.62;
+      face(cw / 2 - m.width / 2 - gap, ch / 2 + ch * 0.03, fs);
+      face(cw / 2 + m.width / 2 + gap, ch / 2 + ch * 0.03, fs);
       const tex = new THREE.CanvasTexture(c);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
