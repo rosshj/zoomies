@@ -334,6 +334,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
+  buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
@@ -1629,6 +1630,109 @@ function buildTrafficLights(scene, track, heightAt) {
     g.traverse((o) => o.layers.set(1));
     g.userData.staticProp = true; // merged by batchStaticProps()
     scene.add(g);
+  }
+}
+
+// City road details: zebra CROSSWALKS at the signal spots (reads as an
+// intersection) and scattered MANHOLE COVERS along the boulevard. Both are flat
+// decals in two InstancedMeshes — 2 draws for the whole city.
+function buildCityRoadDetails(scene, track, heightAt) {
+  const N = track.samples;
+  const spacing = track.length / N;
+
+  // Zebra-stripe texture: white bars elongated ALONG the driving direction,
+  // repeated across the road (transparent between bars, slightly worn).
+  const cwTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = 512;
+    c.height = 64;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "rgba(248,248,248,0.92)";
+    const bars = 16;
+    const bw = c.width / bars;
+    for (let i = 0; i < bars; i += 2) ctx.fillRect(i * bw + 2, 3, bw - 4, c.height - 6);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  })();
+
+  // Manhole texture: dark iron disc with a lighter rim and cross-hatch.
+  const mhTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#2e3236";
+    ctx.beginPath();
+    ctx.arc(32, 32, 31, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#4a5056";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    for (let i = -2; i <= 2; i++) { // cross-hatch tread lines
+      ctx.beginPath();
+      ctx.moveTo(10, 32 + i * 8);
+      ctx.lineTo(54, 32 + i * 8);
+      ctx.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+
+  // Collect spots first, then bake each set into ONE InstancedMesh.
+  const cwSpots = []; // { p, tan } — centred on the road at the signal samples
+  const mhSpots = []; // { x, y, z, yaw } — scattered on the tarmac
+  const cwStep = Math.max(1, Math.round(60 / spacing)); // matches buildTrafficLights
+  for (let i = 0; i < N; i += cwStep) {
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== "city") continue;
+    cwSpots.push({ p, tan: track._tans[i] });
+  }
+  const mhStep = Math.max(1, Math.round(23 / spacing));
+  for (let i = 0; i < N; i += mhStep) {
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== "city") continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], UP_Y).normalize();
+    const lat = (rand() * 2 - 1) * (track.halfWidth - 4); // on the tarmac, off the racing edge
+    mhSpots.push({ x: p.x + side.x * lat, y: p.y, z: p.z + side.z * lat, yaw: rand() * Math.PI });
+  }
+
+  const dummy = new THREE.Object3D();
+  if (cwSpots.length) {
+    const geo = new THREE.PlaneGeometry(track.width * 0.86, 3.0);
+    const mat_ = new THREE.MeshStandardMaterial({ map: cwTex, transparent: true, roughness: 0.9, depthWrite: false });
+    const mesh = new THREE.InstancedMesh(geo, mat_, cwSpots.length);
+    cwSpots.forEach((s, k) => {
+      // Offset a few units past the signal sample so the stripes sit "before"
+      // the light like a real intersection (and never under the start line).
+      dummy.position.set(s.p.x + s.tan.x * 4, s.p.y + 0.05, s.p.z + s.tan.z * 4);
+      dummy.rotation.set(-Math.PI / 2, 0, -Math.atan2(s.tan.z, s.tan.x) + Math.PI / 2);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(k, dummy.matrix);
+    });
+    mesh.renderOrder = 1;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false; // instances span the map; geometry bounds would cull wrongly
+    scene.add(mesh);
+  }
+  if (mhSpots.length) {
+    const geo = new THREE.CircleGeometry(0.55, 16);
+    const mat_ = new THREE.MeshStandardMaterial({ map: mhTex, transparent: true, roughness: 0.85, depthWrite: false });
+    const mesh = new THREE.InstancedMesh(geo, mat_, mhSpots.length);
+    mhSpots.forEach((s, k) => {
+      dummy.position.set(s.x, s.y + 0.04, s.z);
+      dummy.rotation.set(-Math.PI / 2, 0, s.yaw);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(k, dummy.matrix);
+    });
+    mesh.renderOrder = 1;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
   }
 }
 
