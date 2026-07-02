@@ -42,6 +42,12 @@ const BIOMES = [
   { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", treeShape: "acacia", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
   // Frosted tundra: pale sage ground, short blue-green pines, light snow.
   { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", treeShape: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
+  // Downtown: grey asphalt boulevard lined with tall towers, no natural trees,
+  // hazard-striped barriers. Buildings come from the urban path in buildRoadside.
+  { name: "city", weather: "none", ground: 0x6b6f76, ground2: 0x565a61, foliage: [0.55, 0.1, 0.4], style: "urban", treeShape: "none", sx: 1.0, sy: 1.0, treeDensity: 0, grassTint: 0x8a9488, grassDensity: 0.05, barrier: { a: 0xf2c94c, b: 0x2b2b2b } },
+  // Seaside: pale sand, tall palms, and a shoreline (the sea is a large sandy-shored
+  // lake placed in the beach sectors — see makeLakes). Sea-blue + sand barriers.
+  { name: "beach", weather: "none", ground: 0xe6d6a2, ground2: 0xd4bf84, foliage: [0.28, 0.5, 0.42], style: "beach", treeShape: "palm", sx: 0.7, sy: 1.6, treeDensity: 0.22, grassTint: 0xdccf9a, grassDensity: 0.22, barrier: { a: 0xe8cf96, b: 0x5aa0cf } },
 ];
 for (const b of BIOMES) {
   b.groundCol = new THREE.Color(b.ground);
@@ -479,6 +485,42 @@ function makeLakes(track, baseHeight) {
       waterR, shoreR, blendR,
     });
     placedHill++;
+  }
+
+  // Seaside: for each stretch of BEACH biome, drop a large lake with a WIDE flat
+  // sandy shore on the outward side, so the beach has open water and a shoreline
+  // in view. Reuses the lake carve + water + shore system wholesale (the carved
+  // shore automatically takes the beach's sand colour), so there's no bespoke
+  // ocean plumbing. The push-out loop guarantees the shore/blend clears the road.
+  {
+    const beachIdx = [];
+    for (let i = 0; i < N; i += 3) {
+      const p = track._pts[i];
+      if (biomeAt(p.x, p.z).name === "beach") beachIdx.push(i);
+    }
+    const picks = [];
+    if (beachIdx.length) {
+      picks.push(beachIdx[Math.floor(beachIdx.length * 0.35)]);
+      if (beachIdx.length > 10) picks.push(beachIdx[Math.floor(beachIdx.length * 0.78)]);
+    }
+    for (const i of picks) {
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const waterR = 58;
+      const shoreR = waterR + 30; // wide flat sandy beach at the water's edge
+      const blendR = shoreR + 16;
+      for (let push = 0; push < 6; push++) {
+        const off = track.halfWidth + blendR + 10 + push * 16;
+        const x = p.x + side.x * outward * off;
+        const z = p.z + side.z * outward * off;
+        if (track.distanceToCenter(x, z) < track.halfWidth + blendR + 8) continue; // shore/blend would touch the road
+        if (lakes.some((L) => (L.ribbon ? lakeDist(L, x, z) : Math.hypot(x - L.x, z - L.z)) < blendR + (L.blendR || 0) + 6)) continue;
+        const level = baseHeight(x, z) - 1.5;
+        lakes.push({ x, z, level, floor: level - 7, waterR, shoreR, blendR, beach: true });
+        break;
+      }
+    }
   }
   return lakes;
 }
@@ -1245,7 +1287,7 @@ function buildTrees(scene, track, heightAt, flatten) {
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
     .filter((s) => s.y <= 30 && rand() < s.b.treeDensity);
 
-  const leafy = spots.filter((s) => s.b.treeShape !== "cactus");
+  const leafy = spots.filter((s) => s.b.treeShape !== "cactus" && s.b.treeShape !== "none");
   const cacti = spots.filter((s) => s.b.treeShape === "cactus");
   if (leafy.length) buildShapedTrees(scene, leafy);
   if (cacti.length) buildCacti(scene, cacti);
@@ -1280,6 +1322,25 @@ function foliageGeoFor(shape) {
       [0.3, 2.85, 0.2, 1.3], [-0.4, 1.55, 1.0, 1.1], [0.9, 1.6, -0.9, 1.05],
     ];
     g = mergeGeometries(blobs.map(([x, y, z, r]) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z)));
+  } else if (shape === "palm") {
+    // A crown of long drooping fronds radiating from the trunk top: elongated,
+    // flattened cones tilted outward + down, ringed around Y (a palm silhouette).
+    const fronds = [];
+    const n = 8;
+    for (let i = 0; i < n; i++) {
+      const f = new THREE.ConeGeometry(0.42, 3.4, 4);
+      f.scale(1, 1, 0.5); // flatten into a frond blade
+      f.rotateZ(Math.PI / 2); // lay it pointing +X
+      f.translate(1.9, 0, 0); // push out from the centre
+      f.rotateZ(-0.42 - (i % 2) * 0.12); // droop (alternating a touch)
+      f.rotateY((i / n) * Math.PI * 2);
+      fronds.push(f);
+    }
+    // Hub is a Sphere (indexed) to match the Cone fronds (also indexed) — mixing
+    // an indexed + non-indexed geometry makes mergeGeometries return null.
+    fronds.push(new THREE.SphereGeometry(0.5, 6, 5).translate(0, 0.1, 0));
+    g = mergeGeometries(fronds);
+    g.translate(0, 0.4, 0);
   } else {
     // round (deciduous): a single faceted lollipop crown.
     g = new THREE.IcosahedronGeometry(2.3, 1).scale(1, 0.95, 1).translate(0, 2.15, 0);
@@ -1290,7 +1351,7 @@ function foliageGeoFor(shape) {
 
 // How much taller/shorter the (shared) trunk stretches per shape, so acacias get a
 // long bare trunk under their umbrella while the rest keep stocky trunks.
-const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95 };
+const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95, palm: 1.7 };
 
 // Biome-diverse trees. One shared brown trunk InstancedMesh for the whole batch,
 // plus ONE foliage InstancedMesh per distinct canopy shape present (round / pine /
@@ -2268,18 +2329,18 @@ function buildRoadside(scene, track, heightAt) {
 
     for (const dir of [1, -1]) {
       if (town) {
-        // Front shops by the road. Placed at halfW+9.. (not +5): a town building's
-        // overhanging pyramid roof reaches ~6.65 back toward the road from its
-        // centre, so the old +5 let roof corners (and awnings/L-wings) hang over
-        // the tarmac. +9 keeps the whole footprint clear of the barrier.
+        // Front structures by the road. City sectors get tall glass TOWERS; every
+        // other biome gets the small-town building. Placed at halfW+9.. (not +5):
+        // a town building's overhanging pyramid roof reaches ~6.65 back toward the
+        // road, so the old +5 let roof corners hang over the tarmac. +9 clears it.
         if (rand() < 0.62 + density * 0.32)
-          place((b) => makeTownStructure(density, b), halfW + 9 + rand() * 3, dir, p, side, true);
-        // Several rows of houses stacking back up the hillside, thinning with
-        // depth so the town recedes into the hills instead of being a thin strip.
+          place((b) => (b.name === "city" ? makeTower(density) : makeTownStructure(density, b)), halfW + 9 + rand() * 3, dir, p, side, true);
+        // Several rows stacking back from the road, thinning with depth so the town
+        // (or skyline) recedes into the distance instead of being a thin strip.
         const rows = [13, 24, 36, 50, 66];
         for (let r = 0; r < rows.length; r++) {
           if (rand() < (0.52 + density * 0.4) * (1 - r * 0.15))
-            place((b) => makeBuilding(density, b), halfW + rows[r] + rand() * 7, dir, p, side, true);
+            place((b) => (b.name === "city" ? makeTower(density) : makeBuilding(density, b)), halfW + rows[r] + rand() * 7, dir, p, side, true);
         }
         if (rand() < 0.5)
           place(makeStreetProp, halfW + 3.2 + rand() * 1.4, dir, p, side, true);
@@ -2440,6 +2501,44 @@ function makeBuilding(density, biome) {
   solid.receiveShadow = true;
   g.add(solid);
   g.userData.isBuilding = true; // collected + merged by batchBuildings() to slash draw calls
+  return g;
+}
+
+// A downtown TOWER for the city biome: a tall glass-and-concrete high-rise with
+// horizontal floor bands, a parapet, and a rooftop unit/antenna. Same 2-mesh
+// (body + solid) structure as makeBuilding so batchBuildings() merges it too.
+const CITY_WALLS = [0x8b93a0, 0x9aa6b2, 0x76808c, 0xa7b0bc, 0x6f7b88, 0xaeb6c0, 0x8090a8];
+const CITY_TRIM = [0x3a4048, 0x2b2f36, 0x4a5058];
+function makeTower(density) {
+  const g = new THREE.Group();
+  const w = 5 + rand() * 4.5;
+  const d = 5 + rand() * 4.5;
+  const floors = 4 + Math.floor(rand() * (4 + density * 6)); // ~4..14 storeys
+  const fh = 2.8;
+  const h = floors * fh;
+  const base = 0.4;
+  const top = base + h;
+  const wall = pick(CITY_WALLS);
+  const trim = pick(CITY_TRIM);
+  const body = new THREE.Mesh(roundedColumn(w, h, d, 0.5).translate(0, base + h / 2, 0), bodyMaterial(wall));
+  body.castShadow = true;
+  body.receiveShadow = true;
+  body.userData.bodyWall = wall; // batchBuildings() bakes this into vertex colour
+  g.add(body);
+
+  const parts = [];
+  part(parts, new THREE.BoxGeometry(w + 0.4, base, d + 0.4).translate(0, base / 2, 0), 0x40454d); // plinth
+  for (let f = 1; f < floors; f++) {
+    part(parts, new THREE.BoxGeometry(w + 0.08, 0.14, d + 0.08).translate(0, base + f * fh, 0), trim); // floor spandrel band
+  }
+  part(parts, new THREE.BoxGeometry(w + 0.2, 0.5, d + 0.2).translate(0, top + 0.25, 0), trim); // roof parapet
+  part(parts, new THREE.BoxGeometry(w * 0.42, 1.0, d * 0.42).translate((rand() - 0.5) * w * 0.3, top + 0.9, (rand() - 0.5) * d * 0.3), 0x555b63); // rooftop unit
+  if (rand() < 0.5) part(parts, new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5).translate(w * 0.22, top + 1.7, d * 0.2), 0x2a2a2a); // antenna
+  const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.castShadow = true;
+  solid.receiveShadow = true;
+  g.add(solid);
+  g.userData.isBuilding = true;
   return g;
 }
 
