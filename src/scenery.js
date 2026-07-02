@@ -327,6 +327,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
+  batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
   const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
@@ -2088,6 +2089,11 @@ function buildRoadside(scene, track, heightAt) {
       : rand() * Math.PI * 2;
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
+    // Anything that never moves is merged by batchStaticProps() after placement
+    // (a bench/fence/bush is 2-6 meshes each — hundreds of draw calls that all
+    // collapse into a few per area). Animated props (wandering animals, spinning
+    // windmill sails) keep their own meshes.
+    if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
     if (prop.userData.wander && _critters.length < 48) {
       _critters.push({
@@ -2372,6 +2378,74 @@ function batchBuildings(scene) {
   }
 }
 
+// Merge the static street/farm props (benches, fences, bushes, planters, market
+// stalls, signs, hay bales…) the way batchBuildings merges houses. Each prop is
+// 2-6 little meshes; a town sightline used to submit HUNDREDS of them as
+// individual draw calls. Props share no material INSTANCES (mat() mints one per
+// call), so meshes are grouped by a key of the material's properties and merged
+// per 150u chunk — one draw call per (chunk, look) instead of one per plank.
+function batchStaticProps(scene) {
+  scene.updateMatrixWorld(true);
+  const groups = [];
+  scene.traverse((o) => { if (o.userData && o.userData.staticProp) groups.push(o); });
+  if (!groups.length) return;
+  const CHUNK = 150; // world units per merge bucket (coarse culling granularity)
+  const buckets = new Map();
+  const keep = []; // meshes that can't merge (textured/exotic) — reparent, don't drop
+  for (const g of groups) {
+    const bKey = Math.round(g.position.x / CHUNK) + "_" + Math.round(g.position.z / CHUNK);
+    let bucket = buckets.get(bKey);
+    if (!bucket) buckets.set(bKey, (bucket = new Map()));
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = o.material;
+      // Only plain, un-textured standard materials merge safely; anything else
+      // (maps, node materials, arrays) survives as its own mesh.
+      if (!m || Array.isArray(m) || !m.isMeshStandardMaterial || m.map || m.transparent) {
+        keep.push(o);
+        return;
+      }
+      const mKey = `${m.color.getHexString()}|${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}`;
+      let entry = bucket.get(mKey);
+      if (!entry) bucket.set(mKey, (entry = { material: m, geos: [] }));
+      let geo = o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld); // bake world transform
+      if (geo.index) geo = geo.toNonIndexed(); // mergeGeometries can't mix indexed/non
+      for (const a of Object.keys(geo.attributes)) {
+        if (a !== "position" && a !== "normal" && a !== "uv") geo.deleteAttribute(a);
+      }
+      entry.geos.push(geo);
+    });
+  }
+  for (const o of keep) scene.attach(o); // preserve world transform outside the doomed group
+  // Materials are minted per call by mat(); each look keeps ONE representative
+  // (referenced by the merged mesh below) and the duplicates are disposed.
+  const heldMats = new Set();
+  for (const bucket of buckets.values()) for (const e of bucket.values()) heldMats.add(e.material);
+  for (const g of groups) {
+    g.parent && g.parent.remove(g);
+    g.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (!heldMats.has(o.material)) o.material.dispose?.();
+      }
+    });
+  }
+  for (const bucket of buckets.values()) {
+    for (const { material, geos } of bucket.values()) {
+      if (!geos.length) continue;
+      const merged = mergeGeometries(geos, false);
+      geos.forEach((gg) => gg.dispose());
+      if (!merged) continue;
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.layers.set(1); // match the originals (scenery layer, out of the mirror)
+      scene.add(mesh);
+    }
+  }
+}
+
 // Pick a town structure — mostly houses, occasionally a landmark.
 function makeTownStructure(density, biome) {
   const r = rand();
@@ -2436,6 +2510,7 @@ function makeWindmill() {
   }
   g.add(hub);
   _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28 });
+  g.userData.animated = true; // the sail hub spins — keep out of the static-prop batch
   return g;
 }
 

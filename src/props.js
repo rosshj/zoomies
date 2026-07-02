@@ -7,6 +7,7 @@
 // their tumble is local, so multiplayer needs no physics sync).
 import * as THREE from "three";
 import { makeRng } from "./rng.js";
+import { mergeMeshes } from "./models.js";
 
 export async function initProps(scene, track, opts = {}) {
   try {
@@ -156,7 +157,33 @@ function build(scene, track, opts) {
     // scattered any number of times (settled leaves just get kicked up again).
     // wind* is a lingering wake the passing kart deposits (see update): it keeps
     // carrying + swirling the airborne leaves for a beat after the kart is gone.
-    leafPiles.push({ x, z, groundY, r: w, leaves, windX: 0, windZ: 0, windUp: 0, swirl: 0, windT: 0 });
+    const lp = { x, z, groundY, r: w, leaves, g, merged: null, dormant: false, windX: 0, windZ: 0, windUp: 0, swirl: 0, windT: 0 };
+    _mergePile(lp); // piles start settled — one merged mesh instead of ~15 draws
+    leafPiles.push(lp);
+  };
+
+  // Draw-call saver: a settled pile renders as ONE merged mesh (per-material
+  // groups, so ≤4 draws) instead of ~15 individual leaves. The individual leaf
+  // meshes only render while the pile is actually being kicked around; once every
+  // leaf sleeps again, the merged proxy is rebaked at the new resting pose. The
+  // sim (kick/flutter/settle in update) is untouched — this is purely how the
+  // resting state reaches the GPU.
+  const _mergePile = (lp) => {
+    if (lp.merged) {
+      lp.g.remove(lp.merged);
+      lp.merged.geometry.dispose(); // materials are the shared leafMats — keep
+    }
+    for (const lf of lp.leaves) lf.mesh.updateMatrix();
+    lp.merged = mergeMeshes(lp.leaves.map((lf) => lf.mesh), { castShadow: true });
+    lp.g.add(lp.merged);
+    for (const lf of lp.leaves) lf.mesh.visible = false;
+    lp.dormant = true;
+  };
+  const _wakePile = (lp) => {
+    if (!lp.dormant) return;
+    lp.dormant = false;
+    if (lp.merged) lp.merged.visible = false;
+    for (const lf of lp.leaves) lf.mesh.visible = true;
   };
 
   // Seeded placement: walk the track and drop occasional clusters, mixing ON-ROAD
@@ -398,6 +425,7 @@ function build(scene, track, opts) {
       for (const mk of moving) {
         const reach = lp.r + 3.5;
         if (segDist2(lp.x, lp.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
+        _wakePile(lp); // swap the merged resting proxy for the live leaves
         const sp = Math.min(mk.speed, 120);
         // Refresh the wake (set, not add, so repeated frames don't run away). A
         // faster kart drags more air, lifts harder and stirs a tighter swirl.
@@ -488,6 +516,14 @@ function build(scene, track, opts) {
         lf.mesh.rotation.x += (lf.spin.x + sway * 3.0) * dt;
         lf.mesh.rotation.y += lf.spin.y * dt;
         lf.mesh.rotation.z += (lf.spin.z + Math.cos(lf.phase) * 3.0) * dt;
+      }
+
+      // Fully settled again (wake gone, every leaf asleep) → rebake the merged
+      // resting proxy at the new pose and stop rendering the individual leaves.
+      if (!lp.dormant && !windOn) {
+        let allAsleep = true;
+        for (const lf of lp.leaves) if (!lf.asleep) { allAsleep = false; break; }
+        if (allAsleep) _mergePile(lp);
       }
     }
   }

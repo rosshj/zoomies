@@ -230,6 +230,9 @@ let DIFFICULTY = "hard"; // default = the current tuned field
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
+// Debug hook (console / headless tooling): inspect the live scene graph and
+// renderer counters without instrumenting a build.
+window.__zoomies = { scene, camera, renderer };
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
 // wipe the count between them and leave only the last pass).
