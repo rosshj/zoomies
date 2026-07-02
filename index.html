@@ -206,11 +206,16 @@
           </div>
           <p id="mp-menu-status" class="lobby-status"></p>
         </div>
+        <!-- Grouped by what you'd reach for in order: first make it yours
+             (racer + track), then dial in the race, then everything else. -->
         <div class="menu-options">
-          <button id="laps-btn" class="secondary small">Laps: 3</button>
-          <button id="difficulty-btn" class="secondary small">Difficulty: Hard</button>
+          <span class="menu-group-label">Customize</span>
           <button id="open-garage" class="secondary small">🐱 Garage</button>
           <button id="open-track" class="secondary small">🏞 Track</button>
+          <span class="menu-group-label">Race</span>
+          <button id="laps-btn" class="secondary small">Laps: 3</button>
+          <button id="difficulty-btn" class="secondary small">Difficulty: Hard</button>
+          <span class="menu-group-label">More</span>
           <button id="howto-btn" class="secondary small">❓ How to Play</button>
           <button id="open-settings" class="secondary small">⚙ Settings</button>
         </div>
@@ -469,6 +474,7 @@
     <div class="menu-card">
       <h1>⚙ Settings</h1>
       <div class="settings-list">
+        <h2 class="settings-section">🔊 Audio</h2>
         <div class="setting-row">
           <span class="setting-label">Music</span>
           <button id="set-music-toggle" class="secondary small toggle">On</button>
@@ -481,6 +487,7 @@
           <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
                  aria-label="Sound effects volume" />
         </div>
+        <h2 class="settings-section">🖥 Display</h2>
         <div class="setting-row">
           <span class="setting-label">Graphics</span>
           <div id="quality-toggle" class="seg-toggle">
