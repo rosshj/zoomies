@@ -57,6 +57,15 @@
       border:4px solid rgba(255,255,255,.16);border-top-color:#ffd54f;
       animation:ls-spin .85s linear infinite;}
     @keyframes ls-spin{to{transform:rotate(360deg);}}
+    /* The game forces landscape by counter-rotating #stage (layoutStage), but
+       the loading screen paints before any JS runs — mirror that rotation in
+       pure CSS so a portrait viewport shows the loader in landscape too. */
+    @media (orientation:portrait){
+      #loading{inset:auto;left:50%;top:50%;width:100vh;height:100vw;
+        transform:translate(-50%,-50%) rotate(90deg);}
+      #loading .ls-title{font-size:clamp(30px,6vh,54px);}
+      #loading .ls-tag{font-size:clamp(12px,2.3vh,17px);}
+    }
     @media (prefers-reduced-motion:reduce){#loading .ls-ring{animation:none;
       border-top-color:rgba(255,213,79,.6);}}
   </style>

@@ -1740,14 +1740,20 @@ function buildCityRoadDetails(scene, track, heightAt) {
     return t;
   })();
 
-  // Collect spots first, then bake each set into ONE InstancedMesh.
-  const cwSpots = []; // { p, tan } — centred on the road at the signal samples
-  const mhSpots = []; // { x, y, z, yaw } — scattered on the tarmac
+  // Collect spots first, then bake each set into ONE InstancedMesh. Both decals
+  // must lie IN the road's local tangent plane (pitch + camber), not flat in
+  // world XZ — a horizontal plane on a sloped boulevard hovers off the surface
+  // at one end and reads as a floating object instead of paint.
+  const cwSpots = []; // { p, tan } — centred on the road, just past the signal
+  const mhSpots = []; // { x, y, z, tan, yaw } — scattered on the tarmac
   const cwStep = Math.max(1, Math.round(60 / spacing)); // matches buildTrafficLights
+  const cwShift = Math.max(1, Math.round(4 / spacing)); // stripes sit "before" the light
   for (let i = 0; i < N; i += cwStep) {
-    const p = track._pts[i];
-    if (biomeAt(p.x, p.z).name !== "city") continue;
-    cwSpots.push({ p, tan: track._tans[i] });
+    if (biomeAt(track._pts[i].x, track._pts[i].z).name !== "city") continue;
+    // Shift by SAMPLE index (not a raw tangent offset) so position, height and
+    // slope are all re-sampled at the crosswalk's actual spot.
+    const j = (i + cwShift) % N;
+    cwSpots.push({ p: track._pts[j], tan: track._tans[j] });
   }
   const mhStep = Math.max(1, Math.round(23 / spacing));
   for (let i = 0; i < N; i += mhStep) {
@@ -1755,20 +1761,29 @@ function buildCityRoadDetails(scene, track, heightAt) {
     if (biomeAt(p.x, p.z).name !== "city") continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], UP_Y).normalize();
     const lat = (rand() * 2 - 1) * (track.halfWidth - 4); // on the tarmac, off the racing edge
-    mhSpots.push({ x: p.x + side.x * lat, y: p.y, z: p.z + side.z * lat, yaw: rand() * Math.PI });
+    mhSpots.push({ x: p.x + side.x * lat, y: p.y, z: p.z + side.z * lat, tan: track._tans[i], yaw: rand() * Math.PI });
   }
 
   const dummy = new THREE.Object3D();
+  const _side = new THREE.Vector3();
+  const _norm = new THREE.Vector3();
+  const _along = new THREE.Vector3();
+  // Aligns `dummy` so the decal plane's X spans the road, Y runs along the
+  // (sloped) tangent and Z is the road normal, then lifts it along that normal.
+  const conform = (x, y, z, tan, lift, spin = 0) => {
+    _along.copy(tan).normalize();
+    _side.crossVectors(_along, UP_Y).normalize();
+    _norm.crossVectors(_side, _along).normalize();
+    dummy.matrix.makeBasis(_side, _along, _norm);
+    if (spin) dummy.matrix.multiply(new THREE.Matrix4().makeRotationZ(spin));
+    dummy.matrix.setPosition(x + _norm.x * lift, y + _norm.y * lift, z + _norm.z * lift);
+  };
   if (cwSpots.length) {
     const geo = new THREE.PlaneGeometry(track.width * 0.86, 3.0);
     const mat_ = new THREE.MeshStandardMaterial({ map: cwTex, transparent: true, roughness: 0.9, depthWrite: false });
     const mesh = new THREE.InstancedMesh(geo, mat_, cwSpots.length);
     cwSpots.forEach((s, k) => {
-      // Offset a few units past the signal sample so the stripes sit "before"
-      // the light like a real intersection (and never under the start line).
-      dummy.position.set(s.p.x + s.tan.x * 4, s.p.y + 0.05, s.p.z + s.tan.z * 4);
-      dummy.rotation.set(-Math.PI / 2, 0, -Math.atan2(s.tan.z, s.tan.x) + Math.PI / 2);
-      dummy.updateMatrix();
+      conform(s.p.x, s.p.y, s.p.z, s.tan, 0.045);
       mesh.setMatrixAt(k, dummy.matrix);
     });
     mesh.renderOrder = 1;
@@ -1781,9 +1796,7 @@ function buildCityRoadDetails(scene, track, heightAt) {
     const mat_ = new THREE.MeshStandardMaterial({ map: mhTex, transparent: true, roughness: 0.85, depthWrite: false });
     const mesh = new THREE.InstancedMesh(geo, mat_, mhSpots.length);
     mhSpots.forEach((s, k) => {
-      dummy.position.set(s.x, s.y + 0.04, s.z);
-      dummy.rotation.set(-Math.PI / 2, 0, s.yaw);
-      dummy.updateMatrix();
+      conform(s.x, s.y, s.z, s.tan, 0.04, s.yaw);
       mesh.setMatrixAt(k, dummy.matrix);
     });
     mesh.renderOrder = 1;
