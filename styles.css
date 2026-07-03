@@ -4,6 +4,11 @@
   --accent-2: #ff5722;
   --bg: #0e1320;
   --panel: rgba(16, 22, 38, 0.82);
+  /* Selection treatment for menu CONTROLS (active segment, chosen chip, slider
+     thumb, radio): white-on-dark, so the yellow accent stays reserved for the
+     screen's one primary action button. */
+  --sel: linear-gradient(180deg, #ffffff, #d9e0ea);
+  --sel-ink: #16202e;
 }
 
 * {
@@ -213,8 +218,8 @@ body {
 }
 .garage-arrow:hover { background: rgba(255, 255, 255, 0.2); }
 .garage-arrow:active {
-  background: var(--accent);
-  color: #1a1206;
+  background: var(--sel);
+  color: var(--sel-ink);
   transform: scale(0.9);
 }
 .garage-swatch {
@@ -276,8 +281,8 @@ body {
 }
 .swatch-dot:active { transform: scale(0.88); }
 .swatch-dot.selected {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px var(--accent), 0 2px 5px rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px #fff, 0 2px 5px rgba(0, 0, 0, 0.4);
 }
 .mini-stepper {
   flex: 1;
@@ -653,8 +658,8 @@ body {
   box-shadow: none;
 }
 .biome-chip.on {
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
-  color: #1a1206;
+  background: var(--sel);
+  color: var(--sel-ink);
   border-color: transparent;
 }
 /* Biomes locked out because the map is too small to show them all. */
@@ -782,8 +787,8 @@ body {
   box-shadow: none;
 }
 .seg-btn.is-active {
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
-  color: #1a1206;
+  background: var(--sel);
+  color: var(--sel-ink);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
@@ -824,7 +829,7 @@ body {
 }
 .menu-tile:hover {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
-  border-color: rgba(255, 179, 0, 0.45);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 .menu-tile:active {
   transform: scale(0.985);
@@ -928,9 +933,9 @@ body {
   transition: border-color 0.15s, background 0.15s;
 }
 .mode-card.is-selected {
-  border-color: rgba(255, 179, 0, 0.75);
-  background: rgba(255, 179, 0, 0.08);
-  box-shadow: 0 0 18px rgba(255, 179, 0, 0.12);
+  border-color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.1);
 }
 /* The whole card header is the pick target. */
 .mode-pick {
@@ -987,9 +992,9 @@ body {
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .mode-card.is-selected .mode-radio {
-  border-color: var(--accent);
-  background: radial-gradient(circle at 50% 50%, #ffd24d 0%, #ffd24d 45%, transparent 52%);
-  box-shadow: 0 0 8px rgba(255, 179, 0, 0.5);
+  border-color: #fff;
+  background: radial-gradient(circle at 50% 50%, #fff 0%, #fff 45%, transparent 52%);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.45);
 }
 /* Options only exist while their mode is selected. */
 .mode-opts {
@@ -1929,7 +1934,7 @@ button.small {
   height: 24px;
   margin-top: -8px; /* centre the 24px thumb on the 8px rail */
   border-radius: 50%;
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
+  background: var(--sel);
   border: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
@@ -1943,7 +1948,7 @@ button.small {
   height: 24px;
   border: none;
   border-radius: 50%;
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
+  background: var(--sel);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 .slider:disabled {
