@@ -50,13 +50,25 @@
       -webkit-user-select:none;user-select:none;transition:opacity .45s ease;}
     #loading.done{opacity:0;pointer-events:none;}
     #loading .ls-title{font-size:clamp(30px,6vw,54px);font-weight:800;letter-spacing:.03em;
-      margin:0;text-shadow:0 3px 20px rgba(0,0,0,.55);}
+      margin:0;text-shadow:0 3px 20px rgba(0,0,0,.55);
+      display:flex;align-items:center;gap:.38em;}
+    #loading .ls-cat{height:1.2em;width:auto;flex:none;
+      filter:drop-shadow(0 3px 12px rgba(0,0,0,.45));}
     #loading .ls-tag{font-size:clamp(12px,2.3vw,17px);opacity:.7;margin:0;
       letter-spacing:.22em;text-transform:uppercase;}
     #loading .ls-ring{width:44px;height:44px;border-radius:50%;margin-top:12px;
       border:4px solid rgba(255,255,255,.16);border-top-color:#ffd54f;
       animation:ls-spin .85s linear infinite;}
     @keyframes ls-spin{to{transform:rotate(360deg);}}
+    /* The game forces landscape by counter-rotating #stage (layoutStage), but
+       the loading screen paints before any JS runs — mirror that rotation in
+       pure CSS so a portrait viewport shows the loader in landscape too. */
+    @media (orientation:portrait){
+      #loading{inset:auto;left:50%;top:50%;width:100vh;height:100vw;
+        transform:translate(-50%,-50%) rotate(90deg);}
+      #loading .ls-title{font-size:clamp(30px,6vh,54px);}
+      #loading .ls-tag{font-size:clamp(12px,2.3vh,17px);}
+    }
     @media (prefers-reduced-motion:reduce){#loading .ls-ring{animation:none;
       border-top-color:rgba(255,213,79,.6);}}
   </style>
@@ -65,7 +77,20 @@
   <!-- First paint: a branded loading screen (see inline CSS above) so a cold
        start never flashes a blank screen while the renderer initialises. -->
   <div id="loading">
-    <p class="ls-title">🐱 ZOOMIES GP</p>
+    <p class="ls-title"><!-- the app-icon cat face (same shapes as tools/gen-icons.mjs) -->
+      <svg class="ls-cat" viewBox="0.17 0.07 0.66 0.82" aria-hidden="true">
+        <polygon points="0.27,0.42 0.33,0.10 0.47,0.32" fill="#f4a93a"/>
+        <polygon points="0.73,0.42 0.67,0.10 0.53,0.32" fill="#f4a93a"/>
+        <ellipse cx="0.5" cy="0.57" rx="0.30" ry="0.29" fill="#f4a93a"/>
+        <polygon points="0.32,0.40 0.35,0.18 0.43,0.33" fill="#ff8fab"/>
+        <polygon points="0.68,0.40 0.65,0.18 0.57,0.33" fill="#ff8fab"/>
+        <ellipse cx="0.5" cy="0.66" rx="0.16" ry="0.10" fill="#ffe7c7"/>
+        <ellipse cx="0.4" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+        <ellipse cx="0.6" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+        <ellipse cx="0.4" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+        <ellipse cx="0.6" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+        <polygon points="0.47,0.62 0.53,0.62 0.5,0.67" fill="#ff6f9b"/>
+      </svg><span>ZOOMIES GP</span></p>
     <p class="ls-tag">Cat Kart Racing</p>
     <div class="ls-ring" role="progressbar" aria-label="Loading"></div>
   </div>
