@@ -4,6 +4,12 @@
   --accent-2: #ff5722;
   --bg: #0e1320;
   --panel: rgba(16, 22, 38, 0.82);
+  /* Selection treatment for menu CONTROLS (active segment, chosen chip, slider
+     thumb, radio): a muted frosted-light fill, so selections read clearly but
+     never out-shine the screen's one yellow primary action button. */
+  --sel: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.16));
+  --sel-ink: #fff;
+  --knob: linear-gradient(180deg, #dde3ec, #a9b4c5); /* slider thumbs */
 }
 
 * {
@@ -90,7 +96,12 @@ body {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   background: radial-gradient(circle at 50% 30%, #1b2540, #070a12 80%);
-  padding: 10px;
+  /* Clear the notch / Dynamic Island / home bar on every edge. layoutStage
+     remaps the PHYSICAL safe-area insets into the rotated stage's frame as
+     --safe-* (raw env() values point at the wrong edges while the stage is
+     counter-rotated), so the menus pad with those, like the HUD does. */
+  padding: max(10px, var(--safe-top, 0px)) max(10px, var(--safe-right, 0px))
+    max(10px, var(--safe-bottom, 0px)) max(10px, var(--safe-left, 0px));
   text-align: center;
 }
 
@@ -100,14 +111,31 @@ body {
   touch-action: pan-y;
 }
 
+/* When the stage is counter-rotated to force landscape (portrait viewport, e.g.
+   iPhone with orientation lock on), the browser gates scroll gestures in
+   PHYSICAL screen axes — the menu's "vertical" is the device's horizontal, so a
+   pan-y-only permission never lets a slow drag latch (quick flicks sneak past
+   the recognizer, which is why flicking worked but dragging didn't). Allow both
+   axes while rotated: the overlays only overflow vertically in their own frame,
+   so nothing new becomes scrollable, and pinch/double-tap zoom stays blocked. */
+#stage.rotated .overlay,
+#stage.rotated .overlay * {
+  touch-action: pan-x pan-y;
+}
+
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
    orbit renders behind), so darken it just enough for legibility instead of
-   hiding it. */
+   hiding it. Pause holds the frozen race behind its card, the lobby floats over
+   the world tour, and results float over the victory lap + fireworks. */
 #menu,
 #howto,
 #settings,
 #install-help,
-#track-panel {
+#mode-panel,
+#track-panel,
+#pause-overlay,
+#lobby,
+#results {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
@@ -120,7 +148,10 @@ body {
   background: linear-gradient(to right, rgba(6, 9, 16, 0.86) 0%, rgba(6, 9, 16, 0.5) 38%, rgba(6, 9, 16, 0) 62%);
   align-items: center;
   justify-content: flex-start;
-  padding-left: max(14px, env(safe-area-inset-left));
+  /* --safe-left, not env(): while the stage is rotated the island sits on the
+     game's LEFT edge, and layoutStage's remapped inset is the only one that
+     knows that (raw env(safe-area-inset-left) reads 0 in portrait). */
+  padding-left: max(14px, var(--safe-left, 0px));
 }
 #garage-panel {
   width: min(360px, 46%);
@@ -153,13 +184,30 @@ body {
   align-items: stretch;
   gap: 5px;
 }
+/* Header row per picker: the CAT/KART label plus the Presets/Custom toggle —
+   customising gets the same explicit affordance as the track's mode toggle. */
+.garage-pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 6px;
+}
 .garage-pick-label {
   font-size: 11px;
   letter-spacing: 0.16em;
   font-weight: 700;
   color: var(--accent);
   opacity: 0.85;
-  padding-left: 6px;
+}
+.garage-seg {
+  margin-top: 0;
+  padding: 2px;
+}
+.garage-seg .seg-btn {
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  padding: 4px 13px;
 }
 .garage-stepper {
   display: flex;
@@ -191,8 +239,8 @@ body {
 }
 .garage-arrow:hover { background: rgba(255, 255, 255, 0.2); }
 .garage-arrow:active {
-  background: var(--accent);
-  color: #1a1206;
+  background: var(--sel);
+  color: var(--sel-ink);
   transform: scale(0.9);
 }
 .garage-swatch {
@@ -254,8 +302,8 @@ body {
 }
 .swatch-dot:active { transform: scale(0.88); }
 .swatch-dot.selected {
-  border-color: #fff;
-  box-shadow: 0 0 0 2px var(--accent), 0 2px 5px rgba(0, 0, 0, 0.4);
+  border-color: rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 2px #fff, 0 2px 5px rgba(0, 0, 0, 0.4);
 }
 .mini-stepper {
   flex: 1;
@@ -380,11 +428,11 @@ body {
   display: flex;
   flex-direction: column;
   /* Narrower so the centred card clears the Dynamic Island / rounded corners. */
-  width: min(700px, 100%);
-  max-width: min(700px, 100%);
+  width: min(740px, 100%);
+  max-width: min(740px, 100%);
   text-align: left;
-  padding: 10px 20px;
-  gap: 6px;
+  padding: 12px 22px 16px;
+  gap: 8px;
 }
 .track-header {
   display: flex;
@@ -393,7 +441,7 @@ body {
   flex-wrap: wrap;
   gap: 8px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  padding-bottom: 7px;
+  padding-bottom: 9px;
 }
 .track-title {
   display: flex;
@@ -424,7 +472,7 @@ body {
   display: flex;
   flex-flow: row wrap;
   align-items: stretch;
-  gap: 12px 24px;
+  gap: 12px 26px;
 }
 .track-col-map {
   flex: 1 1 240px;
@@ -441,20 +489,20 @@ body {
   flex-direction: column;
   gap: 8px;
 }
-/* Time-of-day picker: one compact row of four chips under Environment. */
+/* Time-of-day picker: one row of four chips under Environment. */
 .tod-pick {
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .tod-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
+  gap: 8px;
 }
 .tod-grid .biome-chip {
   width: 100%;
   text-align: center;
   padding: 5px 4px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0;
 }
 .map-reroll {
@@ -462,6 +510,7 @@ body {
   margin: 0;
   font-size: 13px;
   padding: 7px 14px;
+  min-height: var(--tap);
 }
 .track-col-ctrl {
   flex: 1 1 340px;
@@ -473,11 +522,13 @@ body {
   margin: 0 0 6px;
   width: 100%;
 }
-/* Slider rows: label on the left, slider in the middle, live value on the right. */
+/* Slider rows: label on the left, slider in the middle, live value on the right.
+   The sliders themselves are full-height touch targets, so the rows breathe on
+   their own — no extra margin needed between them. */
 .track-main .track-row {
-  grid-template-columns: 64px 1fr 30px;
+  grid-template-columns: 64px 1fr 34px;
   gap: 10px;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 .track-main .setting-label {
   font-size: 13px;
@@ -489,25 +540,13 @@ body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* Slimmer slider track + thumb in the track panel so four rows pack tighter. */
-.track-main .slider {
-  height: 6px;
-}
-.track-main .slider::-webkit-slider-thumb {
-  width: 18px;
-  height: 18px;
-}
-.track-main .slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-}
 .env-label {
   font-size: 11px;
   font-weight: bold;
   letter-spacing: 1px;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.55);
-  margin: 2px 0 4px;
+  margin: 8px 0 8px;
 }
 .env-hint {
   font-weight: bold;
@@ -518,30 +557,32 @@ body {
 .track-main .biome-pick {
   justify-content: flex-start;
   margin: 0 0 2px;
-  gap: 6px;
+  gap: 8px;
 }
 .track-main .biome-chip {
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 5px 12px;
+  font-size: 11.5px;
 }
 /* Play + Back share one row to save vertical space. Play is the wider primary. */
 .track-actions {
   display: flex;
   gap: 10px;
   margin-top: auto;
-  padding-top: 6px;
+  padding-top: 14px;
 }
 .track-main #track-apply {
   flex: 2 1 0;
   margin: 0;
   font-size: 15px;
   padding: 9px 18px;
+  min-height: 48px;
 }
 .track-main #track-back {
   flex: 1 1 0;
   margin: 0;
   font-size: 15px;
   padding: 9px 14px;
+  min-height: 48px;
 }
 
 /* Compact the primary buttons so each column fits the short landscape height. */
@@ -554,15 +595,20 @@ body {
 .menu-main h1 {
   font-size: clamp(22px, 4vw, 32px);
   margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35em;
+}
+/* The app-icon cat face, standing in for the old 🐱 emoji. */
+.menu-cat {
+  height: 1.2em;
+  width: auto;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.45));
 }
 .menu-main .tagline {
   margin: 0 0 2px;
-}
-.menu-main .menu-options {
-  margin-top: 9px;
-}
-.menu-main .menu-options button.small {
-  padding: 7px 15px;
 }
 .menu-main .hint {
   margin-top: 8px;
@@ -644,9 +690,9 @@ body {
   box-shadow: none;
 }
 .biome-chip.on {
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
-  color: #1a1206;
-  border-color: transparent;
+  background: var(--sel);
+  color: var(--sel-ink);
+  border-color: rgba(255, 255, 255, 0.45);
 }
 /* Biomes locked out because the map is too small to show them all. */
 .biome-chip.locked {
@@ -662,6 +708,12 @@ body {
   display: flex;
   gap: 8px;
   align-items: center;
+}
+/* On the main menu the join row sits right under HOST GAME. */
+.menu-col-actions .mp-join-row {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
 }
 #mp-code {
   font-family: inherit;
@@ -702,13 +754,23 @@ body {
 .install-steps {
   text-align: left;
   margin: 14px auto;
-  padding-left: 22px;
-  max-width: 320px;
+  padding: 12px 16px 12px 34px;
+  max-width: 340px;
   line-height: 1.55;
   font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
 }
 .install-steps li {
   margin-bottom: 9px;
+}
+.install-steps li::marker {
+  color: var(--accent);
+  font-weight: 800;
+}
+.install-steps li:last-child {
+  margin-bottom: 0;
 }
 .install-steps strong {
   color: var(--accent);
@@ -757,9 +819,9 @@ body {
   box-shadow: none;
 }
 .seg-btn.is-active {
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
-  color: #1a1206;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  background: var(--sel);
+  color: var(--sel-ink);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .menu-main h1 {
@@ -768,16 +830,240 @@ body {
     0 10px 18px rgba(0, 0, 0, 0.55);
 }
 
-/* Row of small option buttons (Laps · How to Play · Settings). */
-.menu-options {
+/* ===== Main-menu setup tiles =====
+   "Your race at a glance": one row per choice (mode / racer / track), each
+   showing its CURRENT value and drilling into a focused screen. Nothing is
+   edited on the main screen itself — that's what keeps it calm. */
+.menu-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  margin-top: 12px;
+}
+.menu-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  letter-spacing: normal;
+  color: #fff;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+.menu-tile:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.05));
+  border-color: rgba(255, 255, 255, 0.4);
+}
+.menu-tile:active {
+  transform: scale(0.985);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.tile-ico {
+  flex: 0 0 auto;
+  font-size: 20px;
+  line-height: 1;
+}
+.tile-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.tile-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.5);
+}
+.tile-sub {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tile-swatches {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 4px;
+}
+.tile-swatch {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+.tile-chevron {
+  flex: 0 0 auto;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+/* Quiet utility row under the tiles (help / settings / install). */
+.menu-footer {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
-.menu-options button.small {
+.menu-footer button.small {
   margin-top: 0;
+  font-size: 11px;
+  padding: 6px 13px;
+  border-width: 1px;
+  opacity: 0.85;
+}
+
+/* "Edit ›" affordance so the map reads as tappable, not just a picture. */
+.map-edit-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+
+/* ===== Game Mode screen =====
+   One card per mode. The selected card gets the accent treatment and expands to
+   reveal only ITS options (laps + rivals for Grand Prix), so irrelevant knobs
+   never show. */
+.menu-card.mode-main {
+  width: min(480px, 100%);
+  max-width: min(480px, 100%);
+}
+.mode-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.mode-card {
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+}
+.mode-card.is-selected {
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.07);
+}
+/* The whole card header is the pick target. */
+.mode-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 54px;
+  padding: 9px 13px;
+  margin: 0;
+  text-align: left;
+  font: inherit;
+  letter-spacing: normal;
+  color: #fff;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+.mode-pick:active {
+  transform: none;
+  box-shadow: none;
+  background: rgba(255, 255, 255, 0.06);
+}
+.mode-ico {
+  flex: 0 0 auto;
+  font-size: 23px;
+  line-height: 1;
+}
+.mode-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.mode-name {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+}
+.mode-desc {
+  font-size: 11.5px;
+  font-weight: normal;
+  color: rgba(255, 255, 255, 0.62);
+}
+/* Radio dot: an empty ring that fills gold on the selected card. */
+.mode-radio {
+  flex: 0 0 auto;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.mode-card.is-selected .mode-radio {
+  border-color: rgba(255, 255, 255, 0.9);
+  background: radial-gradient(circle at 50% 50%, #e9edf3 0%, #e9edf3 45%, transparent 52%);
+}
+/* Options only exist while their mode is selected. */
+.mode-opts {
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 13px 12px;
+}
+.mode-card.is-selected .mode-opts {
+  display: flex;
+}
+.mode-opt-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mode-opt-label {
+  flex: 0 0 58px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.6);
+}
+.mode-opt-row .seg-toggle {
+  margin-top: 0;
+  flex: 1 1 auto;
+  display: flex;
+}
+.mode-opt-row .seg-btn {
+  flex: 1 1 0;
+  padding: 6px 4px;
+  font-size: 12px;
+}
+#mode-done {
+  margin-top: 10px;
+  font-size: 16px;
+  padding: 11px 42px;
 }
 
 h1 {
@@ -795,21 +1081,46 @@ h1 {
   font-size: 12px;
 }
 
-.how-to {
-  list-style: none;
+/* How to Play: one icon card per control, two columns for the landscape stage. */
+.menu-card.howto-main {
+  width: min(560px, 100%);
+  max-width: min(560px, 100%);
+}
+.how-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 12px 0 2px;
   text-align: left;
-  margin: 0;
-  padding: 0;
-  line-height: 1.45;
-  font-size: 13.5px;
 }
-
-.how-to li {
-  margin-bottom: 3px;
+.how-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12.5px;
+  line-height: 1.35;
 }
-
-.how-to strong {
+.how-ico {
+  flex: 0 0 auto;
+  font-size: 19px;
+  line-height: 1;
+}
+.how-txt strong {
   color: var(--accent);
+}
+/* The goal line spans both columns and gets the accent treatment. */
+.how-win {
+  grid-column: 1 / -1;
+  justify-content: center;
+  border-color: rgba(255, 179, 0, 0.5);
+  background: rgba(255, 179, 0, 0.08);
+}
+.howto-main .hint {
+  max-width: none;
 }
 
 button {
@@ -866,31 +1177,114 @@ kbd {
   50% { transform: rotate(90deg); }
 }
 
+/* Results: podium-style standings rows — rank | name | time columns, with the
+   player's row lit gold. Floats over the victory-lap camera + fireworks. */
+.menu-card.results-main {
+  width: min(400px, 100%);
+  max-width: min(400px, 100%);
+}
 #results-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 12px 0 14px;
+  padding: 0;
   text-align: left;
-  display: inline-block;
-  margin: 6px auto 14px;
-  line-height: 1.5;
-  font-size: 16px;
 }
-
-#results-list .you {
+#results-list li {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 14px;
+}
+#results-list .r-rank {
+  font-weight: 800;
+  font-size: 15px;
+}
+#results-list .r-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#results-list .r-time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  font-size: 13px;
+}
+#results-list li.you {
+  border-color: rgba(255, 179, 0, 0.7);
+  background: rgba(255, 179, 0, 0.1);
+}
+#results-list li.you .r-name,
+#results-list li.you .r-time {
   color: var(--accent);
-  font-weight: bold;
+  opacity: 1;
+}
+#restart-btn {
+  font-size: 17px;
+  padding: 11px 34px;
 }
 
+/* Lobby: two columns (room code + sharing | players), one primary action. */
+.menu-card.lobby-main {
+  width: min(620px, 100%);
+  max-width: min(620px, 100%);
+}
+.lobby-body {
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px 26px;
+  margin-top: 2px;
+}
+.lobby-col {
+  flex: 1 1 240px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 #lobby-players {
   list-style: none;
   padding: 0;
-  margin: 10px auto 14px;
-  display: inline-block;
+  margin: 4px 0 6px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   text-align: left;
-  line-height: 1.8;
-  font-size: 16px;
+  font-size: 14px;
+}
+#lobby-players li {
+  padding: 6px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.045);
+  font-weight: 600;
 }
 #lobby-players .you {
   color: var(--accent);
-  font-weight: bold;
+  font-weight: 800;
+  border-color: rgba(255, 179, 0, 0.7);
+  background: rgba(255, 179, 0, 0.1);
+}
+.lobby-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+}
+.lobby-actions .hint {
+  margin-top: 4px;
 }
 #lobby-code {
   letter-spacing: 2px;
@@ -913,21 +1307,15 @@ kbd {
 }
 .lobby-share-label,
 .lobby-players-label {
-  font-size: 13px;
-  opacity: 0.8;
-  margin: 8px 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 8px 0 4px;
 }
-/* Menu Host/Join panel. */
-.mp-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: stretch;
-}
-.mp-or {
-  font-size: 12px;
-  opacity: 0.6;
-  margin: 6px 0 2px;
+.lobby-players-label span {
+  color: var(--accent);
 }
 /* Live connection state in the lobby — green when connected, red on failure. */
 .lobby-status {
@@ -1426,20 +1814,68 @@ button.small {
   margin-top: 8px;
 }
 
+/* ===== Pause ===== */
+/* Same shape as the main menu: one primary, quiet extras, glassy card over the
+   frozen race. */
+.menu-card.pause-card {
+  width: min(330px, 100%);
+  padding: 18px 26px 20px;
+}
+#resume-btn {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 18px;
+  padding: 12px 30px;
+}
+.pause-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.pause-row button.small {
+  margin-top: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-width: 1px;
+  opacity: 0.9;
+}
+.pause-exit {
+  width: 100%;
+  font-size: 14px;
+  padding: 10px 20px;
+}
+
 /* ===== Settings screen ===== */
+.menu-card.settings-main {
+  width: min(500px, 100%);
+  max-width: min(500px, 100%);
+}
 .settings-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin: 18px 0 8px;
+  gap: 9px;
+  margin: 12px 0 8px;
   text-align: left;
+}
+/* Each concern is its own card — the same bucket treatment as the mode cards. */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 11px 14px 12px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .setting-row {
   display: grid;
-  grid-template-columns: 88px 76px 1fr;
+  grid-template-columns: 104px 76px 1fr;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 /* The Graphics row has no slider; let its toggle span the slider column too. */
@@ -1462,6 +1898,7 @@ button.small {
 .adv-toggle {
   background: none;
   border: none;
+  box-shadow: none;
   color: var(--accent);
   opacity: 0.75;
   font-size: 12px;
@@ -1481,11 +1918,12 @@ button.small {
 }
 
 .setting-label {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: bold;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   color: var(--accent);
   text-transform: uppercase;
+  line-height: 1.25;
 }
 
 /* Keep the small toggle buttons a fixed width so On/Off don't jump around. */
@@ -1502,33 +1940,45 @@ button.small {
   opacity: 0.85;
 }
 
-/* Volume sliders */
+/* Sliders (volume + track knobs). The INPUT is a full 44px-tall touch target;
+   the slim visual rail is drawn by the track pseudo-elements inside it, so the
+   finger never has to land on an 8px line. */
 .slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
+  height: var(--tap);
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: var(--pill);
   background: rgba(255, 255, 255, 0.18);
-  outline: none;
-  cursor: pointer;
 }
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
+  margin-top: -8px; /* centre the 24px thumb on the 8px rail */
   border-radius: 50%;
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
+  background: var(--knob);
   border: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
+.slider::-moz-range-track {
+  height: 8px;
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.18);
+}
 .slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   border-radius: 50%;
-  background: linear-gradient(180deg, #ffd24d, var(--accent));
+  background: var(--knob);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 .slider:disabled {
@@ -1605,8 +2055,6 @@ button.small {
 .menu-col-actions > button { min-height: 46px; }
 
 /* Every secondary/small pill meets the tap target and centres its label. */
-.menu-options button.small,
-.menu-main .menu-options button.small,
 button.small,
 button.secondary.small,
 .mp-join-row button.small,
@@ -1624,34 +2072,19 @@ button.secondary.small,
 /* The "Advanced ▸" expander was a ~20px text link — give it a real tap height. */
 .adv-toggle { min-height: var(--tap); padding: 8px 0; }
 
-/* Biome / time-of-day chips: raise the smallest ones toward a tap target
-   without overflowing the panel (there are 10 biomes now, they wrap). */
+/* Biome / time-of-day chips: full 44px tap targets (there are 10 biomes now,
+   they wrap — the panel scrolls rather than shrinking the targets). */
 .biome-chip {
-  min-height: 40px;
+  min-height: var(--tap);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.track-main .biome-chip,
-.tod-grid .biome-chip { min-height: 38px; }
 
 /* Steppers + the HUD calibrate button: easier to hit. */
 .garage-arrow { min-width: var(--tap); min-height: var(--tap); }
 .mini-stepper .garage-arrow { min-width: 40px; min-height: 40px; }
 #calibrate { min-height: 40px; }
-
-/* Group the main-menu options into labelled sections (Customize / Race / More)
-   so the choices read as a sequence, not one flat cluster. */
-.menu-group-label {
-  width: 100%;
-  text-align: center;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  opacity: 0.5;
-  margin: 6px 0 -2px;
-}
 
 /* Settings section headers. */
 .settings-section {
@@ -1661,7 +2094,6 @@ button.secondary.small,
   text-transform: uppercase;
   color: var(--accent);
   opacity: 0.8;
-  margin: 4px 0 -4px;
+  margin: 0 0 -4px;
   text-align: left;
 }
-.settings-section:first-child { margin-top: 0; }

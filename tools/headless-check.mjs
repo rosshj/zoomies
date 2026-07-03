@@ -57,6 +57,9 @@ await ctx.addInitScript(({ seedTT, sel }) => {
   }
   // Seed a personal-best so the time-trial PB-delta path runs in the test.
   if (seedTT) {
+    // Time trial is a persisted game mode now: the single START button launches
+    // whichever mode is saved, so seed the mode instead of clicking a dedicated button.
+    try { localStorage.setItem("zoomies-mode-v1", "tt"); } catch {}
     try { localStorage.setItem("zoomies-timetrial-v2", JSON.stringify([{ time: 42.5, date: 1 }])); } catch {}
     // Seed a small ghost path so setupGhost() builds the translucent ghost kart.
     const samples = [];
@@ -77,9 +80,8 @@ await page.goto(target, { waitUntil: "load" });
 await page.waitForSelector("#start-btn", { timeout: 15000 });
 await page.click("body", { position: { x: 5, y: 5 } }).catch(() => {}); // unlock audio gesture
 // TT=1 starts a time trial (exercises the lap-timer / PB-delta HUD path) instead
-// of a normal race.
-const startSel = process.env.TT ? "#time-trial-btn" : "#start-btn";
-await page.click(startSel, { force: true });
+// of a normal race — via the seeded "tt" game mode, so the same START button works.
+await page.click("#start-btn", { force: true });
 
 // Wait for the on-screen readout to populate with a real FPS/draw-call number.
 // SwiftShader software-compiles every node material on the first frames, so the
