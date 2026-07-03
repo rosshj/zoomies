@@ -404,6 +404,11 @@ export class Track {
         roughness: 0.95,
         bumpMap: bump,
         bumpScale: 0.25,
+        // DoubleSide: the strip's triangle winding follows the loop's direction,
+        // and custom-generated tracks can run CLOCKWISE — with the default
+        // FrontSide the whole road was back-face culled from above on those
+        // seeds (invisible road; the terrain beneath read as the "road").
+        side: THREE.DoubleSide,
       })
     );
     road.receiveShadow = true;
@@ -566,6 +571,8 @@ export class Track {
     const indices = [];
     const trim = 3.2;
     const sand = new THREE.Color(0xc2a86a);
+    const concrete = new THREE.Color(0x9ba2a9); // city SIDEWALK slabs
+    const concreteSeam = new THREE.Color(0x878e95); // alternating slab joints
     const red = new THREE.Color(0xd83a2f);
     const white = new THREE.Color(0xf2f2f2);
     const c = new THREE.Color();
@@ -578,11 +585,14 @@ export class Track {
       const p = this._pts[idx];
       const side = this._sideAt(idx);
       // Local curvature: how much the heading turns over a short look-ahead. On
-      // bends the verge becomes a red/white rumble kerb; straights stay sandy.
+      // bends the verge becomes a red/white rumble kerb; straights stay sandy —
+      // or, in the CITY, concrete sidewalk slabs (alternating tone = paving joints).
       let d = tanAng(idx + 10) - tanAng(idx);
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
+      const urban = biomeRoadStyle(p.x, p.z).kind === "urban";
       if (Math.abs(d) > 0.055) c.copy(Math.floor(i / 2) % 2 === 0 ? red : white);
+      else if (urban) c.copy(Math.floor(i / 3) % 2 === 0 ? concrete : concreteSeam);
       else c.copy(sand);
       const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
       const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
@@ -601,7 +611,8 @@ export class Track {
     geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    // DoubleSide for the same reason as the road: winding follows loop direction.
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }

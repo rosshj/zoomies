@@ -212,8 +212,9 @@ const ROAD_STYLES = {
   savanna: { tint: [1.45, 1.28, 0.95], kind: "sand" },
   tundra: { tint: [1.25, 1.32, 1.4], kind: "snow" },
   // City keeps the grey on the ROAD (a cool, fresh-laid asphalt) now that its
-  // terrain is green; beach tarmac reads sun-bleached and sandy.
-  city: { tint: [0.92, 0.95, 1.04], kind: "asphalt" },
+  // terrain is green; beach tarmac reads sun-bleached and sandy. The "urban"
+  // kind gives the city concrete SIDEWALKS instead of the sandy verge trim.
+  city: { tint: [0.92, 0.95, 1.04], kind: "urban" },
   beach: { tint: [1.5, 1.35, 1.05], kind: "sand" },
 };
 export function biomeRoadStyle(x, z) {
