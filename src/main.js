@@ -5,7 +5,7 @@ import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, 
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { initGpuParticles } from "./gpuparticles.js";
-import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
+import { installCrashGuard, watchGpu, consumeLastCrash, reportFatal } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
@@ -1545,24 +1545,27 @@ const QUALITY_KEY = "zoomies-quality";
 // the dynamic-resolution floor, and — Very Low only — a 30fps frame cap (a
 // locked 30 feels better than a jittery 45 and runs cooler on old phones).
 const TIERS = ["vlow", "low", "high", "vhigh"];
+const _coarsePointer = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 const TIER_CONF = {
   vlow:  { dpr: 1.0,  effects: false, shadows: false, drsMin: 0.4,  capMs: 1000 / 30, label: "VL", name: "Very Low" },
   low:   { dpr: 1.25, effects: false, shadows: true,  drsMin: 0.45, capMs: 0, label: "L",  name: "Low" },
   high:  { dpr: 2,    effects: true,  shadows: true,  drsMin: 0.45, capMs: 0, label: "H",  name: "High" },
   // Very High spends desktop headroom: native retina resolution and a high DRS
-  // floor (sustained overload demotes a rung via the watchdog instead).
-  vhigh: { dpr: 3,    effects: true,  shadows: true,  drsMin: 0.75, capMs: 0, label: "VH", name: "Very High" },
+  // floor (sustained overload demotes a rung via the watchdog instead). On
+  // phones/tablets the DPR stays at High's cap — a 3x drawing buffer is the
+  // exact render-target memory pressure that loses iOS's WebGPU device — so
+  // there V.High means the effects + the high resolution floor, not more pixels.
+  vhigh: { dpr: _coarsePointer ? 2 : 3, effects: true, shadows: true, drsMin: 0.75, capMs: 0, label: "VH", name: "Very High" },
 };
 // Auto (the default): pick a starting rung from cheap device signals; the
 // watchdog walks down the ladder from there if the device can't keep up.
 // deviceMemory exists on Chrome/Android (where the weak devices live); Safari
 // never exposes it, so Macs/iPhones fall through to the pointer check.
 function autoTier() {
-  const touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
   const mem = navigator.deviceMemory || 0;
   if (mem && mem <= 2) return "vlow";
   if (mem && mem <= 4) return "low";
-  if (!touch) return "vhigh"; // desktops have the headroom (and often 120Hz)
+  if (!_coarsePointer) return "vhigh"; // desktops have the headroom (and often 120Hz)
   return "high";
 }
 let qualityPref = "auto"; // what the player chose ("auto" or a tier)
@@ -1709,8 +1712,19 @@ function applyQuality(tier) {
   if (world.grass) world.grass.visible = conf.effects;
   if (gpuParticles) gpuParticles.setVisible(conf.effects);
   if (sun && sun.castShadow !== conf.shadows) {
-    sun.castShadow = conf.shadows;
-    if (conf.shadows) sun.shadow.needsUpdate = true; // re-render the on-demand map
+    // Flipping castShadow restructures the lighting node graph, which on the
+    // WebGPU backend recompiles the pipeline of EVERY lit material — a
+    // mid-session recompile storm that is exactly the pressure that stalls or
+    // loses iOS's WebGPU device. So: apply it freely before the first frame
+    // (boot honours the persisted pref) and any time on WebGL2, but on a live
+    // WebGPU session leave the shadow pass as-is — the persisted pref makes it
+    // stick on the next launch, and the tier's resolution/effects/cap (the
+    // bulk of the win) still apply instantly.
+    const liveWebGPU = _rendererReady && renderer.backend && renderer.backend.isWebGPUBackend;
+    if (!liveWebGPU) {
+      sun.castShadow = conf.shadows;
+      if (conf.shadows) sun.shadow.needsUpdate = true; // re-render the on-demand map
+    }
   }
   _drsMin = conf.drsMin;
   renderScale = 1; // reset DRS on a quality change
@@ -3714,8 +3728,27 @@ let last = performance.now();
 let prevPlayerLap = -1;
 let prevPlayerSpin = 0;
 
+// The rAF wrapper re-arms FIRST, then runs the frame inside a guard: an
+// exception thrown on EVERY frame would otherwise freeze the picture while the
+// audio thread keeps humming — the worst kind of silent death. Transients (a
+// shader-compile hiccup) get ~1.5s to clear; a persistent per-frame fault is
+// recorded and recovered via reload into the WebGL2 fallback (reportFatal).
+let _loopFail = 0;
 function loop(now) {
   requestAnimationFrame(loop);
+  try {
+    loopBody(now);
+    _loopFail = 0;
+  } catch (err) {
+    if (_loopFail === 0) console.error("[zoomies] frame exception:", err);
+    if (++_loopFail >= 90) {
+      _loopFail = 0;
+      reportFatal("loop-exception", err && (err.stack || err.message) || err);
+    }
+  }
+}
+
+function loopBody(now) {
   // Frame-rate cap (Very Low): skip whole rAF ticks until the cap interval has
   // passed. `last` isn't touched on a skip, so dt spans the skipped ticks and
   // the dt-based physics/animation are unaffected — the game just renders less.

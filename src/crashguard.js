@@ -85,9 +85,26 @@ export function watchGpu(renderer) {
   }
 }
 
+// A fatal-but-silent failure the loss watcher can't see: the render loop
+// throwing on EVERY frame (frozen picture, audio keeps humming — WebAudio runs
+// on its own thread). Record it and reload into the WebGL2 fallback, turning a
+// permanent freeze into a one-time recovery. sessionStorage-stamped so a fault
+// that survives the reload can't put the tab in a reload loop.
+const RELOAD_STAMP = "zoomies-autoreload";
+export function reportFatal(type, detail) {
+  record(type, detail);
+  let recent = 0;
+  try { recent = +sessionStorage.getItem(RELOAD_STAMP) || 0; } catch { /* ignore */ }
+  if (Date.now() - recent < 120000) return false; // just auto-reloaded — don't loop
+  try { sessionStorage.setItem(RELOAD_STAMP, String(Date.now())); } catch { /* ignore */ }
+  fallbackToWebGL(true);
+  return true;
+}
+
 // Permanently prefer WebGL2 and reload. Guarded so we can't loop: if the flag is
-// already set (we've fallen back before), we don't reload again.
-function fallbackToWebGL() {
+// already set (we've fallen back before), we don't reload again — unless `force`
+// (reportFatal's freeze recovery, which has its own reload-loop stamp above).
+function fallbackToWebGL(force = false) {
   let already = false;
   try {
     already = localStorage.getItem(PREFER_WEBGL) === "1";
@@ -95,7 +112,7 @@ function fallbackToWebGL() {
   } catch {
     /* ignore */
   }
-  if (already) return; // already on the fallback — don't reload into a loop
+  if (already && !force) return; // already on the fallback — don't reload into a loop
   try {
     const u = new URL(location.href);
     u.searchParams.set("webgl", "1");
