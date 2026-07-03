@@ -162,7 +162,7 @@ export function planFeatures(track, biomeNames, rng) {
     if (best == null) continue;
     const run = makeRun(track, spec.kind, best, half);
     if (spec.kind === "canyon") {
-      run.mag = 20 + rng() * 9; // wall height varies per seed
+      run.mag = 23 + rng() * 9; // wall height varies per seed
       // Desert canyons get warm red rock; alpine/tundra stay cool grey.
       run.warmRock = biomeNames[((best % N) + N) % N] === "desert";
     }
@@ -195,17 +195,20 @@ function makeRiver(track, run, rng) {
   const amp = 26 + rng() * 22;
 
   // March outward from the crossing in each direction; the meander is a couple
-  // of harmonics along the road's tangent axis. Stop before the river (plus its
-  // carve) could reach another pass of the road.
+  // of harmonics along the road's tangent axis, eased in from zero so the river
+  // leaves the crossing perpendicular (it can't curl back over its own deck).
+  // Each arm stops before the carve could reach any OTHER pass of the loop —
+  // checked against the run's `others` list, so the intended crossing itself
+  // never truncates the river.
   const STEP = 13;
   const armPts = (sign) => {
     const arm = [];
     for (let k = 1; k <= 30; k++) {
       const t = sign * k * STEP;
-      const sway = amp * (Math.sin(t * 0.011 + ph0) * 0.7 + Math.sin(t * 0.023 + ph1) * 0.3);
+      const sway = amp * smooth01(Math.abs(t) / 80) * (Math.sin(t * 0.011 + ph0) * 0.7 + Math.sin(t * 0.023 + ph1) * 0.3);
       const x = p.x + side.x * t + tan.x * sway;
       const z = p.z + side.z * t + tan.z * sway;
-      if (Math.abs(k * STEP) > 46 && track.distanceToCenter(x, z) < track.halfWidth + blend + 8) break;
+      if (otherRoadDist(run.others, x, z) < track.halfWidth + blend + 6) break;
       if (Math.hypot(x, z) > 880) break; // stay on the terrain sheet
       arm.push({ x, z });
     }
@@ -227,7 +230,9 @@ function makeRiver(track, run, rng) {
     return { x: q.x, z: q.z, sx: dz, sz: -dx };
   });
 
-  const level = p.y - 6.2; // water sits well under the deck at the crossing
+  let runMinY = Infinity;
+  for (const s of run.spine) if (s.y < runMinY) runMinY = s.y;
+  const level = runMinY - 5.5; // water sits well under the LOWEST point of the deck
   return {
     ribbon: true,
     river: true,
@@ -258,8 +263,8 @@ export function featureHeightMod(feats, x, z, h) {
       const endW = smooth01(s.u / 0.16) * smooth01((1 - s.u) / 0.16);
       if (endW <= 0) continue;
       const inner = run.halfWidth + 7; // road corridor + verge stays untouched
-      const peak0 = inner + 13;
-      const peak1 = inner + 54;
+      const peak0 = inner + 9; // steep climb straight off the verge
+      const peak1 = inner + 50;
       let w = 0;
       if (s.d <= inner) w = 0;
       else if (s.d < peak0) w = smooth01((s.d - inner) / (peak0 - inner));
@@ -270,8 +275,8 @@ export function featureHeightMod(feats, x, z, h) {
       // the wall never buries road (the field fades out approaching it).
       const gate = smooth01((otherRoadDist(run.others, x, z) - (run.halfWidth + 10)) / 26);
       if (gate <= 0) continue;
-      // Craggy variation so the rim reads as rock, not an extruded band.
-      const wob = 0.72 + 0.28 * Math.sin(x * 0.045 + z * 0.06) * Math.sin(x * 0.021 - z * 0.033);
+      // Gentle rim variation — the wall reads as a steep hillside, not a berm.
+      const wob = 0.9 + 0.1 * Math.sin(x * 0.045 + z * 0.06) * Math.sin(x * 0.021 - z * 0.033);
       h += run.mag * w * endW * wob * gate;
     } else if (run.kind === "overpass") {
       const s = spineDist(run.spine, x, z);
@@ -298,12 +303,24 @@ export function featureKeepClear(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
     const R =
-      run.kind === "overpass" ? 56
+      run.kind === "overpass" ? 42
       : run.kind === "canyon" ? 88
       : run.kind === "giant" ? 66
       : 34; // bridge: keep props out from under the deck
     const s = spineDist(run.spine, x, z);
     if (s.u >= 0 && s.d < R) return true;
+  }
+  return false;
+}
+
+// Should trees stay off (x,z)? The canyon's wall band is bare rock/scrub —
+// trees planted mid-face clipped straight into the outcrops.
+export function featureTreeBlock(feats, x, z) {
+  if (!feats) return false;
+  for (const run of feats.runs) {
+    if (run.kind !== "canyon") continue;
+    const s = spineDist(run.spine, x, z);
+    if (s.u >= 0 && s.d < run.halfWidth + 58) return true;
   }
   return false;
 }
@@ -440,20 +457,20 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   // tinted warm in the desert and grey elsewhere (same trick as the mountains).
   const canyon = feats.runs.find((r) => r.kind === "canyon");
   if (canyon) {
+    // Sparse outcrops sunk into the wall face — accents on a steep hillside,
+    // not a rampart of boulders hiding it.
     const chunks = [];
-    for (let i = canyon.i0; i <= canyon.i1; i += 3) {
+    for (let i = canyon.i0; i <= canyon.i1; i += 5) {
       const idx = ((i % N) + N) % N;
       const p = track._pts[idx];
       const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
       for (const sgn of [1, -1]) {
-        for (let rowN = 0; rowN < 2; rowN++) {
-          if (rng() < 0.35) continue;
-          const off = track.halfWidth + 12 + rowN * 13 + rng() * 6;
-          const x = p.x + side.x * sgn * off + (rng() - 0.5) * 4;
-          const z = p.z + side.z * sgn * off + (rng() - 0.5) * 4;
-          if (track.distanceToCenter(x, z) < track.halfWidth + 9) continue;
-          chunks.push({ x, z, base: heightAt(x, z), h: 9 + rowN * 7 + rng() * 8 });
-        }
+        if (rng() < 0.62) continue;
+        const off = track.halfWidth + 14 + rng() * 34; // scattered up the wall
+        const x = p.x + side.x * sgn * off + (rng() - 0.5) * 5;
+        const z = p.z + side.z * sgn * off + (rng() - 0.5) * 5;
+        if (track.distanceToCenter(x, z) < track.halfWidth + 10) continue;
+        chunks.push({ x, z, base: heightAt(x, z), h: 4.5 + rng() * 6 });
       }
     }
     if (chunks.length) {
@@ -468,8 +485,8 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       chunks.forEach((c, i) => {
         const sy = c.h / 2;
         q.setFromEuler(new THREE.Euler(rng() * 0.5, rng() * Math.PI, rng() * 0.5));
-        pv.set(c.x, c.base + sy * 0.35, c.z);
-        sv.set(2.6 + rng() * 3, sy, 2.6 + rng() * 3);
+        pv.set(c.x, c.base + sy * 0.15, c.z); // sunk into the hillside
+        sv.set(2.2 + rng() * 2.4, sy, 2.2 + rng() * 2.4);
         m.compose(pv, q, sv);
         mesh.setMatrixAt(i, m);
         // Desert canyons read as red rock; alpine/tundra rims stay cool grey.

@@ -8,7 +8,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // Track set pieces (river bridge / canyon / giant forest / overpass): the
 // planner lives on the track (track.features); these helpers shape the terrain
 // around the runs and build their structures. See features.js for the system.
-import { featureHeightMod, featureKeepClear, riverLakeEntry, giantTreeBoost, buildFeatureStructures } from "./features.js";
+import { featureHeightMod, featureKeepClear, featureTreeBlock, riverLakeEntry, giantTreeBoost, buildFeatureStructures } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -1366,6 +1366,7 @@ function buildTrees(scene, track, heightAt, flatten) {
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
   const spots = scatter(340, track, flatten, 0.55, 1700)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
+    .filter((s) => !featureTreeBlock(track.features, s.x, s.z)) // bare canyon walls
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
     .filter((s) => s.y <= 30 && rand() < s.b.treeDensity);
 
@@ -2344,6 +2345,7 @@ function buildForests(scene, track, heightAt) {
       // so a pine's foliage never leans out over the tarmac/barrier.
       if (track.distanceToCenter(x, z) < halfW + 7) continue;
       if (_inLake(x, z)) continue;
+      if (featureTreeBlock(track.features, x, z)) continue; // bare canyon walls
       const b = biomeAt(x, z);
       if (b.style !== "pine") continue;
       // Inside the giant-forest run the woods swap for towering specimens:
@@ -2522,8 +2524,18 @@ function buildRoadside(scene, track, heightAt) {
     if (track.distanceToCenter(x, z) < halfW + 4) return;
     if (_inLake(x, z)) return;
     if (featureKeepClear(track.features, x, z)) return; // set pieces keep their corridor clear
+    // Sample the footprint, not just the centre: on a slope the prop sits at
+    // the LOW corner (sunk in, never hovering), and genuinely steep ground —
+    // canyon walls, river banks, cliff edges — gets no structure at all
+    // (that's what left houses floating off ledges).
+    const y0 = heightAt(x, z);
+    const y1 = heightAt(x + 4, z), y2 = heightAt(x - 4, z);
+    const y3 = heightAt(x, z + 4), y4 = heightAt(x, z - 4);
+    const lo = Math.min(y0, y1, y2, y3, y4);
+    const hi = Math.max(y0, y1, y2, y3, y4);
+    if (hi - lo > 4.2) return; // too steep to build on
     const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
-    prop.position.set(x, heightAt(x, z), z);
+    prop.position.set(x, lo + 0.04, z);
     prop.rotation.y = faceRoad
       ? Math.atan2(-side.x * dir, -side.z * dir) + (rand() - 0.5) * 0.4
       : rand() * Math.PI * 2;
