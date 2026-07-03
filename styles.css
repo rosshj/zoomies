@@ -102,13 +102,17 @@ body {
 
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
    orbit renders behind), so darken it just enough for legibility instead of
-   hiding it. */
+   hiding it. Pause holds the frozen race behind its card, the lobby floats over
+   the world tour, and results float over the victory lap + fireworks. */
 #menu,
 #howto,
 #settings,
 #install-help,
 #mode-panel,
-#track-panel {
+#track-panel,
+#pause-overlay,
+#lobby,
+#results {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
@@ -703,13 +707,23 @@ body {
 .install-steps {
   text-align: left;
   margin: 14px auto;
-  padding-left: 22px;
-  max-width: 320px;
+  padding: 12px 16px 12px 34px;
+  max-width: 340px;
   line-height: 1.55;
   font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
 }
 .install-steps li {
   margin-bottom: 9px;
+}
+.install-steps li::marker {
+  color: var(--accent);
+  font-weight: 800;
+}
+.install-steps li:last-child {
+  margin-bottom: 0;
 }
 .install-steps strong {
   color: var(--accent);
@@ -1022,21 +1036,46 @@ h1 {
   font-size: 12px;
 }
 
-.how-to {
-  list-style: none;
+/* How to Play: one icon card per control, two columns for the landscape stage. */
+.menu-card.howto-main {
+  width: min(560px, 100%);
+  max-width: min(560px, 100%);
+}
+.how-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+  margin: 12px 0 2px;
   text-align: left;
-  margin: 0;
-  padding: 0;
-  line-height: 1.45;
-  font-size: 13.5px;
 }
-
-.how-to li {
-  margin-bottom: 3px;
+.how-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 12.5px;
+  line-height: 1.35;
 }
-
-.how-to strong {
+.how-ico {
+  flex: 0 0 auto;
+  font-size: 19px;
+  line-height: 1;
+}
+.how-txt strong {
   color: var(--accent);
+}
+/* The goal line spans both columns and gets the accent treatment. */
+.how-win {
+  grid-column: 1 / -1;
+  justify-content: center;
+  border-color: rgba(255, 179, 0, 0.5);
+  background: rgba(255, 179, 0, 0.08);
+}
+.howto-main .hint {
+  max-width: none;
 }
 
 button {
@@ -1093,31 +1132,114 @@ kbd {
   50% { transform: rotate(90deg); }
 }
 
+/* Results: podium-style standings rows — rank | name | time columns, with the
+   player's row lit gold. Floats over the victory-lap camera + fireworks. */
+.menu-card.results-main {
+  width: min(400px, 100%);
+  max-width: min(400px, 100%);
+}
 #results-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 12px 0 14px;
+  padding: 0;
   text-align: left;
-  display: inline-block;
-  margin: 6px auto 14px;
-  line-height: 1.5;
-  font-size: 16px;
 }
-
-#results-list .you {
+#results-list li {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  font-size: 14px;
+}
+#results-list .r-rank {
+  font-weight: 800;
+  font-size: 15px;
+}
+#results-list .r-name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#results-list .r-time {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+  font-size: 13px;
+}
+#results-list li.you {
+  border-color: rgba(255, 179, 0, 0.7);
+  background: rgba(255, 179, 0, 0.1);
+}
+#results-list li.you .r-name,
+#results-list li.you .r-time {
   color: var(--accent);
-  font-weight: bold;
+  opacity: 1;
+}
+#restart-btn {
+  font-size: 17px;
+  padding: 11px 34px;
 }
 
+/* Lobby: two columns (room code + sharing | players), one primary action. */
+.menu-card.lobby-main {
+  width: min(620px, 100%);
+  max-width: min(620px, 100%);
+}
+.lobby-body {
+  display: flex;
+  flex-flow: row wrap;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 8px 26px;
+  margin-top: 2px;
+}
+.lobby-col {
+  flex: 1 1 240px;
+  min-width: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
 #lobby-players {
   list-style: none;
   padding: 0;
-  margin: 10px auto 14px;
-  display: inline-block;
+  margin: 4px 0 6px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
   text-align: left;
-  line-height: 1.8;
-  font-size: 16px;
+  font-size: 14px;
+}
+#lobby-players li {
+  padding: 6px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.045);
+  font-weight: 600;
 }
 #lobby-players .you {
   color: var(--accent);
-  font-weight: bold;
+  font-weight: 800;
+  border-color: rgba(255, 179, 0, 0.7);
+  background: rgba(255, 179, 0, 0.1);
+}
+.lobby-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+}
+.lobby-actions .hint {
+  margin-top: 4px;
 }
 #lobby-code {
   letter-spacing: 2px;
@@ -1140,9 +1262,15 @@ kbd {
 }
 .lobby-share-label,
 .lobby-players-label {
-  font-size: 13px;
-  opacity: 0.8;
-  margin: 8px 0 2px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 8px 0 4px;
+}
+.lobby-players-label span {
+  color: var(--accent);
 }
 /* Live connection state in the lobby — green when connected, red on failure. */
 .lobby-status {
@@ -1641,20 +1769,68 @@ button.small {
   margin-top: 8px;
 }
 
+/* ===== Pause ===== */
+/* Same shape as the main menu: one primary, quiet extras, glassy card over the
+   frozen race. */
+.menu-card.pause-card {
+  width: min(330px, 100%);
+  padding: 18px 26px 20px;
+}
+#resume-btn {
+  width: 100%;
+  margin-top: 8px;
+  font-size: 18px;
+  padding: 12px 30px;
+}
+.pause-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.pause-row button.small {
+  margin-top: 0;
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-width: 1px;
+  opacity: 0.9;
+}
+.pause-exit {
+  width: 100%;
+  font-size: 14px;
+  padding: 10px 20px;
+}
+
 /* ===== Settings screen ===== */
+.menu-card.settings-main {
+  width: min(500px, 100%);
+  max-width: min(500px, 100%);
+}
 .settings-list {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin: 18px 0 8px;
+  gap: 9px;
+  margin: 12px 0 8px;
   text-align: left;
+}
+/* Each concern is its own card — the same bucket treatment as the mode cards. */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 11px 14px 12px;
+  border: 2px solid rgba(255, 255, 255, 0.14);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .setting-row {
   display: grid;
-  grid-template-columns: 88px 76px 1fr;
+  grid-template-columns: 104px 76px 1fr;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
 }
 
 /* The Graphics row has no slider; let its toggle span the slider column too. */
@@ -1677,6 +1853,7 @@ button.small {
 .adv-toggle {
   background: none;
   border: none;
+  box-shadow: none;
   color: var(--accent);
   opacity: 0.75;
   font-size: 12px;
@@ -1696,11 +1873,12 @@ button.small {
 }
 
 .setting-label {
-  font-size: 14px;
+  font-size: 12.5px;
   font-weight: bold;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   color: var(--accent);
   text-transform: uppercase;
+  line-height: 1.25;
 }
 
 /* Keep the small toggle buttons a fixed width so On/Off don't jump around. */
@@ -1861,7 +2039,6 @@ button.secondary.small,
   text-transform: uppercase;
   color: var(--accent);
   opacity: 0.8;
-  margin: 4px 0 -4px;
+  margin: 0 0 -4px;
   text-align: left;
 }
-.settings-section:first-child { margin-top: 0; }

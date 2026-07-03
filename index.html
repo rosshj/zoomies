@@ -185,13 +185,17 @@
   </div>
 
   <!-- ===== Pause ===== -->
+  <!-- Same shape as the main menu: one primary action, then quiet extras. The
+       frozen race shows through the glassy card. -->
   <div id="pause-overlay" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card pause-card">
       <h1>⏸ Paused</h1>
-      <button id="resume-btn">RESUME</button>
-      <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
-      <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
-      <button id="menu-btn" class="secondary">MAIN MENU</button>
+      <button id="resume-btn">▶ RESUME</button>
+      <div class="pause-row">
+        <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
+        <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
+      </div>
+      <button id="menu-btn" class="secondary pause-exit">🏠 MAIN MENU</button>
     </div>
   </div>
 
@@ -452,53 +456,68 @@
   </div>
 
   <!-- ===== How to play (sub-menu) ===== -->
+  <!-- One icon card per control, in a two-column grid that fits the short
+       landscape stage — scannable at a glance instead of a wall of bullets. -->
   <div id="howto" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card howto-main">
       <h1>How to Play</h1>
-      <ul class="how-to">
-        <li><strong>Tilt phone</strong> to steer</li>
-        <li><strong>Left slider:</strong> up = gas, down = brake / reverse</li>
-        <li><strong>⬆ Hold Jump</strong> while turning to <strong>drift</strong> — longer drift, bigger boost</li>
-        <li><strong>🐾 Shoot</strong> hairballs to spin out rivals</li>
-        <li><strong>🛡️ Hold Shield</strong> to block hairballs</li>
-        <li><strong>💨 Boost</strong> — a turbo cat toot (recharges)</li>
-        <li>First to finish <strong>all laps</strong> wins!</li>
-      </ul>
+      <p class="tagline">Thirty seconds to speed</p>
+      <div class="how-grid">
+        <div class="how-item"><span class="how-ico">📱</span><span class="how-txt"><strong>Tilt</strong> your phone to steer</span></div>
+        <div class="how-item"><span class="how-ico">🕹️</span><span class="how-txt"><strong>Left slider</strong> — up gas, down brake</span></div>
+        <div class="how-item"><span class="how-ico">⬆</span><span class="how-txt"><strong>Hold Jump</strong> in a turn to <strong>drift</strong> — longer drift, bigger boost</span></div>
+        <div class="how-item"><span class="how-ico">🐾</span><span class="how-txt"><strong>Shoot</strong> hairballs to spin out rivals</span></div>
+        <div class="how-item"><span class="how-ico">🛡️</span><span class="how-txt"><strong>Hold Shield</strong> to block hairballs</span></div>
+        <div class="how-item"><span class="how-ico">💨</span><span class="how-txt"><strong>Boost</strong> — a turbo cat toot (recharges)</span></div>
+        <div class="how-item how-win"><span class="how-ico">🏁</span><span class="how-txt">First to finish <strong>all laps</strong> wins!</span></div>
+      </div>
       <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
       <button id="howto-back" class="secondary">← Back</button>
     </div>
   </div>
 
   <!-- ===== Multiplayer lobby ===== -->
+  <!-- Two columns for the short landscape stage: the room code + sharing on one
+       side, who's here on the other, with the single primary action beneath. -->
   <div id="lobby" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card lobby-main">
       <h1>🏁 Lobby</h1>
       <p id="lobby-status" class="lobby-status">Connecting…</p>
-      <!-- Big, obvious share code — friends type this to join. -->
-      <p class="lobby-share-label">Share this code with friends:</p>
-      <div id="lobby-code" class="lobby-code-big">—</div>
-      <div class="mp-share-row">
-        <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
-        <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+      <div class="lobby-body">
+        <div class="lobby-col">
+          <!-- Big, obvious share code — friends type this to join. -->
+          <p class="lobby-share-label">Room code · friends type this</p>
+          <div id="lobby-code" class="lobby-code-big">—</div>
+          <div class="mp-share-row">
+            <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
+            <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+          </div>
+        </div>
+        <div class="lobby-col">
+          <p class="lobby-players-label">Players · <span id="lobby-count">1 / 6</span></p>
+          <ol id="lobby-players"></ol>
+        </div>
       </div>
-      <p class="lobby-players-label">Players <span id="lobby-count">1 / 6</span></p>
-      <ol id="lobby-players"></ol>
-      <button id="lobby-start">START RACE</button>
-      <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
-           host launches (the join reload drops fullscreen). -->
-      <button id="lobby-ready" class="secondary small hidden">🎮 Enable tilt controls</button>
-      <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
-      <button id="lobby-back" class="secondary small">← Main Menu</button>
+      <div class="lobby-actions">
+        <button id="lobby-start">🏁 START RACE</button>
+        <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
+             host launches (the join reload drops fullscreen). -->
+        <button id="lobby-ready" class="secondary small hidden">🎮 Enable tilt controls</button>
+        <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
+        <button id="lobby-back" class="secondary small">← Main Menu</button>
+      </div>
     </div>
   </div>
 
   <!-- ===== Results ===== -->
+  <!-- Standings as podium-style rows (medals for the top three, your row lit
+       gold), floating over the victory-lap camera + fireworks. -->
   <div id="results" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card results-main">
       <h1 id="results-title">🏁 Finish!</h1>
       <ol id="results-list"></ol>
-      <button id="restart-btn">RACE AGAIN</button>
-      <button id="results-menu-btn" class="secondary">Main Menu</button>
+      <button id="restart-btn">🔁 RACE AGAIN</button>
+      <button id="results-menu-btn" class="secondary small">🏠 Main Menu</button>
     </div>
   </div>
 
@@ -577,54 +596,62 @@
   </div>
 
   <!-- ===== Settings (graphics + sound) ===== -->
+  <!-- Grouped into cards (Audio / Display / Advanced) so each concern reads as
+       its own bucket — same visual family as the Game Mode cards. -->
   <div id="settings" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card settings-main">
       <h1>⚙ Settings</h1>
+      <p class="tagline">Sound, graphics &amp; extras</p>
       <div class="settings-list">
-        <h2 class="settings-section">🔊 Audio</h2>
-        <div class="setting-row">
-          <span class="setting-label">Music</span>
-          <button id="set-music-toggle" class="secondary small toggle">On</button>
-          <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="25"
-                 aria-label="Music volume" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Sound FX</span>
-          <button id="set-sfx-toggle" class="secondary small toggle">On</button>
-          <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
-                 aria-label="Sound effects volume" />
-        </div>
-        <h2 class="settings-section">🖥 Display</h2>
-        <div class="setting-row">
-          <span class="setting-label">Graphics</span>
-          <div id="quality-toggle" class="seg-toggle">
-            <button id="set-quality-low" class="seg-btn">Low</button>
-            <button id="set-quality-high" class="seg-btn is-active">High</button>
+        <section class="settings-card">
+          <h2 class="settings-section">🔊 Audio</h2>
+          <div class="setting-row">
+            <span class="setting-label">Music</span>
+            <button id="set-music-toggle" class="secondary small toggle">On</button>
+            <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="25"
+                   aria-label="Music volume" />
           </div>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Compatibility mode</span>
-          <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
-        </div>
-        <p class="setting-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
-
+          <div class="setting-row">
+            <span class="setting-label">Sound FX</span>
+            <button id="set-sfx-toggle" class="secondary small toggle">On</button>
+            <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
+                   aria-label="Sound effects volume" />
+          </div>
+        </section>
+        <section class="settings-card">
+          <h2 class="settings-section">🖥 Display</h2>
+          <div class="setting-row">
+            <span class="setting-label">Graphics</span>
+            <div id="quality-toggle" class="seg-toggle">
+              <button id="set-quality-low" class="seg-btn">Low</button>
+              <button id="set-quality-high" class="seg-btn is-active">High</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Compatibility mode</span>
+            <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
+          </div>
+          <p class="setting-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
+        </section>
         <!-- Advanced / debug toggles, hidden behind an expander to keep the menu tidy. -->
-        <button id="adv-toggle" class="adv-toggle" aria-expanded="false">Advanced ▸</button>
-        <div id="adv-settings" class="hidden">
-          <div class="setting-row">
-            <span class="setting-label">FPS counter</span>
-            <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
+        <section class="settings-card">
+          <button id="adv-toggle" class="adv-toggle" aria-expanded="false">Advanced ▸</button>
+          <div id="adv-settings" class="hidden">
+            <div class="setting-row">
+              <span class="setting-label">FPS counter</span>
+              <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Tilt debug</span>
+              <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">P2P multiplayer</span>
+              <button id="set-rtc-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <p class="setting-note">Experimental: routes multiplayer directly between players for lower lag (best on the same Wi-Fi). Takes effect next time you Host or Join.</p>
           </div>
-          <div class="setting-row">
-            <span class="setting-label">Tilt debug</span>
-            <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
-          </div>
-          <div class="setting-row">
-            <span class="setting-label">P2P multiplayer</span>
-            <button id="set-rtc-toggle" class="secondary small toggle off">Off</button>
-          </div>
-          <p class="setting-note">Experimental: routes multiplayer directly between players for lower lag (best on the same Wi-Fi). Takes effect next time you Host or Join.</p>
-        </div>
+        </section>
       </div>
       <button id="settings-back" class="secondary">← Back</button>
     </div>

@@ -2589,7 +2589,7 @@ const indicatorBtn = document.getElementById("indicator-btn");
 let showIndicator = false;
 function applyIndicator() {
   if (steerBar) steerBar.style.display = showIndicator ? "block" : "none";
-  if (indicatorBtn) indicatorBtn.textContent = `Tilt indicator: ${showIndicator ? "On" : "Off"}`;
+  if (indicatorBtn) indicatorBtn.textContent = `Tilt bar: ${showIndicator ? "On" : "Off"}`;
 }
 if (indicatorBtn)
   indicatorBtn.addEventListener("click", () => {
@@ -2914,7 +2914,7 @@ function renderLobby() {
   if (codeEl) codeEl.textContent = WORLD_SEED;
   if (!MP.enabled || !MP.net) return; // the player list / count need a live connection
   const countEl = document.getElementById("lobby-count");
-  if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS} players`;
+  if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS}`;
   const list = document.getElementById("lobby-players");
   if (list) {
     list.innerHTML = "";
@@ -3550,16 +3550,31 @@ function renderResults() {
   const list = document.getElementById("results-list");
   list.innerHTML = "";
   order.forEach((k) => {
-    const li = document.createElement("li");
     const time = k.finished
-      ? ` — ${formatClock(k.finishTime)}`
-      : MP.enabled ? " — racing…" : " — DNF";
-    li.textContent = `${ordinal(k.place)}  ${k.name}${time}`;
-    if (k === player) li.className = "you";
-    list.appendChild(li);
+      ? formatClock(k.finishTime)
+      : MP.enabled ? "racing…" : "DNF";
+    const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
+    list.appendChild(resultRow(medal, k.name, time, k === player));
   });
   document.getElementById("results-title").textContent =
     player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
+}
+// One standings row: rank (medal for the podium) | name | time, so the columns
+// line up instead of reading as a text blob. `you` lights the player's row gold.
+function resultRow(rank, name, time, you) {
+  const li = document.createElement("li");
+  const r = document.createElement("span");
+  r.className = "r-rank";
+  r.textContent = rank;
+  const n = document.createElement("span");
+  n.className = "r-name";
+  n.textContent = name;
+  const t = document.createElement("span");
+  t.className = "r-time";
+  t.textContent = time;
+  li.append(r, n, t);
+  if (you) li.className = "you";
+  return li;
 }
 
 function formatClock(sec) {
@@ -3686,23 +3701,14 @@ function renderTimeTrialResults() {
     yourTime != null && best != null && yourTime <= best ? "⏱ New Best Lap!" : "⏱ Time Trial";
   const list = document.getElementById("results-list");
   list.innerHTML = "";
-  if (yourTime != null) {
-    const me = document.createElement("li");
-    me.className = "you";
-    me.textContent = `Your lap: ${formatLap(yourTime)}`;
-    list.appendChild(me);
-  }
-  if (!top.length) {
-    const li = document.createElement("li");
-    li.textContent = "No times yet — set one!";
-    list.appendChild(li);
-  }
+  if (yourTime != null) list.appendChild(resultRow("⏱", "Your lap", formatLap(yourTime), true));
+  if (!top.length) list.appendChild(resultRow("—", "No times yet", "set one!", false));
   top.forEach((e, i) => {
-    const li = document.createElement("li");
     const isYou = _ttResult && e === _ttResult.entry;
-    li.textContent = `${i + 1}.  ${formatLap(e.time)}`;
-    if (isYou) li.className = "you";
-    list.appendChild(li);
+    const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+    // The date anchors older bests ("when was that?"); your fresh run says so.
+    const label = isYou ? "This run" : new Date(e.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    list.appendChild(resultRow(medal, label, formatLap(e.time), isYou));
   });
 }
 
