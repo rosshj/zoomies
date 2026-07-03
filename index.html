@@ -196,6 +196,10 @@
   </div>
 
   <!-- ===== Start menu ===== -->
+  <!-- Progressive-disclosure layout: the main screen shows only the primary
+       action plus a short "your race at a glance" list. Each tile shows the
+       CURRENT choice (mode, racer, track) and drills into its own focused
+       screen to change it — nothing is edited on this screen itself. -->
   <div id="menu" class="overlay">
     <div class="menu-card menu-main">
       <!-- Branding + track map on one side, controls on the other, so the menu
@@ -206,48 +210,126 @@
         <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
           <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
           <span id="menu-map-label" class="map-label">Classic circuit</span>
+          <span class="map-edit-hint">Edit ›</span>
         </button>
       </div>
       <div class="menu-col menu-col-actions">
         <!-- Shown only when a race is parked in the background (opened the menu
              mid-race); jumps back into it instead of losing your progress. -->
         <button id="resume-race-btn" class="hidden">▶ RESUME RACE</button>
-        <button id="start-btn">START RACE</button>
-        <button id="time-trial-btn">⏱ TIME TRIAL</button>
-        <div id="mode-toggle" class="seg-toggle hidden">
-          <button id="mode-solo" class="seg-btn is-active">👤 Solo</button>
-          <button id="mode-mp" class="seg-btn">🎮 Multiplayer</button>
+        <!-- The one primary action. Its label + behaviour follow the chosen
+             game mode: start a race, start a time trial, or host a room. -->
+        <button id="start-btn">🏁 START RACE</button>
+        <!-- Joining a friend is an entry action (not a setting), so it stays
+             one tap from the front — shown only while Multiplayer is the mode. -->
+        <div id="mp-join" class="mp-join-row hidden">
+          <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
+                 autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
+          <button id="mp-join-btn" class="secondary small">Join</button>
         </div>
-        <!-- Multiplayer (shown only in Multiplayer mode; START/Time Trial hide).
-             HOST drops you into a lobby with a share code; JOIN takes a friend's
-             code. The room code + sharing live in the lobby, not here. -->
-        <div id="mp-actions" class="mp-actions hidden">
-          <button id="mp-host-btn">🎮 Host Game</button>
-          <p class="mp-or">— or join a friend —</p>
-          <div class="mp-join-row">
-            <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
-                   autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
-            <button id="mp-join-btn" class="secondary small">Join</button>
-          </div>
-          <p id="mp-menu-status" class="lobby-status"></p>
-        </div>
-        <!-- Grouped by what you'd reach for in order: first make it yours
-             (racer + track), then dial in the race, then everything else. -->
-        <div class="menu-options">
-          <span class="menu-group-label">Customize</span>
-          <button id="open-garage" class="secondary small">🐱 Garage</button>
-          <button id="open-track" class="secondary small">🏞 Track</button>
-          <span class="menu-group-label">Race</span>
-          <button id="laps-btn" class="secondary small">Laps: 3</button>
-          <button id="difficulty-btn" class="secondary small">Difficulty: Hard</button>
-          <span class="menu-group-label">More</span>
+        <p id="mp-menu-status" class="lobby-status hidden"></p>
+        <!-- Race setup at a glance: current choice on each row, tap to change. -->
+        <nav class="menu-tiles" aria-label="Race setup">
+          <button id="open-mode" class="menu-tile">
+            <span class="tile-ico">🏁</span>
+            <span class="tile-text">
+              <span class="tile-title">Game Mode</span>
+              <span class="tile-sub" id="mode-summary">Grand Prix · 3 laps · Hard</span>
+            </span>
+            <span class="tile-chevron">›</span>
+          </button>
+          <button id="open-garage" class="menu-tile">
+            <span class="tile-ico">🐱</span>
+            <span class="tile-text">
+              <span class="tile-title">Racer</span>
+              <span class="tile-sub" id="racer-summary">Marmalade · Ember</span>
+            </span>
+            <span class="tile-swatches">
+              <span class="tile-swatch" id="racer-swatch-cat"></span>
+              <span class="tile-swatch" id="racer-swatch-kart"></span>
+            </span>
+            <span class="tile-chevron">›</span>
+          </button>
+          <button id="open-track" class="menu-tile">
+            <span class="tile-ico">🏞</span>
+            <span class="tile-text">
+              <span class="tile-title">Track</span>
+              <span class="tile-sub" id="track-summary">Classic circuit · Midday</span>
+            </span>
+            <span class="tile-chevron">›</span>
+          </button>
+        </nav>
+        <div class="menu-footer">
           <button id="howto-btn" class="secondary small">❓ How to Play</button>
           <button id="open-settings" class="secondary small">⚙ Settings</button>
+          <!-- Shown only when not already installed (JS); does the native install
+               prompt where supported, or opens the iOS instructions overlay. -->
+          <button id="install-btn" class="secondary small hidden">📲 Install</button>
         </div>
-        <!-- Shown only when not already installed (JS); does the native install
-             prompt where supported, or opens the iOS instructions overlay. -->
-        <button id="install-btn" class="secondary small hidden">📲 Add to Home Screen</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== Game mode (sub-menu) ===== -->
+  <!-- One card per mode; the selected card expands to reveal just that mode's
+       options (laps + difficulty for Grand Prix), so only relevant knobs show. -->
+  <div id="mode-panel" class="overlay hidden">
+    <div class="menu-card mode-main">
+      <h1>Game Mode</h1>
+      <p class="tagline">Pick how you want to race</p>
+      <div class="mode-cards">
+        <div id="mode-gp" class="mode-card">
+          <button class="mode-pick">
+            <span class="mode-ico">🏁</span>
+            <span class="mode-text">
+              <span class="mode-name">Grand Prix</span>
+              <span class="mode-desc">Race five rivals to the finish</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+          <div class="mode-opts">
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Laps</span>
+              <div class="seg-toggle laps-seg" id="laps-seg">
+                <button class="seg-btn" data-laps="1">1</button>
+                <button class="seg-btn" data-laps="2">2</button>
+                <button class="seg-btn" data-laps="3">3</button>
+                <button class="seg-btn" data-laps="4">4</button>
+                <button class="seg-btn" data-laps="5">5</button>
+              </div>
+            </div>
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Rivals</span>
+              <div class="seg-toggle" id="diff-seg">
+                <button class="seg-btn" data-diff="easy">Easy</button>
+                <button class="seg-btn" data-diff="medium">Medium</button>
+                <button class="seg-btn" data-diff="hard">Hard</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="mode-tt" class="mode-card">
+          <button class="mode-pick">
+            <span class="mode-ico">⏱</span>
+            <span class="mode-text">
+              <span class="mode-name">Time Trial</span>
+              <span class="mode-desc">One flying lap against the clock — beat your PB</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="mode-mp" class="mode-card hidden">
+          <button class="mode-pick">
+            <span class="mode-ico">🎮</span>
+            <span class="mode-text">
+              <span class="mode-name">Multiplayer</span>
+              <span class="mode-desc">Host a room and share the code, or join a friend</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <button id="mode-done">✓ Done</button>
     </div>
   </div>
 

@@ -1683,31 +1683,33 @@ qualityHighBtn?.addEventListener("click", () => {
 });
 applyQuality(quality, false); // honour the persisted choice without re-writing it
 
-// Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
-const lapsBtn = document.getElementById("laps-btn");
-function applyLapsBtn() {
-  if (lapsBtn) lapsBtn.textContent = `Laps: ${TOTAL_LAPS}`;
+// Lap count + difficulty live on the Game Mode screen as segmented rows (inside
+// the Grand Prix card), replacing the old cycle-tap buttons. Laps persist like
+// difficulty does. Applied at race build (buildKarts) + per-frame in aiActions.
+const LAPS_KEY = "zoomies-laps";
+try {
+  const _l = parseInt(localStorage.getItem(LAPS_KEY), 10);
+  if (_l >= 1 && _l <= 5) TOTAL_LAPS = _l;
+} catch {}
+function refreshRaceOptSegs() {
+  document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
+    b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
+  document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
+    b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
+  refreshModeSummary(); // the main-menu tile echoes laps + difficulty
 }
-if (lapsBtn)
-  lapsBtn.addEventListener("click", () => {
-    TOTAL_LAPS = (TOTAL_LAPS % 5) + 1;
-    applyLapsBtn();
-  });
-applyLapsBtn();
-
-// Difficulty selector: cycles Easy -> Medium -> Hard (the tuned field). Applied
-// to the AI at race build (buildKarts) + per-frame in aiActions.
-const diffBtn = document.getElementById("difficulty-btn");
-function applyDiffBtn() {
-  if (diffBtn) diffBtn.textContent = `Difficulty: ${AI_DIFFICULTY[DIFFICULTY].label}`;
-}
-if (diffBtn)
-  diffBtn.addEventListener("click", () => {
-    DIFFICULTY = DIFF_ORDER[(DIFF_ORDER.indexOf(DIFFICULTY) + 1) % DIFF_ORDER.length];
+document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    TOTAL_LAPS = Number(b.dataset.laps);
+    try { localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS)); } catch {}
+    refreshRaceOptSegs();
+  }));
+document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    DIFFICULTY = b.dataset.diff;
     try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
-    applyDiffBtn();
-  });
-applyDiffBtn();
+    refreshRaceOptSegs();
+  }));
 
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
@@ -2214,14 +2216,16 @@ document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((c
 document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
-// shortcut into the track editor.
+// shortcut into the track editor. The Track tile echoes the same name plus the
+// chosen time of day so the whole setup reads off the front screen.
+const TOD_LABELS = { midday: "Midday", sunset: "Sunset", night: "Night", random: "Random sky" };
 function refreshMenuMap() {
   paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig));
+  const name = trackConfig.mode === "custom" ? `Generated · ${trackConfig.seed || "—"}` : "Classic circuit";
   const label = document.getElementById("menu-map-label");
-  if (label) {
-    label.textContent =
-      trackConfig.mode === "custom" ? `Generated · ${trackConfig.seed || "—"}` : "Classic circuit";
-  }
+  if (label) label.textContent = name;
+  const sub = document.getElementById("track-summary");
+  if (sub) sub.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
 document.getElementById("menu-map-btn")?.addEventListener("click", openTrackPanel);
 refreshMenuMap();
@@ -2424,6 +2428,19 @@ function syncGarageUI() {
   document.getElementById("kart-swatch").style.background = _hex6(kart.color);
   syncCreators();
 }
+// The main menu's Racer tile: current cat + kart by name, with their colours as
+// two little swatch dots, so the choice reads without opening the garage.
+function refreshRacerSummary() {
+  const el = document.getElementById("racer-summary");
+  if (!el) return;
+  const cat = catSpec(garageConfig);
+  const kart = kartSpec(garageConfig);
+  el.textContent = `${cat.name} · ${kart.name}`;
+  const cs = document.getElementById("racer-swatch-cat");
+  if (cs) cs.style.background = _hex6(cat.fur);
+  const ks = document.getElementById("racer-swatch-kart");
+  if (ks) ks.style.background = _hex6(kart.color);
+}
 function openGaragePanel() {
   _garageDraft = {
     cat: garageConfig.cat,
@@ -2538,9 +2555,11 @@ document.getElementById("garage-apply")?.addEventListener("click", () => {
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
   garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
+  refreshRacerSummary();
   closeGarage();
 });
 document.getElementById("garage-back")?.addEventListener("click", closeGarage);
+refreshRacerSummary();
 
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
@@ -2586,31 +2605,66 @@ window.addEventListener("keydown", (e) => {
 });
 
 // --- Menu wiring ---
-document.getElementById("start-btn").addEventListener("click", startRace);
+// One primary START button whose label + action follow the game mode chosen on
+// the Game Mode screen: Grand Prix starts a race, Time Trial a solo run, and
+// Multiplayer hosts a room (joining by code sits right under the button).
 // "Race again" repeats whichever mode you were just in.
 document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
-// Time trial is solo-only; updateModeBtn() hides it in multiplayer. Always attach
-// the handler (even if we loaded straight into MP) so it works after a Solo switch.
-const timeTrialBtn = document.getElementById("time-trial-btn");
-timeTrialBtn?.addEventListener("click", startTimeTrial);
 
-// Solo / Multiplayer mode. Only offered when an Ably key is configured. Picking
-// Multiplayer reveals the HOST / JOIN choices (it does NOT connect yet):
-//   • Host Game → connect to your own room and drop into the lobby with a share code.
-//   • Join → reload into a friend's room by code and land in their lobby.
-const modeToggle = document.getElementById("mode-toggle");
-const modeSoloBtn = document.getElementById("mode-solo");
-const modeMpBtn = document.getElementById("mode-mp");
+const startBtn = document.getElementById("start-btn");
 const mpCodeInput = document.getElementById("mp-code");
-let _mpUIMode = false; // showing the multiplayer host/join panel (separate from "connected")
-function updateModeBtn() {
-  modeSoloBtn?.classList.toggle("is-active", !_mpUIMode);
-  modeMpBtn?.classList.toggle("is-active", _mpUIMode);
-  document.getElementById("mp-actions")?.classList.toggle("hidden", !_mpUIMode);
-  // In multiplayer the lobby is where you launch a race, so hide the solo buttons.
-  document.getElementById("start-btn")?.classList.toggle("hidden", _mpUIMode);
-  if (timeTrialBtn) timeTrialBtn.classList.toggle("hidden", _mpUIMode);
+const MODE_KEY = "zoomies-mode-v1";
+const MODE_INFO = {
+  gp: { cta: "🏁 START RACE" },
+  tt: { cta: "⏱ START TIME TRIAL" },
+  mp: { cta: "🎮 HOST GAME" },
+};
+// Multiplayer needs a configured relay key; without one the mode isn't offered.
+const mpAvailable = !!resolveAblyKey();
+let raceMode = "gp";
+try {
+  const m = localStorage.getItem(MODE_KEY);
+  if (m === "gp" || m === "tt") raceMode = m; // "mp" never persists (needs a live room)
+} catch {}
+
+// The Game Mode tile echoes the chosen mode plus its options at a glance.
+function refreshModeSummary() {
+  const el = document.getElementById("mode-summary");
+  if (!el) return;
+  el.textContent =
+    raceMode === "tt" ? "Time Trial · One lap vs the clock"
+    : raceMode === "mp" ? "Multiplayer · Host or join friends"
+    : `Grand Prix · ${TOTAL_LAPS} lap${TOTAL_LAPS > 1 ? "s" : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`;
 }
+function applyModeUI() {
+  if (startBtn) startBtn.textContent = MODE_INFO[raceMode].cta;
+  const mp = raceMode === "mp";
+  document.getElementById("mp-join")?.classList.toggle("hidden", !mp);
+  document.getElementById("mp-menu-status")?.classList.toggle("hidden", !mp);
+  for (const m of ["gp", "tt", "mp"])
+    document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
+  refreshModeSummary();
+}
+function setRaceMode(mode) {
+  if (mode === "mp" && !mpAvailable) return;
+  // Leaving Multiplayer for a solo mode drops the room connection.
+  if (mode !== "mp" && MP.enabled) teardownMultiplayer();
+  raceMode = mode;
+  if (mode !== "mp") try { localStorage.setItem(MODE_KEY, mode); } catch {}
+  applyModeUI();
+}
+startBtn?.addEventListener("click", () => {
+  if (raceMode === "tt") startTimeTrial();
+  else if (raceMode === "mp") hostGame();
+  else startRace();
+});
+
+// Game Mode screen: one card per mode; the selected card expands its options.
+const modePanel = document.getElementById("mode-panel");
+for (const m of ["gp", "tt", "mp"])
+  document.getElementById("mode-" + m)?.addEventListener("click", () => setRaceMode(m));
+document.getElementById("open-mode")?.addEventListener("click", () => openSubScreen(modePanel));
+document.getElementById("mode-done")?.addEventListener("click", () => closeSubScreen(modePanel));
 
 // Host: connect to my own room (= my world seed) and go straight into the lobby.
 // The click is the user gesture beginRace needs for fullscreen + motion permission.
@@ -2642,7 +2696,7 @@ function autoOpenLobby() {
   enterLobby();
 }
 function enterMultiplayer() {
-  _mpUIMode = true;
+  raceMode = "mp";
   _amHost = true; // I'm creating this room → I'm the host (survives a refresh below)
   try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
   audio.unlock();
@@ -2651,9 +2705,11 @@ function enterMultiplayer() {
   u.searchParams.set("seed", WORLD_SEED);
   history.replaceState(null, "", u);
   initMultiplayer(); // connects (async) in the background
-  updateModeBtn();
+  applyModeUI();
 }
-function exitMultiplayer() {
+// Drop the room connection + remote karts (used when switching back to a solo
+// mode on the Game Mode screen). Pure teardown — the caller owns the UI state.
+function teardownMultiplayer() {
   if (MP.net) {
     try { MP.net.close(); } catch { /* ignore */ }
     MP.net = null;
@@ -2667,31 +2723,23 @@ function exitMultiplayer() {
   MP.inLobby = false;
   MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
-  _mpUIMode = false;
   const u = new URL(location.href);
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
-  updateModeBtn();
-  toMenu();
 }
-if (modeToggle && resolveAblyKey()) {
-  modeToggle.classList.remove("hidden");
-  modeSoloBtn?.addEventListener("click", () => {
-    if (MP.enabled) exitMultiplayer();
-    else { _mpUIMode = false; updateModeBtn(); }
-  });
-  modeMpBtn?.addEventListener("click", () => { _mpUIMode = true; updateModeBtn(); });
-  document.getElementById("mp-host-btn")?.addEventListener("click", hostGame);
+if (mpAvailable) {
+  document.getElementById("mode-mp")?.classList.remove("hidden");
   document.getElementById("mp-join-btn")?.addEventListener("click", joinGame);
   mpCodeInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") joinGame(); });
   // Anyone landing with ?mp=1 — a join reload, an invite link, or a host refresh —
   // is here to play together, so drop straight into the lobby (no flag needed).
   if (new URLSearchParams(location.search).has("mp")) {
-    _mpUIMode = true;
+    raceMode = "mp";
     setTimeout(autoOpenLobby, 60);
   }
-  updateModeBtn();
 }
+applyModeUI();
+refreshRaceOptSegs();
 
 // A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
 // independent of whatever junk is on location.href right now.
