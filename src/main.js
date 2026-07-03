@@ -3846,6 +3846,16 @@ function loop(now) {
       renderGarage(now / 1000, dt);
       return;
     }
+    // Debug/screenshot hook: window.__campin = [x,y,z, tx,ty,tz] pins the menu
+    // camera to a fixed shot (headless tooling flies it to the track set pieces).
+    if (window.__campin) {
+      const c = window.__campin;
+      camera.position.set(c[0], c[1], c[2]);
+      camera.lookAt(c[3], c[4], c[5]);
+      if (menuXfade) menuXfade.style.opacity = 0;
+      renderFrame();
+      return;
+    }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
     updateMenuCamera(now / 1000); // advance tour timing/phase

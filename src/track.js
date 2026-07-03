@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { planFeatures } from "./features.js";
 import { rand, makeRng } from "./rng.js";
 
 const TAU = Math.PI * 2;
@@ -324,6 +325,13 @@ export class Track {
       elevMin: eMin,
       elevMax: eMax,
     });
+
+    // Set pieces (river bridge / canyon / giant forest / overpass): planned off
+    // the finished loop + biome layout, each owned by its host biome. Scenery
+    // reads this to shape the terrain and dress the runs (see features.js).
+    const biomeNames = this._pts.map((p) => biomeNameAt(p.x, p.z, p.y));
+    this.biomeNames = biomeNames; // kept for debugging/headless tooling
+    this.features = planFeatures(this, biomeNames, rand);
 
     this.group = new THREE.Group();
     this._buildRoad();

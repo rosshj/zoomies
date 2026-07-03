@@ -5,6 +5,10 @@ import { attribute, color as tslColor, mix, smoothstep, float, time, positionLoc
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
+// Track set pieces (river bridge / canyon / giant forest / overpass): the
+// planner lives on the track (track.features); these helpers shape the terrain
+// around the runs and build their structures. See features.js for the system.
+import { featureHeightMod, featureKeepClear, riverLakeEntry, giantTreeBoost, buildFeatureStructures } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -194,6 +198,12 @@ export function biomeBarrierStyle(x, z) {
   return biomeAt(x, z).barrier;
 }
 
+// Biome NAME at a position (used by the track's set-piece planner, which needs
+// to know which biome owns each stretch of road). `y` optional as in biomeAt.
+export function biomeNameAt(x, z, y) {
+  return biomeAt(x, z, y).name;
+}
+
 // Precipitation the biome at a position brings ("none" / "rain" / "snow").
 export function biomeWeatherAt(x, z) {
   return biomeAt(x, z).weather;
@@ -362,12 +372,17 @@ export function buildWorld(scene, track, opts = {}) {
 
   // Lakes: a big one in the open infield (the loop wraps right around it) plus a
   // couple of smaller ones out on the hills. Their level matches the ground.
+  // The set-piece RIVER (if the map bridged one) rides in the same list, so it
+  // shares the carve, the water and the prop-exclusion wholesale.
+  const feats = track.features || { runs: [] };
   const lakes = makeLakes(track, baseHeight);
   // Clear props out to the full carve (the shore bank), not just the waterline,
   // so nothing sits on the slope between the road and the lake.
   _inLake = (x, z) => lakes.some((L) => lakeDist(L, x, z) < L.blendR);
 
-  const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
+  // The world's ONE height truth: road-anchored hills, minus the lake/river
+  // carves, plus the set-piece fields (canyon walls up, overpass plaza down).
+  const heightAt = (x, z) => featureHeightMod(feats, x, z, carveLakes(lakes, x, z, baseHeight(x, z)));
 
   // The terrain mesh gets an EXTRA drop under the road corridor (tapering to
   // zero by the sand trim's outer edge, so the visible verge is unchanged).
@@ -389,6 +404,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
   buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
+  buildFeatureStructures(scene, track, heightAt, rand); // bridge/overpass decks + piers, canyon rim rocks
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
@@ -453,6 +469,11 @@ function makeLakes(track, baseHeight) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
 
+  // The set-piece river goes in FIRST so every lake placed below keeps clear of
+  // it (the hill/beach candidate loops already reject against ribbon entries).
+  const river = riverLakeEntry(track.features);
+  if (river) lakes.push(river);
+
   // Hero lake: a curved RIBBON in the infield that follows a LOW, FLAT arc of the
   // road, so it hugs the road's shape and the bank stays gentle. The arc is chosen
   // per seed — we throw several random candidate arcs and keep the lowest, flattest
@@ -507,8 +528,10 @@ function makeLakes(track, baseHeight) {
     }
     // Only place the hero lake if the water clears EVERY part of the road (the lake
     // centre must stay at least waterR + halfWidth + a margin from any road) — on a
-    // fold this fails, so we skip it rather than spill water onto the track.
-    if (minDist > waterR + track.halfWidth + 5) {
+    // fold this fails, so we skip it rather than spill water onto the track. It must
+    // also keep clear of the river (which crosses the road on purpose).
+    const clearOfRiver = !river || spine.every((s) => lakeDist(river, s.x, s.z) > waterR + river.blendR + 6);
+    if (minDist > waterR + track.halfWidth + 5 && clearOfRiver) {
       lakes.push({
         ribbon: true, spine, level: minY - 2,
         floor: minY - 2 - 8,
@@ -2305,6 +2328,7 @@ function buildForests(scene, track, heightAt) {
   const halfW = track.halfWidth;
   const up = new THREE.Vector3(0, 1, 0);
   const spots = [];
+  const giants = []; // the giant-forest set piece: fewer, MUCH bigger trees
   for (let i = 0; i < N; i += 2) {
     const p = track._pts[i];
     const here = biomeAt(p.x, p.z);
@@ -2322,10 +2346,21 @@ function buildForests(scene, track, heightAt) {
       if (_inLake(x, z)) continue;
       const b = biomeAt(x, z);
       if (b.style !== "pine") continue;
+      // Inside the giant-forest run the woods swap for towering specimens:
+      // thinner on the ground (giants need room) and pushed a bit further off
+      // the verge so their huge canopies still clear the road.
+      const boost = giantTreeBoost(track.features, x, z);
+      if (boost > 0.35) {
+        if (rand() < 0.6) continue; // sparser
+        if (track.distanceToCenter(x, z) < halfW + 17) continue; // canopy headroom
+        giants.push({ x, z, y: heightAt(x, z), b });
+        continue;
+      }
       spots.push({ x, z, y: heightAt(x, z), b });
     }
   }
   if (spots.length) buildShapedTrees(scene, spots, 1.45); // taller, fuller forest trees
+  if (giants.length) buildShapedTrees(scene, giants, 3.2); // the giant-forest run
 }
 
 // A craggy cliff face to drive alongside: rows of big rock chunks stacked up
@@ -2486,6 +2521,7 @@ function buildRoadside(scene, track, heightAt) {
     const z = p.z + side.z * dir * dist;
     if (track.distanceToCenter(x, z) < halfW + 4) return;
     if (_inLake(x, z)) return;
+    if (featureKeepClear(track.features, x, z)) return; // set pieces keep their corridor clear
     const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
     prop.position.set(x, heightAt(x, z), z);
     prop.rotation.y = faceRoad
