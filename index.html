@@ -46,11 +46,15 @@
     #loading{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;
       align-items:center;justify-content:center;gap:14px;
       background:radial-gradient(125% 125% at 50% 32%,#1b2547 0%,#0e1320 72%);
-      color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+      color:#fff;font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;
       -webkit-user-select:none;user-select:none;transition:opacity .45s ease;}
     #loading.done{opacity:0;pointer-events:none;}
-    #loading .ls-title{font-size:clamp(30px,6vw,54px);font-weight:800;letter-spacing:.03em;
-      margin:0;text-shadow:0 3px 20px rgba(0,0,0,.55);
+    /* Same treatment as the menu title (gold + chunky 2.5D extrude); literal
+       colours because styles.css (and its --accent vars) may not be loaded yet. */
+    #loading .ls-title{font-size:clamp(30px,6vw,54px);font-weight:800;letter-spacing:2px;
+      margin:0;color:#ffb300;
+      text-shadow:0 2px 0 #ff5722,0 4px 0 #b93310,0 6px 0 rgba(120,30,8,.6),
+        0 10px 18px rgba(0,0,0,.55);
       display:flex;align-items:center;gap:.38em;}
     #loading .ls-cat{height:1.2em;width:auto;flex:none;
       filter:drop-shadow(0 3px 12px rgba(0,0,0,.45));}
@@ -209,7 +213,20 @@
       <!-- Branding + track map on one side, controls on the other, so the menu
            stays short enough for the landscape stage (which is wide, not tall). -->
       <div class="menu-col menu-col-brand">
-        <h1>🐱 ZOOMIES GP</h1>
+        <h1><!-- the app-icon cat face (same shapes as the loading screen / gen-icons.mjs) -->
+          <svg class="menu-cat" viewBox="0.17 0.07 0.66 0.82" aria-hidden="true">
+            <polygon points="0.27,0.42 0.33,0.10 0.47,0.32" fill="#f4a93a"/>
+            <polygon points="0.73,0.42 0.67,0.10 0.53,0.32" fill="#f4a93a"/>
+            <ellipse cx="0.5" cy="0.57" rx="0.30" ry="0.29" fill="#f4a93a"/>
+            <polygon points="0.32,0.40 0.35,0.18 0.43,0.33" fill="#ff8fab"/>
+            <polygon points="0.68,0.40 0.65,0.18 0.57,0.33" fill="#ff8fab"/>
+            <ellipse cx="0.5" cy="0.66" rx="0.16" ry="0.10" fill="#ffe7c7"/>
+            <ellipse cx="0.4" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+            <ellipse cx="0.6" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+            <ellipse cx="0.4" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+            <ellipse cx="0.6" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+            <polygon points="0.47,0.62 0.53,0.62 0.5,0.67" fill="#ff6f9b"/>
+          </svg><span>ZOOMIES GP</span></h1>
         <p class="tagline">Cat Kart Racing</p>
         <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
           <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
