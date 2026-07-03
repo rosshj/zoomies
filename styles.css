@@ -106,6 +106,18 @@ body {
   touch-action: pan-y;
 }
 
+/* When the stage is counter-rotated to force landscape (portrait viewport, e.g.
+   iPhone with orientation lock on), the browser gates scroll gestures in
+   PHYSICAL screen axes — the menu's "vertical" is the device's horizontal, so a
+   pan-y-only permission never lets a slow drag latch (quick flicks sneak past
+   the recognizer, which is why flicking worked but dragging didn't). Allow both
+   axes while rotated: the overlays only overflow vertically in their own frame,
+   so nothing new becomes scrollable, and pinch/double-tap zoom stays blocked. */
+#stage.rotated .overlay,
+#stage.rotated .overlay * {
+  touch-action: pan-x pan-y;
+}
+
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
    orbit renders behind), so darken it just enough for legibility instead of
    hiding it. Pause holds the frozen race behind its card, the lobby floats over

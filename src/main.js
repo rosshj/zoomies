@@ -1148,6 +1148,10 @@ function layoutStage() {
   stage.style.left = "50%";
   stage.style.top = "50%";
   stage.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+  // Styling hook for the rotated state: touch-action pans are gated in PHYSICAL
+  // screen axes, so the menus' scroll permissions must widen while rotated
+  // (see the #stage.rotated rules in styles.css).
+  stage.classList.toggle("rotated", rot !== 0);
 
   // Remap the physical safe-area insets into the rotated stage's frame so the
   // HUD avoids the notch / home bar on the correct visual edges.
