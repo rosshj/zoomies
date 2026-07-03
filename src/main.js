@@ -417,6 +417,7 @@ initProps(scene, track, {
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
   props = p;
+  window.__zoomies.props = p; // debug hook (headless probes target live box positions)
 });
 
 const BOX_COOLDOWN = 3; // s — a kart can't vacuum up boxes back-to-back
@@ -1094,6 +1095,7 @@ let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 let _fireworksDone = false; // leader's finish fireworks fired once per race
 let _fwTimer = 0; // remaining celebration time (keeps launching bursts)
 let _fwNext = 0; // countdown to the next burst
+let _fwSide = 0; // which mortar pot fired last (bursts alternate left/right)
 const _fwPos = new THREE.Vector3(); // scratch for burst origins (burst copies it)
 let _finishCamAngle = 0; // victory orbit angle once the player finishes
 // Time-trial mode: solo, single timed lap, local best-times leaderboard.
@@ -1380,6 +1382,15 @@ function renderFrame() {
   if (player && state !== State.MENU) {
     drawMinimap();
   }
+  // First real frame is on screen — fade out the boot loading screen to reveal it.
+  if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
+}
+let _loadHidden = false;
+function hideLoadingScreen() {
+  const el = document.getElementById("loading");
+  if (!el) return;
+  el.classList.add("done"); // CSS opacity transition
+  setTimeout(() => el.remove(), 550);
 }
 
 // One-time pipeline warm-up. During a race the camera only faces forward, so the
@@ -2110,7 +2121,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra"];
+const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra", "city", "beach"];
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
@@ -2778,9 +2789,10 @@ function beginRace() {
   }
 
   prepareRace();
-  countdown = 3.999;
+  countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
   countdownCalibrated = false;
   prevCountN = 99;
+  track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
 }
 
@@ -2922,6 +2934,7 @@ function beginSyncedRace(at) {
   countdown = Math.max(0.3, (at - MP.net.now()) / 1000);
   countdownCalibrated = false;
   prevCountN = 99;
+  track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
 }
 
@@ -2988,10 +3001,24 @@ function updateFireworks(dt) {
     _fwNext -= dt;
     if (_fwNext <= 0) {
       _fwNext = 0.22 + Math.random() * 0.28;
-      _fwPos.copy(track.archApex); // fireworkBurst copies it, so the scratch is safe
-      _fwPos.x += (Math.random() - 0.5) * 7;
-      _fwPos.y += Math.random() * 3;
-      _fwPos.z += (Math.random() - 0.5) * 2;
+      // Two firework sets, alternating LEFT/RIGHT from the mortar pots flanking
+      // the arch (shells burst in a column above each pot) — instead of popping
+      // out of the arch itself.
+      const pots = track.fwLaunchers;
+      if (pots && pots.length === 2) {
+        _fwSide = 1 - _fwSide;
+        const base = pots[_fwSide];
+        _fwPos.set(
+          base.x + (Math.random() - 0.5) * 2.5,
+          base.y + 5 + Math.random() * 5,
+          base.z + (Math.random() - 0.5) * 2.5
+        );
+      } else {
+        _fwPos.copy(track.archApex); // fallback: burst from the arch
+        _fwPos.x += (Math.random() - 0.5) * 7;
+        _fwPos.y += Math.random() * 3;
+        _fwPos.z += (Math.random() - 0.5) * 2;
+      }
       effects.fireworkBurst(_fwPos);
     }
   }
@@ -3742,11 +3769,16 @@ function loop(now) {
     else countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
-    const n = Math.ceil(countdown - 1);
-    hud.showToast(n > 0 ? `${n}` : "GO!");
-    // A beep on each 3/2/1 and a higher GO! chirp, as the number changes.
-    if (n !== prevCountN && n <= 3) {
-      audio.countdownBeep(Math.max(0, n));
+    // The whole GO moment — toast, chirp, GREEN light — fires at the actual
+    // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
+    // lit the light early) for the final ~1s while input was still locked.
+    const n = Math.ceil(countdown);
+    if (n >= 1 && n <= 3) hud.showToast(`${n}`);
+    // A beep on each 3/2/1 as the number changes, and the start-light gantry
+    // steps with it: red through 3/2, amber at 1. Green comes with GO.
+    if (n !== prevCountN && n >= 1 && n <= 3) {
+      audio.countdownBeep(n);
+      track.setStartLight?.(n >= 2 ? "red" : "amber");
       prevCountN = n;
     }
     // Re-zero steering near the end of the countdown, once the player has
@@ -3758,6 +3790,9 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      hud.showToast("GO!");
+      audio.countdownBeep(0); // the higher GO! chirp, exactly as control unlocks
+      track.setStartLight?.("green"); // green means green: karts can move NOW
       audio.startEngine(); // engines fire up on the green light
       audio.playMusic("bg");
       // Hold everyone's first shot for an opening grace period.

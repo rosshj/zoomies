@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";
+import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
 
 export async function initProps(scene, track, opts = {}) {
   try {
@@ -234,6 +235,42 @@ function build(scene, track, opts) {
     return null;
   }
 
+  // Soft blob shadow under EVERY crate/barrel/floating box: one InstancedMesh
+  // (a single draw call, no shadow-map cost) using the same projected blob the
+  // karts use. The blob stays glued to the ground and SHRINKS as a prop rises,
+  // which is the cue that finally sells "this box is floating" — and flung
+  // crates read as airborne on the way down too. Browser-only: the blob is a
+  // canvas texture, and the box logic also runs under plain Node in
+  // tools/items-check.mjs where there's no document.
+  const _shadowMesh = typeof document === "undefined" ? null : new THREE.InstancedMesh(
+    (() => { const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); return g; })(),
+    new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, toneMapped: false, opacity: 0.8 }),
+    props.length
+  );
+  if (_shadowMesh) {
+    _shadowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    _shadowMesh.frustumCulled = false; // instances span the whole lap
+    _shadowMesh.renderOrder = 2; // over road decals (crosswalks/pads), under sprites
+    group.add(_shadowMesh);
+  }
+  const _shDummy = new THREE.Object3D();
+  function updatePropShadows() {
+    if (!_shadowMesh) return;
+    for (let i = 0; i < props.length; i++) {
+      const pr = props[i];
+      const mp = pr.mesh.position;
+      const gy = groundAt(mp.x, mp.z);
+      const h = Math.max(0, mp.y - pr.rest - gy); // clearance under the prop
+      // Footprint from the prop's size, shrinking with height (perspective cue).
+      const s = (pr.rest * 3.1) / (1 + h * 0.16);
+      _shDummy.position.set(mp.x, gy + 0.07, mp.z);
+      _shDummy.scale.setScalar(pr.mesh.visible ? s : 0.0001);
+      _shDummy.updateMatrix();
+      _shadowMesh.setMatrixAt(i, _shDummy.matrix);
+    }
+    _shadowMesh.instanceMatrix.needsUpdate = true;
+  }
+
   const prevK = [];
   const HIT_R = 4.0;
   // Squared distance from point (px,pz) to segment (ax,az)-(bx,bz). Used so a fast
@@ -414,6 +451,9 @@ function build(scene, track, opts) {
       for (const pr of props) if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) floatingNow++;
       if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
     }
+
+    // Re-project every prop's blob shadow now that positions are final.
+    updatePropShadows();
 
     // Leaf piles: each leaf is its own particle. Any kart driving through kicks
     // the leaves it touches (settled ones included), so a pile can be scattered

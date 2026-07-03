@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { attribute, color as tslColor, float, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
+import { biomeBarrierStyle, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand, makeRng } from "./rng.js";
 
 const TAU = Math.PI * 2;
@@ -193,6 +193,12 @@ const PUDDLE_SHEEN_SHADER = {
 
 // Bluish-white tone for the alpine road's icy patches.
 const SNOW_PATCH = new THREE.Color(0xdfeaf5);
+// Loose road cover the traffic sweeps off the driving lanes: snow dust and
+// wind-blown sand (lerped over the asphalt, weighted by the local biome mix).
+const SNOW_COVER = new THREE.Color(0xe9f1f8);
+const SAND_COVER = new THREE.Color(0xd9c08b);
+const _covA = new THREE.Color();
+const _covB = new THREE.Color();
 
 // Glowing cyan chevron texture for boost pads (arrows point "up" = forward).
 let _chevronTex = null;
@@ -329,7 +335,7 @@ export class Track {
 
   _buildRoad() {
     const div = this.samples;
-    const cross = 5; // subdivisions across the road, for color variation
+    const cross = 10; // subdivisions across the road — enough to resolve the tyre lanes
     const vpr = cross + 1; // vertices per row
     const positions = [];
     const uvs = [];
@@ -342,11 +348,18 @@ export class Track {
       const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
       return s - Math.floor(s);
     };
+    const smooth01 = (t) => {
+      t = Math.min(Math.max(t, 0), 1);
+      return t * t * (3 - 2 * t);
+    };
 
     for (let i = 0; i <= div; i++) {
       const idx = i % div;
       const p = this._pts[idx];
       const side = this._sideAt(idx);
+      // The driving line wanders a touch along the lap, so the wear bands
+      // snake instead of reading as two ruler-straight stripes.
+      const wander = 0.03 * Math.sin(idx * 0.06) + 0.02 * Math.sin(idx * 0.017 + 2.1);
       for (let j = 0; j < vpr; j++) {
         const f = j / cross; // 0..1 across the road
         const lat = -this.halfWidth + f * this.width;
@@ -355,24 +368,62 @@ export class Track {
         positions.push(x, p.y + 0.02, z);
         uvs.push(f, i * 0.1);
 
-        // Asphalt tone: smooth patchy variation + fine grain, with two faint
-        // darker "tyre line" bands where karts tend to drive.
+        // How heavily driven this bit of road is: two tyre lanes (~1/3 in from
+        // each edge, where the karts actually run), 1 on the lane centres and
+        // fading smoothly to clean tarmac at the verges and centreline.
+        const lane = Math.min(Math.abs(f - (0.32 + wander)), Math.abs(f - (0.68 + wander)));
+        const wear = (1 - smooth01(lane / 0.17)) * (0.82 + 0.18 * Math.sin(idx * 0.11 + f * 3));
+
+        // Asphalt tone: smooth patchy variation + fine grain. Worn lanes read
+        // darker and more polished (traffic grinds the grain smooth).
         let shade =
           1 +
           0.07 * Math.sin(x * 0.05) * Math.cos(z * 0.045) +
           0.05 * Math.sin(x * 0.013 + z * 0.017) +
-          (hash(idx, j) - 0.5) * 0.07;
-        const lane = Math.min(Math.abs(f - 0.32), Math.abs(f - 0.68));
-        if (lane < 0.08) shade -= 0.06;
+          (hash(idx, j) - 0.5) * 0.07 * (1 - 0.5 * wear);
+        shade -= 0.08 * wear;
+
         // Biome surface: tint the asphalt and add per-biome speckle so the road
-        // changes character as you lap (sandy/cracked desert, snowy/icy alpine,
-        // damp forest tarmac, warm autumn).
-        const style = biomeRoadStyle(x, z);
+        // changes character as you lap. The tint/kind cross-fades over wide seam
+        // bands (biomeRoadStyleBlend) so surfaces transition gradually instead
+        // of switching at a hard line.
+        const style = biomeRoadStyleBlend(x, z, p.y);
+        const kSand = style.kinds.sand || 0;
+        const kSnow = style.kinds.snow || 0;
+        const kDamp = style.kinds.damp || 0;
+        let [tr, tg, tb] = style.tint;
+        // The driving lanes pull the biome tint partway back toward bare
+        // asphalt — the beaten path always reads a little more "road".
+        const sweep = 0.45 * wear;
+        tr += (1 - tr) * sweep;
+        tg += (1 - tg) * sweep;
+        tb += (1 - tb) * sweep;
         const h2 = hash(idx * 1.7 + 3.1, j * 2.3 + 5.7);
-        c.setRGB(base.r * style.tint[0], base.g * style.tint[1], base.b * style.tint[2]).multiplyScalar(shade);
-        if (style.kind === "sand" && h2 < 0.05) c.multiplyScalar(0.55); // dark cracks
-        else if (style.kind === "snow" && h2 > 0.9) c.lerp(SNOW_PATCH, 0.7); // icy patches
-        else if (style.kind === "damp" && h2 > 0.93) c.multiplyScalar(0.7); // wet patches
+        c.setRGB(base.r * tr, base.g * tg, base.b * tb).multiplyScalar(shade);
+        // Low-frequency world-space clumping so cover and patches gather in
+        // soft drifts instead of uniform per-vertex noise.
+        const clump =
+          0.5 + 0.5 * Math.sin(x * 0.16 + Math.sin(z * 0.13) * 2.2) * Math.cos(z * 0.11 + Math.sin(x * 0.09) * 1.8);
+        // Loose cover blanket (snow dust / blown sand): lies across the road in
+        // clumps, piles into drifts along the verges, and is swept down to bare
+        // asphalt along the two driving lanes — so the heavily driven line
+        // shows as dark wheel tracks through the cover.
+        const loose = kSnow + kSand;
+        if (loose > 0.02) {
+          const edgeDrift = smooth01((0.12 - Math.min(f, 1 - f)) / 0.12);
+          const cover =
+            loose * (0.18 + 0.42 * clump) * (1 - 0.92 * smooth01(wear * 1.25)) + loose * 0.3 * edgeDrift;
+          _covA.copy(SNOW_COVER).multiplyScalar(kSnow / loose);
+          _covB.copy(SAND_COVER).multiplyScalar(kSand / loose);
+          _covA.add(_covB);
+          c.lerp(_covA, Math.min(cover, 0.88));
+        }
+        // Accent speckle, placed where it belongs: cracks concentrate IN the
+        // beaten lanes (traffic breaks the surface), while ice and standing
+        // water survive only OFF the driving line, in the same clumped drifts.
+        if (h2 < 0.05 && kSand > 0.15) c.multiplyScalar(1 - 0.45 * kSand * (0.55 + 0.45 * wear)); // dark cracks
+        if (h2 > 0.93 && kSnow > 0.15 && clump > 0.55) c.lerp(SNOW_PATCH, 0.55 * kSnow * (1 - 0.85 * wear)); // ice
+        if (h2 > 0.94 && kDamp > 0.15 && clump > 0.5) c.multiplyScalar(1 - 0.3 * kDamp * (1 - 0.65 * wear)); // wet
         colors.push(c.r, c.g, c.b);
       }
 
@@ -404,6 +455,11 @@ export class Track {
         roughness: 0.95,
         bumpMap: bump,
         bumpScale: 0.25,
+        // DoubleSide: the strip's triangle winding follows the loop's direction,
+        // and custom-generated tracks can run CLOCKWISE — with the default
+        // FrontSide the whole road was back-face culled from above on those
+        // seeds (invisible road; the terrain beneath read as the "road").
+        side: THREE.DoubleSide,
       })
     );
     road.receiveShadow = true;
@@ -450,21 +506,26 @@ export class Track {
       g.translate(0, pl.gy + 0.04, 0); // sit flush on this puddle's ground
       return g;
     });
-    // Wet puddles: a glossy node-material whose "reflection" is a Fresnel sky
-    // tint baked into the colour — the surface brightens toward the sky at
-    // grazing angles, the cue that sells wetness. (These used to also carry SSR
-    // metalness, but puddles face UP so the rays mostly pointed at off-screen
-    // sky and missed; the SSR pass has since been removed entirely — see
-    // main.js — so the baked tint is the whole effect, kept metalness-free.)
+    // Wet puddles reflect the SKY (they face up), so the "reflection" is a bright
+    // sky tint baked into the colour. The earlier version only showed it at
+    // grazing angles via a steep fresnel — but you drive over puddles looking
+    // DOWN at them, where fresnel≈0, so they read as flat dark patches (the
+    // reported "no longer reflective"). Now the sky mirror shows at ALL angles
+    // (a base 55% blend), brightens further toward grazing, and a moving glint
+    // shimmers across it — a convincing wet mirror without the SSR pass.
     const pmat = new THREE.MeshStandardNodeMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide });
     const edge = attribute("aEdge");
     const glint = positionWorld.x.mul(1.3).add(positionWorld.z.mul(1.1)).add(time.mul(1.6)).sin().mul(0.5).add(0.5);
-    // 0 looking straight down, 1 at grazing angle — water brightens toward the sky tint at the rim.
-    const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(2.5);
-    const skyTint = tslColor(0x9fb6cc); // soft daylight-sky reflection colour
-    pmat.colorNode = tslColor(0x16252f).add(skyTint.mul(fres.mul(0.7))).add(glint.mul(0.05));
-    pmat.roughnessNode = float(0.08); // tight sun glints keep the surface reading glossy
-    pmat.opacityNode = float(0.55).add(fres.mul(0.4)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
+    // 0 looking straight down, 1 at grazing — softer power so the sky reflection
+    // is strong even from the near-overhead driving view.
+    const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(1.5);
+    const skyRefl = tslColor(0x8fb2d4); // the daytime sky the puddle mirrors
+    const wetDark = tslColor(0x14212c); // wet-asphalt tone seen straight down
+    const sky = float(0.5).add(fres.mul(0.42)); // 50% sky top-down → ~92% at grazing
+    pmat.colorNode = mix(wetDark, skyRefl, sky).add(glint.mul(0.16));
+    pmat.metalnessNode = float(0); // no env/SSR to catch — the reflection is baked in colour
+    pmat.roughnessNode = float(0.06); // glossy so the sun glint stays tight
+    pmat.opacityNode = float(0.74).add(fres.mul(0.22)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
     pmat.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
     const mesh = new THREE.Mesh(mergeGeometries(geoms), pmat);
     mesh.renderOrder = 1;
@@ -561,6 +622,8 @@ export class Track {
     const indices = [];
     const trim = 3.2;
     const sand = new THREE.Color(0xc2a86a);
+    const concrete = new THREE.Color(0x9ba2a9); // city SIDEWALK slabs
+    const concreteSeam = new THREE.Color(0x878e95); // alternating slab joints
     const red = new THREE.Color(0xd83a2f);
     const white = new THREE.Color(0xf2f2f2);
     const c = new THREE.Color();
@@ -573,11 +636,14 @@ export class Track {
       const p = this._pts[idx];
       const side = this._sideAt(idx);
       // Local curvature: how much the heading turns over a short look-ahead. On
-      // bends the verge becomes a red/white rumble kerb; straights stay sandy.
+      // bends the verge becomes a red/white rumble kerb; straights stay sandy —
+      // or, in the CITY, concrete sidewalk slabs (alternating tone = paving joints).
       let d = tanAng(idx + 10) - tanAng(idx);
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
+      const urban = biomeRoadStyle(p.x, p.z).kind === "urban";
       if (Math.abs(d) > 0.055) c.copy(Math.floor(i / 2) % 2 === 0 ? red : white);
+      else if (urban) c.copy(Math.floor(i / 3) % 2 === 0 ? concrete : concreteSeam);
       else c.copy(sand);
       const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
       const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
@@ -596,7 +662,8 @@ export class Track {
     geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
+    // DoubleSide for the same reason as the road: winding follows loop direction.
+    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }
@@ -733,55 +800,240 @@ export class Track {
     const tan = this.curve.getTangentAt(0);
     const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
-    const cols = 11;
-    const cellW = this.width / cols;
-    for (let c = 0; c < cols; c++) {
-      for (let r = 0; r < 2; r++) {
-        const cell = new THREE.Mesh(
-          new THREE.PlaneGeometry(cellW, 1.6),
-          new THREE.MeshStandardMaterial({ color: (c + r) % 2 === 0 ? 0x111111 : 0xffffff })
+    // Bold black/white CHECKERED LINE across the full road: one crisp
+    // canvas-textured plane instead of the old 22 small cell meshes. The cells
+    // are true SQUARES (~0.8u) in world space — depth/rows fixes the cell size,
+    // cols derives from the road width so the pattern stays square on any track.
+    {
+      const depth = 3.2, rows = 4, px = 32;
+      const cellSize = depth / rows;
+      const cols = Math.max(2, Math.round(this.width / cellSize));
+      const c = document.createElement("canvas");
+      c.width = cols * px;
+      c.height = rows * px;
+      const ctx = c.getContext("2d");
+      for (let x = 0; x < cols; x++)
+        for (let y = 0; y < rows; y++) {
+          ctx.fillStyle = (x + y) % 2 === 0 ? "#101010" : "#f8f8f8";
+          ctx.fillRect(x * px, y * px, px, px);
+        }
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.magFilter = THREE.NearestFilter; // keep the squares razor-crisp
+      const line = new THREE.Mesh(
+        new THREE.PlaneGeometry(cols * cellSize, depth),
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 })
+      );
+      line.position.set(p.x, p.y + 0.06, p.z);
+      line.rotation.x = -Math.PI / 2;
+      line.rotation.z = -Math.atan2(tan.z, tan.x) + Math.PI / 2;
+      this.group.add(line);
+    }
+
+    // START GATE: the same pole-and-band construction as the street banners
+    // around the map (dark metal poles, top + bottom bars, a taut billowed
+    // cloth) — but carrying the "ZOOMIES GP" print. Replaces the old red tube
+    // arch. archApex is kept (above the banner) for the fireworks proximity gate.
+    const up = new THREE.Vector3(0, 1, 0);
+    const W = this.halfWidth + 3; // pole offset from centre (matches street banners)
+    const pt = (s, y) => new THREE.Vector3().copy(p).addScaledVector(side, s).addScaledVector(up, y);
+    const topY = 9.4, botY = 6.7; // banner band clears the karts below
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x3c4047, roughness: 0.5, metalness: 0.45 });
+    const barMat = new THREE.MeshStandardMaterial({ color: 0x2d3036, roughness: 0.45, metalness: 0.55 });
+    const capMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
+    this.archApex = pt(0, topY + 0.6);
+    for (const s of [-W, W]) {
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.34, topY + 0.9, 10), poleMat);
+      pole.position.copy(pt(s, (topY + 0.9) / 2));
+      pole.castShadow = true;
+      this.group.add(pole);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), capMat);
+      cap.position.copy(pt(s, topY + 0.9));
+      this.group.add(cap);
+    }
+    const yaw = Math.atan2(tan.x, tan.z);
+    for (const by of [topY, botY]) {
+      const bar = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, W * 2, 8), barMat);
+      bar.rotation.z = Math.PI / 2;
+      const grp = new THREE.Group();
+      grp.add(bar);
+      grp.position.copy(pt(0, by));
+      grp.rotation.y = yaw;
+      this.group.add(grp);
+    }
+
+    // The printed cloth: navy with a gold border, checker strips at the ends and
+    // "ZOOMIES GP" lettering, with the same gentle billow as the street banners.
+    {
+      const bw = W * 2 - 1.4;
+      const bh = topY - botY;
+      const cw = 1536, ch = Math.round(cw * (bh / bw)); // canvas matches the cloth's aspect
+      const c = document.createElement("canvas");
+      c.width = cw;
+      c.height = ch;
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#1c2340";
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.strokeStyle = "#ffd54f";
+      ctx.lineWidth = 10;
+      ctx.strokeRect(5, 5, cw - 10, ch - 10);
+      const sq = Math.floor((ch - 24) / 3); // checker strips at both ends
+      for (const x0 of [22, cw - 22 - sq * 2]) {
+        for (let x = 0; x < 2; x++)
+          for (let y = 0; y < 3; y++) {
+            ctx.fillStyle = (x + y) % 2 === 0 ? "#f8f8f8" : "#101010";
+            ctx.fillRect(x0 + x * sq, 12 + y * sq, sq, sq);
+          }
+      }
+      // Lettering, vertically centred from MEASURED font metrics ("middle"
+      // baseline sits visibly high for system fonts, which is what made the old
+      // text ride above centre on the banner).
+      ctx.fillStyle = "#ffffff";
+      ctx.font = `bold ${Math.round(ch * 0.56)}px system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "alphabetic";
+      const m = ctx.measureText("ZOOMIES GP");
+      const asc = m.actualBoundingBoxAscent ?? ch * 0.4;
+      const desc = m.actualBoundingBoxDescent ?? 0;
+      ctx.fillText("ZOOMIES GP", cw / 2, ch / 2 + (asc - desc) / 2);
+
+      // The app-icon cat face on each side of the lettering (same shapes as
+      // tools/gen-icons.mjs, drawn as paths in the icon's normalized coords).
+      const face = (cx, cy, s) => {
+        const X = (u) => cx + (u - 0.5) * s;
+        const Y = (v) => cy + (v - 0.5) * s;
+        const tri = (t, col) => {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(X(t[0]), Y(t[1]));
+          ctx.lineTo(X(t[2]), Y(t[3]));
+          ctx.lineTo(X(t[4]), Y(t[5]));
+          ctx.closePath();
+          ctx.fill();
+        };
+        const ell = (u, v, ru, rv, col) => {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.ellipse(X(u), Y(v), ru * s, rv * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+        };
+        tri([0.27, 0.42, 0.33, 0.1, 0.47, 0.32], "#f4a93a"); // ears
+        tri([0.73, 0.42, 0.67, 0.1, 0.53, 0.32], "#f4a93a");
+        ell(0.5, 0.57, 0.3, 0.29, "#f4a93a"); // head
+        tri([0.32, 0.4, 0.35, 0.18, 0.43, 0.33], "#ff8fab"); // inner ears
+        tri([0.68, 0.4, 0.65, 0.18, 0.57, 0.33], "#ff8fab");
+        ell(0.5, 0.66, 0.16, 0.1, "#ffe7c7"); // muzzle
+        ell(0.4, 0.55, 0.055, 0.08, "#9ccc65"); // eyes
+        ell(0.6, 0.55, 0.055, 0.08, "#9ccc65");
+        ell(0.4, 0.55, 0.02, 0.06, "#111111"); // pupils
+        ell(0.6, 0.55, 0.02, 0.06, "#111111");
+        tri([0.47, 0.62, 0.53, 0.62, 0.5, 0.67], "#ff6f9b"); // nose
+      };
+      // Face box slightly smaller than the band. The drawn face's CONTENT spans
+      // v 0.10..0.86 of its box (ear tips to chin), so its visual midpoint sits
+      // at v=0.48 — draw the box offset so that midpoint lands exactly on the
+      // band's centreline.
+      const fs = ch * 0.92;
+      const gap = fs * 0.62;
+      const faceY = ch / 2 + (0.5 - 0.48) * fs;
+      face(cw / 2 - m.width / 2 - gap, faceY, fs);
+      face(cw / 2 + m.width / 2 + gap, faceY, fs);
+      const tex = new THREE.CanvasTexture(c);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = 4;
+      const geo = new THREE.PlaneGeometry(bw, bh, 24, 1);
+      const pos = geo.attributes.position;
+      for (let v = 0; v < pos.count; v++) {
+        pos.setZ(v, Math.sin((pos.getX(v) / bw) * Math.PI * 3) * 0.22); // gentle billow
+      }
+      geo.computeVertexNormals();
+      const banner = new THREE.Mesh(
+        geo,
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide })
+      );
+      // Front face toward -tangent: karts ALWAYS approach the line from the grid
+      // side (the lap loops back around), so that's the side the text must read on.
+      banner.position.copy(pt(0, (topY + botY) / 2));
+      banner.rotation.y = yaw + Math.PI;
+      banner.castShadow = true;
+      this.group.add(banner);
+    }
+
+    // START LIGHTS: a small 3-lamp panel (red / amber / green) hanging under
+    // the banner's bottom bar, driven by setStartLight() from the race
+    // countdown. The lamp meshes are stored (not their materials) because
+    // toonify() swaps material instances post-build — mesh.material stays live.
+    {
+      const panel = new THREE.Mesh(
+        new THREE.BoxGeometry(2.6, 0.95, 0.42),
+        new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.6 })
+      );
+      panel.position.copy(pt(0, 6.1));
+      panel.rotation.y = yaw;
+      panel.castShadow = true;
+      this.group.add(panel);
+      this._lamps = {};
+      const lampDefs = [
+        ["red", 0xe53935, -0.8],
+        ["amber", 0xffb300, 0],
+        ["green", 0x2ecc55, 0.8],
+      ];
+      for (const [key, col, s] of lampDefs) {
+        // Built UNLIT: a dark lens (like a real traffic light that's off) —
+        // setStartLight() swaps in the full lens colour + a strong emissive when
+        // the lamp is live, so the active light clearly GLOWS while the others
+        // read as off, instead of three permanently-coloured dots.
+        const lamp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.3, 12, 10),
+          new THREE.MeshStandardMaterial({ color: 0x23262b, emissive: col, emissiveIntensity: 0, roughness: 0.4 })
         );
-        const offSide = (c + 0.5) * cellW - this.halfWidth;
-        const offFwd = (r - 0.5) * 1.7;
-        const pos = new THREE.Vector3().copy(p).addScaledVector(side, offSide).addScaledVector(tan, offFwd);
-        cell.position.set(pos.x, pos.y + 0.06, pos.z);
-        cell.rotation.x = -Math.PI / 2;
-        cell.rotation.z = -Math.atan2(tan.z, tan.x) + Math.PI / 2;
-        this.group.add(cell);
+        lamp.position.copy(pt(s, 6.1));
+        lamp.userData.lensCol = col;
+        this.group.add(lamp);
+        this._lamps[key] = lamp;
       }
     }
 
-    // Archway over the track: a single tube that rises as a post on each side
-    // and curves over the road into a rounded arch. The apex is recorded so the
-    // finish fireworks can burst from it.
-    const up = new THREE.Vector3(0, 1, 0);
-    const W = this.halfWidth + 1.6; // post offset from centre
-    const postH = 5.5; // straight post height before the arch curves
-    const archRise = 5.0; // how high the arch bulges above the posts
-    const pt = (s, y) => new THREE.Vector3().copy(p).addScaledVector(side, s).addScaledVector(up, y);
-    const archPts = [pt(-W, 0)]; // left base
-    const ARCSEG = 16;
-    for (let k = 0; k <= ARCSEG; k++) {
-      const a = Math.PI * (1 - k / ARCSEG); // left shoulder -> apex -> right shoulder
-      archPts.push(pt(W * Math.cos(a), postH + archRise * Math.sin(a)));
+    // FIREWORK MORTAR POTS flanking the arch on the verge — the finish
+    // celebration launches from these two (see updateFireworks in main.js)
+    // instead of popping out of the arch itself.
+    this.fwLaunchers = [];
+    const potBodyMat = new THREE.MeshStandardMaterial({ color: 0xb3402e, roughness: 0.7 });
+    const potRimMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
+    for (const s of [-(W + 2.4), W + 2.4]) {
+      const base = pt(s, 0);
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.62, 1.5, 10), potBodyMat);
+      pot.position.copy(pt(s, 0.75));
+      pot.castShadow = true;
+      this.group.add(pot);
+      const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.16, 10), potRimMat);
+      rim.position.copy(pt(s, 1.5));
+      this.group.add(rim);
+      const mouth = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.34, 0.34, 0.06, 10),
+        new THREE.MeshStandardMaterial({ color: 0x14100c, roughness: 1 })
+      );
+      mouth.position.copy(pt(s, 1.56));
+      this.group.add(mouth);
+      this.fwLaunchers.push(new THREE.Vector3(base.x, base.y + 1.6, base.z));
     }
-    archPts.push(pt(W, 0)); // right base
-    const archGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3(archPts), 90, 0.55, 12, false);
-    const arch = new THREE.Mesh(
-      archGeo,
-      new THREE.MeshStandardMaterial({ color: 0xe53935, roughness: 0.55, metalness: 0.1 })
-    );
-    arch.castShadow = true;
-    this.group.add(arch);
+  }
 
-    // Golden finials at the apex and shoulders for a fairground gate look.
-    const finialMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
-    this.archApex = pt(0, postH + archRise);
-    for (const s of [-W, 0, W]) {
-      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.85, 16, 12), finialMat);
-      ball.position.copy(pt(s, s === 0 ? postH + archRise : postH));
-      ball.castShadow = true;
-      this.group.add(ball);
+  // Drive the start-light panel: "off" | "red" | "amber" | "green". The live
+  // lamp gets its lens colour + a strong emissive (bright enough to bloom) and
+  // pops slightly larger; the rest go dark like unlit traffic-light lenses.
+  // Writes go through mesh.material (toonify replaces the instances post-build).
+  setStartLight(stage) {
+    if (!this._lamps) return;
+    for (const key of ["red", "amber", "green"]) {
+      const lamp = this._lamps[key];
+      const m = lamp.material;
+      const on = stage === key;
+      if (m && m.color) m.color.setHex(on ? lamp.userData.lensCol : 0x23262b);
+      // Red runs a touch lower: at full 3.4 tone mapping blows saturated red
+      // toward orange, which made it read like a second amber.
+      if (m && m.emissiveIntensity !== undefined) m.emissiveIntensity = on ? (key === "red" ? 2.4 : 3.4) : 0;
+      lamp.scale.setScalar(on ? 1.25 : 1);
     }
   }
 

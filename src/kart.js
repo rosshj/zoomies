@@ -33,17 +33,21 @@ function makeShieldMaterial() {
     side: THREE.DoubleSide,
   });
   const ndv = normalView.dot(positionViewDirection).clamp(0, 1);
-  // Tighter fresnel (higher power) concentrates the glow into a thin RIM and leaves
-  // the centre clear, so you can still see the kart and the track through the bubble
-  // instead of a solid white orb.
-  const fres = ndv.oneMinus().clamp(0.001, 1).pow(3.2);
+  // A softer/wider fresnel (lower power) spreads the glow further in from the rim,
+  // so the whole bubble luminesces rather than only a hairline edge — but the
+  // centre still stays clear enough to see the kart and track through it.
+  const fres = ndv.oneMinus().clamp(0.001, 1).pow(2.3);
   const band = time.mul(4).sin().mul(0.5).add(0.5); // travelling shimmer
-  const pulse = time.mul(2.5).sin().mul(0.12).add(0.88); // gentle breathing
-  // Mostly rim, only a whisper of fill through the body — a glowing bubble, not a
-  // bright fill. Lower base brightness keeps it from washing out over light tracks.
-  mat.colorNode = tslColor(0x7fdcff).mul(fres.mul(1.25).add(0.03).mul(pulse).add(band.mul(fres).mul(0.4)));
-  // Near-transparent centre, glowing rim, never fully opaque (caps at 0.8).
-  mat.opacityNode = fres.mul(0.6).add(0.02).add(band.mul(fres).mul(0.2)).clamp(0, 0.8);
+  const pulse = time.mul(2.5).sin().mul(0.16).add(0.9); // gentle breathing
+  // A second, faster ripple crossing the first so the surface reads as live energy.
+  const ripple = time.mul(6.5).sin().mul(0.5).add(0.5).mul(time.mul(3.1).cos().mul(0.5).add(0.5));
+  // Brighter glowing rim + a genuine translucent body fill (the 0.09 term) so it
+  // looks like a glass energy bubble, not just a thin outline.
+  const glow = fres.mul(1.75).add(0.09).mul(pulse).add(band.mul(fres).mul(0.6)).add(ripple.mul(fres).mul(0.35));
+  mat.colorNode = tslColor(0x8fe6ff).mul(glow);
+  // More translucent presence than before: a soft see-through fill (0.05) plus the
+  // glowing rim, capped so the kart stays visible through the bubble.
+  mat.opacityNode = fres.mul(0.7).add(0.05).add(band.mul(fres).mul(0.28)).clamp(0, 0.85);
   // Dummy uniforms bag: the update loop writes material.uniforms.uTime.value.
   mat.uniforms = { uTime: { value: 0 } };
   return mat;
@@ -58,9 +62,10 @@ export const BOOST_RECHARGE = 1 / 16;
 // inflection, don't each pop a boost on the straight.
 const MIN_DRIFT_CHARGE = 0.5;
 
-// Soft radial blob used as a contact/grounding shadow under each kart.
+// Soft radial blob used as a contact/grounding shadow under each kart (also
+// shared by the prop/item-box shadows in props.js, so they match).
 let _shadowTex = null;
-function shadowTexture() {
+export function shadowTexture() {
   if (_shadowTex) return _shadowTex;
   const c = document.createElement("canvas");
   c.width = c.height = 64;

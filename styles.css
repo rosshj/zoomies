@@ -1592,3 +1592,76 @@ button.small {
   border: 1px solid rgba(255, 255, 255, 0.18);
   pointer-events: none;
 }
+
+/* ============================================================================
+   Consistent, touch-friendly menu controls (IA/UI pass)
+   One shared tap target (44px) and centred labels across every menu pill, so
+   sizes read consistently and every control is comfortable to hit on a phone.
+   Appended last so it wins over the per-context sizes above.
+   ============================================================================ */
+:root { --tap: 44px; }
+
+/* Primary menu actions (START / TIME TRIAL and the like). */
+.menu-col-actions > button { min-height: 46px; }
+
+/* Every secondary/small pill meets the tap target and centres its label. */
+.menu-options button.small,
+.menu-main .menu-options button.small,
+button.small,
+button.secondary.small,
+.mp-join-row button.small,
+.seg-btn,
+.setting-row .toggle {
+  min-height: var(--tap);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+.seg-toggle { min-height: var(--tap); }
+
+/* The "Advanced ▸" expander was a ~20px text link — give it a real tap height. */
+.adv-toggle { min-height: var(--tap); padding: 8px 0; }
+
+/* Biome / time-of-day chips: raise the smallest ones toward a tap target
+   without overflowing the panel (there are 10 biomes now, they wrap). */
+.biome-chip {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.track-main .biome-chip,
+.tod-grid .biome-chip { min-height: 38px; }
+
+/* Steppers + the HUD calibrate button: easier to hit. */
+.garage-arrow { min-width: var(--tap); min-height: var(--tap); }
+.mini-stepper .garage-arrow { min-width: 40px; min-height: 40px; }
+#calibrate { min-height: 40px; }
+
+/* Group the main-menu options into labelled sections (Customize / Race / More)
+   so the choices read as a sequence, not one flat cluster. */
+.menu-group-label {
+  width: 100%;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin: 6px 0 -2px;
+}
+
+/* Settings section headers. */
+.settings-section {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--accent);
+  opacity: 0.8;
+  margin: 4px 0 -4px;
+  text-align: left;
+}
+.settings-section:first-child { margin-top: 0; }
