@@ -403,7 +403,6 @@ export function buildWorld(scene, track, opts = {}) {
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
-  buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
   buildFeatureStructures(scene, track, heightAt, rand); // bridge/overpass decks + piers, canyon rim rocks
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
@@ -2363,57 +2362,6 @@ function buildForests(scene, track, heightAt) {
   }
   if (spots.length) buildShapedTrees(scene, spots, 1.45); // taller, fuller forest trees
   if (giants.length) buildShapedTrees(scene, giants, 3.2); // the giant-forest run
-}
-
-// A craggy cliff face to drive alongside: rows of big rock chunks stacked up
-// the outer hillside over one stretch of track.
-function buildCliffs(scene, track, heightAt) {
-  const up = new THREE.Vector3(0, 1, 0);
-  const ranges = [[0.55, 0.67]]; // one cliff stretch on the outer side
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
-  const pv = new THREE.Vector3();
-  const col = new THREE.Color();
-  const chunks = [];
-  for (const [t0, t1] of ranges) {
-    const i0 = Math.floor(t0 * track.samples);
-    const i1 = Math.floor(t1 * track.samples);
-    for (let i = i0; i <= i1; i += 2) {
-      const p = track._pts[i];
-      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-      for (let row = 0; row < 3; row++) {
-        // Keep the base row well clear of the tarmac (chunks are ~sx wide, so
-        // start far enough out that they don't spill onto the road).
-        const off = track.halfWidth + 15 + row * 8 + rand() * 3;
-        const x = p.x + side.x * outward * off;
-        const z = p.z + side.z * outward * off;
-        // Skip chunks that a fold in the loop has brought back over the road.
-        if (track.distanceToCenter(x, z) < track.halfWidth + 11) continue;
-        chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + rand() * 10 });
-      }
-    }
-  }
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8076, roughness: 1 });
-  const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
-  mesh.castShadow = true;
-  chunks.forEach((c, i) => {
-    const sy = c.h / 2;
-    const sx = 3 + rand() * 3.5;
-    const sz = 3 + rand() * 3.5;
-    q.setFromEuler(new THREE.Euler(rand() * 0.5, rand() * Math.PI, rand() * 0.5));
-    pv.set(c.x, c.base + sy * 0.45, c.z);
-    s.set(sx, sy, sz);
-    m.compose(pv, q, s);
-    mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, col.setHSL(0.09, 0.12, 0.42 + rand() * 0.12));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.layers.set(1);
-  scene.add(mesh);
 }
 
 function buildRocks(scene, track, heightAt, flatten) {

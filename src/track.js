@@ -56,26 +56,39 @@ function _loopOK(pts, minR) {
       if (seg(P[i], P[(i + 1) % S], P[j], P[(j + 1) % S])) return false;
     }
   }
-  // No NEAR-folds either: two non-neighbouring stretches whose centrelines come
-  // closer than the road is wide OVERLAP tarmac without crossing. Containment
-  // projects onto the nearest centreline, so a kart on the seam hops between
-  // passes — which is how you could drive clean off the track. Keep every
-  // distant pair at least a full road width plus barriers apart. (The 12-sample
-  // window exempts a corner's own legs; a legal minR hairpin stays ~44 apart.)
-  const MIN_SEP = 42;
-  for (let i = 0; i < S; i++) {
-    for (let j = i + 12; j < S; j++) {
-      if (S - (j - i) < 12) continue; // wrap-adjacent neighbours
-      const dx = P[i].x - P[j].x;
-      const dz = P[i].z - P[j].z;
-      if (dx * dx + dz * dz < MIN_SEP * MIN_SEP) return false;
-    }
-  }
-  for (let i = 0; i < S; i++) {
-    const p0 = P[(i - 1 + S) % S], p1 = P[i], p2 = P[(i + 1) % S];
-    const a = p0.distanceTo(p1), b = p1.distanceTo(p2), c = p0.distanceTo(p2);
+  // Curvature + separation are validated on a FINER sampling. The coarse
+  // 260-sample chords above smoothed over needle-tip hairpins — a true
+  // radius-5 tip read as ~25 through 10u-spaced samples, passed validation,
+  // and folded the 30-wide road over itself at the tip (the reported "sharp
+  // turn where the track folds over and you can drive off").
+  const F = 520;
+  const Q = [];
+  for (let i = 0; i < F; i++) Q.push(cv.getPointAt(i / F));
+  for (let i = 0; i < F; i++) {
+    const p0 = Q[(i - 2 + F) % F], p1 = Q[i], p2 = Q[(i + 2) % F];
+    const a = Math.hypot(p0.x - p1.x, p0.z - p1.z);
+    const b = Math.hypot(p1.x - p2.x, p1.z - p2.z);
+    const c = Math.hypot(p0.x - p2.x, p0.z - p2.z);
     const area = Math.abs((p1.x - p0.x) * (p2.z - p0.z) - (p2.x - p0.x) * (p1.z - p0.z)) / 2;
     if (area > 1e-3 && (a * b * c) / (4 * area) < minR) return false;
+  }
+  // No NEAR-folds either: two stretches whose centrelines come within MIN_SEP
+  // read as one folded corridor (and much closer they'd overlap tarmac — a
+  // kart on the seam projects onto whichever pass is nearer and can hop off
+  // the track). Pairs closer than SEP_ARC along the lap are exempt: that's a
+  // legal hairpin's own legs. Lab-tuned across 360 knob/seed combos: accepts
+  // at full strength everywhere while keeping every distant pass 80u+ apart
+  // on the built curve.
+  const MIN_SEP = 64;
+  const SEP_ARC = 170;
+  const win = Math.max(4, Math.ceil((SEP_ARC / cv.getLength()) * F));
+  for (let i = 0; i < F; i++) {
+    for (let j = i + win; j < F; j++) {
+      if (F - (j - i) < win) continue; // wrap-adjacent neighbours
+      const dx = Q[i].x - Q[j].x;
+      const dz = Q[i].z - Q[j].z;
+      if (dx * dx + dz * dz < MIN_SEP * MIN_SEP) return false;
+    }
   }
   return true;
 }
