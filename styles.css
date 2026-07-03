@@ -5,10 +5,11 @@
   --bg: #0e1320;
   --panel: rgba(16, 22, 38, 0.82);
   /* Selection treatment for menu CONTROLS (active segment, chosen chip, slider
-     thumb, radio): white-on-dark, so the yellow accent stays reserved for the
-     screen's one primary action button. */
-  --sel: linear-gradient(180deg, #ffffff, #d9e0ea);
-  --sel-ink: #16202e;
+     thumb, radio): a muted frosted-light fill, so selections read clearly but
+     never out-shine the screen's one yellow primary action button. */
+  --sel: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0.16));
+  --sel-ink: #fff;
+  --knob: linear-gradient(180deg, #dde3ec, #a9b4c5); /* slider thumbs */
 }
 
 * {
@@ -660,7 +661,7 @@ body {
 .biome-chip.on {
   background: var(--sel);
   color: var(--sel-ink);
-  border-color: transparent;
+  border-color: rgba(255, 255, 255, 0.45);
 }
 /* Biomes locked out because the map is too small to show them all. */
 .biome-chip.locked {
@@ -789,7 +790,7 @@ body {
 .seg-btn.is-active {
   background: var(--sel);
   color: var(--sel-ink);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
 
 .menu-main h1 {
@@ -933,9 +934,8 @@ body {
   transition: border-color 0.15s, background 0.15s;
 }
 .mode-card.is-selected {
-  border-color: rgba(255, 255, 255, 0.75);
-  background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 18px rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.07);
 }
 /* The whole card header is the pick target. */
 .mode-pick {
@@ -992,9 +992,8 @@ body {
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
 }
 .mode-card.is-selected .mode-radio {
-  border-color: #fff;
-  background: radial-gradient(circle at 50% 50%, #fff 0%, #fff 45%, transparent 52%);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.45);
+  border-color: rgba(255, 255, 255, 0.9);
+  background: radial-gradient(circle at 50% 50%, #e9edf3 0%, #e9edf3 45%, transparent 52%);
 }
 /* Options only exist while their mode is selected. */
 .mode-opts {
@@ -1934,7 +1933,7 @@ button.small {
   height: 24px;
   margin-top: -8px; /* centre the 24px thumb on the 8px rail */
   border-radius: 50%;
-  background: var(--sel);
+  background: var(--knob);
   border: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
@@ -1948,7 +1947,7 @@ button.small {
   height: 24px;
   border: none;
   border-radius: 50%;
-  background: var(--sel);
+  background: var(--knob);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 .slider:disabled {
