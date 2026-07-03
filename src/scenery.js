@@ -221,6 +221,45 @@ export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
 }
 
+// Blended road style for the road SURFACE itself: instead of the hard
+// per-vertex switch above, the tint cross-fades over the same wide seam bands
+// the terrain uses (angular wedges in classic mode; warm wedges + the alpine
+// snow-line by height on generated tracks), so tarmac changes character
+// gradually. Alongside the tint it reports the weight of each speckle `kind`
+// (0..1, summing to ~1) so the track can fade its per-biome speckle in/out
+// across the same band. Returns a reused scratch object — consume it before
+// the next call. `y` is the road elevation at (x,z), passed by the track so
+// the snow line doesn't need a height lookup.
+const _roadBlend = { tint: [1, 1, 1], kinds: {} };
+function _accumRoadStyle(style, w) {
+  if (w <= 0) return;
+  _roadBlend.tint[0] += style.tint[0] * w;
+  _roadBlend.tint[1] += style.tint[1] * w;
+  _roadBlend.tint[2] += style.tint[2] * w;
+  _roadBlend.kinds[style.kind] = (_roadBlend.kinds[style.kind] || 0) + w;
+}
+export function biomeRoadStyleBlend(x, z, y) {
+  _roadBlend.tint[0] = _roadBlend.tint[1] = _roadBlend.tint[2] = 0;
+  for (const k in _roadBlend.kinds) _roadBlend.kinds[k] = 0;
+  if (!_altMode) {
+    const n = _activeBiomes.length;
+    const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
+    const i0 = Math.floor(s) % n;
+    const frac = s - Math.floor(s);
+    const t = frac < 0.6 ? 0 : smooth((frac - 0.6) / 0.4);
+    _accumRoadStyle(ROAD_STYLES[_activeBiomes[i0].name] || ROAD_STYLES.meadow, 1 - t);
+    _accumRoadStyle(ROAD_STYLES[_activeBiomes[(i0 + 1) % n].name] || ROAD_STYLES.meadow, t);
+    return _roadBlend;
+  }
+  if (y === undefined) y = _heightSampler ? _heightSampler(x, z) : 0;
+  const wb = warmBlend(x, z);
+  const aw = alpineWeight(y);
+  _accumRoadStyle(ROAD_STYLES[wb.a.name] || ROAD_STYLES.meadow, (1 - wb.t) * (1 - aw));
+  _accumRoadStyle(ROAD_STYLES[wb.b.name] || ROAD_STYLES.meadow, wb.t * (1 - aw));
+  if (aw > 0 && _alpine) _accumRoadStyle(ROAD_STYLES[_alpine.name] || ROAD_STYLES.meadow, aw);
+  return _roadBlend;
+}
+
 // Tint for the dust a kart kicks up: the local ground colour, paled and warmed —
 // dust reads lighter than the soil it came from. Snow biomes stay near-white,
 // desert goes sandy, grass a muted khaki. Writes/returns `out` (caller owns it).

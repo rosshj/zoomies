@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeRoadStyle, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { biomeBarrierStyle, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
 import { rand, makeRng } from "./rng.js";
 
 const TAU = Math.PI * 2;
@@ -193,6 +193,12 @@ const PUDDLE_SHEEN_SHADER = {
 
 // Bluish-white tone for the alpine road's icy patches.
 const SNOW_PATCH = new THREE.Color(0xdfeaf5);
+// Loose road cover the traffic sweeps off the driving lanes: snow dust and
+// wind-blown sand (lerped over the asphalt, weighted by the local biome mix).
+const SNOW_COVER = new THREE.Color(0xe9f1f8);
+const SAND_COVER = new THREE.Color(0xd9c08b);
+const _covA = new THREE.Color();
+const _covB = new THREE.Color();
 
 // Glowing cyan chevron texture for boost pads (arrows point "up" = forward).
 let _chevronTex = null;
@@ -329,7 +335,7 @@ export class Track {
 
   _buildRoad() {
     const div = this.samples;
-    const cross = 5; // subdivisions across the road, for color variation
+    const cross = 10; // subdivisions across the road — enough to resolve the tyre lanes
     const vpr = cross + 1; // vertices per row
     const positions = [];
     const uvs = [];
@@ -342,11 +348,18 @@ export class Track {
       const s = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453;
       return s - Math.floor(s);
     };
+    const smooth01 = (t) => {
+      t = Math.min(Math.max(t, 0), 1);
+      return t * t * (3 - 2 * t);
+    };
 
     for (let i = 0; i <= div; i++) {
       const idx = i % div;
       const p = this._pts[idx];
       const side = this._sideAt(idx);
+      // The driving line wanders a touch along the lap, so the wear bands
+      // snake instead of reading as two ruler-straight stripes.
+      const wander = 0.03 * Math.sin(idx * 0.06) + 0.02 * Math.sin(idx * 0.017 + 2.1);
       for (let j = 0; j < vpr; j++) {
         const f = j / cross; // 0..1 across the road
         const lat = -this.halfWidth + f * this.width;
@@ -355,24 +368,62 @@ export class Track {
         positions.push(x, p.y + 0.02, z);
         uvs.push(f, i * 0.1);
 
-        // Asphalt tone: smooth patchy variation + fine grain, with two faint
-        // darker "tyre line" bands where karts tend to drive.
+        // How heavily driven this bit of road is: two tyre lanes (~1/3 in from
+        // each edge, where the karts actually run), 1 on the lane centres and
+        // fading smoothly to clean tarmac at the verges and centreline.
+        const lane = Math.min(Math.abs(f - (0.32 + wander)), Math.abs(f - (0.68 + wander)));
+        const wear = (1 - smooth01(lane / 0.17)) * (0.82 + 0.18 * Math.sin(idx * 0.11 + f * 3));
+
+        // Asphalt tone: smooth patchy variation + fine grain. Worn lanes read
+        // darker and more polished (traffic grinds the grain smooth).
         let shade =
           1 +
           0.07 * Math.sin(x * 0.05) * Math.cos(z * 0.045) +
           0.05 * Math.sin(x * 0.013 + z * 0.017) +
-          (hash(idx, j) - 0.5) * 0.07;
-        const lane = Math.min(Math.abs(f - 0.32), Math.abs(f - 0.68));
-        if (lane < 0.08) shade -= 0.06;
+          (hash(idx, j) - 0.5) * 0.07 * (1 - 0.5 * wear);
+        shade -= 0.08 * wear;
+
         // Biome surface: tint the asphalt and add per-biome speckle so the road
-        // changes character as you lap (sandy/cracked desert, snowy/icy alpine,
-        // damp forest tarmac, warm autumn).
-        const style = biomeRoadStyle(x, z);
+        // changes character as you lap. The tint/kind cross-fades over wide seam
+        // bands (biomeRoadStyleBlend) so surfaces transition gradually instead
+        // of switching at a hard line.
+        const style = biomeRoadStyleBlend(x, z, p.y);
+        const kSand = style.kinds.sand || 0;
+        const kSnow = style.kinds.snow || 0;
+        const kDamp = style.kinds.damp || 0;
+        let [tr, tg, tb] = style.tint;
+        // The driving lanes pull the biome tint partway back toward bare
+        // asphalt — the beaten path always reads a little more "road".
+        const sweep = 0.45 * wear;
+        tr += (1 - tr) * sweep;
+        tg += (1 - tg) * sweep;
+        tb += (1 - tb) * sweep;
         const h2 = hash(idx * 1.7 + 3.1, j * 2.3 + 5.7);
-        c.setRGB(base.r * style.tint[0], base.g * style.tint[1], base.b * style.tint[2]).multiplyScalar(shade);
-        if (style.kind === "sand" && h2 < 0.05) c.multiplyScalar(0.55); // dark cracks
-        else if (style.kind === "snow" && h2 > 0.9) c.lerp(SNOW_PATCH, 0.7); // icy patches
-        else if (style.kind === "damp" && h2 > 0.93) c.multiplyScalar(0.7); // wet patches
+        c.setRGB(base.r * tr, base.g * tg, base.b * tb).multiplyScalar(shade);
+        // Low-frequency world-space clumping so cover and patches gather in
+        // soft drifts instead of uniform per-vertex noise.
+        const clump =
+          0.5 + 0.5 * Math.sin(x * 0.16 + Math.sin(z * 0.13) * 2.2) * Math.cos(z * 0.11 + Math.sin(x * 0.09) * 1.8);
+        // Loose cover blanket (snow dust / blown sand): lies across the road in
+        // clumps, piles into drifts along the verges, and is swept down to bare
+        // asphalt along the two driving lanes — so the heavily driven line
+        // shows as dark wheel tracks through the cover.
+        const loose = kSnow + kSand;
+        if (loose > 0.02) {
+          const edgeDrift = smooth01((0.12 - Math.min(f, 1 - f)) / 0.12);
+          const cover =
+            loose * (0.18 + 0.42 * clump) * (1 - 0.92 * smooth01(wear * 1.25)) + loose * 0.3 * edgeDrift;
+          _covA.copy(SNOW_COVER).multiplyScalar(kSnow / loose);
+          _covB.copy(SAND_COVER).multiplyScalar(kSand / loose);
+          _covA.add(_covB);
+          c.lerp(_covA, Math.min(cover, 0.88));
+        }
+        // Accent speckle, placed where it belongs: cracks concentrate IN the
+        // beaten lanes (traffic breaks the surface), while ice and standing
+        // water survive only OFF the driving line, in the same clumped drifts.
+        if (h2 < 0.05 && kSand > 0.15) c.multiplyScalar(1 - 0.45 * kSand * (0.55 + 0.45 * wear)); // dark cracks
+        if (h2 > 0.93 && kSnow > 0.15 && clump > 0.55) c.lerp(SNOW_PATCH, 0.55 * kSnow * (1 - 0.85 * wear)); // ice
+        if (h2 > 0.94 && kDamp > 0.15 && clump > 0.5) c.multiplyScalar(1 - 0.3 * kDamp * (1 - 0.65 * wear)); // wet
         colors.push(c.r, c.g, c.b);
       }
 
