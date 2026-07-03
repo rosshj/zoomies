@@ -1,0 +1,16 @@
+{
+  "appId": "com.theaapps.zoomies",
+  "appName": "Zoomies GP",
+  "webDir": "dist",
+  "backgroundColor": "#0e1320",
+  "ios": {
+    "backgroundColor": "#0e1320",
+    "contentInset": "never"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#0e1320"
+    }
+  }
+}

@@ -6,13 +6,26 @@
   "scripts": {
     "start": "npx --yes serve -l 8080 .",
     "dev": "npx --yes serve -l 8080 .",
+    "build:web": "node tools/build-web.mjs",
+    "cap:sync": "npm run build:web && npx cap sync",
+    "ios": "npx cap open ios",
+    "android": "npx cap open android",
     "check": "node tools/headless-check.mjs",
     "check:offline": "node tools/offline-check.mjs",
     "check:items": "node tools/items-check.mjs",
     "check:net": "node tools/net-check.mjs"
   },
   "license": "MIT",
+  "dependencies": {
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/haptics": "^6.0.2",
+    "@capacitor/screen-orientation": "^6.0.3",
+    "@capacitor/splash-screen": "^6.0.3",
+    "@capacitor/status-bar": "^6.0.2"
+  },
   "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
     "partykit": "^0.0.115",
     "playwright-core": "^1.49.0",
     "three": "^0.171.0"
