@@ -2394,13 +2394,22 @@ function _syncAccColorGrid(accId, chosenColor) {
   for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === effective);
 }
 
-// Refresh the creator panels: show the one whose stepper is on the Custom slot,
-// and mirror the draft's custom values into its controls.
+// Refresh the creator panels: Custom mode (chosen on the Presets/Custom toggle)
+// swaps the preset stepper for the creator, and mirrors the draft's custom
+// values into its controls.
 function syncCreators() {
   const catCustom = _garageDraft.cat === CUSTOM_CAT_IDX;
   const kartCustom = _garageDraft.kart === CUSTOM_KART_IDX;
   document.getElementById("cat-custom").classList.toggle("hidden", !catCustom);
   document.getElementById("kart-custom").classList.toggle("hidden", !kartCustom);
+  // The stepper only browses presets, so it steps aside in Custom mode (the
+  // creator has its own name field + controls).
+  document.getElementById("cat-stepper")?.classList.toggle("hidden", catCustom);
+  document.getElementById("kart-stepper")?.classList.toggle("hidden", kartCustom);
+  document.getElementById("cat-src-preset")?.classList.toggle("is-active", !catCustom);
+  document.getElementById("cat-src-custom")?.classList.toggle("is-active", catCustom);
+  document.getElementById("kart-src-preset")?.classList.toggle("is-active", !kartCustom);
+  document.getElementById("kart-src-custom")?.classList.toggle("is-active", kartCustom);
   if (catCustom) {
     const c = _garageDraft.customCat;
     document.getElementById("cat-pat-name").textContent = _cap(c.pattern);
@@ -2450,6 +2459,9 @@ function openGaragePanel() {
   };
   const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
   _garageAnchor.copy(slot.position);
+  // Seed the "last browsed preset" so leaving Custom returns somewhere sensible.
+  _garagePrevPreset.cat = _garageDraft.cat < CUSTOM_CAT_IDX ? _garageDraft.cat : 0;
+  _garagePrevPreset.kart = _garageDraft.kart < CUSTOM_KART_IDX ? _garageDraft.kart : 0;
   syncGarageUI();
   buildGaragePreview();
   // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
@@ -2465,10 +2477,27 @@ function closeGarage() {
   _clearGaragePreview();
   closeSubScreen(garageEl);
 }
+// The stepper browses PRESETS only; Custom is its own mode on the toggle above
+// it (an explicit affordance, not a hidden extra slot at the end of the cycle).
 function stepGarage(which, dir) {
-  // +1 slot: one past the last preset is the Custom slot.
-  const n = (which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length) + 1;
-  _garageDraft[which] = (_garageDraft[which] + dir + n) % n;
+  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
+  _garageDraft[which] = ((_garageDraft[which] % n) + dir + n) % n;
+  syncGarageUI();
+  buildGaragePreview();
+}
+// Remembers the preset you were browsing so toggling Custom → Presets returns
+// to it instead of resetting to the first cat/kart.
+const _garagePrevPreset = { cat: 0, kart: 0 };
+function setGarageSource(which, custom) {
+  const customIdx = which === "cat" ? CUSTOM_CAT_IDX : CUSTOM_KART_IDX;
+  const isCustom = _garageDraft[which] === customIdx;
+  if (custom === isCustom) return;
+  if (custom) {
+    _garagePrevPreset[which] = _garageDraft[which];
+    _garageDraft[which] = customIdx;
+  } else {
+    _garageDraft[which] = _garagePrevPreset[which] ?? 0;
+  }
   syncGarageUI();
   buildGaragePreview();
 }
@@ -2521,6 +2550,10 @@ document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage(
 document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
 document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
 document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
+document.getElementById("cat-src-preset")?.addEventListener("click", () => setGarageSource("cat", false));
+document.getElementById("cat-src-custom")?.addEventListener("click", () => setGarageSource("cat", true));
+document.getElementById("kart-src-preset")?.addEventListener("click", () => setGarageSource("kart", false));
+document.getElementById("kart-src-custom")?.addEventListener("click", () => setGarageSource("kart", true));
 
 // Custom-cat creator controls.
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));

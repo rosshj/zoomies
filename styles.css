@@ -158,13 +158,30 @@ body {
   align-items: stretch;
   gap: 5px;
 }
+/* Header row per picker: the CAT/KART label plus the Presets/Custom toggle —
+   customising gets the same explicit affordance as the track's mode toggle. */
+.garage-pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-left: 6px;
+}
 .garage-pick-label {
   font-size: 11px;
   letter-spacing: 0.16em;
   font-weight: 700;
   color: var(--accent);
   opacity: 0.85;
-  padding-left: 6px;
+}
+.garage-seg {
+  margin-top: 0;
+  padding: 2px;
+}
+.garage-seg .seg-btn {
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  padding: 4px 13px;
 }
 .garage-stepper {
   display: flex;
@@ -385,11 +402,11 @@ body {
   display: flex;
   flex-direction: column;
   /* Narrower so the centred card clears the Dynamic Island / rounded corners. */
-  width: min(700px, 100%);
-  max-width: min(700px, 100%);
+  width: min(740px, 100%);
+  max-width: min(740px, 100%);
   text-align: left;
-  padding: 10px 20px;
-  gap: 6px;
+  padding: 12px 22px 16px;
+  gap: 8px;
 }
 .track-header {
   display: flex;
@@ -398,7 +415,7 @@ body {
   flex-wrap: wrap;
   gap: 8px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  padding-bottom: 7px;
+  padding-bottom: 9px;
 }
 .track-title {
   display: flex;
@@ -429,7 +446,7 @@ body {
   display: flex;
   flex-flow: row wrap;
   align-items: stretch;
-  gap: 12px 24px;
+  gap: 12px 26px;
 }
 .track-col-map {
   flex: 1 1 240px;
@@ -446,20 +463,20 @@ body {
   flex-direction: column;
   gap: 8px;
 }
-/* Time-of-day picker: one compact row of four chips under Environment. */
+/* Time-of-day picker: one row of four chips under Environment. */
 .tod-pick {
-  margin-top: 2px;
+  margin-top: 4px;
 }
 .tod-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 5px;
+  gap: 8px;
 }
 .tod-grid .biome-chip {
   width: 100%;
   text-align: center;
   padding: 5px 4px;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0;
 }
 .map-reroll {
@@ -467,6 +484,7 @@ body {
   margin: 0;
   font-size: 13px;
   padding: 7px 14px;
+  min-height: var(--tap);
 }
 .track-col-ctrl {
   flex: 1 1 340px;
@@ -478,11 +496,13 @@ body {
   margin: 0 0 6px;
   width: 100%;
 }
-/* Slider rows: label on the left, slider in the middle, live value on the right. */
+/* Slider rows: label on the left, slider in the middle, live value on the right.
+   The sliders themselves are full-height touch targets, so the rows breathe on
+   their own — no extra margin needed between them. */
 .track-main .track-row {
-  grid-template-columns: 64px 1fr 30px;
+  grid-template-columns: 64px 1fr 34px;
   gap: 10px;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
 }
 .track-main .setting-label {
   font-size: 13px;
@@ -494,25 +514,13 @@ body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
-/* Slimmer slider track + thumb in the track panel so four rows pack tighter. */
-.track-main .slider {
-  height: 6px;
-}
-.track-main .slider::-webkit-slider-thumb {
-  width: 18px;
-  height: 18px;
-}
-.track-main .slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
-}
 .env-label {
   font-size: 11px;
   font-weight: bold;
   letter-spacing: 1px;
   text-transform: uppercase;
   color: rgba(255, 255, 255, 0.55);
-  margin: 2px 0 4px;
+  margin: 8px 0 8px;
 }
 .env-hint {
   font-weight: bold;
@@ -523,30 +531,32 @@ body {
 .track-main .biome-pick {
   justify-content: flex-start;
   margin: 0 0 2px;
-  gap: 6px;
+  gap: 8px;
 }
 .track-main .biome-chip {
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 5px 12px;
+  font-size: 11.5px;
 }
 /* Play + Back share one row to save vertical space. Play is the wider primary. */
 .track-actions {
   display: flex;
   gap: 10px;
   margin-top: auto;
-  padding-top: 6px;
+  padding-top: 14px;
 }
 .track-main #track-apply {
   flex: 2 1 0;
   margin: 0;
   font-size: 15px;
   padding: 9px 18px;
+  min-height: 48px;
 }
 .track-main #track-back {
   flex: 1 1 0;
   margin: 0;
   font-size: 15px;
   padding: 9px 14px;
+  min-height: 48px;
 }
 
 /* Compact the primary buttons so each column fits the short landscape height. */
@@ -1895,30 +1905,42 @@ button.small {
   opacity: 0.85;
 }
 
-/* Volume sliders */
+/* Sliders (volume + track knobs). The INPUT is a full 44px-tall touch target;
+   the slim visual rail is drawn by the track pseudo-elements inside it, so the
+   finger never has to land on an 8px line. */
 .slider {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
+  height: var(--tap);
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
   height: 8px;
   border-radius: var(--pill);
   background: rgba(255, 255, 255, 0.18);
-  outline: none;
-  cursor: pointer;
 }
 .slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
+  margin-top: -8px; /* centre the 24px thumb on the 8px rail */
   border-radius: 50%;
   background: linear-gradient(180deg, #ffd24d, var(--accent));
   border: none;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
+.slider::-moz-range-track {
+  height: 8px;
+  border-radius: var(--pill);
+  background: rgba(255, 255, 255, 0.18);
+}
 .slider::-moz-range-thumb {
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border: none;
   border-radius: 50%;
   background: linear-gradient(180deg, #ffd24d, var(--accent));
@@ -2015,16 +2037,14 @@ button.secondary.small,
 /* The "Advanced ▸" expander was a ~20px text link — give it a real tap height. */
 .adv-toggle { min-height: var(--tap); padding: 8px 0; }
 
-/* Biome / time-of-day chips: raise the smallest ones toward a tap target
-   without overflowing the panel (there are 10 biomes now, they wrap). */
+/* Biome / time-of-day chips: full 44px tap targets (there are 10 biomes now,
+   they wrap — the panel scrolls rather than shrinking the targets). */
 .biome-chip {
-  min-height: 40px;
+  min-height: var(--tap);
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.track-main .biome-chip,
-.tod-grid .biome-chip { min-height: 38px; }
 
 /* Steppers + the HUD calibrate button: easier to hit. */
 .garage-arrow { min-width: var(--tap); min-height: var(--tap); }

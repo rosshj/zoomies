@@ -343,8 +343,16 @@
       <div class="garage-title"><span class="garage-ico">🐱</span><h1>Pick your racer</h1></div>
       <div class="garage-pickers">
         <div class="garage-pick">
-          <span class="garage-pick-label">CAT</span>
-          <div class="garage-stepper">
+          <!-- Presets vs Custom is an explicit toggle (like the track's
+               Classic/Generated) instead of a hidden extra stepper slot. -->
+          <div class="garage-pick-head">
+            <span class="garage-pick-label">CAT</span>
+            <div class="seg-toggle garage-seg" id="cat-src">
+              <button id="cat-src-preset" class="seg-btn is-active">Presets</button>
+              <button id="cat-src-custom" class="seg-btn">✨ Custom</button>
+            </div>
+          </div>
+          <div class="garage-stepper" id="cat-stepper">
             <button id="cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
             <span class="garage-swatch" id="cat-swatch"></span>
             <span class="garage-name" id="cat-name">Marmalade</span>
@@ -383,8 +391,14 @@
           </div>
         </div>
         <div class="garage-pick">
-          <span class="garage-pick-label">KART</span>
-          <div class="garage-stepper">
+          <div class="garage-pick-head">
+            <span class="garage-pick-label">KART</span>
+            <div class="seg-toggle garage-seg" id="kart-src">
+              <button id="kart-src-preset" class="seg-btn is-active">Presets</button>
+              <button id="kart-src-custom" class="seg-btn">✨ Custom</button>
+            </div>
+          </div>
+          <div class="garage-stepper" id="kart-stepper">
             <button id="kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
             <span class="garage-swatch" id="kart-swatch"></span>
             <span class="garage-name" id="kart-name">Ember</span>
