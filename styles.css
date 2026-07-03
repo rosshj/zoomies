@@ -1665,3 +1665,8 @@ button.secondary.small,
   text-align: left;
 }
 .settings-section:first-child { margin-top: 0; }
+
+/* Graphics ladder: five chips (Auto + four rungs) need a tighter fit than the
+   old two-way toggle; wrap gracefully on the narrowest screens. */
+#quality-toggle { flex-wrap: wrap; justify-content: flex-end; }
+#quality-toggle .seg-btn { padding: 7px 10px; font-size: 12px; }

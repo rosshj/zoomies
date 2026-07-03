@@ -1538,13 +1538,42 @@ input.setStageMapper(stageToLocal);
 // keep up, so we get the high-quality look without risking stutter.
 let gpuParticles = null; // GPU ambient motes — created async once the renderer is ready
 const QUALITY_KEY = "zoomies-quality";
-let quality = "high";
-try { if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low"; } catch {}
+// Graphics LADDER: four rungs + "Auto". Each rung sets the pixel-ratio cap (the
+// single biggest lever on fill cost and render-target memory), whether the
+// heavy effects run (god rays / grass / GPU motes), whether the sun renders a
+// shadow map at all (Very Low keeps only the cheap blob/projected shadows),
+// the dynamic-resolution floor, and — Very Low only — a 30fps frame cap (a
+// locked 30 feels better than a jittery 45 and runs cooler on old phones).
+const TIERS = ["vlow", "low", "high", "vhigh"];
+const TIER_CONF = {
+  vlow:  { dpr: 1.0,  effects: false, shadows: false, drsMin: 0.4,  capMs: 1000 / 30, label: "VL", name: "Very Low" },
+  low:   { dpr: 1.25, effects: false, shadows: true,  drsMin: 0.45, capMs: 0, label: "L",  name: "Low" },
+  high:  { dpr: 2,    effects: true,  shadows: true,  drsMin: 0.45, capMs: 0, label: "H",  name: "High" },
+  // Very High spends desktop headroom: native retina resolution and a high DRS
+  // floor (sustained overload demotes a rung via the watchdog instead).
+  vhigh: { dpr: 3,    effects: true,  shadows: true,  drsMin: 0.75, capMs: 0, label: "VH", name: "Very High" },
+};
+// Auto (the default): pick a starting rung from cheap device signals; the
+// watchdog walks down the ladder from there if the device can't keep up.
+// deviceMemory exists on Chrome/Android (where the weak devices live); Safari
+// never exposes it, so Macs/iPhones fall through to the pointer check.
+function autoTier() {
+  const touch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
+  const mem = navigator.deviceMemory || 0;
+  if (mem && mem <= 2) return "vlow";
+  if (mem && mem <= 4) return "low";
+  if (!touch) return "vhigh"; // desktops have the headroom (and often 120Hz)
+  return "high";
+}
+let qualityPref = "auto"; // what the player chose ("auto" or a tier)
+try {
+  const s = localStorage.getItem(QUALITY_KEY);
+  if (s === "auto" || TIERS.includes(s)) qualityPref = s;
+} catch {}
+let quality = qualityPref === "auto" ? autoTier() : qualityPref; // the EFFECTIVE tier
 let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
 function baseDpr() {
-  // Low caps the device-pixel-ratio harder — resolution is the biggest lever on
-  // both fill cost and render-target memory (which is what tips weak GPUs over).
-  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25);
+  return Math.min(window.devicePixelRatio, TIER_CONF[quality].dpr);
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -1588,32 +1617,33 @@ function triggerHit() {
 // Render the 3D at a variable internal resolution to hold a steady frame rate:
 // drop it when frames run long, probe it back up when there's headroom. The CSS
 // size (and HUD) stay full-res; only the drawing buffer scales.
-const DRS_MIN = 0.45; // give the scaler more room on the heaviest night scenes (many lights + snow are fill-bound)
+let _drsMin = 0.45; // per-tier floor (set in applyQuality); night+snow scenes are fill-bound
 let _frameMs = 16.7;
 let _drsCooldown = 0;
 
 // --- Performance watchdog ---
 // Last-resort net BEFORE a crash: if frames stay long even after dynamic-resolution
-// scaling has bottomed out (the device genuinely can't cope at High), auto-drop to
-// Low quality, which sheds god-rays/particles and lowers the render-target
-// memory — the kind of sustained pressure that precedes an out-of-memory blank.
+// scaling has bottomed out (the device genuinely can't cope on this rung), step
+// DOWN ONE RUNG of the quality ladder — shedding effects/resolution is the kind
+// of sustained pressure-relief that prevents an out-of-memory blank.
 // Disabled with ?nowd=1 so the headless perf harness measures the chosen tier.
 const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
 let _wdAccum = 0;
 function perfWatchdog(dt) {
-  if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
+  const idx = TIERS.indexOf(quality);
+  if (!_watchdogOn || idx <= 0) return; // already on the bottom rung
   // Only when DRS has already bottomed out AND frames are still long (~30 fps).
-  // 40ms (25 fps) never fired in practice: real dips hover in the 25-45 fps
-  // band — heavy sunset scenes and a thermally throttling phone both land
-  // there — which is exactly when shedding the High-tier effects helps most.
-  if (_frameMs > 33 && renderScale <= DRS_MIN + 0.02) {
+  // Real dips hover in the 25-45 fps band — heavy sunset scenes and a thermally
+  // throttling phone both land there — exactly when shedding a rung helps most.
+  if (_frameMs > 33 && renderScale <= _drsMin + 0.02) {
     _wdAccum += dt;
     if (_wdAccum >= 5) {
       _wdAccum = 0;
       // Session-only (no persist): a capable phone that's merely hot shouldn't
-      // be locked to Low forever — next launch starts fresh on the saved tier.
-      applyQuality("low", false);
-      hud.showToast?.("Graphics lowered for a smoother race");
+      // be locked down forever — next launch starts fresh on the saved pref.
+      const down = TIERS[idx - 1];
+      applyQuality(down);
+      hud.showToast?.(`Graphics lowered to ${TIER_CONF[down].name} for a smoother race`);
     }
   } else {
     _wdAccum = Math.max(0, _wdAccum - dt * 0.6); // recover slowly from brief spikes
@@ -1626,7 +1656,11 @@ function updateDRS(rawMs, dt) {
   perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
-  if (_frameMs > 18.6 && renderScale > DRS_MIN) {
+  // Frame budget: 60fps normally; when the tier caps the frame rate (Very Low's
+  // 30fps), budget against the CAP — rendered frames arrive ~33ms apart by
+  // design, and judging them against 18.6ms would slam resolution to the floor.
+  const budget = TIER_CONF[quality].capMs ? TIER_CONF[quality].capMs * 1.13 : 18.6;
+  if (_frameMs > budget && renderScale > _drsMin) {
     // Only step down after the budget has been blown for a SUSTAINED beat. A
     // transient spike — a jump's brief draw-call burst, a first-use shader
     // compile — recovers on its own, and stepping down means REALLOCATING every
@@ -1639,49 +1673,67 @@ function updateDRS(rawMs, dt) {
     // Step proportional to how far over budget we are: genuinely sustained
     // overload (a big map's heavy stretch) drops resolution HARD in one move
     // instead of crawling down 0.1 at a time over a couple of seconds.
-    const over = _frameMs / 18.6;
+    const over = _frameMs / budget;
     const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
-    renderScale = Math.max(DRS_MIN, renderScale - step);
+    renderScale = Math.max(_drsMin, renderScale - step);
     applyResolution();
     _drsCooldown = 0.35;
   } else {
     _drsOverT = 0;
-    if (_frameMs < 17.4 && renderScale < 1) {
+    if (_frameMs < budget * 0.935 && renderScale < 1) {
       renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
       applyResolution();
       _drsCooldown = 1.4;
     }
   }
 }
-const qualityLowBtn = document.getElementById("set-quality-low");
-const qualityHighBtn = document.getElementById("set-quality-high");
-// Low quality strips the expensive effects to keep weak devices stable (and is
-// what the performance watchdog flips to before a device crashes):
-//   • post-FX graph drops the god rays (the heaviest pass),
-//   • god-ray render target stops updating,
-//   • GPU ambient motes hidden (skips their compute), grass hidden,
-//   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
-function applyQuality(q, persist = true) {
-  quality = q;
-  const high = q === "high";
-  if (persist) { try { localStorage.setItem(QUALITY_KEY, q); } catch {} }
-  bloomPass.enabled = true; // marquee glow on both tiers
-  postProcessing.outputNode = high ? _highOutput : _lowOutput;
+const qualityBtns = {}; // pref ("auto" + tiers) -> settings chip
+for (const p of ["auto", ...TIERS]) qualityBtns[p] = document.getElementById(`set-quality-${p}`);
+function refreshQualityUI() {
+  for (const [p, btn] of Object.entries(qualityBtns)) btn?.classList.toggle("is-active", qualityPref === p);
+}
+// Applies an EFFECTIVE tier (never persists — the saved thing is qualityPref,
+// written only by setQualityPref, so the watchdog/multiplayer can demote for
+// the session without touching the player's choice). Per rung:
+//   • post-FX graph with/without god rays (the heaviest pass) + its RTT updates,
+//   • GPU ambient motes + grass shown/hidden,
+//   • sun shadow pass on/off (Very Low keeps only blob/projected shadows),
+//   • pixel-ratio cap + DRS floor (applied via layoutStage → baseDpr).
+function applyQuality(tier) {
+  quality = tier;
+  const conf = TIER_CONF[tier];
+  bloomPass.enabled = true; // marquee glow on every rung
+  postProcessing.outputNode = conf.effects ? _highOutput : _lowOutput;
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
-  _shaftTex.autoUpdate = high; // don't re-render the god-ray target when it's unused
-  if (world.grass) world.grass.visible = high;
-  if (gpuParticles) gpuParticles.setVisible(high);
-  renderScale = 1; // reset DRS on a manual quality change
-  qualityLowBtn?.classList.toggle("is-active", !high);
-  qualityHighBtn?.classList.toggle("is-active", high);
+  _shaftTex.autoUpdate = conf.effects; // don't re-render the god-ray target when it's unused
+  if (world.grass) world.grass.visible = conf.effects;
+  if (gpuParticles) gpuParticles.setVisible(conf.effects);
+  if (sun && sun.castShadow !== conf.shadows) {
+    sun.castShadow = conf.shadows;
+    if (conf.shadows) sun.shadow.needsUpdate = true; // re-render the on-demand map
+  }
+  _drsMin = conf.drsMin;
+  renderScale = 1; // reset DRS on a quality change
   layoutStage(); // applies the resolution
 }
-qualityLowBtn?.addEventListener("click", () => { _mpWantsHigh = false; applyQuality("low"); });
-qualityHighBtn?.addEventListener("click", () => {
-  if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; } // opt out of MP's forced-Low this session
-  applyQuality("high");
-});
-applyQuality(quality, false); // honour the persisted choice without re-writing it
+// The player's choice: persist it, resolve "auto" to a tier, apply.
+function setQualityPref(pref) {
+  qualityPref = pref;
+  try { localStorage.setItem(QUALITY_KEY, pref); } catch {}
+  refreshQualityUI();
+  applyQuality(pref === "auto" ? autoTier() : pref);
+}
+for (const p of ["auto", ...TIERS]) {
+  qualityBtns[p]?.addEventListener("click", () => {
+    // Picking a top rung during multiplayer opts out of MP's forced-Low for
+    // this session; any other pick re-arms it.
+    if (p === "high" || p === "vhigh") { if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; } }
+    else _mpWantsHigh = false;
+    setQualityPref(p);
+  });
+}
+refreshQualityUI();
+applyQuality(quality); // honour the persisted pref without re-writing it
 
 // Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
 const lapsBtn = document.getElementById("laps-btn");
@@ -2015,7 +2067,7 @@ function updateFpsCounter(dt) {
   // pixel scaling can't help (vertex/CPU-bound — or the phone is thermally
   // throttling, which looks exactly like this after minutes of sustained load).
   const rs = renderScale.toFixed(2).replace(/0$/, "");
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality === "high" ? "H" : "L"}`;
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${TIER_CONF[quality].label}`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
@@ -2055,15 +2107,14 @@ let _mpForcedLow = false;
 let _mpWantsHigh = false;
 function applyMpQuality() {
   const wantLow = MP.enabled && !_mpWantsHigh;
-  if (wantLow && quality === "high") {
+  if (wantLow && TIERS.indexOf(quality) > TIERS.indexOf("low")) {
+    // Clamp to AT MOST Low (a Very Low player stays on Very Low).
     _mpForcedLow = true;
-    applyQuality("low", false);
+    applyQuality("low");
     hud.showToast?.("Graphics set to Low for smoother multiplayer");
   } else if (!wantLow && _mpForcedLow) {
     _mpForcedLow = false;
-    let saved = "high";
-    try { if (localStorage.getItem(QUALITY_KEY) === "low") saved = "low"; } catch {}
-    applyQuality(saved, false);
+    applyQuality(qualityPref === "auto" ? autoTier() : qualityPref);
   }
 }
 let _deferredInstall = null;
@@ -3665,6 +3716,11 @@ let prevPlayerSpin = 0;
 
 function loop(now) {
   requestAnimationFrame(loop);
+  // Frame-rate cap (Very Low): skip whole rAF ticks until the cap interval has
+  // passed. `last` isn't touched on a skip, so dt spans the skipped ticks and
+  // the dt-based physics/animation are unaffected — the game just renders less.
+  const capMs = TIER_CONF[quality].capMs;
+  if (capMs && now - last < capMs - 2) return;
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
@@ -3703,9 +3759,12 @@ function loop(now) {
       return da - db;
     });
     const lit = _hlBase * _hlRamp;
+    // Very Low keeps just the player's beam — spotlights are the priciest part
+    // of the night scenes; the other karts keep their emissive bulbs.
+    const maxBeams = quality === "vlow" ? 1 : _hlPool.length;
     for (let i = 0; i < _hlPool.length; i++) {
       const slot = _hlPool[i];
-      const k = _hlCands[i];
+      const k = i < maxBeams ? _hlCands[i] : null;
       if (!k) { slot.light.intensity = 0; continue; } // fewer karts than beams
       const fx = Math.sin(k.heading), fz = Math.cos(k.heading);
       const p = k.position;
@@ -4117,7 +4176,7 @@ rendererReady
       // A touch more opaque so the (now fewer) specks actually catch the light.
       opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
       size: night ? 0.52 : 0.42,
-    }).then((p) => { gpuParticles = p; if (p && quality !== "high") p.setVisible(false); });
+    }).then((p) => { gpuParticles = p; if (p && !TIER_CONF[quality].effects) p.setVisible(false); });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => requestAnimationFrame(loop));

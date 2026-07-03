@@ -101,7 +101,13 @@ export function createScene() {
   // 16MB vs 64MB is exactly the kind of headroom that decides it. Low tier gets
   // 2048 everywhere.
   let shadowSz = IS_IOS ? 2048 : 4096;
-  try { if (localStorage.getItem("zoomies-quality") === "low") shadowSz = 2048; } catch { /* keep default */ }
+  try {
+    const q = localStorage.getItem("zoomies-quality");
+    if (q === "low") shadowSz = 2048;
+    // Very Low never renders the map (main.js turns sun.castShadow off before
+    // the first frame), so keep any allocation tiny if it ever does.
+    else if (q === "vlow") shadowSz = 1024;
+  } catch { /* keep default */ }
   sun.shadow.mapSize.set(shadowSz, shadowSz);
   // Initial bounds are placeholders — fitSunShadow overwrites them on frame one.
   const s = 85;
