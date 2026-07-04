@@ -206,6 +206,11 @@ function markReload(cause) {
   console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""}`);
 }
 
+// Boot timeline stamps (ms since navigation start), logged once from the
+// render loop's first frames — quantifies the "long pause before the menu":
+// script parse+eval vs world build vs renderer init vs first-frame compiles.
+const _boot = { eval: performance.now(), world: 0, renderer: 0, frames: 0 };
+
 // Time of day for this world. "random" (and the default) rolls one per seed via
 // an ISOLATED stream so it's identical for everyone on a seed (multiplayer) yet
 // never disturbs the shared world-build stream that shapes the track. The world
@@ -425,6 +430,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 Object.assign(window.__zoomies, { world, track });
+_boot.world = performance.now();
 
 
 // Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
@@ -3874,6 +3880,14 @@ function loop(now) {
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
   logPerfSummary(rawMs); // 5-second frame-time summary → console (Xcode/devtools)
+  // One-time boot timeline. Logged on the SECOND loop pass so `rawMs` covers the
+  // first rendered frame — where the whole scene's pipelines compile — and the
+  // "pause before the menu" decomposes into its actual phases.
+  if (_boot.frames < 2 && ++_boot.frames === 2) {
+    console.log(
+      `[zoomies] boot timeline: scripts ${Math.round(_boot.eval)}ms · world +${Math.round(_boot.world - _boot.eval)}ms · renderer +${Math.round(_boot.renderer - _boot.world)}ms · first frame ${Math.round(rawMs)}ms · menu at ${Math.round(now)}ms`
+    );
+  }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
   if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
@@ -4333,6 +4347,7 @@ rendererReady
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => {
+    _boot.renderer = performance.now();
     requestAnimationFrame(loop);
     // Native (Capacitor) shell chrome, now that the renderer is up and the first
     // frame is drawing: lock landscape, hide the OS status bar, and dismiss the
