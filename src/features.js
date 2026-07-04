@@ -17,7 +17,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 //   shelf (wall one side / drop the other), dam (reservoir high / valley low),
 //   causeway (deck across a lagoon).
 //   TREATMENTS (dressing only):  giant forest, flower fields, wind farm,
-//   desert rock arches, neon billboards, an elevated city rail + train.
+//   desert rock pillars, neon billboards, an elevated city rail + train.
 //   AMBIENCE: ducks on the water, goats on the rims, mist among the giants,
 //   fish hopping by the bridge — built with the structures, animated via the
 //   update() handle buildFeatureStructures returns.
@@ -638,7 +638,7 @@ const TITLE_PRIORITY = ["tunnel", "dam", "causeway", "canyon", "bridge", "shelf"
 const TITLE_WORDS = {
   tunnel: "Tunnel", dam: "Dam", causeway: "Causeway", canyon: "Canyon",
   bridge: "Riverbend", shelf: "Ledge", overpass: "Skyway", giant: "Grove",
-  windfarm: "Windmill", flowers: "Bloom", arches: "Arches", billboards: "Neon",
+  windfarm: "Windmill", flowers: "Bloom", arches: "Pillars", billboards: "Neon",
 };
 const TITLE_SUFFIX = ["GP", "Circuit", "Sprint", "Run", "Loop", "Raceway"];
 export function trackTitle(feats, seedStr) {
@@ -659,7 +659,7 @@ export function trackTitle(feats, seedStr) {
 // ---- Structures + ambience ---------------------------------------------------
 // One concrete kit for every elevated run (deck skirts + underside, paired
 // piers with crossbeams), plus the tunnel tube/portals, dam wall, canyon and
-// shelf rim rocks, waterfall face, treatments (flowers, turbines, arches,
+// shelf rim rocks, waterfall face, treatments (flowers, turbines, pillars,
 // billboards, rail + train) and the small lives that make the places feel
 // inhabited. Returns { update(time) } that buildWorld drives each frame.
 export function buildFeatureStructures(scene, track, heightAt, rng = Math.random, opts = {}) {
@@ -1249,32 +1249,38 @@ function buildWindFarm(scene, track, run, heightAt, rng, anims) {
 }
 
 function buildArches(scene, track, run, rng) {
-  // Natural rock arches spanning the road: two pillars + a lintel of chunks.
+  // Desert rock pillars (hoodoos) lining the road: standalone tapering
+  // columns of varying heights, most wearing a wider caprock on top.
   const N = track.samples;
   const chunks = [];
-  const count = 2 + Math.floor(rng() * 2);
+  const count = 5 + Math.floor(rng() * 3);
   for (let k = 0; k < count; k++) {
     const i = run.i0 + Math.round(((k + 0.5) / count) * (run.i1 - run.i0));
     const idx = ((i % N) + N) % N;
     const p = track._pts[idx];
     const side = sideAt(track, idx);
     const yaw = Math.atan2(side.x, side.z);
-    for (const sgn of [1, -1]) {
-      const px = p.x + side.x * sgn * (track.halfWidth + 4.5);
-      const pz = p.z + side.z * sgn * (track.halfWidth + 4.5);
-      // Pillar: a continuous tapering column (chunks overlap vertically and
-      // the base is planted in the ground, so nothing hovers).
-      for (let s = 0; s < 5; s++) {
-        chunks.push({ x: px + (rng() - 0.5) * 0.6, y: p.y + 1.2 + s * 2.6, z: pz + (rng() - 0.5) * 0.6, sx: 6.2 - s * 0.55, sy: 4.6, sz: 5.2 - s * 0.5, yaw: yaw + rng() * 0.5, flat: true });
+    // Most sites get one pillar; some get a facing pair (a lintel-less gate).
+    const both = rng() < 0.3;
+    const first = rng() < 0.5 ? 1 : -1;
+    for (const sgn of both ? [1, -1] : [first]) {
+      const off = track.halfWidth + 5 + rng() * 7;
+      const px = p.x + side.x * sgn * off;
+      const pz = p.z + side.z * sgn * off;
+      const tiers = 4 + Math.floor(rng() * 4); // 4..7 — varied heights
+      const base = 5.6 + rng() * 1.4;
+      // Continuous tapering column (chunks overlap vertically and the base
+      // is planted in the ground, so nothing hovers).
+      for (let s = 0; s < tiers; s++) {
+        const t = s / (tiers - 1);
+        const cap = s === tiers - 1 && rng() < 0.75;
+        const w = base * (1 - 0.4 * t) * (cap ? 1.5 : 1);
+        chunks.push({
+          x: px + (rng() - 0.5) * 0.6, y: p.y + 1.2 + s * 2.6, z: pz + (rng() - 0.5) * 0.6,
+          sx: w, sy: cap ? 3.4 : 4.6, sz: w * (0.82 + rng() * 0.12),
+          yaw: yaw + rng() * 0.6, flat: true,
+        });
       }
-    }
-    // Lintel arcing over the road, meeting the pillar tops.
-    for (let s = 0; s < 5; s++) {
-      const f = (s + 0.5) / 5 - 0.5; // -0.5..0.5 across
-      const lx = p.x + side.x * f * (track.halfWidth + 4.5) * 2;
-      const lz = p.z + side.z * f * (track.halfWidth + 4.5) * 2;
-      const lift = 13.4 + Math.cos(f * Math.PI) * 1.8;
-      chunks.push({ x: lx, y: p.y + lift, z: lz, sx: 5.6, sy: 3.4, sz: 4.2, yaw: yaw + rng() * 0.4 });
     }
   }
   if (!chunks.length) return;
