@@ -1,0 +1,16 @@
+{
+  "name": "zoomies-audio-session",
+  "version": "0.1.0",
+  "description": "iOS audio-session policy for Zoomies: ambient + mix-with-others (the player's own music keeps playing), plus other-audio detection so the game can silence its music.",
+  "main": "index.js",
+  "files": ["ios/", "*.podspec", "index.js"],
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    }
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "license": "MIT"
+}

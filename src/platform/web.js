@@ -15,11 +15,14 @@ export function createWebAdapter() {
     haptics: {
       // navigator.vibrate is a rough web stand-in; absent on iOS Safari, so this
       // silently does nothing there — the native adapter provides real haptics.
-      impact() {
-        try { navigator.vibrate?.(10); } catch { /* unsupported */ }
+      impact(style = "medium") {
+        try { navigator.vibrate?.(style === "heavy" ? 25 : style === "light" ? 6 : 12); } catch { /* unsupported */ }
       },
       selection() {
         try { navigator.vibrate?.(5); } catch { /* unsupported */ }
+      },
+      success() {
+        try { navigator.vibrate?.([12, 60, 18]); } catch { /* unsupported */ }
       },
     },
 
@@ -32,6 +35,12 @@ export function createWebAdapter() {
       async unlock() {
         try { screen.orientation?.unlock?.(); } catch { /* unsupported */ }
       },
+    },
+
+    audio: {
+      // The web has no API for "is other audio playing", so the policy gate
+      // never engages here — game music behaves exactly as it always has.
+      async otherAudioPlaying() { return false; },
     },
 
     // In-app purchases don't exist on the web build. Report unavailable so the

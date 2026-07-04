@@ -21,6 +21,7 @@ export async function createNativeAdapter(name) {
   const StatusBar = P.StatusBar;
   const ScreenOrientation = P.ScreenOrientation;
   const Haptics = P.Haptics;
+  const AudioSession = P.AudioSession; // local plugin: plugins/audio-session
 
   return {
     name, // 'ios' | 'android'
@@ -35,21 +36,28 @@ export async function createNativeAdapter(name) {
       // the bridge actually exposes (false = pod not installed → that capability
       // silently no-ops; fix with `npm install && npx cap sync ios`).
       console.log(
-        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics}`
+        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics} audioSession=${!!AudioSession}`
       );
       try { await ScreenOrientation?.lock({ orientation: "landscape" }); } catch { /* n/a */ }
       try { await StatusBar?.hide(); } catch { /* n/a */ }
+      // Ambient + mixWithOthers: game audio coexists with the player's own
+      // music/podcast and respects the hardware silent switch.
+      try { await AudioSession?.configure(); } catch { /* n/a */ }
       try { await SplashScreen?.hide(); } catch { /* n/a */ }
     },
 
     haptics: {
       // Bridge takes the style as a plain string ("LIGHT"|"MEDIUM"|"HEAVY"); the
       // ImpactStyle enum from the JS wrapper isn't available without bundling it.
-      impact() {
-        try { Haptics?.impact({ style: "MEDIUM" }); } catch { /* n/a */ }
+      impact(style = "medium") {
+        try { Haptics?.impact({ style: style.toUpperCase() }); } catch { /* n/a */ }
       },
       selection() {
         try { Haptics?.selectionStart(); } catch { /* n/a */ }
+      },
+      // Apple's "success" notification pattern (double tap) — race finish etc.
+      success() {
+        try { Haptics?.notification({ type: "SUCCESS" }); } catch { /* n/a */ }
       },
     },
 
@@ -59,6 +67,17 @@ export async function createNativeAdapter(name) {
       },
       async unlock() {
         try { await ScreenOrientation?.unlock(); } catch { /* n/a */ }
+      },
+    },
+
+    audio: {
+      // "Their audio wins": true when the player already has music/a podcast
+      // rolling, so the game should keep its own music silent (SFX still play).
+      async otherAudioPlaying() {
+        try {
+          const r = await AudioSession?.isOtherAudioPlaying();
+          return !!r?.playing;
+        } catch { return false; }
       },
     },
 

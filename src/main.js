@@ -2102,6 +2102,57 @@ function logPerfSummary(rawMs) {
   _perfElapsed = 0;
 }
 
+// --- Haptic race feel ---------------------------------------------------
+// A handful of DISCRETE race moments, never continuous rumble — haptics read
+// as premium when they're rare and meaningful, and as noise when everything
+// buzzes. All haptic policy lives in this one function: tune thresholds and
+// styles here. Real taptics on iOS via the platform seam; on the web this
+// maps to navigator.vibrate where it exists (Android Chrome) and is silent
+// elsewhere. Player only — AI and remote karts never buzz the hand.
+let _platformA = null;
+getPlatform().then(async (p) => {
+  _platformA = p;
+  // "Their audio wins": if the player already has music/a podcast rolling
+  // (native reports it; web always says no), keep the game's music silent for
+  // this session — SFX still play. Flipping music ON in Settings overrides it.
+  try {
+    if (await p.audio.otherAudioPlaying()) {
+      audio.setMusicAllowed(false);
+      console.log("[zoomies] other audio detected — game music muted for this session (SFX unaffected)");
+    }
+  } catch { /* best-effort */ }
+}).catch(() => {});
+const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0 };
+function updateHaptics(nowMs) {
+  if (!_platformA || !player || state !== State.RACING) return;
+  const h = _platformA.haptics;
+  // Shared 90ms gate so stacked events (landing + boost) don't machine-gun.
+  const fire = (style) => {
+    if (nowMs - _feel.last < 90) return;
+    _feel.last = nowMs;
+    h.impact(style);
+  };
+  // Taking a hairball / bump → spin-out: the big one.
+  const spinning = player.spinTimer > 0;
+  if (spinning && !_feel.spin) fire("heavy");
+  _feel.spin = spinning;
+  // Drift mini-turbo charging up a tier (mirrors the spark colours blue→gold→rainbow).
+  const tier = player.drifting ? (player.driftCharge > 1.5 ? 2 : player.driftCharge > 0.8 ? 1 : 0) : 0;
+  if (tier > _feel.tier) fire("light");
+  _feel.tier = tier;
+  // Boost engages (drift release, toot button, or catnip pickup).
+  const boosting = player.boosting || player.catnipBoosting;
+  if (boosting && !_feel.boost) fire("medium");
+  _feel.boost = boosting;
+  // Hard landing — only when the suspension really squashes, so small hops stay quiet.
+  const air = player.airborne;
+  if (_feel.air && !air && (player._squash || 0) > 0.35) fire("light");
+  _feel.air = air;
+  // Crossing the finish line: Apple's "success" double-tap pattern.
+  if (player.finished && !_feel.finished) { _feel.last = nowMs; h.success(); }
+  _feel.finished = player.finished;
+}
+
 // --- How to Play sub-menu (replaces the main menu) ---
 const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
@@ -4116,6 +4167,7 @@ function loop(now) {
 
     // Step physics
     for (const k of karts) k.update(dt, track);
+    updateHaptics(now); // discrete taptic feedback off fresh player state
     applyBoostPads(dt);
     resolveCollisions();
     resolveRemoteCollisions(); // bump against remote ghost karts (multiplayer)

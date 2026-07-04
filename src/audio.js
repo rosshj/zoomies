@@ -34,6 +34,11 @@ class AudioEngine {
     this.sfxOn = s.sfxOn;
     this.musicVol = s.musicVol;
     this.sfxVol = s.sfxVol;
+    // Session policy gate, NOT persisted: "the player's own audio wins". When
+    // the platform reports other audio already playing (podcast/music on iOS),
+    // main.js clears this so game music stays silent while SFX keep working.
+    // Explicitly re-enabling music in Settings overrides it (clear user intent).
+    this.musicAllowed = true;
     this._noise = null; // shared white-noise buffer
 
     // Engine loop nodes (created on first race).
@@ -120,16 +125,34 @@ class AudioEngine {
   }
 
   // --- Music controls ---
+  // True when music should actually sound: the persisted user toggle AND the
+  // session policy gate (suppressed when the player's own audio is playing).
+  get _musicAudible() {
+    return this.musicOn && this.musicAllowed;
+  }
+
   setMusicOn(on) {
     this.musicOn = on;
+    if (on) this.musicAllowed = true; // explicit user intent beats the policy gate
     this._applyMusicGain();
     // Pause/resume the element so an off track doesn't keep streaming.
     const cur = this._curTrack && this._tracks[this._curTrack];
     if (cur) {
-      if (on) cur.el.play().catch(() => {});
+      if (this._musicAudible) cur.el.play().catch(() => {});
       else cur.el.pause();
     }
     this._saveSettings();
+  }
+
+  // Session-only policy gate (see constructor). Not persisted.
+  setMusicAllowed(allowed) {
+    this.musicAllowed = allowed;
+    this._applyMusicGain();
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    if (cur) {
+      if (this._musicAudible) cur.el.play().catch(() => {});
+      else cur.el.pause();
+    }
   }
 
   setMusicVolume(v) {
@@ -142,7 +165,7 @@ class AudioEngine {
     if (!this.musicGain) return;
     const t = this.ctx.currentTime;
     this.musicGain.gain.cancelScheduledValues(t);
-    this.musicGain.gain.setTargetAtTime(this.musicOn ? this.musicVol : 0, t, 0.04);
+    this.musicGain.gain.setTargetAtTime(this._musicAudible ? this.musicVol : 0, t, 0.04);
   }
 
   // --- SFX controls ---
@@ -659,7 +682,7 @@ class AudioEngine {
       // Already selected — but a first-gesture play() can be rejected, leaving it
       // paused. Make sure it's actually rolling (cheap to call when already playing).
       const cur = this._tracks[name];
-      if (cur && this.musicOn && cur.el.paused) cur.el.play().catch(() => {});
+      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
       return;
     }
     // Stop whatever's currently playing.
@@ -692,7 +715,7 @@ class AudioEngine {
       track.fade.gain.setValueAtTime(0, t);
       track.fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
     }
-    if (this.musicOn) track.el.play().catch(() => {});
+    if (this._musicAudible) track.el.play().catch(() => {});
   }
 
   // Whether a music track is actually rolling right now (not just selected).

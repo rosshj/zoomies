@@ -48,6 +48,35 @@ Capacitor apps normally commit the `ios/` folder (it holds native config). The
 `.gitignore` already excludes the heavy/generated bits (`Pods/`, `DerivedData/`,
 the synced `public/` web copy). Generate it on the Mac, then commit it there.
 
+## TestFlight
+
+TestFlight is the **slow lane** and that's fine — its job is testing the native
+experience (haptics, splash, orientation, launch feel), not daily gameplay
+iteration. Gameplay/levels/graphics iterate through the **fast lane**: the web
+deploy, where playtesters get every push instantly at the URL. Cut a TestFlight
+build when the native layer changes or every week or two.
+
+One-time setup:
+
+1. [App Store Connect](https://appstoreconnect.apple.com) → My Apps → **+** →
+   New App: platform iOS, bundle ID `app.thea.zoomies` (must match Xcode),
+   SKU anything (e.g. `zoomies`), name "Zoomies GP" (or claim your preferred
+   store name now — names are first-come).
+2. In Xcode, add to `ios/App/App/Info.plist`:
+   `ITSAppUsesNonExemptEncryption` = `NO` (the app uses only standard HTTPS,
+   which is exempt — this skips the export-compliance question on every upload).
+3. Xcode → set the run destination to **Any iOS Device (arm64)** →
+   Product → **Archive** → in the Organizer window, **Distribute App** →
+   App Store Connect → Upload (defaults are fine).
+4. App Store Connect → your app → TestFlight tab: the build appears after a
+   few minutes of processing. Add yourself + friends under **Internal Testing**
+   (up to 100 Apple IDs, no review, instant). Testers install via the
+   TestFlight app from the email invite.
+
+Every build after that is just: bump the build number in Xcode (General →
+Build), Archive, Upload. Internal testers get it as soon as processing
+finishes — usually minutes, no re-review.
+
 ## Roadmap from here
 
 Sequenced so each step de-risks the next:
