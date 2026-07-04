@@ -96,6 +96,10 @@ function fallbackToWebGL() {
     /* ignore */
   }
   if (already) return; // already on the fallback — don't reload into a loop
+  // Tag the reload so the boot-cause log (main.js) can attribute it — an
+  // untagged reload in a device log points at something external (e.g. iOS
+  // killing the web process), not us.
+  try { sessionStorage.setItem("zoomies-reload-cause", "gpu-crash-fallback"); } catch { /* ignore */ }
   try {
     const u = new URL(location.href);
     u.searchParams.set("webgl", "1");

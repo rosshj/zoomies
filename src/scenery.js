@@ -772,6 +772,12 @@ function ribbonWaterMesh(L, mat) {
   cap(n - 1, n - 2);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  // The ribbon is flat (y=0 everywhere), so every normal is straight up. The lit
+  // water material needs them for its lighting/fresnel/SSR — without the
+  // attribute every ribbon lake logs a TSL.NormalNode warning and shades wrong.
+  const nrm = new Float32Array(pos.length);
+  for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+  geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
   geo.setAttribute("aShore", new THREE.Float32BufferAttribute(shore, 1));
   geo.setAttribute("aLen", new THREE.Float32BufferAttribute(lenA, 1));
   geo.setIndex(idx);

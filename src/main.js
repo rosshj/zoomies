@@ -186,6 +186,26 @@ const WORLD_SEED = (
 setSeed(WORLD_SEED);
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 
+// Why did this boot happen? Every intentional in-app reload (track apply,
+// backend switch, multiplayer join, crash recovery) tags its cause in
+// sessionStorage just before reloading; we report and clear it here. A boot
+// with nav=reload and NO cause means something outside the app restarted the
+// page — e.g. iOS killing the web content process under memory pressure and
+// the shell reloading it — which is otherwise invisible in the logs.
+const RELOAD_CAUSE_KEY = "zoomies-reload-cause";
+function markReload(cause) {
+  try { sessionStorage.setItem(RELOAD_CAUSE_KEY, cause); } catch { /* ignore */ }
+}
+{
+  let _cause = "";
+  try {
+    _cause = sessionStorage.getItem(RELOAD_CAUSE_KEY) || "";
+    if (_cause) sessionStorage.removeItem(RELOAD_CAUSE_KEY);
+  } catch { /* ignore */ }
+  const _nav = performance.getEntriesByType?.("navigation")?.[0]?.type || "?";
+  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""}`);
+}
+
 // Time of day for this world. "random" (and the default) rolls one per seed via
 // an ISOLATED stream so it's identical for everyone on a seed (multiplayer) yet
 // never disturbs the shared world-build stream that shapes the track. The world
@@ -1937,6 +1957,7 @@ compatToggle?.addEventListener("click", () => {
   applyCompatUI();
   // The backend is chosen at load, so restart to apply. Drop any ?webgl/?webgpu so
   // the localStorage flag is the single source of truth on the next load.
+  markReload("backend-switch");
   const u = new URL(location.href);
   u.searchParams.delete("webgl");
   u.searchParams.delete("webgpu");
@@ -2374,6 +2395,7 @@ trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
 document.getElementById("track-apply")?.addEventListener("click", () => {
   if (_trackDraft.mode === "custom" && !_trackDraft.seed) _trackDraft.seed = randomSeed();
   saveTrackConfig(_trackDraft);
+  markReload("track-apply");
   location.reload(); // rebuild the world from the new recipe
 });
 
@@ -2798,6 +2820,7 @@ function joinGame() {
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
   try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
+  markReload("mp-join");
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
@@ -2987,6 +3010,11 @@ function prepareRace() {
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
+  // KNOWN HITCH: the first frames after START compile GPU pipelines for the
+  // freshly built kart materials (~0.3s worst frame on device, during the
+  // static countdown). renderer.compileAsync(scene, camera) would warm them
+  // here, but r171's compileAsync crashes in setupHardwareClipping with this
+  // scene (verified headless) — revisit after the next three.js upgrade.
   updateBoostUI(); // karts start with an empty boost meter
   applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against

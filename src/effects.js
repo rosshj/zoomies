@@ -56,6 +56,12 @@ export class EffectsManager {
     this.skidGeo = new THREE.BufferGeometry();
     this.skidGeo.setAttribute("position", new THREE.BufferAttribute(this.skidPos, 3).setUsage(THREE.DynamicDrawUsage));
     this.skidGeo.setAttribute("uv", new THREE.BufferAttribute(this.skidUV, 2).setUsage(THREE.DynamicDrawUsage));
+    // Flat-on-road decals: normals are straight up. The material is unlit, but
+    // the SSR normal pre-pass samples normals from EVERY rendered mesh, so a
+    // missing attribute logs a TSL.NormalNode warning per shader compile.
+    const skidNrm = new Float32Array(sc * 3);
+    for (let i = 1; i < skidNrm.length; i += 3) skidNrm[i] = 1;
+    this.skidGeo.setAttribute("normal", new THREE.BufferAttribute(skidNrm, 3));
     this.skidGeo.setDrawRange(0, 0);
     const skidTex = skidTexture();
     this.skidMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
