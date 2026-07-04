@@ -10,6 +10,7 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
+import { isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
@@ -2063,7 +2064,15 @@ const installGateNote = document.getElementById("install-gate-note");
 const _isIOS =
   /iphone|ipad|ipod/i.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+// The native (Capacitor) app IS the installed app — it just doesn't report the
+// PWA standalone signals (it loads from capacitor://localhost, which matches
+// neither display-mode:standalone nor navigator.standalone). Count it as
+// standalone so the install button and the mandatory install gate below are
+// suppressed inside the app. In Safari this is false, so the browser keeps the
+// existing Add-to-Home-Screen prompt/gate unchanged.
+const _isNativeApp = isNativePlatform();
 const _isStandalone =
+  _isNativeApp ||
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -4324,6 +4333,7 @@ for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
 // iOS still requires a tap even in standalone — the first-interaction starter
 // above remains the fallback, and playMusic retries a rejected play().
 const _isStandalonePWA =
+  _isNativeApp ||
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 if (_isStandalonePWA) {
