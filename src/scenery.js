@@ -5,6 +5,10 @@ import { attribute, color as tslColor, mix, smoothstep, float, time, positionLoc
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
+// Track set pieces (river bridge / canyon / giant forest / overpass): the
+// planner lives on the track (track.features); these helpers shape the terrain
+// around the runs and build their structures. See features.js for the system.
+import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -194,6 +198,12 @@ export function biomeBarrierStyle(x, z) {
   return biomeAt(x, z).barrier;
 }
 
+// Biome NAME at a position (used by the track's set-piece planner, which needs
+// to know which biome owns each stretch of road). `y` optional as in biomeAt.
+export function biomeNameAt(x, z, y) {
+  return biomeAt(x, z, y).name;
+}
+
 // Precipitation the biome at a position brings ("none" / "rain" / "snow").
 export function biomeWeatherAt(x, z) {
   return biomeAt(x, z).weather;
@@ -362,12 +372,17 @@ export function buildWorld(scene, track, opts = {}) {
 
   // Lakes: a big one in the open infield (the loop wraps right around it) plus a
   // couple of smaller ones out on the hills. Their level matches the ground.
+  // The set-piece RIVER (if the map bridged one) rides in the same list, so it
+  // shares the carve, the water and the prop-exclusion wholesale.
+  const feats = track.features || { runs: [] };
   const lakes = makeLakes(track, baseHeight);
   // Clear props out to the full carve (the shore bank), not just the waterline,
   // so nothing sits on the slope between the road and the lake.
   _inLake = (x, z) => lakes.some((L) => lakeDist(L, x, z) < L.blendR);
 
-  const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
+  // The world's ONE height truth: road-anchored hills, minus the lake/river
+  // carves, plus the set-piece fields (canyon walls up, overpass plaza down).
+  const heightAt = (x, z) => featureHeightMod(feats, x, z, carveLakes(lakes, x, z, baseHeight(x, z)));
 
   // The terrain mesh gets an EXTRA drop under the road corridor (tapering to
   // zero by the sand trim's outer edge, so the visible verge is unchanged).
@@ -388,7 +403,25 @@ export function buildWorld(scene, track, opts = {}) {
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
-  buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
+  // Ground tint for feature shells (the tunnel's mountain), matching the
+  // terrain-mesh colouring: biome ground, whitening toward snow with altitude
+  // exactly as buildTerrain does, so the shell reads as part of the hillside.
+  const _shellSnow = new THREE.Color(0xf4f7fb);
+  const _shellRock = new THREE.Color(0x7a6f5d);
+  const groundColorAt = (x, z, y, out) => {
+    biomeGround(x, z, out, y);
+    if (_altMode) {
+      const aw = alpineWeight(y);
+      if (aw > 0) out.lerp(_shellSnow, aw * clamp(0.55 + y / 240, 0.55, 1));
+      else if (y > 95) out.lerp(_shellRock, Math.min(0.4, (y - 95) / 130));
+    } else if (biomeAt(x, z, y).name === "alpine" && y >= 62) {
+      out.copy(_shellRock).lerp(_shellSnow, Math.min(1, (y - 62) / 16));
+    } else if (y > 52) {
+      out.lerp(_shellRock, Math.min(1, (y - 52) / 32));
+    }
+    return out;
+  };
+  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes, groundColorAt }); // set-piece kits + ambience
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
@@ -412,12 +445,14 @@ export function buildWorld(scene, track, opts = {}) {
     heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
     groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
+    balloons, // debug hook: headless screenshot tours fly the camera to one
     update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
       }
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
+      featAnim.update(time);
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
       for (const fl of birds.flocks) updateFlock(fl, time);
       syncBirdWings(birds);
@@ -452,6 +487,13 @@ function makeLakes(track, baseHeight) {
   const lakes = [];
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
+
+  // Set-piece water goes in FIRST so every lake placed below keeps clear of it:
+  // the river (split into two reaches around a waterfall when the land drops),
+  // the causeway's lagoon and the dam's reservoir. All ribbon entries, so the
+  // candidate loops below already reject against them.
+  const featWater = featureWaterEntries(track.features, baseHeight);
+  for (const w of featWater) lakes.push(w);
 
   // Hero lake: a curved RIBBON in the infield that follows a LOW, FLAT arc of the
   // road, so it hugs the road's shape and the bank stays gentle. The arc is chosen
@@ -507,8 +549,10 @@ function makeLakes(track, baseHeight) {
     }
     // Only place the hero lake if the water clears EVERY part of the road (the lake
     // centre must stay at least waterR + halfWidth + a margin from any road) — on a
-    // fold this fails, so we skip it rather than spill water onto the track.
-    if (minDist > waterR + track.halfWidth + 5) {
+    // fold this fails, so we skip it rather than spill water onto the track. It must
+    // also keep clear of the set-piece water (which touches the road on purpose).
+    const clearOfFeat = spine.every((s) => featWater.every((L) => lakeDist(L, s.x, s.z) > waterR + L.blendR + 6));
+    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat) {
       lakes.push({
         ribbon: true, spine, level: minY - 2,
         floor: minY - 2 - 8,
@@ -1343,6 +1387,7 @@ function buildTrees(scene, track, heightAt, flatten) {
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
   const spots = scatter(340, track, flatten, 0.55, 1700)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
+    .filter((s) => !featureTreeBlock(track.features, s.x, s.z)) // bare canyon walls
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
     .filter((s) => s.y <= 30 && rand() < s.b.treeDensity);
 
@@ -1537,6 +1582,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     const z = p.z + s.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue; // folded over road
     if (_inLake(x, z)) continue;
+    if (featureSpanBlock(track.features, x, z)) continue; // decks/tunnel carry their own furniture
     spots.push({ x, z, y: heightAt(x, z), ax: -s.x * dir, az: -s.z * dir }); // arm aims at road
   }
   if (!spots.length) return;
@@ -2055,8 +2101,13 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   };
 
   // --- Printed street banners (2) ---
+  // Nudged along the lap if their spot lands inside a set piece that carries
+  // its own overhead structure (a banner inside the tunnel clips the tube).
   [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
-    const { p, sx, sz, yaw } = spanAt(frac);
+    let sp = spanAt(frac);
+    for (let n = 0; n < 6 && featureSpanBlock(track.features, sp.p.x, sp.p.z); n++) sp = spanAt(frac + 0.04 * (n + 1));
+    if (featureSpanBlock(track.features, sp.p.x, sp.p.z)) return;
+    const { p, sx, sz, yaw } = sp;
     addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_COLS.length) | 0));
   });
 
@@ -2095,6 +2146,7 @@ function pickFootbridgeSpans(track, heightAt, count) {
     const lx = p.x + sx * reach, lz = p.z + sz * reach; // left landing
     const rx = p.x - sx * reach, rz = p.z - sz * reach; // right landing
     if (_inLake(lx, lz) || _inLake(rx, rz)) continue; // a post would stand in the lake
+    if (featureSpanBlock(track.features, p.x, p.z)) continue; // tunnel/deck runs span themselves
     // Avoid a sharp corner — the straight deck would cut the barrier on a tight bend.
     const t1 = track._tans[(i + 6) % N];
     const turn = Math.abs(Math.atan2(t1.x, t1.z) - Math.atan2(t.x, t.z));
@@ -2305,6 +2357,7 @@ function buildForests(scene, track, heightAt) {
   const halfW = track.halfWidth;
   const up = new THREE.Vector3(0, 1, 0);
   const spots = [];
+  const giants = []; // the giant-forest set piece: fewer, MUCH bigger trees
   for (let i = 0; i < N; i += 2) {
     const p = track._pts[i];
     const here = biomeAt(p.x, p.z);
@@ -2320,63 +2373,24 @@ function buildForests(scene, track, heightAt) {
       // so a pine's foliage never leans out over the tarmac/barrier.
       if (track.distanceToCenter(x, z) < halfW + 7) continue;
       if (_inLake(x, z)) continue;
+      if (featureTreeBlock(track.features, x, z)) continue; // bare canyon walls
       const b = biomeAt(x, z);
       if (b.style !== "pine") continue;
+      // Inside the giant-forest run the woods swap for towering specimens:
+      // thinner on the ground (giants need room) and pushed a bit further off
+      // the verge so their huge canopies still clear the road.
+      const boost = giantTreeBoost(track.features, x, z);
+      if (boost > 0.35) {
+        if (rand() < 0.6) continue; // sparser
+        if (track.distanceToCenter(x, z) < halfW + 17) continue; // canopy headroom
+        giants.push({ x, z, y: heightAt(x, z), b });
+        continue;
+      }
       spots.push({ x, z, y: heightAt(x, z), b });
     }
   }
   if (spots.length) buildShapedTrees(scene, spots, 1.45); // taller, fuller forest trees
-}
-
-// A craggy cliff face to drive alongside: rows of big rock chunks stacked up
-// the outer hillside over one stretch of track.
-function buildCliffs(scene, track, heightAt) {
-  const up = new THREE.Vector3(0, 1, 0);
-  const ranges = [[0.55, 0.67]]; // one cliff stretch on the outer side
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
-  const pv = new THREE.Vector3();
-  const col = new THREE.Color();
-  const chunks = [];
-  for (const [t0, t1] of ranges) {
-    const i0 = Math.floor(t0 * track.samples);
-    const i1 = Math.floor(t1 * track.samples);
-    for (let i = i0; i <= i1; i += 2) {
-      const p = track._pts[i];
-      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-      for (let row = 0; row < 3; row++) {
-        // Keep the base row well clear of the tarmac (chunks are ~sx wide, so
-        // start far enough out that they don't spill onto the road).
-        const off = track.halfWidth + 15 + row * 8 + rand() * 3;
-        const x = p.x + side.x * outward * off;
-        const z = p.z + side.z * outward * off;
-        // Skip chunks that a fold in the loop has brought back over the road.
-        if (track.distanceToCenter(x, z) < track.halfWidth + 11) continue;
-        chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + rand() * 10 });
-      }
-    }
-  }
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8076, roughness: 1 });
-  const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
-  mesh.castShadow = true;
-  chunks.forEach((c, i) => {
-    const sy = c.h / 2;
-    const sx = 3 + rand() * 3.5;
-    const sz = 3 + rand() * 3.5;
-    q.setFromEuler(new THREE.Euler(rand() * 0.5, rand() * Math.PI, rand() * 0.5));
-    pv.set(c.x, c.base + sy * 0.45, c.z);
-    s.set(sx, sy, sz);
-    m.compose(pv, q, s);
-    mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, col.setHSL(0.09, 0.12, 0.42 + rand() * 0.12));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.layers.set(1);
-  scene.add(mesh);
+  if (giants.length) buildShapedTrees(scene, giants, 3.2); // the giant-forest run
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
@@ -2486,8 +2500,19 @@ function buildRoadside(scene, track, heightAt) {
     const z = p.z + side.z * dir * dist;
     if (track.distanceToCenter(x, z) < halfW + 4) return;
     if (_inLake(x, z)) return;
+    if (featureKeepClear(track.features, x, z)) return; // set pieces keep their corridor clear
+    // Sample the footprint, not just the centre: on a slope the prop sits at
+    // the LOW corner (sunk in, never hovering), and genuinely steep ground —
+    // canyon walls, river banks, cliff edges — gets no structure at all
+    // (that's what left houses floating off ledges).
+    const y0 = heightAt(x, z);
+    const y1 = heightAt(x + 4, z), y2 = heightAt(x - 4, z);
+    const y3 = heightAt(x, z + 4), y4 = heightAt(x, z - 4);
+    const lo = Math.min(y0, y1, y2, y3, y4);
+    const hi = Math.max(y0, y1, y2, y3, y4);
+    if (hi - lo > 4.2) return; // too steep to build on
     const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
-    prop.position.set(x, heightAt(x, z), z);
+    prop.position.set(x, lo + 0.04, z);
     prop.rotation.y = faceRoad
       ? Math.atan2(-side.x * dir, -side.z * dir) + (rand() - 0.5) * 0.4
       : rand() * Math.PI * 2;
@@ -4239,23 +4264,67 @@ function updatePigeons(flock, dt, time, playerPos) {
 }
 
 function buildBalloons(scene, heightAt) {
+  // Classic illustrated hot-air balloons: a plump teardrop envelope with
+  // alternating vertical gores, a skirt at the throat, suspension ropes and a
+  // two-tone wicker basket (was: a single-colour sphere over a floating cube).
   const balloons = [];
-  const colors = [0xff5252, 0x42a5f5, 0xffca28, 0xab47bc, 0x66bb6a];
+  const mains = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
+  const cream = new THREE.Color(0xfff3dc);
+  // Envelope profile, throat lip -> plump belly -> rounded crown.
+  const prof = [
+    [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
+    [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 });
+  const wickMat = new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 });
+  const wickRimMat = new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 });
+  const envMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }); // colours live in the vertices — one material serves the whole fleet
+  const _up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 6; i++) {
     const g = new THREE.Group();
-    const color = colors[i % colors.length];
-    const envelope = new THREE.Mesh(
-      new THREE.SphereGeometry(8, 16, 16),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
-    );
-    envelope.scale.y = 1.25;
-    envelope.position.y = 10;
+    const main = new THREE.Color(mains[i % mains.length]);
+    // Crisp gores need per-face colour: un-index the lathe and paint each
+    // triangle by its centroid's longitude — 8 panels alternating main/cream.
+    const geo = new THREE.LatheGeometry(prof, 16).toNonIndexed();
+    const pos = geo.getAttribute("position");
+    const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
+    for (let f = 0; f < pos.count; f += 3) {
+      const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
+      const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
+      const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
+      const c = panel % 2 === 0 ? main : cream;
+      colAttr.setXYZ(f, c.r, c.g, c.b);
+      colAttr.setXYZ(f + 1, c.r, c.g, c.b);
+      colAttr.setXYZ(f + 2, c.r, c.g, c.b);
+    }
+    geo.setAttribute("color", colAttr);
+    const envelope = new THREE.Mesh(geo, envMat);
+    envelope.position.y = 5.2;
     g.add(envelope);
-    const basket = new THREE.Mesh(
-      rbox(3, 3, 3, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x8d6e3a })
-    );
-    g.add(basket);
+
+    // The rigid rig under the envelope — skirt, four ropes, wicker basket with
+    // a darker woven rim — bakes into one merged mesh (one draw per material).
+    const parts = [];
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), skirtMat);
+    skirt.position.y = 4.55;
+    parts.push(skirt);
+    const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), wickMat);
+    basket.position.y = 1.2;
+    parts.push(basket);
+    const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), wickRimMat);
+    rim.position.y = 2.5;
+    parts.push(rim);
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
+      const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
+      const dir = b.clone().sub(a);
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), ropeMat);
+      rope.position.copy(a).addScaledVector(dir, 0.5);
+      rope.quaternion.setFromUnitVectors(_up, dir.normalize());
+      parts.push(rope);
+    }
+    g.add(mergeMeshes(parts));
 
     const a = rand() * Math.PI * 2;
     const r = 150 + rand() * 300;

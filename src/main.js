@@ -9,6 +9,7 @@ import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
+import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
@@ -1457,7 +1458,7 @@ function setupMinimap() {
 // Paint a top-down outline of a loop (array of {x,z}) into a 2D canvas, fitting
 // its world bounds with padding and preserving aspect. Used by the track-menu
 // preview and the main-menu map so you can see the shape before you race.
-function paintTrackMap(canvas, controlPoints) {
+function paintTrackMap(canvas, controlPoints, glyphs = null) {
   if (!canvas || !controlPoints || !controlPoints.length) return;
   // Smooth the control points into the same closed Catmull-Rom the road is built
   // from, so the preview matches the shape you'll actually drive (not a polygon).
@@ -1497,6 +1498,19 @@ function paintTrackMap(canvas, controlPoints) {
   ctx.arc(toX(points[0].x), toY(points[0].z), 4.5, 0, Math.PI * 2);
   ctx.fillStyle = "#fff";
   ctx.fill();
+  // Set-piece glyphs at their spots along the loop (menu map only — the
+  // editor's draft preview can't know them without building the world).
+  if (glyphs && glyphs.length) {
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const g of glyphs) {
+      ctx.shadowColor = "rgba(0,0,0,0.7)";
+      ctx.shadowBlur = 4;
+      ctx.fillText(g.glyph, toX(g.x), toY(g.z));
+      ctx.shadowBlur = 0;
+    }
+  }
 }
 
 function drawMinimap() {
@@ -1507,6 +1521,11 @@ function drawMinimap() {
   ctx.lineWidth = 3;
   ctx.lineJoin = "round";
   ctx.stroke(path);
+  // Set-piece markers so you can see the bridge/tunnel/canyon coming up.
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const g of featureGlyphs(track.features)) ctx.fillText(g.glyph, toX(g.x), toY(g.z));
   for (const e of raceField()) {
     const k = e.kart || e; // remote wrappers hold their kart
     if (!k.position) continue;
@@ -2178,6 +2197,9 @@ function syncTrackPanel() {
   trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", chip.dataset.tod === tod);
   });
+  trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", _trackDraft.features.includes(chip.dataset.feat));
+  });
   scheduleTrackPreview();
 }
 
@@ -2193,6 +2215,7 @@ function scheduleTrackPreview() {
     paintTrackMap(document.getElementById("track-preview"), previewLoopPoints(_trackDraft));
   });
 }
+const ALL_FEATS = [...FEATURE_CHIP_KINDS, "extras"];
 function openTrackPanel() {
   _trackDraft = {
     mode: trackConfig.mode || "classic",
@@ -2204,6 +2227,8 @@ function openTrackPanel() {
       Array.isArray(trackConfig.biomes) && trackConfig.biomes.length
         ? [...trackConfig.biomes]
         : [...ALL_BIOMES],
+    // Set-piece chips: absent config means "all on".
+    features: Array.isArray(trackConfig.features) ? [...trackConfig.features] : [...ALL_FEATS],
     seed: trackConfig.seed || randomSeed(),
     timeOfDay: trackConfig.timeOfDay || "midday",
   };
@@ -2217,6 +2242,16 @@ document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((c
     syncTrackPanel();
   });
 });
+// Set-piece chips: plain multi-toggles (deselecting all = a plain-roads map).
+trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const f = chip.dataset.feat;
+    const i = _trackDraft.features.indexOf(f);
+    if (i >= 0) _trackDraft.features.splice(i, 1);
+    else _trackDraft.features.push(f);
+    syncTrackPanel();
+  });
+});
 document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
@@ -2224,8 +2259,12 @@ document.getElementById("open-track")?.addEventListener("click", openTrackPanel)
 // chosen time of day so the whole setup reads off the front screen.
 const TOD_LABELS = { midday: "Midday", sunset: "Sunset", night: "Night", random: "Random sky" };
 function refreshMenuMap() {
-  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig));
-  const name = trackConfig.mode === "custom" ? `Generated · ${trackConfig.seed || "—"}` : "Classic circuit";
+  // The menu map shows the LIVE world, so its set pieces (planned at build)
+  // can be drawn right on the loop, and the track gets its generated name.
+  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig), featureGlyphs(track.features));
+  const name = trackConfig.mode === "custom"
+    ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
+    : "Classic circuit";
   const label = document.getElementById("menu-map-label");
   if (label) label.textContent = name;
   const sub = document.getElementById("track-summary");
@@ -3240,6 +3279,7 @@ function updateCamera(dt, snap = false) {
     const lerp = snap ? 1 : 1 - Math.pow(0.02, dt);
     camPos.lerp(_camDesired, lerp);
     camTarget.lerp(_camLook, lerp);
+    featureCameraClamp(track.features, track, camPos); // victory orbit can sweep into tunnel rock
     camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     camera.position.copy(camPos);
@@ -3262,6 +3302,10 @@ function updateCamera(dt, snap = false) {
   // the camera buried under the road. Sample the road height there and lift if low.
   const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
   if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
+
+  // Don't let the camera poke into a tunnel's mountain: hugging the bore wall
+  // (or reversing sideways inside) can park the camera in solid rock.
+  featureCameraClamp(track.features, track, camPos);
 
   // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
   // a rush — but only a touch, so the road stays readable and easy to drive.
@@ -3844,6 +3888,16 @@ function loop(now) {
       // Garage sub-screen: orbit the camera around the parked preview kart so the
       // player can inspect their chosen cat + kart in 3D.
       renderGarage(now / 1000, dt);
+      return;
+    }
+    // Debug/screenshot hook: window.__campin = [x,y,z, tx,ty,tz] pins the menu
+    // camera to a fixed shot (headless tooling flies it to the track set pieces).
+    if (window.__campin) {
+      const c = window.__campin;
+      camera.position.set(c[0], c[1], c[2]);
+      camera.lookAt(c[3], c[4], c[5]);
+      if (menuXfade) menuXfade.style.opacity = 0;
+      renderFrame();
       return;
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above

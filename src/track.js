@@ -1,7 +1,8 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { planFeatures } from "./features.js";
 import { rand, makeRng } from "./rng.js";
 
 const TAU = Math.PI * 2;
@@ -55,11 +56,39 @@ function _loopOK(pts, minR) {
       if (seg(P[i], P[(i + 1) % S], P[j], P[(j + 1) % S])) return false;
     }
   }
-  for (let i = 0; i < S; i++) {
-    const p0 = P[(i - 1 + S) % S], p1 = P[i], p2 = P[(i + 1) % S];
-    const a = p0.distanceTo(p1), b = p1.distanceTo(p2), c = p0.distanceTo(p2);
+  // Curvature + separation are validated on a FINER sampling. The coarse
+  // 260-sample chords above smoothed over needle-tip hairpins — a true
+  // radius-5 tip read as ~25 through 10u-spaced samples, passed validation,
+  // and folded the 30-wide road over itself at the tip (the reported "sharp
+  // turn where the track folds over and you can drive off").
+  const F = 520;
+  const Q = [];
+  for (let i = 0; i < F; i++) Q.push(cv.getPointAt(i / F));
+  for (let i = 0; i < F; i++) {
+    const p0 = Q[(i - 2 + F) % F], p1 = Q[i], p2 = Q[(i + 2) % F];
+    const a = Math.hypot(p0.x - p1.x, p0.z - p1.z);
+    const b = Math.hypot(p1.x - p2.x, p1.z - p2.z);
+    const c = Math.hypot(p0.x - p2.x, p0.z - p2.z);
     const area = Math.abs((p1.x - p0.x) * (p2.z - p0.z) - (p2.x - p0.x) * (p1.z - p0.z)) / 2;
     if (area > 1e-3 && (a * b * c) / (4 * area) < minR) return false;
+  }
+  // No NEAR-folds either: two stretches whose centrelines come within MIN_SEP
+  // read as one folded corridor (and much closer they'd overlap tarmac — a
+  // kart on the seam projects onto whichever pass is nearer and can hop off
+  // the track). Pairs closer than SEP_ARC along the lap are exempt: that's a
+  // legal hairpin's own legs. Lab-tuned across 360 knob/seed combos: accepts
+  // at full strength everywhere while keeping every distant pass 80u+ apart
+  // on the built curve.
+  const MIN_SEP = 64;
+  const SEP_ARC = 170;
+  const win = Math.max(4, Math.ceil((SEP_ARC / cv.getLength()) * F));
+  for (let i = 0; i < F; i++) {
+    for (let j = i + win; j < F; j++) {
+      if (F - (j - i) < win) continue; // wrap-adjacent neighbours
+      const dx = Q[i].x - Q[j].x;
+      const dz = Q[i].z - Q[j].z;
+      if (dx * dx + dz * dz < MIN_SEP * MIN_SEP) return false;
+    }
   }
   return true;
 }
@@ -324,6 +353,15 @@ export class Track {
       elevMin: eMin,
       elevMax: eMax,
     });
+
+    // Set pieces (river bridge / canyon / giant forest / overpass): planned off
+    // the finished loop + biome layout, each owned by its host biome. Scenery
+    // reads this to shape the terrain and dress the runs (see features.js).
+    const biomeNames = this._pts.map((p) => biomeNameAt(p.x, p.z, p.y));
+    this.biomeNames = biomeNames; // kept for debugging/headless tooling
+    // config.features (from the editor's set-piece chips) filters which kinds
+    // may spawn; null/absent means everything is allowed.
+    this.features = planFeatures(this, biomeNames, rand, config && config.features);
 
     this.group = new THREE.Group();
     this._buildRoad();
