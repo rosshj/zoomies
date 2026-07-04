@@ -14,7 +14,7 @@ additive scaffolding.
 | Piece | What it does |
 | --- | --- |
 | `tools/build-web.mjs` | Assembles a clean `dist/` (the shared web build both platforms load). Dependency-free. |
-| `capacitor.config.json` | Capacitor config; `webDir: "dist"`, app id `com.theaapps.zoomies`. |
+| `capacitor.config.json` | Capacitor config; `webDir: "dist"`, app id `app.thea.zoomies`. |
 | `src/platform/` | The web ↔ native capability seam — the only place the platforms differ. See its README. |
 | `package.json` scripts | `build:web`, `cap:sync`, `ios`, `android`. |
 
@@ -38,7 +38,7 @@ npm run cap:sync                 # rebuild dist/ and push it into the native she
 ```
 
 In Xcode: set the **Team** to *Thea Apps Inc.* and confirm the **bundle
-identifier**. `com.theaapps.zoomies` is a sensible default — change it here
+identifier**. `app.thea.zoomies` is the chosen id — change it here
 *before* the first App Store Connect submission if you want something different,
 since it's fixed once submitted.
 
