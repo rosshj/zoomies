@@ -2046,6 +2046,35 @@ function updateFpsCounter(dt) {
   fpsEl.classList.toggle("bad", fps < 35);
 }
 
+// --- Periodic perf summary (console) ---
+// One compact line every 5 s so a device session (Xcode console, Safari remote
+// inspector) leaves an analyzable frame-time record without the on-screen
+// counter — which can't be read mid-race while both hands are steering.
+// Percentiles come from raw per-frame intervals: the smoothed _frameMs hides
+// exactly the dips that matter. "58 avg · 1% low 31" means "smooth but hitching
+// about once a second" — a shape the average alone conceals.
+const _perfFrames = [];
+let _perfElapsed = 0;
+function logPerfSummary(rawMs) {
+  if (rawMs > 500) return; // backgrounded/hidden gap, not a rendered frame
+  _perfFrames.push(rawMs);
+  _perfElapsed += rawMs;
+  if (_perfElapsed < 5000) return;
+  const n = _perfFrames.length;
+  _perfFrames.sort((a, b) => a - b);
+  const avgMs = _perfElapsed / n;
+  const p99 = _perfFrames[Math.min(n - 1, Math.floor(n * 0.99))];
+  const worst = _perfFrames[n - 1];
+  const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
+  const dc = renderer?.info?.render?.drawCalls ?? 0;
+  const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
+  console.log(
+    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality === "high" ? "H" : "L"} · ${backend}`
+  );
+  _perfFrames.length = 0;
+  _perfElapsed = 0;
+}
+
 // --- How to Play sub-menu (replaces the main menu) ---
 const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
@@ -3816,6 +3845,7 @@ function loop(now) {
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
+  logPerfSummary(rawMs); // 5-second frame-time summary → console (Xcode/devtools)
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
   world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
   if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
