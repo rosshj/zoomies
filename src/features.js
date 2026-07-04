@@ -615,6 +615,24 @@ export function giantTreeBoost(feats, x, z) {
   return 0;
 }
 
+// Cross-section of the tunnel's mountain shell at one swept row: half-ellipse
+// width W / height A, with slow coherent noise (pure functions of the row's
+// world position, so every caller agrees), plus a sideways crest skew so the
+// hill reads as a natural rise rather than a perfect blister. Shared by
+// buildTunnel's shell sweep and featureCameraClamp — the camera probe must
+// match the real rock. endT eases 0 at the portals -> 1 mid-run; the noise
+// and skew all scale with it, so the shell still hugs the portal rings.
+function tunnelShellWA(run, halfW, p, u01) {
+  const APEX = 15;
+  const endT = smooth01(Math.min(u01, 1 - u01) / 0.28);
+  const nW = 1 + 0.16 * Math.sin(p.x * 0.037 + p.z * 0.043 + 1.7) * endT;
+  const nA = 1 + 0.13 * Math.sin(p.x * 0.031 - p.z * 0.029 + 4.2) * endT;
+  const W = Math.max(halfW + 1.4, (halfW + 1.4 + 30 * endT) * nW);
+  const A = Math.max(APEX + 1.6, (APEX + 1.6 + (run.mag - APEX + 3.5) * endT) * nA);
+  const skew = 6 * Math.sin(p.x * 0.021 + p.z * 0.024) * endT;
+  return { W, A, skew, endT };
+}
+
 // Keep the chase camera out of tunnel rock. When the kart hugs the bore wall
 // (or reverses sideways inside), the camera's spot behind it can land inside
 // the mountain shell — the render then shows the shell's inside-out skin.
@@ -643,13 +661,13 @@ export function featureCameraClamp(feats, track, pos) {
     const p = track._pts[((best % N) + N) % N];
     const side = sideAt(track, ((best % N) + N) % N);
     const lat = (pos.x - p.x) * side.x + (pos.z - p.z) * side.z;
-    // Mountain shell half-ellipse at this sample (same W/A as buildTunnel).
+    // Mountain shell at this sample — the exact shape buildTunnel sweeps.
+    // +2 on A covers the craggy surface displacement; the skew is a shear
+    // (crest shifts sideways in proportion to height), so un-shear first.
     const u01 = (best - t0) / Math.max(1, t1 - t0);
-    const endT = smooth01(Math.min(u01, 1 - u01) / 0.16);
-    const W = halfW + 1.4 + 30 * endT;
-    const A = APEX + 1.6 + (run.mag - APEX + 3.5) * endT;
-    const ex = lat / W;
-    const ey = (pos.y - (p.y - 1.2)) / A;
+    const { W, A, skew } = tunnelShellWA(run, halfW, p, u01);
+    const ey = (pos.y - (p.y - 1.2)) / (A + 2);
+    const ex = (lat - skew * Math.max(0, Math.min(1, ey))) / W;
     if (ey < 0 || ex * ex + ey * ey >= 1) continue; // not inside the rock
     const M = 1.1; // stay this far off the bore surface
     const latC = Math.max(-(halfW - M), Math.min(halfW - M, lat));
@@ -1006,16 +1024,19 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
       const p = track._pts[idx];
       const side = sideAt(track, idx);
       const u01 = (i - t0) / (t1 - t0);
-      const endT = smooth01(Math.min(u01, 1 - u01) / 0.16); // 0 at portals -> 1 mid
-      const W = halfW + 1.4 + 30 * endT;
-      const A = APEX + 1.6 + (run.mag - APEX + 3.5) * endT;
+      // Undulating width/height, a sideways-drifting crest and a craggy skin
+      // (below) keep the hill from reading as a perfect smooth blister.
+      const { W, A, skew, endT } = tunnelShellWA(run, halfW, p, u01);
       for (let k = 0; k <= SEG; k++) {
         const a = Math.PI * (k / SEG);
-        const sx = Math.cos(a) * W;
+        const sx = Math.cos(a) * W + skew * Math.sin(a);
         const sy = Math.sin(a) * A;
         const x = p.x + side.x * sx;
         const z = p.z + side.z * sx;
-        const y = p.y - 1.2 + sy;
+        // Craggy displacement: fades to zero at the base ring and the portals,
+        // so the shell still meets the ground and hugs the portal arches.
+        const crag = Math.sin(a) * endT * (1.2 * Math.sin(x * 0.09 + z * 0.11) + 0.8 * Math.sin(x * 0.23 - z * 0.19));
+        const y = p.y - 1.2 + sy + crag;
         shellPos.push(x, y, z);
         if (groundColorAt) groundColorAt(x, z, y, col);
         shellCol.push(col.r, col.g, col.b);
@@ -1037,6 +1058,50 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     shell.castShadow = true;
     shell.receiveShadow = true;
     scene.add(shell);
+
+    // Rock outcrops half-embedded in the flanks: a handful of boulders poking
+    // out of the hillside break up the swept silhouette.
+    const rocks = [];
+    for (let r = 0, n = 10 + Math.floor(rng() * 6); r < n; r++) {
+      const i = t0 + 2 + Math.floor(rng() * Math.max(1, t1 - t0 - 4));
+      const idx = ((i % N) + N) % N;
+      const p = track._pts[idx];
+      const side = sideAt(track, idx);
+      const wa = tunnelShellWA(run, halfW, p, (i - t0) / (t1 - t0));
+      if (wa.endT < 0.3) continue; // skip the thin portal snouts
+      const a = Math.PI * (0.18 + rng() * 0.64); // on the flanks, off the crest line
+      const sx = Math.cos(a) * wa.W + wa.skew * Math.sin(a);
+      const sy = Math.sin(a) * wa.A;
+      rocks.push({
+        x: p.x + side.x * sx, y: p.y - 1.2 + sy, z: p.z + side.z * sx,
+        s: 2.4 + rng() * 2.8, yaw: rng() * TAU, tilt: (rng() - 0.5) * 0.7,
+      });
+    }
+    if (rocks.length) {
+      const rockMesh = new THREE.InstancedMesh(
+        new THREE.IcosahedronGeometry(1, 1),
+        new THREE.MeshStandardMaterial({ roughness: 1 }),
+        rocks.length
+      );
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const pv = new THREE.Vector3();
+      const sv = new THREE.Vector3();
+      const rc = new THREE.Color();
+      rocks.forEach((rk, ri) => {
+        q.setFromEuler(new THREE.Euler(rk.tilt, rk.yaw, rk.tilt * 0.6));
+        pv.set(rk.x, rk.y, rk.z);
+        sv.set(rk.s / 2, rk.s / 2 * (0.7 + rng() * 0.3), rk.s / 2);
+        m.compose(pv, q, sv);
+        rockMesh.setMatrixAt(ri, m);
+        rc.setHSL(0.08, 0.14, 0.34 + rng() * 0.1); // weathered grey-brown stone
+        rockMesh.setColorAt(ri, rc);
+      });
+      rockMesh.instanceMatrix.needsUpdate = true;
+      if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
+      rockMesh.castShadow = true;
+      scene.add(rockMesh);
+    }
   }
 
   // Festive string lights draped across the tunnel ceiling: sagging spans of
