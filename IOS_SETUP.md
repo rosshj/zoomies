@@ -60,8 +60,11 @@ To install them into the Xcode project (on the Mac, after any regeneration or
 on first setup):
 
 ```bash
-npx capacitor-assets generate --ios --assetPath resources
+npx @capacitor/assets generate --ios --assetPath resources
 ```
+
+(The npm package is the scoped `@capacitor/assets`; its binary happens to be
+called `capacitor-assets`, but npx must be given the package name.)
 
 That writes the full AppIcon + Splash asset catalogs into
 `ios/App/App/Assets.xcassets`. Rebuild in Xcode and both the home-screen icon
