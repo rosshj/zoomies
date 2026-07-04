@@ -1151,10 +1151,15 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     const spans = [];
     for (let i = t0 + spanStep; i <= t1 - 3; i += spanStep) spans.push(i);
     const PER = 11;
-    // One instanced mesh PER colour: instanceColor can't tint emissive, and an
-    // all-white emissive washed the festive colours out.
-    const byColor = FESTIVE.map(() => []);
+    // ONE draw call for every bulb: bake them all into a single vertex-coloured
+    // merged mesh on an unlit material. (This replaced one InstancedMesh PER
+    // colour — six draws — which existed because instanceColor can't tint
+    // emissive. But a bulb is pure emission: unlit vertex colour × 2.2 feeds
+    // the tone mapper the exact HDR values the emissive material did, and the
+    // lit component on a 0.16u sphere in a dark tunnel was invisible.)
+    const bulbGeos = [];
     const wirePts = [];
+    const bc = new THREE.Color();
     let bi = 0;
     for (const i of spans) {
       const idx = ((i % N) + N) % N;
@@ -1169,28 +1174,20 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
         const y = p.y + aY - Math.sin(Math.PI * f) * 1.8;
         const x = p.x + side.x * sx;
         const z = p.z + side.z * sx;
-        byColor[(bi + k) % FESTIVE.length].push(x, y, z);
+        bc.set(FESTIVE[(bi + k) % FESTIVE.length]).multiplyScalar(2.2);
+        const g = bulbGeo.clone().translate(x, y, z);
+        const cAttr = new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 3), 3);
+        for (let v = 0; v < cAttr.count; v++) cAttr.setXYZ(v, bc.r, bc.g, bc.b);
+        g.setAttribute("color", cAttr);
+        bulbGeos.push(g);
         bi++;
         wirePts.push(x, y + 0.14, z);
       }
     }
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const sv = new THREE.Vector3(1, 1, 1);
-    const pv = new THREE.Vector3();
-    byColor.forEach((pts, ci) => {
-      const n = pts.length / 3;
-      if (!n) return;
-      const mat = new THREE.MeshStandardMaterial({ color: FESTIVE[ci], roughness: 0.4, emissive: FESTIVE[ci], emissiveIntensity: 2.2 });
-      const mesh = new THREE.InstancedMesh(bulbGeo, mat, n);
-      for (let k = 0; k < n; k++) {
-        pv.set(pts[k * 3], pts[k * 3 + 1], pts[k * 3 + 2]);
-        m.compose(pv, q, sv);
-        mesh.setMatrixAt(k, m);
-      }
-      mesh.instanceMatrix.needsUpdate = true;
-      scene.add(mesh);
-    });
+    if (bulbGeos.length) {
+      const merged = mergeGeometries(bulbGeos, false);
+      scene.add(new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors: true })));
+    }
     // A thin dark wire through each span's bulbs.
     const wg = new THREE.BufferGeometry();
     wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
