@@ -593,6 +593,21 @@
             <div class="track-row"><span class="setting-label">Size</span>
               <input id="track-size" class="slider" type="range" min="0" max="100" value="50" />
               <span class="track-val" id="track-size-val">50</span></div>
+            <div class="env-label">Set pieces</div>
+            <!-- Which signature moments the generator MAY place (each still
+                 needs its host biome on the loop, and room). "Extras" covers
+                 the small treatments: arches, wind farm, flowers, neon, train. -->
+            <div class="biome-pick" id="track-feats">
+              <button data-feat="bridge" class="biome-chip">🌉 River</button>
+              <button data-feat="canyon" class="biome-chip">⛰️ Canyon</button>
+              <button data-feat="tunnel" class="biome-chip">🚇 Tunnel</button>
+              <button data-feat="giant" class="biome-chip">🌲 Giants</button>
+              <button data-feat="overpass" class="biome-chip">🛣️ Overpass</button>
+              <button data-feat="shelf" class="biome-chip">🧗 Ledge</button>
+              <button data-feat="dam" class="biome-chip">💧 Dam</button>
+              <button data-feat="causeway" class="biome-chip">🌊 Causeway</button>
+              <button data-feat="extras" class="biome-chip">✨ Extras</button>
+            </div>
             <div class="env-label">Environment <span id="biome-max-hint" class="env-hint"></span></div>
             <div class="biome-pick" id="track-biomes">
               <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>

@@ -359,7 +359,9 @@ export class Track {
     // reads this to shape the terrain and dress the runs (see features.js).
     const biomeNames = this._pts.map((p) => biomeNameAt(p.x, p.z, p.y));
     this.biomeNames = biomeNames; // kept for debugging/headless tooling
-    this.features = planFeatures(this, biomeNames, rand);
+    // config.features (from the editor's set-piece chips) filters which kinds
+    // may spawn; null/absent means everything is allowed.
+    this.features = planFeatures(this, biomeNames, rand, config && config.features);
 
     this.group = new THREE.Group();
     this._buildRoad();

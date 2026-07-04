@@ -8,7 +8,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // Track set pieces (river bridge / canyon / giant forest / overpass): the
 // planner lives on the track (track.features); these helpers shape the terrain
 // around the runs and build their structures. See features.js for the system.
-import { featureHeightMod, featureKeepClear, featureTreeBlock, riverLakeEntry, giantTreeBoost, buildFeatureStructures } from "./features.js";
+import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -403,7 +403,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
-  buildFeatureStructures(scene, track, heightAt, rand); // bridge/overpass decks + piers, canyon rim rocks
+  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes }); // set-piece kits + ambience
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
@@ -433,6 +433,7 @@ export function buildWorld(scene, track, opts = {}) {
         b.mesh.rotation.y = time * 0.1 + b.phase;
       }
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
+      featAnim.update(time);
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
       for (const fl of birds.flocks) updateFlock(fl, time);
       syncBirdWings(birds);
@@ -468,10 +469,12 @@ function makeLakes(track, baseHeight) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
 
-  // The set-piece river goes in FIRST so every lake placed below keeps clear of
-  // it (the hill/beach candidate loops already reject against ribbon entries).
-  const river = riverLakeEntry(track.features);
-  if (river) lakes.push(river);
+  // Set-piece water goes in FIRST so every lake placed below keeps clear of it:
+  // the river (split into two reaches around a waterfall when the land drops),
+  // the causeway's lagoon and the dam's reservoir. All ribbon entries, so the
+  // candidate loops below already reject against them.
+  const featWater = featureWaterEntries(track.features, baseHeight);
+  for (const w of featWater) lakes.push(w);
 
   // Hero lake: a curved RIBBON in the infield that follows a LOW, FLAT arc of the
   // road, so it hugs the road's shape and the bank stays gentle. The arc is chosen
@@ -528,9 +531,9 @@ function makeLakes(track, baseHeight) {
     // Only place the hero lake if the water clears EVERY part of the road (the lake
     // centre must stay at least waterR + halfWidth + a margin from any road) — on a
     // fold this fails, so we skip it rather than spill water onto the track. It must
-    // also keep clear of the river (which crosses the road on purpose).
-    const clearOfRiver = !river || spine.every((s) => lakeDist(river, s.x, s.z) > waterR + river.blendR + 6);
-    if (minDist > waterR + track.halfWidth + 5 && clearOfRiver) {
+    // also keep clear of the set-piece water (which touches the road on purpose).
+    const clearOfFeat = spine.every((s) => featWater.every((L) => lakeDist(L, s.x, s.z) > waterR + L.blendR + 6));
+    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat) {
       lakes.push({
         ribbon: true, spine, level: minY - 2,
         floor: minY - 2 - 8,
@@ -1560,6 +1563,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     const z = p.z + s.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue; // folded over road
     if (_inLake(x, z)) continue;
+    if (featureSpanBlock(track.features, x, z)) continue; // decks/tunnel carry their own furniture
     spots.push({ x, z, y: heightAt(x, z), ax: -s.x * dir, az: -s.z * dir }); // arm aims at road
   }
   if (!spots.length) return;
@@ -2078,8 +2082,13 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   };
 
   // --- Printed street banners (2) ---
+  // Nudged along the lap if their spot lands inside a set piece that carries
+  // its own overhead structure (a banner inside the tunnel clips the tube).
   [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
-    const { p, sx, sz, yaw } = spanAt(frac);
+    let sp = spanAt(frac);
+    for (let n = 0; n < 6 && featureSpanBlock(track.features, sp.p.x, sp.p.z); n++) sp = spanAt(frac + 0.04 * (n + 1));
+    if (featureSpanBlock(track.features, sp.p.x, sp.p.z)) return;
+    const { p, sx, sz, yaw } = sp;
     addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_COLS.length) | 0));
   });
 
@@ -2118,6 +2127,7 @@ function pickFootbridgeSpans(track, heightAt, count) {
     const lx = p.x + sx * reach, lz = p.z + sz * reach; // left landing
     const rx = p.x - sx * reach, rz = p.z - sz * reach; // right landing
     if (_inLake(lx, lz) || _inLake(rx, rz)) continue; // a post would stand in the lake
+    if (featureSpanBlock(track.features, p.x, p.z)) continue; // tunnel/deck runs span themselves
     // Avoid a sharp corner — the straight deck would cut the barrier on a tight bend.
     const t1 = track._tans[(i + 6) % N];
     const turn = Math.abs(Math.atan2(t1.x, t1.z) - Math.atan2(t.x, t.z));
