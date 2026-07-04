@@ -615,6 +615,53 @@ export function giantTreeBoost(feats, x, z) {
   return 0;
 }
 
+// Keep the chase camera out of tunnel rock. When the kart hugs the bore wall
+// (or reverses sideways inside), the camera's spot behind it can land inside
+// the mountain shell — the render then shows the shell's inside-out skin.
+// If `pos` falls inside a tunnel's mountain cross-section, pull it back into
+// the bore with a small margin. Mutates pos in place.
+export function featureCameraClamp(feats, track, pos) {
+  if (!feats) return;
+  const N = track.samples;
+  for (const run of feats.runs) {
+    if (run.kind !== "tunnel") continue;
+    // Tube + shell span (matches buildTunnel's inset and shell sweep).
+    const t0 = run.i0 + Math.round((run.i1 - run.i0) * 0.16);
+    const t1 = run.i1 - Math.round((run.i1 - run.i0) * 0.16);
+    const halfW = track.halfWidth + 2.6;
+    const APEX = 15;
+    let best = -1;
+    let bestD2 = 45 * 45; // beyond the widest shell -> nothing to do
+    for (let i = t0; i <= t1; i++) {
+      const p = track._pts[((i % N) + N) % N];
+      const dx = pos.x - p.x;
+      const dz = pos.z - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) { bestD2 = d2; best = i; }
+    }
+    if (best < 0) continue;
+    const p = track._pts[((best % N) + N) % N];
+    const side = sideAt(track, ((best % N) + N) % N);
+    const lat = (pos.x - p.x) * side.x + (pos.z - p.z) * side.z;
+    // Mountain shell half-ellipse at this sample (same W/A as buildTunnel).
+    const u01 = (best - t0) / Math.max(1, t1 - t0);
+    const endT = smooth01(Math.min(u01, 1 - u01) / 0.16);
+    const W = halfW + 1.4 + 30 * endT;
+    const A = APEX + 1.6 + (run.mag - APEX + 3.5) * endT;
+    const ex = lat / W;
+    const ey = (pos.y - (p.y - 1.2)) / A;
+    if (ey < 0 || ex * ex + ey * ey >= 1) continue; // not inside the rock
+    const M = 1.1; // stay this far off the bore surface
+    const latC = Math.max(-(halfW - M), Math.min(halfW - M, lat));
+    pos.x -= side.x * (lat - latC);
+    pos.z -= side.z * (lat - latC);
+    const ceil = p.y + 0.2 + APEX * Math.sqrt(Math.max(0, 1 - (latC / halfW) * (latC / halfW)));
+    if (pos.y > ceil - M) pos.y = ceil - M;
+    if (pos.y < p.y + 1.2) pos.y = p.y + 1.2;
+    return;
+  }
+}
+
 // ---- Map glyphs + track names ----------------------------------------------
 const KIND_GLYPHS = {
   bridge: "🌉", canyon: "⛰️", tunnel: "🚇", giant: "🌲", overpass: "🛣️",

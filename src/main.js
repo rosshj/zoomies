@@ -9,7 +9,7 @@ import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
-import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS } from "./features.js";
+import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
@@ -3279,6 +3279,7 @@ function updateCamera(dt, snap = false) {
     const lerp = snap ? 1 : 1 - Math.pow(0.02, dt);
     camPos.lerp(_camDesired, lerp);
     camTarget.lerp(_camLook, lerp);
+    featureCameraClamp(track.features, track, camPos); // victory orbit can sweep into tunnel rock
     camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     camera.position.copy(camPos);
@@ -3301,6 +3302,10 @@ function updateCamera(dt, snap = false) {
   // the camera buried under the road. Sample the road height there and lift if low.
   const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
   if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
+
+  // Don't let the camera poke into a tunnel's mountain: hugging the bore wall
+  // (or reversing sideways inside) can park the camera in solid rock.
+  featureCameraClamp(track.features, track, camPos);
 
   // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
   // a rush — but only a touch, so the road stays readable and easy to drive.
