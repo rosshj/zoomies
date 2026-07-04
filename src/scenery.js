@@ -403,7 +403,25 @@ export function buildWorld(scene, track, opts = {}) {
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
-  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes }); // set-piece kits + ambience
+  // Ground tint for feature shells (the tunnel's mountain), matching the
+  // terrain-mesh colouring: biome ground, whitening toward snow with altitude
+  // exactly as buildTerrain does, so the shell reads as part of the hillside.
+  const _shellSnow = new THREE.Color(0xf4f7fb);
+  const _shellRock = new THREE.Color(0x7a6f5d);
+  const groundColorAt = (x, z, y, out) => {
+    biomeGround(x, z, out, y);
+    if (_altMode) {
+      const aw = alpineWeight(y);
+      if (aw > 0) out.lerp(_shellSnow, aw * clamp(0.55 + y / 240, 0.55, 1));
+      else if (y > 95) out.lerp(_shellRock, Math.min(0.4, (y - 95) / 130));
+    } else if (biomeAt(x, z, y).name === "alpine" && y >= 62) {
+      out.copy(_shellRock).lerp(_shellSnow, Math.min(1, (y - 62) / 16));
+    } else if (y > 52) {
+      out.lerp(_shellRock, Math.min(1, (y - 52) / 32));
+    }
+    return out;
+  };
+  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes, groundColorAt }); // set-piece kits + ambience
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers

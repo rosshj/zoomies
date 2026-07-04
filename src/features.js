@@ -443,22 +443,27 @@ export function featureHeightMod(feats, x, z, h) {
       const wob = 0.9 + 0.1 * Math.sin(x * 0.045 + z * 0.06) * Math.sin(x * 0.021 - z * 0.033);
       h += run.mag * w * endW * wob * gate;
     } else if (run.kind === "tunnel") {
-      // The ridge the road bores through: FULL height across the corridor
-      // (the tube inside keeps the road clear), fading out by ~110u. The
-      // along-run window is aligned INSIDE the tube's span (0.16..0.84 of the
-      // run) — any ridge over road that the tube doesn't cover would bury the
-      // approach tarmac in a hillside.
+      // Shoulder hills flanking the tunnel. The heightfield must NEVER rise
+      // across the corridor: a raised terrain sheet has no hole, so it filled
+      // the portal mouth with a wall you could drive through (visible from
+      // outside as its top face, invisible from inside via backface culling).
+      // The mountain OVER the tube is a separate shell mesh (see buildTunnel).
       const s = spineDist(run.spine, x, z);
       if (s.u < 0 || s.d > 112) continue;
-      const endW = smooth01((s.u - 0.15) / 0.1) * smooth01((0.85 - s.u) / 0.1);
+      const endW = smooth01((s.u - 0.12) / 0.1) * smooth01((0.88 - s.u) / 0.1);
       if (endW <= 0) continue;
-      const w = s.d < run.halfWidth + 8 ? 1 : 1 - smooth01((s.d - (run.halfWidth + 8)) / (112 - (run.halfWidth + 8)));
+      const inner = run.halfWidth + 9;
+      if (s.d <= inner) continue;
+      const peak0 = inner + 10;
+      const peak1 = inner + 48;
+      let w;
+      if (s.d < peak0) w = smooth01((s.d - inner) / (peak0 - inner));
+      else if (s.d < peak1) w = 1;
+      else w = 1 - smooth01((s.d - peak1) / (112 - peak1));
       const gate = smooth01((otherRoadDist(run.others, x, z) - (run.halfWidth + 10)) / 26);
       if (gate <= 0) continue;
       const wob = 0.92 + 0.08 * Math.sin(x * 0.05 + z * 0.04);
-      // The ridge tops out above the ROAD at this point along the run (s.y),
-      // so the hill swallows the tube whatever the local terrain does.
-      const ridge = s.y + run.mag * wob - h;
+      const ridge = s.y + run.mag * 0.85 * wob - h;
       if (ridge > 0) h += ridge * w * endW * gate;
     } else if (run.kind === "overpass") {
       const s = spineDist(run.spine, x, z);
@@ -777,7 +782,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     } else if (run.kind === "shelf") {
       addRimRocks(run, [-run.inSign]); // rocks on the wall side only
     } else if (run.kind === "tunnel") {
-      buildTunnel(scene, track, run, rng, anims);
+      buildTunnel(scene, track, run, rng, anims, opts.groundColorAt);
     } else if (run.kind === "flowers") {
       buildFlowers(scene, track, run, heightAt, rng);
     } else if (run.kind === "windfarm") {
@@ -851,7 +856,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
 // An arched tube swept along the run (castShadow=true is what darkens the road
 // inside — the tube occludes the sun), stone portal rings at both ends, and
 // warm ceiling lamps so the interior reads as a place, not a void.
-function buildTunnel(scene, track, run, rng, anims) {
+function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   const N = track.samples;
   // The tube spans the middle of the run; the ridge fades past its ends so the
   // portals punch into a full-height hillside.
@@ -912,6 +917,116 @@ function buildTunnel(scene, track, run, rng, anims) {
     ring.scale.y = (APEX + 1.5) / (halfW + 1.2);
     ring.castShadow = true;
     scene.add(ring);
+  }
+
+  // The MOUNTAIN over the tube: a swept shell (its own mesh, NOT the terrain
+  // heightfield — a raised heightfield has no hole, so it walled up the portal
+  // mouths). Wide and tall mid-run, tapering down to hug the portal rings at
+  // the ends; tinted like the local ground so it reads as the hillside.
+  {
+    const shellPos = [];
+    const shellCol = [];
+    const shellIdx = [];
+    const SEG = 11;
+    const col = new THREE.Color(0x8d857a);
+    let srow = 0;
+    for (let i = t0; i <= t1; i += 2) {
+      const idx = ((i % N) + N) % N;
+      const p = track._pts[idx];
+      const side = sideAt(track, idx);
+      const u01 = (i - t0) / (t1 - t0);
+      const endT = smooth01(Math.min(u01, 1 - u01) / 0.16); // 0 at portals -> 1 mid
+      const W = halfW + 1.4 + 30 * endT;
+      const A = APEX + 1.6 + (run.mag - APEX + 3.5) * endT;
+      for (let k = 0; k <= SEG; k++) {
+        const a = Math.PI * (k / SEG);
+        const sx = Math.cos(a) * W;
+        const sy = Math.sin(a) * A;
+        const x = p.x + side.x * sx;
+        const z = p.z + side.z * sx;
+        const y = p.y - 1.2 + sy;
+        shellPos.push(x, y, z);
+        if (groundColorAt) groundColorAt(x, z, y, col);
+        shellCol.push(col.r, col.g, col.b);
+      }
+      const rows = srow;
+      if (i + 2 <= t1) {
+        const a0 = rows * (SEG + 1);
+        const b0 = a0 + SEG + 1;
+        for (let k = 0; k < SEG; k++) shellIdx.push(a0 + k, b0 + k, a0 + k + 1, a0 + k + 1, b0 + k, b0 + k + 1);
+      }
+      srow++;
+    }
+    const sg = new THREE.BufferGeometry();
+    sg.setAttribute("position", new THREE.Float32BufferAttribute(shellPos, 3));
+    sg.setAttribute("color", new THREE.Float32BufferAttribute(shellCol, 3));
+    sg.setIndex(shellIdx);
+    sg.computeVertexNormals();
+    const shell = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
+    shell.castShadow = true;
+    shell.receiveShadow = true;
+    scene.add(shell);
+  }
+
+  // Festive string lights draped across the tunnel ceiling: sagging spans of
+  // multicolour bulbs that glow in the dark interior.
+  {
+    const FESTIVE = [0xff5b4d, 0xffd24d, 0x54d98b, 0x4da3ff, 0xff8ee0, 0xfff4d6];
+    const bulbGeo = new THREE.SphereGeometry(0.16, 6, 5);
+    const spanStep = Math.max(6, Math.round(17 / (track.length / N)));
+    const spans = [];
+    for (let i = t0 + spanStep; i <= t1 - 3; i += spanStep) spans.push(i);
+    const PER = 11;
+    // One instanced mesh PER colour: instanceColor can't tint emissive, and an
+    // all-white emissive washed the festive colours out.
+    const byColor = FESTIVE.map(() => []);
+    const wirePts = [];
+    let bi = 0;
+    for (const i of spans) {
+      const idx = ((i % N) + N) % N;
+      const p = track._pts[idx];
+      const side = sideAt(track, idx);
+      const aW = halfW * 0.8;
+      const aY = APEX * 0.6;
+      for (let k = 0; k < PER; k++) {
+        const f = k / (PER - 1); // 0..1 across the span
+        const sx = -aW + f * 2 * aW;
+        // Anchored on the walls, sagging in the middle.
+        const y = p.y + aY - Math.sin(Math.PI * f) * 1.8;
+        const x = p.x + side.x * sx;
+        const z = p.z + side.z * sx;
+        byColor[(bi + k) % FESTIVE.length].push(x, y, z);
+        bi++;
+        wirePts.push(x, y + 0.14, z);
+      }
+    }
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const sv = new THREE.Vector3(1, 1, 1);
+    const pv = new THREE.Vector3();
+    byColor.forEach((pts, ci) => {
+      const n = pts.length / 3;
+      if (!n) return;
+      const mat = new THREE.MeshStandardMaterial({ color: FESTIVE[ci], roughness: 0.4, emissive: FESTIVE[ci], emissiveIntensity: 2.2 });
+      const mesh = new THREE.InstancedMesh(bulbGeo, mat, n);
+      for (let k = 0; k < n; k++) {
+        pv.set(pts[k * 3], pts[k * 3 + 1], pts[k * 3 + 2]);
+        m.compose(pv, q, sv);
+        mesh.setMatrixAt(k, m);
+      }
+      mesh.instanceMatrix.needsUpdate = true;
+      scene.add(mesh);
+    });
+    // A thin dark wire through each span's bulbs.
+    const wg = new THREE.BufferGeometry();
+    wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
+    const wIdx = [];
+    for (let s = 0; s < spans.length; s++) {
+      for (let k = 0; k < PER - 1; k++) wIdx.push(s * PER + k, s * PER + k + 1);
+    }
+    wg.setIndex(wIdx);
+    const wire = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x1c1a17 }));
+    scene.add(wire);
   }
 
   // Ceiling lamps: warm glow discs down the crown.
