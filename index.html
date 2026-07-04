@@ -19,12 +19,14 @@
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 
   <link rel="stylesheet" href="./styles.css" />
-  <!-- three.js via import map so modules can `import ... from "three"`. Vendored
-       LOCALLY (minified build) instead of a CDN: removes the unpkg dependency AND
-       the external greggman.github.io debug import the non-min build pulls in, so
-       the game loads reliably and works fully offline once the service worker has
-       cached it. Multiplayer's ably/partysocket stay on a CDN (they need the
-       network to relay anyway). -->
+  <!-- Import map: every dependency is vendored LOCALLY — three under
+       vendor/three/ (removes the unpkg dependency AND the external
+       greggman.github.io debug import the non-min build pulls in), and the
+       multiplayer SDKs under vendor/net/ (bundled by tools/vendor-net.mjs).
+       No CDN fetches at runtime: the game loads reliably offline once the
+       service worker has cached it, and the native app bundle ships the same
+       bytes. Multiplayer still needs the network to CONNECT — just not to
+       load its code. -->
   <script type="importmap">
     {
       "imports": {
@@ -32,8 +34,8 @@
         "three/webgpu": "./vendor/three/three.webgpu.min.js",
         "three/tsl": "./vendor/three/three.tsl.min.js",
         "three/addons/": "./vendor/three/addons/",
-        "partysocket": "https://esm.sh/partysocket@1.0.2",
-        "ably": "https://esm.sh/ably@2"
+        "partysocket": "./vendor/net/partysocket.min.js",
+        "ably": "./vendor/net/ably.min.js"
       }
     }
   </script>

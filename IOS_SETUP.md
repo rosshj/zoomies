@@ -58,10 +58,11 @@ Sequenced so each step de-risks the next:
 2. **Native chrome** — adopt `platform.ready()` in `main.js` boot (landscape
    lock, status-bar hide, splash dismiss) and route steering through CoreMotion,
    retiring the `DeviceOrientation.requestPermission()` / HTTPS dance.
-3. **Bundle the CDN deps** — `ably` / `partysocket` load from `esm.sh` today.
-   Move to a bundler (Vite) so both targets consume the identical, locally
-   bundled dependency graph. `build-web.mjs` is a drop-in slot for this — Vite
-   replaces it and keeps `webDir: "dist"`.
+3. ~~**Bundle the CDN deps**~~ — done. `ably` / `partysocket` are vendored
+   under `vendor/net/` (single-file ESM bundles built by `npm run vendor:net`),
+   mirroring the vendored three.js. No runtime CDN fetches on any platform; a
+   full Vite migration wasn't needed and stays optional (minification/TS,
+   should we ever want them).
 4. **Monetisation** — add `@revenuecat/purchases-capacitor`, implement
    `src/platform/*` `purchases`, gate premium levels/cats on entitlements
    (free = 1 level + default cats). RevenueCat fronts StoreKit *and* Google Play
