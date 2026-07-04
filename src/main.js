@@ -10,7 +10,7 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
-import { isNativePlatform } from "./platform/index.js";
+import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
@@ -4274,7 +4274,14 @@ rendererReady
     }).then((p) => { gpuParticles = p; if (p && quality !== "high") p.setVisible(false); });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
-  .finally(() => requestAnimationFrame(loop));
+  .finally(() => {
+    requestAnimationFrame(loop);
+    // Native (Capacitor) shell chrome, now that the renderer is up and the first
+    // frame is drawing: lock landscape, hide the OS status bar, and dismiss the
+    // splash at the right moment (instead of Capacitor's default timeout). All
+    // three are no-ops on the web, where the PWA/manifest handles chrome.
+    getPlatform().then((p) => p.ready()).catch(() => {});
+  });
 
 // If the previous load ended in a crash, tell the player (and log the detail so we
 // can diagnose). When the crash guard downgraded us to the WebGL2 backend, say so.

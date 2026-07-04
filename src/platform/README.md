@@ -24,8 +24,9 @@ platform.purchases.available;    // false until StoreKit/RevenueCat is wired
 Two implementations satisfy that contract:
 
 - `web.js` — plain web APIs; the reference behaviour native must match.
-- `native.js` — Capacitor plugins, dynamically imported so a web build never
-  touches them. Each plugin is optional-guarded: not-yet-installed → no-op.
+- `native.js` — Capacitor plugins via the injected `window.Capacitor.Plugins`
+  bridge (no bundler needed; a web build never loads this file). Each plugin is
+  optional-guarded: not-yet-installed → no-op.
 
 `index.js` detects the runtime (`window.Capacitor`) and hands back the right one.
 
