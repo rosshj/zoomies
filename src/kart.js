@@ -3,6 +3,10 @@ import { color as tslColor, time, normalView, positionViewDirection } from "thre
 import { createKartModel, createCat, updateCatRig } from "./models.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
+// Scratch vectors for the per-frame integrator — shared by every kart (each is
+// fully written before it's read, and karts update sequentially).
+const _iFwd = new THREE.Vector3();
+const _iProbe = new THREE.Vector3();
 
 // Projected-shadow sun parameters, set per race from the active mood's sunDir.
 // The contact shadow is a flat quad stretched + aimed along the sun so it reads
@@ -29,17 +33,21 @@ function makeShieldMaterial() {
     side: THREE.DoubleSide,
   });
   const ndv = normalView.dot(positionViewDirection).clamp(0, 1);
-  // Tighter fresnel (higher power) concentrates the glow into a thin RIM and leaves
-  // the centre clear, so you can still see the kart and the track through the bubble
-  // instead of a solid white orb.
-  const fres = ndv.oneMinus().clamp(0.001, 1).pow(3.2);
+  // A softer/wider fresnel (lower power) spreads the glow further in from the rim,
+  // so the whole bubble luminesces rather than only a hairline edge — but the
+  // centre still stays clear enough to see the kart and track through it.
+  const fres = ndv.oneMinus().clamp(0.001, 1).pow(2.3);
   const band = time.mul(4).sin().mul(0.5).add(0.5); // travelling shimmer
-  const pulse = time.mul(2.5).sin().mul(0.12).add(0.88); // gentle breathing
-  // Mostly rim, only a whisper of fill through the body — a glowing bubble, not a
-  // bright fill. Lower base brightness keeps it from washing out over light tracks.
-  mat.colorNode = tslColor(0x7fdcff).mul(fres.mul(1.25).add(0.03).mul(pulse).add(band.mul(fres).mul(0.4)));
-  // Near-transparent centre, glowing rim, never fully opaque (caps at 0.8).
-  mat.opacityNode = fres.mul(0.6).add(0.02).add(band.mul(fres).mul(0.2)).clamp(0, 0.8);
+  const pulse = time.mul(2.5).sin().mul(0.16).add(0.9); // gentle breathing
+  // A second, faster ripple crossing the first so the surface reads as live energy.
+  const ripple = time.mul(6.5).sin().mul(0.5).add(0.5).mul(time.mul(3.1).cos().mul(0.5).add(0.5));
+  // Brighter glowing rim + a genuine translucent body fill (the 0.09 term) so it
+  // looks like a glass energy bubble, not just a thin outline.
+  const glow = fres.mul(1.75).add(0.09).mul(pulse).add(band.mul(fres).mul(0.6)).add(ripple.mul(fres).mul(0.35));
+  mat.colorNode = tslColor(0x8fe6ff).mul(glow);
+  // More translucent presence than before: a soft see-through fill (0.05) plus the
+  // glowing rim, capped so the kart stays visible through the bubble.
+  mat.opacityNode = fres.mul(0.7).add(0.05).add(band.mul(fres).mul(0.28)).clamp(0, 0.85);
   // Dummy uniforms bag: the update loop writes material.uniforms.uTime.value.
   mat.uniforms = { uTime: { value: 0 } };
   return mat;
@@ -54,9 +62,10 @@ export const BOOST_RECHARGE = 1 / 16;
 // inflection, don't each pop a boost on the straight.
 const MIN_DRIFT_CHARGE = 0.5;
 
-// Soft radial blob used as a contact/grounding shadow under each kart.
+// Soft radial blob used as a contact/grounding shadow under each kart (also
+// shared by the prop/item-box shadows in props.js, so they match).
 let _shadowTex = null;
-function shadowTexture() {
+export function shadowTexture() {
   if (_shadowTex) return _shadowTex;
   const c = document.createElement("canvas");
   c.width = c.height = 64;
@@ -82,7 +91,7 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, catPattern, catAccessory, kartStyle, kartNumber, name, isPlayer, skill = 1 }) {
+  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1 }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
@@ -178,7 +187,7 @@ export class Kart {
     this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
     this.flames = flames; // boost exhaust flames; shown/flickered while boosting
     this.group.add(kart);
-    const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory });
+    const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor });
     cat.scale.setScalar(0.62);
     cat.position.set(0, 0.85, -0.35);
     this.group.add(cat);
@@ -195,8 +204,12 @@ export class Kart {
     this.shieldMesh.visible = false;
     this.group.add(this.shieldMesh);
     // Bouncy pop-in/out: an under-damped spring on the orb's "presence" (0 hidden,
-    // ~1 shown, overshooting past 1 on the way up for a springy pop).
-    this._shieldS = { a: 0, v: 0 };
+    // ~1 shown, overshooting past 1 on the way up for a springy pop). Seeded
+    // slightly OPEN (a barely-visible dot for the first few frames, e.g. during
+    // the countdown): the orb's TSL material only compiles its render pipeline
+    // the first time the mesh is actually rendered, so without the warm-up the
+    // first shield press mid-race stalled the frame on a shader compile.
+    this._shieldS = { a: 0.02, v: 0 };
 
     // Soft contact shadow that stays on the ground (even mid-hop). The quad sits
     // in a holder so it can be spun to the sun azimuth independent of the kart's
@@ -456,7 +469,7 @@ export class Kart {
   }
 
   _integrate(dt, track, finishing) {
-    const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
+    const fwd = _iFwd.set(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.position.addScaledVector(fwd, this.speed * dt);
 
     // Bumper-car knockback (decaying positional impulse). The decay is gentle so
@@ -495,12 +508,8 @@ export class Kart {
     // body is lifted by the wheel-contact offset so the tyres rest on the road,
     // and the pitch follows quickly so it stays glued through slope changes.
     const half = 1.55; // matches the front/rear wheel positions
-    const frontY = track.project(
-      new THREE.Vector3().copy(this.position).addScaledVector(fwd, half)
-    ).groundY;
-    const rearY = track.project(
-      new THREE.Vector3().copy(this.position).addScaledVector(fwd, -half)
-    ).groundY;
+    const frontY = track.project(_iProbe.copy(this.position).addScaledVector(fwd, half)).groundY;
+    const rearY = track.project(_iProbe.copy(this.position).addScaledVector(fwd, -half)).groundY;
     this.groundY = (frontY + rearY) * 0.5 + 0.08; // lift so the tyres rest on, not in, the road
     const targetPitch = Math.atan2(rearY - frontY, 2 * half);
     // Track the slope quickly so the kart stays glued through crests/dips instead

@@ -1,6 +1,7 @@
 import * as THREE from "three";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, uniform, color as tslColor } from "three/tsl";
-import { USE_WEBGPU } from "./gpu.js";
+import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 
 // Time-of-day moods. The chosen one (from the track's Time of Day setting) drives
 // applyMood(), which restyles the sky, sun/moon, lights, fog, stars and exposure,
@@ -90,11 +91,19 @@ export function createScene() {
   const sun = new THREE.DirectionalLight(0xffe6b8, 2.2);
   sun.position.copy(sunDir).multiplyScalar(320);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048); // 4096 was a big cost on geometry-heavy/sun-facing views; PCF keeps 2048 stable
-  // A tight frustum that the game keeps centred on the player (see main loop):
-  // same map budget focused around you = crisp, dramatic shadows where they show.
-  // Kept fairly small so the 2048 map gives plenty of texels per unit near the
-  // kart (crisp edges); distant scenery shadows fall outside it but read tiny.
+  // The frustum is fitted ONCE around the whole world and the map rendered once
+  // per world/mood (fitSunShadow in main.js) — all mapped casters are static
+  // scenery, so a static map can't flicker/pop and costs ~zero frames. Since it
+  // renders once, resolution is purely a MEMORY choice: 4096 (64MB) keeps edges
+  // reasonably crisp over a whole track on High. iOS is capped at 2048 whatever
+  // the tier — its WebGPU loses the device under memory pressure (the game's one
+  // hard-crash mode; repeated jumps mid-race triggered it on a 4096 map), and
+  // 16MB vs 64MB is exactly the kind of headroom that decides it. Low tier gets
+  // 2048 everywhere.
+  let shadowSz = IS_IOS ? 2048 : 4096;
+  try { if (localStorage.getItem("zoomies-quality") === "low") shadowSz = 2048; } catch { /* keep default */ }
+  sun.shadow.mapSize.set(shadowSz, shadowSz);
+  // Initial bounds are placeholders — fitSunShadow overwrites them on frame one.
   const s = 85;
   sun.shadow.camera.left = -s;
   sun.shadow.camera.right = s;
@@ -109,28 +118,46 @@ export function createScene() {
   // surface normal, renderer-agnostic) which is the robust anti-acne knob.
   sun.shadow.bias = 0;
   sun.shadow.normalBias = 0.35; // bumped again to catch any residual acne shimmer
-  sun.shadow.radius = 5; // soft PCF penumbra for the gentle, toy-like look
+  // The shadow map renders ON DEMAND (see the follow/refresh logic in main.js):
+  // every mapped caster is static scenery — karts use projected-quad shadows —
+  // so between re-centres the map is bit-frozen and shadows cannot shimmer.
+  sun.shadow.autoUpdate = false;
+  sun.shadow.needsUpdate = true; // first frame renders the initial map
+  // PCF penumbra width. The WebGPU PCF filter is a fixed 17-tap kernel whose taps
+  // spread across ±radius TEXELS — at 5, taps sat up to 2.5 texels apart, so soft
+  // edges were built from sparse samples and crawled/flickered on building walls
+  // and thin fence rails whenever the (texel-snapped) map re-rendered. At 2 the
+  // taps are ≤1 texel apart — a fully-covered, temporally stable kernel — at the
+  // cost of a slightly tighter (still soft) penumbra.
+  sun.shadow.radius = 2;
   scene.add(sun);
   scene.add(sun.target);
 
-  // A few clouds for depth.
+  // A few clouds for depth. They ring the whole map high up and never move, so
+  // some are in frame from every camera angle — as individual puff meshes that
+  // was ~60-75 draw calls every frame. Bake every puff into ONE merged mesh
+  // (they all share cloudMat, which applyMood recolours) for a single draw.
   const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const puffGeos = [];
   for (let i = 0; i < 16; i++) {
-    const cloud = new THREE.Group();
-    const n = 3 + Math.floor(Math.random() * 3);
-    for (let j = 0; j < n; j++) {
-      const puff = new THREE.Mesh(new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8), cloudMat);
-      puff.position.set((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
-      cloud.add(puff);
-    }
     // Sit them out beyond the playable hills and high up, so they read as
     // distant sky and never clip the track (the alpine hill rises high).
     const a = Math.random() * Math.PI * 2;
     const r = 520 + Math.random() * 440;
-    cloud.position.set(Math.cos(a) * r, 150 + Math.random() * 90, Math.sin(a) * r);
-    cloud.scale.setScalar(1.6 + Math.random() * 1.2); // bigger since they're farther
-    scene.add(cloud);
+    const cx = Math.cos(a) * r, cy = 150 + Math.random() * 90, cz = Math.sin(a) * r;
+    const s = 1.6 + Math.random() * 1.2; // bigger since they're farther
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let j = 0; j < n; j++) {
+      const geo = new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8);
+      geo.translate((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
+      geo.scale(s, s, s);
+      geo.translate(cx, cy, cz);
+      puffGeos.push(geo);
+    }
   }
+  const clouds = new THREE.Mesh(mergeGeometries(puffGeos), cloudMat);
+  clouds.frustumCulled = false; // the ring spans the sky — it's always partly visible
+  scene.add(clouds);
 
   // M1 WebGPU migration: skip PMREM environment baking (the env reflections add
   // a small spec sheen but PMREM-from-scene on the new backend is unproven; the

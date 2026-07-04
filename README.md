@@ -98,15 +98,28 @@ Everything is procedural — no asset downloads required.
 ```
 index.html        # markup, HUD, import map for three.js
 styles.css        # HUD, slider, overlays
+sw.js             # service worker (offline PWA shell cache)
 src/
-  main.js         # game loop, state machine, race logic
-  scene.js        # renderer, lights, sky, ground
+  main.js         # game loop, state machine, race logic, menus, multiplayer glue
+  scene.js        # renderer, lights, sky, post-processing
+  scenery.js      # procedural world: biomes, buildings, foliage, landmarks
   track.js        # closed Catmull-Rom circuit + lap projection
-  models.js       # procedural cat + kart meshes
+  models.js       # procedural cat + kart meshes, accessories, shared materials
   kart.js         # arcade kart physics, lap timing, AI driver
+  remotekart.js   # render-only multiplayer ghost (interpolated puppet)
   input.js        # accelerometer / slider / tap-zones / keyboard
   hairball.js     # projectiles + collision
   hud.js          # HUD DOM updates
+  effects.js      # instanced particles (boost, sparks, dust) + skid marks
+  gpuparticles.js # GPU compute confetti (High quality tier)
+  props.js        # item boxes + power-up pickups
+  weather.js      # rain/snow particle overlays
+  audio.js        # WebAudio synth SFX + engine loop
+  gpu.js          # WebGPU/WebGL2 backend selection (?webgl=1 override)
+  crashguard.js   # WebGPU device-loss watchdog + reload recovery
+  rng.js          # seeded RNG for reproducible worlds
+  net/            # multiplayer: transport facade, Ably relay, WebRTC P2P,
+                  # interpolation, shared clock (see NETWORKING.md)
 ```
 
 ### Ideas for later

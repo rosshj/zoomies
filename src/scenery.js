@@ -1,9 +1,14 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform } from "three/tsl";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
+import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
+// Track set pieces (river bridge / canyon / giant forest / overpass): the
+// planner lives on the track (track.features); these helpers shape the terrain
+// around the runs and build their structures. See features.js for the system.
+import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -41,6 +46,13 @@ const BIOMES = [
   { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", treeShape: "acacia", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
   // Frosted tundra: pale sage ground, short blue-green pines, light snow.
   { name: "tundra", weather: "snow", ground: 0x9fb0a4, ground2: 0x84988e, foliage: [0.38, 0.32, 0.42], style: "pine", treeShape: "pine", sx: 0.75, sy: 1.2, treeDensity: 0.6, grassTint: 0xc8d8c0, grassDensity: 0.3, barrier: { a: 0xdfeaf0, b: 0x9fb8c0 } },
+  // Downtown: a grey asphalt boulevard lined with tall towers, hazard-striped
+  // barriers. Only the ROAD is grey (see ROAD_STYLES) — the surrounding hills
+  // are a muted urban-park green, like a city sitting in ordinary countryside.
+  { name: "city", weather: "none", ground: 0x5d8a47, ground2: 0x4a6f3c, foliage: [0.3, 0.35, 0.38], style: "urban", treeShape: "none", sx: 1.0, sy: 1.0, treeDensity: 0, grassTint: 0xa8c290, grassDensity: 0.25, barrier: { a: 0xf2c94c, b: 0x2b2b2b } },
+  // Seaside: pale sand, tall palms, and a shoreline (the sea is a large sandy-shored
+  // lake placed in the beach sectors — see makeLakes). Sea-blue + sand barriers.
+  { name: "beach", weather: "none", ground: 0xe6d6a2, ground2: 0xd4bf84, foliage: [0.28, 0.5, 0.42], style: "beach", treeShape: "palm", sx: 0.7, sy: 1.6, treeDensity: 0.22, grassTint: 0xdccf9a, grassDensity: 0.22, barrier: { a: 0xe8cf96, b: 0x5aa0cf } },
 ];
 for (const b of BIOMES) {
   b.groundCol = new THREE.Color(b.ground);
@@ -186,6 +198,12 @@ export function biomeBarrierStyle(x, z) {
   return biomeAt(x, z).barrier;
 }
 
+// Biome NAME at a position (used by the track's set-piece planner, which needs
+// to know which biome owns each stretch of road). `y` optional as in biomeAt.
+export function biomeNameAt(x, z, y) {
+  return biomeAt(x, z, y).name;
+}
+
 // Precipitation the biome at a position brings ("none" / "rain" / "snow").
 export function biomeWeatherAt(x, z) {
   return biomeAt(x, z).weather;
@@ -203,9 +221,53 @@ const ROAD_STYLES = {
   blossom: { tint: [1.04, 0.97, 1.02], kind: "asphalt" },
   savanna: { tint: [1.45, 1.28, 0.95], kind: "sand" },
   tundra: { tint: [1.25, 1.32, 1.4], kind: "snow" },
+  // City keeps the grey on the ROAD (a cool, fresh-laid asphalt) now that its
+  // terrain is green; beach tarmac reads sun-bleached and sandy. The "urban"
+  // kind gives the city concrete SIDEWALKS instead of the sandy verge trim.
+  city: { tint: [0.92, 0.95, 1.04], kind: "urban" },
+  beach: { tint: [1.5, 1.35, 1.05], kind: "sand" },
 };
 export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
+}
+
+// Blended road style for the road SURFACE itself: instead of the hard
+// per-vertex switch above, the tint cross-fades over the same wide seam bands
+// the terrain uses (angular wedges in classic mode; warm wedges + the alpine
+// snow-line by height on generated tracks), so tarmac changes character
+// gradually. Alongside the tint it reports the weight of each speckle `kind`
+// (0..1, summing to ~1) so the track can fade its per-biome speckle in/out
+// across the same band. Returns a reused scratch object — consume it before
+// the next call. `y` is the road elevation at (x,z), passed by the track so
+// the snow line doesn't need a height lookup.
+const _roadBlend = { tint: [1, 1, 1], kinds: {} };
+function _accumRoadStyle(style, w) {
+  if (w <= 0) return;
+  _roadBlend.tint[0] += style.tint[0] * w;
+  _roadBlend.tint[1] += style.tint[1] * w;
+  _roadBlend.tint[2] += style.tint[2] * w;
+  _roadBlend.kinds[style.kind] = (_roadBlend.kinds[style.kind] || 0) + w;
+}
+export function biomeRoadStyleBlend(x, z, y) {
+  _roadBlend.tint[0] = _roadBlend.tint[1] = _roadBlend.tint[2] = 0;
+  for (const k in _roadBlend.kinds) _roadBlend.kinds[k] = 0;
+  if (!_altMode) {
+    const n = _activeBiomes.length;
+    const s = ((Math.atan2(z, x) / (Math.PI * 2) + 1) % 1) * n;
+    const i0 = Math.floor(s) % n;
+    const frac = s - Math.floor(s);
+    const t = frac < 0.6 ? 0 : smooth((frac - 0.6) / 0.4);
+    _accumRoadStyle(ROAD_STYLES[_activeBiomes[i0].name] || ROAD_STYLES.meadow, 1 - t);
+    _accumRoadStyle(ROAD_STYLES[_activeBiomes[(i0 + 1) % n].name] || ROAD_STYLES.meadow, t);
+    return _roadBlend;
+  }
+  if (y === undefined) y = _heightSampler ? _heightSampler(x, z) : 0;
+  const wb = warmBlend(x, z);
+  const aw = alpineWeight(y);
+  _accumRoadStyle(ROAD_STYLES[wb.a.name] || ROAD_STYLES.meadow, (1 - wb.t) * (1 - aw));
+  _accumRoadStyle(ROAD_STYLES[wb.b.name] || ROAD_STYLES.meadow, wb.t * (1 - aw));
+  if (aw > 0 && _alpine) _accumRoadStyle(ROAD_STYLES[_alpine.name] || ROAD_STYLES.meadow, aw);
+  return _roadBlend;
 }
 
 // Tint for the dust a kart kicks up: the local ground colour, paled and warmed —
@@ -310,23 +372,61 @@ export function buildWorld(scene, track, opts = {}) {
 
   // Lakes: a big one in the open infield (the loop wraps right around it) plus a
   // couple of smaller ones out on the hills. Their level matches the ground.
+  // The set-piece RIVER (if the map bridged one) rides in the same list, so it
+  // shares the carve, the water and the prop-exclusion wholesale.
+  const feats = track.features || { runs: [] };
   const lakes = makeLakes(track, baseHeight);
   // Clear props out to the full carve (the shore bank), not just the waterline,
   // so nothing sits on the slope between the road and the lake.
   _inLake = (x, z) => lakes.some((L) => lakeDist(L, x, z) < L.blendR);
 
-  const heightAt = (x, z) => carveLakes(lakes, x, z, baseHeight(x, z));
+  // The world's ONE height truth: road-anchored hills, minus the lake/river
+  // carves, plus the set-piece fields (canyon walls up, overpass plaza down).
+  const heightAt = (x, z) => featureHeightMod(feats, x, z, carveLakes(lakes, x, z, baseHeight(x, z)));
 
-  buildTerrain(scene, heightAt, litLevel); // night/dusk darkening (snow handled hard inside)
+  // The terrain mesh gets an EXTRA drop under the road corridor (tapering to
+  // zero by the sand trim's outer edge, so the visible verge is unchanged).
+  // The terrain grid is coarse (~4-5u cells) and its base sits only ~0.25 under
+  // the road; on crests the linear interpolation between cells poked ABOVE the
+  // road surface — invisible while terrain and asphalt were similar colours,
+  // glaring once the city's ground went green (green patches on the tarmac).
+  // Only the terrain uses this sampler; placements keep the true heightAt.
+  const terrainHeight = (x, z) => {
+    const d = track.groundInfo(x, z).dist;
+    const u = clamp(1 - (d - track.halfWidth) / 3, 0, 1);
+    return heightAt(x, z) - 1.2 * (u * u * (3 - 2 * u));
+  };
+  buildTerrain(scene, terrainHeight, litLevel); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
-  buildCliffs(scene, track, heightAt); // a rocky cliff stretch to drive against
+  // Ground tint for feature shells (the tunnel's mountain), matching the
+  // terrain-mesh colouring: biome ground, whitening toward snow with altitude
+  // exactly as buildTerrain does, so the shell reads as part of the hillside.
+  const _shellSnow = new THREE.Color(0xf4f7fb);
+  const _shellRock = new THREE.Color(0x7a6f5d);
+  const groundColorAt = (x, z, y, out) => {
+    biomeGround(x, z, out, y);
+    if (_altMode) {
+      const aw = alpineWeight(y);
+      if (aw > 0) out.lerp(_shellSnow, aw * clamp(0.55 + y / 240, 0.55, 1));
+      else if (y > 95) out.lerp(_shellRock, Math.min(0.4, (y - 95) / 130));
+    } else if (biomeAt(x, z, y).name === "alpine" && y >= 62) {
+      out.copy(_shellRock).lerp(_shellSnow, Math.min(1, (y - 62) / 16));
+    } else if (y > 52) {
+      out.lerp(_shellRock, Math.min(1, (y - 52) / 32));
+    }
+    return out;
+  };
+  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes, groundColorAt }); // set-piece kits + ambience
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
+  buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
+  batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
   const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
@@ -334,8 +434,10 @@ export function buildWorld(scene, track, opts = {}) {
   const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
-  const flocks = buildBirds(scene);
+  const birds = buildBirds(scene);
   const fireflies = buildFireflies(scene, track, heightAt);
+  buildAmbientFlyers(scene, track, heightAt, litLevel); // butterflies/dragonflies (day) or moths (night) — GPU-animated, no per-frame CPU
+  buildWindDebris(scene, track, heightAt); // tumbleweed (desert) + seed-fluff (savanna), GPU-animated wind buffeting
   const pigeonFlocks = buildPigeons(scene, track, heightAt);
 
   return {
@@ -343,15 +445,26 @@ export function buildWorld(scene, track, opts = {}) {
     heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
     groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
+    balloons, // debug hook: headless screenshot tours fly the camera to one
     update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
       }
       for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
+      featAnim.update(time);
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
-      for (const fl of flocks) updateFlock(fl, time);
-      for (const c of _critters) updateCritter(c, dt, time, heightAt);
+      for (const fl of birds.flocks) updateFlock(fl, time);
+      syncBirdWings(birds);
+      for (const c of _critters) {
+        // Far-off animals freeze in place — an amble is invisible from 220u+,
+        // and freezing (vs culling) means they're right there when you return.
+        if (playerPos) {
+          const dx = c.base.x - playerPos.x, dz = c.base.z - playerPos.z;
+          if (dx * dx + dz * dz > 220 * 220) continue;
+        }
+        updateCritter(c, dt, time, heightAt);
+      }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
       // dummy .uniforms after they compile, so don't write to them.)
@@ -374,6 +487,13 @@ function makeLakes(track, baseHeight) {
   const lakes = [];
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
+
+  // Set-piece water goes in FIRST so every lake placed below keeps clear of it:
+  // the river (split into two reaches around a waterfall when the land drops),
+  // the causeway's lagoon and the dam's reservoir. All ribbon entries, so the
+  // candidate loops below already reject against them.
+  const featWater = featureWaterEntries(track.features, baseHeight);
+  for (const w of featWater) lakes.push(w);
 
   // Hero lake: a curved RIBBON in the infield that follows a LOW, FLAT arc of the
   // road, so it hugs the road's shape and the bank stays gentle. The arc is chosen
@@ -429,8 +549,10 @@ function makeLakes(track, baseHeight) {
     }
     // Only place the hero lake if the water clears EVERY part of the road (the lake
     // centre must stay at least waterR + halfWidth + a margin from any road) — on a
-    // fold this fails, so we skip it rather than spill water onto the track.
-    if (minDist > waterR + track.halfWidth + 5) {
+    // fold this fails, so we skip it rather than spill water onto the track. It must
+    // also keep clear of the set-piece water (which touches the road on purpose).
+    const clearOfFeat = spine.every((s) => featWater.every((L) => lakeDist(L, s.x, s.z) > waterR + L.blendR + 6));
+    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat) {
       lakes.push({
         ribbon: true, spine, level: minY - 2,
         floor: minY - 2 - 8,
@@ -466,6 +588,42 @@ function makeLakes(track, baseHeight) {
       waterR, shoreR, blendR,
     });
     placedHill++;
+  }
+
+  // Seaside: for each stretch of BEACH biome, drop a large lake with a WIDE flat
+  // sandy shore on the outward side, so the beach has open water and a shoreline
+  // in view. Reuses the lake carve + water + shore system wholesale (the carved
+  // shore automatically takes the beach's sand colour), so there's no bespoke
+  // ocean plumbing. The push-out loop guarantees the shore/blend clears the road.
+  {
+    const beachIdx = [];
+    for (let i = 0; i < N; i += 3) {
+      const p = track._pts[i];
+      if (biomeAt(p.x, p.z).name === "beach") beachIdx.push(i);
+    }
+    const picks = [];
+    if (beachIdx.length) {
+      picks.push(beachIdx[Math.floor(beachIdx.length * 0.35)]);
+      if (beachIdx.length > 10) picks.push(beachIdx[Math.floor(beachIdx.length * 0.78)]);
+    }
+    for (const i of picks) {
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const waterR = 58;
+      const shoreR = waterR + 30; // wide flat sandy beach at the water's edge
+      const blendR = shoreR + 16;
+      for (let push = 0; push < 6; push++) {
+        const off = track.halfWidth + blendR + 10 + push * 16;
+        const x = p.x + side.x * outward * off;
+        const z = p.z + side.z * outward * off;
+        if (track.distanceToCenter(x, z) < track.halfWidth + blendR + 8) continue; // shore/blend would touch the road
+        if (lakes.some((L) => (L.ribbon ? lakeDist(L, x, z) : Math.hypot(x - L.x, z - L.z)) < blendR + (L.blendR || 0) + 6)) continue;
+        const level = baseHeight(x, z) - 1.5;
+        lakes.push({ x, z, level, floor: level - 7, waterR, shoreR, blendR, beach: true });
+        break;
+      }
+    }
   }
   return lakes;
 }
@@ -528,15 +686,21 @@ function makeWaterMaterial(darken = 1) {
     .add(smoothstep(0.65, 0.98, w2.mul(0.5).add(0.5)).mul(0.4));
   let col = mix(deep, shallow, smoothstep(0.0, 1.0, shore));
   col = mix(col, col.mul(1.18), ripple.mul(0.5));
-  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
-  mat.colorNode = col;
-  // Fresnel: water mirrors much more at grazing angles (looking across it) than
-  // looking straight down — the key to a realistic reflective surface. Drive the
-  // SSR metalness with it. Foam fringe stays matte so the bank doesn't mirror.
+  // Fresnel "reflection": water brightens toward a sky tint at grazing angles
+  // (looking across it) — the cue that sells a reflective surface. This used to
+  // drive SSR metalness instead, but a flat up-facing plane viewed at grazing
+  // angles while driving past is SSR's worst case: the reflected bank slides
+  // off-screen and the half-res march collapses into blocky miss-patches that
+  // read as holes in the water (the same failure the puddles hit — see
+  // track.js _buildPuddles). Bake the sky tint like the puddles do and keep the
+  // lakes off the SSR path. Foam fringe stays matte so the bank doesn't tint.
   const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(3);
   const shoreFade = smoothstep(0.9, 0.7, shore);
-  mat.metalnessNode = float(0.35).add(fres.mul(0.55)).mul(shoreFade);
-  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // ripples shimmer the reflection
+  const skyTint = tslColor(0xcfe6f2).mul(0.4 + 0.6 * darken);
+  col = mix(col, skyTint, fres.mul(0.55).mul(shoreFade));
+  col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
+  mat.colorNode = col;
+  mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // tight sun glints; ripples shimmer them
   mat.opacityNode = float(0.92);
   // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
   // harmless no-op (animation is via `time`).
@@ -800,19 +964,24 @@ function buildMountains(scene, heightAt, track) {
   const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
 
+  // Peaks never move — collect every cone and bake the lot into ONE
+  // multi-material mesh at the end (~50 draw calls → 1). The ring surrounds the
+  // camera so half of it is in view from anywhere; per-peak frustum culling
+  // bought little, and the whole ring is only a few thousand triangles.
+  const peakMeshes = [];
   const peak = (x, z, h, rad, bury) => {
     const desert = biomeAt(x, z).name === "desert";
     const base = heightAt(x, z) + h / 2 - bury;
     const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 18), desert ? rockDesert : rockN);
     m.position.set(x, base, z);
     m.rotation.y = rand() * Math.PI;
-    scene.add(m);
+    peakMeshes.push(m);
     // No snow caps in the desert — snowy peaks behind cacti look wrong.
     if (!desert) {
       const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 18), snow);
       cap.position.set(x, base + h * 0.5 - h * 0.15, z);
       cap.rotation.y = m.rotation.y;
-      scene.add(cap);
+      peakMeshes.push(cap);
     }
   };
 
@@ -849,6 +1018,12 @@ function buildMountains(scene, heightAt, track) {
         break;
       }
     }
+  }
+  if (peakMeshes.length) {
+    const merged = mergeMeshes(peakMeshes, { castShadow: false });
+    merged.receiveShadow = false;
+    merged.frustumCulled = false; // the ring surrounds every viewpoint anyway
+    scene.add(merged);
   }
 }
 
@@ -1005,7 +1180,9 @@ function buildGroundLeaves(scene, track, heightAt) {
   return {
     update(karts, camPos, dt = 0.016) {
       _sorted.length = 0;
-      for (const k of karts) if (k && k.position) _sorted.push(k);
+      // Only moving karts kick leaves (same 2.5 u/s gate as the leaf piles) —
+      // otherwise the grid at the start line levitates its leaf carpet.
+      for (const k of karts) if (k && k.position && Math.abs(k.speed || 0) > 2.5) _sorted.push(k);
       _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
       for (let i = 0; i < wakes.length; i++) {
         const k = _sorted[i];
@@ -1107,15 +1284,114 @@ function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
   }
 }
 
+// A scribbly tumbleweed ball and a soft seed-fluff dot, drawn to canvases and
+// cached — the sprites for the wind-blown debris.
+let _debrisTex = {};
+function debrisTexture(kind) {
+  if (_debrisTex[kind]) return _debrisTex[kind];
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const ctx = c.getContext("2d");
+  if (kind === "tumbleweed") {
+    // A dense tangle of dry twigs. Chords that START near the centre fill the
+    // middle (no donut hole), with a few concentric arcs for the woven-ball read.
+    ctx.strokeStyle = "#c9a86a";
+    ctx.lineWidth = 1.5;
+    for (let i = 0; i < 28; i++) {
+      const a = (i / 28) * Math.PI * 2 + (i % 3) * 0.5;
+      const r1 = 3 + (i % 5) * 2.5; // start close to centre so the middle fills in
+      ctx.beginPath();
+      ctx.moveTo(24 + Math.cos(a) * r1, 24 + Math.sin(a) * r1);
+      ctx.lineTo(24 + Math.cos(a + 1.7) * 20, 24 + Math.sin(a + 1.7) * 20);
+      ctx.stroke();
+    }
+    for (let i = 0; i < 5; i++) {
+      ctx.beginPath();
+      ctx.ellipse(24, 24, 8 + i * 2.4, 6 + i * 2.6, i * 0.6, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  } else {
+    // Soft fluffy seed: a fading radial puff.
+    const g = ctx.createRadialGradient(24, 24, 0, 24, 24, 22);
+    g.addColorStop(0, "rgba(255,255,255,0.95)");
+    g.addColorStop(0.5, "rgba(245,240,225,0.55)");
+    g.addColorStop(1, "rgba(245,240,225,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(24, 24, 22, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  return (_debrisTex[kind] = tex);
+}
+
+// Wind-blown debris: tumbleweed buffeting across the DESERT and pale seed-fluff
+// drifting over the SAVANNA. Each mote is buffeted around its home point by a
+// smooth two-axis gust + (tumbleweed) a ground-hugging bounce — all in the vertex
+// shader off `time`, so each biome's field is ONE draw with zero per-frame CPU
+// and no visible wrap/snap. Nothing here is precipitation (that's the weather
+// system); this is dry-biome atmosphere the leafy biomes already get from leaves.
+function buildWindDebris(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const build = (kind, biome, cfg) => {
+    const bases = [];
+    let tries = 0;
+    while (bases.length / 3 < cfg.want && tries < cfg.want * 9) {
+      tries++;
+      const i = Math.floor(rand() * N);
+      const p = track._pts[i];
+      if (biomeAt(p.x, p.z).name !== biome) continue;
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const dirS = rand() < 0.5 ? 1 : -1;
+      const dist = track.halfWidth + 3 + rand() * 40;
+      const x = p.x + side.x * dirS * dist + (rand() - 0.5) * 10;
+      const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 10;
+      if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
+      if (_inLake(x, z)) continue;
+      bases.push(x, heightAt(x, z) + cfg.baseLift, z);
+    }
+    if (!bases.length) return;
+    const count = bases.length / 3;
+    const geo = new THREE.PlaneGeometry(cfg.size, cfg.size);
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(new Float32Array(bases), 3));
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+    mat.map = debrisTexture(kind);
+    mat.color = new THREE.Color(cfg.tint);
+    mat.opacity = cfg.opacity;
+    const b = attribute("aBase");
+    const ph = hash(instanceIndex).mul(6.2832);
+    const t = time.add(ph);
+    // Smooth two-axis gust buffeting (no linear wrap → no snap) + a bounce.
+    const gust = vec3(
+      t.mul(cfg.gustSpd).sin().mul(cfg.amp).add(t.mul(cfg.gustSpd * 2.3).sin().mul(cfg.amp * 0.3)),
+      t.mul(cfg.bounceSpd).sin().abs().mul(cfg.bounce),
+      t.mul(cfg.gustSpd * 0.8).cos().mul(cfg.amp * 0.7)
+    );
+    mat.positionNode = b.add(gust);
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    mesh.renderOrder = 3;
+    mesh.layers.set(1);
+    scene.add(mesh);
+  };
+  // Tumbleweed: bigger, tan, hops along the ground with wide horizontal gusts.
+  build("tumbleweed", "desert", { want: 34, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, gustSpd: 0.45, amp: 5.5, bounceSpd: 3.2, bounce: 1.6 });
+  // Seed-fluff: small, pale, floats higher and drifts more gently.
+  build("fluff", "savanna", { want: 90, size: 0.7, baseLift: 1.6, tint: 0xf2ecd8, opacity: 0.7, gustSpd: 0.35, amp: 3.2, bounceSpd: 1.4, bounce: 0.5 });
+}
+
 function buildTrees(scene, track, heightAt, flatten) {
   // Each candidate spot is tagged with its biome, kept with that biome's tree
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
   const spots = scatter(340, track, flatten, 0.55, 1700)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
+    .filter((s) => !featureTreeBlock(track.features, s.x, s.z)) // bare canyon walls
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
     .filter((s) => s.y <= 30 && rand() < s.b.treeDensity);
 
-  const leafy = spots.filter((s) => s.b.treeShape !== "cactus");
+  const leafy = spots.filter((s) => s.b.treeShape !== "cactus" && s.b.treeShape !== "none");
   const cacti = spots.filter((s) => s.b.treeShape === "cactus");
   if (leafy.length) buildShapedTrees(scene, leafy);
   if (cacti.length) buildCacti(scene, cacti);
@@ -1150,6 +1426,25 @@ function foliageGeoFor(shape) {
       [0.3, 2.85, 0.2, 1.3], [-0.4, 1.55, 1.0, 1.1], [0.9, 1.6, -0.9, 1.05],
     ];
     g = mergeGeometries(blobs.map(([x, y, z, r]) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z)));
+  } else if (shape === "palm") {
+    // A crown of long fronds that attach at the trunk top and ARCH down and out,
+    // like a real palm — each is a thin flat blade whose WIDE end sits at the
+    // crown and whose tip droops well below horizontal. No central hub (that read
+    // as a spiky star before). Ringed around Y with a little length/droop variety.
+    const fronds = [];
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const len = 3.4 + (i % 3) * 0.4;
+      const f = new THREE.ConeGeometry(0.5, len, 3); // 3-sided → a flat-ish blade
+      f.scale(1, 1, 0.16); // flatten into a frond
+      f.rotateZ(Math.PI / 2); // lay it along +X (tip outward)
+      f.translate(len / 2, 0, 0); // pivot at the WIDE base (crown), tip out at +len
+      f.rotateZ(-0.7 - (i % 2) * 0.12); // arch: base stays at crown, tip droops down
+      f.rotateY((i / n) * Math.PI * 2 + (i % 2) * 0.18);
+      fronds.push(f);
+    }
+    g = mergeGeometries(fronds);
+    g.translate(0, 0.5, 0); // sit the crown at the trunk top
   } else {
     // round (deciduous): a single faceted lollipop crown.
     g = new THREE.IcosahedronGeometry(2.3, 1).scale(1, 0.95, 1).translate(0, 2.15, 0);
@@ -1160,7 +1455,7 @@ function foliageGeoFor(shape) {
 
 // How much taller/shorter the (shared) trunk stretches per shape, so acacias get a
 // long bare trunk under their umbrella while the rest keep stocky trunks.
-const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95 };
+const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95, palm: 1.7 };
 
 // Biome-diverse trees. One shared brown trunk InstancedMesh for the whole batch,
 // plus ONE foliage InstancedMesh per distinct canopy shape present (round / pine /
@@ -1287,6 +1582,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     const z = p.z + s.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue; // folded over road
     if (_inLake(x, z)) continue;
+    if (featureSpanBlock(track.features, x, z)) continue; // decks/tunnel carry their own furniture
     spots.push({ x, z, y: heightAt(x, z), ax: -s.x * dir, az: -s.z * dir }); // arm aims at road
   }
   if (!spots.length) return;
@@ -1375,6 +1671,187 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
 // Festive bulb strings strung in a catenary over a few road spans. The bulbs are
 // bright un-tonemapped colours, so bloom makes them twinkle/glow at night while
 // still reading as little fairy lights by day. One instanced mesh for all bulbs.
+// City traffic signals: a dark metal pole with a mast arm reaching over the
+// road edge and a 3-lens head (red / amber / green) — always showing GREEN
+// (this is a race, nobody stops). One every ~60u of city road, alternating
+// sides. Static + shared materials, so batchStaticProps() merges the lot into
+// a few draws; the green lens is emissive so it glows at dusk/night.
+let _tlMats = null;
+function buildTrafficLights(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  if (!_tlMats) {
+    _tlMats = {
+      pole: mat(0x3c4047, { roughness: 0.5, metalness: 0.45 }),
+      head: mat(0x1f2327, { roughness: 0.6 }),
+      red: mat(0x4a2a28, { roughness: 0.4 }), // unlit dark-red lens
+      amber: mat(0x4a3d20, { roughness: 0.4 }), // unlit dark-amber lens
+      green: mat(0x2ecc55, { roughness: 0.4, emissive: 0x2ecc55, emissiveIntensity: 1.9 }), // LIT
+    };
+  }
+  const spacing = track.length / N;
+  const step = Math.max(1, Math.round(60 / spacing));
+  let flip = 1;
+  for (let i = 0; i < N; i += step) {
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== "city") continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    flip = -flip; // alternate sides down the boulevard
+    const off = track.halfWidth + 2.2;
+    const x = p.x + side.x * flip * off;
+    const z = p.z + side.z * flip * off;
+    if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
+    if (_inLake(x, z)) continue;
+
+    const g = new THREE.Group();
+    const armY = 7.8, armLen = 4.6;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, armY + 0.2, 8), _tlMats.pole);
+    pole.position.y = (armY + 0.2) / 2;
+    pole.castShadow = true;
+    g.add(pole);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, armLen, 8), _tlMats.pole);
+    arm.rotation.x = Math.PI / 2; // lie along local +Z (toward the road)
+    arm.position.set(0, armY, armLen / 2);
+    arm.castShadow = true;
+    g.add(arm);
+    // Signal head hanging near the arm's end: dark housing + three lenses that
+    // poke out of BOTH faces (readable from either driving direction).
+    const headZ = armLen - 0.5;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.5, 0.52), _tlMats.head);
+    head.position.set(0, armY - 0.85, headZ);
+    head.castShadow = true;
+    g.add(head);
+    const lensDefs = [[_tlMats.red, 0.46], [_tlMats.amber, 0], [_tlMats.green, -0.46]];
+    for (const [m, dy] of lensDefs) {
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), m);
+      lens.position.set(0, armY - 0.85 + dy, headZ);
+      g.add(lens);
+    }
+    g.position.set(x, heightAt(x, z), z);
+    // Local +Z points from the pole back toward the road centre.
+    g.rotation.y = Math.atan2(-side.x * flip, -side.z * flip);
+    g.traverse((o) => o.layers.set(1));
+    g.userData.staticProp = true; // merged by batchStaticProps()
+    scene.add(g);
+  }
+}
+
+// City road details: zebra CROSSWALKS at the signal spots (reads as an
+// intersection) and scattered MANHOLE COVERS along the boulevard. Both are flat
+// decals in two InstancedMeshes — 2 draws for the whole city.
+function buildCityRoadDetails(scene, track, heightAt) {
+  const N = track.samples;
+  const spacing = track.length / N;
+
+  // Zebra-stripe texture: white bars elongated ALONG the driving direction,
+  // repeated across the road (transparent between bars, slightly worn).
+  const cwTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = 512;
+    c.height = 64;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "rgba(248,248,248,0.92)";
+    const bars = 16;
+    const bw = c.width / bars;
+    for (let i = 0; i < bars; i += 2) ctx.fillRect(i * bw + 2, 3, bw - 4, c.height - 6);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    return t;
+  })();
+
+  // Manhole texture: dark iron disc with a lighter rim and cross-hatch.
+  const mhTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 64;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#2e3236";
+    ctx.beginPath();
+    ctx.arc(32, 32, 31, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#4a5056";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(32, 32, 28, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = 1.5;
+    for (let i = -2; i <= 2; i++) { // cross-hatch tread lines
+      ctx.beginPath();
+      ctx.moveTo(10, 32 + i * 8);
+      ctx.lineTo(54, 32 + i * 8);
+      ctx.stroke();
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+
+  // Collect spots first, then bake each set into ONE InstancedMesh. Both decals
+  // must lie IN the road's local tangent plane (pitch + camber), not flat in
+  // world XZ — a horizontal plane on a sloped boulevard hovers off the surface
+  // at one end and reads as a floating object instead of paint.
+  const cwSpots = []; // { p, tan } — centred on the road, just past the signal
+  const mhSpots = []; // { x, y, z, tan, yaw } — scattered on the tarmac
+  const cwStep = Math.max(1, Math.round(60 / spacing)); // matches buildTrafficLights
+  const cwShift = Math.max(1, Math.round(4 / spacing)); // stripes sit "before" the light
+  for (let i = 0; i < N; i += cwStep) {
+    if (biomeAt(track._pts[i].x, track._pts[i].z).name !== "city") continue;
+    // Shift by SAMPLE index (not a raw tangent offset) so position, height and
+    // slope are all re-sampled at the crosswalk's actual spot.
+    const j = (i + cwShift) % N;
+    cwSpots.push({ p: track._pts[j], tan: track._tans[j] });
+  }
+  const mhStep = Math.max(1, Math.round(23 / spacing));
+  for (let i = 0; i < N; i += mhStep) {
+    const p = track._pts[i];
+    if (biomeAt(p.x, p.z).name !== "city") continue;
+    const side = new THREE.Vector3().crossVectors(track._tans[i], UP_Y).normalize();
+    const lat = (rand() * 2 - 1) * (track.halfWidth - 4); // on the tarmac, off the racing edge
+    mhSpots.push({ x: p.x + side.x * lat, y: p.y, z: p.z + side.z * lat, tan: track._tans[i], yaw: rand() * Math.PI });
+  }
+
+  const dummy = new THREE.Object3D();
+  const _side = new THREE.Vector3();
+  const _norm = new THREE.Vector3();
+  const _along = new THREE.Vector3();
+  // Aligns `dummy` so the decal plane's X spans the road, Y runs along the
+  // (sloped) tangent and Z is the road normal, then lifts it along that normal.
+  const conform = (x, y, z, tan, lift, spin = 0) => {
+    _along.copy(tan).normalize();
+    _side.crossVectors(_along, UP_Y).normalize();
+    _norm.crossVectors(_side, _along).normalize();
+    dummy.matrix.makeBasis(_side, _along, _norm);
+    if (spin) dummy.matrix.multiply(new THREE.Matrix4().makeRotationZ(spin));
+    dummy.matrix.setPosition(x + _norm.x * lift, y + _norm.y * lift, z + _norm.z * lift);
+  };
+  if (cwSpots.length) {
+    const geo = new THREE.PlaneGeometry(track.width * 0.86, 3.0);
+    const mat_ = new THREE.MeshStandardMaterial({ map: cwTex, transparent: true, roughness: 0.9, depthWrite: false });
+    const mesh = new THREE.InstancedMesh(geo, mat_, cwSpots.length);
+    cwSpots.forEach((s, k) => {
+      conform(s.p.x, s.p.y, s.p.z, s.tan, 0.045);
+      mesh.setMatrixAt(k, dummy.matrix);
+    });
+    mesh.renderOrder = 1;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false; // instances span the map; geometry bounds would cull wrongly
+    scene.add(mesh);
+  }
+  if (mhSpots.length) {
+    const geo = new THREE.CircleGeometry(0.55, 16);
+    const mat_ = new THREE.MeshStandardMaterial({ map: mhTex, transparent: true, roughness: 0.85, depthWrite: false });
+    const mesh = new THREE.InstancedMesh(geo, mat_, mhSpots.length);
+    mhSpots.forEach((s, k) => {
+      conform(s.x, s.y, s.z, s.tan, 0.04, s.yaw);
+      mesh.setMatrixAt(k, dummy.matrix);
+    });
+    mesh.renderOrder = 1;
+    mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+  }
+}
+
 function buildStringLights(scene, track, level = 0, heightAt = null) {
   const up = new THREE.Vector3(0, 1, 0);
   const N = track.samples;
@@ -1394,6 +1871,9 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   for (let s = 0; s < SPANS; s++) {
     const i = Math.floor(((s + 0.5) / SPANS + rand() * 0.12) * N) % N;
     const p = track._pts[i];
+    // Festive bulb strings don't belong downtown — city stretches get traffic
+    // lights instead (buildTrafficLights).
+    if (biomeAt(p.x, p.z).name === "city") continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
     const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
@@ -1482,8 +1962,23 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   // Drive each span's swing from the karts and rebuild bulb/wire/light positions.
   // karts: array of { x, z, dx, dz, speed } (dx,dz = horizontal heading).
   function update(dt, karts) {
+    let wrote = false;
     for (const sd of spans) {
       const sw = sd.swing;
+      // Distance gate: a span nobody is near doesn't rebuild its wire verts +
+      // bulb matrices this frame — the sway is invisible from 200u+ and the pose
+      // freezes harmlessly. A span still swinging from a recent pass keeps
+      // animating (wherever the karts went) until the spring settles.
+      let near = false;
+      if (karts) {
+        for (const k of karts) {
+          if (!k) continue;
+          const dx = k.x - sd.mid.x, dz = k.z - sd.mid.z;
+          if (dx * dx + dz * dz < 200 * 200) { near = true; break; }
+        }
+      }
+      if (!near && Math.abs(sw.x) + Math.abs(sw.z) + Math.abs(sw.vx) + Math.abs(sw.vz) < 0.02) continue;
+      wrote = true;
       if (karts) {
         for (const k of karts) {
           if (!k) continue;
@@ -1524,65 +2019,21 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
         sd.light.position.set(lp.x + ox, lp.y, lp.z + oz);
       }
     }
-    mesh.instanceMatrix.needsUpdate = true;
+    if (wrote) mesh.instanceMatrix.needsUpdate = true;
   }
 
   return { update };
 }
 
-// Printed street-banner faces: a bold event banner (border, checkered-flag end
-// caps, a slogan with paw accents), one design per index. Cached per design.
-const BANNER_DESIGNS = [
-  { bg: "#d23b34", fg: "#fff7e6", text: "ZOOMIES GP" },
-  { bg: "#2f6fb0", fg: "#ffffff", text: "CAT KART CUP" },
-  { bg: "#3a9d4e", fg: "#fffceb", text: "WELCOME RACERS" },
-  { bg: "#e0a73a", fg: "#3a2410", text: "FURBALL DERBY" },
-];
-const _bannerTexCache = new Map();
-function makeBannerTexture(i) {
-  if (_bannerTexCache.has(i)) return _bannerTexCache.get(i);
-  const d = BANNER_DESIGNS[i % BANNER_DESIGNS.length];
-  const W = 1024, H = 192;
-  const c = document.createElement("canvas");
-  c.width = W; c.height = H;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = d.bg; ctx.fillRect(0, 0, W, H);
-  // Inner border frame.
-  ctx.strokeStyle = d.fg; ctx.lineWidth = 9;
-  ctx.strokeRect(14, 14, W - 28, H - 28);
-  // Checkered-flag caps at each end (two columns, inset within the frame).
-  const sq = 21, cols = 2, top = 26, rows = Math.floor((H - 52) / sq);
-  for (const x0 of [26, W - 26 - sq * cols]) {
-    for (let r = 0; r < rows; r++) {
-      for (let cc = 0; cc < cols; cc++) {
-        ctx.fillStyle = (r + cc) % 2 ? "#15110d" : "#f3f0e6";
-        ctx.fillRect(x0 + cc * sq, top + r * sq, sq, sq);
-      }
-    }
-  }
-  // Slogan with paw accents, centred. Auto-shrink so long slogans stay clear of
-  // the checkered caps instead of colliding with them.
-  ctx.fillStyle = d.fg;
-  ctx.textAlign = "center"; ctx.textBaseline = "middle";
-  const label = `🐾  ${d.text}  🐾`;
-  let fs = 96;
-  ctx.font = `bold ${fs}px system-ui, Arial, sans-serif`;
-  while (fs > 44 && ctx.measureText(label).width > W - 200) {
-    fs -= 4; ctx.font = `bold ${fs}px system-ui, Arial, sans-serif`;
-  }
-  ctx.fillText(label, W / 2, H / 2 + 4);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 4;
-  _bannerTexCache.set(i, t);
-  return t;
-}
+// Street-banner cloth colours: simple solid bands (no printing) — the only
+// lettered banner on the map is the start gate's "ZOOMIES GP".
+const BANNER_COLS = [0xd23b34, 0x2f6fb0, 0x3a9d4e, 0xe0a73a];
 
-// One street banner: two ground poles, a top + bottom bar holding a taut printed
-// banner between them (with a gentle billow), spanning across the road.
+// One street banner: two ground poles, a top + bottom bar holding a taut SKINNY
+// plain band between them (with a gentle billow), spanning across the road.
 function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, texIndex) {
   const off = track.halfWidth + 3;
-  const topY = p.y + 9.6, botY = p.y + 6.2;        // banner band clears the karts below
+  const topY = p.y + 8.9, botY = p.y + 7.7;        // a slim band, well clear of the karts below
   const bannerW = off * 2 - 1.4, bannerH = topY - botY;
   const midY = (topY + botY) / 2;
   // Poles (grounded on the real terrain, each side), with a small cap.
@@ -1612,7 +2063,8 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat
     bar.layers.set(1);
     scene.add(bargrp);
   }
-  // The taut banner: a segmented plane with a gentle billow baked in.
+  // The taut band: a segmented plane with a gentle billow baked in. Plain solid
+  // cloth — no printing — so it reads as simple trackside dressing.
   const geo = new THREE.PlaneGeometry(bannerW, bannerH, 24, 1);
   const pos = geo.attributes.position;
   for (let v = 0; v < pos.count; v++) {
@@ -1622,12 +2074,9 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat
   geo.computeVertexNormals();
   const banner = new THREE.Mesh(
     geo,
-    new THREE.MeshStandardMaterial({ map: makeBannerTexture(texIndex), roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
+    new THREE.MeshStandardMaterial({ color: BANNER_COLS[texIndex % BANNER_COLS.length], roughness: 0.95, metalness: 0, side: THREE.DoubleSide })
   );
   banner.position.set(p.x, midY, p.z);
-  // Face the readable side at oncoming traffic: the plane's front (+Z) sits along
-  // the tangent (the way you drive), so without the flip you'd approach its BACK
-  // and read the text mirrored. +π turns the readable face toward the racers.
   banner.rotation.y = yaw + Math.PI;
   banner.castShadow = true;
   banner.layers.set(1);
@@ -1652,9 +2101,14 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   };
 
   // --- Printed street banners (2) ---
+  // Nudged along the lap if their spot lands inside a set piece that carries
+  // its own overhead structure (a banner inside the tunnel clips the tube).
   [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
-    const { p, sx, sz, yaw } = spanAt(frac);
-    addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_DESIGNS.length) | 0));
+    let sp = spanAt(frac);
+    for (let n = 0; n < 6 && featureSpanBlock(track.features, sp.p.x, sp.p.z); n++) sp = spanAt(frac + 0.04 * (n + 1));
+    if (featureSpanBlock(track.features, sp.p.x, sp.p.z)) return;
+    const { p, sx, sz, yaw } = sp;
+    addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_COLS.length) | 0));
   });
 
   // --- Wooden walking footbridges spanning the road ---
@@ -1692,6 +2146,7 @@ function pickFootbridgeSpans(track, heightAt, count) {
     const lx = p.x + sx * reach, lz = p.z + sz * reach; // left landing
     const rx = p.x - sx * reach, rz = p.z - sz * reach; // right landing
     if (_inLake(lx, lz) || _inLake(rx, rz)) continue; // a post would stand in the lake
+    if (featureSpanBlock(track.features, p.x, p.z)) continue; // tunnel/deck runs span themselves
     // Avoid a sharp corner — the straight deck would cut the barrier on a tight bend.
     const t1 = track._tans[(i + 6) % N];
     const turn = Math.abs(Math.atan2(t1.x, t1.z) - Math.atan2(t.x, t.z));
@@ -1902,6 +2357,7 @@ function buildForests(scene, track, heightAt) {
   const halfW = track.halfWidth;
   const up = new THREE.Vector3(0, 1, 0);
   const spots = [];
+  const giants = []; // the giant-forest set piece: fewer, MUCH bigger trees
   for (let i = 0; i < N; i += 2) {
     const p = track._pts[i];
     const here = biomeAt(p.x, p.z);
@@ -1910,68 +2366,31 @@ function buildForests(scene, track, heightAt) {
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     for (let r = 0; r < reps; r++) {
       const dir = rand() < 0.5 ? 1 : -1;
-      const dist = halfW + 5 + rand() * 115;
+      const dist = halfW + 8 + rand() * 112;
       const x = p.x + side.x * dir * dist + (rand() - 0.5) * 9;
       const z = p.z + side.z * dir * dist + (rand() - 0.5) * 9;
-      if (track.distanceToCenter(x, z) < halfW + 4) continue;
+      // Guard on the tree CENTRE, with headroom for the canopy (up to ~5.6 radius)
+      // so a pine's foliage never leans out over the tarmac/barrier.
+      if (track.distanceToCenter(x, z) < halfW + 7) continue;
       if (_inLake(x, z)) continue;
+      if (featureTreeBlock(track.features, x, z)) continue; // bare canyon walls
       const b = biomeAt(x, z);
       if (b.style !== "pine") continue;
+      // Inside the giant-forest run the woods swap for towering specimens:
+      // thinner on the ground (giants need room) and pushed a bit further off
+      // the verge so their huge canopies still clear the road.
+      const boost = giantTreeBoost(track.features, x, z);
+      if (boost > 0.35) {
+        if (rand() < 0.6) continue; // sparser
+        if (track.distanceToCenter(x, z) < halfW + 17) continue; // canopy headroom
+        giants.push({ x, z, y: heightAt(x, z), b });
+        continue;
+      }
       spots.push({ x, z, y: heightAt(x, z), b });
     }
   }
   if (spots.length) buildShapedTrees(scene, spots, 1.45); // taller, fuller forest trees
-}
-
-// A craggy cliff face to drive alongside: rows of big rock chunks stacked up
-// the outer hillside over one stretch of track.
-function buildCliffs(scene, track, heightAt) {
-  const up = new THREE.Vector3(0, 1, 0);
-  const ranges = [[0.55, 0.67]]; // one cliff stretch on the outer side
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const s = new THREE.Vector3();
-  const pv = new THREE.Vector3();
-  const col = new THREE.Color();
-  const chunks = [];
-  for (const [t0, t1] of ranges) {
-    const i0 = Math.floor(t0 * track.samples);
-    const i1 = Math.floor(t1 * track.samples);
-    for (let i = i0; i <= i1; i += 2) {
-      const p = track._pts[i];
-      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-      for (let row = 0; row < 3; row++) {
-        // Keep the base row well clear of the tarmac (chunks are ~sx wide, so
-        // start far enough out that they don't spill onto the road).
-        const off = track.halfWidth + 15 + row * 8 + rand() * 3;
-        const x = p.x + side.x * outward * off;
-        const z = p.z + side.z * outward * off;
-        // Skip chunks that a fold in the loop has brought back over the road.
-        if (track.distanceToCenter(x, z) < track.halfWidth + 11) continue;
-        chunks.push({ x, z, base: heightAt(x, z), h: 14 + row * 11 + rand() * 10 });
-      }
-    }
-  }
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8076, roughness: 1 });
-  const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
-  mesh.castShadow = true;
-  chunks.forEach((c, i) => {
-    const sy = c.h / 2;
-    const sx = 3 + rand() * 3.5;
-    const sz = 3 + rand() * 3.5;
-    q.setFromEuler(new THREE.Euler(rand() * 0.5, rand() * Math.PI, rand() * 0.5));
-    pv.set(c.x, c.base + sy * 0.45, c.z);
-    s.set(sx, sy, sz);
-    m.compose(pv, q, s);
-    mesh.setMatrixAt(i, m);
-    mesh.setColorAt(i, col.setHSL(0.09, 0.12, 0.42 + rand() * 0.12));
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.layers.set(1);
-  scene.add(mesh);
+  if (giants.length) buildShapedTrees(scene, giants, 3.2); // the giant-forest run
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
@@ -2081,13 +2500,29 @@ function buildRoadside(scene, track, heightAt) {
     const z = p.z + side.z * dir * dist;
     if (track.distanceToCenter(x, z) < halfW + 4) return;
     if (_inLake(x, z)) return;
+    if (featureKeepClear(track.features, x, z)) return; // set pieces keep their corridor clear
+    // Sample the footprint, not just the centre: on a slope the prop sits at
+    // the LOW corner (sunk in, never hovering), and genuinely steep ground —
+    // canyon walls, river banks, cliff edges — gets no structure at all
+    // (that's what left houses floating off ledges).
+    const y0 = heightAt(x, z);
+    const y1 = heightAt(x + 4, z), y2 = heightAt(x - 4, z);
+    const y3 = heightAt(x, z + 4), y4 = heightAt(x, z - 4);
+    const lo = Math.min(y0, y1, y2, y3, y4);
+    const hi = Math.max(y0, y1, y2, y3, y4);
+    if (hi - lo > 4.2) return; // too steep to build on
     const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
-    prop.position.set(x, heightAt(x, z), z);
+    prop.position.set(x, lo + 0.04, z);
     prop.rotation.y = faceRoad
       ? Math.atan2(-side.x * dir, -side.z * dir) + (rand() - 0.5) * 0.4
       : rand() * Math.PI * 2;
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
+    // Anything that never moves is merged by batchStaticProps() after placement
+    // (a bench/fence/bush is 2-6 meshes each — hundreds of draw calls that all
+    // collapse into a few per area). Animated props (wandering animals, spinning
+    // windmill sails) keep their own meshes.
+    if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
     if (prop.userData.wander && _critters.length < 48) {
       _critters.push({
@@ -2114,17 +2549,28 @@ function buildRoadside(scene, track, heightAt) {
     const p = pts[i];
     const side = new THREE.Vector3().crossVectors(tans[i], up).normalize();
 
+    // Decide "is this a CITY stretch" from the ROAD point, not each offset
+    // placement — biomeAt flips to the neighbour right at a wedge seam, which is
+    // what let a rural house appear at the city's edge. Keyed off the road point,
+    // a whole city stretch stays consistently urban.
+    const roadCity = biomeAt(p.x, p.z).name === "city";
+    // City buildings: mostly towers with some low storefronts for ground-level life.
+    const cityFront = () => (rand() < 0.4 ? makeCityStore() : makeTower(density));
+    const cityRow = () => (rand() < 0.22 ? makeCityStore() : makeTower(density));
     for (const dir of [1, -1]) {
       if (town) {
-        // Front shops right by the road.
+        // Front structures by the road. City stretches get towers + storefronts;
+        // every other biome gets the small-town building. Placed at halfW+9.. (not
+        // +5): a town building's overhanging pyramid roof reaches ~6.65 back toward
+        // the road, so the old +5 let roof corners hang over the tarmac. +9 clears it.
         if (rand() < 0.62 + density * 0.32)
-          place((b) => makeTownStructure(density, b), halfW + 5 + rand() * 2.5, dir, p, side, true);
-        // Several rows of houses stacking back up the hillside, thinning with
-        // depth so the town recedes into the hills instead of being a thin strip.
+          place((b) => (roadCity ? cityFront() : makeTownStructure(density, b)), halfW + 9 + rand() * 3, dir, p, side, true);
+        // Several rows stacking back from the road, thinning with depth so the town
+        // (or skyline) recedes into the distance instead of being a thin strip.
         const rows = [13, 24, 36, 50, 66];
         for (let r = 0; r < rows.length; r++) {
           if (rand() < (0.52 + density * 0.4) * (1 - r * 0.15))
-            place((b) => makeBuilding(density, b), halfW + rows[r] + rand() * 7, dir, p, side, true);
+            place((b) => (roadCity ? cityRow() : makeBuilding(density, b)), halfW + rows[r] + rand() * 7, dir, p, side, true);
         }
         if (rand() < 0.5)
           place(makeStreetProp, halfW + 3.2 + rand() * 1.4, dir, p, side, true);
@@ -2156,13 +2602,17 @@ function windowTexture() {
   for (let r = 0; r < rows; r++) {
     for (let col = 0; col < cols; col++) {
       const lit = rand();
-      const v = lit < 0.5 ? Math.floor(150 + rand() * 105) : 22;
-      ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.82)},${Math.floor(v * 0.45)})`;
+      // Gentler contrast than before (lit windows were up to 255 on near-black):
+      // a softer warm glow on a dim panel reads as clean cel facades instead of a
+      // harsh grid that shimmers into noise when the frame minifies at distance.
+      const v = lit < 0.5 ? Math.floor(120 + rand() * 55) : 40;
+      ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.84)},${Math.floor(v * 0.55)})`;
       ctx.fillRect(8 + col * 18, 7 + r * 18, 11, 12);
     }
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8; // filter the window grid smoothly at grazing angles / distance (was aliasing into noise)
   return (_windowTex = t);
 }
 
@@ -2198,7 +2648,7 @@ function bodyMaterial(wall) {
     roughness: 0.94,
     emissive: 0xffcf86,
     emissiveMap: windowTexture(),
-    emissiveIntensity: 0.5,
+    emissiveIntensity: 0.32,
   });
 }
 
@@ -2284,6 +2734,86 @@ function makeBuilding(density, biome) {
   return g;
 }
 
+// A downtown TOWER for the city biome: a tall glass-and-concrete high-rise with
+// horizontal floor bands, a parapet, and a rooftop unit/antenna. Same 2-mesh
+// (body + solid) structure as makeBuilding so batchBuildings() merges it too.
+const CITY_WALLS = [0x8b93a0, 0x9aa6b2, 0x76808c, 0xa7b0bc, 0x6f7b88, 0xaeb6c0, 0x8090a8];
+const CITY_TRIM = [0x3a4048, 0x2b2f36, 0x4a5058];
+function makeTower(density) {
+  const g = new THREE.Group();
+  const w = 5 + rand() * 4.5;
+  const d = 5 + rand() * 4.5;
+  const floors = 4 + Math.floor(rand() * (4 + density * 6)); // ~4..14 storeys
+  const fh = 2.8;
+  const h = floors * fh;
+  const base = 0.4;
+  const top = base + h;
+  const wall = pick(CITY_WALLS);
+  const trim = pick(CITY_TRIM);
+  const body = new THREE.Mesh(roundedColumn(w, h, d, 0.5).translate(0, base + h / 2, 0), bodyMaterial(wall));
+  body.castShadow = true;
+  body.receiveShadow = true;
+  body.userData.bodyWall = wall; // batchBuildings() bakes this into vertex colour
+  g.add(body);
+
+  const parts = [];
+  part(parts, new THREE.BoxGeometry(w + 0.4, base, d + 0.4).translate(0, base / 2, 0), 0x40454d); // plinth
+  for (let f = 1; f < floors; f++) {
+    part(parts, new THREE.BoxGeometry(w + 0.08, 0.14, d + 0.08).translate(0, base + f * fh, 0), trim); // floor spandrel band
+  }
+  part(parts, new THREE.BoxGeometry(w + 0.2, 0.5, d + 0.2).translate(0, top + 0.25, 0), trim); // roof parapet
+  part(parts, new THREE.BoxGeometry(w * 0.42, 1.0, d * 0.42).translate((rand() - 0.5) * w * 0.3, top + 0.9, (rand() - 0.5) * d * 0.3), 0x555b63); // rooftop unit
+  if (rand() < 0.5) part(parts, new THREE.CylinderGeometry(0.06, 0.06, 2.6, 5).translate(w * 0.22, top + 1.7, d * 0.2), 0x2a2a2a); // antenna
+  const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.castShadow = true;
+  solid.receiveShadow = true;
+  g.add(solid);
+  g.userData.isBuilding = true;
+  return g;
+}
+
+// A low CITY storefront: a flat-roofed 1-2 storey shop with a glass storefront,
+// a coloured awning and a rooftop sign — mixed in with the towers so the city
+// has ground-level street life, not just a wall of high-rises. Same 2-mesh
+// structure as the other buildings so batchBuildings() merges it.
+const STORE_WALLS = [0xb8837a, 0x8a9db0, 0xc2a86a, 0x9a8f86, 0xa86b6b, 0x7d95a0, 0xcabf9a];
+const STORE_ACCENT = [0xd0503a, 0x3a86c8, 0x2ea86a, 0xe0a52a, 0xc44a8a, 0x39434f];
+function makeCityStore() {
+  const g = new THREE.Group();
+  const w = 7 + rand() * 5;
+  const d = 6 + rand() * 3;
+  const floors = rand() < 0.4 ? 2 : 1;
+  const fh = 3.0;
+  const h = floors * fh + 0.6; // taller ground floor for the storefront
+  const base = 0.3;
+  const top = base + h;
+  const wall = pick(STORE_WALLS);
+  const trim = pick(CITY_TRIM);
+  const accent = pick(STORE_ACCENT);
+  const body = new THREE.Mesh(roundedColumn(w, h, d, 0.4).translate(0, base + h / 2, 0), bodyMaterial(wall));
+  body.castShadow = true;
+  body.receiveShadow = true;
+  body.userData.bodyWall = wall;
+  g.add(body);
+
+  const parts = [];
+  part(parts, new THREE.BoxGeometry(w + 0.4, base, d + 0.4).translate(0, base / 2, 0), 0x40454d); // plinth
+  part(parts, new THREE.BoxGeometry(w * 0.86, 2.0, 0.22).translate(0, base + 1.2, d / 2 + 0.05), 0x2a3038); // dark glass storefront
+  const awn = new THREE.BoxGeometry(w * 0.9, 0.24, 1.4);
+  awn.rotateX(-0.22);
+  awn.translate(0, base + 2.5, d / 2 + 0.72);
+  part(parts, awn, accent); // awning
+  part(parts, new THREE.BoxGeometry(w + 0.2, 0.5, d + 0.2).translate(0, top + 0.25, 0), trim); // flat-roof parapet
+  part(parts, new THREE.BoxGeometry(w * 0.5, 0.9, 0.28).translate(0, top + 0.85, d / 2 - 0.2), accent); // rooftop sign
+  if (floors === 2) part(parts, new THREE.BoxGeometry(w + 0.08, 0.14, d + 0.08).translate(0, base + fh + 0.6, 0), trim); // floor band
+  const solid = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  solid.castShadow = true;
+  solid.receiveShadow = true;
+  g.add(solid);
+  g.userData.isBuilding = true;
+  return g;
+}
+
 // Shared material for all merged building BODIES: wall colour comes from baked
 // vertex colours (so every wall tint merges into one mesh) while the lit-window
 // emissive map still reads per-facade via UVs.
@@ -2295,7 +2825,7 @@ function bodyMergeMaterial() {
     roughness: 0.94,
     emissive: 0xffcf86,
     emissiveMap: windowTexture(),
-    emissiveIntensity: 0.5,
+    emissiveIntensity: 0.32,
   });
   return _bodyMergeMat;
 }
@@ -2372,6 +2902,81 @@ function batchBuildings(scene) {
   }
 }
 
+// Merge the static street/farm props (benches, fences, bushes, planters, market
+// stalls, signs, hay bales…) the way batchBuildings merges houses. Each prop is
+// 2-6 little meshes; a town sightline used to submit HUNDREDS of them as
+// individual draw calls. Props share no material INSTANCES (mat() mints one per
+// call), so meshes are grouped by a key of the material's properties and merged
+// per 150u chunk — one draw call per (chunk, look) instead of one per plank.
+function batchStaticProps(scene) {
+  scene.updateMatrixWorld(true);
+  const groups = [];
+  scene.traverse((o) => { if (o.userData && o.userData.staticProp) groups.push(o); });
+  if (!groups.length) return;
+  const CHUNK = 150; // world units per merge bucket (coarse culling granularity)
+  const buckets = new Map();
+  const keep = []; // meshes that can't merge (textured/exotic) — reparent, don't drop
+  const _underLive = (o, root) => {
+    for (let p = o; p && p !== root.parent; p = p.parent) if (p.userData.keepLive) return true;
+    return false;
+  };
+  for (const g of groups) {
+    const bKey = Math.round(g.position.x / CHUNK) + "_" + Math.round(g.position.z / CHUNK);
+    let bucket = buckets.get(bKey);
+    if (!bucket) buckets.set(bKey, (bucket = new Map()));
+    g.traverse((o) => {
+      // keepLive subtrees (a windmill's spinning sail hub) stay animated — the
+      // whole subtree is re-attached to the scene before the group is removed.
+      if (o.userData.keepLive) { keep.push(o); return; }
+      if (!o.isMesh || _underLive(o, g)) return;
+      const m = o.material;
+      // Only plain, un-textured standard materials merge safely; anything else
+      // (maps, node materials, arrays) survives as its own mesh.
+      if (!m || Array.isArray(m) || !m.isMeshStandardMaterial || m.map || m.transparent) {
+        keep.push(o);
+        return;
+      }
+      const mKey = `${m.color.getHexString()}|${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}`;
+      let entry = bucket.get(mKey);
+      if (!entry) bucket.set(mKey, (entry = { material: m, geos: [] }));
+      let geo = o.geometry.clone();
+      geo.applyMatrix4(o.matrixWorld); // bake world transform
+      if (geo.index) geo = geo.toNonIndexed(); // mergeGeometries can't mix indexed/non
+      for (const a of Object.keys(geo.attributes)) {
+        if (a !== "position" && a !== "normal" && a !== "uv") geo.deleteAttribute(a);
+      }
+      entry.geos.push(geo);
+    });
+  }
+  for (const o of keep) scene.attach(o); // preserve world transform outside the doomed group
+  // Materials are minted per call by mat(); each look keeps ONE representative
+  // (referenced by the merged mesh below) and the duplicates are disposed.
+  const heldMats = new Set();
+  for (const bucket of buckets.values()) for (const e of bucket.values()) heldMats.add(e.material);
+  for (const g of groups) {
+    g.parent && g.parent.remove(g);
+    g.traverse((o) => {
+      if (o.isMesh) {
+        o.geometry.dispose();
+        if (!heldMats.has(o.material)) o.material.dispose?.();
+      }
+    });
+  }
+  for (const bucket of buckets.values()) {
+    for (const { material, geos } of bucket.values()) {
+      if (!geos.length) continue;
+      const merged = mergeGeometries(geos, false);
+      geos.forEach((gg) => gg.dispose());
+      if (!merged) continue;
+      const mesh = new THREE.Mesh(merged, material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.layers.set(1); // match the originals (scenery layer, out of the mirror)
+      scene.add(mesh);
+    }
+  }
+}
+
 // Pick a town structure — mostly houses, occasionally a landmark.
 function makeTownStructure(density, biome) {
   const r = rand();
@@ -2422,18 +3027,19 @@ function makeWindmill() {
   part(parts, new THREE.CylinderGeometry(1.1, 1.8, tH, 10).translate(0, tH / 2, 0), 0xe6dcc6);
   part(parts, new THREE.ConeGeometry(1.6, 1.6, 10).translate(0, tH + 0.8, 0), 0x7a4a36);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  // sails — a cross of blades at the front that actually turns in the wind
+  // sails — a cross of blades at the front that actually turns in the wind. The
+  // four blades spin as ONE unit, so they bake into a single mesh on the hub
+  // (1 draw instead of 4); the hub is tagged keepLive so the static-prop batch
+  // merges the tower but leaves the spinning sails their own subtree.
   const sailMat = mat(0xf4efe2);
   const hub = new THREE.Group();
   hub.position.set(0, tH, 1.7);
+  const bladeGeos = [];
   for (let i = 0; i < 4; i++) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4, 0.1), sailMat);
-    blade.position.y = 2;
-    const arm = new THREE.Group();
-    arm.add(blade);
-    arm.rotation.z = (i / 4) * Math.PI * 2;
-    hub.add(arm);
+    bladeGeos.push(new THREE.BoxGeometry(0.5, 4, 0.1).translate(0, 2, 0).rotateZ((i / 4) * Math.PI * 2));
   }
+  hub.add(new THREE.Mesh(mergeGeometries(bladeGeos), sailMat));
+  hub.userData.keepLive = true;
   g.add(hub);
   _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28 });
   return g;
@@ -2568,6 +3174,36 @@ function makeFarmProp(biome) {
     if (r < 0.93) return makeWindmill();
     return makeSilo();
   }
+  // Biome-appropriate wildlife + dressing.
+  if (b.name === "beach") {
+    // Seaside: crabs and gulls on the sand, parasols, driftwood rocks + palms.
+    if (r < 0.24) return makeCrab();
+    if (r < 0.44) return makeGull();
+    if (r < 0.60) return makeParasol();
+    if (r < 0.74) return makeTree(b); // a stray palm
+    if (r < 0.88) return makeRockProp();
+    return makeBush();
+  }
+  if (b.name === "forest" || b.name === "alpine" || b.name === "tundra") {
+    // Woodland: deer among the trees, rocks, rustic fences.
+    if (r < 0.26) return makeDeer();
+    if (r < 0.46) return makeTree(b);
+    if (r < 0.60) return makeBush();
+    if (r < 0.74) return makeRockProp();
+    if (r < 0.88) return makeFence(0x6b4a2b);
+    return makeHayBale();
+  }
+  if (b.name === "city") {
+    // Downtown verge: urban street furniture, not grey trees or livestock. (A
+    // makeTree here rendered a GREY lollipop because the city foliage HSL is
+    // desaturated — replaced with planters/benches/hydrants/signs.)
+    if (r < 0.32) return makePlanter();
+    if (r < 0.52) return makeBench();
+    if (r < 0.70) return makeHydrant();
+    if (r < 0.85) return makeSign();
+    return makeBush();
+  }
+  // Pastoral (meadow / autumn / blossom / savanna): cows, sheep, farm buildings.
   if (r < 0.24) return makeTree(b);
   if (r < 0.4) return makeBush();
   if (r < 0.5) return makeCow();
@@ -2700,48 +3336,143 @@ function makeBush() {
 }
 
 function makeCow() {
+  // The whole cow wanders as a unit, so its parts are rigid relative to each
+  // other — bake them into ONE multi-material mesh (2 draws) instead of 7 meshes.
   const g = new THREE.Group();
   const white = mat(0xf2f2f2);
   const dark = mat(0x3a2f2a);
+  const parts = [];
   const body = new THREE.Mesh(rbox(3, 1.6, 1.5, 0.45), white);
   body.position.y = 1.5;
-  body.castShadow = true;
-  g.add(body);
+  parts.push(body);
   const patch = new THREE.Mesh(rbox(1.1, 1.62, 1.0, 0.3), dark);
   patch.position.set(0.6, 1.5, 0);
-  g.add(patch);
+  parts.push(patch);
   const head = new THREE.Mesh(rbox(0.9, 0.9, 0.9, 0.28), white);
   head.position.set(-1.7, 1.7, 0);
-  g.add(head);
+  parts.push(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const leg = new THREE.Mesh(rbox(0.3, 1.5, 0.3, 0.12), dark);
       leg.position.set(sx * 1.1, 0.75, sz * 0.5);
-      g.add(leg);
+      parts.push(leg);
     }
+  g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 4, speed: 1.1, bob: 0.06 }; // cows graze slowly
   return g;
 }
 
 function makeSheep() {
+  // Rigid like the cow: one multi-material mesh (2 draws) instead of 6 meshes.
   const g = new THREE.Group();
   const wool = mat(0xf6f4ef, { flatShading: true });
   const dark = mat(0x2b2b2b);
+  const parts = [];
   const body = new THREE.Mesh(new THREE.IcosahedronGeometry(1.1, 0), wool);
   body.position.y = 1.4;
   body.scale.set(1.3, 1, 1);
-  body.castShadow = true;
-  g.add(body);
+  parts.push(body);
   const head = new THREE.Mesh(rbox(0.7, 0.7, 0.6, 0.22), dark);
   head.position.set(-1.4, 1.5, 0);
-  g.add(head);
+  parts.push(head);
   for (const sx of [-1, 1])
     for (const sz of [-1, 1]) {
       const leg = new THREE.Mesh(rbox(0.22, 1.1, 0.22, 0.09), dark);
       leg.position.set(sx * 0.7, 0.55, sz * 0.45);
-      g.add(leg);
+      parts.push(leg);
     }
+  g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 5, speed: 1.6, bob: 0.16 }; // sheep bounce more
+  return g;
+}
+
+// A deer for the woodland biomes (forest / alpine / tundra): tan body on tall
+// legs, a raised head, and a small fork of antlers.
+function makeDeer() {
+  const g = new THREE.Group();
+  const tan = mat(0x9c6a3c);
+  const dark = mat(0x5a3a22);
+  const parts = [];
+  const body = new THREE.Mesh(rbox(2.2, 1.2, 1.0, 0.4), tan);
+  body.position.y = 1.7; parts.push(body);
+  const neck = new THREE.Mesh(rbox(0.5, 1.1, 0.5, 0.2), tan);
+  neck.position.set(-1.05, 2.15, 0); neck.rotation.z = 0.5; parts.push(neck);
+  const head = new THREE.Mesh(rbox(0.8, 0.55, 0.5, 0.2), tan);
+  head.position.set(-1.55, 2.7, 0); parts.push(head);
+  for (const sx of [-1, 1]) { // antler forks
+    const a = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 0.6, 4), dark);
+    a.position.set(-1.6, 3.1, sx * 0.14); a.rotation.z = 0.3; parts.push(a);
+    const a2 = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.3, 4), dark);
+    a2.position.set(-1.72, 3.35, sx * 0.22); a2.rotation.z = 0.9; parts.push(a2);
+  }
+  for (const sx of [-1, 1])
+    for (const sz of [-1, 1]) {
+      const leg = new THREE.Mesh(rbox(0.22, 1.5, 0.22, 0.09), dark);
+      leg.position.set(sx * 0.8, 0.75, sz * 0.35); parts.push(leg);
+    }
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  g.userData.wander = { range: 6, speed: 2.2, bob: 0.12 }; // deer step lightly
+  return g;
+}
+
+// A little crab for the beach: a wide flat shell, two eyestalks, two claws, that
+// scuttles quickly in short hops.
+function makeCrab() {
+  const g = new THREE.Group();
+  const shell = mat(0xe0663a, { flatShading: true });
+  const parts = [];
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 6), shell);
+  body.scale.set(1.5, 0.6, 1.1); body.position.y = 0.35; parts.push(body);
+  for (const sx of [-1, 1]) {
+    const stalk = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.28, 4), shell);
+    stalk.position.set(sx * 0.18, 0.62, 0.3); parts.push(stalk);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 6), mat(0x1a1a1a));
+    eye.position.set(sx * 0.18, 0.78, 0.3); parts.push(eye);
+    const claw = new THREE.Mesh(rbox(0.34, 0.24, 0.2, 0.08), shell);
+    claw.position.set(sx * 0.82, 0.32, 0.1); parts.push(claw);
+    for (let l = 0; l < 3; l++) { // walking legs
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.4, 4), shell);
+      leg.position.set(sx * 0.6, 0.18, -0.1 - l * 0.18); leg.rotation.z = sx * 0.9; parts.push(leg);
+    }
+  }
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  g.scale.setScalar(1.1);
+  g.userData.wander = { range: 3.5, speed: 3.2, bob: 0.02 }; // scuttles fast, low
+  return g;
+}
+
+// A seaside gull that struts along the sand: white body, grey back, orange beak.
+function makeGull() {
+  const g = new THREE.Group();
+  const white = mat(0xf4f6f8);
+  const grey = mat(0x9aa4ac);
+  const parts = [];
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), white);
+  body.scale.set(1, 0.9, 1.5); body.position.y = 0.7; parts.push(body);
+  const back = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), grey);
+  back.scale.set(1, 0.5, 1.4); back.position.set(0, 0.86, -0.1); parts.push(back);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), white);
+  head.position.set(0, 1.05, 0.42); parts.push(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 5), mat(0xe0a52a));
+  beak.rotation.x = Math.PI / 2; beak.position.set(0, 1.02, 0.68); parts.push(beak);
+  for (const sx of [-1, 1]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.44, 4), mat(0xe0a52a));
+    leg.position.set(sx * 0.12, 0.26, 0.1); parts.push(leg);
+  }
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  g.userData.wander = { range: 4, speed: 2.0, bob: 0.05 };
+  return g;
+}
+
+// A beach parasol (static prop): a pole and a tilted candy-striped canopy.
+const PARASOL_COLS = [0xe0533a, 0x3a86c8, 0x2ea86a, 0xe0a52a, 0xd05a9a];
+function makeParasol() {
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.2, 6), mat(0xf0ead8));
+  pole.position.y = 1.6; g.add(pole);
+  const canopy = new THREE.Mesh(new THREE.ConeGeometry(1.7, 0.9, 10), mat(pick(PARASOL_COLS), { side: THREE.DoubleSide, flatShading: true }));
+  canopy.position.y = 3.2; canopy.rotation.z = 0.18; canopy.castShadow = true;
+  g.add(canopy);
   return g;
 }
 
@@ -2787,17 +3518,27 @@ function buildLandmarks(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
   makers.forEach((make, k) => {
-    const i = Math.floor(((k + 0.5) / makers.length) * N) % N;
-    const p = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    // Outward = the side that points away from the world centre (the infield).
-    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-    const dist = 78 + rand() * 30;
-    const x = p.x + side.x * outward * dist;
-    const z = p.z + side.z * outward * dist;
+    // Landmarks are LARGE (castle/ferris wheel footprints reach ~15-20u), so the
+    // outward offset from one road point can, on a curvy/folded loop, land the
+    // structure near a DIFFERENT road segment. Search out from the nominal spot,
+    // pushing further each attempt, until the position clears every road segment
+    // by a wide margin (distanceToCenter ≥ 45) so it never intrudes on the track.
+    let x = 0, z = 0, fx = 0, fz = 0, ok = false;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const i = Math.floor(((((k + 0.5) / makers.length) + attempt * 0.045) % 1) * N);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const dist = 82 + rand() * 28 + attempt * 6; // push further out each retry
+      const cx = p.x + side.x * outward * dist;
+      const cz = p.z + side.z * outward * dist;
+      if (track.distanceToCenter(cx, cz) < 45 || _inLake(cx, cz)) continue;
+      x = cx; z = cz; fx = p.x; fz = p.z; ok = true; break;
+    }
+    if (!ok) return; // no clear spot on this map layout — skip rather than intrude
     const obj = make();
     obj.position.set(x, heightAt(x, z), z);
-    obj.rotation.y = Math.atan2(p.x - x, p.z - z); // face back toward the road
+    obj.rotation.y = Math.atan2(fx - x, fz - z); // face back toward the road
     scene.add(obj);
   });
 }
@@ -3017,10 +3758,15 @@ function makeBigWindmill() {
 }
 
 // ---- Birds ----
-// A few flocks of simple birds circling high in the sky, wings flapping.
+// A few flocks of simple birds circling high in the sky, wings flapping. All the
+// wings across every flock render as ONE InstancedMesh (they used to be ~70
+// individual meshes — always in frustum on sky-filled vistas, one draw each).
+// The flock→bird→wing-pivot group hierarchy still exists and animates exactly as
+// before, but the pivots hold invisible markers whose world matrices are copied
+// into the instance buffer after the flock update.
 function buildBirds(scene) {
   const flocks = [];
-  const birdMat = mat(0x33373d, { flatShading: true });
+  const markers = [];
   for (let f = 0; f < 6; f++) {
     const flock = new THREE.Group();
     const wings = [];
@@ -3029,11 +3775,12 @@ function buildBirds(scene) {
       const bird = new THREE.Group();
       for (const sx of [-1, 1]) {
         const wg = new THREE.Group();
-        const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat);
-        wing.position.x = sx * 1.1;
-        wg.add(wing);
+        const marker = new THREE.Object3D();
+        marker.position.x = sx * 1.1;
+        wg.add(marker);
         bird.add(wg);
         wings.push({ wg, sx, phase: rand() * 6.28 });
+        markers.push(marker);
       }
       bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
       bird.scale.setScalar(0.7 + rand() * 0.6);
@@ -3051,7 +3798,20 @@ function buildBirds(scene) {
       phase: rand() * 6.28,
     });
   }
-  return flocks;
+  const birdMat = mat(0x33373d, { flatShading: true });
+  const wingMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat, markers.length);
+  wingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  wingMesh.frustumCulled = false; // flocks span the whole sky; it's 1 draw regardless
+  wingMesh.layers.set(1);
+  scene.add(wingMesh);
+  return { flocks, wingMesh, markers };
+}
+// Copy every wing marker's world matrix into the instance buffer (call after all
+// updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
+function syncBirdWings(birds) {
+  for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
+  for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
+  birds.wingMesh.instanceMatrix.needsUpdate = true;
 }
 
 function updateFlock(fl, time) {
@@ -3154,27 +3914,162 @@ function buildFireflies(scene, track, heightAt) {
   return { mesh: pts, material };
 }
 
+// A butterfly/moth or dragonfly drawn to a canvas — WHITE wings (so the
+// per-instance tint fully colours them) with a small wing spot for shape, plus a
+// dark thin body. Cached per kind.
+let _flyerTex = {};
+function flyerTexture(kind) {
+  if (_flyerTex[kind]) return _flyerTex[kind];
+  const c = document.createElement("canvas");
+  c.width = c.height = 48;
+  const ctx = c.getContext("2d");
+  if (kind === "dragonfly") {
+    ctx.fillStyle = "#ffffff";
+    for (const sx of [-1, 1]) {
+      ctx.beginPath();
+      ctx.ellipse(24 + sx * 10, 18, 13, 3.5, sx * 0.4, 0, Math.PI * 2);
+      ctx.ellipse(24 + sx * 10, 30, 12, 3, sx * -0.35, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#2a2a2a";
+    ctx.fillRect(23, 8, 2, 34);
+  } else {
+    // Two rounded wing pairs spread wide (an open-winged butterfly seen from
+    // above), each with a soft darker spot so it reads as wings, not a blob.
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.ellipse(24 + sx * 10, 17, 10, 11, sx * 0.35, 0, Math.PI * 2);
+      ctx.ellipse(24 + sx * 8, 31, 7, 8, sx * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.16)"; // faint wing marking
+      ctx.beginPath();
+      ctx.arc(24 + sx * 12, 17, 3.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#33260f"; // slim warm-dark body
+    ctx.fillRect(23, 12, 2, 23);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  return (_flyerTex[kind] = tex);
+}
+
+// Ambient flyers: butterflies over warm, vegetated verges by day; pale moths by
+// night. The ENTIRE flight — a wandering loop, a bob, and a banking flutter (the
+// sprite rocks back and forth via rotationNode, so the wings visibly flap) — runs
+// in the vertex shader off `time`, so each field is ONE draw with zero per-frame
+// CPU. Colour comes from a per-instance `aTint` attribute the shader multiplies
+// into the white wing texture (the old instanceColor path rendered them black on
+// the WebGPU sprite pipeline).
+const FLYER_PALETTES = {
+  meadow: [0xf5c542, 0xe8912b, 0xf0e0a0, 0xf07a3a],
+  blossom: [0xff9fc0, 0xffd9e6, 0xffffff, 0xf0a0d0],
+  autumn: [0xe0842a, 0xd0a53a, 0xc25a2a, 0xe8b050],
+  savanna: [0xf0e0a0, 0xe8c060, 0xfff0c0, 0xf0b040],
+  desert: [0xf0d090, 0xe8b060, 0xf5e0a0],
+  forest: null, // gets dragonflies (cool palette), handled below
+};
+const DRAGONFLY_COLS = [0x66c2e8, 0x8fd6b0, 0x9fb6ff, 0x70d0d0];
+function buildAmbientFlyers(scene, track, heightAt, litLevel) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const night = litLevel > 0.8;
+  // Two fields so butterflies and (cooler, slimmer) dragonflies read distinctly
+  // — still just 2 draws for the whole map. At night both become pale moths.
+  const build = (kind) => {
+    const isDragon = kind === "dragonfly";
+    const bases = [];
+    const tints = [];
+    const want = night ? 55 : isDragon ? 70 : 130;
+    let tries = 0;
+    const _c = new THREE.Color();
+    while (bases.length / 3 < want && tries < want * 9) {
+      tries++;
+      const i = Math.floor(rand() * N);
+      const p = track._pts[i];
+      const b = biomeAt(p.x, p.z);
+      // Dragonflies hug the wet forest; butterflies take the other warm biomes.
+      // Cold/snow biomes get neither.
+      let pal;
+      if (night) pal = [0xf2f2e6, 0xe8e8d8, 0xdedecf];
+      else if (isDragon) pal = b.name === "forest" ? DRAGONFLY_COLS : null;
+      else pal = FLYER_PALETTES[b.name];
+      if (!pal) continue;
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const dirS = rand() < 0.5 ? 1 : -1;
+      const dist = track.halfWidth + 4 + rand() * 34;
+      const x = p.x + side.x * dirS * dist + (rand() - 0.5) * 8;
+      const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 8;
+      if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue;
+      if (_inLake(x, z)) continue;
+      bases.push(x, heightAt(x, z) + 0.9 + rand() * 2.3, z);
+      _c.set(pal[(rand() * pal.length) | 0]);
+      tints.push(_c.r, _c.g, _c.b);
+    }
+    if (!bases.length) return;
+    const count = bases.length / 3;
+    const geo = new THREE.PlaneGeometry(isDragon ? 1.2 : 0.85, isDragon ? 1.2 : 0.85);
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(new Float32Array(bases), 3));
+    geo.setAttribute("aTint", new THREE.InstancedBufferAttribute(new Float32Array(tints), 3));
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+    const tex = texture(flyerTexture(kind), uv());
+    // Colour = white-wing texture × per-instance tint; shape from the texture alpha.
+    mat.colorNode = tex.mul(attribute("aTint"));
+    mat.opacityNode = tex.a.mul(night ? 0.75 : 0.96);
+    const b = attribute("aBase");
+    const ph = hash(instanceIndex).mul(6.2832);
+    const t = time.add(ph);
+    // Lazy wandering loop + a slow bob + a quick vertical wingbeat flutter.
+    const wander = vec3(
+      t.mul(0.5).sin().mul(2.3).add(t.mul(1.3).sin().mul(0.5)),
+      t.mul(1.7).sin().mul(0.34).add(t.mul(9.0).sin().mul(0.14)),
+      t.mul(0.43).cos().mul(2.3).add(t.mul(1.1).cos().mul(0.5))
+    );
+    mat.positionNode = b.add(wander);
+    // Bank/rock the whole sprite so the wings visibly flap and it never sits
+    // stiffly upright — fast rock for butterflies, a quicker shimmer for dragonflies.
+    mat.rotationNode = t.mul(isDragon ? 12 : 7).sin().mul(isDragon ? 0.3 : 0.5);
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.frustumCulled = false; // billboards are displaced in the shader
+    mesh.castShadow = false;
+    mesh.renderOrder = 3;
+    mesh.layers.set(1); // keep out of the rear-view mirror
+    scene.add(mesh);
+  };
+  build("butterfly");
+  build("dragonfly");
+}
+
 // A single grey pigeon (perched, wings foldable). Returns { group, wings }.
+let _pigeonMats = null;
 function makePigeon() {
+  // One shared material set for every pigeon (they're all the same bird) — one
+  // toon pipeline per part instead of five fresh materials per pigeon.
+  if (!_pigeonMats) {
+    _pigeonMats = {
+      body: mat(0x9aa3ad), head: mat(0xb0b8c0), beak: mat(0xe0a52a),
+      tail: mat(0x7e878f), wing: mat(0x868f98),
+    };
+  }
   const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), mat(0x9aa3ad));
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.32, 10, 8), _pigeonMats.body);
   body.scale.set(1, 0.9, 1.4);
   body.castShadow = true;
   g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), mat(0xb0b8c0));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), _pigeonMats.head);
   head.position.set(0, 0.22, 0.34);
   g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), mat(0xe0a52a));
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), _pigeonMats.beak);
   beak.rotation.x = Math.PI / 2;
   beak.position.set(0, 0.2, 0.5);
   g.add(beak);
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), mat(0x7e878f));
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), _pigeonMats.tail);
   tail.position.set(0, 0.02, -0.42);
   g.add(tail);
   const wings = [];
   for (const sx of [-1, 1]) {
     const wg = new THREE.Group();
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), mat(0x868f98));
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), _pigeonMats.wing);
     wing.position.x = sx * 0.3;
     wg.add(wing);
     wg.position.set(sx * 0.1, 0.05, 0);
@@ -3189,60 +4084,146 @@ function makePigeon() {
 function buildPigeons(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-  // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold in
-  // the loop doesn't drop this building onto a different stretch of road.
-  let bx, bz, px, pz;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    const i = Math.floor(((0.08 + attempt * 0.07) % 1) * N);
-    const p = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
-    const cx = p.x + side.x * outward * (track.halfWidth + 9);
-    const cz = p.z + side.z * outward * (track.halfWidth + 9);
-    if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 6) continue;
-    bx = cx;
-    bz = cz;
-    px = p.x; // road point the loft faces
-    pz = p.z;
-    break;
-  }
-  const by = heightAt(bx, bz);
+  const flocks = [];
+  // One loft on each half of the lap, so every race actually passes pigeons.
+  const makeLoftAt = (tStart) => {
+    // Find a roadside spot whose loft footprint clears the WHOLE track, so a fold
+    // in the loop doesn't drop this building onto a different stretch of road.
+    let bx, bz, px, pz;
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const i = Math.floor(((tStart + attempt * 0.07) % 1) * N);
+      const p = track._pts[i];
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
+      const cx = p.x + side.x * outward * (track.halfWidth + 7.5);
+      const cz = p.z + side.z * outward * (track.halfWidth + 7.5);
+      if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 5) continue;
+      bx = cx;
+      bz = cz;
+      px = p.x; // road point the loft faces
+      pz = p.z;
+      break;
+    }
+    const by = heightAt(bx, bz);
 
-  const loft = new THREE.Group();
-  const wallH = 4;
-  const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
-  body.position.y = wallH / 2;
-  body.castShadow = true;
-  loft.add(body);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
-  roof.rotation.y = Math.PI / 4;
-  roof.position.y = wallH + 1.2;
-  roof.castShadow = true;
-  loft.add(roof);
-  loft.position.set(bx, by, bz);
-  loft.rotation.y = Math.atan2(px - bx, pz - bz);
-  loft.traverse((o) => o.layers.set(1));
-  scene.add(loft);
+    const loft = new THREE.Group();
+    const wallH = 4;
+    // In the city the pigeons perch on a flat-roofed brick building with a small
+    // rooftop coop, instead of the rural cottage (a pitched-roof cottage looked
+    // out of place downtown). wallH stays 4 so the birds' perch heights are the
+    // same either way.
+    if (biomeAt(bx, bz).name === "city") {
+      const wall = pick(STORE_WALLS);
+      const body = new THREE.Mesh(roundedColumn(5.5, wallH, 5, 0.4), mat(wall));
+      body.position.y = wallH / 2;
+      body.castShadow = true;
+      loft.add(body);
+      const parapet = new THREE.Mesh(new THREE.BoxGeometry(5.7, 0.5, 5.2), mat(0x39434f));
+      parapet.position.y = wallH + 0.22;
+      parapet.castShadow = true;
+      loft.add(parapet);
+      const store = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.9, 0.14), mat(0x2a3038)); // glass storefront
+      store.position.set(0, 1.2, 5 / 2 + 0.02);
+      loft.add(store);
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(4.8, 0.2, 1.0), mat(pick(STORE_ACCENT)));
+      awning.position.set(0, 2.35, 5 / 2 + 0.4);
+      awning.rotation.x = -0.2;
+      loft.add(awning);
+      // rooftop pigeon coop
+      const coop = new THREE.Mesh(rbox(1.6, 1.0, 1.2, 0.14), mat(0x8a5a3a));
+      coop.position.set(1.3, wallH + 0.9, -0.9);
+      coop.castShadow = true;
+      loft.add(coop);
+      const coopRoof = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.16, 1.45), mat(0x5a3a22));
+      coopRoof.position.set(1.3, wallH + 1.45, -0.9);
+      loft.add(coopRoof);
+    } else {
+      const body = new THREE.Mesh(roundedColumn(5, wallH, 5, 0.6), mat(0xddc9a0));
+      body.position.y = wallH / 2;
+      body.castShadow = true;
+      loft.add(body);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.4, 4), mat(0x9c5a3a));
+      roof.rotation.y = Math.PI / 4;
+      roof.position.y = wallH + 1.2;
+      roof.castShadow = true;
+      loft.add(roof);
+    }
+    loft.position.set(bx, by, bz);
+    loft.rotation.y = Math.atan2(px - bx, pz - bz);
+    loft.traverse((o) => o.layers.set(1));
+    scene.add(loft);
 
-  const flockGroup = new THREE.Group();
-  flockGroup.position.set(bx, by, bz);
-  scene.add(flockGroup);
-  const birds = [];
-  const n = 7;
-  for (let k = 0; k < n; k++) {
-    const pg = makePigeon();
-    const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
-    pg.group.position.copy(home);
-    pg.group.rotation.y = (rand() - 0.5) * 1.2;
-    pg.group.traverse((o) => o.layers.set(1));
-    flockGroup.add(pg.group);
-    birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
-  }
-  return [{ center: new THREE.Vector3(bx, by, bz), triggerR: 14, scattered: false, timer: 0, birds }];
+    const flockGroup = new THREE.Group();
+    flockGroup.position.set(bx, by, bz);
+    scene.add(flockGroup);
+    const birds = [];
+    const n = 7;
+    for (let k = 0; k < n; k++) {
+      const pg = makePigeon();
+      const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
+      pg.group.position.copy(home);
+      pg.group.rotation.y = (rand() - 0.5) * 1.2;
+      pg.group.scale.setScalar(1.2); // a touch bigger so they read at race speed
+      pg.group.traverse((o) => o.layers.set(1));
+      flockGroup.add(pg.group);
+      for (const w of pg.wings) w.wg.rotation.z = w.sx * 0.12; // folded, so the proxy bakes the perched pose
+      birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
+    }
+    // Sleep proxy: a flock is ~42 small meshes, but it perches motionless for
+    // almost the whole race. Bake the perched pose into ONE merged mesh (one
+    // draw per shared pigeon material) and show THAT by default; the live,
+    // articulated birds only swap in when the player is close enough to see
+    // them bob / scatter (see updatePigeons). Same pattern as the leaf piles.
+    flockGroup.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(flockGroup.matrixWorld).invert();
+    const rel = new THREE.Matrix4();
+    const matOrder = [];
+    const geosByMat = new Map();
+    flockGroup.traverse((o) => {
+      if (!o.isMesh) return;
+      let g = o.geometry.clone();
+      g.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
+      if (g.index) g = g.toNonIndexed();
+      if (!geosByMat.has(o.material)) { geosByMat.set(o.material, []); matOrder.push(o.material); }
+      geosByMat.get(o.material).push(g);
+    });
+    const perMat = matOrder.map((m) => mergeGeometries(geosByMat.get(m), false));
+    const proxy = new THREE.Mesh(mergeGeometries(perMat, true), matOrder);
+    proxy.castShadow = true; // stands in for the birds in the one-shot world shadow bake
+    proxy.layers.set(1);
+    proxy.position.copy(flockGroup.position);
+    scene.add(proxy);
+    flockGroup.visible = false; // live birds start asleep behind the proxy
+    // The trigger must reach the road: the loft sits halfWidth+7.5 off the
+    // CENTERLINE, so anything under that radius could never fire from a normal
+    // racing line (the old value, 14, was why nobody ever saw them scatter).
+    // halfWidth+24 covers the full road width in front of the loft.
+    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds, group: flockGroup, proxy, liveOn: false });
+  };
+  makeLoftAt(0.08);
+  makeLoftAt(0.55);
+  return flocks;
 }
 
 function updatePigeons(flock, dt, time, playerPos) {
   if (!flock.scattered) {
+    // Perched flocks far from the player sleep as the merged proxy mesh — the
+    // 4cm idle bob is invisible from distance, and the ~42 live meshes only
+    // swap in close up (past the scatter trigger's reach, so the handoff is
+    // never visible mid-burst). A scattered flock keeps its live birds until
+    // it lands, wherever the player is.
+    let near = true;
+    if (playerPos) {
+      const dx = playerPos.x - flock.center.x;
+      const dz = playerPos.z - flock.center.z;
+      near = dx * dx + dz * dz < 60 * 60;
+    }
+    if (near !== flock.liveOn) {
+      flock.liveOn = near;
+      flock.group.visible = near;
+      flock.proxy.visible = !near;
+    }
+    if (!near) return;
     for (const b of flock.birds) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
@@ -3283,23 +4264,67 @@ function updatePigeons(flock, dt, time, playerPos) {
 }
 
 function buildBalloons(scene, heightAt) {
+  // Classic illustrated hot-air balloons: a plump teardrop envelope with
+  // alternating vertical gores, a skirt at the throat, suspension ropes and a
+  // two-tone wicker basket (was: a single-colour sphere over a floating cube).
   const balloons = [];
-  const colors = [0xff5252, 0x42a5f5, 0xffca28, 0xab47bc, 0x66bb6a];
+  const mains = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
+  const cream = new THREE.Color(0xfff3dc);
+  // Envelope profile, throat lip -> plump belly -> rounded crown.
+  const prof = [
+    [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
+    [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 });
+  const wickMat = new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 });
+  const wickRimMat = new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 });
+  const envMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }); // colours live in the vertices — one material serves the whole fleet
+  const _up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 6; i++) {
     const g = new THREE.Group();
-    const color = colors[i % colors.length];
-    const envelope = new THREE.Mesh(
-      new THREE.SphereGeometry(8, 16, 16),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
-    );
-    envelope.scale.y = 1.25;
-    envelope.position.y = 10;
+    const main = new THREE.Color(mains[i % mains.length]);
+    // Crisp gores need per-face colour: un-index the lathe and paint each
+    // triangle by its centroid's longitude — 8 panels alternating main/cream.
+    const geo = new THREE.LatheGeometry(prof, 16).toNonIndexed();
+    const pos = geo.getAttribute("position");
+    const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
+    for (let f = 0; f < pos.count; f += 3) {
+      const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
+      const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
+      const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
+      const c = panel % 2 === 0 ? main : cream;
+      colAttr.setXYZ(f, c.r, c.g, c.b);
+      colAttr.setXYZ(f + 1, c.r, c.g, c.b);
+      colAttr.setXYZ(f + 2, c.r, c.g, c.b);
+    }
+    geo.setAttribute("color", colAttr);
+    const envelope = new THREE.Mesh(geo, envMat);
+    envelope.position.y = 5.2;
     g.add(envelope);
-    const basket = new THREE.Mesh(
-      rbox(3, 3, 3, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x8d6e3a })
-    );
-    g.add(basket);
+
+    // The rigid rig under the envelope — skirt, four ropes, wicker basket with
+    // a darker woven rim — bakes into one merged mesh (one draw per material).
+    const parts = [];
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), skirtMat);
+    skirt.position.y = 4.55;
+    parts.push(skirt);
+    const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), wickMat);
+    basket.position.y = 1.2;
+    parts.push(basket);
+    const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), wickRimMat);
+    rim.position.y = 2.5;
+    parts.push(rim);
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
+      const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
+      const dir = b.clone().sub(a);
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), ropeMat);
+      rope.position.copy(a).addScaledVector(dir, 0.5);
+      rope.quaternion.setFromUnitVectors(_up, dir.normalize());
+      parts.push(rope);
+    }
+    g.add(mergeMeshes(parts));
 
     const a = rand() * Math.PI * 2;
     const r = 150 + rand() * 300;

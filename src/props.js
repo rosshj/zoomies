@@ -7,6 +7,8 @@
 // their tumble is local, so multiplayer needs no physics sync).
 import * as THREE from "three";
 import { makeRng } from "./rng.js";
+import { mergeMeshes } from "./models.js";
+import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
 
 export async function initProps(scene, track, opts = {}) {
   try {
@@ -88,16 +90,18 @@ function build(scene, track, opts) {
     return { mesh: g, rest: s / 2 };
   };
   const makeBarrel = () => {
+    // The barrel tumbles as one rigid body, so body + bands bake into a single
+    // multi-material mesh (2 draws instead of 3 meshes).
     const r = 0.7 + rand() * 0.2;
     const h = 1.9 + rand() * 0.3;
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat));
+    const parts = [new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat)];
     for (const yy of [-h * 0.3, h * 0.3]) {
       const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, h * 0.12, 12), bandMat);
       band.position.y = yy;
-      g.add(band);
+      parts.push(band);
     }
-    g.traverse((o) => (o.castShadow = true));
+    const g = new THREE.Group();
+    g.add(mergeMeshes(parts, { castShadow: true }));
     return { mesh: g, rest: h / 2 };
   };
   // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state
@@ -156,11 +160,38 @@ function build(scene, track, opts) {
     // scattered any number of times (settled leaves just get kicked up again).
     // wind* is a lingering wake the passing kart deposits (see update): it keeps
     // carrying + swirling the airborne leaves for a beat after the kart is gone.
-    leafPiles.push({ x, z, groundY, r: w, leaves, windX: 0, windZ: 0, windUp: 0, swirl: 0, windT: 0 });
+    const lp = { x, z, groundY, r: w, leaves, g, merged: null, dormant: false, windX: 0, windZ: 0, windUp: 0, swirl: 0, windT: 0 };
+    _mergePile(lp); // piles start settled — one merged mesh instead of ~15 draws
+    leafPiles.push(lp);
   };
 
-  // Seeded placement: walk the track and drop occasional clusters, mixing ON-ROAD
-  // props with ones just off the verge.
+  // Draw-call saver: a settled pile renders as ONE merged mesh (per-material
+  // groups, so ≤4 draws) instead of ~15 individual leaves. The individual leaf
+  // meshes only render while the pile is actually being kicked around; once every
+  // leaf sleeps again, the merged proxy is rebaked at the new resting pose. The
+  // sim (kick/flutter/settle in update) is untouched — this is purely how the
+  // resting state reaches the GPU.
+  const _mergePile = (lp) => {
+    if (lp.merged) {
+      lp.g.remove(lp.merged);
+      lp.merged.geometry.dispose(); // materials are the shared leafMats — keep
+    }
+    for (const lf of lp.leaves) lf.mesh.updateMatrix();
+    lp.merged = mergeMeshes(lp.leaves.map((lf) => lf.mesh), { castShadow: true });
+    lp.g.add(lp.merged);
+    for (const lf of lp.leaves) lf.mesh.visible = false;
+    lp.dormant = true;
+  };
+  const _wakePile = (lp) => {
+    if (!lp.dormant) return;
+    lp.dormant = false;
+    if (lp.merged) lp.merged.visible = false;
+    for (const lf of lp.leaves) lf.mesh.visible = true;
+  };
+
+  // Seeded placement: walk the track and drop occasional clusters. Crates and
+  // barrels are knockable gameplay props, so they ALWAYS sit on the road inside
+  // the fence; only leaf piles (ground decor) may sit just off the verge.
   const up = new THREE.Vector3(0, 1, 0);
 
   // Floating power-up boxes sit ON the racing line (a row you drive through),
@@ -185,7 +216,8 @@ function build(scene, track, opts) {
     const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize();
     const cluster = 1 + ((rand() * 3) | 0);
     const kindRoll = rand();
-    const onRoad = rand() < 0.5;
+    const isPile = kindRoll >= 0.8;
+    const onRoad = isPile ? rand() < 0.5 : true; // crates/barrels never off-road
     const dir = rand() < 0.5 ? 1 : -1;
     for (let c = 0; c < cluster && props.length + leafPiles.length < MAX; c++) {
       const lat = onRoad ? (rand() * 2 - 1) * (track.halfWidth - 3) : dir * (track.halfWidth + 3 + rand() * 7);
@@ -203,6 +235,42 @@ function build(scene, track, opts) {
   if (!props.length && !leafPiles.length) {
     scene.remove(group);
     return null;
+  }
+
+  // Soft blob shadow under EVERY crate/barrel/floating box: one InstancedMesh
+  // (a single draw call, no shadow-map cost) using the same projected blob the
+  // karts use. The blob stays glued to the ground and SHRINKS as a prop rises,
+  // which is the cue that finally sells "this box is floating" — and flung
+  // crates read as airborne on the way down too. Browser-only: the blob is a
+  // canvas texture, and the box logic also runs under plain Node in
+  // tools/items-check.mjs where there's no document.
+  const _shadowMesh = typeof document === "undefined" ? null : new THREE.InstancedMesh(
+    (() => { const g = new THREE.PlaneGeometry(1, 1); g.rotateX(-Math.PI / 2); return g; })(),
+    new THREE.MeshBasicMaterial({ map: shadowTexture(), transparent: true, depthWrite: false, toneMapped: false, opacity: 0.8 }),
+    props.length
+  );
+  if (_shadowMesh) {
+    _shadowMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    _shadowMesh.frustumCulled = false; // instances span the whole lap
+    _shadowMesh.renderOrder = 2; // over road decals (crosswalks/pads), under sprites
+    group.add(_shadowMesh);
+  }
+  const _shDummy = new THREE.Object3D();
+  function updatePropShadows() {
+    if (!_shadowMesh) return;
+    for (let i = 0; i < props.length; i++) {
+      const pr = props[i];
+      const mp = pr.mesh.position;
+      const gy = groundAt(mp.x, mp.z);
+      const h = Math.max(0, mp.y - pr.rest - gy); // clearance under the prop
+      // Footprint from the prop's size, shrinking with height (perspective cue).
+      const s = (pr.rest * 3.1) / (1 + h * 0.16);
+      _shDummy.position.set(mp.x, gy + 0.07, mp.z);
+      _shDummy.scale.setScalar(pr.mesh.visible ? s : 0.0001);
+      _shDummy.updateMatrix();
+      _shadowMesh.setMatrixAt(i, _shDummy.matrix);
+    }
+    _shadowMesh.instanceMatrix.needsUpdate = true;
   }
 
   const prevK = [];
@@ -262,8 +330,11 @@ function build(scene, track, opts) {
         pr.settle = true; // ease upright onto the road
       }
     }
-    // Bounce off the barriers: reflect the outward velocity at the road edge.
-    if (gi.dist > track.halfWidth + 1.5) {
+    // Bounce off the barriers: reflect the outward velocity at the fence and keep
+    // the WHOLE prop inside it. The fence's inner face sits at halfWidth + 0.8;
+    // rest ≈ the prop's half-extent, so this stops the body clipping through.
+    const maxD = track.halfWidth + 0.8 - pr.rest - 0.15;
+    if (gi.dist > maxD) {
       const eps = 0.6;
       const nx = track.distanceToCenter(pr.pos.x + eps, pr.pos.z) - track.distanceToCenter(pr.pos.x - eps, pr.pos.z);
       const nz = track.distanceToCenter(pr.pos.x, pr.pos.z + eps) - track.distanceToCenter(pr.pos.x, pr.pos.z - eps);
@@ -274,9 +345,11 @@ function build(scene, track, opts) {
         pr.vel.x -= 1.4 * vn * ox;
         pr.vel.z -= 1.4 * vn * oz;
       }
-      const over = Math.min(gi.dist - (track.halfWidth + 1.5), 1.5); // gentle, no teleport
-      pr.pos.x -= ox * over;
-      pr.pos.z -= oz * over;
+      // Resolve the full overshoot: dt is capped, so this is at most a few units
+      // in the frame the prop crosses the fence — never a visible teleport, and a
+      // prop can never come to rest embedded in (or beyond) the fence.
+      pr.pos.x -= ox * (gi.dist - maxD);
+      pr.pos.z -= oz * (gi.dist - maxD);
     }
     pr.mesh.position.copy(pr.pos);
     pr.mesh.quaternion.copy(pr.quat);
@@ -386,6 +459,9 @@ function build(scene, track, opts) {
       if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
     }
 
+    // Re-project every prop's blob shadow now that positions are final.
+    updatePropShadows();
+
     // Leaf piles: each leaf is its own particle. Any kart driving through kicks
     // the leaves it touches (settled ones included), so a pile can be scattered
     // over and over — no one-shot "already burst" state.
@@ -398,6 +474,7 @@ function build(scene, track, opts) {
       for (const mk of moving) {
         const reach = lp.r + 3.5;
         if (segDist2(lp.x, lp.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
+        _wakePile(lp); // swap the merged resting proxy for the live leaves
         const sp = Math.min(mk.speed, 120);
         // Refresh the wake (set, not add, so repeated frames don't run away). A
         // faster kart drags more air, lifts harder and stirs a tighter swirl.
@@ -489,6 +566,14 @@ function build(scene, track, opts) {
         lf.mesh.rotation.y += lf.spin.y * dt;
         lf.mesh.rotation.z += (lf.spin.z + Math.cos(lf.phase) * 3.0) * dt;
       }
+
+      // Fully settled again (wake gone, every leaf asleep) → rebake the merged
+      // resting proxy at the new pose and stop rendering the individual leaves.
+      if (!lp.dormant && !windOn) {
+        let allAsleep = true;
+        for (const lf of lp.leaves) if (!lf.asleep) { allAsleep = false; break; }
+        if (allAsleep) _mergePile(lp);
+      }
     }
   }
 
@@ -538,5 +623,6 @@ function build(scene, track, opts) {
 
   const groundN = props.filter((p) => p.kind === "crate" && p.mode === "ground").length + props.filter((p) => p.kind === "barrel").length;
   console.log(`[zoomies] knockable props: ${groundN} crates/barrels + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`);
-  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled };
+  // _props is a debug hook (headless placement/physics probes) — not gameplay API.
+  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled, _props: props };
 }

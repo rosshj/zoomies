@@ -1,17 +1,17 @@
 import * as THREE from "three";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt, mrt, output, metalness } from "three/tsl";
+import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
-import { ssr } from "three/addons/tsl/display/SSRNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 import { initGpuParticles } from "./gpuparticles.js";
 import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
+import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
 import { Kart, setSunShadow } from "./kart.js";
-import { setLightLevel, CAT_PATTERNS, CAT_ACCESSORIES } from "./models.js";
+import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
@@ -97,7 +97,7 @@ const KART_PRESETS = [
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
 const KART_STYLE_COUNT = 4; // GP / roadster / buggy / finned (see createKartModel STYLES)
-const DEFAULT_CUSTOM_CAT = { name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap" };
+const DEFAULT_CUSTOM_CAT = { name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap", accessoryColor: null };
 const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0 };
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
@@ -110,6 +110,8 @@ function sanitizeCustomCat(c) {
     fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
     pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
     accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
+    // null means "use the accessory's natural default colour"; otherwise a valid hex int.
+    accessoryColor: _clampColor(c.accessoryColor, null),
   };
 }
 function sanitizeCustomKart(k) {
@@ -154,10 +156,10 @@ function saveGarageConfig(c) {
 function catSpec(cfg) {
   if (cfg.cat === CUSTOM_CAT_IDX) {
     const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
-    return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory };
+    return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
   }
   const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
-  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: undefined };
+  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: undefined, accessoryColor: undefined };
 }
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {
@@ -171,7 +173,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
-  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
 }
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
@@ -228,6 +230,9 @@ let DIFFICULTY = "hard"; // default = the current tuned field
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
 const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
+// Debug hook (console / headless tooling): inspect the live scene graph and
+// renderer counters without instrumenting a build.
+window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
 // Drive renderer.info ourselves so the FPS overlay's draw-call count is the whole
 // frame's total (the post-processing graph does many sub-renders; autoReset would
 // wipe the count between them and leave only the last pass).
@@ -255,23 +260,18 @@ camera.layers.enable(2);
 // bloom node's uniforms so the existing snow-blend modulation keeps working.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
-// MRT: also render view normals + metalness so screen-space reflections (SSR) can
-// reflect the scene on metallic surfaces (the lakes — see scenery water material).
-_scenePass.setMRT(mrt({ output, normal: normalView, metalness }));
+// No MRT: the scene renders a single colour attachment (+ depth for the god
+// rays). Normals + metalness used to be rendered too, feeding a half-res SSR
+// pass — but its only consumers were the lakes and puddles, both of which face
+// UP, so at driving angles the reflected bank slid off-screen and the march
+// collapsed into blocky miss-patches (the reported "gaps in the lake"). Both
+// surfaces now bake a fresnel sky tint into their colour instead (see
+// makeWaterMaterial / _buildPuddles), which reads just as reflective — so SSR,
+// its ray march, and two full-screen MRT attachments are gone. On mobile the
+// MRT bandwidth alone was a meaningful slice of the frame.
 const _sceneTex = _scenePass.getTextureNode("output");
-const _sceneNormal = _scenePass.getTextureNode("normal");
-const _sceneMetal = _scenePass.getTextureNode("metalness");
 const _sceneDepthTex = _scenePass.getTextureNode("depth");
 const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, threshold 0.85->0.9: less midday wash
-// Screen-space reflections — optimized: half internal resolution, a modest reflect
-// distance, only on metallic pixels (water). The reflection texture is added over
-// the scene. This is the heaviest effect; gate/tune if it costs too much.
-const _ssrPass = ssr(_sceneTex, _sceneDepthTex, _sceneNormal, _sceneMetal, camera);
-_ssrPass.resolutionScale = 0.5; // half-res SSR (already the node default)
-_ssrPass.maxDistance.value = 44; // 60 -> 44: shorter rays = fewer march steps (the heaviest effect); water reflections still read at lake scale
-_ssrPass.thickness.value = 0.4;
-_ssrPass.opacity.value = 0.85;
-const _ssrTex = _ssrPass.getTextureNode();
 // Grade: the scene was reading washed out (esp. midday), so push saturation +
 // contrast and pull the shadow-lift back to a sliver — punchier without crushing.
 const _uSat = uniform(MOOD.sat * 1.14);
@@ -327,11 +327,18 @@ const _godrayShafts = Fn(() => {
   });
   return add; // shafts only
 });
-// Render the shafts to a half-resolution target (cheap), then composite over the
-// full-res scene. autoUpdate re-renders them each frame; the If-gate keeps it a
-// cheap black fill when the sun isn't visible.
+// Render the shafts to a LOW-RES target (0.42× the drawing buffer, ~18% of the
+// pixels) and composite over the full-res scene — shafts are soft/low-frequency,
+// so the downsample is invisible. The target is sized EXPLICITLY in
+// applyResolution(): with RTTNode's autoSize (no explicit size), updateBefore
+// overwrites .pixelRatio with the renderer's every frame, so the old
+// `_shaftTex.pixelRatio = 0.42` was silently ignored and the shafts rendered at
+// FULL resolution — the main facing-the-sun frame cost. Updates are also driven
+// manually at half rate (see updateAtmosphere) instead of every frame.
 const _shaftTex = rtt(_godrayShafts());
-_shaftTex.pixelRatio = 0.42; // 0.5 -> 0.42: shafts are soft/low-frequency, so a slightly lower-res target trims the sun-facing cost further with no visible change
+_shaftTex.autoUpdate = false;
+let _shaftFlip = false; // half-rate refresh parity
+let _shaftLive = true;  // whether the target still needs a final black fill
 // Colour grade applied to whichever composite (high or low) we feed it, so both
 // quality tiers look consistent — Low just composites fewer passes into the base.
 function gradeOutput(base) {
@@ -348,10 +355,10 @@ function gradeOutput(base) {
   c = c.mul(mix(float(1), vig, _uVignette));
   return c;
 }
-// High: scene + SSR water reflections + god-ray shafts + bloom. Low: scene +
-// bloom only — drops SSR ("the heaviest effect") and the per-pixel god-ray pass,
-// which is the big GPU/memory win on weak devices (see applyQuality()).
-const _highOutput = gradeOutput(_sceneTex.add(_ssrTex).add(_shaftTex).add(_bloomNode));
+// High: scene + god-ray shafts + bloom. Low: scene + bloom only — drops the
+// per-pixel god-ray pass, the big GPU/memory win on weak devices (see
+// applyQuality()).
+const _highOutput = gradeOutput(_sceneTex.add(_shaftTex).add(_bloomNode));
 const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
@@ -396,6 +403,7 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+Object.assign(window.__zoomies, { world, track });
 
 
 // Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
@@ -410,6 +418,7 @@ initProps(scene, track, {
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
   props = p;
+  window.__zoomies.props = p; // debug hook (headless probes target live box positions)
 });
 
 const BOX_COOLDOWN = 3; // s — a kart can't vacuum up boxes back-to-back
@@ -523,9 +532,7 @@ function makeToonGradient() {
 const TOON_GRADIENT = makeToonGradient();
 // Sun-driven rim/backlight share two uniform nodes, updated once per frame in
 // updateAtmosphere: the view-space sun-travel direction and the (mood sun colour ×
-// glow) tint. (Legacy per-shader arrays kept but unused on WebGPU.)
-const backlitShaders = [];
-const rimShaders = [];
+// glow) tint.
 const uSunViewNode = uniform(new THREE.Vector3(0, 0, 1));
 const uSunColNode = uniform(new THREE.Color(0x000000));
 // Cache the toon conversion per source material (WeakMap → auto-freed when the
@@ -536,6 +543,12 @@ const uSunColNode = uniform(new THREE.Color(0x000000));
 const _toonCache = new WeakMap();
 function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
+  // TSL-authored materials (leaf wake pop, water ripples, puddle fresnel, petal
+  // fall) carry their behaviour in node graphs that a MeshToonMaterial can't
+  // hold — converting one silently strips its vertex/colour animation. (Node
+  // materials still pass the isMeshStandardMaterial check above: they copy that
+  // flag from the defaults they're initialised with.)
+  if (m.isNodeMaterial) return m;
   if (_toonCache.has(m)) return _toonCache.get(m);
   const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
@@ -586,12 +599,17 @@ function toToon(m) {
       term = term ? term.add(paintTerm) : paintTerm;
     }
     t.emissiveNode = term;
+    // A toon made from a shared source is itself shared across karts (the cache
+    // hands the same instance to every user) — carry the flag so teardown code
+    // (_disposeGroup) knows not to dispose it out from under the others.
+    if (ud.shared) t.userData.shared = true;
     _toonCache.set(m, t);
     return t;
   }
   // Everything else: stock toon (auto-converted to a node material by WebGPU,
   // keeping the gradient banding and any dynamic emissiveIntensity).
   const stock = new THREE.MeshToonMaterial(params);
+  if (ud.shared) stock.userData.shared = true;
   _toonCache.set(m, stock);
   return stock;
 }
@@ -658,7 +676,7 @@ function _pickUnused(palette, used) {
 // player stands out. Multiplayer / time-trial fields are the player alone.
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (MP.enabled || timeTrial) return [playerCfg];
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
@@ -675,10 +693,15 @@ function raceRoster() {
 }
 
 function buildKarts() {
-  for (const k of karts) scene.remove(k.group);
+  // Tear down last race's karts properly: freeing the merged geometries + the
+  // per-kart materials (shared ones are skipped) releases their GPU buffers
+  // instead of leaking them each rebuild.
+  for (const k of karts) {
+    scene.remove(k.group);
+    _disposeGroup(k.group);
+  }
   karts = [];
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
-  rimShaders.length = 0; // drop last race's kart shaders before rebuilding
   // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
   // humans-only and time trial is solo, so both are just the player's kart.
   const roster = raceRoster();
@@ -721,6 +744,7 @@ function buildKarts() {
   });
   _boostLight = null;
   attachBoostLight(player); // player's exhaust glow while boosting
+  window.__zoomies.karts = karts;
 }
 
 // Cel-shade a kart group the same way buildKarts does (rim light + toon bands),
@@ -751,7 +775,7 @@ try { _amHost = sessionStorage.getItem("mp-host-seed") === WORLD_SEED; } catch {
 // (display name = the cat's name), plus whether I'm the room's host.
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
+  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
 // Up to 6 players share a race (you + 5 others). The grid, headlight pool and
@@ -765,6 +789,11 @@ const MP = {
   inLobby: false, startAt: 0, connState: null,
 };
 let _interpDelay = INTERP_DELAY; // adaptive: eased toward a target from the live ping
+// Scratch vectors for incoming shoot messages (spawnAt copies its args).
+const UP_Y = new THREE.Vector3(0, 1, 0);
+const _mpShotPos = new THREE.Vector3();
+const _mpShotDir = new THREE.Vector3();
+const _mpShotFan = new THREE.Vector3();
 // Total humans currently in the room (me + rendered remotes).
 function mpPlayerCount() {
   return 1 + MP.remotes.size;
@@ -909,14 +938,15 @@ function initMultiplayer() {
       });
       net.on("start", (at) => beginSyncedRace(at));
       net.on("shoot", (s) => {
-        const pos = new THREE.Vector3(s.px, s.py, s.pz);
-        const dir = new THREE.Vector3(s.dx, s.dy, s.dz);
+        // spawnAt copies both vectors, so these scratch temps are safe to reuse
+        // across messages.
+        _mpShotPos.set(s.px, s.py, s.pz);
+        _mpShotDir.set(s.dx, s.dy, s.dz);
         if (s.t) {
           // Tri-furball: fan into three, matching the shooter's local spread.
-          const up = new THREE.Vector3(0, 1, 0);
-          for (const a of TRI_FAN) hairballs.spawnAt(pos, dir.clone().applyAxisAngle(up, a), s.c || 0);
+          for (const a of TRI_FAN) hairballs.spawnAt(_mpShotPos, _mpShotFan.copy(_mpShotDir).applyAxisAngle(UP_Y, a), s.c || 0);
         } else {
-          hairballs.spawnAt(pos, dir, s.c || 0);
+          hairballs.spawnAt(_mpShotPos, _mpShotDir, s.c || 0);
         }
       });
       net.on("hit", (h) => {
@@ -1066,6 +1096,8 @@ let prevCountN = 99; // last countdown number that beeped (3/2/1/GO)
 let _fireworksDone = false; // leader's finish fireworks fired once per race
 let _fwTimer = 0; // remaining celebration time (keeps launching bursts)
 let _fwNext = 0; // countdown to the next burst
+let _fwSide = 0; // which mortar pot fired last (bursts alternate left/right)
+const _fwPos = new THREE.Vector3(); // scratch for burst origins (burst copies it)
 let _finishCamAngle = 0; // victory orbit angle once the player finishes
 // Time-trial mode: solo, single timed lap, local best-times leaderboard.
 let timeTrial = false;
@@ -1117,6 +1149,10 @@ function layoutStage() {
   stage.style.left = "50%";
   stage.style.top = "50%";
   stage.style.transform = `translate(-50%, -50%) rotate(${rot}deg)`;
+  // Styling hook for the rotated state: touch-action pans are gated in PHYSICAL
+  // screen axes, so the menus' scroll permissions must widen while rotated
+  // (see the #stage.rotated rules in styles.css).
+  stage.classList.toggle("rotated", rot !== 0);
 
   // Remap the physical safe-area insets into the rotated stage's frame so the
   // HUD avoids the notch / home bar on the correct visual edges.
@@ -1193,7 +1229,8 @@ function updateRearThreat() {
 // Update the god-ray pass: project the sun to screen and fade it out when it's
 // hidden by the weather or behind the camera.
 let sunVisibleMood = MOOD.rays ?? MOOD.sunVisible;
-const _sunDir = new THREE.Vector3();
+const _sunDir = new THREE.Vector3(); // stable CACHED sun direction (see updateAtmosphere)
+const _sunDirRaw = new THREE.Vector3();
 const _camFwd = new THREE.Vector3();
 const _sunScreen = new THREE.Vector3();
 const _ss = (a, b, x) => {
@@ -1204,6 +1241,59 @@ const _sunViewVec = new THREE.Vector3();
 const _shUp = new THREE.Vector3(0, 1, 0);
 const _shRight = new THREE.Vector3();
 const _shUpL = new THREE.Vector3();
+// _shTargetExp remembers where fitSunShadow last put the sun target, so an
+// external re-anchor (applyMood resets it to the origin) is detected and the
+// frustum refitted. NaN guarantees the first frame fits.
+const _shTargetExp = new THREE.Vector3(NaN, 0, 0);
+const _shCorner = new THREE.Vector3();
+
+// Fit the sun's shadow camera around the WHOLE world (track bounds + the
+// scenery strip + head-room for hills/buildings), projected into the light's
+// basis, and queue a single shadow-map render. Called once per world/mood.
+function fitSunShadow() {
+  const cam = sun.shadow.camera;
+  // World bounds from the track's sampled points (they carry the hills' y).
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const q of track._pts || []) {
+    if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
+    if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y;
+    if (q.z < minZ) minZ = q.z; if (q.z > maxZ) maxZ = q.z;
+  }
+  if (!Number.isFinite(minX)) { minX = minZ = -400; maxX = maxZ = 400; minY = 0; maxY = 0; }
+  const M = 80; // roadside scenery strip (towns/trees sit within this of the track)
+  minX -= M; maxX += M; minZ -= M; maxZ += M;
+  minY -= 12; maxY += 45; // below bridges/dips + above buildings/treetops
+  // Project the world box's 8 corners into the light basis and fit the ortho
+  // bounds exactly around them.
+  _shRight.crossVectors(_shUp, _sunDir).normalize();
+  _shUpL.crossVectors(_sunDir, _shRight).normalize();
+  let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, f0 = Infinity, f1 = -Infinity;
+  for (let i = 0; i < 8; i++) {
+    _shCorner.set(i & 1 ? maxX : minX, i & 2 ? maxY : minY, i & 4 ? maxZ : minZ);
+    const r = _shCorner.dot(_shRight), u = _shCorner.dot(_shUpL), f = _shCorner.dot(_sunDir);
+    if (r < r0) r0 = r; if (r > r1) r1 = r;
+    if (u < u0) u0 = u; if (u > u1) u1 = u;
+    if (f < f0) f0 = f; if (f > f1) f1 = f;
+  }
+  sun.target.position
+    .set(0, 0, 0)
+    .addScaledVector(_shRight, (r0 + r1) / 2)
+    .addScaledVector(_shUpL, (u0 + u1) / 2)
+    .addScaledVector(_sunDir, (f0 + f1) / 2);
+  const halfF = (f1 - f0) / 2;
+  sun.position.copy(sun.target.position).addScaledVector(_sunDir, halfF + 60);
+  cam.left = -(r1 - r0) / 2;
+  cam.right = (r1 - r0) / 2;
+  cam.bottom = -(u1 - u0) / 2;
+  cam.top = (u1 - u0) / 2;
+  cam.near = 40;
+  cam.far = halfF * 2 + 100;
+  cam.updateProjectionMatrix();
+  _shTargetExp.copy(sun.target.position);
+  sun.target.updateMatrixWorld();
+  sun.updateMatrixWorld();
+  sun.shadow.needsUpdate = true;
+}
 function updateAtmosphere() {
   // Skybox follow: keep the sky + star domes centred on the camera so they sit at a
   // constant depth (their radius) inside the far plane. Anchored to the world origin
@@ -1214,35 +1304,32 @@ function updateAtmosphere() {
   if (starField) starField.position.copy(camera.position);
   camera.updateMatrixWorld();
   camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-  // Direction toward the sun (invariant to the follow offset below).
-  _sunDir.copy(sun.position).sub(sun.target.position).normalize();
+  // Direction toward the sun. Derived from the light/target positions but
+  // CACHED: the shadow fit below repositions both ends using this very
+  // direction, and re-deriving through normalize() every frame lets FP rounding
+  // random-walk the value. Only accept a genuinely new direction (a mood
+  // change, ~degrees), never sub-noise drift.
+  _sunDirRaw.copy(sun.position).sub(sun.target.position).normalize();
+  const sunDirChanged = _sunDirRaw.distanceToSquared(_sunDir) > 1e-8;
+  if (sunDirChanged) _sunDir.copy(_sunDirRaw);
 
-  // Keep the tight shadow frustum centred on the player so its crisp shadows
-  // are always where they show. Snap the centre to shadow-map texels (in the
-  // light's own view basis) so the now-tighter, crisper shadows don't swim or
-  // shimmer as the player moves. Light + target move together, preserving the
-  // sun direction.
-  if (player) {
-    const cam = sun.shadow.camera;
-    const texel = (cam.right - cam.left) / sun.shadow.mapSize.x;
-    _shRight.crossVectors(_shUp, _sunDir).normalize();
-    _shUpL.crossVectors(_sunDir, _shRight).normalize();
-    const p = player.position;
-    const dr = Math.round(p.dot(_shRight) / texel) * texel;
-    const du = Math.round(p.dot(_shUpL) / texel) * texel;
-    const df = p.dot(_sunDir);
-    sun.target.position
-      .set(0, 0, 0)
-      .addScaledVector(_shRight, dr)
-      .addScaledVector(_shUpL, du)
-      .addScaledVector(_sunDir, df);
-    sun.position.copy(sun.target.position).addScaledVector(_sunDir, 320);
-    sun.target.updateMatrixWorld();
-    sun.updateMatrixWorld();
-  }
+  // Fixed, world-sized shadow frustum, fitted + rendered ONCE per world/mood.
+  // A follow frustum — however cleverly snapped or stepped — has a MOVING
+  // BOUNDARY, and at sunset the long building/fence shadows crossing it visibly
+  // popped in and lurched at every re-centre. Every mapped caster is static
+  // scenery (karts use projected quads), so the frustum is instead fitted to
+  // the whole track once: the camera and depth map never change during play —
+  // nothing can pop, jump, or shimmer, and the shadow pass costs ~zero frames.
+  // The trade-off is texel density (the map covers the world, not 170u), which
+  // the soft toon look absorbs. Refit triggers: first frame, a mood change
+  // (new sun direction), or anything else re-anchoring the target (applyMood
+  // resets it to the origin).
+  if (sunDirChanged || !sun.target.position.equals(_shTargetExp)) fitSunShadow();
 
   _camFwd.set(0, 0, -1).applyQuaternion(camera.quaternion);
   const facing = _sunDir.dot(_camFwd);
+  // Camera-to-sun angle for the FPS debug readout (0° = looking dead at the sun).
+  _sunFaceDeg = Math.acos(Math.max(-1, Math.min(1, facing))) * (180 / Math.PI);
   let vis = 0;
   if (sunVisibleMood && facing > 0.02) {
     _sunScreen.copy(_sunDir).multiplyScalar(3000).add(camera.position).project(camera);
@@ -1255,6 +1342,18 @@ function updateAtmosphere() {
   vis *= clear;
   godrayPass.uniforms.uVis.value = vis;
   flarePass.uniforms.uVis.value = vis;
+  // Refresh the shaft target every OTHER frame while the sun shows (soft, low-
+  // frequency content — half rate is invisible but halves the worst facing-the-
+  // sun cost). Once the sun goes hidden, one last refresh writes the gated black
+  // fill and updates stop entirely.
+  _shaftFlip = !_shaftFlip;
+  if (vis > 0.001) {
+    if (_shaftFlip) _shaftTex.textureNeedsUpdate = true;
+    _shaftLive = true;
+  } else if (_shaftLive) {
+    _shaftTex.textureNeedsUpdate = true;
+    _shaftLive = false;
+  }
   // PERF: both are full-screen shader passes that output the frame unchanged when
   // the sun isn't visible (night, or facing away) — skip them entirely then. Saves
   // two full-frame passes every night frame. fxPass stays last, so the
@@ -1288,6 +1387,15 @@ function renderFrame() {
   if (player && state !== State.MENU) {
     drawMinimap();
   }
+  // First real frame is on screen — fade out the boot loading screen to reveal it.
+  if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
+}
+let _loadHidden = false;
+function hideLoadingScreen() {
+  const el = document.getElementById("loading");
+  if (!el) return;
+  el.classList.add("done"); // CSS opacity transition
+  setTimeout(() => el.remove(), 550);
 }
 
 // One-time pipeline warm-up. During a race the camera only faces forward, so the
@@ -1350,7 +1458,7 @@ function setupMinimap() {
 // Paint a top-down outline of a loop (array of {x,z}) into a 2D canvas, fitting
 // its world bounds with padding and preserving aspect. Used by the track-menu
 // preview and the main-menu map so you can see the shape before you race.
-function paintTrackMap(canvas, controlPoints) {
+function paintTrackMap(canvas, controlPoints, glyphs = null) {
   if (!canvas || !controlPoints || !controlPoints.length) return;
   // Smooth the control points into the same closed Catmull-Rom the road is built
   // from, so the preview matches the shape you'll actually drive (not a polygon).
@@ -1390,6 +1498,19 @@ function paintTrackMap(canvas, controlPoints) {
   ctx.arc(toX(points[0].x), toY(points[0].z), 4.5, 0, Math.PI * 2);
   ctx.fillStyle = "#fff";
   ctx.fill();
+  // Set-piece glyphs at their spots along the loop (menu map only — the
+  // editor's draft preview can't know them without building the world).
+  if (glyphs && glyphs.length) {
+    ctx.font = "16px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const g of glyphs) {
+      ctx.shadowColor = "rgba(0,0,0,0.7)";
+      ctx.shadowBlur = 4;
+      ctx.fillText(g.glyph, toX(g.x), toY(g.z));
+      ctx.shadowBlur = 0;
+    }
+  }
 }
 
 function drawMinimap() {
@@ -1400,6 +1521,11 @@ function drawMinimap() {
   ctx.lineWidth = 3;
   ctx.lineJoin = "round";
   ctx.stroke(path);
+  // Set-piece markers so you can see the bridge/tunnel/canyon coming up.
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (const g of featureGlyphs(track.features)) ctx.fillText(g.glyph, toX(g.x), toY(g.z));
   for (const e of raceField()) {
     const k = e.kart || e; // remote wrappers hold their kart
     if (!k.position) continue;
@@ -1454,6 +1580,14 @@ function applyResolution() {
   const bw = Math.max(1, Math.round(stageState.W * pr * 0.5));
   const bh = Math.max(1, Math.round(stageState.H * pr * 0.5));
   bloomPass.setSize(bw, bh);
+  // God-ray shaft target: explicit size (0.42× the drawing buffer) so RTTNode's
+  // autoSize path — which stomps .pixelRatio back to the renderer's every frame —
+  // never runs. See the note at _shaftTex's creation.
+  _shaftTex.pixelRatio = 1;
+  _shaftTex.setSize(
+    Math.max(1, Math.round(stageState.W * pr * 0.42)),
+    Math.max(1, Math.round(stageState.H * pr * 0.42))
+  );
 }
 
 window.addEventListener("resize", layoutStage);
@@ -1484,19 +1618,24 @@ let _drsCooldown = 0;
 // --- Performance watchdog ---
 // Last-resort net BEFORE a crash: if frames stay long even after dynamic-resolution
 // scaling has bottomed out (the device genuinely can't cope at High), auto-drop to
-// Low quality, which sheds SSR/god-rays/particles and lowers the render-target
+// Low quality, which sheds god-rays/particles and lowers the render-target
 // memory — the kind of sustained pressure that precedes an out-of-memory blank.
 // Disabled with ?nowd=1 so the headless perf harness measures the chosen tier.
 const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
 let _wdAccum = 0;
 function perfWatchdog(dt) {
   if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
-  // Only when DRS has already bottomed out AND frames are still very long (~25 fps).
-  if (_frameMs > 40 && renderScale <= DRS_MIN + 0.02) {
+  // Only when DRS has already bottomed out AND frames are still long (~30 fps).
+  // 40ms (25 fps) never fired in practice: real dips hover in the 25-45 fps
+  // band — heavy sunset scenes and a thermally throttling phone both land
+  // there — which is exactly when shedding the High-tier effects helps most.
+  if (_frameMs > 33 && renderScale <= DRS_MIN + 0.02) {
     _wdAccum += dt;
-    if (_wdAccum >= 4) {
+    if (_wdAccum >= 5) {
       _wdAccum = 0;
-      applyQuality("low"); // persists, so a struggling device stays Low next launch
+      // Session-only (no persist): a capable phone that's merely hot shouldn't
+      // be locked to Low forever — next launch starts fresh on the saved tier.
+      applyQuality("low", false);
       hud.showToast?.("Graphics lowered for a smoother race");
     }
   } else {
@@ -1504,31 +1643,44 @@ function perfWatchdog(dt) {
   }
 }
 
+let _drsOverT = 0; // how long we've been continuously over budget
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && renderScale > DRS_MIN) {
-    // Step proportional to how far over budget we are: a big spike (turning to
-    // face the sun, cresting a hill on a big map) drops resolution HARD in one
-    // move instead of crawling down 0.1 at a time over a couple of seconds.
+    // Only step down after the budget has been blown for a SUSTAINED beat. A
+    // transient spike — a jump's brief draw-call burst, a first-use shader
+    // compile — recovers on its own, and stepping down means REALLOCATING every
+    // render target, which is itself a hitch: reacting to a spike with a resize
+    // used to cascade spike → resize hitch → another "spike" → resize storm
+    // (and the allocation churn is exactly what pressures iOS toward device loss).
+    _drsOverT += dt;
+    if (_drsOverT < 0.5) return;
+    _drsOverT = 0;
+    // Step proportional to how far over budget we are: genuinely sustained
+    // overload (a big map's heavy stretch) drops resolution HARD in one move
+    // instead of crawling down 0.1 at a time over a couple of seconds.
     const over = _frameMs / 18.6;
     const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
     renderScale = Math.max(DRS_MIN, renderScale - step);
     applyResolution();
     _drsCooldown = 0.35;
-  } else if (_frameMs < 17.4 && renderScale < 1) {
-    renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
-    applyResolution();
-    _drsCooldown = 1.4;
+  } else {
+    _drsOverT = 0;
+    if (_frameMs < 17.4 && renderScale < 1) {
+      renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
+      applyResolution();
+      _drsCooldown = 1.4;
+    }
   }
 }
 const qualityLowBtn = document.getElementById("set-quality-low");
 const qualityHighBtn = document.getElementById("set-quality-high");
 // Low quality strips the expensive effects to keep weak devices stable (and is
 // what the performance watchdog flips to before a device crashes):
-//   • post-FX graph drops SSR + god-rays (the heaviest passes),
+//   • post-FX graph drops the god rays (the heaviest pass),
 //   • god-ray render target stops updating,
 //   • GPU ambient motes hidden (skips their compute), grass hidden,
 //   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
@@ -1554,31 +1706,33 @@ qualityHighBtn?.addEventListener("click", () => {
 });
 applyQuality(quality, false); // honour the persisted choice without re-writing it
 
-// Lap-count selector: cycles 1..5 (default 3). Applied to the track at race start.
-const lapsBtn = document.getElementById("laps-btn");
-function applyLapsBtn() {
-  if (lapsBtn) lapsBtn.textContent = `Laps: ${TOTAL_LAPS}`;
+// Lap count + difficulty live on the Game Mode screen as segmented rows (inside
+// the Grand Prix card), replacing the old cycle-tap buttons. Laps persist like
+// difficulty does. Applied at race build (buildKarts) + per-frame in aiActions.
+const LAPS_KEY = "zoomies-laps";
+try {
+  const _l = parseInt(localStorage.getItem(LAPS_KEY), 10);
+  if (_l >= 1 && _l <= 5) TOTAL_LAPS = _l;
+} catch {}
+function refreshRaceOptSegs() {
+  document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
+    b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
+  document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
+    b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
+  refreshModeSummary(); // the main-menu tile echoes laps + difficulty
 }
-if (lapsBtn)
-  lapsBtn.addEventListener("click", () => {
-    TOTAL_LAPS = (TOTAL_LAPS % 5) + 1;
-    applyLapsBtn();
-  });
-applyLapsBtn();
-
-// Difficulty selector: cycles Easy -> Medium -> Hard (the tuned field). Applied
-// to the AI at race build (buildKarts) + per-frame in aiActions.
-const diffBtn = document.getElementById("difficulty-btn");
-function applyDiffBtn() {
-  if (diffBtn) diffBtn.textContent = `Difficulty: ${AI_DIFFICULTY[DIFFICULTY].label}`;
-}
-if (diffBtn)
-  diffBtn.addEventListener("click", () => {
-    DIFFICULTY = DIFF_ORDER[(DIFF_ORDER.indexOf(DIFFICULTY) + 1) % DIFF_ORDER.length];
+document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    TOTAL_LAPS = Number(b.dataset.laps);
+    try { localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS)); } catch {}
+    refreshRaceOptSegs();
+  }));
+document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    DIFFICULTY = b.dataset.diff;
     try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
-    applyDiffBtn();
-  });
-applyDiffBtn();
+    refreshRaceOptSegs();
+  }));
 
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
@@ -1866,6 +2020,7 @@ function updateTiltCounter(dt) {
 // you can confirm which one is actually running) and the draw-call count, which
 // tells us whether a slow frame is draw-call-bound (geometry) or fill-bound.
 let _fpsAccum = 0;
+let _sunFaceDeg = 0; // camera-to-sun angle (set each frame in updateAtmosphere)
 function updateFpsCounter(dt) {
   if (!showFps || !fpsEl) return;
   _fpsAccum += dt;
@@ -1874,7 +2029,18 @@ function updateFpsCounter(dt) {
   const fps = Math.round(1000 / Math.max(1, _frameMs));
   const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
   const dc = renderer?.info?.render?.drawCalls ?? 0;
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc`;
+  // sun N° — angle between the camera's view direction and the sun (0° = staring
+  // straight into it). For correlating frame dips with view direction: if dips
+  // track a low angle, the cost is the sun-facing path (god rays / glow / bloom);
+  // if they track a specific WORLD direction regardless of the sun, it's geometry
+  // (draw calls — watch dc) in that part of the map.
+  // NNx = dynamic-resolution scale (1.0 = full res; at 0.45 the scaler has
+  // bottomed out) + quality tier H/L. Together they say what a dip means: a dip
+  // at 1.0x is a transient the scaler hasn't reacted to; a dip AT 0.45x means
+  // pixel scaling can't help (vertex/CPU-bound — or the phone is thermally
+  // throttling, which looks exactly like this after minutes of sustained load).
+  const rs = renderScale.toFixed(2).replace(/0$/, "");
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality === "high" ? "H" : "L"}`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
@@ -1904,8 +2070,8 @@ const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").mat
 
 // Multiplayer favours performance over looks: two extra ghost karts + the realtime
 // client on an already heavy scene means a higher, steadier frame rate (and no iOS
-// WebGPU device-loss) matters more than SSR/god-rays. So while in a multiplayer
-// race, force the memory-lean Low profile (no SSR / god-ray targets, capped pixel
+// WebGPU device-loss) matters more than god-rays. So while in a multiplayer
+// race, force the memory-lean Low profile (no god-ray target, capped pixel
 // ratio, no GPU motes) on EVERY device. NON-persisted — single-player and the saved
 // preference are untouched, and it's restored when leaving multiplayer. A player
 // who bumps the Settings toggle to High mid-session opts out for that session
@@ -1980,7 +2146,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra"];
+const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra", "city", "beach"];
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
@@ -2031,6 +2197,9 @@ function syncTrackPanel() {
   trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", chip.dataset.tod === tod);
   });
+  trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", _trackDraft.features.includes(chip.dataset.feat));
+  });
   scheduleTrackPreview();
 }
 
@@ -2046,6 +2215,7 @@ function scheduleTrackPreview() {
     paintTrackMap(document.getElementById("track-preview"), previewLoopPoints(_trackDraft));
   });
 }
+const ALL_FEATS = [...FEATURE_CHIP_KINDS, "extras"];
 function openTrackPanel() {
   _trackDraft = {
     mode: trackConfig.mode || "classic",
@@ -2057,6 +2227,8 @@ function openTrackPanel() {
       Array.isArray(trackConfig.biomes) && trackConfig.biomes.length
         ? [...trackConfig.biomes]
         : [...ALL_BIOMES],
+    // Set-piece chips: absent config means "all on".
+    features: Array.isArray(trackConfig.features) ? [...trackConfig.features] : [...ALL_FEATS],
     seed: trackConfig.seed || randomSeed(),
     timeOfDay: trackConfig.timeOfDay || "midday",
   };
@@ -2070,17 +2242,33 @@ document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((c
     syncTrackPanel();
   });
 });
+// Set-piece chips: plain multi-toggles (deselecting all = a plain-roads map).
+trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    const f = chip.dataset.feat;
+    const i = _trackDraft.features.indexOf(f);
+    if (i >= 0) _trackDraft.features.splice(i, 1);
+    else _trackDraft.features.push(f);
+    syncTrackPanel();
+  });
+});
 document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
-// shortcut into the track editor.
+// shortcut into the track editor. The Track tile echoes the same name plus the
+// chosen time of day so the whole setup reads off the front screen.
+const TOD_LABELS = { midday: "Midday", sunset: "Sunset", night: "Night", random: "Random sky" };
 function refreshMenuMap() {
-  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig));
+  // The menu map shows the LIVE world, so its set pieces (planned at build)
+  // can be drawn right on the loop, and the track gets its generated name.
+  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig), featureGlyphs(track.features));
+  const name = trackConfig.mode === "custom"
+    ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
+    : "Classic circuit";
   const label = document.getElementById("menu-map-label");
-  if (label) {
-    label.textContent =
-      trackConfig.mode === "custom" ? `Generated · ${trackConfig.seed || "—"}` : "Classic circuit";
-  }
+  if (label) label.textContent = name;
+  const sub = document.getElementById("track-summary");
+  if (sub) sub.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
 document.getElementById("menu-map-btn")?.addEventListener("click", openTrackPanel);
 refreshMenuMap();
@@ -2125,7 +2313,10 @@ document.getElementById("track-new")?.addEventListener("click", (e) => {
   btn.textContent = "🎲 New shape ✓";
   setTimeout(() => (btn.textContent = "🎲 Reroll shape"), 1100);
 });
-trackPanel?.querySelectorAll(".biome-chip").forEach((chip) => {
+// Scoped to #track-biomes: the time-of-day chips share the .biome-chip class and
+// live in the same panel — an unscoped bind would fire this handler on tod clicks
+// too, pushing `undefined` into the biome list (and evicting a real biome at cap).
+trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
     const b = chip.dataset.biome;
     const i = _trackDraft.biomes.indexOf(b);
@@ -2160,13 +2351,8 @@ let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
 const _garageLook = new THREE.Vector3();
 
-function _disposeGroup(g) {
-  g.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
-    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-    for (const m of mats) m.dispose?.();
-  });
-}
+// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
+// materials, skipping the shared colour-keyed/constant ones other karts use.)
 function _clearGaragePreview() {
   if (!_garagePreview) return;
   scene.remove(_garagePreview);
@@ -2180,7 +2366,7 @@ function buildGaragePreview() {
   _clearGaragePreview();
   const cat = catSpec(_garageDraft);
   const kart = kartSpec(_garageDraft);
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
   pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
@@ -2223,21 +2409,58 @@ function _markSelectedSwatch(gridId, color) {
   if (!grid) return;
   for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === color);
 }
+// The accessory-colour palette is per-accessory, so its grid is rebuilt whenever
+// the chosen accessory changes (unlike the fixed fur/kart grids). The row hides
+// for accessories with no colour (just "none"). A null draft colour means "use the
+// accessory's natural default" — highlight that first swatch.
+function _syncAccColorGrid(accId, chosenColor) {
+  const row = document.getElementById("cat-acccolor-row");
+  const grid = document.getElementById("cat-acccolor-grid");
+  if (!row || !grid) return;
+  const palette = ACCESSORY_COLORS[accId] || [];
+  row.classList.toggle("hidden", palette.length === 0);
+  if (palette.length === 0) { grid.replaceChildren(); grid._accId = accId; return; }
+  if (grid._accId !== accId) { // repopulate only when the accessory (hence palette) changed
+    grid.replaceChildren();
+    for (const c of palette) {
+      const b = document.createElement("button");
+      b.className = "swatch-dot";
+      b.style.background = _hex6(c);
+      b.dataset.color = c;
+      b.setAttribute("aria-label", "Accessory colour " + _hex6(c));
+      b.addEventListener("click", () => editCustomCat({ accessoryColor: c }));
+      grid.appendChild(b);
+    }
+    grid._accId = accId;
+  }
+  const effective = (chosenColor != null) ? chosenColor : palette[0];
+  for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === effective);
+}
 
-// Refresh the creator panels: show the one whose stepper is on the Custom slot,
-// and mirror the draft's custom values into its controls.
+// Refresh the creator panels: Custom mode (chosen on the Presets/Custom toggle)
+// swaps the preset stepper for the creator, and mirrors the draft's custom
+// values into its controls.
 function syncCreators() {
   const catCustom = _garageDraft.cat === CUSTOM_CAT_IDX;
   const kartCustom = _garageDraft.kart === CUSTOM_KART_IDX;
   document.getElementById("cat-custom").classList.toggle("hidden", !catCustom);
   document.getElementById("kart-custom").classList.toggle("hidden", !kartCustom);
+  // The stepper only browses presets, so it steps aside in Custom mode (the
+  // creator has its own name field + controls).
+  document.getElementById("cat-stepper")?.classList.toggle("hidden", catCustom);
+  document.getElementById("kart-stepper")?.classList.toggle("hidden", kartCustom);
+  document.getElementById("cat-src-preset")?.classList.toggle("is-active", !catCustom);
+  document.getElementById("cat-src-custom")?.classList.toggle("is-active", catCustom);
+  document.getElementById("kart-src-preset")?.classList.toggle("is-active", !kartCustom);
+  document.getElementById("kart-src-custom")?.classList.toggle("is-active", kartCustom);
   if (catCustom) {
     const c = _garageDraft.customCat;
     document.getElementById("cat-pat-name").textContent = _cap(c.pattern);
-    document.getElementById("cat-acc-name").textContent = _cap(c.accessory);
+    document.getElementById("cat-acc-name").textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
     const ni = document.getElementById("cat-custom-name");
     if (ni.value !== c.name) ni.value = c.name;
     _markSelectedSwatch("cat-color-grid", c.fur);
+    _syncAccColorGrid(c.accessory, c.accessoryColor);
   }
   if (kartCustom) {
     const k = _garageDraft.customKart;
@@ -2257,6 +2480,19 @@ function syncGarageUI() {
   document.getElementById("kart-swatch").style.background = _hex6(kart.color);
   syncCreators();
 }
+// The main menu's Racer tile: current cat + kart by name, with their colours as
+// two little swatch dots, so the choice reads without opening the garage.
+function refreshRacerSummary() {
+  const el = document.getElementById("racer-summary");
+  if (!el) return;
+  const cat = catSpec(garageConfig);
+  const kart = kartSpec(garageConfig);
+  el.textContent = `${cat.name} · ${kart.name}`;
+  const cs = document.getElementById("racer-swatch-cat");
+  if (cs) cs.style.background = _hex6(cat.fur);
+  const ks = document.getElementById("racer-swatch-kart");
+  if (ks) ks.style.background = _hex6(kart.color);
+}
 function openGaragePanel() {
   _garageDraft = {
     cat: garageConfig.cat,
@@ -2266,6 +2502,9 @@ function openGaragePanel() {
   };
   const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
   _garageAnchor.copy(slot.position);
+  // Seed the "last browsed preset" so leaving Custom returns somewhere sensible.
+  _garagePrevPreset.cat = _garageDraft.cat < CUSTOM_CAT_IDX ? _garageDraft.cat : 0;
+  _garagePrevPreset.kart = _garageDraft.kart < CUSTOM_KART_IDX ? _garageDraft.kart : 0;
   syncGarageUI();
   buildGaragePreview();
   // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
@@ -2281,10 +2520,27 @@ function closeGarage() {
   _clearGaragePreview();
   closeSubScreen(garageEl);
 }
+// The stepper browses PRESETS only; Custom is its own mode on the toggle above
+// it (an explicit affordance, not a hidden extra slot at the end of the cycle).
 function stepGarage(which, dir) {
-  // +1 slot: one past the last preset is the Custom slot.
-  const n = (which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length) + 1;
-  _garageDraft[which] = (_garageDraft[which] + dir + n) % n;
+  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
+  _garageDraft[which] = ((_garageDraft[which] % n) + dir + n) % n;
+  syncGarageUI();
+  buildGaragePreview();
+}
+// Remembers the preset you were browsing so toggling Custom → Presets returns
+// to it instead of resetting to the first cat/kart.
+const _garagePrevPreset = { cat: 0, kart: 0 };
+function setGarageSource(which, custom) {
+  const customIdx = which === "cat" ? CUSTOM_CAT_IDX : CUSTOM_KART_IDX;
+  const isCustom = _garageDraft[which] === customIdx;
+  if (custom === isCustom) return;
+  if (custom) {
+    _garagePrevPreset[which] = _garageDraft[which];
+    _garageDraft[which] = customIdx;
+  } else {
+    _garageDraft[which] = _garagePrevPreset[which] ?? 0;
+  }
   syncGarageUI();
   buildGaragePreview();
 }
@@ -2303,7 +2559,10 @@ function editCustomKart(patch, rebuild = true) {
 function stepCustom(which, list, dir) {
   if (which === "pattern" || which === "accessory") {
     const i = list.indexOf(_garageDraft.customCat[which]);
-    editCustomCat({ [which]: list[(i + dir + list.length) % list.length] });
+    const patch = { [which]: list[(i + dir + list.length) % list.length] };
+    // Switching accessory resets its colour to that type's natural default.
+    if (which === "accessory") patch.accessoryColor = null;
+    editCustomCat(patch);
   }
 }
 // Slowly orbit the camera around the parked preview kart. The control card is
@@ -2334,6 +2593,10 @@ document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage(
 document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
 document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
 document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
+document.getElementById("cat-src-preset")?.addEventListener("click", () => setGarageSource("cat", false));
+document.getElementById("cat-src-custom")?.addEventListener("click", () => setGarageSource("cat", true));
+document.getElementById("kart-src-preset")?.addEventListener("click", () => setGarageSource("kart", false));
+document.getElementById("kart-src-custom")?.addEventListener("click", () => setGarageSource("kart", true));
 
 // Custom-cat creator controls.
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
@@ -2342,9 +2605,14 @@ document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCus
 document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
 document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
 document.getElementById("cat-custom-name")?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
-document.getElementById("cat-randomize")?.addEventListener("click", () => editCustomCat({
-  fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory: _pick(CAT_ACCESSORIES), name: _pick(CUSTOM_CAT_NAMES),
-}));
+document.getElementById("cat-randomize")?.addEventListener("click", () => {
+  const accessory = _pick(CAT_ACCESSORIES);
+  const pal = ACCESSORY_COLORS[accessory] || [];
+  editCustomCat({
+    fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
+    accessoryColor: pal.length ? _pick(pal) : null,
+  });
+});
 
 // Custom-kart creator controls.
 _buildSwatchGrid("kart-color-grid", KART_COLOR_SWATCHES, (c) => editCustomKart({ color: c }));
@@ -2363,9 +2631,11 @@ document.getElementById("garage-apply")?.addEventListener("click", () => {
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
   garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
+  refreshRacerSummary();
   closeGarage();
 });
 document.getElementById("garage-back")?.addEventListener("click", closeGarage);
+refreshRacerSummary();
 
 musicToggle?.addEventListener("click", () => {
   audio.unlock();
@@ -2395,7 +2665,7 @@ const indicatorBtn = document.getElementById("indicator-btn");
 let showIndicator = false;
 function applyIndicator() {
   if (steerBar) steerBar.style.display = showIndicator ? "block" : "none";
-  if (indicatorBtn) indicatorBtn.textContent = `Tilt indicator: ${showIndicator ? "On" : "Off"}`;
+  if (indicatorBtn) indicatorBtn.textContent = `Tilt bar: ${showIndicator ? "On" : "Off"}`;
 }
 if (indicatorBtn)
   indicatorBtn.addEventListener("click", () => {
@@ -2411,31 +2681,66 @@ window.addEventListener("keydown", (e) => {
 });
 
 // --- Menu wiring ---
-document.getElementById("start-btn").addEventListener("click", startRace);
+// One primary START button whose label + action follow the game mode chosen on
+// the Game Mode screen: Grand Prix starts a race, Time Trial a solo run, and
+// Multiplayer hosts a room (joining by code sits right under the button).
 // "Race again" repeats whichever mode you were just in.
 document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
-// Time trial is solo-only; updateModeBtn() hides it in multiplayer. Always attach
-// the handler (even if we loaded straight into MP) so it works after a Solo switch.
-const timeTrialBtn = document.getElementById("time-trial-btn");
-timeTrialBtn?.addEventListener("click", startTimeTrial);
 
-// Solo / Multiplayer mode. Only offered when an Ably key is configured. Picking
-// Multiplayer reveals the HOST / JOIN choices (it does NOT connect yet):
-//   • Host Game → connect to your own room and drop into the lobby with a share code.
-//   • Join → reload into a friend's room by code and land in their lobby.
-const modeToggle = document.getElementById("mode-toggle");
-const modeSoloBtn = document.getElementById("mode-solo");
-const modeMpBtn = document.getElementById("mode-mp");
+const startBtn = document.getElementById("start-btn");
 const mpCodeInput = document.getElementById("mp-code");
-let _mpUIMode = false; // showing the multiplayer host/join panel (separate from "connected")
-function updateModeBtn() {
-  modeSoloBtn?.classList.toggle("is-active", !_mpUIMode);
-  modeMpBtn?.classList.toggle("is-active", _mpUIMode);
-  document.getElementById("mp-actions")?.classList.toggle("hidden", !_mpUIMode);
-  // In multiplayer the lobby is where you launch a race, so hide the solo buttons.
-  document.getElementById("start-btn")?.classList.toggle("hidden", _mpUIMode);
-  if (timeTrialBtn) timeTrialBtn.classList.toggle("hidden", _mpUIMode);
+const MODE_KEY = "zoomies-mode-v1";
+const MODE_INFO = {
+  gp: { cta: "🏁 START RACE" },
+  tt: { cta: "⏱ START TIME TRIAL" },
+  mp: { cta: "🎮 HOST GAME" },
+};
+// Multiplayer needs a configured relay key; without one the mode isn't offered.
+const mpAvailable = !!resolveAblyKey();
+let raceMode = "gp";
+try {
+  const m = localStorage.getItem(MODE_KEY);
+  if (m === "gp" || m === "tt") raceMode = m; // "mp" never persists (needs a live room)
+} catch {}
+
+// The Game Mode tile echoes the chosen mode plus its options at a glance.
+function refreshModeSummary() {
+  const el = document.getElementById("mode-summary");
+  if (!el) return;
+  el.textContent =
+    raceMode === "tt" ? "Time Trial · One lap vs the clock"
+    : raceMode === "mp" ? "Multiplayer · Host or join friends"
+    : `Grand Prix · ${TOTAL_LAPS} lap${TOTAL_LAPS > 1 ? "s" : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`;
 }
+function applyModeUI() {
+  if (startBtn) startBtn.textContent = MODE_INFO[raceMode].cta;
+  const mp = raceMode === "mp";
+  document.getElementById("mp-join")?.classList.toggle("hidden", !mp);
+  document.getElementById("mp-menu-status")?.classList.toggle("hidden", !mp);
+  for (const m of ["gp", "tt", "mp"])
+    document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
+  refreshModeSummary();
+}
+function setRaceMode(mode) {
+  if (mode === "mp" && !mpAvailable) return;
+  // Leaving Multiplayer for a solo mode drops the room connection.
+  if (mode !== "mp" && MP.enabled) teardownMultiplayer();
+  raceMode = mode;
+  if (mode !== "mp") try { localStorage.setItem(MODE_KEY, mode); } catch {}
+  applyModeUI();
+}
+startBtn?.addEventListener("click", () => {
+  if (raceMode === "tt") startTimeTrial();
+  else if (raceMode === "mp") hostGame();
+  else startRace();
+});
+
+// Game Mode screen: one card per mode; the selected card expands its options.
+const modePanel = document.getElementById("mode-panel");
+for (const m of ["gp", "tt", "mp"])
+  document.getElementById("mode-" + m)?.addEventListener("click", () => setRaceMode(m));
+document.getElementById("open-mode")?.addEventListener("click", () => openSubScreen(modePanel));
+document.getElementById("mode-done")?.addEventListener("click", () => closeSubScreen(modePanel));
 
 // Host: connect to my own room (= my world seed) and go straight into the lobby.
 // The click is the user gesture beginRace needs for fullscreen + motion permission.
@@ -2467,7 +2772,7 @@ function autoOpenLobby() {
   enterLobby();
 }
 function enterMultiplayer() {
-  _mpUIMode = true;
+  raceMode = "mp";
   _amHost = true; // I'm creating this room → I'm the host (survives a refresh below)
   try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
   audio.unlock();
@@ -2476,9 +2781,11 @@ function enterMultiplayer() {
   u.searchParams.set("seed", WORLD_SEED);
   history.replaceState(null, "", u);
   initMultiplayer(); // connects (async) in the background
-  updateModeBtn();
+  applyModeUI();
 }
-function exitMultiplayer() {
+// Drop the room connection + remote karts (used when switching back to a solo
+// mode on the Game Mode screen). Pure teardown — the caller owns the UI state.
+function teardownMultiplayer() {
   if (MP.net) {
     try { MP.net.close(); } catch { /* ignore */ }
     MP.net = null;
@@ -2492,31 +2799,23 @@ function exitMultiplayer() {
   MP.inLobby = false;
   MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
-  _mpUIMode = false;
   const u = new URL(location.href);
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
-  updateModeBtn();
-  toMenu();
 }
-if (modeToggle && resolveAblyKey()) {
-  modeToggle.classList.remove("hidden");
-  modeSoloBtn?.addEventListener("click", () => {
-    if (MP.enabled) exitMultiplayer();
-    else { _mpUIMode = false; updateModeBtn(); }
-  });
-  modeMpBtn?.addEventListener("click", () => { _mpUIMode = true; updateModeBtn(); });
-  document.getElementById("mp-host-btn")?.addEventListener("click", hostGame);
+if (mpAvailable) {
+  document.getElementById("mode-mp")?.classList.remove("hidden");
   document.getElementById("mp-join-btn")?.addEventListener("click", joinGame);
   mpCodeInput?.addEventListener("keydown", (e) => { if (e.key === "Enter") joinGame(); });
   // Anyone landing with ?mp=1 — a join reload, an invite link, or a host refresh —
   // is here to play together, so drop straight into the lobby (no flag needed).
   if (new URLSearchParams(location.search).has("mp")) {
-    _mpUIMode = true;
+    raceMode = "mp";
     setTimeout(autoOpenLobby, 60);
   }
-  updateModeBtn();
 }
+applyModeUI();
+refreshRaceOptSegs();
 
 // A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
 // independent of whatever junk is on location.href right now.
@@ -2614,9 +2913,10 @@ function beginRace() {
   }
 
   prepareRace();
-  countdown = 3.999;
+  countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
   countdownCalibrated = false;
   prevCountN = 99;
+  track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
 }
 
@@ -2690,7 +2990,7 @@ function renderLobby() {
   if (codeEl) codeEl.textContent = WORLD_SEED;
   if (!MP.enabled || !MP.net) return; // the player list / count need a live connection
   const countEl = document.getElementById("lobby-count");
-  if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS} players`;
+  if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS}`;
   const list = document.getElementById("lobby-players");
   if (list) {
     list.innerHTML = "";
@@ -2758,6 +3058,7 @@ function beginSyncedRace(at) {
   countdown = Math.max(0.3, (at - MP.net.now()) / 1000);
   countdownCalibrated = false;
   prevCountN = 99;
+  track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
 }
 
@@ -2775,6 +3076,11 @@ if (lobbyStartBtn) {
 // --- Camera follow ---
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
+// Scratch vectors for updateCamera — reused every frame so the camera path
+// allocates nothing per frame. (_camFwd is shared with updateAtmosphere's
+// facing test; both write before they read, so the reuse is safe.)
+const _camDesired = new THREE.Vector3();
+const _camLook = new THREE.Vector3();
 let shakeMag = 0;
 // Boost pads: a short speed kick (and its rainbow trail) when a kart drives over
 // a chevron pad, with a per-kart cooldown so it fires once per pass.
@@ -2819,10 +3125,25 @@ function updateFireworks(dt) {
     _fwNext -= dt;
     if (_fwNext <= 0) {
       _fwNext = 0.22 + Math.random() * 0.28;
-      const o = track.archApex
-        .clone()
-        .add(new THREE.Vector3((Math.random() - 0.5) * 7, Math.random() * 3, (Math.random() - 0.5) * 2));
-      effects.fireworkBurst(o);
+      // Two firework sets, alternating LEFT/RIGHT from the mortar pots flanking
+      // the arch (shells burst in a column above each pot) — instead of popping
+      // out of the arch itself.
+      const pots = track.fwLaunchers;
+      if (pots && pots.length === 2) {
+        _fwSide = 1 - _fwSide;
+        const base = pots[_fwSide];
+        _fwPos.set(
+          base.x + (Math.random() - 0.5) * 2.5,
+          base.y + 5 + Math.random() * 5,
+          base.z + (Math.random() - 0.5) * 2.5
+        );
+      } else {
+        _fwPos.copy(track.archApex); // fallback: burst from the arch
+        _fwPos.x += (Math.random() - 0.5) * 7;
+        _fwPos.y += Math.random() * 3;
+        _fwPos.z += (Math.random() - 0.5) * 2;
+      }
+      effects.fireworkBurst(_fwPos);
     }
   }
 }
@@ -2949,15 +3270,16 @@ function updateCamera(dt, snap = false) {
   if (player.finished) {
     _finishCamAngle += dt * 0.45;
     const r = 12;
-    const desired = new THREE.Vector3(
+    _camDesired.set(
       player.position.x + Math.sin(_finishCamAngle) * r,
       player.position.y + 6,
       player.position.z + Math.cos(_finishCamAngle) * r
     );
-    const look = new THREE.Vector3(player.position.x, player.position.y + 1.5, player.position.z);
+    _camLook.set(player.position.x, player.position.y + 1.5, player.position.z);
     const lerp = snap ? 1 : 1 - Math.pow(0.02, dt);
-    camPos.lerp(desired, lerp);
-    camTarget.lerp(look, lerp);
+    camPos.lerp(_camDesired, lerp);
+    camTarget.lerp(_camLook, lerp);
+    featureCameraClamp(track.features, track, camPos); // victory orbit can sweep into tunnel rock
     camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     camera.position.copy(camPos);
@@ -2965,25 +3287,25 @@ function updateCamera(dt, snap = false) {
     return;
   }
 
-  const fwd = new THREE.Vector3(Math.sin(player.heading), 0, Math.cos(player.heading));
-  const desired = new THREE.Vector3()
-    .copy(player.position)
-    .addScaledVector(fwd, -13)
-    .add(new THREE.Vector3(0, 7 + player.y * 0.5, 0));
-  const look = new THREE.Vector3()
-    .copy(player.position)
-    .addScaledVector(fwd, 6)
-    .add(new THREE.Vector3(0, 1.5 + player.y, 0));
+  _camFwd.set(Math.sin(player.heading), 0, Math.cos(player.heading));
+  _camDesired.copy(player.position).addScaledVector(_camFwd, -13);
+  _camDesired.y += 7 + player.y * 0.5;
+  _camLook.copy(player.position).addScaledVector(_camFwd, 6);
+  _camLook.y += 1.5 + player.y;
 
   const lerp = snap ? 1 : 1 - Math.pow(0.001, dt);
-  camPos.lerp(desired, lerp);
-  camTarget.lerp(look, lerp);
+  camPos.lerp(_camDesired, lerp);
+  camTarget.lerp(_camLook, lerp);
 
   // Keep the camera above the track surface beneath it: on a steep descent the
   // spot behind the kart is up-slope (higher ground), which could otherwise leave
   // the camera buried under the road. Sample the road height there and lift if low.
   const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
   if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
+
+  // Don't let the camera poke into a tunnel's mountain: hugging the bore wall
+  // (or reversing sideways inside) can park the camera in solid rock.
+  featureCameraClamp(track.features, track, camPos);
 
   // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
   // a rush — but only a touch, so the road stays readable and easy to drive.
@@ -3309,16 +3631,31 @@ function renderResults() {
   const list = document.getElementById("results-list");
   list.innerHTML = "";
   order.forEach((k) => {
-    const li = document.createElement("li");
     const time = k.finished
-      ? ` — ${formatClock(k.finishTime)}`
-      : MP.enabled ? " — racing…" : " — DNF";
-    li.textContent = `${ordinal(k.place)}  ${k.name}${time}`;
-    if (k === player) li.className = "you";
-    list.appendChild(li);
+      ? formatClock(k.finishTime)
+      : MP.enabled ? "racing…" : "DNF";
+    const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
+    list.appendChild(resultRow(medal, k.name, time, k === player));
   });
   document.getElementById("results-title").textContent =
     player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
+}
+// One standings row: rank (medal for the podium) | name | time, so the columns
+// line up instead of reading as a text blob. `you` lights the player's row gold.
+function resultRow(rank, name, time, you) {
+  const li = document.createElement("li");
+  const r = document.createElement("span");
+  r.className = "r-rank";
+  r.textContent = rank;
+  const n = document.createElement("span");
+  n.className = "r-name";
+  n.textContent = name;
+  const t = document.createElement("span");
+  t.className = "r-time";
+  t.textContent = time;
+  li.append(r, n, t);
+  if (you) li.className = "you";
+  return li;
 }
 
 function formatClock(sec) {
@@ -3398,7 +3735,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).
@@ -3445,23 +3782,14 @@ function renderTimeTrialResults() {
     yourTime != null && best != null && yourTime <= best ? "⏱ New Best Lap!" : "⏱ Time Trial";
   const list = document.getElementById("results-list");
   list.innerHTML = "";
-  if (yourTime != null) {
-    const me = document.createElement("li");
-    me.className = "you";
-    me.textContent = `Your lap: ${formatLap(yourTime)}`;
-    list.appendChild(me);
-  }
-  if (!top.length) {
-    const li = document.createElement("li");
-    li.textContent = "No times yet — set one!";
-    list.appendChild(li);
-  }
+  if (yourTime != null) list.appendChild(resultRow("⏱", "Your lap", formatLap(yourTime), true));
+  if (!top.length) list.appendChild(resultRow("—", "No times yet", "set one!", false));
   top.forEach((e, i) => {
-    const li = document.createElement("li");
     const isYou = _ttResult && e === _ttResult.entry;
-    li.textContent = `${i + 1}.  ${formatLap(e.time)}`;
-    if (isYou) li.className = "you";
-    list.appendChild(li);
+    const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+    // The date anchors older bests ("when was that?"); your fresh run says so.
+    const label = isYou ? "This run" : new Date(e.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    list.appendChild(resultRow(medal, label, formatLap(e.time), isYou));
   });
 }
 
@@ -3562,6 +3890,16 @@ function loop(now) {
       renderGarage(now / 1000, dt);
       return;
     }
+    // Debug/screenshot hook: window.__campin = [x,y,z, tx,ty,tz] pins the menu
+    // camera to a fixed shot (headless tooling flies it to the track set pieces).
+    if (window.__campin) {
+      const c = window.__campin;
+      camera.position.set(c[0], c[1], c[2]);
+      camera.lookAt(c[3], c[4], c[5]);
+      if (menuXfade) menuXfade.style.opacity = 0;
+      renderFrame();
+      return;
+    }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
     updateMenuCamera(now / 1000); // advance tour timing/phase
@@ -3576,11 +3914,16 @@ function loop(now) {
     else countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
-    const n = Math.ceil(countdown - 1);
-    hud.showToast(n > 0 ? `${n}` : "GO!");
-    // A beep on each 3/2/1 and a higher GO! chirp, as the number changes.
-    if (n !== prevCountN && n <= 3) {
-      audio.countdownBeep(Math.max(0, n));
+    // The whole GO moment — toast, chirp, GREEN light — fires at the actual
+    // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
+    // lit the light early) for the final ~1s while input was still locked.
+    const n = Math.ceil(countdown);
+    if (n >= 1 && n <= 3) hud.showToast(`${n}`);
+    // A beep on each 3/2/1 as the number changes, and the start-light gantry
+    // steps with it: red through 3/2, amber at 1. Green comes with GO.
+    if (n !== prevCountN && n >= 1 && n <= 3) {
+      audio.countdownBeep(n);
+      track.setStartLight?.(n >= 2 ? "red" : "amber");
       prevCountN = n;
     }
     // Re-zero steering near the end of the countdown, once the player has
@@ -3592,6 +3935,9 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      hud.showToast("GO!");
+      audio.countdownBeep(0); // the higher GO! chirp, exactly as control unlocks
+      track.setStartLight?.("green"); // green means green: karts can move NOW
       audio.startEngine(); // engines fire up on the green light
       audio.playMusic("bg");
       // Hold everyone's first shot for an opening grace period.

@@ -37,8 +37,67 @@
       }
     }
   </script>
+
+  <!-- Critical loading-screen CSS, inlined so it paints INSTANTLY on a cold load
+       — before styles.css or the large three.js module have downloaded — instead
+       of showing a blank/black screen while the renderer boots. Removed by JS
+       (main.js) once the first frame has rendered. -->
+  <style>
+    #loading{position:fixed;inset:0;z-index:10000;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:14px;
+      background:radial-gradient(125% 125% at 50% 32%,#1b2547 0%,#0e1320 72%);
+      color:#fff;font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif;
+      -webkit-user-select:none;user-select:none;transition:opacity .45s ease;}
+    #loading.done{opacity:0;pointer-events:none;}
+    /* Same treatment as the menu title (gold + chunky 2.5D extrude); literal
+       colours because styles.css (and its --accent vars) may not be loaded yet. */
+    #loading .ls-title{font-size:clamp(30px,6vw,54px);font-weight:800;letter-spacing:2px;
+      margin:0;color:#ffb300;
+      text-shadow:0 2px 0 #ff5722,0 4px 0 #b93310,0 6px 0 rgba(120,30,8,.6),
+        0 10px 18px rgba(0,0,0,.55);
+      display:flex;align-items:center;gap:.38em;}
+    #loading .ls-cat{height:1.2em;width:auto;flex:none;
+      filter:drop-shadow(0 3px 12px rgba(0,0,0,.45));}
+    #loading .ls-tag{font-size:clamp(12px,2.3vw,17px);opacity:.7;margin:0;
+      letter-spacing:.22em;text-transform:uppercase;}
+    #loading .ls-ring{width:44px;height:44px;border-radius:50%;margin-top:12px;
+      border:4px solid rgba(255,255,255,.16);border-top-color:#ffd54f;
+      animation:ls-spin .85s linear infinite;}
+    @keyframes ls-spin{to{transform:rotate(360deg);}}
+    /* The game forces landscape by counter-rotating #stage (layoutStage), but
+       the loading screen paints before any JS runs — mirror that rotation in
+       pure CSS so a portrait viewport shows the loader in landscape too. */
+    @media (orientation:portrait){
+      #loading{inset:auto;left:50%;top:50%;width:100vh;height:100vw;
+        transform:translate(-50%,-50%) rotate(90deg);}
+      #loading .ls-title{font-size:clamp(30px,6vh,54px);}
+      #loading .ls-tag{font-size:clamp(12px,2.3vh,17px);}
+    }
+    @media (prefers-reduced-motion:reduce){#loading .ls-ring{animation:none;
+      border-top-color:rgba(255,213,79,.6);}}
+  </style>
 </head>
 <body>
+  <!-- First paint: a branded loading screen (see inline CSS above) so a cold
+       start never flashes a blank screen while the renderer initialises. -->
+  <div id="loading">
+    <p class="ls-title"><!-- the app-icon cat face (same shapes as tools/gen-icons.mjs) -->
+      <svg class="ls-cat" viewBox="0.17 0.07 0.66 0.82" aria-hidden="true">
+        <polygon points="0.27,0.42 0.33,0.10 0.47,0.32" fill="#f4a93a"/>
+        <polygon points="0.73,0.42 0.67,0.10 0.53,0.32" fill="#f4a93a"/>
+        <ellipse cx="0.5" cy="0.57" rx="0.30" ry="0.29" fill="#f4a93a"/>
+        <polygon points="0.32,0.40 0.35,0.18 0.43,0.33" fill="#ff8fab"/>
+        <polygon points="0.68,0.40 0.65,0.18 0.57,0.33" fill="#ff8fab"/>
+        <ellipse cx="0.5" cy="0.66" rx="0.16" ry="0.10" fill="#ffe7c7"/>
+        <ellipse cx="0.4" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+        <ellipse cx="0.6" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+        <ellipse cx="0.4" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+        <ellipse cx="0.6" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+        <polygon points="0.47,0.62 0.53,0.62 0.5,0.67" fill="#ff6f9b"/>
+      </svg><span>ZOOMIES GP</span></p>
+    <p class="ls-tag">Cat Kart Racing</p>
+    <div class="ls-ring" role="progressbar" aria-label="Loading"></div>
+  </div>
   <!-- Everything lives inside #stage, which we counter-rotate so the game
        always presents in landscape no matter how the OS orients the page. -->
   <div id="stage">
@@ -130,64 +189,168 @@
   </div>
 
   <!-- ===== Pause ===== -->
+  <!-- Same shape as the main menu: one primary action, then quiet extras. The
+       frozen race shows through the glassy card. -->
   <div id="pause-overlay" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card pause-card">
       <h1>⏸ Paused</h1>
-      <button id="resume-btn">RESUME</button>
-      <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
-      <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
-      <button id="menu-btn" class="secondary">MAIN MENU</button>
+      <button id="resume-btn">▶ RESUME</button>
+      <div class="pause-row">
+        <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
+        <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
+      </div>
+      <button id="menu-btn" class="secondary pause-exit">🏠 MAIN MENU</button>
     </div>
   </div>
 
   <!-- ===== Start menu ===== -->
+  <!-- Progressive-disclosure layout: the main screen shows only the primary
+       action plus a short "your race at a glance" list. Each tile shows the
+       CURRENT choice (mode, racer, track) and drills into its own focused
+       screen to change it — nothing is edited on this screen itself. -->
   <div id="menu" class="overlay">
     <div class="menu-card menu-main">
       <!-- Branding + track map on one side, controls on the other, so the menu
            stays short enough for the landscape stage (which is wide, not tall). -->
       <div class="menu-col menu-col-brand">
-        <h1>🐱 ZOOMIES GP</h1>
+        <h1><!-- the app-icon cat face (same shapes as the loading screen / gen-icons.mjs) -->
+          <svg class="menu-cat" viewBox="0.17 0.07 0.66 0.82" aria-hidden="true">
+            <polygon points="0.27,0.42 0.33,0.10 0.47,0.32" fill="#f4a93a"/>
+            <polygon points="0.73,0.42 0.67,0.10 0.53,0.32" fill="#f4a93a"/>
+            <ellipse cx="0.5" cy="0.57" rx="0.30" ry="0.29" fill="#f4a93a"/>
+            <polygon points="0.32,0.40 0.35,0.18 0.43,0.33" fill="#ff8fab"/>
+            <polygon points="0.68,0.40 0.65,0.18 0.57,0.33" fill="#ff8fab"/>
+            <ellipse cx="0.5" cy="0.66" rx="0.16" ry="0.10" fill="#ffe7c7"/>
+            <ellipse cx="0.4" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+            <ellipse cx="0.6" cy="0.55" rx="0.055" ry="0.08" fill="#9ccc65"/>
+            <ellipse cx="0.4" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+            <ellipse cx="0.6" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
+            <polygon points="0.47,0.62 0.53,0.62 0.5,0.67" fill="#ff6f9b"/>
+          </svg><span>ZOOMIES GP</span></h1>
         <p class="tagline">Cat Kart Racing</p>
         <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
           <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
           <span id="menu-map-label" class="map-label">Classic circuit</span>
+          <span class="map-edit-hint">Edit ›</span>
         </button>
       </div>
       <div class="menu-col menu-col-actions">
         <!-- Shown only when a race is parked in the background (opened the menu
              mid-race); jumps back into it instead of losing your progress. -->
         <button id="resume-race-btn" class="hidden">▶ RESUME RACE</button>
-        <button id="start-btn">START RACE</button>
-        <button id="time-trial-btn">⏱ TIME TRIAL</button>
-        <div id="mode-toggle" class="seg-toggle hidden">
-          <button id="mode-solo" class="seg-btn is-active">👤 Solo</button>
-          <button id="mode-mp" class="seg-btn">🎮 Multiplayer</button>
+        <!-- The one primary action. Its label + behaviour follow the chosen
+             game mode: start a race, start a time trial, or host a room. -->
+        <button id="start-btn">🏁 START RACE</button>
+        <!-- Joining a friend is an entry action (not a setting), so it stays
+             one tap from the front — shown only while Multiplayer is the mode. -->
+        <div id="mp-join" class="mp-join-row hidden">
+          <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
+                 autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
+          <button id="mp-join-btn" class="secondary small">Join</button>
         </div>
-        <!-- Multiplayer (shown only in Multiplayer mode; START/Time Trial hide).
-             HOST drops you into a lobby with a share code; JOIN takes a friend's
-             code. The room code + sharing live in the lobby, not here. -->
-        <div id="mp-actions" class="mp-actions hidden">
-          <button id="mp-host-btn">🎮 Host Game</button>
-          <p class="mp-or">— or join a friend —</p>
-          <div class="mp-join-row">
-            <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
-                   autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
-            <button id="mp-join-btn" class="secondary small">Join</button>
-          </div>
-          <p id="mp-menu-status" class="lobby-status"></p>
-        </div>
-        <div class="menu-options">
-          <button id="laps-btn" class="secondary small">Laps: 3</button>
-          <button id="difficulty-btn" class="secondary small">Difficulty: Hard</button>
-          <button id="open-garage" class="secondary small">🐱 Garage</button>
-          <button id="open-track" class="secondary small">🏞 Track</button>
+        <p id="mp-menu-status" class="lobby-status hidden"></p>
+        <!-- Race setup at a glance: current choice on each row, tap to change. -->
+        <nav class="menu-tiles" aria-label="Race setup">
+          <button id="open-mode" class="menu-tile">
+            <span class="tile-ico">🏁</span>
+            <span class="tile-text">
+              <span class="tile-title">Game Mode</span>
+              <span class="tile-sub" id="mode-summary">Grand Prix · 3 laps · Hard</span>
+            </span>
+            <span class="tile-chevron">›</span>
+          </button>
+          <button id="open-garage" class="menu-tile">
+            <span class="tile-ico">🐱</span>
+            <span class="tile-text">
+              <span class="tile-title">Racer</span>
+              <span class="tile-sub" id="racer-summary">Marmalade · Ember</span>
+            </span>
+            <span class="tile-swatches">
+              <span class="tile-swatch" id="racer-swatch-cat"></span>
+              <span class="tile-swatch" id="racer-swatch-kart"></span>
+            </span>
+            <span class="tile-chevron">›</span>
+          </button>
+          <button id="open-track" class="menu-tile">
+            <span class="tile-ico">🏞</span>
+            <span class="tile-text">
+              <span class="tile-title">Track</span>
+              <span class="tile-sub" id="track-summary">Classic circuit · Midday</span>
+            </span>
+            <span class="tile-chevron">›</span>
+          </button>
+        </nav>
+        <div class="menu-footer">
           <button id="howto-btn" class="secondary small">❓ How to Play</button>
           <button id="open-settings" class="secondary small">⚙ Settings</button>
+          <!-- Shown only when not already installed (JS); does the native install
+               prompt where supported, or opens the iOS instructions overlay. -->
+          <button id="install-btn" class="secondary small hidden">📲 Install</button>
         </div>
-        <!-- Shown only when not already installed (JS); does the native install
-             prompt where supported, or opens the iOS instructions overlay. -->
-        <button id="install-btn" class="secondary small hidden">📲 Add to Home Screen</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== Game mode (sub-menu) ===== -->
+  <!-- One card per mode; the selected card expands to reveal just that mode's
+       options (laps + difficulty for Grand Prix), so only relevant knobs show. -->
+  <div id="mode-panel" class="overlay hidden">
+    <div class="menu-card mode-main">
+      <h1>Game Mode</h1>
+      <p class="tagline">Pick how you want to race</p>
+      <div class="mode-cards">
+        <div id="mode-gp" class="mode-card">
+          <button class="mode-pick">
+            <span class="mode-ico">🏁</span>
+            <span class="mode-text">
+              <span class="mode-name">Grand Prix</span>
+              <span class="mode-desc">Race five rivals to the finish</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+          <div class="mode-opts">
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Laps</span>
+              <div class="seg-toggle laps-seg" id="laps-seg">
+                <button class="seg-btn" data-laps="1">1</button>
+                <button class="seg-btn" data-laps="2">2</button>
+                <button class="seg-btn" data-laps="3">3</button>
+                <button class="seg-btn" data-laps="4">4</button>
+                <button class="seg-btn" data-laps="5">5</button>
+              </div>
+            </div>
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Rivals</span>
+              <div class="seg-toggle" id="diff-seg">
+                <button class="seg-btn" data-diff="easy">Easy</button>
+                <button class="seg-btn" data-diff="medium">Medium</button>
+                <button class="seg-btn" data-diff="hard">Hard</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="mode-tt" class="mode-card">
+          <button class="mode-pick">
+            <span class="mode-ico">⏱</span>
+            <span class="mode-text">
+              <span class="mode-name">Time Trial</span>
+              <span class="mode-desc">One flying lap against the clock — beat your PB</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+        </div>
+        <div id="mode-mp" class="mode-card hidden">
+          <button class="mode-pick">
+            <span class="mode-ico">🎮</span>
+            <span class="mode-text">
+              <span class="mode-name">Multiplayer</span>
+              <span class="mode-desc">Host a room and share the code, or join a friend</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+        </div>
+      </div>
+      <button id="mode-done">✓ Done</button>
     </div>
   </div>
 
@@ -197,8 +360,16 @@
       <div class="garage-title"><span class="garage-ico">🐱</span><h1>Pick your racer</h1></div>
       <div class="garage-pickers">
         <div class="garage-pick">
-          <span class="garage-pick-label">CAT</span>
-          <div class="garage-stepper">
+          <!-- Presets vs Custom is an explicit toggle (like the track's
+               Classic/Generated) instead of a hidden extra stepper slot. -->
+          <div class="garage-pick-head">
+            <span class="garage-pick-label">CAT</span>
+            <div class="seg-toggle garage-seg" id="cat-src">
+              <button id="cat-src-preset" class="seg-btn is-active">Presets</button>
+              <button id="cat-src-custom" class="seg-btn">✨ Custom</button>
+            </div>
+          </div>
+          <div class="garage-stepper" id="cat-stepper">
             <button id="cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
             <span class="garage-swatch" id="cat-swatch"></span>
             <span class="garage-name" id="cat-name">Marmalade</span>
@@ -225,6 +396,10 @@
                 <button id="cat-acc-next" class="garage-arrow" aria-label="Next accessory">▶</button>
               </div>
             </div>
+            <div class="creator-row" id="cat-acccolor-row">
+              <span class="creator-label">Acc. colour</span>
+              <div class="swatch-grid" id="cat-acccolor-grid"></div>
+            </div>
             <div class="creator-row">
               <span class="creator-label">Name</span>
               <input id="cat-custom-name" class="creator-input" maxlength="14" placeholder="My Cat" />
@@ -233,8 +408,14 @@
           </div>
         </div>
         <div class="garage-pick">
-          <span class="garage-pick-label">KART</span>
-          <div class="garage-stepper">
+          <div class="garage-pick-head">
+            <span class="garage-pick-label">KART</span>
+            <div class="seg-toggle garage-seg" id="kart-src">
+              <button id="kart-src-preset" class="seg-btn is-active">Presets</button>
+              <button id="kart-src-custom" class="seg-btn">✨ Custom</button>
+            </div>
+          </div>
+          <div class="garage-stepper" id="kart-stepper">
             <button id="kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
             <span class="garage-swatch" id="kart-swatch"></span>
             <span class="garage-name" id="kart-name">Ember</span>
@@ -306,53 +487,68 @@
   </div>
 
   <!-- ===== How to play (sub-menu) ===== -->
+  <!-- One icon card per control, in a two-column grid that fits the short
+       landscape stage — scannable at a glance instead of a wall of bullets. -->
   <div id="howto" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card howto-main">
       <h1>How to Play</h1>
-      <ul class="how-to">
-        <li><strong>Tilt phone</strong> to steer</li>
-        <li><strong>Left slider:</strong> up = gas, down = brake / reverse</li>
-        <li><strong>⬆ Hold Jump</strong> while turning to <strong>drift</strong> — longer drift, bigger boost</li>
-        <li><strong>🐾 Shoot</strong> hairballs to spin out rivals</li>
-        <li><strong>🛡️ Hold Shield</strong> to block hairballs</li>
-        <li><strong>💨 Boost</strong> — a turbo cat toot (recharges)</li>
-        <li>First to finish <strong>all laps</strong> wins!</li>
-      </ul>
+      <p class="tagline">Thirty seconds to speed</p>
+      <div class="how-grid">
+        <div class="how-item"><span class="how-ico">📱</span><span class="how-txt"><strong>Tilt</strong> your phone to steer</span></div>
+        <div class="how-item"><span class="how-ico">🕹️</span><span class="how-txt"><strong>Left slider</strong> — up gas, down brake</span></div>
+        <div class="how-item"><span class="how-ico">⬆</span><span class="how-txt"><strong>Hold Jump</strong> in a turn to <strong>drift</strong> — longer drift, bigger boost</span></div>
+        <div class="how-item"><span class="how-ico">🐾</span><span class="how-txt"><strong>Shoot</strong> hairballs to spin out rivals</span></div>
+        <div class="how-item"><span class="how-ico">🛡️</span><span class="how-txt"><strong>Hold Shield</strong> to block hairballs</span></div>
+        <div class="how-item"><span class="how-ico">💨</span><span class="how-txt"><strong>Boost</strong> — a turbo cat toot (recharges)</span></div>
+        <div class="how-item how-win"><span class="how-ico">🏁</span><span class="how-txt">First to finish <strong>all laps</strong> wins!</span></div>
+      </div>
       <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
       <button id="howto-back" class="secondary">← Back</button>
     </div>
   </div>
 
   <!-- ===== Multiplayer lobby ===== -->
+  <!-- Two columns for the short landscape stage: the room code + sharing on one
+       side, who's here on the other, with the single primary action beneath. -->
   <div id="lobby" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card lobby-main">
       <h1>🏁 Lobby</h1>
       <p id="lobby-status" class="lobby-status">Connecting…</p>
-      <!-- Big, obvious share code — friends type this to join. -->
-      <p class="lobby-share-label">Share this code with friends:</p>
-      <div id="lobby-code" class="lobby-code-big">—</div>
-      <div class="mp-share-row">
-        <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
-        <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+      <div class="lobby-body">
+        <div class="lobby-col">
+          <!-- Big, obvious share code — friends type this to join. -->
+          <p class="lobby-share-label">Room code · friends type this</p>
+          <div id="lobby-code" class="lobby-code-big">—</div>
+          <div class="mp-share-row">
+            <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
+            <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
+          </div>
+        </div>
+        <div class="lobby-col">
+          <p class="lobby-players-label">Players · <span id="lobby-count">1 / 6</span></p>
+          <ol id="lobby-players"></ol>
+        </div>
       </div>
-      <p class="lobby-players-label">Players <span id="lobby-count">1 / 6</span></p>
-      <ol id="lobby-players"></ol>
-      <button id="lobby-start">START RACE</button>
-      <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
-           host launches (the join reload drops fullscreen). -->
-      <button id="lobby-ready" class="secondary small hidden">🎮 Enable tilt controls</button>
-      <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
-      <button id="lobby-back" class="secondary small">← Main Menu</button>
+      <div class="lobby-actions">
+        <button id="lobby-start">🏁 START RACE</button>
+        <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
+             host launches (the join reload drops fullscreen). -->
+        <button id="lobby-ready" class="secondary small hidden">🎮 Enable tilt controls</button>
+        <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
+        <button id="lobby-back" class="secondary small">← Main Menu</button>
+      </div>
     </div>
   </div>
 
   <!-- ===== Results ===== -->
+  <!-- Standings as podium-style rows (medals for the top three, your row lit
+       gold), floating over the victory-lap camera + fireworks. -->
   <div id="results" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card results-main">
       <h1 id="results-title">🏁 Finish!</h1>
       <ol id="results-list"></ol>
-      <button id="restart-btn">RACE AGAIN</button>
-      <button id="results-menu-btn" class="secondary">Main Menu</button>
+      <button id="restart-btn">🔁 RACE AGAIN</button>
+      <button id="results-menu-btn" class="secondary small">🏠 Main Menu</button>
     </div>
   </div>
 
@@ -397,6 +593,21 @@
             <div class="track-row"><span class="setting-label">Size</span>
               <input id="track-size" class="slider" type="range" min="0" max="100" value="50" />
               <span class="track-val" id="track-size-val">50</span></div>
+            <div class="env-label">Set pieces</div>
+            <!-- Which signature moments the generator MAY place (each still
+                 needs its host biome on the loop, and room). "Extras" covers
+                 the small treatments: arches, wind farm, flowers, neon, train. -->
+            <div class="biome-pick" id="track-feats">
+              <button data-feat="bridge" class="biome-chip">🌉 River</button>
+              <button data-feat="canyon" class="biome-chip">⛰️ Canyon</button>
+              <button data-feat="tunnel" class="biome-chip">🚇 Tunnel</button>
+              <button data-feat="giant" class="biome-chip">🌲 Giants</button>
+              <button data-feat="overpass" class="biome-chip">🛣️ Overpass</button>
+              <button data-feat="shelf" class="biome-chip">🧗 Ledge</button>
+              <button data-feat="dam" class="biome-chip">💧 Dam</button>
+              <button data-feat="causeway" class="biome-chip">🌊 Causeway</button>
+              <button data-feat="extras" class="biome-chip">✨ Extras</button>
+            </div>
             <div class="env-label">Environment <span id="biome-max-hint" class="env-hint"></span></div>
             <div class="biome-pick" id="track-biomes">
               <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>
@@ -407,6 +618,8 @@
               <button data-biome="blossom" class="biome-chip">🌸 Blossom</button>
               <button data-biome="savanna" class="biome-chip">🦒 Savanna</button>
               <button data-biome="tundra" class="biome-chip">❄️ Tundra</button>
+              <button data-biome="city" class="biome-chip">🏙 City</button>
+              <button data-biome="beach" class="biome-chip">🏖 Beach</button>
             </div>
           </div>
           <!-- Outside #track-knobs so it stays available in Classic mode too. -->
@@ -429,52 +642,62 @@
   </div>
 
   <!-- ===== Settings (graphics + sound) ===== -->
+  <!-- Grouped into cards (Audio / Display / Advanced) so each concern reads as
+       its own bucket — same visual family as the Game Mode cards. -->
   <div id="settings" class="overlay hidden">
-    <div class="menu-card">
+    <div class="menu-card settings-main">
       <h1>⚙ Settings</h1>
+      <p class="tagline">Sound, graphics &amp; extras</p>
       <div class="settings-list">
-        <div class="setting-row">
-          <span class="setting-label">Music</span>
-          <button id="set-music-toggle" class="secondary small toggle">On</button>
-          <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="25"
-                 aria-label="Music volume" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Sound FX</span>
-          <button id="set-sfx-toggle" class="secondary small toggle">On</button>
-          <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
-                 aria-label="Sound effects volume" />
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Graphics</span>
-          <div id="quality-toggle" class="seg-toggle">
-            <button id="set-quality-low" class="seg-btn">Low</button>
-            <button id="set-quality-high" class="seg-btn is-active">High</button>
+        <section class="settings-card">
+          <h2 class="settings-section">🔊 Audio</h2>
+          <div class="setting-row">
+            <span class="setting-label">Music</span>
+            <button id="set-music-toggle" class="secondary small toggle">On</button>
+            <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="25"
+                   aria-label="Music volume" />
           </div>
-        </div>
-        <div class="setting-row">
-          <span class="setting-label">Compatibility mode</span>
-          <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
-        </div>
-        <p class="setting-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
-
+          <div class="setting-row">
+            <span class="setting-label">Sound FX</span>
+            <button id="set-sfx-toggle" class="secondary small toggle">On</button>
+            <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
+                   aria-label="Sound effects volume" />
+          </div>
+        </section>
+        <section class="settings-card">
+          <h2 class="settings-section">🖥 Display</h2>
+          <div class="setting-row">
+            <span class="setting-label">Graphics</span>
+            <div id="quality-toggle" class="seg-toggle">
+              <button id="set-quality-low" class="seg-btn">Low</button>
+              <button id="set-quality-high" class="seg-btn is-active">High</button>
+            </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Compatibility mode</span>
+            <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
+          </div>
+          <p class="setting-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
+        </section>
         <!-- Advanced / debug toggles, hidden behind an expander to keep the menu tidy. -->
-        <button id="adv-toggle" class="adv-toggle" aria-expanded="false">Advanced ▸</button>
-        <div id="adv-settings" class="hidden">
-          <div class="setting-row">
-            <span class="setting-label">FPS counter</span>
-            <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
+        <section class="settings-card">
+          <button id="adv-toggle" class="adv-toggle" aria-expanded="false">Advanced ▸</button>
+          <div id="adv-settings" class="hidden">
+            <div class="setting-row">
+              <span class="setting-label">FPS counter</span>
+              <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">Tilt debug</span>
+              <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <div class="setting-row">
+              <span class="setting-label">P2P multiplayer</span>
+              <button id="set-rtc-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <p class="setting-note">Experimental: routes multiplayer directly between players for lower lag (best on the same Wi-Fi). Takes effect next time you Host or Join.</p>
           </div>
-          <div class="setting-row">
-            <span class="setting-label">Tilt debug</span>
-            <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
-          </div>
-          <div class="setting-row">
-            <span class="setting-label">P2P multiplayer</span>
-            <button id="set-rtc-toggle" class="secondary small toggle off">Off</button>
-          </div>
-          <p class="setting-note">Experimental: routes multiplayer directly between players for lower lag (best on the same Wi-Fi). Takes effect next time you Host or Join.</p>
-        </div>
+        </section>
       </div>
       <button id="settings-back" class="secondary">← Back</button>
     </div>

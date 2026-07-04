@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { Kart } from "./kart.js";
+import { disposeGroup } from "./models.js";
 import { sampleBuffer, pushSnapshot, lerpAngle } from "./net/interp.js";
 
 // Pose flag bitmask shared by sender (main loop) and receiver (RemoteKart).
@@ -30,6 +31,7 @@ export class RemoteKart {
       catColor: identity.catColor,
       catPattern: identity.catPattern,
       catAccessory: identity.catAccessory,
+      catAccessoryColor: identity.catAccessoryColor,
       kartStyle: identity.kartStyle,
       kartNumber: identity.kartNumber,
       name: identity.name,
@@ -152,5 +154,9 @@ export class RemoteKart {
 
   dispose(scene) {
     scene.remove(this.group);
+    // Free the puppet's GPU resources (merged geometries + per-kart materials;
+    // shared colour-keyed materials are skipped) — without this, every real
+    // join/leave in a long multiplayer session leaked a full kart.
+    disposeGroup(this.group);
   }
 }

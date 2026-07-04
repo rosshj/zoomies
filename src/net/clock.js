@@ -30,9 +30,13 @@ export class ClockSync {
   sample(t0, serverT, t1) {
     const { offset, rtt } = computeOffset(t0, serverT, t1);
     if (rtt <= this._bestRtt || rtt < this._bestRtt * 1.5) {
-      // Blend toward the new offset, weighting tighter round-trips more.
-      const w = rtt <= this._bestRtt ? 1 : 0.25;
-      this._offset = this.synced ? this._offset + (offset - this._offset) * w : offset;
+      // Blend toward the new offset, weighting tighter round-trips more. Once
+      // synced, even a new-best sample BLENDS (0.5) instead of snapping: an
+      // instant offset jump mid-race shifts every remote kart's render time in a
+      // single frame (a visible hitch), while halving per sample converges to
+      // the same value within a few pings.
+      const w = !this.synced ? 1 : rtt <= this._bestRtt ? 0.5 : 0.25;
+      this._offset = this._offset + (offset - this._offset) * w;
       if (rtt < this._bestRtt) this._bestRtt = rtt;
       this.synced = true;
     }
