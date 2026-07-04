@@ -320,6 +320,11 @@ function makeRiver(track, run, rng) {
     waterR,
     shoreR: waterR + 3.5,
     blendR: blend,
+    // Seeded waterfall: the river ALWAYS steps down partway along its longer
+    // arm (terrain is road-anchored and only climbs away from the road, so a
+    // "natural drop" almost never exists — waiting for one meant no falls).
+    fallDrop: 7 + rng() * 4,
+    fallAt: 0.45 + rng() * 0.2,
   };
 }
 
@@ -375,14 +380,17 @@ export function featureWaterEntries(feats, baseHeight) {
   }
   const river = feats.river;
   if (!river) return out;
-  // Walk each arm outward from the crossing; split where the natural terrain
-  // has dropped well below the river's level for good.
+  const n = river.spine.length;
+  // Pick the split: a NATURAL terrain drop along an arm when one exists
+  // (rare — the terrain is road-anchored), otherwise a seeded point partway
+  // along the LONGER arm. The lower reach carves its own deeper gorge, so the
+  // step always works; the face + foam go in with the structures.
   let split = -1;
   let splitLow = 0;
   for (const dir of [1, -1]) {
-    for (let k = 4; k < river.spine.length - 3; k++) {
+    for (let k = 5; k < n - 3; k++) {
       const i = river.crossIdx + dir * k;
-      if (i < 2 || i > river.spine.length - 3) break;
+      if (i < 2 || i > n - 3) break;
       const s = river.spine[i];
       const ground = baseHeight(s.x, s.z);
       if (ground < river.level - 11) {
@@ -392,6 +400,20 @@ export function featureWaterEntries(feats, baseHeight) {
       }
     }
     if (split >= 0) break;
+  }
+  if (split < 0) {
+    // Longer arm, seeded fraction along it, at least 5 points from both the
+    // crossing (the deck stays on the upper reach) and the river's end.
+    const armA = river.crossIdx;
+    const armB = n - 1 - river.crossIdx;
+    const dir = armB >= armA ? 1 : -1;
+    const armLen = Math.max(armA, armB);
+    const k = Math.max(5, Math.round(armLen * (river.fallAt || 0.5)));
+    const i = river.crossIdx + dir * k;
+    if (i >= 5 && i <= n - 6 && armLen >= 11) {
+      split = i;
+      splitLow = river.level - (river.fallDrop || 8);
+    }
   }
   if (split < 0) {
     out.push(river);
@@ -430,7 +452,7 @@ export function featureHeightMod(feats, x, z, h) {
       const endW = smooth01(s.u / 0.16) * smooth01((1 - s.u) / 0.16);
       if (endW <= 0) continue;
       const inner = run.halfWidth + 7;
-      const peak0 = inner + 9;
+      const peak0 = inner + 15;
       const peak1 = inner + 50;
       let w = 0;
       if (s.d <= inner) w = 0;
@@ -440,7 +462,9 @@ export function featureHeightMod(feats, x, z, h) {
       if (w <= 0) continue;
       const gate = smooth01((otherRoadDist(run.others, x, z) - (run.halfWidth + 10)) / 26);
       if (gate <= 0) continue;
-      const wob = 0.9 + 0.1 * Math.sin(x * 0.045 + z * 0.06) * Math.sin(x * 0.021 - z * 0.033);
+      // Slow, incommensurate variation — a regular sine read as corrugated
+      // pleats on the steep face.
+      const wob = 0.95 + 0.05 * Math.sin(x * 0.017 + z * 0.021) * Math.sin(x * 0.0073 - z * 0.0091);
       h += run.mag * w * endW * wob * gate;
     } else if (run.kind === "tunnel") {
       // Shoulder hills flanking the tunnel. The heightfield must NEVER rise
@@ -462,7 +486,7 @@ export function featureHeightMod(feats, x, z, h) {
       else w = 1 - smooth01((s.d - peak1) / (112 - peak1));
       const gate = smooth01((otherRoadDist(run.others, x, z) - (run.halfWidth + 10)) / 26);
       if (gate <= 0) continue;
-      const wob = 0.92 + 0.08 * Math.sin(x * 0.05 + z * 0.04);
+      const wob = 0.95 + 0.05 * Math.sin(x * 0.016 + z * 0.019);
       const ridge = s.y + run.mag * 0.85 * wob - h;
       if (ridge > 0) h += ridge * w * endW * gate;
     } else if (run.kind === "overpass") {
@@ -505,14 +529,14 @@ export function featureHeightMod(feats, x, z, h) {
           h += (Math.min(h, sunk) - h) * t;
         }
       } else if (run.kind === "shelf") {
-        const peak0 = inner + 11;
+        const peak0 = inner + 16;
         const peak1 = inner + 46;
         let w = 0;
         if (s.d <= inner + 2) w = 0;
         else if (s.d < peak0) w = smooth01((s.d - inner - 2) / (peak0 - inner - 2));
         else if (s.d < peak1) w = 1;
         else w = 1 - smooth01((s.d - peak1) / (130 - peak1));
-        const wob = 0.9 + 0.1 * Math.sin(x * 0.045 + z * 0.055);
+        const wob = 0.95 + 0.05 * Math.sin(x * 0.018 + z * 0.02) * Math.sin(x * 0.008 - z * 0.0095);
         h += run.mag * w * endW * wob * gate;
       }
     }
