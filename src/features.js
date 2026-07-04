@@ -440,12 +440,38 @@ export function featureWaterEntries(feats, baseHeight) {
   return out;
 }
 
+// Cheap reject before any spine scan: is (x,z) within `pad` of the run's spine
+// bounding box? The fields and keep-clear bands reach at most ~150u from a
+// spine, while these functions are called for every heightfield vertex and
+// every scattered prop — the box test skips almost all of that work. The box
+// is computed once per run and cached on it.
+function runNear(run, x, z, pad) {
+  let bb = run._bb;
+  if (!bb) {
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (const p of run.spine) {
+      if (p.x < x0) x0 = p.x;
+      if (p.x > x1) x1 = p.x;
+      if (p.z < z0) z0 = p.z;
+      if (p.z > z1) z1 = p.z;
+    }
+    bb = run._bb = { x0, x1, z0, z1 };
+  }
+  return x > bb.x0 - pad && x < bb.x1 + pad && z > bb.z0 - pad && z < bb.z1 + pad;
+}
+
+// How far each kind's terrain field reaches from the spine (see the matching
+// bands in featureHeightMod). Kinds without a field never touch the terrain.
+const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150 };
+
 // Terrain fields: canyon walls up, overpass/dam/shelf sinks down, tunnel ridge
 // over the road. All fade along the run and across distance bands, and yield
 // around any other fold of the loop (`gate`), so no field ever buries road.
 export function featureHeightMod(feats, x, z, h) {
   if (!feats) return h;
   for (const run of feats.runs) {
+    const reach = FIELD_REACH[run.kind];
+    if (!reach || !runNear(run, x, z, reach)) continue;
     if (run.kind === "canyon") {
       const s = spineDist(run.spine, x, z);
       if (s.u < 0 || s.d > 132) continue;
@@ -560,7 +586,7 @@ export function featureKeepClear(feats, x, z) {
       : run.kind === "flowers" ? 70
       : run.kind === "bridge" ? 34
       : 0;
-    if (R) {
+    if (R && runNear(run, x, z, R)) {
       const s = spineDist(run.spine, x, z);
       if (s.u >= 0 && s.d < R) return true;
     }
@@ -583,7 +609,7 @@ const SPAN_BLOCK = new Set(["tunnel", "bridge", "overpass", "dam", "causeway", "
 export function featureSpanBlock(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
-    if (!SPAN_BLOCK.has(run.kind)) continue;
+    if (!SPAN_BLOCK.has(run.kind) || !runNear(run, x, z, run.halfWidth + 26)) continue;
     const s = spineDist(run.spine, x, z);
     if (s.u >= 0 && s.d < run.halfWidth + 26) return true;
   }
@@ -596,8 +622,10 @@ export function featureTreeBlock(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
     if (run.kind !== "canyon" && run.kind !== "shelf" && run.kind !== "tunnel") continue;
+    const band = run.halfWidth + (run.kind === "tunnel" ? 34 : 58);
+    if (!runNear(run, x, z, band)) continue;
     const s = spineDist(run.spine, x, z);
-    if (s.u >= 0 && s.d < run.halfWidth + (run.kind === "tunnel" ? 34 : 58)) return true;
+    if (s.u >= 0 && s.d < band) return true;
   }
   return false;
 }
@@ -606,7 +634,7 @@ export function featureTreeBlock(feats, x, z) {
 export function giantTreeBoost(feats, x, z) {
   if (!feats) return 0;
   for (const run of feats.runs) {
-    if (run.kind !== "giant") continue;
+    if (run.kind !== "giant" || !runNear(run, x, z, 126)) continue; // 70 + 55 fade + margin
     const s = spineDist(run.spine, x, z);
     if (s.u < 0) return 0;
     const endW = smooth01(s.u / 0.15) * smooth01((1 - s.u) / 0.15);
@@ -643,10 +671,13 @@ export function featureCameraClamp(feats, track, pos) {
   const N = track.samples;
   for (const run of feats.runs) {
     if (run.kind !== "tunnel") continue;
+    // Runs every frame: reject via the cached spine box (pad covers the widest
+    // possible shell cross-section incl. noise + skew) before any sample scan.
+    const halfW = track.halfWidth + 2.6;
+    if (!runNear(run, pos.x, pos.z, (halfW + 31.4) * 1.16 + 8)) continue;
     // Tube + shell span (matches buildTunnel's inset and shell sweep).
     const t0 = run.i0 + Math.round((run.i1 - run.i0) * 0.16);
     const t1 = run.i1 - Math.round((run.i1 - run.i0) * 0.16);
-    const halfW = track.halfWidth + 2.6;
     const APEX = 15;
     let best = -1;
     let bestD2 = 45 * 45; // beyond the widest shell -> nothing to do
@@ -659,8 +690,12 @@ export function featureCameraClamp(feats, track, pos) {
     }
     if (best < 0) continue;
     const p = track._pts[((best % N) + N) % N];
-    const side = sideAt(track, ((best % N) + N) % N);
-    const lat = (pos.x - p.x) * side.x + (pos.z - p.z) * side.z;
+    // Lateral unit vector, allocation-free (= sideAt: cross(tan, up) normalized).
+    const tan = track._tans[((best % N) + N) % N];
+    const tl = Math.hypot(tan.x, tan.z) || 1;
+    const sideX = -tan.z / tl;
+    const sideZ = tan.x / tl;
+    const lat = (pos.x - p.x) * sideX + (pos.z - p.z) * sideZ;
     // Mountain shell at this sample — the exact shape buildTunnel sweeps.
     // +2 on A covers the craggy surface displacement; the skew is a shear
     // (crest shifts sideways in proportion to height), so un-shear first.
@@ -671,8 +706,8 @@ export function featureCameraClamp(feats, track, pos) {
     if (ey < 0 || ex * ex + ey * ey >= 1) continue; // not inside the rock
     const M = 1.1; // stay this far off the bore surface
     const latC = Math.max(-(halfW - M), Math.min(halfW - M, lat));
-    pos.x -= side.x * (lat - latC);
-    pos.z -= side.z * (lat - latC);
+    pos.x -= sideX * (lat - latC);
+    pos.z -= sideZ * (lat - latC);
     const ceil = p.y + 0.2 + APEX * Math.sqrt(Math.max(0, 1 - (latC / halfW) * (latC / halfW)));
     if (pos.y > ceil - M) pos.y = ceil - M;
     if (pos.y < p.y + 1.2) pos.y = p.y + 1.2;
@@ -722,6 +757,12 @@ export function trackTitle(feats, seedStr) {
 }
 
 // ---- Structures + ambience ---------------------------------------------------
+// One rock geometry + material shared by every instanced rock system (canyon/
+// shelf rim rocks, tunnel outcrops, desert pillars): per-instance colours do
+// the tinting, so none of them needs its own copy. Worlds rebuild via page
+// reload, so nothing ever disposes these out from under a later build.
+const ROCK_GEO = new THREE.IcosahedronGeometry(1, 1);
+const ROCK_MAT = new THREE.MeshStandardMaterial({ roughness: 1 });
 // One concrete kit for every elevated run (deck skirts + underside, paired
 // piers with crossbeams), plus the tunnel tube/portals, dam wall, canyon and
 // shelf rim rocks, waterfall face, treatments (flowers, turbines, pillars,
@@ -905,9 +946,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   }
 
   if (rimChunks.length) {
-    const geo = new THREE.IcosahedronGeometry(1, 1);
-    const mat = new THREE.MeshStandardMaterial({ roughness: 1 });
-    const mesh = new THREE.InstancedMesh(geo, mat, rimChunks.length);
+    const mesh = new THREE.InstancedMesh(ROCK_GEO, ROCK_MAT, rimChunks.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const pv = new THREE.Vector3();
@@ -1054,7 +1093,10 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     sg.setAttribute("color", new THREE.Float32BufferAttribute(shellCol, 3));
     sg.setIndex(shellIdx);
     sg.computeVertexNormals();
-    const shell = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
+    // Front side only: the swept winding faces outward, and featureCameraClamp
+    // guarantees no camera can get inside the shell — so the interior skin
+    // never renders for anyone and backface culling halves the fill cost.
+    const shell = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
     shell.castShadow = true;
     shell.receiveShadow = true;
     scene.add(shell);
@@ -1078,11 +1120,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
       });
     }
     if (rocks.length) {
-      const rockMesh = new THREE.InstancedMesh(
-        new THREE.IcosahedronGeometry(1, 1),
-        new THREE.MeshStandardMaterial({ roughness: 1 }),
-        rocks.length
-      );
+      const rockMesh = new THREE.InstancedMesh(ROCK_GEO, ROCK_MAT, rocks.length);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion();
       const pv = new THREE.Vector3();
@@ -1396,9 +1434,7 @@ function buildArches(scene, track, run, rng) {
     }
   }
   if (!chunks.length) return;
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const mat = new THREE.MeshStandardMaterial({ roughness: 1 });
-  const mesh = new THREE.InstancedMesh(geo, mat, chunks.length);
+  const mesh = new THREE.InstancedMesh(ROCK_GEO, ROCK_MAT, chunks.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const pv = new THREE.Vector3();

@@ -4279,6 +4279,7 @@ function buildBalloons(scene, heightAt) {
   const ropeMat = new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 });
   const wickMat = new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 });
   const wickRimMat = new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 });
+  const envMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }); // colours live in the vertices — one material serves the whole fleet
   const _up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 6; i++) {
     const g = new THREE.Group();
@@ -4298,7 +4299,7 @@ function buildBalloons(scene, heightAt) {
       colAttr.setXYZ(f + 2, c.r, c.g, c.b);
     }
     geo.setAttribute("color", colAttr);
-    const envelope = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }));
+    const envelope = new THREE.Mesh(geo, envMat);
     envelope.position.y = 5.2;
     g.add(envelope);
 
