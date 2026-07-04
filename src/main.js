@@ -2082,8 +2082,20 @@ function updateFpsCounter(dt) {
 // about once a second" — a shape the average alone conceals.
 const _perfFrames = [];
 let _perfElapsed = 0;
+// Track when visibility last changed: a >500ms frame right after returning
+// from the background is a resume gap (ignore); anywhere else it's a genuine
+// freeze the player felt, and it must be REPORTED, not silently dropped.
+let _lastVisChange = 0;
+document.addEventListener("visibilitychange", () => { _lastVisChange = performance.now(); });
 function logPerfSummary(rawMs) {
-  if (rawMs > 500) return; // backgrounded/hidden gap, not a rendered frame
+  if (rawMs > 500) {
+    const fromBackground = performance.now() - _lastVisChange < 1500;
+    if (!fromBackground) {
+      const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
+      console.warn(`[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"})`);
+    }
+    return; // either way, keep it out of the percentile stats
+  }
   _perfFrames.push(rawMs);
   _perfElapsed += rawMs;
   if (_perfElapsed < 5000) return;

@@ -48,6 +48,25 @@ Capacitor apps normally commit the `ios/` folder (it holds native config). The
 `.gitignore` already excludes the heavy/generated bits (`Pods/`, `DerivedData/`,
 the synced `public/` web copy). Generate it on the Mac, then commit it there.
 
+## App icon & splash screen
+
+`tools/gen-icons.mjs` (the same script that draws the web icons) also emits the
+native sources into `resources/`: `icon-only.png` (1024², the web app's cat) and
+`splash.png` / `splash-dark.png` (2732², the cat mark on the theme navy so the
+splash blends into the app's first frame). They're committed, so normally you
+don't regenerate them.
+
+To install them into the Xcode project (on the Mac, after any regeneration or
+on first setup):
+
+```bash
+npx capacitor-assets generate --ios --assetPath resources
+```
+
+That writes the full AppIcon + Splash asset catalogs into
+`ios/App/App/Assets.xcassets`. Rebuild in Xcode and both the home-screen icon
+and the launch screen update.
+
 ## TestFlight
 
 TestFlight is the **slow lane** and that's fine — its job is testing the native

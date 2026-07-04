@@ -19,6 +19,10 @@
   -webkit-tap-highlight-color: transparent;
   -webkit-user-select: none;
   user-select: none;
+  /* iOS: also suppress the long-press callout/edit menu — mid-race touch-holds
+     otherwise make WebKit attempt text selection (visible as UIEditMenu
+     attempts in the device log, and a potential touch-handling stall). */
+  -webkit-touch-callout: none;
   touch-action: none;
 }
 
