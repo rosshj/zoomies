@@ -445,6 +445,7 @@ export function buildWorld(scene, track, opts = {}) {
     heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
     groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
+    balloons, // debug hook: headless screenshot tours fly the camera to one
     update(time, dt = 0.016, playerPos = null) {
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
@@ -4263,23 +4264,66 @@ function updatePigeons(flock, dt, time, playerPos) {
 }
 
 function buildBalloons(scene, heightAt) {
+  // Classic illustrated hot-air balloons: a plump teardrop envelope with
+  // alternating vertical gores, a skirt at the throat, suspension ropes and a
+  // two-tone wicker basket (was: a single-colour sphere over a floating cube).
   const balloons = [];
-  const colors = [0xff5252, 0x42a5f5, 0xffca28, 0xab47bc, 0x66bb6a];
+  const mains = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
+  const cream = new THREE.Color(0xfff3dc);
+  // Envelope profile, throat lip -> plump belly -> rounded crown.
+  const prof = [
+    [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
+    [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
+  ].map(([r, y]) => new THREE.Vector2(r, y));
+  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide });
+  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 });
+  const wickMat = new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 });
+  const wickRimMat = new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 });
+  const _up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 6; i++) {
     const g = new THREE.Group();
-    const color = colors[i % colors.length];
-    const envelope = new THREE.Mesh(
-      new THREE.SphereGeometry(8, 16, 16),
-      new THREE.MeshStandardMaterial({ color, roughness: 0.6 })
-    );
-    envelope.scale.y = 1.25;
-    envelope.position.y = 10;
+    const main = new THREE.Color(mains[i % mains.length]);
+    // Crisp gores need per-face colour: un-index the lathe and paint each
+    // triangle by its centroid's longitude — 8 panels alternating main/cream.
+    const geo = new THREE.LatheGeometry(prof, 16).toNonIndexed();
+    const pos = geo.getAttribute("position");
+    const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
+    for (let f = 0; f < pos.count; f += 3) {
+      const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
+      const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
+      const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
+      const c = panel % 2 === 0 ? main : cream;
+      colAttr.setXYZ(f, c.r, c.g, c.b);
+      colAttr.setXYZ(f + 1, c.r, c.g, c.b);
+      colAttr.setXYZ(f + 2, c.r, c.g, c.b);
+    }
+    geo.setAttribute("color", colAttr);
+    const envelope = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }));
+    envelope.position.y = 5.2;
     g.add(envelope);
-    const basket = new THREE.Mesh(
-      rbox(3, 3, 3, 0.4),
-      new THREE.MeshStandardMaterial({ color: 0x8d6e3a })
-    );
-    g.add(basket);
+
+    // The rigid rig under the envelope — skirt, four ropes, wicker basket with
+    // a darker woven rim — bakes into one merged mesh (one draw per material).
+    const parts = [];
+    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), skirtMat);
+    skirt.position.y = 4.55;
+    parts.push(skirt);
+    const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), wickMat);
+    basket.position.y = 1.2;
+    parts.push(basket);
+    const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), wickRimMat);
+    rim.position.y = 2.5;
+    parts.push(rim);
+    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+      const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
+      const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
+      const dir = b.clone().sub(a);
+      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), ropeMat);
+      rope.position.copy(a).addScaledVector(dir, 0.5);
+      rope.quaternion.setFromUnitVectors(_up, dir.normalize());
+      parts.push(rope);
+    }
+    g.add(mergeMeshes(parts));
 
     const a = rand() * Math.PI * 2;
     const r = 150 + rand() * 300;
