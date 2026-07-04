@@ -31,6 +31,12 @@ export async function createNativeAdapter(name) {
     // that the game is ready to draw (instead of Capacitor's default timeout).
     // Called once at boot.
     async ready() {
+      // One diagnostic line so a device log shows exactly which native plugins
+      // the bridge actually exposes (false = pod not installed → that capability
+      // silently no-ops; fix with `npm install && npx cap sync ios`).
+      console.log(
+        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics}`
+      );
       try { await ScreenOrientation?.lock({ orientation: "landscape" }); } catch { /* n/a */ }
       try { await StatusBar?.hide(); } catch { /* n/a */ }
       try { await SplashScreen?.hide(); } catch { /* n/a */ }
