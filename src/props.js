@@ -189,8 +189,9 @@ function build(scene, track, opts) {
     for (const lf of lp.leaves) lf.mesh.visible = true;
   };
 
-  // Seeded placement: walk the track and drop occasional clusters, mixing ON-ROAD
-  // props with ones just off the verge.
+  // Seeded placement: walk the track and drop occasional clusters. Crates and
+  // barrels are knockable gameplay props, so they ALWAYS sit on the road inside
+  // the fence; only leaf piles (ground decor) may sit just off the verge.
   const up = new THREE.Vector3(0, 1, 0);
 
   // Floating power-up boxes sit ON the racing line (a row you drive through),
@@ -215,7 +216,8 @@ function build(scene, track, opts) {
     const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize();
     const cluster = 1 + ((rand() * 3) | 0);
     const kindRoll = rand();
-    const onRoad = rand() < 0.5;
+    const isPile = kindRoll >= 0.8;
+    const onRoad = isPile ? rand() < 0.5 : true; // crates/barrels never off-road
     const dir = rand() < 0.5 ? 1 : -1;
     for (let c = 0; c < cluster && props.length + leafPiles.length < MAX; c++) {
       const lat = onRoad ? (rand() * 2 - 1) * (track.halfWidth - 3) : dir * (track.halfWidth + 3 + rand() * 7);
@@ -328,8 +330,11 @@ function build(scene, track, opts) {
         pr.settle = true; // ease upright onto the road
       }
     }
-    // Bounce off the barriers: reflect the outward velocity at the road edge.
-    if (gi.dist > track.halfWidth + 1.5) {
+    // Bounce off the barriers: reflect the outward velocity at the fence and keep
+    // the WHOLE prop inside it. The fence's inner face sits at halfWidth + 0.8;
+    // rest ≈ the prop's half-extent, so this stops the body clipping through.
+    const maxD = track.halfWidth + 0.8 - pr.rest - 0.15;
+    if (gi.dist > maxD) {
       const eps = 0.6;
       const nx = track.distanceToCenter(pr.pos.x + eps, pr.pos.z) - track.distanceToCenter(pr.pos.x - eps, pr.pos.z);
       const nz = track.distanceToCenter(pr.pos.x, pr.pos.z + eps) - track.distanceToCenter(pr.pos.x, pr.pos.z - eps);
@@ -340,9 +345,11 @@ function build(scene, track, opts) {
         pr.vel.x -= 1.4 * vn * ox;
         pr.vel.z -= 1.4 * vn * oz;
       }
-      const over = Math.min(gi.dist - (track.halfWidth + 1.5), 1.5); // gentle, no teleport
-      pr.pos.x -= ox * over;
-      pr.pos.z -= oz * over;
+      // Resolve the full overshoot: dt is capped, so this is at most a few units
+      // in the frame the prop crosses the fence — never a visible teleport, and a
+      // prop can never come to rest embedded in (or beyond) the fence.
+      pr.pos.x -= ox * (gi.dist - maxD);
+      pr.pos.z -= oz * (gi.dist - maxD);
     }
     pr.mesh.position.copy(pr.pos);
     pr.mesh.quaternion.copy(pr.quat);
@@ -616,5 +623,6 @@ function build(scene, track, opts) {
 
   const groundN = props.filter((p) => p.kind === "crate" && p.mode === "ground").length + props.filter((p) => p.kind === "barrel").length;
   console.log(`[zoomies] knockable props: ${groundN} crates/barrels + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`);
-  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled };
+  // _props is a debug hook (headless placement/physics probes) — not gameplay API.
+  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled, _props: props };
 }
