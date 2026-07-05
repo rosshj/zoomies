@@ -1,6 +1,7 @@
 import Foundation
 import Capacitor
 import AVFoundation
+import WebKit
 
 /// Audio-session policy for Zoomies.
 ///
@@ -30,6 +31,16 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
 
     override public func load() {
         otherAudioAtLaunch = AVAudioSession.sharedInstance().isOtherAudioPlaying
+        // Purge any service worker registered by older builds of the app. A
+        // stale SW serves a weeks-old cached page over the freshly-synced
+        // bundle, and the JS-side cleanup can never run because the stale SW
+        // serves the stale HTML that predates the cleanup — only native code,
+        // running before the web view navigates, can break that loop.
+        // localStorage/IndexedDB (settings, garage, PBs) are untouched.
+        DispatchQueue.main.async {
+            let types: Set<String> = [WKWebsiteDataTypeServiceWorkerRegistrations]
+            WKWebsiteDataStore.default().removeData(ofTypes: types, modifiedSince: Date.distantPast) {}
+        }
     }
 
     @objc func configure(_ call: CAPPluginCall) {
