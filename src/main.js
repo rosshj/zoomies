@@ -1714,8 +1714,11 @@ function updateDRS(rawMs, dt) {
     _drsOverT = 0;
     // Recover a rung only after SUSTAINED comfortable headroom — not on the
     // first good window — and with a long cooldown, so the scaler can't
-    // oscillate between rungs (each swing is a realloc + hitch).
-    if (_frameMs < 16.0 && _drsRung > 0) {
+    // oscillate between rungs (each swing is a realloc + hitch). Threshold
+    // sits just above the 60Hz vsync floor (~16.7ms): a capped-at-60 device
+    // CAN reach it (16.0 was unreachable — the scale ratcheted down and
+    // stayed blurry for the rest of the session).
+    if (_frameMs < 17.2 && _drsRung > 0) {
       _drsUnderT += dt;
       if (_drsUnderT < 3.0) return;
       _drsUnderT = 0;
@@ -1723,7 +1726,7 @@ function updateDRS(rawMs, dt) {
       renderScale = DRS_RUNGS[_drsRung];
       applyResolution();
       _drsCooldown = 3.0;
-    } else if (_frameMs >= 16.0) {
+    } else if (_frameMs >= 17.2) {
       _drsUnderT = 0;
     }
   }
