@@ -2256,6 +2256,12 @@ const _audioPolicyReady = getPlatform().then(async (p) => {
   // freeze filter's timestamp so a background gap never logs as a FREEZE.
   p.app.onStateChange((active) => {
     _lastVisChange = performance.now();
+    console.log(`[zoomies] app-state: active=${active}`);
+    // Pause the race HERE, not off document.hidden — that event isn't
+    // delivered at backgrounding in the app, so locking the phone mid-race
+    // left the race live: on unlock the engine blared at pre-lock pitch
+    // while the sim caught up (the "sped-up audio" report).
+    if (!active && state === State.RACING) pauseGame();
     audio.setAppActive(active);
     if (active) {
       audio.unlock();

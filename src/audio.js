@@ -203,6 +203,7 @@ class AudioEngine {
       if (this.master) this.master.gain.value = 0; // silence anything mid-flush
       cur?.el.pause();
       this.ctx?.suspend?.().catch?.(() => {});
+      console.log(`[zoomies] audio: suspend (ctx=${this.ctx?.state ?? "none"}, track=${cur ? (cur.el.paused ? "paused" : "playing") : "none"})`);
     } else {
       this._bgSuspended = false;
       if (this.master) this.master.gain.value = 1;
@@ -216,6 +217,7 @@ class AudioEngine {
           if (cur.el.paused) cur.el.play().catch(() => {});
         }
       };
+      console.log(`[zoomies] audio: revive (ctx=${this.ctx?.state ?? "none"})`);
       revive();
       // iOS may still be re-establishing the audio session when the state
       // change lands — delayed retries pick up the stragglers (the native
@@ -223,6 +225,20 @@ class AudioEngine {
       setTimeout(revive, 350);
       setTimeout(revive, 1500);
       setTimeout(revive, 2600);
+      // Stuck-session self-heal: a direct return can leave the context
+      // claiming "running" while its clock is dead (no audio). An app-switcher
+      // round trip healed it by forcing another suspend/resume cycle — do
+      // that cycle automatically when the clock isn't advancing.
+      if (this.ctx) {
+        const t0 = this.ctx.currentTime;
+        setTimeout(() => {
+          if (this._bgSuspended || !this.ctx) return;
+          if (this.ctx.state === "running" && this.ctx.currentTime === t0) {
+            console.warn("[zoomies] audio: context running but clock stalled — cycling suspend/resume");
+            this.ctx.suspend().then(() => this.ctx.resume()).then(revive).catch(() => {});
+          }
+        }, 800);
+      }
     }
   }
 
