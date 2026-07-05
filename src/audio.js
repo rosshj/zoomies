@@ -108,7 +108,7 @@ class AudioEngine {
       this.sfxGain.gain.value = this.sfxOn ? this.sfxVol : 0;
       this.sfxGain.connect(this.master);
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = this.musicOn ? this.musicVol : 0;
+      this.musicGain.gain.value = this._musicAudible ? this.musicVol : 0;
       this.musicGain.connect(this.master);
 
       // One reusable second of white noise for skids, splashes, impacts, etc.
@@ -116,8 +116,20 @@ class AudioEngine {
       this._noise = this.ctx.createBuffer(1, n, n);
       const d = this._noise.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+
+      // iOS: an audio-session interruption (a call, Siri, another app claiming
+      // the session) parks the context in WebKit's non-standard "interrupted"
+      // state. Checking only for "suspended" missed it, leaving the game
+      // permanently silent. Nudge it back whenever the state changes or the
+      // app returns to the foreground — resume() is a no-op when running and
+      // rejects harmlessly while a real interruption (phone call) is active.
+      const kick = () => {
+        if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+      };
+      this.ctx.addEventListener?.("statechange", kick);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
     }
-    if (this.ctx.state === "suspended") this.ctx.resume();
+    if (this.ctx.state !== "running") this.ctx.resume().catch(() => {});
   }
 
   get ready() {
