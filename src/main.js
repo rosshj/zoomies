@@ -2152,11 +2152,52 @@ function warmAllStep() {
     // the warm frames' compile stall must happen BEHIND the splash, not under
     // a frozen first frame. No-op on the web.
     getPlatform().then((p) => p.ready()).catch(() => {});
+    // A beat later (menu idle), warm the kart/cat material family too — the
+    // garage's first open otherwise compiles it on-screen (~0.8s pause).
+    setTimeout(warmGarageKart, 1200);
+  }
+}
+
+// Build a throwaway kart from the SAVED garage pick, park it far underground,
+// draw it for a few frames, then dispose. Compiles the kart/cat/toon pipeline
+// family off-screen; browsing to a different pattern/accessory still compiles
+// that variant on click, but the reported first-open pause uses the saved pick.
+let _kartWarm = null;
+function warmGarageKart() {
+  if (_kartWarm || state === State.RACING) return;
+  try {
+    const cat = catSpec(garageConfig);
+    const kart = kartSpec(garageConfig);
+    const wk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
+    wk.group.traverse((o) => {
+      const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+      if (o.isMesh) o.frustumCulled = false;
+    });
+    toonify(wk.group);
+    wk.group.position.set(0, -60, 0);
+    scene.add(wk.group);
+    _kartWarm = { group: wk.group, frames: 3 };
+  } catch { /* warm-up only — never let it break the menu */ }
+}
+function warmKartStep() {
+  if (!_kartWarm) return;
+  if (--_kartWarm.frames <= 0) {
+    scene.remove(_kartWarm.group);
+    _disposeGroup(_kartWarm.group); // shared (cached) materials are skipped by disposeGroup
+    _kartWarm = null;
   }
 }
 function logPerfSummary(rawMs) {
-  if (rawMs > 500) {
-    const fromBackground = performance.now() - _lastVisChange < 1500;
+  if (rawMs > 250) {
+    // Background gaps: the app-state/visibility timestamp is the primary
+    // signal, but iOS can run the gap frame BEFORE delivering those events on
+    // return — so also treat a huge gap with no compile activity as a resume,
+    // not a freeze (a real >3s stall without shader creates has never occurred
+    // outside backgrounding).
+    const fromBackground =
+      performance.now() - _lastVisChange < 1500 ||
+      (rawMs > 3000 && _gpuCreates - _gpuCreatesLast < 3);
     if (!fromBackground) {
       const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
       // Attribution: how many GPU pipeline/shader objects were created since
@@ -2206,6 +2247,14 @@ let _platformA = null;
 // autoplay can wait for the verdict instead of starting-then-aborting a track.
 const _audioPolicyReady = getPlatform().then(async (p) => {
   _platformA = p;
+  // Native app-state events (visibilitychange isn't delivered at backgrounding
+  // in the app): drive the audio engine's suspend/restore, and update the
+  // freeze filter's timestamp so a background gap never logs as a FREEZE.
+  p.app.onStateChange((active) => {
+    _lastVisChange = performance.now();
+    audio.setAppActive(active);
+    if (active) audio.unlock();
+  });
   try {
     const other = await p.audio.otherAudioPlaying();
     console.log(`[zoomies] audio policy: otherAudioPlaying=${other}`);
@@ -4046,6 +4095,7 @@ function loop(now) {
   logPerfSummary(rawMs); // 5-second frame-time summary → console (Xcode/devtools)
   _seg.render = _seg.atmos = _seg.minimap = _seg.world = 0; // reset AFTER the report reads them
   warmAllStep(); // first frames: draw everything so Metal's lazy compiles happen under the splash
+  warmKartStep(); // retire the off-screen garage warm kart once it has drawn
   // One-time boot timeline. Logged on the SECOND loop pass so `rawMs` covers the
   // first rendered frame — where the whole scene's pipelines compile — and the
   // "pause before the menu" decomposes into its actual phases.

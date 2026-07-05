@@ -22,6 +22,7 @@ export async function createNativeAdapter(name) {
   const ScreenOrientation = P.ScreenOrientation;
   const Haptics = P.Haptics;
   const AudioSession = P.AudioSession; // local plugin: plugins/audio-session
+  const App = P.App; // @capacitor/app — native app-state events
 
   return {
     name, // 'ios' | 'android'
@@ -36,7 +37,7 @@ export async function createNativeAdapter(name) {
       // the bridge actually exposes (false = pod not installed → that capability
       // silently no-ops; fix with `npm install && npx cap sync ios`).
       console.log(
-        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics} audioSession=${!!AudioSession}`
+        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics} audioSession=${!!AudioSession} app=${!!App}`
       );
       try { await ScreenOrientation?.lock({ orientation: "landscape" }); } catch { /* n/a */ }
       try { await StatusBar?.hide(); } catch { /* n/a */ }
@@ -82,6 +83,17 @@ export async function createNativeAdapter(name) {
           const r = await AudioSession?.isOtherAudioPlaying();
           return !!r?.playing;
         } catch { return false; }
+      },
+    },
+
+    app: {
+      // Native app-state events. The web view's visibilitychange/pagehide are
+      // NOT delivered when the app backgrounds (they arrive late, on return —
+      // a 31s "frozen frame" in the device log proved it), so everything that
+      // must run AT backgrounding (pausing audio, most importantly) has to
+      // hang off the native appStateChange instead.
+      onStateChange(cb) {
+        try { App?.addListener("appStateChange", (s) => cb(!!s?.isActive)); } catch { /* n/a */ }
       },
     },
 

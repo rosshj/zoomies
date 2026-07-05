@@ -71,24 +71,12 @@ class AudioEngine {
     // AND suspend the whole context on hide; restore both on return.
     // _bgSuspended tells the auto-resume kick (unlock) this is intentional.
     this._bgSuspended = false;
-    const onHide = (hidden) => {
-      const cur = this._curTrack && this._tracks[this._curTrack];
-      if (hidden) {
-        this._bgSuspended = true;
-        cur?.el.pause();
-        this.ctx?.suspend?.().catch?.(() => {});
-      } else {
-        this._bgSuspended = false;
-        if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
-        if (cur && this._musicAudible) cur.el.play().catch(() => {});
-      }
-    };
-    document.addEventListener("visibilitychange", () => onHide(document.hidden));
-    // pagehide fires earlier in iOS's app-switch teardown than visibilitychange;
-    // suspending there too shrinks the window where a half-rendered audio
-    // buffer can escape as a "ping" on exit.
-    window.addEventListener("pagehide", () => onHide(true));
-    window.addEventListener("pageshow", () => onHide(document.hidden));
+    // In the native app, visibilitychange/pagehide are NOT delivered at
+    // backgrounding (they arrive late, on return), so main.js also drives this
+    // via the platform's native appStateChange. All paths are idempotent.
+    document.addEventListener("visibilitychange", () => this.setAppActive(!document.hidden));
+    window.addEventListener("pagehide", () => this.setAppActive(false));
+    window.addEventListener("pageshow", () => this.setAppActive(!document.hidden));
     // The visibility resume above can be rejected (no user gesture), and only
     // menu buttons call unlock() explicitly — returning mid-race and touching
     // only the driving controls left the session silent for good. Any touch
@@ -202,6 +190,25 @@ class AudioEngine {
       else cur.el.pause();
     }
     this._saveSettings();
+  }
+
+  // App went to / returned from the background. Mute-then-suspend on the way
+  // out (so nothing half-rendered escapes as a "ping"), restore on the way
+  // back. Pausing the music element at REAL backgrounding time also prevents
+  // the buffered-audio catch-up that played as a sped-up burst on resume.
+  setAppActive(active) {
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    if (!active) {
+      this._bgSuspended = true;
+      if (this.master) this.master.gain.value = 0; // silence anything mid-flush
+      cur?.el.pause();
+      this.ctx?.suspend?.().catch?.(() => {});
+    } else {
+      this._bgSuspended = false;
+      if (this.master) this.master.gain.value = 1;
+      if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
+    }
   }
 
   // Session-only policy gate (see constructor). Not persisted.

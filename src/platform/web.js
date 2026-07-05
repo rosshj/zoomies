@@ -43,6 +43,13 @@ export function createWebAdapter() {
       async otherAudioPlaying() { return false; },
     },
 
+    app: {
+      // On the web, visibilitychange IS the app-state signal.
+      onStateChange(cb) {
+        document.addEventListener("visibilitychange", () => cb(!document.hidden));
+      },
+    },
+
     // In-app purchases don't exist on the web build. Report unavailable so the
     // store UI can hide/disable itself rather than call an API that isn't there.
     // (Web monetisation, if ever wanted, would be a separate Stripe-backed impl.)
