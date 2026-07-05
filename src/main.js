@@ -10,6 +10,7 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
+import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
@@ -185,6 +186,32 @@ const WORLD_SEED = (
 setSeed(WORLD_SEED);
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 
+// Why did this boot happen? Every intentional in-app reload (track apply,
+// backend switch, multiplayer join, crash recovery) tags its cause in
+// sessionStorage just before reloading; we report and clear it here. A boot
+// with nav=reload and NO cause means something outside the app restarted the
+// page — e.g. iOS killing the web content process under memory pressure and
+// the shell reloading it — which is otherwise invisible in the logs.
+const RELOAD_CAUSE_KEY = "zoomies-reload-cause";
+function markReload(cause) {
+  try { sessionStorage.setItem(RELOAD_CAUSE_KEY, cause); } catch { /* ignore */ }
+}
+{
+  let _cause = "";
+  try {
+    _cause = sessionStorage.getItem(RELOAD_CAUSE_KEY) || "";
+    if (_cause) sessionStorage.removeItem(RELOAD_CAUSE_KEY);
+  } catch { /* ignore */ }
+  const _nav = performance.getEntriesByType?.("navigation")?.[0]?.type || "?";
+  const _build = document.querySelector('meta[name="zoomies-build"]')?.content || "unknown";
+  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""} · build=${_build}`);
+}
+
+// Boot timeline stamps (ms since navigation start), logged once from the
+// render loop's first frames — quantifies the "long pause before the menu":
+// script parse+eval vs world build vs renderer init vs first-frame compiles.
+const _boot = { eval: performance.now(), world: 0, renderer: 0, frames: 0 };
+
 // Time of day for this world. "random" (and the default) rolls one per seed via
 // an ISOLATED stream so it's identical for everyone on a seed (multiplayer) yet
 // never disturbs the shared world-build stream that shapes the track. The world
@@ -315,7 +342,7 @@ const _godrayShafts = Fn(() => {
       // Clamp the sampled scene to LDR first. The old WebGL pass ran on the
       // tone-mapped image; here the scene pass is raw HDR (the sun is 2-3x bright),
       // so without this the shafts blow out into "crazy rays".
-      const s = _sceneTex.uv(coord.clamp(0, 1)).rgb.clamp(0, 1);
+      const s = _sceneTex.sample(coord.clamp(0, 1)).rgb.clamp(0, 1); // r185: texture nodes sample via .sample(), not .uv()
       const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
       accum.addAssign(s.mul(l).mul(illum));
       illum.mulAssign(_gDecay);
@@ -404,6 +431,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 Object.assign(window.__zoomies, { world, track });
+_boot.world = performance.now();
 
 
 // Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
@@ -637,6 +665,9 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 const input = new Input();
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
+// Scratch for the countdown effect warm-up (see startRace).
+const _warmPos = new THREE.Vector3();
+const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const hud = new HUD();
 
@@ -1382,10 +1413,16 @@ function updateAtmosphere() {
 function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
+  let _t = performance.now();
   updateAtmosphere();
+  _seg.atmos += performance.now() - _t;
+  _t = performance.now();
   composer.render();
+  _seg.render += performance.now() - _t;
   if (player && state !== State.MENU) {
+    _t = performance.now();
     drawMinimap();
+    _seg.minimap += performance.now() - _t;
   }
   // First real frame is on screen — fade out the boot loading screen to reveal it.
   if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
@@ -1644,35 +1681,57 @@ function perfWatchdog(dt) {
 }
 
 let _drsOverT = 0; // how long we've been continuously over budget
+// Fixed resolution rungs. Every scale change reallocates the WHOLE post chain
+// (scene target, bloom mip pyramid, god-ray target) — a hitch each time — and
+// on iOS/WebGPU the backend leaks target textures per reallocation (a race of
+// ±0.06 yo-yoing climbed renderer.info textures from ~50 to 1100 and dragged
+// the whole session down). So changes must be RARE and CHUNKY: a handful of
+// rungs, sustained evidence before moving, long cooldowns. A visible res pop
+// on a rung change is a far better deal than a resize storm.
+const DRS_RUNGS = [1, 0.8, 0.62, DRS_MIN];
+let _drsRung = 0; // index into DRS_RUNGS
+let _drsUnderT = 0; // how long we've had comfortable headroom (for recovery)
+
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
-  if (_frameMs > 18.6 && renderScale > DRS_MIN) {
+  if (_frameMs > 18.6 && _drsRung < DRS_RUNGS.length - 1) {
     // Only step down after the budget has been blown for a SUSTAINED beat. A
     // transient spike — a jump's brief draw-call burst, a first-use shader
-    // compile — recovers on its own, and stepping down means REALLOCATING every
-    // render target, which is itself a hitch: reacting to a spike with a resize
-    // used to cascade spike → resize hitch → another "spike" → resize storm
-    // (and the allocation churn is exactly what pressures iOS toward device loss).
+    // compile — recovers on its own.
+    _drsUnderT = 0;
     _drsOverT += dt;
     if (_drsOverT < 0.5) return;
     _drsOverT = 0;
-    // Step proportional to how far over budget we are: genuinely sustained
-    // overload (a big map's heavy stretch) drops resolution HARD in one move
-    // instead of crawling down 0.1 at a time over a couple of seconds.
-    const over = _frameMs / 18.6;
-    const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
-    renderScale = Math.max(DRS_MIN, renderScale - step);
+    // Genuinely sustained overload drops two rungs in one move.
+    _drsRung = Math.min(DRS_RUNGS.length - 1, _drsRung + (_frameMs / 18.6 > 1.5 ? 2 : 1));
+    renderScale = DRS_RUNGS[_drsRung];
     applyResolution();
-    _drsCooldown = 0.35;
+    _drsCooldown = 1.0;
   } else {
     _drsOverT = 0;
-    if (_frameMs < 17.4 && renderScale < 1) {
-      renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
+    // Recover a rung only after SUSTAINED comfortable headroom — not on the
+    // first good window — and with a long cooldown, so the scaler can't
+    // oscillate between rungs (each swing is a realloc + hitch). Threshold
+    // sits just above the 60Hz vsync floor (~16.7ms): a capped-at-60 device
+    // CAN reach it (16.0 was unreachable — the scale ratcheted down and
+    // stayed blurry for the rest of the session).
+    if (_frameMs < 17.2 && _drsRung > 0) {
+      _drsUnderT += dt;
+      // 2s sustained + 2s cooldown ≈ up to ~15s from the bottom rung back to
+      // full res after a heavy stretch (a sunset race start read as "blurry
+      // for 30 seconds" at the previous 3+3 pacing) while still far too slow
+      // to oscillate against the 0.5s down-trigger.
+      if (_drsUnderT < 2.0) return;
+      _drsUnderT = 0;
+      _drsRung--;
+      renderScale = DRS_RUNGS[_drsRung];
       applyResolution();
-      _drsCooldown = 1.4;
+      _drsCooldown = 2.0;
+    } else if (_frameMs >= 17.2) {
+      _drsUnderT = 0;
     }
   }
 }
@@ -1695,6 +1754,7 @@ function applyQuality(q, persist = true) {
   if (world.grass) world.grass.visible = high;
   if (gpuParticles) gpuParticles.setVisible(high);
   renderScale = 1; // reset DRS on a manual quality change
+  _drsRung = 0; // keep the rung index in sync (updateDRS owns both)
   qualityLowBtn?.classList.toggle("is-active", !high);
   qualityHighBtn?.classList.toggle("is-active", high);
   layoutStage(); // applies the resolution
@@ -1796,6 +1856,7 @@ function toMenu() {
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
+  hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
 }
 // Resume a parked race: drop back into it exactly where it was (paused), so the
@@ -1936,6 +1997,7 @@ compatToggle?.addEventListener("click", () => {
   applyCompatUI();
   // The backend is chosen at load, so restart to apply. Drop any ?webgl/?webgpu so
   // the localStorage flag is the single source of truth on the next load.
+  markReload("backend-switch");
   const u = new URL(location.href);
   u.searchParams.delete("webgl");
   u.searchParams.delete("webgpu");
@@ -2045,6 +2107,224 @@ function updateFpsCounter(dt) {
   fpsEl.classList.toggle("bad", fps < 35);
 }
 
+// --- Periodic perf summary (console) ---
+// One compact line every 5 s so a device session (Xcode console, Safari remote
+// inspector) leaves an analyzable frame-time record without the on-screen
+// counter — which can't be read mid-race while both hands are steering.
+// Percentiles come from raw per-frame intervals: the smoothed _frameMs hides
+// exactly the dips that matter. "58 avg · 1% low 31" means "smooth but hitching
+// about once a second" — a shape the average alone conceals.
+const _perfFrames = [];
+let _perfElapsed = 0;
+// Track when visibility last changed: a >500ms frame right after returning
+// from the background is a resume gap (ignore); anywhere else it's a genuine
+// freeze the player felt, and it must be REPORTED, not silently dropped.
+let _lastVisChange = 0;
+document.addEventListener("visibilitychange", () => { _lastVisChange = performance.now(); });
+// When the last GO fired. The residual "first race of the session" hitch lands
+// in the first seconds of racing and is shorter than the normal FREEZE bar, so
+// frames in a short window after GO report at a much lower threshold.
+let _goAt = 0;
+// GPU object-creation counters for freeze attribution (patched over the WebGPU
+// device once the renderer is up; stays 0 on the WebGL2 fallback).
+let _gpuCreates = 0;
+let _gpuCreatesLast = 0;
+// Per-frame segment timers: which part of the frame ate the time. Read by the
+// FREEZE report at the TOP of the next loop pass (they describe the frame that
+// rawMs measured), then reset for the new pass. renderFrame segments
+// accumulate — menu dissolves render twice per pass.
+const _seg = { render: 0, atmos: 0, minimap: 0, world: 0 };
+
+// Draw-everything warm pass. iOS compiles Metal shaders lazily at each
+// pipeline's FIRST DRAW (creation at boot returns immediately) — so every part
+// of the world froze the game ~0.5-1.5s the first time it entered the camera's
+// view (menu shots panning, racing into new areas): FREEZE lines showed 0
+// pipeline creates. For the first frames after renderer init, disable frustum
+// culling so EVERY object draws and takes its compile hit while the splash
+// still covers the screen.
+let _warmAllFrames = 0;
+const _warmAllTouched = [];
+function warmAllStep() {
+  if (_warmAllFrames <= 0) return;
+  if (_warmAllTouched.length === 0) {
+    scene.traverse((o) => {
+      if ((o.isMesh || o.isPoints || o.isLine) && o.frustumCulled && o.visible) {
+        o.frustumCulled = false;
+        _warmAllTouched.push(o);
+      }
+    });
+  }
+  if (--_warmAllFrames === 0) {
+    for (const o of _warmAllTouched) o.frustumCulled = true;
+    _warmAllTouched.length = 0;
+    // Only now dismiss the splash (and apply the rest of the native chrome):
+    // the warm frames' compile stall must happen BEHIND the splash, not under
+    // a frozen first frame. No-op on the web.
+    getPlatform().then((p) => p.ready()).catch(() => {});
+    // A beat later (menu idle), warm the kart/cat material family too — the
+    // garage's first open otherwise compiles it on-screen (~0.8s pause).
+    setTimeout(warmGarageKart, 1200);
+  }
+}
+
+// Build a throwaway kart from the SAVED garage pick, park it far underground,
+// draw it for a few frames, then dispose. Compiles the kart/cat/toon pipeline
+// family off-screen; browsing to a different pattern/accessory still compiles
+// that variant on click, but the reported first-open pause uses the saved pick.
+let _kartWarm = null;
+function warmGarageKart() {
+  if (_kartWarm || state === State.RACING) return;
+  try {
+    const cat = catSpec(garageConfig);
+    const kart = kartSpec(garageConfig);
+    const wk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
+    wk.group.traverse((o) => {
+      const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+      for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+      if (o.isMesh) o.frustumCulled = false;
+    });
+    toonify(wk.group);
+    wk.group.position.set(0, -60, 0);
+    scene.add(wk.group);
+    _kartWarm = { group: wk.group, frames: 3 };
+  } catch { /* warm-up only — never let it break the menu */ }
+}
+function warmKartStep() {
+  if (!_kartWarm) return;
+  if (--_kartWarm.frames <= 0) {
+    scene.remove(_kartWarm.group);
+    _disposeGroup(_kartWarm.group); // shared (cached) materials are skipped by disposeGroup
+    _kartWarm = null;
+  }
+}
+function logPerfSummary(rawMs) {
+  // Right after GO, report at a much lower bar: the felt "stall at the start
+  // of the first race" is a sub-250ms frame the normal threshold never logs.
+  const sinceGo = _goAt ? performance.now() - _goAt : Infinity;
+  if (rawMs > (sinceGo < 6000 ? 100 : 250)) {
+    // Background gaps: the app-state/visibility timestamp is the primary
+    // signal, but iOS can run the gap frame BEFORE delivering those events on
+    // return — so also treat a huge gap with no compile activity as a resume,
+    // not a freeze (a real >3s stall without shader creates has never occurred
+    // outside backgrounding).
+    const fromBackground =
+      performance.now() - _lastVisChange < 1500 ||
+      (rawMs > 3000 && _gpuCreates - _gpuCreatesLast < 3);
+    if (!fromBackground) {
+      const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
+      // Attribution: how many GPU pipeline/shader objects were created since
+      // the last report (see the device patch at renderer init), plus live
+      // geometry/texture counts. A freeze with creates>0 is shader compilation;
+      // creates=0 with a texture jump is an upload; neither points at GC/CPU.
+      const creates = _gpuCreates - _gpuCreatesLast;
+      _gpuCreatesLast = _gpuCreates;
+      const mem = renderer?.info?.memory;
+      const other = Math.max(0, rawMs - _seg.render - _seg.atmos - _seg.minimap - _seg.world);
+      console.warn(
+        `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"} · render ${Math.round(_seg.render)} · atmos ${Math.round(_seg.atmos)} · minimap ${Math.round(_seg.minimap)} · world ${Math.round(_seg.world)} · other ${Math.round(other)}ms` +
+          (sinceGo < 6000 ? ` · +${Math.round(sinceGo)}ms after GO` : "")
+      );
+    }
+    return; // either way, keep it out of the percentile stats
+  }
+  _perfFrames.push(rawMs);
+  _perfElapsed += rawMs;
+  if (_perfElapsed < 5000) return;
+  const n = _perfFrames.length;
+  _perfFrames.sort((a, b) => a - b);
+  const avgMs = _perfElapsed / n;
+  const p99 = _perfFrames[Math.min(n - 1, Math.floor(n * 0.99))];
+  const worst = _perfFrames[n - 1];
+  const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
+  const dc = renderer?.info?.render?.drawCalls ?? 0;
+  const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
+  console.log(
+    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality === "high" ? "H" : "L"} · ${backend}`
+  );
+  _perfFrames.length = 0;
+  _perfElapsed = 0;
+}
+
+// --- Haptic race feel ---------------------------------------------------
+// A handful of DISCRETE race moments, never continuous rumble — haptics read
+// as premium when they're rare and meaningful, and as noise when everything
+// buzzes. All haptic policy lives in this one function: tune thresholds and
+// styles here. Real taptics on iOS via the platform seam; on the web this
+// maps to navigator.vibrate where it exists (Android Chrome) and is silent
+// elsewhere. Player only — AI and remote karts never buzz the hand.
+let _platformA = null;
+// "Their audio wins": if the player already had music/a podcast rolling at app
+// launch (native snapshots this before any game JS runs; web always says no),
+// keep the game's music silent for this session — SFX still play. Flipping
+// music ON in Settings overrides it. Exposed as a promise so the boot-time
+// autoplay can wait for the verdict instead of starting-then-aborting a track.
+const _audioPolicyReady = getPlatform().then(async (p) => {
+  _platformA = p;
+  // Native app-state events (visibilitychange isn't delivered at backgrounding
+  // in the app): drive the audio engine's suspend/restore, and update the
+  // freeze filter's timestamp so a background gap never logs as a FREEZE.
+  p.app.onStateChange((active) => {
+    _lastVisChange = performance.now();
+    console.log(`[zoomies] app-state: active=${active}`);
+    // Pause the race HERE, not off document.hidden — that event isn't
+    // delivered at backgrounding in the app, so locking the phone mid-race
+    // left the race live: on unlock the engine blared at pre-lock pitch
+    // while the sim caught up (the "sped-up audio" report).
+    if (!active && state === State.RACING) pauseGame();
+    audio.setAppActive(active);
+    if (active) {
+      audio.unlock();
+      // Belt-and-braces: the first touch after returning re-establishes the
+      // audio session with a real user gesture behind it (the timing that an
+      // app-switcher round trip provided by accident).
+      const once = () => {
+        window.removeEventListener("pointerdown", once, true);
+        p.audio.reactivate().catch(() => {});
+        audio.unlock();
+      };
+      window.addEventListener("pointerdown", once, true);
+    }
+  });
+  try {
+    const other = await p.audio.otherAudioPlaying();
+    console.log(`[zoomies] audio policy: otherAudioPlaying=${other}`);
+    if (other) {
+      audio.setMusicAllowed(false);
+      console.log("[zoomies] other audio detected — game music muted for this session (SFX unaffected)");
+    }
+  } catch { /* best-effort */ }
+}).catch(() => {});
+const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0 };
+function updateHaptics(nowMs) {
+  if (!_platformA || !player || state !== State.RACING) return;
+  const h = _platformA.haptics;
+  // Shared 90ms gate so stacked events (landing + boost) don't machine-gun.
+  const fire = (style) => {
+    if (nowMs - _feel.last < 90) return;
+    _feel.last = nowMs;
+    h.impact(style);
+  };
+  // Taking a hairball / bump → spin-out: the big one.
+  const spinning = player.spinTimer > 0;
+  if (spinning && !_feel.spin) fire("heavy");
+  _feel.spin = spinning;
+  // Drift mini-turbo charging up a tier (mirrors the spark colours blue→gold→rainbow).
+  const tier = player.drifting ? (player.driftCharge > 1.5 ? 2 : player.driftCharge > 0.8 ? 1 : 0) : 0;
+  if (tier > _feel.tier) fire("light");
+  _feel.tier = tier;
+  // Boost engages (drift release, toot button, or catnip pickup).
+  const boosting = player.boosting || player.catnipBoosting;
+  if (boosting && !_feel.boost) fire("medium");
+  _feel.boost = boosting;
+  // Hard landing — only when the suspension really squashes, so small hops stay quiet.
+  const air = player.airborne;
+  if (_feel.air && !air && (player._squash || 0) > 0.35) fire("light");
+  _feel.air = air;
+  // Crossing the finish line: Apple's "success" double-tap pattern.
+  if (player.finished && !_feel.finished) { _feel.last = nowMs; h.success(); }
+  _feel.finished = player.finished;
+}
+
 // --- How to Play sub-menu (replaces the main menu) ---
 const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
@@ -2063,7 +2343,15 @@ const installGateNote = document.getElementById("install-gate-note");
 const _isIOS =
   /iphone|ipad|ipod/i.test(navigator.userAgent) ||
   (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+// The native (Capacitor) app IS the installed app — it just doesn't report the
+// PWA standalone signals (it loads from capacitor://localhost, which matches
+// neither display-mode:standalone nor navigator.standalone). Count it as
+// standalone so the install button and the mandatory install gate below are
+// suppressed inside the app. In Safari this is false, so the browser keeps the
+// existing Add-to-Home-Screen prompt/gate unchanged.
+const _isNativeApp = isNativePlatform();
 const _isStandalone =
+  _isNativeApp ||
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -2336,6 +2624,7 @@ trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
 document.getElementById("track-apply")?.addEventListener("click", () => {
   if (_trackDraft.mode === "custom" && !_trackDraft.seed) _trackDraft.seed = randomSeed();
   saveTrackConfig(_trackDraft);
+  markReload("track-apply");
   location.reload(); // rebuild the world from the new recipe
 });
 
@@ -2376,6 +2665,8 @@ function buildGaragePreview() {
   scene.add(pk.group);
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
+  // (compileAsync was tried here on r185 and REGRESSED: whole-scene pipeline
+  // batches stalled the next render 2-6s on device. See startRace note.)
 }
 
 // --- Custom creator -------------------------------------------------------
@@ -2760,6 +3051,7 @@ function joinGame() {
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
   try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
+  markReload("mp-join");
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
@@ -2875,6 +3167,38 @@ document.getElementById("lobby-ready")?.addEventListener("click", () => {
   if (b) { b.textContent = "✓ Tilt ready"; b.disabled = true; }
 });
 
+// --- Race-entry veil ---
+// The first moments of COUNTDOWN are where the remaining big hitches live:
+// buildKarts' allocation burst, the GC that follows it, and the first-view
+// shader/pipeline compiles as the start-line scene comes on screen. Rather than
+// let the player watch those as freezes during the camera swing, hold a
+// "GET READY" cover over the stage and freeze the countdown clock until frames
+// prove stable (or a hard cap expires — a slow device still gets to race).
+// Solo only: a multiplayer countdown runs off the shared network clock and
+// can't be held for one client.
+const raceVeilEl = document.getElementById("race-veil");
+let _veilActive = false;
+let _veilStartedAt = 0;
+let _veilStableMs = 0;
+const VEIL_STABLE_FRAME_MS = 90; // a frame under this counts toward "stable"
+const VEIL_STABLE_NEED_MS = 600; // this much uninterrupted smoothness drops the veil
+const VEIL_MAX_MS = 6000; // hard cap: never hold the race longer than this
+let _veilHideTimer = 0;
+function showRaceVeil() {
+  if (!raceVeilEl) return;
+  _veilActive = true;
+  _veilStartedAt = performance.now();
+  _veilStableMs = 0;
+  clearTimeout(_veilHideTimer); // a still-pending fade-out must not re-hide us
+  raceVeilEl.classList.remove("hidden", "fading");
+}
+function hideRaceVeil() {
+  _veilActive = false;
+  if (!raceVeilEl || raceVeilEl.classList.contains("hidden")) return;
+  raceVeilEl.classList.add("fading"); // CSS opacity transition
+  _veilHideTimer = setTimeout(() => raceVeilEl.classList.add("hidden"), 400);
+}
+
 function startRace() {
   timeTrial = false;
   setTimeTrialHud(false);
@@ -2918,6 +3242,7 @@ function beginRace() {
   prevCountN = 99;
   track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
+  showRaceVeil(); // hold the countdown behind a cover until frames settle
 }
 
 // Everything to spin up a race that does NOT need a user gesture — so it can run
@@ -2949,6 +3274,20 @@ function prepareRace() {
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
+  // Warm the race effects' GPU pipelines during the countdown, where a stalled
+  // frame is invisible: one near-invisible particle per texture field, one
+  // degenerate skid quad, and one ghost hairball — all far underground. Their
+  // first mid-race appearances were each a 0.5-1s pipeline-compile freeze on
+  // iOS/WebGPU.
+  if (player) {
+    _warmPos.set(player.position.x, player.position.y - 45, player.position.z);
+    effects.warmup(_warmPos);
+    hairballs.spawnAt(_warmPos, _warmDir, 0); // ghost ball: no owner, no collisions
+  }
+  // NOTE: r185's compileAsync no longer crashes, but on-device it made things
+  // WORSE here: it requests pipelines for the WHOLE scene and the next render
+  // waits on the batch (device log: "91 creates · render 3504ms"-class freezes
+  // at exactly the call sites). The draw-based warms above remain the fix.
   updateBoostUI(); // karts start with an empty boost meter
   applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against
@@ -3238,6 +3577,18 @@ function _orbitMenuCam(anchor, ang) {
 // cross-fade with both sides still moving, no freeze and no dip to black.
 function renderMenuBackground(timeSec) {
   const ang = timeSec * 0.07; // gentle drift
+  // The capture below (drawImage of the renderer's canvas into a 2D canvas) is
+  // a SYNCHRONOUS GPU->CPU readback of a full-res frame, every frame of the
+  // fade — on iOS/WebGPU that's a ~1s main-thread stall per menu transition
+  // (the "0 shader creates" freezes in the device log). WebGPU menus hard-cut
+  // instead: the camera drift keeps the shot change feeling deliberate. The
+  // dissolve stays on WebGL2, where the readback is cheap.
+  const canCapture = !!menuXfadeCtx && !renderer?.backend?.isWebGPUBackend;
+  if (_menuPhase === "fading" && !canCapture) {
+    _menuPhase = "hold"; // skip the fade entirely: render the incoming shot
+    _menuShotT = 0; // restart the hold timer, as a completed fade would
+    if (menuXfade) menuXfade.style.opacity = 0;
+  }
   if (_menuPhase === "fading") {
     const k = Math.min(1, _menuFadeT / SHOT_FADE);
     // Outgoing biome -> capture into the overlay (fading out).
@@ -3807,9 +4158,25 @@ function loop(now) {
 
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
+  logPerfSummary(rawMs); // 5-second frame-time summary → console (Xcode/devtools)
+  _seg.render = _seg.atmos = _seg.minimap = _seg.world = 0; // reset AFTER the report reads them
+  warmAllStep(); // first frames: draw everything so Metal's lazy compiles happen under the splash
+  warmKartStep(); // retire the off-screen garage warm kart once it has drawn
+  // One-time boot timeline. Logged on the SECOND loop pass so `rawMs` covers the
+  // first rendered frame — where the whole scene's pipelines compile — and the
+  // "pause before the menu" decomposes into its actual phases.
+  if (_boot.frames < 2 && ++_boot.frames === 2) {
+    console.log(
+      `[zoomies] boot timeline: scripts ${Math.round(_boot.eval)}ms · world +${Math.round(_boot.world - _boot.eval)}ms · renderer +${Math.round(_boot.renderer - _boot.world)}ms · first frame ${Math.round(rawMs)}ms · menu at ${Math.round(now)}ms`
+    );
+  }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
-  world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
-  if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
+  {
+    const _t = performance.now();
+    world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
+    if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
+    _seg.world = performance.now() - _t;
+  }
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay
@@ -3908,20 +4275,43 @@ function loop(now) {
   }
 
   if (state === State.COUNTDOWN) {
+    // Veil hold: while the "GET READY" cover is up, the countdown clock is
+    // frozen — frames keep rendering behind the cover so the kart build's GC
+    // and the first-view pipeline compiles burn off invisibly. Drop the veil
+    // after an uninterrupted stretch of smooth frames, or at the hard cap.
+    if (_veilActive) {
+      if (MP.enabled && MP.startAt) {
+        hideRaceVeil(); // shared-clock countdown can't be held (belt & braces)
+      } else {
+        _veilStableMs = rawMs < VEIL_STABLE_FRAME_MS ? _veilStableMs + rawMs : 0;
+        const held = performance.now() - _veilStartedAt;
+        if (_veilStableMs >= VEIL_STABLE_NEED_MS || held > VEIL_MAX_MS) {
+          console.log(`[zoomies] race veil dropped after ${Math.round(held)}ms (stable ${Math.round(_veilStableMs)}ms)`);
+          hideRaceVeil();
+          // Idle the engine at the start line through the 3-2-1: reads as race
+          // anticipation, and moves the engine audio-graph spin-up (oscillators,
+          // filters, the looping noise source) off the GO frame. Idempotent —
+          // the startEngine at GO is a no-op once this ran.
+          audio.startEngine();
+        }
+      }
+    }
     // In multiplayer, drive the countdown straight off the shared clock so every
     // client reaches GO at the same instant regardless of local frame timing.
     if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
-    else countdown -= dt;
+    else if (!_veilActive) countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     // The whole GO moment — toast, chirp, GREEN light — fires at the actual
     // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
     // lit the light early) for the final ~1s while input was still locked.
+    // All of it is gated on the veil being down, so the first beep the player
+    // hears lines up with the first "3" they can actually see.
     const n = Math.ceil(countdown);
-    if (n >= 1 && n <= 3) hud.showToast(`${n}`);
+    if (!_veilActive && n >= 1 && n <= 3) hud.showToast(`${n}`);
     // A beep on each 3/2/1 as the number changes, and the start-light gantry
     // steps with it: red through 3/2, amber at 1. Green comes with GO.
-    if (n !== prevCountN && n >= 1 && n <= 3) {
+    if (!_veilActive && n !== prevCountN && n >= 1 && n <= 3) {
       audio.countdownBeep(n);
       track.setStartLight?.(n >= 2 ? "red" : "amber");
       prevCountN = n;
@@ -3935,6 +4325,7 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      _goAt = performance.now(); // arms the low-threshold FREEZE window
       hud.showToast("GO!");
       audio.countdownBeep(0); // the higher GO! chirp, exactly as control unlocks
       track.setStartLight?.("green"); // green means green: karts can move NOW
@@ -4035,6 +4426,7 @@ function loop(now) {
 
     // Step physics
     for (const k of karts) k.update(dt, track);
+    updateHaptics(now); // discrete taptic feedback off fresh player state
     applyBoostPads(dt);
     resolveCollisions();
     resolveRemoteCollisions(); // bump against remote ghost karts (multiplayer)
@@ -4254,6 +4646,20 @@ rendererReady
   .then(() => {
     _rendererReady = true;
     watchGpu(renderer); // recover from a GPU device/context loss instead of hard-crashing
+    // Freeze attribution: count every pipeline/shader creation so a FREEZE log
+    // line can say whether a stall was shader compilation. Diagnostics only —
+    // wrapped calls behave identically.
+    try {
+      const dev = renderer.backend?.device;
+      if (dev && !dev.__zoomiesCounted) {
+        dev.__zoomiesCounted = true;
+        for (const m of ["createRenderPipeline", "createComputePipeline", "createShaderModule"]) {
+          const orig = dev[m]?.bind(dev);
+          if (!orig) continue;
+          dev[m] = (...a) => { _gpuCreates++; return orig(...a); };
+        }
+      }
+    } catch { /* diagnostics only */ }
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
@@ -4265,7 +4671,14 @@ rendererReady
     }).then((p) => { gpuParticles = p; if (p && quality !== "high") p.setVisible(false); });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
-  .finally(() => requestAnimationFrame(loop));
+  .finally(() => {
+    _boot.renderer = performance.now();
+    _warmAllFrames = 2; // draw the whole world for the first frames (see warmAllStep)
+    requestAnimationFrame(loop);
+    // Native shell chrome (landscape lock, status bar, splash dismissal) is
+    // applied by warmAllStep once the draw-everything warm pass finishes, so
+    // the splash covers the shader-compile stall instead of a frozen frame.
+  });
 
 // If the previous load ended in a crash, tell the player (and log the detail so we
 // can diagnose). When the crash guard downgraded us to the WebGL2 backend, say so.
@@ -4324,9 +4737,14 @@ for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
 // iOS still requires a tap even in standalone — the first-interaction starter
 // above remains the fallback, and playMusic retries a rejected play().
 const _isStandalonePWA =
+  _isNativeApp ||
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 if (_isStandalonePWA) {
   audio.unlock();
-  audio.playMusic("bg");
+  // Wait for the audio-policy verdict (bounded — the web resolves instantly,
+  // native is one bridge round-trip) before the first play attempt, so a
+  // muted-by-policy session never starts-then-aborts the track.
+  Promise.race([_audioPolicyReady, new Promise((r) => setTimeout(r, 1500))])
+    .then(() => audio.playMusic("bg"));
 }

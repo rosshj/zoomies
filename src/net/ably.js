@@ -93,7 +93,8 @@ export async function createAblyTransport({ key, room, onState }) {
   try {
     mod = await import('ably');
   } catch (err) {
-    // The SDK is loaded from a CDN; a blocked/offline network fails it here.
+    // The SDK is vendored locally (vendor/net/), so this only fails if the
+    // file itself can't be served (very early offline visit, broken deploy).
     const e = new Error("Couldn't load the multiplayer library (offline or blocked network?)");
     e.code = "SDK_LOAD";
     throw e;

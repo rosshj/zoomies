@@ -56,6 +56,12 @@ export class EffectsManager {
     this.skidGeo = new THREE.BufferGeometry();
     this.skidGeo.setAttribute("position", new THREE.BufferAttribute(this.skidPos, 3).setUsage(THREE.DynamicDrawUsage));
     this.skidGeo.setAttribute("uv", new THREE.BufferAttribute(this.skidUV, 2).setUsage(THREE.DynamicDrawUsage));
+    // Flat-on-road decals: normals are straight up. The material is unlit, but
+    // the SSR normal pre-pass samples normals from EVERY rendered mesh, so a
+    // missing attribute logs a TSL.NormalNode warning per shader compile.
+    const skidNrm = new Float32Array(sc * 3);
+    for (let i = 1; i < skidNrm.length; i += 3) skidNrm[i] = 1;
+    this.skidGeo.setAttribute("normal", new THREE.BufferAttribute(skidNrm, 3));
     this.skidGeo.setDrawRange(0, 0);
     const skidTex = skidTexture();
     this.skidMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
@@ -122,6 +128,25 @@ export class EffectsManager {
       damp: opts.damp ?? 2,
       gravity: opts.gravity ?? 0,
     });
+  }
+
+  // Force one particle of each texture field and one (degenerate) skid quad so
+  // their GPU pipelines compile NOW. Called during the race countdown — where a
+  // stalled frame is invisible — instead of on each effect's first mid-race
+  // use, which showed up as 0.5-1s freezes on iOS/WebGPU. The particles are
+  // near-transparent, short-lived and spawned underground; the skid quad is
+  // all-zero (degenerate triangles draw no fragments).
+  warmup(pos) {
+    _col.setHex(0xffffff);
+    _vel.set(0, 0, 0);
+    this._spawn(pos, _col, { spark: false, life: 0.12, opacity: 0.01, size: 0.5, v: _vel });
+    this._spawn(pos, _col, { spark: true, life: 0.12, opacity: 0.01, size: 0.5, v: _vel });
+    if (this.skidFill === 0) {
+      this.skidFill = 1;
+      this.skidHead = 1;
+      this.skidGeo.setDrawRange(0, 6);
+      this._skidDirty = true;
+    }
   }
 
   // Returns a shared scratch vector — callers hand it straight to _spawn (which

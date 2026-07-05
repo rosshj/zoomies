@@ -817,6 +817,11 @@ export class Track {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    // Flat road overlay: normals straight up (the unlit material doesn't light,
+    // but the SSR normal pre-pass samples normals from every rendered mesh).
+    const nrm = new Float32Array(positions.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
     geo.setAttribute("aAlpha", new THREE.Float32BufferAttribute(alphas, 1));
     geo.setIndex(indices);
     // TSL node material (WebGPU): yellow centre line whose opacity is the

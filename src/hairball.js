@@ -45,6 +45,11 @@ export class HairballManager {
     const mesh = new THREE.Mesh(this.geo, this.mat);
     mesh.position.copy(pos);
     mesh.castShadow = true;
+    // Never frustum-cull hairballs: they're a handful of tiny meshes (culling
+    // saves nothing), and the countdown warm-up ball flies off-screen — culled,
+    // it never draws, its pipelines (incl. the shadow variant) never compile,
+    // and the FIRST real shot mid-race stalls the frame on the compile instead.
+    mesh.frustumCulled = false;
     this.scene.add(mesh);
     const speed = 70 + charge * 48;
     this.balls.push({

@@ -24,6 +24,14 @@ const MAX_DIST = 130;
 
 class AudioEngine {
   constructor() {
+    // WebKit's Audio Session API (iOS 16.4+): make the WEB VIEW's own audio
+    // session ambient/mixable. This is the session that actually activates
+    // when our WebAudio starts (WebKit helper process) — the native plugin's
+    // AVAudioSession config governs the app process and can't reach it. Without
+    // this, the first continuous SFX (the engine loop at race start) activated
+    // a non-mixable session that killed the player's podcast AND then lost the
+    // session fight, silencing everything. No-op where unsupported.
+    try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch { /* unsupported */ }
     this.ctx = null;
     this.master = null; // everything routes here
     this.sfxGain = null; // one-shot + engine SFX bus
@@ -34,6 +42,11 @@ class AudioEngine {
     this.sfxOn = s.sfxOn;
     this.musicVol = s.musicVol;
     this.sfxVol = s.sfxVol;
+    // Session policy gate, NOT persisted: "the player's own audio wins". When
+    // the platform reports other audio already playing (podcast/music on iOS),
+    // main.js clears this so game music stays silent while SFX keep working.
+    // Explicitly re-enabling music in Settings overrides it (clear user intent).
+    this.musicAllowed = true;
     this._noise = null; // shared white-noise buffer
 
     // Engine loop nodes (created on first race).
@@ -50,6 +63,28 @@ class AudioEngine {
     // Music: HTMLAudioElements per named track, routed through musicGain.
     this._tracks = {}; // name -> { el, source }
     this._curTrack = null;
+
+    // A backgrounded game must not keep making sound: iOS treats a playing
+    // <audio> element as background-capable media (music kept going after
+    // leaving the app), and a still-running AudioContext ground on as
+    // stuttering engine-loop audio until the app was killed. Pause the track
+    // AND suspend the whole context on hide; restore both on return.
+    // _bgSuspended tells the auto-resume kick (unlock) this is intentional.
+    this._bgSuspended = false;
+    this._appActive = true; // coalescing state for setAppActive
+    this._reviveTimers = []; // pending revive retries (cancelled on suspend)
+    // In the native app, visibilitychange/pagehide are NOT delivered at
+    // backgrounding (they arrive late, on return), so main.js also drives this
+    // via the platform's native appStateChange. All paths are idempotent.
+    document.addEventListener("visibilitychange", () => this.setAppActive(!document.hidden));
+    window.addEventListener("pagehide", () => this.setAppActive(false));
+    window.addEventListener("pageshow", () => this.setAppActive(!document.hidden));
+    // The visibility resume above can be rejected (no user gesture), and only
+    // menu buttons call unlock() explicitly — returning mid-race and touching
+    // only the driving controls left the session silent for good. Any touch
+    // anywhere is a valid gesture: retry the unlock on all of them (cheap
+    // no-op once running).
+    window.addEventListener("pointerdown", () => this.unlock(), true);
 
     // Debounce timestamps for spammy one-shots.
     this._lastBump = 0;
@@ -103,7 +138,7 @@ class AudioEngine {
       this.sfxGain.gain.value = this.sfxOn ? this.sfxVol : 0;
       this.sfxGain.connect(this.master);
       this.musicGain = this.ctx.createGain();
-      this.musicGain.gain.value = this.musicOn ? this.musicVol : 0;
+      this.musicGain.gain.value = this._musicAudible ? this.musicVol : 0;
       this.musicGain.connect(this.master);
 
       // One reusable second of white noise for skids, splashes, impacts, etc.
@@ -111,8 +146,28 @@ class AudioEngine {
       this._noise = this.ctx.createBuffer(1, n, n);
       const d = this._noise.getChannelData(0);
       for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+
+      // iOS: an audio-session interruption (a call, Siri, another app claiming
+      // the session) parks the context in WebKit's non-standard "interrupted"
+      // state. Checking only for "suspended" missed it, leaving the game
+      // permanently silent. Nudge it back whenever the state changes or the
+      // app returns to the foreground — resume() is a no-op when running and
+      // rejects harmlessly while a real interruption (phone call) is active.
+      const kick = () => {
+        // Never fight the deliberate background suspend (visibilitychange).
+        if (this._bgSuspended || document.hidden) return;
+        if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+      };
+      this.ctx.addEventListener?.("statechange", kick);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
     }
-    if (this.ctx.state === "suspended") this.ctx.resume();
+    if (!this._bgSuspended && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+    // Also restart the music element if a background trip paused it and the
+    // visibility-resume was rejected (needs this gesture to succeed).
+    if (!this._bgSuspended) {
+      const cur = this._curTrack && this._tracks[this._curTrack];
+      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
+    }
   }
 
   get ready() {
@@ -120,16 +175,96 @@ class AudioEngine {
   }
 
   // --- Music controls ---
+  // True when music should actually sound: the persisted user toggle AND the
+  // session policy gate (suppressed when the player's own audio is playing).
+  get _musicAudible() {
+    return this.musicOn && this.musicAllowed;
+  }
+
   setMusicOn(on) {
     this.musicOn = on;
+    if (on) this.musicAllowed = true; // explicit user intent beats the policy gate
     this._applyMusicGain();
     // Pause/resume the element so an off track doesn't keep streaming.
     const cur = this._curTrack && this._tracks[this._curTrack];
     if (cur) {
-      if (on) cur.el.play().catch(() => {});
+      if (this._musicAudible) cur.el.play().catch(() => {});
       else cur.el.pause();
     }
     this._saveSettings();
+  }
+
+  // App went to / returned from the background. Mute-then-suspend on the way
+  // out (so nothing half-rendered escapes as a "ping"), restore on the way
+  // back. Pausing the music element at REAL backgrounding time also prevents
+  // the buffered-audio catch-up that played as a sped-up burst on resume.
+  setAppActive(active) {
+    // COALESCE: appStateChange, Capacitor pause/resume, visibilitychange,
+    // pagehide/pageshow all report the same transition — the device log showed
+    // each background/return running 2-3 overlapping suspend/revive chains,
+    // whose play/pause thrash WAS the "stuttering audio" on return.
+    if (this._appActive === active) return;
+    this._appActive = active;
+    for (const id of this._reviveTimers) clearTimeout(id);
+    this._reviveTimers = [];
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    if (!active) {
+      this._bgSuspended = true;
+      if (this.master) this.master.gain.value = 0; // silence anything mid-flush
+      cur?.el.pause();
+      this.ctx?.suspend?.().catch?.(() => {});
+      console.log(`[zoomies] audio: suspend (ctx=${this.ctx?.state ?? "none"})`);
+    } else {
+      this._bgSuspended = false;
+      if (this.master) this.master.gain.value = 1;
+      const revive = () => {
+        if (this._bgSuspended) return; // backgrounded again before the retry
+        // ORDER MATTERS: never start the media element until the context is
+        // actually running. An early revive (queued pageshow) used to play it
+        // into an interrupted graph — the element decoded into a backlog that
+        // burst out sped-up ("chipmunk") when the context finally resumed.
+        if (this.ctx && this.ctx.state !== "running") {
+          this.ctx.resume().catch(() => {});
+          return; // the element starts on a later retry, once running
+        }
+        if (cur && this._musicAudible) {
+          // Same-position seek drops anything buffered while dead.
+          try { cur.el.currentTime = Math.max(0, cur.el.currentTime); } catch { /* n/a */ }
+          if (cur.el.paused) cur.el.play().catch(() => {});
+        }
+      };
+      console.log(`[zoomies] audio: revive (ctx=${this.ctx?.state ?? "none"})`);
+      revive();
+      // iOS may still be re-establishing the audio session when the state
+      // change lands — delayed retries pick up the stragglers (the native
+      // side retries its session reactivation on the same cadence).
+      for (const ms of [350, 900, 1800, 3000]) this._reviveTimers.push(setTimeout(revive, ms));
+      // Stuck-session self-heal: a direct return can leave the context
+      // claiming "running" while its clock is dead (no audio). An app-switcher
+      // round trip healed it by forcing another suspend/resume cycle — do
+      // that cycle automatically when the clock isn't advancing.
+      if (this.ctx) {
+        const t0 = this.ctx.currentTime;
+        this._reviveTimers.push(setTimeout(() => {
+          if (this._bgSuspended || !this.ctx) return;
+          if (this.ctx.state === "running" && this.ctx.currentTime === t0) {
+            console.warn("[zoomies] audio: context running but clock stalled — cycling suspend/resume");
+            this.ctx.suspend().then(() => this.ctx.resume()).then(revive).catch(() => {});
+          }
+        }, 800));
+      }
+    }
+  }
+
+  // Session-only policy gate (see constructor). Not persisted.
+  setMusicAllowed(allowed) {
+    this.musicAllowed = allowed;
+    this._applyMusicGain();
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    if (cur) {
+      if (this._musicAudible) cur.el.play().catch(() => {});
+      else cur.el.pause();
+    }
   }
 
   setMusicVolume(v) {
@@ -142,7 +277,7 @@ class AudioEngine {
     if (!this.musicGain) return;
     const t = this.ctx.currentTime;
     this.musicGain.gain.cancelScheduledValues(t);
-    this.musicGain.gain.setTargetAtTime(this.musicOn ? this.musicVol : 0, t, 0.04);
+    this.musicGain.gain.setTargetAtTime(this._musicAudible ? this.musicVol : 0, t, 0.04);
   }
 
   // --- SFX controls ---
@@ -643,9 +778,34 @@ class AudioEngine {
     el.src = url;
     el.loop = true;
     el.preload = "auto";
-    el.crossOrigin = "anonymous";
+    // Re-source the track from an in-memory blob once fetched: streaming the
+    // mp3 through the app's URL-scheme handler stutters whenever the main
+    // thread stalls (shader-compile hitches on menu/track changes). From a
+    // blob URL the bytes are already in memory — stall-proof. Only swap while
+    // paused/idle; if it's already playing, the swap waits for the next
+    // playMusic() switch (same-session tracks are few and looped anyway).
+    fetch(url)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => {
+        if (!b || !this._tracks[name]) return;
+        // Swap NOW, restoring position/state. (A wait-until-paused variant was
+        // inert: "bg" is one looped track for menu AND race, so it never
+        // pauses.) The one-time re-source blip is a few ms — bytes are local.
+        const wasPlaying = !el.paused;
+        const t = el.currentTime;
+        el.src = URL.createObjectURL(b);
+        try { el.currentTime = t; } catch { /* start of track */ }
+        if (wasPlaying) el.play().catch(() => {});
+      })
+      .catch(() => { /* streaming source keeps working */ });
+    // NO crossOrigin: these files are same-origin on every target (https on the
+    // web, capacitor://localhost in the app). Requesting CORS mode against the
+    // app's custom scheme made the load fail outright — killing music (while
+    // the synthesized SFX kept working) with only a silent error event.
     el.addEventListener("error", () => {
-      // File not present (yet) — disable this track quietly.
+      // File not present / failed to load — disable this track, but say so:
+      // a silently-nulled track made "no music" undiagnosable on device.
+      console.warn(`[zoomies] music track "${name}" failed to load (${url}):`, el.error?.code, el.error?.message || "");
       this._tracks[name] = null;
     });
     this._tracks[name] = { el, source: null };
@@ -653,13 +813,29 @@ class AudioEngine {
 
   // Switch background music to a registered track (crossfades via the element).
   // No-op if the track wasn't registered or failed to load.
+  // One de-duplicated console line per music state change, so a silent device
+  // is diagnosable from the log (gated? blocked by autoplay? track missing?).
+  _mlog(msg) {
+    if (this._lastMlog === msg) return;
+    this._lastMlog = msg;
+    console.log("[zoomies] music:", msg);
+  }
+
+  _playEl(el, name) {
+    el.play()
+      .then(() => this._mlog(`playing "${name}"`))
+      .catch((e) => this._mlog(`play blocked: ${e?.name || e}`));
+  }
+
   playMusic(name) {
     if (!this.ctx) return;
     if (this._curTrack === name) {
       // Already selected — but a first-gesture play() can be rejected, leaving it
       // paused. Make sure it's actually rolling (cheap to call when already playing).
       const cur = this._tracks[name];
-      if (cur && this.musicOn && cur.el.paused) cur.el.play().catch(() => {});
+      if (!cur) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
+      if (!this._musicAudible) this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
+      else if (cur.el.paused) this._playEl(cur.el, name);
       return;
     }
     // Stop whatever's currently playing.
@@ -670,7 +846,7 @@ class AudioEngine {
     }
     this._curTrack = name;
     const track = this._tracks[name];
-    if (!track) return;
+    if (!track) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
     // Route the element through a per-track fade gain into the music bus once
     // (the fade gain does the fade-in; the music bus handles volume/mute).
     if (!track.source && this.ctx.createMediaElementSource) {
@@ -692,7 +868,8 @@ class AudioEngine {
       track.fade.gain.setValueAtTime(0, t);
       track.fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
     }
-    if (this.musicOn) track.el.play().catch(() => {});
+    if (this._musicAudible) this._playEl(track.el, name);
+    else this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
   }
 
   // Whether a music track is actually rolling right now (not just selected).
