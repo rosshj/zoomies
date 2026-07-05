@@ -137,10 +137,16 @@ canvas.addEventListener("wheel", (e) => {
 const clampR = (r) => Math.max(orbit.minR, Math.min(orbit.maxR, r));
 
 const spinBtn = document.getElementById("spin-btn");
+function refreshSpinBtn() {
+  spinBtn.classList.toggle("on", autoSpin);
+  spinBtn.textContent = autoSpin ? "⏸" : "▶";
+  spinBtn.setAttribute("aria-label", autoSpin ? "Pause spin" : "Play spin");
+}
 spinBtn.addEventListener("click", () => {
   autoSpin = !autoSpin;
-  spinBtn.classList.toggle("on", autoSpin);
+  refreshSpinBtn();
 });
+refreshSpinBtn();
 
 // ---------------------------------------------------------------------------
 // Asset selection: build fresh, sit it on the ground plane, frame the camera
