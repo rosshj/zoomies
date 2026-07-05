@@ -83,6 +83,12 @@ class AudioEngine {
         if (cur && this._musicAudible) cur.el.play().catch(() => {});
       }
     });
+    // The visibility resume above can be rejected (no user gesture), and only
+    // menu buttons call unlock() explicitly — returning mid-race and touching
+    // only the driving controls left the session silent for good. Any touch
+    // anywhere is a valid gesture: retry the unlock on all of them (cheap
+    // no-op once running).
+    window.addEventListener("pointerdown", () => this.unlock(), true);
 
     // Debounce timestamps for spammy one-shots.
     this._lastBump = 0;
@@ -160,6 +166,12 @@ class AudioEngine {
       document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
     }
     if (!this._bgSuspended && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+    // Also restart the music element if a background trip paused it and the
+    // visibility-resume was rejected (needs this gesture to succeed).
+    if (!this._bgSuspended) {
+      const cur = this._curTrack && this._tracks[this._curTrack];
+      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
+    }
   }
 
   get ready() {

@@ -2090,12 +2090,25 @@ let _perfElapsed = 0;
 // freeze the player felt, and it must be REPORTED, not silently dropped.
 let _lastVisChange = 0;
 document.addEventListener("visibilitychange", () => { _lastVisChange = performance.now(); });
+// GPU object-creation counters for freeze attribution (patched over the WebGPU
+// device once the renderer is up; stays 0 on the WebGL2 fallback).
+let _gpuCreates = 0;
+let _gpuCreatesLast = 0;
 function logPerfSummary(rawMs) {
   if (rawMs > 500) {
     const fromBackground = performance.now() - _lastVisChange < 1500;
     if (!fromBackground) {
       const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
-      console.warn(`[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"})`);
+      // Attribution: how many GPU pipeline/shader objects were created since
+      // the last report (see the device patch at renderer init), plus live
+      // geometry/texture counts. A freeze with creates>0 is shader compilation;
+      // creates=0 with a texture jump is an upload; neither points at GC/CPU.
+      const creates = _gpuCreates - _gpuCreatesLast;
+      _gpuCreatesLast = _gpuCreates;
+      const mem = renderer?.info?.memory;
+      console.warn(
+        `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"}`
+      );
     }
     return; // either way, keep it out of the percentile stats
   }
@@ -4414,6 +4427,20 @@ rendererReady
   .then(() => {
     _rendererReady = true;
     watchGpu(renderer); // recover from a GPU device/context loss instead of hard-crashing
+    // Freeze attribution: count every pipeline/shader creation so a FREEZE log
+    // line can say whether a stall was shader compilation. Diagnostics only —
+    // wrapped calls behave identically.
+    try {
+      const dev = renderer.backend?.device;
+      if (dev && !dev.__zoomiesCounted) {
+        dev.__zoomiesCounted = true;
+        for (const m of ["createRenderPipeline", "createComputePipeline", "createShaderModule"]) {
+          const orig = dev[m]?.bind(dev);
+          if (!orig) continue;
+          dev[m] = (...a) => { _gpuCreates++; return orig(...a); };
+        }
+      }
+    } catch { /* diagnostics only */ }
     // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
