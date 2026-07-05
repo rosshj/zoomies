@@ -93,7 +93,18 @@ export async function createNativeAdapter(name) {
       // must run AT backgrounding (pausing audio, most importantly) has to
       // hang off the native appStateChange instead.
       onStateChange(cb) {
-        try { App?.addListener("appStateChange", (s) => cb(!!s?.isActive)); } catch { /* n/a */ }
+        const fire = (active) => {
+          // iOS deactivates our audio session on backgrounding; returning
+          // needs it re-established BEFORE the game tries to resume audio,
+          // or the resume calls are rejected and the session stays silent.
+          if (active) { try { AudioSession?.configure(); } catch { /* n/a */ } }
+          cb(active);
+        };
+        try { App?.addListener("appStateChange", (s) => fire(!!s?.isActive)); } catch { /* n/a */ }
+        // Locking the phone can resign-active WITHOUT a full appStateChange —
+        // pause/resume cover that path. All handlers are idempotent.
+        try { App?.addListener("pause", () => fire(false)); } catch { /* n/a */ }
+        try { App?.addListener("resume", () => fire(true)); } catch { /* n/a */ }
       },
     },
 

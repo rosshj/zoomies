@@ -206,8 +206,20 @@ class AudioEngine {
     } else {
       this._bgSuspended = false;
       if (this.master) this.master.gain.value = 1;
-      if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
-      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
+      const revive = () => {
+        if (this._bgSuspended) return; // backgrounded again before the retry
+        if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+        if (cur && this._musicAudible) {
+          // Same-position seek drops any backlog buffered through a lock —
+          // without it the pile-up plays as a sped-up "chipmunk" burst.
+          try { cur.el.currentTime = Math.max(0, cur.el.currentTime); } catch { /* n/a */ }
+          if (cur.el.paused) cur.el.play().catch(() => {});
+        }
+      };
+      revive();
+      // iOS may still be re-establishing the audio session when the state
+      // change lands — one delayed retry picks up the stragglers.
+      setTimeout(revive, 350);
     }
   }
 
