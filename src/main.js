@@ -203,7 +203,8 @@ function markReload(cause) {
     if (_cause) sessionStorage.removeItem(RELOAD_CAUSE_KEY);
   } catch { /* ignore */ }
   const _nav = performance.getEntriesByType?.("navigation")?.[0]?.type || "?";
-  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""}`);
+  const _build = document.querySelector('meta[name="zoomies-build"]')?.content || "unknown";
+  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""} · build=${_build}`);
 }
 
 // Boot timeline stamps (ms since navigation start), logged once from the

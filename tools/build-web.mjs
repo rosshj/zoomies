@@ -11,7 +11,7 @@
 // anywhere with zero install. Adopting a real bundler (Vite) later is a drop-in
 // replacement for this file — see IOS_SETUP.md.
 
-import { existsSync, rmSync, mkdirSync, cpSync } from "node:fs";
+import { existsSync, rmSync, mkdirSync, cpSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,4 +48,16 @@ for (const entry of INCLUDE) {
   copied++;
 }
 
-console.log(`[build-web] assembled ${copied}/${INCLUDE.length} entries → dist/`);
+// Stamp the build time into dist/index.html (the repo copy stays "dev"). The
+// boot log prints it, so any device log immediately shows WHICH build is
+// actually running — a stale service-worker cache once served weeks-old code
+// while we debugged fixes that "didn't work" because they weren't running.
+const stamp = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+const indexPath = join(dist, "index.html");
+const html = readFileSync(indexPath, "utf8").replace(
+  '<meta name="zoomies-build" content="dev" />',
+  `<meta name="zoomies-build" content="${stamp}" />`
+);
+writeFileSync(indexPath, html);
+
+console.log(`[build-web] assembled ${copied}/${INCLUDE.length} entries → dist/ (build ${stamp})`);

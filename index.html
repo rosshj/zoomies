@@ -11,6 +11,10 @@
   <!-- PWA / home-screen install (locks to landscape when launched from the
        home screen; on iOS this is the only way to lock orientation). -->
   <link rel="manifest" href="./manifest.json" />
+  <!-- Stamped with the build time by tools/build-web.mjs ("dev" = serving the
+       working tree). Logged in the boot line so a stale cached build is
+       instantly visible in any device log. -->
+  <meta name="zoomies-build" content="dev" />
   <meta name="theme-color" content="#0e1320" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -708,13 +712,34 @@
   </div><!-- /#stage -->
 
   <!-- Register the offline service worker (skipped with ?nosw=1 for tests). It
-       caches the app shell so the installed PWA launches and plays with no network. -->
+       caches the app shell so the installed PWA launches and plays with no network.
+       NEVER in the native app: assets already ship in the app bundle, and the SW's
+       cache fallback was caught serving a WEEKS-OLD build after cap sync updated
+       the bundle — testers were sometimes running code none of the fixes were in.
+       In native we also actively unregister + purge any previously-installed SW
+       so poisoned installs heal on next launch. -->
   <script>
-    if ("serviceWorker" in navigator && !new URLSearchParams(location.search).has("nosw")) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("[zoomies] SW register failed:", e));
-      });
-    }
+    (function () {
+      if (!("serviceWorker" in navigator)) return;
+      var native = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+      if (native) {
+        navigator.serviceWorker.getRegistrations().then(function (rs) {
+          if (rs.length) console.warn("[zoomies] native app: unregistering", rs.length, "stale service worker(s)");
+          rs.forEach(function (r) { r.unregister(); });
+        }).catch(function () {});
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) { caches.delete(k); });
+          }).catch(function () {});
+        }
+        return;
+      }
+      if (!new URLSearchParams(location.search).has("nosw")) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("./sw.js").catch(function (e) { console.warn("[zoomies] SW register failed:", e); });
+        });
+      }
+    })();
   </script>
   <script type="module" src="./src/main.js"></script>
 </body>
