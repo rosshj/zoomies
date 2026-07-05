@@ -788,12 +788,14 @@ class AudioEngine {
       .then((r) => (r.ok ? r.blob() : null))
       .then((b) => {
         if (!b || !this._tracks[name]) return;
-        const swap = () => {
-          if (!el.paused) return false; // don't restart a live track
-          el.src = URL.createObjectURL(b);
-          return true;
-        };
-        if (!swap()) this._tracks[name].pendingSwap = swap;
+        // Swap NOW, restoring position/state. (A wait-until-paused variant was
+        // inert: "bg" is one looped track for menu AND race, so it never
+        // pauses.) The one-time re-source blip is a few ms — bytes are local.
+        const wasPlaying = !el.paused;
+        const t = el.currentTime;
+        el.src = URL.createObjectURL(b);
+        try { el.currentTime = t; } catch { /* start of track */ }
+        if (wasPlaying) el.play().catch(() => {});
       })
       .catch(() => { /* streaming source keeps working */ });
     // NO crossOrigin: these files are same-origin on every target (https on the
@@ -841,12 +843,10 @@ class AudioEngine {
     if (prev) {
       prev.el.pause();
       prev.el.currentTime = 0;
-      if (prev.pendingSwap?.()) prev.pendingSwap = null; // now paused — safe to re-source from the blob
     }
     this._curTrack = name;
     const track = this._tracks[name];
     if (!track) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
-    if (track.pendingSwap?.()) track.pendingSwap = null; // re-source before it starts
     // Route the element through a per-track fade gain into the music bus once
     // (the fade gain does the fade-in; the music bus handles volume/mute).
     if (!track.source && this.ctx.createMediaElementSource) {
