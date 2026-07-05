@@ -122,6 +122,46 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Track viewer (fly camera). The catch layer sits above the HUD and swallows
+   every pointer so gestures can't reach the steering strips; the exit button
+   and the fading hint float above it. */
+#fly-catch {
+  position: absolute;
+  inset: 0;
+  z-index: 55;
+  touch-action: none;
+}
+#fly-exit {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 56;
+  padding: 9px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 10px;
+  background: rgba(10, 14, 25, 0.65);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+#fly-hint {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 56;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(10, 14, 25, 0.65);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  transition: opacity 0.6s ease;
+}
+#fly-hint.faded { opacity: 0; }
+
 .overlay {
   position: absolute;
   inset: 0;

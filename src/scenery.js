@@ -4343,3 +4343,61 @@ function buildBalloons(scene, heightAt) {
   }
   return balloons;
 }
+
+// ===========================================================================
+//  Asset catalog — the dev asset viewer's window into this module
+// ===========================================================================
+// Every procedural set piece above is module-private (the game only ever wants
+// whole worlds), but the asset viewer (viewer.html) needs to build ONE of each
+// to inspect. This registry wraps the makers with representative default args.
+// Entries are { group, name, build } where build() returns a fresh Object3D;
+// nothing here runs unless the viewer calls it, so the game pays zero cost.
+export function assetCatalog() {
+  const biome = (name) => BIOMES.find((b) => b.name === name) || BIOMES[0];
+  const entries = [];
+  const add = (group, name, build) => entries.push({ group, name, build });
+
+  // Trees per biome silhouette (round/pine/acacia/blossom — the distinct shapes).
+  for (const bn of ["meadow", "forest", "autumn", "blossom", "savanna", "desert"])
+    add("Trees & plants", `Tree — ${bn}`, () => makeTree(biome(bn)));
+  add("Trees & plants", "Bush", () => makeBush());
+  add("Trees & plants", "Cactus", () => makeCactusProp());
+  add("Trees & plants", "Rock", () => makeRockProp());
+
+  add("Animals", "Cow", () => makeCow());
+  add("Animals", "Sheep", () => makeSheep());
+  add("Animals", "Deer", () => makeDeer());
+  add("Animals", "Crab", () => makeCrab());
+  add("Animals", "Gull", () => makeGull());
+  add("Animals", "Pigeon", () => makePigeon().group); // returns { group, wings }
+
+  add("Town & farm", "House", () => makeHouse());
+  add("Town & farm", "Building — village", () => makeBuilding(0.4, biome("meadow")));
+  add("Town & farm", "Building — snowy", () => makeBuilding(0.4, biome("alpine")));
+  add("Town & farm", "Church", () => makeChurch());
+  add("Town & farm", "Barn", () => makeBarn());
+  add("Town & farm", "Windmill", () => makeWindmill());
+  add("Town & farm", "Silo", () => makeSilo());
+  add("Town & farm", "Water tower", () => makeWaterTower());
+  add("Town & farm", "Hay bale", () => makeHayBale());
+  add("Town & farm", "Fence", () => makeFence(0xfafafa));
+  add("Town & farm", "Flag", () => makeFlag(3));
+
+  add("City & street", "Tower", () => makeTower(0.8));
+  add("City & street", "City store", () => makeCityStore());
+  add("City & street", "Market stall", () => makeMarketStall());
+  add("City & street", "Planter", () => makePlanter());
+  add("City & street", "Bench", () => makeBench());
+  add("City & street", "Hydrant", () => makeHydrant());
+  add("City & street", "Sign", () => makeSign());
+  add("City & street", "Lamp", () => makeLamp());
+  add("City & street", "Parasol", () => makeParasol());
+
+  add("Landmarks", "Lighthouse", () => makeLighthouse());
+  add("Landmarks", "Castle", () => makeCastle());
+  add("Landmarks", "Ferris wheel", () => makeFerrisWheel());
+  add("Landmarks", "Giant cat statue", () => makeGiantCat());
+  add("Landmarks", "Big windmill", () => makeBigWindmill());
+
+  return entries;
+}

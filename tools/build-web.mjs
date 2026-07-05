@@ -23,6 +23,7 @@ const dist = join(root, "dist");
 // sw.js actually reference.
 const INCLUDE = [
   "index.html",
+  "viewer.html", // dev asset viewer (/viewer.html) — shares src/ + vendor/ below
   "styles.css",
   "sw.js",
   "manifest.json",

@@ -26,6 +26,49 @@ const LEAF_GRAV = 8.5; // much gentler than crates/barrels — leaves drift down
 const LEAF_AIRDRAG = 2.4; // how strongly the wake carries a leaf toward its wind speed
 const WIND_TAU = 0.75; // wake e-folding time (s): ~2s of visible linger
 
+// The crate/barrel art, at module scope so the asset viewer can show the exact
+// meshes the game scatters. Materials are shared across every instance (same
+// objects build() always used — they just live here now). `rand` is injected:
+// build() passes its seeded rng so placement runs stay deterministic; the
+// viewer just uses Math.random.
+const woodMat = new THREE.MeshStandardMaterial({ color: 0xb5803f, roughness: 0.85 });
+const woodTop = new THREE.MeshStandardMaterial({ color: 0xcd9a55, roughness: 0.85 });
+const barrelMat = new THREE.MeshStandardMaterial({ color: 0xc24a3a, roughness: 0.6, metalness: 0.15 });
+const bandMat = new THREE.MeshStandardMaterial({ color: 0xe6e2d6, roughness: 0.5, metalness: 0.4 });
+// Module-lifetime materials: mark them shared so disposeGroup() (models.js)
+// never disposes them out from under the next crate/barrel built.
+for (const m of [woodMat, woodTop, barrelMat, bandMat]) m.userData.shared = true;
+
+// A wooden crate. The SAME art is used for grounded knockables AND the floating
+// power-up boxes — a power-up box is just a crate that hovers. So the only tell
+// that a box holds a power-up is that it floats; the ones sitting on the ground
+// (which tumble when you hit them) hold nothing.
+export const makeCrateProp = (rand = Math.random) => {
+  const s = 1.5 + rand() * 0.6;
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), woodTop);
+  lid.position.y = s * 0.5;
+  g.add(lid);
+  g.traverse((o) => (o.castShadow = true));
+  return { mesh: g, rest: s / 2 };
+};
+export const makeBarrelProp = (rand = Math.random) => {
+  // The barrel tumbles as one rigid body, so body + bands bake into a single
+  // multi-material mesh (2 draws instead of 3 meshes).
+  const r = 0.7 + rand() * 0.2;
+  const h = 1.9 + rand() * 0.3;
+  const parts = [new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat)];
+  for (const yy of [-h * 0.3, h * 0.3]) {
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, h * 0.12, 12), bandMat);
+    band.position.y = yy;
+    parts.push(band);
+  }
+  const g = new THREE.Group();
+  g.add(mergeMeshes(parts, { castShadow: true }));
+  return { mesh: g, rest: h / 2 };
+};
+
 // A small leaf silhouette (a pointed oval ~0.48 long) in the XY plane, so callers
 // can lay it flat and spin it like the old plane card but it reads as a leaf.
 export function makeLeafGeo() {
@@ -64,46 +107,16 @@ function build(scene, track, opts) {
   const group = new THREE.Group();
   scene.add(group);
 
-  // Shared materials (toy/cel style).
-  const woodMat = new THREE.MeshStandardMaterial({ color: 0xb5803f, roughness: 0.85 });
-  const woodTop = new THREE.MeshStandardMaterial({ color: 0xcd9a55, roughness: 0.85 });
-  const barrelMat = new THREE.MeshStandardMaterial({ color: 0xc24a3a, roughness: 0.6, metalness: 0.15 });
-  const bandMat = new THREE.MeshStandardMaterial({ color: 0xe6e2d6, roughness: 0.5, metalness: 0.4 });
   const leafCols = [0xb5532a, 0xd07b27, 0xe0a73a, 0x8a6e2f];
 
   const props = []; // { mesh, pos, vel, quat, angVel, rest, half, hit, asleep, settle }
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
 
-  // A wooden crate. The SAME art is used for grounded knockables AND the floating
-  // power-up boxes — a power-up box is just a crate that hovers. So the only tell
-  // that a box holds a power-up is that it floats; the ones sitting on the ground
-  // (which tumble when you hit them) hold nothing.
-  const makeCrate = () => {
-    const s = 1.5 + rand() * 0.6;
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
-    const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), woodTop);
-    lid.position.y = s * 0.5;
-    g.add(lid);
-    g.traverse((o) => (o.castShadow = true));
-    return { mesh: g, rest: s / 2 };
-  };
-  const makeBarrel = () => {
-    // The barrel tumbles as one rigid body, so body + bands bake into a single
-    // multi-material mesh (2 draws instead of 3 meshes).
-    const r = 0.7 + rand() * 0.2;
-    const h = 1.9 + rand() * 0.3;
-    const parts = [new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat)];
-    for (const yy of [-h * 0.3, h * 0.3]) {
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, h * 0.12, 12), bandMat);
-      band.position.y = yy;
-      parts.push(band);
-    }
-    const g = new THREE.Group();
-    g.add(mergeMeshes(parts, { castShadow: true }));
-    return { mesh: g, rest: h / 2 };
-  };
+  // Crate/barrel art lives at module scope (shared with the asset viewer);
+  // bind the seeded rng so sizes stay deterministic per seed.
+  const makeCrate = () => makeCrateProp(rand);
+  const makeBarrel = () => makeBarrelProp(rand);
   // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state
   // ("ground" knockable | "float" power-up | "rising" transition). Which grounded
   // crate gets promoted into a floating box is decided at runtime (any settled,

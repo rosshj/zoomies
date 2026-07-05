@@ -1115,7 +1115,7 @@ function updateMultiplayer(dt) {
 initMultiplayer();
 
 // --- Game state ---
-const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4 };
+const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4, FLYVIEW: 5 };
 let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
@@ -1833,6 +1833,142 @@ function resumeGame() {
   audio.startEngine();
   state = State.RACING;
 }
+
+// --- Track viewer (fly camera) ---------------------------------------------
+// A dev/inspection mode entered from the pause menu (revealed by the Advanced
+// "Track viewer" setting): the race stays frozen while the camera flies free
+// over the world. Touch: one-finger drag looks around, pinch moves along the
+// view direction, two-finger drag strafes and rises/descends. Desktop: mouse
+// drag looks, wheel moves, WASD + E/Q (Shift = faster) fly.
+const flyCatch = document.getElementById("fly-catch");
+const flyExitBtn = document.getElementById("fly-exit");
+const flyHint = document.getElementById("fly-hint");
+const _fly = {
+  yaw: 0, pitch: 0,
+  pointers: new Map(), // active pointerId → last {x, y}
+  pinch: 0,            // last two-finger separation (px)
+  keys: new Set(),
+  fwd: new THREE.Vector3(), right: new THREE.Vector3(),
+};
+function _flyBasis() {
+  const cp = Math.cos(_fly.pitch);
+  _fly.fwd.set(Math.sin(_fly.yaw) * cp, Math.sin(_fly.pitch), Math.cos(_fly.yaw) * cp);
+  _fly.right.crossVectors(_fly.fwd, UP_Y).normalize(); // screen-right in world space
+}
+// Movement scales with height above the terrain, so skimming the road is
+// precise and surveying from high up covers ground quickly.
+function _flySpeedScale() {
+  const g = track?.groundInfo?.(camera.position.x, camera.position.z)?.y ?? 0;
+  return Math.min(8, Math.max(0.5, (camera.position.y - g) * 0.06 + 0.4));
+}
+function _flyClamp() {
+  const p = camera.position;
+  const r = Math.hypot(p.x, p.z);
+  if (r > 1500) { p.x *= 1500 / r; p.z *= 1500 / r; } // stay over the world
+  const g = track?.groundInfo?.(p.x, p.z)?.y ?? 0;
+  p.y = Math.min(600, Math.max(g + 1.2, p.y));
+}
+function enterFlyView() {
+  if (state !== State.PAUSED) return;
+  state = State.FLYVIEW;
+  pauseOverlay.classList.add("hidden");
+  document.getElementById("hud").classList.add("hidden");
+  for (const el of [flyCatch, flyExitBtn, flyHint]) el?.classList.remove("hidden");
+  flyHint?.classList.remove("faded");
+  setTimeout(() => flyHint?.classList.add("faded"), 4000);
+  // Take off from the current chase-camera pose, looking the same way.
+  const dir = camera.getWorldDirection(new THREE.Vector3());
+  _fly.yaw = Math.atan2(dir.x, dir.z);
+  _fly.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+  _fly.pointers.clear();
+  _fly.keys.clear();
+}
+function exitFlyView() {
+  if (state !== State.FLYVIEW) return;
+  hideFlyUI();
+  document.getElementById("hud").classList.remove("hidden");
+  updateCamera(0.016, true); // snap the chase camera back onto the kart
+  state = State.PAUSED;
+  pauseOverlay.classList.remove("hidden");
+}
+function hideFlyUI() {
+  for (const el of [flyCatch, flyExitBtn, flyHint]) el?.classList.add("hidden");
+  _fly.pointers.clear();
+  _fly.keys.clear();
+}
+flyExitBtn?.addEventListener("click", exitFlyView);
+document.getElementById("trackview-btn")?.addEventListener("click", enterFlyView);
+
+flyCatch?.addEventListener("pointerdown", (e) => {
+  flyCatch.setPointerCapture(e.pointerId);
+  _fly.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (_fly.pointers.size === 2) {
+    const [a, b] = [..._fly.pointers.values()];
+    _fly.pinch = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+flyCatch?.addEventListener("pointermove", (e) => {
+  const p = _fly.pointers.get(e.pointerId);
+  if (!p || state !== State.FLYVIEW) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  _flyBasis();
+  if (_fly.pointers.size === 1) {
+    // Look: drag right looks right, drag up looks up.
+    _fly.yaw -= dx * 0.0042;
+    _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch - dy * 0.0032));
+  } else if (_fly.pointers.size === 2) {
+    // This finger carries half the two-finger pan (each contributes its own
+    // movement, so the combined gesture pans at finger speed).
+    const k = 0.045 * _flySpeedScale();
+    camera.position.addScaledVector(_fly.right, dx * k * 0.5);
+    camera.position.y -= dy * k * 0.5; // drag up = rise
+    const [a, b] = [..._fly.pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (_fly.pinch > 0) camera.position.addScaledVector(_fly.fwd, (d - _fly.pinch) * 0.09 * _flySpeedScale());
+    _fly.pinch = d;
+    _flyClamp();
+  }
+});
+const _flyEndPointer = (e) => { _fly.pointers.delete(e.pointerId); _fly.pinch = 0; };
+flyCatch?.addEventListener("pointerup", _flyEndPointer);
+flyCatch?.addEventListener("pointercancel", _flyEndPointer);
+flyCatch?.addEventListener("wheel", (e) => {
+  if (state !== State.FLYVIEW) return;
+  e.preventDefault();
+  _flyBasis();
+  camera.position.addScaledVector(_fly.fwd, -e.deltaY * 0.05 * _flySpeedScale());
+  _flyClamp();
+}, { passive: false });
+window.addEventListener("keydown", (e) => { if (state === State.FLYVIEW) _fly.keys.add(e.code); });
+window.addEventListener("keyup", (e) => { _fly.keys.delete(e.code); });
+
+// Per-frame flight (keyboard movement + aiming). Touch moves the camera in the
+// event handlers above; this applies held keys and points the camera.
+function updateFlyCamera(dt) {
+  _flyBasis();
+  const K = _fly.keys;
+  const boost = K.has("ShiftLeft") || K.has("ShiftRight") ? 3 : 1;
+  const move = 55 * boost * _flySpeedScale() * dt;
+  if (K.has("KeyW")) camera.position.addScaledVector(_fly.fwd, move);
+  if (K.has("KeyS")) camera.position.addScaledVector(_fly.fwd, -move);
+  if (K.has("KeyA")) camera.position.addScaledVector(_fly.right, -move);
+  if (K.has("KeyD")) camera.position.addScaledVector(_fly.right, move);
+  if (K.has("KeyE") || K.has("Space")) camera.position.y += move;
+  if (K.has("KeyQ")) camera.position.y -= move;
+  const turn = 1.6 * dt;
+  if (K.has("ArrowLeft")) _fly.yaw += turn;
+  if (K.has("ArrowRight")) _fly.yaw -= turn;
+  if (K.has("ArrowUp")) _fly.pitch = Math.min(1.35, _fly.pitch + turn * 0.7);
+  if (K.has("ArrowDown")) _fly.pitch = Math.max(-1.35, _fly.pitch - turn * 0.7);
+  _flyClamp();
+  _flyBasis();
+  camera.lookAt(
+    camera.position.x + _fly.fwd.x,
+    camera.position.y + _fly.fwd.y,
+    camera.position.z + _fly.fwd.z
+  );
+}
 // True while a single-player race is "parked" in the background (you opened the
 // main menu mid-race). The race state/karts are kept intact so you can resume
 // instead of losing your progress. Multiplayer races aren't parkable.
@@ -1844,6 +1980,7 @@ function refreshResumeBtn() {
 function toMenu() {
   // Opening the menu mid-race parks it (so START is a fresh race but you can also
   // Resume). Reaching the menu from results/lobby clears any parked race.
+  hideFlyUI(); // safety: never leave the fly-cam chrome up over the menu
   _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished && !MP.enabled;
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
@@ -1970,6 +2107,26 @@ fpsToggle?.addEventListener("click", () => {
   applyFpsSetting();
 });
 applyFpsSetting();
+
+// --- Track viewer setting (Advanced; persisted) ---
+// Gates the pause menu's TRACK VIEWER button (see enterFlyView above).
+const TRACKVIEW_KEY = "zoomies-trackview";
+const trackviewToggle = document.getElementById("set-trackview-toggle");
+let trackviewOn = false;
+try { trackviewOn = localStorage.getItem(TRACKVIEW_KEY) === "1"; } catch {}
+function applyTrackviewSetting() {
+  document.getElementById("trackview-btn")?.classList.toggle("hidden", !trackviewOn);
+  if (trackviewToggle) {
+    trackviewToggle.textContent = trackviewOn ? "On" : "Off";
+    trackviewToggle.classList.toggle("off", !trackviewOn);
+  }
+}
+trackviewToggle?.addEventListener("click", () => {
+  trackviewOn = !trackviewOn;
+  try { localStorage.setItem(TRACKVIEW_KEY, trackviewOn ? "1" : "0"); } catch {}
+  applyTrackviewSetting();
+});
+applyTrackviewSetting();
 
 // --- Compatibility mode (renderer backend) ---
 // The renderer backend is picked once at startup (gpu.js reads this same flag), so
@@ -2968,6 +3125,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "Escape" || e.code === "KeyP") {
     if (state === State.RACING) pauseGame();
     else if (state === State.PAUSED) resumeGame();
+    else if (state === State.FLYVIEW) exitFlyView();
   }
 });
 
@@ -4180,6 +4338,12 @@ function loop(now) {
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay
+    return;
+  }
+
+  if (state === State.FLYVIEW) {
+    updateFlyCamera(dt); // free-flying inspection camera over the frozen race
+    renderFrame();
     return;
   }
 
