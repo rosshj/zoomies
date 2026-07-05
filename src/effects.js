@@ -130,6 +130,25 @@ export class EffectsManager {
     });
   }
 
+  // Force one particle of each texture field and one (degenerate) skid quad so
+  // their GPU pipelines compile NOW. Called during the race countdown — where a
+  // stalled frame is invisible — instead of on each effect's first mid-race
+  // use, which showed up as 0.5-1s freezes on iOS/WebGPU. The particles are
+  // near-transparent, short-lived and spawned underground; the skid quad is
+  // all-zero (degenerate triangles draw no fragments).
+  warmup(pos) {
+    _col.setHex(0xffffff);
+    _vel.set(0, 0, 0);
+    this._spawn(pos, _col, { spark: false, life: 0.12, opacity: 0.01, size: 0.5, v: _vel });
+    this._spawn(pos, _col, { spark: true, life: 0.12, opacity: 0.01, size: 0.5, v: _vel });
+    if (this.skidFill === 0) {
+      this.skidFill = 1;
+      this.skidHead = 1;
+      this.skidGeo.setDrawRange(0, 6);
+      this._skidDirty = true;
+    }
+  }
+
   // Returns a shared scratch vector — callers hand it straight to _spawn (which
   // clones) and must not retain it.
   _rear(kart, spread) {

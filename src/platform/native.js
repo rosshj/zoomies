@@ -73,8 +73,12 @@ export async function createNativeAdapter(name) {
     audio: {
       // "Their audio wins": true when the player already has music/a podcast
       // rolling, so the game should keep its own music silent (SFX still play).
+      // configure() first (idempotent): until our ambient session is active,
+      // iOS's answer is unreliable — a paused podcast app still holding the
+      // session read as "playing" and muted the music for no audible reason.
       async otherAudioPlaying() {
         try {
+          await AudioSession?.configure();
           const r = await AudioSession?.isOtherAudioPlaying();
           return !!r?.playing;
         } catch { return false; }

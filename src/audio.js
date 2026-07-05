@@ -56,6 +56,17 @@ class AudioEngine {
     this._tracks = {}; // name -> { el, source }
     this._curTrack = null;
 
+    // A backgrounded game must not keep DJ-ing: iOS treats a playing <audio>
+    // element as background-capable media, so without this the music kept
+    // going after leaving the app. Pause on hide, resume on return (only if
+    // the policy says music should be audible).
+    document.addEventListener("visibilitychange", () => {
+      const cur = this._curTrack && this._tracks[this._curTrack];
+      if (!cur) return;
+      if (document.hidden) cur.el.pause();
+      else if (this._musicAudible) cur.el.play().catch(() => {});
+    });
+
     // Debounce timestamps for spammy one-shots.
     this._lastBump = 0;
   }

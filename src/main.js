@@ -664,6 +664,9 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 const input = new Input();
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
+// Scratch for the countdown effect warm-up (see startRace).
+const _warmPos = new THREE.Vector3();
+const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const hud = new HUD();
 
@@ -3079,11 +3082,19 @@ function prepareRace() {
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
-  // KNOWN HITCH: the first frames after START compile GPU pipelines for the
-  // freshly built kart materials (~0.3s worst frame on device, during the
-  // static countdown). renderer.compileAsync(scene, camera) would warm them
-  // here, but r171's compileAsync crashes in setupHardwareClipping with this
-  // scene (verified headless) — revisit after the next three.js upgrade.
+  // Warm the race effects' GPU pipelines during the countdown, where a stalled
+  // frame is invisible: one near-invisible particle per texture field, one
+  // degenerate skid quad, and one ghost hairball — all far underground. Their
+  // first mid-race appearances were each a 0.5-1s pipeline-compile freeze on
+  // iOS/WebGPU. (The kart materials themselves still compile on the countdown's
+  // first frames — also hidden. renderer.compileAsync would be the complete
+  // fix, but r171's crashes in setupHardwareClipping with this scene; revisit
+  // after the next three.js upgrade.)
+  if (player) {
+    _warmPos.set(player.position.x, player.position.y - 45, player.position.z);
+    effects.warmup(_warmPos);
+    hairballs.spawnAt(_warmPos, _warmDir, 0); // ghost ball: no owner, no collisions
+  }
   updateBoostUI(); // karts start with an empty boost meter
   applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against

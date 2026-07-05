@@ -33,9 +33,11 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func isOtherAudioPlaying(_ call: CAPPluginCall) {
+        // isOtherAudioPlaying only. The secondaryAudioShouldBeSilencedHint was
+        // also consulted originally, but it reads true whenever another app
+        // merely HOLDS a non-mixable session (e.g. a paused podcast), which
+        // muted the game's music with nothing audibly playing.
         let session = AVAudioSession.sharedInstance()
-        call.resolve([
-            "playing": session.isOtherAudioPlaying || session.secondaryAudioShouldBeSilencedHint
-        ])
+        call.resolve(["playing": session.isOtherAudioPlaying])
     }
 }
