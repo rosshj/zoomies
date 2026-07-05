@@ -3430,6 +3430,18 @@ function _orbitMenuCam(anchor, ang) {
 // cross-fade with both sides still moving, no freeze and no dip to black.
 function renderMenuBackground(timeSec) {
   const ang = timeSec * 0.07; // gentle drift
+  // The capture below (drawImage of the renderer's canvas into a 2D canvas) is
+  // a SYNCHRONOUS GPU->CPU readback of a full-res frame, every frame of the
+  // fade — on iOS/WebGPU that's a ~1s main-thread stall per menu transition
+  // (the "0 shader creates" freezes in the device log). WebGPU menus hard-cut
+  // instead: the camera drift keeps the shot change feeling deliberate. The
+  // dissolve stays on WebGL2, where the readback is cheap.
+  const canCapture = !!menuXfadeCtx && !renderer?.backend?.isWebGPUBackend;
+  if (_menuPhase === "fading" && !canCapture) {
+    _menuPhase = "hold"; // skip the fade entirely: render the incoming shot
+    _menuShotT = 0; // restart the hold timer, as a completed fade would
+    if (menuXfade) menuXfade.style.opacity = 0;
+  }
   if (_menuPhase === "fading") {
     const k = Math.min(1, _menuFadeT / SHOT_FADE);
     // Outgoing biome -> capture into the overlay (fading out).
