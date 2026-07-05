@@ -342,7 +342,7 @@ const _godrayShafts = Fn(() => {
       // Clamp the sampled scene to LDR first. The old WebGL pass ran on the
       // tone-mapped image; here the scene pass is raw HDR (the sun is 2-3x bright),
       // so without this the shafts blow out into "crazy rays".
-      const s = _sceneTex.uv(coord.clamp(0, 1)).rgb.clamp(0, 1);
+      const s = _sceneTex.sample(coord.clamp(0, 1)).rgb.clamp(0, 1); // r185: texture nodes sample via .sample(), not .uv()
       const l = s.r.max(s.g).max(s.b).sub(_gThreshold).max(0);
       accum.addAssign(s.mul(l).mul(illum));
       illum.mulAssign(_gDecay);
@@ -2656,6 +2656,9 @@ function buildGaragePreview() {
   scene.add(pk.group);
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
+  // Compile the preview's fresh material variant off-thread (r185) so browsing
+  // cats/karts/accessories doesn't stall a visible frame per first-seen combo.
+  renderer.compileAsync?.(scene, camera)?.catch(() => {});
 }
 
 // --- Custom creator -------------------------------------------------------
@@ -3234,15 +3237,18 @@ function prepareRace() {
   // frame is invisible: one near-invisible particle per texture field, one
   // degenerate skid quad, and one ghost hairball — all far underground. Their
   // first mid-race appearances were each a 0.5-1s pipeline-compile freeze on
-  // iOS/WebGPU. (The kart materials themselves still compile on the countdown's
-  // first frames — also hidden. renderer.compileAsync would be the complete
-  // fix, but r171's crashes in setupHardwareClipping with this scene; revisit
-  // after the next three.js upgrade.)
+  // iOS/WebGPU.
   if (player) {
     _warmPos.set(player.position.x, player.position.y - 45, player.position.z);
     effects.warmup(_warmPos);
     hairballs.spawnAt(_warmPos, _warmDir, 0); // ghost ball: no owner, no collisions
   }
+  // r185's compileAsync works (r171's crashed on this scene): compile the fresh
+  // kart/ghost materials asynchronously during the static countdown so their
+  // first rendered frame doesn't pay a synchronous pipeline compile (~250ms
+  // race-start hitch on device). The draw-based warms above stay as backup for
+  // pooled resources compileAsync may skip (zero-instance fields).
+  renderer.compileAsync?.(scene, camera)?.catch(() => {});
   updateBoostUI(); // karts start with an empty boost meter
   applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against
