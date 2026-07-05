@@ -24,6 +24,14 @@ const MAX_DIST = 130;
 
 class AudioEngine {
   constructor() {
+    // WebKit's Audio Session API (iOS 16.4+): make the WEB VIEW's own audio
+    // session ambient/mixable. This is the session that actually activates
+    // when our WebAudio starts (WebKit helper process) — the native plugin's
+    // AVAudioSession config governs the app process and can't reach it. Without
+    // this, the first continuous SFX (the engine loop at race start) activated
+    // a non-mixable session that killed the player's podcast AND then lost the
+    // session fight, silencing everything. No-op where unsupported.
+    try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch { /* unsupported */ }
     this.ctx = null;
     this.master = null; // everything routes here
     this.sfxGain = null; // one-shot + engine SFX bus
@@ -56,15 +64,24 @@ class AudioEngine {
     this._tracks = {}; // name -> { el, source }
     this._curTrack = null;
 
-    // A backgrounded game must not keep DJ-ing: iOS treats a playing <audio>
-    // element as background-capable media, so without this the music kept
-    // going after leaving the app. Pause on hide, resume on return (only if
-    // the policy says music should be audible).
+    // A backgrounded game must not keep making sound: iOS treats a playing
+    // <audio> element as background-capable media (music kept going after
+    // leaving the app), and a still-running AudioContext ground on as
+    // stuttering engine-loop audio until the app was killed. Pause the track
+    // AND suspend the whole context on hide; restore both on return.
+    // _bgSuspended tells the auto-resume kick (unlock) this is intentional.
+    this._bgSuspended = false;
     document.addEventListener("visibilitychange", () => {
       const cur = this._curTrack && this._tracks[this._curTrack];
-      if (!cur) return;
-      if (document.hidden) cur.el.pause();
-      else if (this._musicAudible) cur.el.play().catch(() => {});
+      if (document.hidden) {
+        this._bgSuspended = true;
+        cur?.el.pause();
+        this.ctx?.suspend?.().catch?.(() => {});
+      } else {
+        this._bgSuspended = false;
+        if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+        if (cur && this._musicAudible) cur.el.play().catch(() => {});
+      }
     });
 
     // Debounce timestamps for spammy one-shots.
@@ -135,12 +152,14 @@ class AudioEngine {
       // app returns to the foreground — resume() is a no-op when running and
       // rejects harmlessly while a real interruption (phone call) is active.
       const kick = () => {
+        // Never fight the deliberate background suspend (visibilitychange).
+        if (this._bgSuspended || document.hidden) return;
         if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
       };
       this.ctx.addEventListener?.("statechange", kick);
       document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
     }
-    if (this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+    if (!this._bgSuspended && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
   }
 
   get ready() {

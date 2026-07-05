@@ -48,6 +48,17 @@ Capacitor apps normally commit the `ios/` folder (it holds native config). The
 `.gitignore` already excludes the heavy/generated bits (`Pods/`, `DerivedData/`,
 the synced `public/` web copy). Generate it on the Mac, then commit it there.
 
+## Landscape-only (Info.plist — do this once)
+
+The JS-side orientation lock only engages once the game boots; the app itself
+must declare landscape-only so the SPLASH already comes up landscape (launching
+while holding the phone upright otherwise started portrait until a relaunch).
+
+In Xcode: **App target → General → Deployment Info** → check **Landscape Left**
+and **Landscape Right**, uncheck **Portrait** and **Upside Down**. (Equivalent
+to setting `UISupportedInterfaceOrientations` to just the two landscape values
+in `ios/App/App/Info.plist`.)
+
 ## App icon & splash screen
 
 `tools/gen-icons.mjs` (the same script that draws the web icons) also emits the
