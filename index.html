@@ -115,6 +115,15 @@
        Sits above the canvas, below the menu cards. -->
   <canvas id="menu-xfade"></canvas>
 
+  <!-- Race-entry veil: covers the stage while the countdown holds so the kart
+       build, its GC burst and the first-draw shader compiles play out behind a
+       loading card instead of as visible freezes. Dropped once frames settle
+       (see the COUNTDOWN block in main.js). -->
+  <div id="race-veil" class="hidden">
+    <div class="rv-ring" role="progressbar" aria-label="Loading race"></div>
+    <p class="rv-text">GET READY…</p>
+  </div>
+
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
     <!-- Pause (top-left) -->

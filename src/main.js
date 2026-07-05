@@ -1856,6 +1856,7 @@ function toMenu() {
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
+  hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
 }
 // Resume a parked race: drop back into it exactly where it was (paused), so the
@@ -3158,6 +3159,38 @@ document.getElementById("lobby-ready")?.addEventListener("click", () => {
   if (b) { b.textContent = "✓ Tilt ready"; b.disabled = true; }
 });
 
+// --- Race-entry veil ---
+// The first moments of COUNTDOWN are where the remaining big hitches live:
+// buildKarts' allocation burst, the GC that follows it, and the first-view
+// shader/pipeline compiles as the start-line scene comes on screen. Rather than
+// let the player watch those as freezes during the camera swing, hold a
+// "GET READY" cover over the stage and freeze the countdown clock until frames
+// prove stable (or a hard cap expires — a slow device still gets to race).
+// Solo only: a multiplayer countdown runs off the shared network clock and
+// can't be held for one client.
+const raceVeilEl = document.getElementById("race-veil");
+let _veilActive = false;
+let _veilStartedAt = 0;
+let _veilStableMs = 0;
+const VEIL_STABLE_FRAME_MS = 90; // a frame under this counts toward "stable"
+const VEIL_STABLE_NEED_MS = 600; // this much uninterrupted smoothness drops the veil
+const VEIL_MAX_MS = 6000; // hard cap: never hold the race longer than this
+let _veilHideTimer = 0;
+function showRaceVeil() {
+  if (!raceVeilEl) return;
+  _veilActive = true;
+  _veilStartedAt = performance.now();
+  _veilStableMs = 0;
+  clearTimeout(_veilHideTimer); // a still-pending fade-out must not re-hide us
+  raceVeilEl.classList.remove("hidden", "fading");
+}
+function hideRaceVeil() {
+  _veilActive = false;
+  if (!raceVeilEl || raceVeilEl.classList.contains("hidden")) return;
+  raceVeilEl.classList.add("fading"); // CSS opacity transition
+  _veilHideTimer = setTimeout(() => raceVeilEl.classList.add("hidden"), 400);
+}
+
 function startRace() {
   timeTrial = false;
   setTimeTrialHud(false);
@@ -3201,6 +3234,7 @@ function beginRace() {
   prevCountN = 99;
   track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
+  showRaceVeil(); // hold the countdown behind a cover until frames settle
 }
 
 // Everything to spin up a race that does NOT need a user gesture — so it can run
@@ -4233,20 +4267,38 @@ function loop(now) {
   }
 
   if (state === State.COUNTDOWN) {
+    // Veil hold: while the "GET READY" cover is up, the countdown clock is
+    // frozen — frames keep rendering behind the cover so the kart build's GC
+    // and the first-view pipeline compiles burn off invisibly. Drop the veil
+    // after an uninterrupted stretch of smooth frames, or at the hard cap.
+    if (_veilActive) {
+      if (MP.enabled && MP.startAt) {
+        hideRaceVeil(); // shared-clock countdown can't be held (belt & braces)
+      } else {
+        _veilStableMs = rawMs < VEIL_STABLE_FRAME_MS ? _veilStableMs + rawMs : 0;
+        const held = performance.now() - _veilStartedAt;
+        if (_veilStableMs >= VEIL_STABLE_NEED_MS || held > VEIL_MAX_MS) {
+          console.log(`[zoomies] race veil dropped after ${Math.round(held)}ms (stable ${Math.round(_veilStableMs)}ms)`);
+          hideRaceVeil();
+        }
+      }
+    }
     // In multiplayer, drive the countdown straight off the shared clock so every
     // client reaches GO at the same instant regardless of local frame timing.
     if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
-    else countdown -= dt;
+    else if (!_veilActive) countdown -= dt;
     updateCamera(dt, camPos.lengthSq() === 0);
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     // The whole GO moment — toast, chirp, GREEN light — fires at the actual
     // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
     // lit the light early) for the final ~1s while input was still locked.
+    // All of it is gated on the veil being down, so the first beep the player
+    // hears lines up with the first "3" they can actually see.
     const n = Math.ceil(countdown);
-    if (n >= 1 && n <= 3) hud.showToast(`${n}`);
+    if (!_veilActive && n >= 1 && n <= 3) hud.showToast(`${n}`);
     // A beep on each 3/2/1 as the number changes, and the start-light gantry
     // steps with it: red through 3/2, amber at 1. Green comes with GO.
-    if (n !== prevCountN && n >= 1 && n <= 3) {
+    if (!_veilActive && n !== prevCountN && n >= 1 && n <= 3) {
       audio.countdownBeep(n);
       track.setStartLight?.(n >= 2 ? "red" : "amber");
       prevCountN = n;
