@@ -71,9 +71,9 @@ class AudioEngine {
     // AND suspend the whole context on hide; restore both on return.
     // _bgSuspended tells the auto-resume kick (unlock) this is intentional.
     this._bgSuspended = false;
-    document.addEventListener("visibilitychange", () => {
+    const onHide = (hidden) => {
       const cur = this._curTrack && this._tracks[this._curTrack];
-      if (document.hidden) {
+      if (hidden) {
         this._bgSuspended = true;
         cur?.el.pause();
         this.ctx?.suspend?.().catch?.(() => {});
@@ -82,7 +82,13 @@ class AudioEngine {
         if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
         if (cur && this._musicAudible) cur.el.play().catch(() => {});
       }
-    });
+    };
+    document.addEventListener("visibilitychange", () => onHide(document.hidden));
+    // pagehide fires earlier in iOS's app-switch teardown than visibilitychange;
+    // suspending there too shrinks the window where a half-rendered audio
+    // buffer can escape as a "ping" on exit.
+    window.addEventListener("pagehide", () => onHide(true));
+    window.addEventListener("pageshow", () => onHide(document.hidden));
     // The visibility resume above can be rejected (no user gesture), and only
     // menu buttons call unlock() explicitly — returning mid-race and touching
     // only the driving controls left the session silent for good. Any touch

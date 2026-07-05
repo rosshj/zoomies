@@ -2094,6 +2094,35 @@ document.addEventListener("visibilitychange", () => { _lastVisChange = performan
 // device once the renderer is up; stays 0 on the WebGL2 fallback).
 let _gpuCreates = 0;
 let _gpuCreatesLast = 0;
+
+// Draw-everything warm pass. iOS compiles Metal shaders lazily at each
+// pipeline's FIRST DRAW (creation at boot returns immediately) — so every part
+// of the world froze the game ~0.5-1.5s the first time it entered the camera's
+// view (menu shots panning, racing into new areas): FREEZE lines showed 0
+// pipeline creates. For the first frames after renderer init, disable frustum
+// culling so EVERY object draws and takes its compile hit while the splash
+// still covers the screen.
+let _warmAllFrames = 0;
+const _warmAllTouched = [];
+function warmAllStep() {
+  if (_warmAllFrames <= 0) return;
+  if (_warmAllTouched.length === 0) {
+    scene.traverse((o) => {
+      if ((o.isMesh || o.isPoints || o.isLine) && o.frustumCulled && o.visible) {
+        o.frustumCulled = false;
+        _warmAllTouched.push(o);
+      }
+    });
+  }
+  if (--_warmAllFrames === 0) {
+    for (const o of _warmAllTouched) o.frustumCulled = true;
+    _warmAllTouched.length = 0;
+    // Only now dismiss the splash (and apply the rest of the native chrome):
+    // the warm frames' compile stall must happen BEHIND the splash, not under
+    // a frozen first frame. No-op on the web.
+    getPlatform().then((p) => p.ready()).catch(() => {});
+  }
+}
 function logPerfSummary(rawMs) {
   if (rawMs > 500) {
     const fromBackground = performance.now() - _lastVisChange < 1500;
@@ -3971,6 +4000,7 @@ function loop(now) {
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
   logPerfSummary(rawMs); // 5-second frame-time summary → console (Xcode/devtools)
+  warmAllStep(); // first frames: draw everything so Metal's lazy compiles happen under the splash
   // One-time boot timeline. Logged on the SECOND loop pass so `rawMs` covers the
   // first rendered frame — where the whole scene's pipelines compile — and the
   // "pause before the menu" decomposes into its actual phases.
@@ -4454,12 +4484,11 @@ rendererReady
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => {
     _boot.renderer = performance.now();
+    _warmAllFrames = 2; // draw the whole world for the first frames (see warmAllStep)
     requestAnimationFrame(loop);
-    // Native (Capacitor) shell chrome, now that the renderer is up and the first
-    // frame is drawing: lock landscape, hide the OS status bar, and dismiss the
-    // splash at the right moment (instead of Capacitor's default timeout). All
-    // three are no-ops on the web, where the PWA/manifest handles chrome.
-    getPlatform().then((p) => p.ready()).catch(() => {});
+    // Native shell chrome (landscape lock, status bar, splash dismissal) is
+    // applied by warmAllStep once the draw-everything warm pass finishes, so
+    // the splash covers the shader-compile stall instead of a frozen frame.
   });
 
 // If the previous load ended in a crash, tell the player (and log the detail so we
