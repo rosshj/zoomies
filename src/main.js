@@ -2121,6 +2121,10 @@ let _perfElapsed = 0;
 // freeze the player felt, and it must be REPORTED, not silently dropped.
 let _lastVisChange = 0;
 document.addEventListener("visibilitychange", () => { _lastVisChange = performance.now(); });
+// When the last GO fired. The residual "first race of the session" hitch lands
+// in the first seconds of racing and is shorter than the normal FREEZE bar, so
+// frames in a short window after GO report at a much lower threshold.
+let _goAt = 0;
 // GPU object-creation counters for freeze attribution (patched over the WebGPU
 // device once the renderer is up; stays 0 on the WebGL2 fallback).
 let _gpuCreates = 0;
@@ -2194,7 +2198,10 @@ function warmKartStep() {
   }
 }
 function logPerfSummary(rawMs) {
-  if (rawMs > 250) {
+  // Right after GO, report at a much lower bar: the felt "stall at the start
+  // of the first race" is a sub-250ms frame the normal threshold never logs.
+  const sinceGo = _goAt ? performance.now() - _goAt : Infinity;
+  if (rawMs > (sinceGo < 6000 ? 100 : 250)) {
     // Background gaps: the app-state/visibility timestamp is the primary
     // signal, but iOS can run the gap frame BEFORE delivering those events on
     // return — so also treat a huge gap with no compile activity as a resume,
@@ -2214,7 +2221,8 @@ function logPerfSummary(rawMs) {
       const mem = renderer?.info?.memory;
       const other = Math.max(0, rawMs - _seg.render - _seg.atmos - _seg.minimap - _seg.world);
       console.warn(
-        `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"} · render ${Math.round(_seg.render)} · atmos ${Math.round(_seg.atmos)} · minimap ${Math.round(_seg.minimap)} · world ${Math.round(_seg.world)} · other ${Math.round(other)}ms`
+        `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"} · render ${Math.round(_seg.render)} · atmos ${Math.round(_seg.atmos)} · minimap ${Math.round(_seg.minimap)} · world ${Math.round(_seg.world)} · other ${Math.round(other)}ms` +
+          (sinceGo < 6000 ? ` · +${Math.round(sinceGo)}ms after GO` : "")
       );
     }
     return; // either way, keep it out of the percentile stats
@@ -4280,6 +4288,11 @@ function loop(now) {
         if (_veilStableMs >= VEIL_STABLE_NEED_MS || held > VEIL_MAX_MS) {
           console.log(`[zoomies] race veil dropped after ${Math.round(held)}ms (stable ${Math.round(_veilStableMs)}ms)`);
           hideRaceVeil();
+          // Idle the engine at the start line through the 3-2-1: reads as race
+          // anticipation, and moves the engine audio-graph spin-up (oscillators,
+          // filters, the looping noise source) off the GO frame. Idempotent —
+          // the startEngine at GO is a no-op once this ran.
+          audio.startEngine();
         }
       }
     }
@@ -4312,6 +4325,7 @@ function loop(now) {
     if (countdown <= 0) {
       state = State.RACING;
       MP.startAt = 0;
+      _goAt = performance.now(); // arms the low-threshold FREEZE window
       hud.showToast("GO!");
       audio.countdownBeep(0); // the higher GO! chirp, exactly as control unlocks
       track.setStartLight?.("green"); // green means green: karts can move NOW
