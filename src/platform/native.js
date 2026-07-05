@@ -84,6 +84,10 @@ export async function createNativeAdapter(name) {
           return !!r?.playing;
         } catch { return false; }
       },
+      // Re-establish the (deactivated) session after returning to the app.
+      async reactivate() {
+        try { await AudioSession?.configure(); } catch { /* n/a */ }
+      },
     },
 
     app: {
@@ -94,10 +98,16 @@ export async function createNativeAdapter(name) {
       // hang off the native appStateChange instead.
       onStateChange(cb) {
         const fire = (active) => {
-          // iOS deactivates our audio session on backgrounding; returning
-          // needs it re-established BEFORE the game tries to resume audio,
-          // or the resume calls are rejected and the session stays silent.
-          if (active) { try { AudioSession?.configure(); } catch { /* n/a */ } }
+          // iOS deactivates our audio session on backgrounding, and it can
+          // refuse reactivation for a while after return (a single immediate
+          // configure() left the game silent until an app-switcher round trip
+          // generated a later retry). Spread reactivation attempts out.
+          if (active) {
+            const re = () => { try { AudioSession?.configure(); } catch { /* n/a */ } };
+            re();
+            setTimeout(re, 600);
+            setTimeout(re, 2000);
+          }
           cb(active);
         };
         try { App?.addListener("appStateChange", (s) => fire(!!s?.isActive)); } catch { /* n/a */ }

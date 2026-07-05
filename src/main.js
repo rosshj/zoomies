@@ -1720,12 +1720,16 @@ function updateDRS(rawMs, dt) {
     // stayed blurry for the rest of the session).
     if (_frameMs < 17.2 && _drsRung > 0) {
       _drsUnderT += dt;
-      if (_drsUnderT < 3.0) return;
+      // 2s sustained + 2s cooldown ≈ up to ~15s from the bottom rung back to
+      // full res after a heavy stretch (a sunset race start read as "blurry
+      // for 30 seconds" at the previous 3+3 pacing) while still far too slow
+      // to oscillate against the 0.5s down-trigger.
+      if (_drsUnderT < 2.0) return;
       _drsUnderT = 0;
       _drsRung--;
       renderScale = DRS_RUNGS[_drsRung];
       applyResolution();
-      _drsCooldown = 3.0;
+      _drsCooldown = 2.0;
     } else if (_frameMs >= 17.2) {
       _drsUnderT = 0;
     }
@@ -2253,7 +2257,18 @@ const _audioPolicyReady = getPlatform().then(async (p) => {
   p.app.onStateChange((active) => {
     _lastVisChange = performance.now();
     audio.setAppActive(active);
-    if (active) audio.unlock();
+    if (active) {
+      audio.unlock();
+      // Belt-and-braces: the first touch after returning re-establishes the
+      // audio session with a real user gesture behind it (the timing that an
+      // app-switcher round trip provided by accident).
+      const once = () => {
+        window.removeEventListener("pointerdown", once, true);
+        p.audio.reactivate().catch(() => {});
+        audio.unlock();
+      };
+      window.addEventListener("pointerdown", once, true);
+    }
   });
   try {
     const other = await p.audio.otherAudioPlaying();

@@ -218,8 +218,11 @@ class AudioEngine {
       };
       revive();
       // iOS may still be re-establishing the audio session when the state
-      // change lands — one delayed retry picks up the stragglers.
+      // change lands — delayed retries pick up the stragglers (the native
+      // side retries its session reactivation on the same cadence).
       setTimeout(revive, 350);
+      setTimeout(revive, 1500);
+      setTimeout(revive, 2600);
     }
   }
 

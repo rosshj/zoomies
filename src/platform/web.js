@@ -41,6 +41,7 @@ export function createWebAdapter() {
       // The web has no API for "is other audio playing", so the policy gate
       // never engages here — game music behaves exactly as it always has.
       async otherAudioPlaying() { return false; },
+      async reactivate() { /* no session concept on the web */ },
     },
 
     app: {
