@@ -2131,7 +2131,9 @@ getPlatform().then(async (p) => {
   // (native reports it; web always says no), keep the game's music silent for
   // this session — SFX still play. Flipping music ON in Settings overrides it.
   try {
-    if (await p.audio.otherAudioPlaying()) {
+    const other = await p.audio.otherAudioPlaying();
+    console.log(`[zoomies] audio policy: otherAudioPlaying=${other}`);
+    if (other) {
       audio.setMusicAllowed(false);
       console.log("[zoomies] other audio detected — game music muted for this session (SFX unaffected)");
     }

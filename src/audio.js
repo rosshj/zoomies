@@ -689,9 +689,14 @@ class AudioEngine {
     el.src = url;
     el.loop = true;
     el.preload = "auto";
-    el.crossOrigin = "anonymous";
+    // NO crossOrigin: these files are same-origin on every target (https on the
+    // web, capacitor://localhost in the app). Requesting CORS mode against the
+    // app's custom scheme made the load fail outright — killing music (while
+    // the synthesized SFX kept working) with only a silent error event.
     el.addEventListener("error", () => {
-      // File not present (yet) — disable this track quietly.
+      // File not present / failed to load — disable this track, but say so:
+      // a silently-nulled track made "no music" undiagnosable on device.
+      console.warn(`[zoomies] music track "${name}" failed to load (${url}):`, el.error?.code, el.error?.message || "");
       this._tracks[name] = null;
     });
     this._tracks[name] = { el, source: null };
@@ -699,13 +704,29 @@ class AudioEngine {
 
   // Switch background music to a registered track (crossfades via the element).
   // No-op if the track wasn't registered or failed to load.
+  // One de-duplicated console line per music state change, so a silent device
+  // is diagnosable from the log (gated? blocked by autoplay? track missing?).
+  _mlog(msg) {
+    if (this._lastMlog === msg) return;
+    this._lastMlog = msg;
+    console.log("[zoomies] music:", msg);
+  }
+
+  _playEl(el, name) {
+    el.play()
+      .then(() => this._mlog(`playing "${name}"`))
+      .catch((e) => this._mlog(`play blocked: ${e?.name || e}`));
+  }
+
   playMusic(name) {
     if (!this.ctx) return;
     if (this._curTrack === name) {
       // Already selected — but a first-gesture play() can be rejected, leaving it
       // paused. Make sure it's actually rolling (cheap to call when already playing).
       const cur = this._tracks[name];
-      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
+      if (!cur) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
+      if (!this._musicAudible) this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
+      else if (cur.el.paused) this._playEl(cur.el, name);
       return;
     }
     // Stop whatever's currently playing.
@@ -716,7 +737,7 @@ class AudioEngine {
     }
     this._curTrack = name;
     const track = this._tracks[name];
-    if (!track) return;
+    if (!track) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
     // Route the element through a per-track fade gain into the music bus once
     // (the fade gain does the fade-in; the music bus handles volume/mute).
     if (!track.source && this.ctx.createMediaElementSource) {
@@ -738,7 +759,8 @@ class AudioEngine {
       track.fade.gain.setValueAtTime(0, t);
       track.fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
     }
-    if (this._musicAudible) track.el.play().catch(() => {});
+    if (this._musicAudible) this._playEl(track.el, name);
+    else this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
   }
 
   // Whether a music track is actually rolling right now (not just selected).
