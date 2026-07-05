@@ -21,6 +21,17 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "isOtherAudioPlaying", returnType: CAPPluginReturnPromise)
     ]
 
+    // Snapshot taken at plugin load — before the web view has executed any game
+    // JS. Once the game boots, its OWN audio (WebKit runs web audio in helper
+    // processes) reads as "other audio playing" from this process, so a live
+    // query self-triggers the mute-music policy. Only the launch snapshot can
+    // answer "was the PLAYER already listening to something?".
+    private var otherAudioAtLaunch = false
+
+    override public func load() {
+        otherAudioAtLaunch = AVAudioSession.sharedInstance().isOtherAudioPlaying
+    }
+
     @objc func configure(_ call: CAPPluginCall) {
         do {
             let session = AVAudioSession.sharedInstance()
@@ -33,11 +44,14 @@ public class AudioSessionPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func isOtherAudioPlaying(_ call: CAPPluginCall) {
-        // isOtherAudioPlaying only. The secondaryAudioShouldBeSilencedHint was
-        // also consulted originally, but it reads true whenever another app
-        // merely HOLDS a non-mixable session (e.g. a paused podcast), which
-        // muted the game's music with nothing audibly playing.
-        let session = AVAudioSession.sharedInstance()
-        call.resolve(["playing": session.isOtherAudioPlaying])
+        // "playing" is the LAUNCH SNAPSHOT (see load()) — a live read here is
+        // polluted by the game's own web audio. "now" (the live value) is
+        // included for log diagnostics only. The secondaryAudioShouldBeSilencedHint
+        // was dropped earlier: it reads true whenever another app merely HOLDS
+        // a non-mixable session (e.g. a paused podcast).
+        call.resolve([
+            "playing": otherAudioAtLaunch,
+            "now": AVAudioSession.sharedInstance().isOtherAudioPlaying
+        ])
     }
 }

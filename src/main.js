@@ -2125,11 +2125,13 @@ function logPerfSummary(rawMs) {
 // maps to navigator.vibrate where it exists (Android Chrome) and is silent
 // elsewhere. Player only — AI and remote karts never buzz the hand.
 let _platformA = null;
-getPlatform().then(async (p) => {
+// "Their audio wins": if the player already had music/a podcast rolling at app
+// launch (native snapshots this before any game JS runs; web always says no),
+// keep the game's music silent for this session — SFX still play. Flipping
+// music ON in Settings overrides it. Exposed as a promise so the boot-time
+// autoplay can wait for the verdict instead of starting-then-aborting a track.
+const _audioPolicyReady = getPlatform().then(async (p) => {
   _platformA = p;
-  // "Their audio wins": if the player already has music/a podcast rolling
-  // (native reports it; web always says no), keep the game's music silent for
-  // this session — SFX still play. Flipping music ON in Settings overrides it.
   try {
     const other = await p.audio.otherAudioPlaying();
     console.log(`[zoomies] audio policy: otherAudioPlaying=${other}`);
@@ -4495,5 +4497,9 @@ const _isStandalonePWA =
   window.navigator.standalone === true;
 if (_isStandalonePWA) {
   audio.unlock();
-  audio.playMusic("bg");
+  // Wait for the audio-policy verdict (bounded — the web resolves instantly,
+  // native is one bridge round-trip) before the first play attempt, so a
+  // muted-by-policy session never starts-then-aborts the track.
+  Promise.race([_audioPolicyReady, new Promise((r) => setTimeout(r, 1500))])
+    .then(() => audio.playMusic("bg"));
 }
