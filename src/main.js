@@ -1681,35 +1681,50 @@ function perfWatchdog(dt) {
 }
 
 let _drsOverT = 0; // how long we've been continuously over budget
+// Fixed resolution rungs. Every scale change reallocates the WHOLE post chain
+// (scene target, bloom mip pyramid, god-ray target) — a hitch each time — and
+// on iOS/WebGPU the backend leaks target textures per reallocation (a race of
+// ±0.06 yo-yoing climbed renderer.info textures from ~50 to 1100 and dragged
+// the whole session down). So changes must be RARE and CHUNKY: a handful of
+// rungs, sustained evidence before moving, long cooldowns. A visible res pop
+// on a rung change is a far better deal than a resize storm.
+const DRS_RUNGS = [1, 0.8, 0.62, DRS_MIN];
+let _drsRung = 0; // index into DRS_RUNGS
+let _drsUnderT = 0; // how long we've had comfortable headroom (for recovery)
+
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   perfWatchdog(dt);
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
-  if (_frameMs > 18.6 && renderScale > DRS_MIN) {
+  if (_frameMs > 18.6 && _drsRung < DRS_RUNGS.length - 1) {
     // Only step down after the budget has been blown for a SUSTAINED beat. A
     // transient spike — a jump's brief draw-call burst, a first-use shader
-    // compile — recovers on its own, and stepping down means REALLOCATING every
-    // render target, which is itself a hitch: reacting to a spike with a resize
-    // used to cascade spike → resize hitch → another "spike" → resize storm
-    // (and the allocation churn is exactly what pressures iOS toward device loss).
+    // compile — recovers on its own.
+    _drsUnderT = 0;
     _drsOverT += dt;
     if (_drsOverT < 0.5) return;
     _drsOverT = 0;
-    // Step proportional to how far over budget we are: genuinely sustained
-    // overload (a big map's heavy stretch) drops resolution HARD in one move
-    // instead of crawling down 0.1 at a time over a couple of seconds.
-    const over = _frameMs / 18.6;
-    const step = over > 1.7 ? 0.25 : over > 1.3 ? 0.16 : 0.08;
-    renderScale = Math.max(DRS_MIN, renderScale - step);
+    // Genuinely sustained overload drops two rungs in one move.
+    _drsRung = Math.min(DRS_RUNGS.length - 1, _drsRung + (_frameMs / 18.6 > 1.5 ? 2 : 1));
+    renderScale = DRS_RUNGS[_drsRung];
     applyResolution();
-    _drsCooldown = 0.35;
+    _drsCooldown = 1.0;
   } else {
     _drsOverT = 0;
-    if (_frameMs < 17.4 && renderScale < 1) {
-      renderScale = Math.min(1, renderScale + 0.06); // headroom -> recover resolution gently
+    // Recover a rung only after SUSTAINED comfortable headroom — not on the
+    // first good window — and with a long cooldown, so the scaler can't
+    // oscillate between rungs (each swing is a realloc + hitch).
+    if (_frameMs < 16.0 && _drsRung > 0) {
+      _drsUnderT += dt;
+      if (_drsUnderT < 3.0) return;
+      _drsUnderT = 0;
+      _drsRung--;
+      renderScale = DRS_RUNGS[_drsRung];
       applyResolution();
-      _drsCooldown = 1.4;
+      _drsCooldown = 3.0;
+    } else if (_frameMs >= 16.0) {
+      _drsUnderT = 0;
     }
   }
 }
@@ -1732,6 +1747,7 @@ function applyQuality(q, persist = true) {
   if (world.grass) world.grass.visible = high;
   if (gpuParticles) gpuParticles.setVisible(high);
   renderScale = 1; // reset DRS on a manual quality change
+  _drsRung = 0; // keep the rung index in sync (updateDRS owns both)
   qualityLowBtn?.classList.toggle("is-active", !high);
   qualityHighBtn?.classList.toggle("is-active", high);
   layoutStage(); // applies the resolution
