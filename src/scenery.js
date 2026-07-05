@@ -8,7 +8,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // Track set pieces (river bridge / canyon / giant forest / overpass): the
 // planner lives on the track (track.features); these helpers shape the terrain
 // around the runs and build their structures. See features.js for the system.
-import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures } from "./features.js";
+import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -1683,9 +1683,10 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
 // sides. Static + shared materials, so batchStaticProps() merges the lot into
 // a few draws; the green lens is emissive so it glows at dusk/night.
 let _tlMats = null;
-function buildTrafficLights(scene, track, heightAt) {
-  const N = track.samples;
-  const up = new THREE.Vector3(0, 1, 0);
+// One traffic signal (pole + mast arm + 3-lens head, green LIT — this is a
+// race, nobody stops). Local +Z is the arm's reach toward the road. Also built
+// standalone by the asset viewer.
+function makeTrafficLight() {
   if (!_tlMats) {
     _tlMats = {
       pole: mat(0x3c4047, { roughness: 0.5, metalness: 0.45 }),
@@ -1695,6 +1696,36 @@ function buildTrafficLights(scene, track, heightAt) {
       green: mat(0x2ecc55, { roughness: 0.4, emissive: 0x2ecc55, emissiveIntensity: 1.9 }), // LIT
     };
   }
+  const g = new THREE.Group();
+  const armY = 7.8, armLen = 4.6;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, armY + 0.2, 8), _tlMats.pole);
+  pole.position.y = (armY + 0.2) / 2;
+  pole.castShadow = true;
+  g.add(pole);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, armLen, 8), _tlMats.pole);
+  arm.rotation.x = Math.PI / 2; // lie along local +Z (toward the road)
+  arm.position.set(0, armY, armLen / 2);
+  arm.castShadow = true;
+  g.add(arm);
+  // Signal head hanging near the arm's end: dark housing + three lenses that
+  // poke out of BOTH faces (readable from either driving direction).
+  const headZ = armLen - 0.5;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.5, 0.52), _tlMats.head);
+  head.position.set(0, armY - 0.85, headZ);
+  head.castShadow = true;
+  g.add(head);
+  const lensDefs = [[_tlMats.red, 0.46], [_tlMats.amber, 0], [_tlMats.green, -0.46]];
+  for (const [m, dy] of lensDefs) {
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), m);
+    lens.position.set(0, armY - 0.85 + dy, headZ);
+    g.add(lens);
+  }
+  return g;
+}
+
+function buildTrafficLights(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
   const spacing = track.length / N;
   const step = Math.max(1, Math.round(60 / spacing));
   let flip = 1;
@@ -1709,30 +1740,7 @@ function buildTrafficLights(scene, track, heightAt) {
     if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
     if (_inLake(x, z)) continue;
 
-    const g = new THREE.Group();
-    const armY = 7.8, armLen = 4.6;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, armY + 0.2, 8), _tlMats.pole);
-    pole.position.y = (armY + 0.2) / 2;
-    pole.castShadow = true;
-    g.add(pole);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, armLen, 8), _tlMats.pole);
-    arm.rotation.x = Math.PI / 2; // lie along local +Z (toward the road)
-    arm.position.set(0, armY, armLen / 2);
-    arm.castShadow = true;
-    g.add(arm);
-    // Signal head hanging near the arm's end: dark housing + three lenses that
-    // poke out of BOTH faces (readable from either driving direction).
-    const headZ = armLen - 0.5;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.5, 0.52), _tlMats.head);
-    head.position.set(0, armY - 0.85, headZ);
-    head.castShadow = true;
-    g.add(head);
-    const lensDefs = [[_tlMats.red, 0.46], [_tlMats.amber, 0], [_tlMats.green, -0.46]];
-    for (const [m, dy] of lensDefs) {
-      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), m);
-      lens.position.set(0, armY - 0.85 + dy, headZ);
-      g.add(lens);
-    }
+    const g = makeTrafficLight();
     g.position.set(x, heightAt(x, z), z);
     // Local +Z points from the pole back toward the road centre.
     g.rotation.y = Math.atan2(-side.x * flip, -side.z * flip);
@@ -4269,69 +4277,79 @@ function updatePigeons(flock, dt, time, playerPos) {
   }
 }
 
+// One hot-air balloon: a plump teardrop envelope with alternating vertical
+// gores, a skirt at the throat, suspension ropes and a two-tone wicker basket.
+// `paletteIndex` picks the main gore colour. Shared by buildBalloons (the
+// drifting fleet) and the asset viewer.
+const BALLOON_MAINS = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
+let _balloonShared = null;
+function makeBalloon(paletteIndex = 0) {
+  if (!_balloonShared) {
+    _balloonShared = {
+      cream: new THREE.Color(0xfff3dc),
+      // Envelope profile, throat lip -> plump belly -> rounded crown.
+      prof: [
+        [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
+        [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
+      ].map(([r, y]) => new THREE.Vector2(r, y)),
+      skirtMat: new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide }),
+      ropeMat: new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 }),
+      wickMat: new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 }),
+      wickRimMat: new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 }),
+      envMat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), // colours live in the vertices — one material serves the whole fleet
+    };
+  }
+  const S = _balloonShared;
+  const g = new THREE.Group();
+  const main = new THREE.Color(BALLOON_MAINS[paletteIndex % BALLOON_MAINS.length]);
+  // Crisp gores need per-face colour: un-index the lathe and paint each
+  // triangle by its centroid's longitude — 8 panels alternating main/cream.
+  const geo = new THREE.LatheGeometry(S.prof, 16).toNonIndexed();
+  const pos = geo.getAttribute("position");
+  const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
+  for (let f = 0; f < pos.count; f += 3) {
+    const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
+    const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
+    const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
+    const c = panel % 2 === 0 ? main : S.cream;
+    colAttr.setXYZ(f, c.r, c.g, c.b);
+    colAttr.setXYZ(f + 1, c.r, c.g, c.b);
+    colAttr.setXYZ(f + 2, c.r, c.g, c.b);
+  }
+  geo.setAttribute("color", colAttr);
+  const envelope = new THREE.Mesh(geo, S.envMat);
+  envelope.position.y = 5.2;
+  g.add(envelope);
+
+  // The rigid rig under the envelope — skirt, four ropes, wicker basket with
+  // a darker woven rim — bakes into one merged mesh (one draw per material).
+  const parts = [];
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), S.skirtMat);
+  skirt.position.y = 4.55;
+  parts.push(skirt);
+  const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), S.wickMat);
+  basket.position.y = 1.2;
+  parts.push(basket);
+  const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), S.wickRimMat);
+  rim.position.y = 2.5;
+  parts.push(rim);
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
+    const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
+    const dir = b.clone().sub(a);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), S.ropeMat);
+    rope.position.copy(a).addScaledVector(dir, 0.5);
+    rope.quaternion.setFromUnitVectors(UP_Y, dir.normalize());
+    parts.push(rope);
+  }
+  g.add(mergeMeshes(parts));
+  return g;
+}
+
 function buildBalloons(scene, heightAt) {
-  // Classic illustrated hot-air balloons: a plump teardrop envelope with
-  // alternating vertical gores, a skirt at the throat, suspension ropes and a
-  // two-tone wicker basket (was: a single-colour sphere over a floating cube).
   const balloons = [];
-  const mains = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
-  const cream = new THREE.Color(0xfff3dc);
-  // Envelope profile, throat lip -> plump belly -> rounded crown.
-  const prof = [
-    [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
-    [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
-  ].map(([r, y]) => new THREE.Vector2(r, y));
-  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide });
-  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 });
-  const wickMat = new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 });
-  const wickRimMat = new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 });
-  const envMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }); // colours live in the vertices — one material serves the whole fleet
-  const _up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 6; i++) {
-    const g = new THREE.Group();
-    const main = new THREE.Color(mains[i % mains.length]);
-    // Crisp gores need per-face colour: un-index the lathe and paint each
-    // triangle by its centroid's longitude — 8 panels alternating main/cream.
-    const geo = new THREE.LatheGeometry(prof, 16).toNonIndexed();
-    const pos = geo.getAttribute("position");
-    const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
-    for (let f = 0; f < pos.count; f += 3) {
-      const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
-      const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
-      const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
-      const c = panel % 2 === 0 ? main : cream;
-      colAttr.setXYZ(f, c.r, c.g, c.b);
-      colAttr.setXYZ(f + 1, c.r, c.g, c.b);
-      colAttr.setXYZ(f + 2, c.r, c.g, c.b);
-    }
-    geo.setAttribute("color", colAttr);
-    const envelope = new THREE.Mesh(geo, envMat);
-    envelope.position.y = 5.2;
-    g.add(envelope);
-
-    // The rigid rig under the envelope — skirt, four ropes, wicker basket with
-    // a darker woven rim — bakes into one merged mesh (one draw per material).
-    const parts = [];
-    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), skirtMat);
-    skirt.position.y = 4.55;
-    parts.push(skirt);
-    const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), wickMat);
-    basket.position.y = 1.2;
-    parts.push(basket);
-    const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), wickRimMat);
-    rim.position.y = 2.5;
-    parts.push(rim);
-    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-      const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
-      const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
-      const dir = b.clone().sub(a);
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), ropeMat);
-      rope.position.copy(a).addScaledVector(dir, 0.5);
-      rope.quaternion.setFromUnitVectors(_up, dir.normalize());
-      parts.push(rope);
-    }
-    g.add(mergeMeshes(parts));
-
+    const g = makeBalloon(i);
     const a = rand() * Math.PI * 2;
     const r = 150 + rand() * 300;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
@@ -4342,6 +4360,98 @@ function buildBalloons(scene, heightAt) {
     balloons.push({ mesh: g, baseY: ground + 75 + rand() * 45, phase: rand() * 6.28 });
   }
   return balloons;
+}
+
+// ===========================================================================
+//  Catalog-only makers — art that exists in the world only as instanced/merged
+//  buffers (no per-item group to borrow), rebuilt here as one representative
+//  item from the SAME geometry dimensions and material recipes as the builders
+//  above. If a builder's art changes, change its maker here to match.
+// ===========================================================================
+
+// One street lamp (buildStreetLamps instances post/head/bulb across the map).
+function makeStreetLampAsset(lit = true) {
+  const POST_H = 9;
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.7, metalness: 0.3 });
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 2.4 : 0.0, roughness: 0.4,
+  });
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, POST_H, 7), postMat);
+  post.position.y = POST_H / 2;
+  g.add(post);
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.55, 0.7, 8), postMat);
+  head.position.set(0, POST_H + 0.1, 1); // juts toward the road
+  g.add(head);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), bulbMat);
+  bulb.position.set(0, POST_H - 0.35, 1);
+  g.add(bulb);
+  return g;
+}
+
+// One sky bird (buildBirds renders every wing of every flock as ONE instanced
+// mesh of these quads, flapped per frame; a "bird" is just two of them).
+function makeSkyBirdAsset() {
+  const g = new THREE.Group();
+  const birdMat = mat(0x33373d, { flatShading: true });
+  for (const sx of [-1, 1]) {
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat);
+    wing.position.x = sx * 1.1;
+    wing.rotation.z = sx * 0.25; // mid-flap pose
+    g.add(wing);
+  }
+  return g;
+}
+
+// One cloud (scene.js merges 16 of these puff clusters into a single ring mesh
+// high above the map — see createScene).
+function makeCloudAsset() {
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const geos = [];
+  const n = 4;
+  for (let j = 0; j < n; j++) {
+    const geo = new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8);
+    geo.translate((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
+    geos.push(geo);
+  }
+  const m = new THREE.Mesh(mergeGeometries(geos), cloudMat);
+  const g = new THREE.Group();
+  g.add(m);
+  return g;
+}
+
+// One festive string-light span (buildStringLights hangs these over the road
+// as an instanced bulb mesh + swinging line; this is a static short garland).
+function makeStringLightsAsset() {
+  const COLS = [0xff3b30, 0xffd60a, 0x34c759, 0x0a84ff, 0xff9f0a, 0xffffff];
+  const g = new THREE.Group();
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x4a3829, roughness: 0.92 });
+  const span = 16, topY = 8.5, sag = 3.0, per = 12;
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, topY + 0.3, 8), postMat);
+    post.position.set(sx * span * 0.5, (topY + 0.3) / 2, 0);
+    g.add(post);
+  }
+  const wirePts = [];
+  const bulbGeo = new THREE.SphereGeometry(0.34, 8, 8);
+  for (let k = 0; k <= per; k++) {
+    const t = k / per;
+    const x = -span * 0.5 + span * t;
+    const y = topY - Math.sin(t * Math.PI) * sag;
+    wirePts.push(new THREE.Vector3(x, y, 0));
+    if (k > 0 && k < per) {
+      const bulbMat = new THREE.MeshBasicMaterial({ color: COLS[k % COLS.length], toneMapped: false, fog: false });
+      const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+      bulb.position.set(x, y - 0.3, 0);
+      g.add(bulb);
+    }
+  }
+  const wire = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(wirePts),
+    new THREE.LineBasicMaterial({ color: 0x2a2622, transparent: true, opacity: 0.7 })
+  );
+  g.add(wire);
+  return g;
 }
 
 // ===========================================================================
@@ -4367,9 +4477,12 @@ export function assetCatalog() {
   add("Animals", "Cow", () => makeCow());
   add("Animals", "Sheep", () => makeSheep());
   add("Animals", "Deer", () => makeDeer());
+  add("Animals", "Goat", () => makeGoat());
   add("Animals", "Crab", () => makeCrab());
   add("Animals", "Gull", () => makeGull());
   add("Animals", "Pigeon", () => makePigeon().group); // returns { group, wings }
+  add("Animals", "Duck", () => makeDuck());
+  add("Animals", "Sky bird", () => makeSkyBirdAsset());
 
   add("Town & farm", "House", () => makeHouse());
   add("Town & farm", "Building — village", () => makeBuilding(0.4, biome("meadow")));
@@ -4391,7 +4504,16 @@ export function assetCatalog() {
   add("City & street", "Hydrant", () => makeHydrant());
   add("City & street", "Sign", () => makeSign());
   add("City & street", "Lamp", () => makeLamp());
+  add("City & street", "Street lamp", () => makeStreetLampAsset());
+  add("City & street", "Traffic light", () => makeTrafficLight());
+  add("City & street", "String lights", () => makeStringLightsAsset());
+  add("City & street", "Billboard", () => makeBillboard(BILLBOARD_SIGNS[0], true));
   add("City & street", "Parasol", () => makeParasol());
+
+  add("Sky & transit", "Cloud", () => makeCloudAsset());
+  add("Sky & transit", "Hot-air balloon", () => makeBalloon(0));
+  add("Sky & transit", "Sky train", () => makeTrain());
+  add("Sky & transit", "Wind turbine", () => makeWindTurbine().group);
 
   add("Landmarks", "Lighthouse", () => makeLighthouse());
   add("Landmarks", "Castle", () => makeCastle());
