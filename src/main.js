@@ -1412,10 +1412,16 @@ function updateAtmosphere() {
 function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
+  let _t = performance.now();
   updateAtmosphere();
+  _seg.atmos += performance.now() - _t;
+  _t = performance.now();
   composer.render();
+  _seg.render += performance.now() - _t;
   if (player && state !== State.MENU) {
+    _t = performance.now();
     drawMinimap();
+    _seg.minimap += performance.now() - _t;
   }
   // First real frame is on screen — fade out the boot loading screen to reveal it.
   if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
@@ -2094,6 +2100,11 @@ document.addEventListener("visibilitychange", () => { _lastVisChange = performan
 // device once the renderer is up; stays 0 on the WebGL2 fallback).
 let _gpuCreates = 0;
 let _gpuCreatesLast = 0;
+// Per-frame segment timers: which part of the frame ate the time. Read by the
+// FREEZE report at the TOP of the next loop pass (they describe the frame that
+// rawMs measured), then reset for the new pass. renderFrame segments
+// accumulate — menu dissolves render twice per pass.
+const _seg = { render: 0, atmos: 0, minimap: 0, world: 0 };
 
 // Draw-everything warm pass. iOS compiles Metal shaders lazily at each
 // pipeline's FIRST DRAW (creation at boot returns immediately) — so every part
@@ -2135,8 +2146,9 @@ function logPerfSummary(rawMs) {
       const creates = _gpuCreates - _gpuCreatesLast;
       _gpuCreatesLast = _gpuCreates;
       const mem = renderer?.info?.memory;
+      const other = Math.max(0, rawMs - _seg.render - _seg.atmos - _seg.minimap - _seg.world);
       console.warn(
-        `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"}`
+        `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"} · render ${Math.round(_seg.render)} · atmos ${Math.round(_seg.atmos)} · minimap ${Math.round(_seg.minimap)} · world ${Math.round(_seg.world)} · other ${Math.round(other)}ms`
       );
     }
     return; // either way, keep it out of the percentile stats
@@ -4012,6 +4024,7 @@ function loop(now) {
   updateDRS(rawMs, dt); // hold the frame rate by scaling render resolution
   updateFpsCounter(dt); // opt-in on-screen FPS readout
   logPerfSummary(rawMs); // 5-second frame-time summary → console (Xcode/devtools)
+  _seg.render = _seg.atmos = _seg.minimap = _seg.world = 0; // reset AFTER the report reads them
   warmAllStep(); // first frames: draw everything so Metal's lazy compiles happen under the splash
   // One-time boot timeline. Logged on the SECOND loop pass so `rawMs` covers the
   // first rendered frame — where the whole scene's pipelines compile — and the
@@ -4022,8 +4035,12 @@ function loop(now) {
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
-  world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
-  if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
+  {
+    const _t = performance.now();
+    world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
+    if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
+    _seg.world = performance.now() - _t;
+  }
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay
