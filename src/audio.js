@@ -71,6 +71,8 @@ class AudioEngine {
     // AND suspend the whole context on hide; restore both on return.
     // _bgSuspended tells the auto-resume kick (unlock) this is intentional.
     this._bgSuspended = false;
+    this._appActive = true; // coalescing state for setAppActive
+    this._reviveTimers = []; // pending revive retries (cancelled on suspend)
     // In the native app, visibilitychange/pagehide are NOT delivered at
     // backgrounding (they arrive late, on return), so main.js also drives this
     // via the platform's native appStateChange. All paths are idempotent.
@@ -197,22 +199,36 @@ class AudioEngine {
   // back. Pausing the music element at REAL backgrounding time also prevents
   // the buffered-audio catch-up that played as a sped-up burst on resume.
   setAppActive(active) {
+    // COALESCE: appStateChange, Capacitor pause/resume, visibilitychange,
+    // pagehide/pageshow all report the same transition — the device log showed
+    // each background/return running 2-3 overlapping suspend/revive chains,
+    // whose play/pause thrash WAS the "stuttering audio" on return.
+    if (this._appActive === active) return;
+    this._appActive = active;
+    for (const id of this._reviveTimers) clearTimeout(id);
+    this._reviveTimers = [];
     const cur = this._curTrack && this._tracks[this._curTrack];
     if (!active) {
       this._bgSuspended = true;
       if (this.master) this.master.gain.value = 0; // silence anything mid-flush
       cur?.el.pause();
       this.ctx?.suspend?.().catch?.(() => {});
-      console.log(`[zoomies] audio: suspend (ctx=${this.ctx?.state ?? "none"}, track=${cur ? (cur.el.paused ? "paused" : "playing") : "none"})`);
+      console.log(`[zoomies] audio: suspend (ctx=${this.ctx?.state ?? "none"})`);
     } else {
       this._bgSuspended = false;
       if (this.master) this.master.gain.value = 1;
       const revive = () => {
         if (this._bgSuspended) return; // backgrounded again before the retry
-        if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
+        // ORDER MATTERS: never start the media element until the context is
+        // actually running. An early revive (queued pageshow) used to play it
+        // into an interrupted graph — the element decoded into a backlog that
+        // burst out sped-up ("chipmunk") when the context finally resumed.
+        if (this.ctx && this.ctx.state !== "running") {
+          this.ctx.resume().catch(() => {});
+          return; // the element starts on a later retry, once running
+        }
         if (cur && this._musicAudible) {
-          // Same-position seek drops any backlog buffered through a lock —
-          // without it the pile-up plays as a sped-up "chipmunk" burst.
+          // Same-position seek drops anything buffered while dead.
           try { cur.el.currentTime = Math.max(0, cur.el.currentTime); } catch { /* n/a */ }
           if (cur.el.paused) cur.el.play().catch(() => {});
         }
@@ -222,22 +238,20 @@ class AudioEngine {
       // iOS may still be re-establishing the audio session when the state
       // change lands — delayed retries pick up the stragglers (the native
       // side retries its session reactivation on the same cadence).
-      setTimeout(revive, 350);
-      setTimeout(revive, 1500);
-      setTimeout(revive, 2600);
+      for (const ms of [350, 900, 1800, 3000]) this._reviveTimers.push(setTimeout(revive, ms));
       // Stuck-session self-heal: a direct return can leave the context
       // claiming "running" while its clock is dead (no audio). An app-switcher
       // round trip healed it by forcing another suspend/resume cycle — do
       // that cycle automatically when the clock isn't advancing.
       if (this.ctx) {
         const t0 = this.ctx.currentTime;
-        setTimeout(() => {
+        this._reviveTimers.push(setTimeout(() => {
           if (this._bgSuspended || !this.ctx) return;
           if (this.ctx.state === "running" && this.ctx.currentTime === t0) {
             console.warn("[zoomies] audio: context running but clock stalled — cycling suspend/resume");
             this.ctx.suspend().then(() => this.ctx.resume()).then(revive).catch(() => {});
           }
-        }, 800);
+        }, 800));
       }
     }
   }
@@ -764,6 +778,24 @@ class AudioEngine {
     el.src = url;
     el.loop = true;
     el.preload = "auto";
+    // Re-source the track from an in-memory blob once fetched: streaming the
+    // mp3 through the app's URL-scheme handler stutters whenever the main
+    // thread stalls (shader-compile hitches on menu/track changes). From a
+    // blob URL the bytes are already in memory — stall-proof. Only swap while
+    // paused/idle; if it's already playing, the swap waits for the next
+    // playMusic() switch (same-session tracks are few and looped anyway).
+    fetch(url)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => {
+        if (!b || !this._tracks[name]) return;
+        const swap = () => {
+          if (!el.paused) return false; // don't restart a live track
+          el.src = URL.createObjectURL(b);
+          return true;
+        };
+        if (!swap()) this._tracks[name].pendingSwap = swap;
+      })
+      .catch(() => { /* streaming source keeps working */ });
     // NO crossOrigin: these files are same-origin on every target (https on the
     // web, capacitor://localhost in the app). Requesting CORS mode against the
     // app's custom scheme made the load fail outright — killing music (while
@@ -809,10 +841,12 @@ class AudioEngine {
     if (prev) {
       prev.el.pause();
       prev.el.currentTime = 0;
+      if (prev.pendingSwap?.()) prev.pendingSwap = null; // now paused — safe to re-source from the blob
     }
     this._curTrack = name;
     const track = this._tracks[name];
     if (!track) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
+    if (track.pendingSwap?.()) track.pendingSwap = null; // re-source before it starts
     // Route the element through a per-track fade gain into the music bus once
     // (the fade gain does the fade-in; the music bus handles volume/mute).
     if (!track.source && this.ctx.createMediaElementSource) {
