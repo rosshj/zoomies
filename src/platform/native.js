@@ -50,15 +50,19 @@ export async function createNativeAdapter(name) {
     haptics: {
       // Bridge takes the style as a plain string ("LIGHT"|"MEDIUM"|"HEAVY"); the
       // ImpactStyle enum from the JS wrapper isn't available without bundling it.
+      // NOTE: every bridge call returns a promise — a bare try/catch does NOT
+      // catch its async rejection, and one rejected fire-and-forget call was
+      // enough to trip the crash guard ("returnResult@user-script" rejection →
+      // "Recovered after an unexpected restart"). Always .catch() them.
       impact(style = "medium") {
-        try { Haptics?.impact({ style: style.toUpperCase() }); } catch { /* n/a */ }
+        try { Haptics?.impact({ style: style.toUpperCase() })?.catch?.(() => {}); } catch { /* n/a */ }
       },
       selection() {
-        try { Haptics?.selectionStart(); } catch { /* n/a */ }
+        try { Haptics?.selectionStart()?.catch?.(() => {}); } catch { /* n/a */ }
       },
       // Apple's "success" notification pattern (double tap) — race finish etc.
       success() {
-        try { Haptics?.notification({ type: "SUCCESS" }); } catch { /* n/a */ }
+        try { Haptics?.notification({ type: "SUCCESS" })?.catch?.(() => {}); } catch { /* n/a */ }
       },
     },
 
@@ -103,18 +107,19 @@ export async function createNativeAdapter(name) {
           // configure() left the game silent until an app-switcher round trip
           // generated a later retry). Spread reactivation attempts out.
           if (active) {
-            const re = () => { try { AudioSession?.configure(); } catch { /* n/a */ } };
+            const re = () => { try { AudioSession?.configure()?.catch?.(() => {}); } catch { /* n/a */ } };
             re();
             setTimeout(re, 600);
             setTimeout(re, 2000);
           }
           cb(active);
         };
-        try { App?.addListener("appStateChange", (s) => fire(!!s?.isActive)); } catch { /* n/a */ }
+        // addListener also returns a promise (see haptics note).
+        try { App?.addListener("appStateChange", (s) => fire(!!s?.isActive))?.catch?.(() => {}); } catch { /* n/a */ }
         // Locking the phone can resign-active WITHOUT a full appStateChange —
         // pause/resume cover that path. All handlers are idempotent.
-        try { App?.addListener("pause", () => fire(false)); } catch { /* n/a */ }
-        try { App?.addListener("resume", () => fire(true)); } catch { /* n/a */ }
+        try { App?.addListener("pause", () => fire(false))?.catch?.(() => {}); } catch { /* n/a */ }
+        try { App?.addListener("resume", () => fire(true))?.catch?.(() => {}); } catch { /* n/a */ }
       },
     },
 
