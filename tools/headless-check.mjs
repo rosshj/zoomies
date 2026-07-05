@@ -86,7 +86,7 @@ await page.click("#start-btn", { force: true });
 // Wait for the on-screen readout to populate with a real FPS/draw-call number.
 // SwiftShader software-compiles every node material on the first frames, so the
 // loop can take ~30s to start ticking; poll generously instead of guessing.
-const WARMUP = Number(process.argv[2] || 75);
+const WARMUP = Number(process.argv[2] || 120); // r185 shaders take longer to software-compile in SwiftShader
 let populated = false;
 for (let t = 0; t < WARMUP; t++) {
   const txt = await page.textContent("#fps-counter").catch(() => "");

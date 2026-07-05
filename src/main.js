@@ -2656,9 +2656,8 @@ function buildGaragePreview() {
   scene.add(pk.group);
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
-  // Compile the preview's fresh material variant off-thread (r185) so browsing
-  // cats/karts/accessories doesn't stall a visible frame per first-seen combo.
-  renderer.compileAsync?.(scene, camera)?.catch(() => {});
+  // (compileAsync was tried here on r185 and REGRESSED: whole-scene pipeline
+  // batches stalled the next render 2-6s on device. See startRace note.)
 }
 
 // --- Custom creator -------------------------------------------------------
@@ -3243,12 +3242,10 @@ function prepareRace() {
     effects.warmup(_warmPos);
     hairballs.spawnAt(_warmPos, _warmDir, 0); // ghost ball: no owner, no collisions
   }
-  // r185's compileAsync works (r171's crashed on this scene): compile the fresh
-  // kart/ghost materials asynchronously during the static countdown so their
-  // first rendered frame doesn't pay a synchronous pipeline compile (~250ms
-  // race-start hitch on device). The draw-based warms above stay as backup for
-  // pooled resources compileAsync may skip (zero-instance fields).
-  renderer.compileAsync?.(scene, camera)?.catch(() => {});
+  // NOTE: r185's compileAsync no longer crashes, but on-device it made things
+  // WORSE here: it requests pipelines for the WHOLE scene and the next render
+  // waits on the batch (device log: "91 creates · render 3504ms"-class freezes
+  // at exactly the call sites). The draw-based warms above remain the fix.
   updateBoostUI(); // karts start with an empty boost meter
   applyMpQuality(); // iOS: force Low in multiplayer (GPU device-loss safety), else restore
   // Power-up boxes are a competitive item — off in time trial (a solo run against
