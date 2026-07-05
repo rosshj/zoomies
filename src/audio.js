@@ -162,10 +162,12 @@ class AudioEngine {
       document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
     }
     if (!this._bgSuspended && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
-    // A gesture is also the moment decode can start (context now exists) and a
-    // paused/pending track can restart.
-    this._decodeTracks();
-    if (!this._bgSuspended) this._applyMusicPlayState();
+    // Also restart the music element if a background trip paused it and the
+    // visibility-resume was rejected (needs this gesture to succeed).
+    if (!this._bgSuspended) {
+      const cur = this._curTrack && this._tracks[this._curTrack];
+      if (cur && this._musicAudible && cur.el.paused) cur.el.play().catch(() => {});
+    }
   }
 
   get ready() {
@@ -183,7 +185,12 @@ class AudioEngine {
     this.musicOn = on;
     if (on) this.musicAllowed = true; // explicit user intent beats the policy gate
     this._applyMusicGain();
-    this._applyMusicPlayState();
+    // Pause/resume the element so an off track doesn't keep streaming.
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    if (cur) {
+      if (this._musicAudible) cur.el.play().catch(() => {});
+      else cur.el.pause();
+    }
     this._saveSettings();
   }
 
@@ -212,18 +219,19 @@ class AudioEngine {
       if (this.master) this.master.gain.value = 1;
       const revive = () => {
         if (this._bgSuspended) return; // backgrounded again before the retry
-        // ORDER MATTERS: never start the fallback media element until the
-        // context is actually running (an early start used to buffer a backlog
-        // that burst out sped-up). The buffer path has no such failure mode —
-        // it freezes with the context and resumes exactly in place.
+        // ORDER MATTERS: never start the media element until the context is
+        // actually running. An early revive (queued pageshow) used to play it
+        // into an interrupted graph — the element decoded into a backlog that
+        // burst out sped-up ("chipmunk") when the context finally resumed.
         if (this.ctx && this.ctx.state !== "running") {
           this.ctx.resume().catch(() => {});
-          return; // playback restores on a later retry, once running
+          return; // the element starts on a later retry, once running
         }
-        if (cur && !cur.playingBuf && !cur.buffer) {
+        if (cur && this._musicAudible) {
+          // Same-position seek drops anything buffered while dead.
           try { cur.el.currentTime = Math.max(0, cur.el.currentTime); } catch { /* n/a */ }
+          if (cur.el.paused) cur.el.play().catch(() => {});
         }
-        this._applyMusicPlayState();
       };
       console.log(`[zoomies] audio: revive (ctx=${this.ctx?.state ?? "none"})`);
       revive();
@@ -252,7 +260,11 @@ class AudioEngine {
   setMusicAllowed(allowed) {
     this.musicAllowed = allowed;
     this._applyMusicGain();
-    this._applyMusicPlayState();
+    const cur = this._curTrack && this._tracks[this._curTrack];
+    if (cur) {
+      if (this._musicAudible) cur.el.play().catch(() => {});
+      else cur.el.pause();
+    }
   }
 
   setMusicVolume(v) {
@@ -762,116 +774,41 @@ class AudioEngine {
   // Register a named track by URL. Call once at startup for each track; the file
   // doesn't need to exist yet — a missing file just leaves that track silent.
   registerMusic(name, url) {
-    // Fallback element (streams via the URL-scheme handler). Primary playback
-    // is a decoded AudioBuffer (below): the media-element path pumps through
-    // the MAIN THREAD (MediaElementSource), so every main-thread stall
-    // (shader compiles, GC) stuttered the music, and suspend/resume cycles
-    // could buffer a backlog that burst out sped-up. A looping BufferSource
-    // renders entirely on the audio thread — stall-proof and burst-proof.
     const el = new Audio();
     el.src = url;
     el.loop = true;
     el.preload = "auto";
+    // Re-source the track from an in-memory blob once fetched: streaming the
+    // mp3 through the app's URL-scheme handler stutters whenever the main
+    // thread stalls (shader-compile hitches on menu/track changes). From a
+    // blob URL the bytes are already in memory — stall-proof. Only swap while
+    // paused/idle; if it's already playing, the swap waits for the next
+    // playMusic() switch (same-session tracks are few and looped anyway).
+    fetch(url)
+      .then((r) => (r.ok ? r.blob() : null))
+      .then((b) => {
+        if (!b || !this._tracks[name]) return;
+        // Swap NOW, restoring position/state. (A wait-until-paused variant was
+        // inert: "bg" is one looped track for menu AND race, so it never
+        // pauses.) The one-time re-source blip is a few ms — bytes are local.
+        const wasPlaying = !el.paused;
+        const t = el.currentTime;
+        el.src = URL.createObjectURL(b);
+        try { el.currentTime = t; } catch { /* start of track */ }
+        if (wasPlaying) el.play().catch(() => {});
+      })
+      .catch(() => { /* streaming source keeps working */ });
     // NO crossOrigin: these files are same-origin on every target (https on the
     // web, capacitor://localhost in the app). Requesting CORS mode against the
     // app's custom scheme made the load fail outright — killing music (while
     // the synthesized SFX kept working) with only a silent error event.
     el.addEventListener("error", () => {
+      // File not present / failed to load — disable this track, but say so:
+      // a silently-nulled track made "no music" undiagnosable on device.
       console.warn(`[zoomies] music track "${name}" failed to load (${url}):`, el.error?.code, el.error?.message || "");
-      if (!this._tracks[name]?.buffer && !this._tracks[name]?.raw) this._tracks[name] = null;
+      this._tracks[name] = null;
     });
-    const track = { el, source: null, fade: null, raw: null, buffer: null, srcNode: null, bufOffset: 0, bufStartedAt: 0, playingBuf: false, decoding: false };
-    this._tracks[name] = track;
-    fetch(url)
-      .then((r) => (r.ok ? r.arrayBuffer() : null))
-      .then((ab) => {
-        if (!ab || this._tracks[name] !== track) return;
-        track.raw = ab;
-        this._decodeTracks(); // decodes now if the context already exists
-      })
-      .catch(() => { /* element fallback keeps working */ });
-  }
-
-  // Decode fetched track bytes into AudioBuffers (needs the context). If the
-  // decoded track is the one currently playing via the fallback element,
-  // migrate mid-note to the buffer path at the same position.
-  _decodeTracks() {
-    if (!this.ctx) return;
-    for (const name of Object.keys(this._tracks)) {
-      const t = this._tracks[name];
-      if (!t || !t.raw || t.buffer || t.decoding) continue;
-      t.decoding = true;
-      const raw = t.raw;
-      t.raw = null; // decodeAudioData detaches the buffer — hand it over
-      this.ctx.decodeAudioData(raw).then((buf) => {
-        t.decoding = false;
-        t.buffer = buf;
-        if (this._curTrack === name && !t.el.paused) {
-          const at = t.el.currentTime;
-          t.el.pause();
-          if (this._musicAudible && !this._bgSuspended) this._startBuffer(t, at);
-          this._mlog(`migrated "${name}" to buffer playback`);
-        }
-      }).catch((e) => {
-        t.decoding = false;
-        this._mlog(`decode failed (${e?.name || e}) — element fallback stays`);
-      });
-    }
-  }
-
-  _ensureFade(track) {
-    if (!track.fade && this.ctx) {
-      track.fade = this.ctx.createGain();
-      track.fade.gain.value = 1;
-      track.fade.connect(this.musicGain);
-    }
-    return track.fade;
-  }
-
-  _startBuffer(track, offsetSec = 0) {
-    if (!this.ctx || !track.buffer) return false;
-    this._stopBuffer(track, false);
-    const s = this.ctx.createBufferSource();
-    s.buffer = track.buffer;
-    s.loop = true;
-    s.connect(this._ensureFade(track));
-    const offset = Math.max(0, offsetSec) % track.buffer.duration;
-    s.start(0, offset);
-    track.srcNode = s;
-    track.bufStartedAt = this.ctx.currentTime - offset;
-    track.playingBuf = true;
-    return true;
-  }
-
-  _stopBuffer(track, rememberPosition = true) {
-    if (!track.srcNode) return;
-    if (rememberPosition && track.buffer && this.ctx) {
-      track.bufOffset = Math.max(0, this.ctx.currentTime - track.bufStartedAt) % track.buffer.duration;
-    } else if (!rememberPosition) {
-      track.bufOffset = 0;
-    }
-    try { track.srcNode.stop(); } catch { /* already stopped */ }
-    try { track.srcNode.disconnect(); } catch { /* n/a */ }
-    track.srcNode = null;
-    track.playingBuf = false;
-  }
-
-  // Start/stop the CURRENT track to match policy (user toggle, their-audio
-  // gate, background suspend). Buffer path preferred; element is the fallback.
-  _applyMusicPlayState() {
-    const cur = this._curTrack && this._tracks[this._curTrack];
-    if (!cur) return;
-    if (this._musicAudible && !this._bgSuspended) {
-      if (cur.buffer) {
-        if (!cur.playingBuf) this._startBuffer(cur, cur.bufOffset || 0);
-      } else if (cur.el.paused) {
-        cur.el.play().catch(() => {});
-      }
-    } else if (cur.playingBuf) {
-      this._stopBuffer(cur, true);
-    } else {
-      cur.el.pause();
-    }
+    this._tracks[name] = { el, source: null };
   }
 
   // Switch background music to a registered track (crossfades via the element).
@@ -892,18 +829,13 @@ class AudioEngine {
 
   playMusic(name) {
     if (!this.ctx) return;
-    this._decodeTracks(); // in case the bytes arrived before the context existed
     if (this._curTrack === name) {
-      // Already selected — make sure it's actually rolling (a first-gesture
-      // element play() can be rejected; a buffer start is never rejected).
+      // Already selected — but a first-gesture play() can be rejected, leaving it
+      // paused. Make sure it's actually rolling (cheap to call when already playing).
       const cur = this._tracks[name];
       if (!cur) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
-      if (!this._musicAudible) { this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`); return; }
-      if (cur.buffer) {
-        if (!cur.playingBuf) { this._startBuffer(cur, cur.bufOffset || 0); this._mlog(`playing "${name}" (buffer)`); }
-      } else if (cur.el.paused) {
-        this._playEl(cur.el, name);
-      }
+      if (!this._musicAudible) this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
+      else if (cur.el.paused) this._playEl(cur.el, name);
       return;
     }
     // Stop whatever's currently playing.
@@ -911,41 +843,39 @@ class AudioEngine {
     if (prev) {
       prev.el.pause();
       prev.el.currentTime = 0;
-      this._stopBuffer(prev, false);
     }
     this._curTrack = name;
     const track = this._tracks[name];
     if (!track) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
-    // Element fallback only: route it through the fade gain into the music bus.
-    // (The buffer path connects through the same fade gain in _startBuffer.)
-    if (!track.buffer && !track.source && this.ctx.createMediaElementSource) {
+    // Route the element through a per-track fade gain into the music bus once
+    // (the fade gain does the fade-in; the music bus handles volume/mute).
+    if (!track.source && this.ctx.createMediaElementSource) {
       try {
         track.source = this.ctx.createMediaElementSource(track.el);
-        track.source.connect(this._ensureFade(track));
+        track.fade = this.ctx.createGain();
+        track.fade.gain.value = 0;
+        track.source.connect(track.fade);
+        track.fade.connect(this.musicGain);
       } catch {
+        // Some browsers throw if the element is reused; fall back to el.volume.
         track.source = null;
       }
     }
     // Fade the track up from silence so it eases in rather than blasting on.
-    const fade = this._ensureFade(track);
-    if (fade) {
+    if (track.fade) {
       const t = this.ctx.currentTime;
-      fade.gain.cancelScheduledValues(t);
-      fade.gain.setValueAtTime(0, t);
-      fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
+      track.fade.gain.cancelScheduledValues(t);
+      track.fade.gain.setValueAtTime(0, t);
+      track.fade.gain.linearRampToValueAtTime(1, t + MUSIC_FADE_SEC);
     }
-    if (this._musicAudible) {
-      if (track.buffer) { this._startBuffer(track, 0); this._mlog(`playing "${name}" (buffer)`); }
-      else this._playEl(track.el, name);
-    } else {
-      this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
-    }
+    if (this._musicAudible) this._playEl(track.el, name);
+    else this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
   }
 
   // Whether a music track is actually rolling right now (not just selected).
   get musicPlaying() {
     const cur = this._curTrack && this._tracks[this._curTrack];
-    return !!(cur && (cur.playingBuf || !cur.el.paused));
+    return !!(cur && !cur.el.paused);
   }
 
   stopMusic() {
@@ -953,7 +883,6 @@ class AudioEngine {
     if (cur) {
       cur.el.pause();
       cur.el.currentTime = 0;
-      this._stopBuffer(cur, false);
     }
     this._curTrack = null;
   }
