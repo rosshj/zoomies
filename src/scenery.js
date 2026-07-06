@@ -3778,22 +3778,89 @@ function makeBigWindmill() {
 // The flock→bird→wing-pivot group hierarchy still exists and animates exactly as
 // before, but the pivots hold invisible markers whose world matrices are copied
 // into the instance buffer after the flock update.
+// Sky-bird geometry + materials, shared by every bird in every flock (they
+// render as two InstancedMeshes) and by the asset viewer. The silhouette is
+// corvid — fingered primaries, fan tail — but the COLOUR is a parameter, so
+// the same geometry serves ravens (the default near-black), gulls, doves…
+// Local axes: the bird flies along +X (beak forward), wings span ±Z. Kept
+// deliberately light — these are distant sky silhouettes: a fingered wing
+// shape (~16 tris) and a low-poly body/head/beak/fan-tail (~80 tris).
+export const SKY_BIRD_COLOR = 0x24272c; // default: raven black
+let _skyBirdGeos = null;
+const _skyBirdMats = new Map(); // colour → shared material (flocks + viewer)
+function skyBirdMaterial(color = SKY_BIRD_COLOR) {
+  let m = _skyBirdMats.get(color);
+  if (!m) {
+    // DoubleSide: the wings are flat shapes, and each LEFT wing is the same
+    // geometry mirrored by a negative instance scale (which flips the winding).
+    m = mat(color, { flatShading: true, side: THREE.DoubleSide });
+    _skyBirdMats.set(color, m);
+  }
+  return m;
+}
+function skyBirdGeos() {
+  if (_skyBirdGeos) return _skyBirdGeos;
+
+  // One RIGHT wing in (x = chord, y = span), shoulder at the origin: a swept
+  // leading edge out to the wrist, splayed primary-feather "fingers" at the
+  // tip, and a trailing edge curving back to the body — the raven silhouette.
+  const s = new THREE.Shape();
+  s.moveTo(0.42, 0);
+  s.quadraticCurveTo(0.4, 1.3, 0.16, 2.05); // leading edge, swept back at the wrist
+  s.lineTo(0.02, 2.42); // first (leading) finger tip
+  s.lineTo(-0.1, 2.02); // notch
+  s.lineTo(-0.24, 2.34); // finger
+  s.lineTo(-0.32, 1.94); // notch
+  s.lineTo(-0.47, 2.18); // finger
+  s.lineTo(-0.5, 1.78); // notch
+  s.lineTo(-0.66, 1.94); // last (trailing) finger
+  s.quadraticCurveTo(-0.62, 1.1, -0.45, 0); // trailing edge back to the flank
+  s.closePath();
+  // Lay it flat: span along +Z, chord along X (leading edge toward +X = travel).
+  const wingGeo = new THREE.ShapeGeometry(s, 3).rotateX(Math.PI / 2);
+
+  // Body: fusiform torso, round head, short beak, and a flat fan tail with a
+  // notched trailing edge — merged into one geometry (one instanced draw).
+  const tail = new THREE.Shape();
+  tail.moveTo(0, 0.07);
+  tail.lineTo(-0.72, 0.33);
+  tail.lineTo(-0.79, 0.11); // notch between fan feathers
+  tail.lineTo(-0.79, -0.11);
+  tail.lineTo(-0.72, -0.33);
+  tail.lineTo(0, -0.07);
+  tail.closePath();
+  const bodyGeo = mergeGeometries([
+    new THREE.SphereGeometry(0.34, 6, 4).scale(2.0, 0.75, 0.8), // torso, nose +x
+    new THREE.SphereGeometry(0.17, 5, 4).translate(0.62, 0.14, 0), // head
+    new THREE.ConeGeometry(0.07, 0.34, 4).rotateZ(-Math.PI / 2).translate(0.88, 0.1, 0), // beak
+    new THREE.ShapeGeometry(tail, 2).rotateX(Math.PI / 2).translate(-0.5, 0.03, 0), // fan tail
+  ]);
+  _skyBirdGeos = { wingGeo, bodyGeo };
+  return _skyBirdGeos;
+}
+
 function buildBirds(scene) {
   const flocks = [];
-  const markers = [];
+  const markers = []; // one per wing
+  const bodyMarkers = []; // one per bird
   for (let f = 0; f < 6; f++) {
     const flock = new THREE.Group();
     const wings = [];
     const count = 4 + Math.floor(rand() * 4);
     for (let i = 0; i < count; i++) {
       const bird = new THREE.Group();
+      const bodyMarker = new THREE.Object3D();
+      bird.add(bodyMarker);
+      bodyMarkers.push(bodyMarker);
+      const birdPhase = rand() * 6.28; // per BIRD, so its two wings beat together
       for (const sx of [-1, 1]) {
-        const wg = new THREE.Group();
+        const wg = new THREE.Group(); // flap pivot at the shoulder
         const marker = new THREE.Object3D();
-        marker.position.x = sx * 1.1;
+        marker.position.z = sx * 0.22; // wing root sits at the body's flank
+        marker.scale.z = sx; // one wing geometry, mirrored for the left side
         wg.add(marker);
         bird.add(wg);
-        wings.push({ wg, sx, phase: rand() * 6.28 });
+        wings.push({ wg, sx, phase: birdPhase });
         markers.push(marker);
       }
       bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
@@ -3812,20 +3879,28 @@ function buildBirds(scene) {
       phase: rand() * 6.28,
     });
   }
-  const birdMat = mat(0x33373d, { flatShading: true });
-  const wingMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat, markers.length);
-  wingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  wingMesh.frustumCulled = false; // flocks span the whole sky; it's 1 draw regardless
-  wingMesh.layers.set(1);
-  scene.add(wingMesh);
-  return { flocks, wingMesh, markers };
+  // Two draws for every bird in the sky: one instanced mesh of wings, one of
+  // bodies (was one draw of wing boxes — the body/tail/beak cost exactly +1).
+  const { wingGeo, bodyGeo } = skyBirdGeos();
+  const material = skyBirdMaterial();
+  const wingMesh = new THREE.InstancedMesh(wingGeo, material, markers.length);
+  const bodyMesh = new THREE.InstancedMesh(bodyGeo, material, bodyMarkers.length);
+  for (const m of [wingMesh, bodyMesh]) {
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false; // flocks span the whole sky; it's 2 draws regardless
+    m.layers.set(1);
+    scene.add(m);
+  }
+  return { flocks, wingMesh, markers, bodyMesh, bodyMarkers };
 }
-// Copy every wing marker's world matrix into the instance buffer (call after all
+// Copy every marker's world matrix into the instance buffers (call after all
 // updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
 function syncBirdWings(birds) {
   for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
   for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
+  for (let i = 0; i < birds.bodyMarkers.length; i++) birds.bodyMesh.setMatrixAt(i, birds.bodyMarkers[i].matrixWorld);
   birds.wingMesh.instanceMatrix.needsUpdate = true;
+  birds.bodyMesh.instanceMatrix.needsUpdate = true;
 }
 
 function updateFlock(fl, time) {
@@ -3837,7 +3912,10 @@ function updateFlock(fl, time) {
   );
   fl.flock.rotation.y = -a + (fl.speed > 0 ? -Math.PI / 2 : Math.PI / 2); // face travel
   for (const w of fl.wings) {
-    w.wg.rotation.z = w.sx * (0.25 + Math.sin(time * 8 + w.phase) * 0.55);
+    // Negative bias = wings held in a shallow raised V (a corvid's glide);
+    // the flap swings around that. Slightly slower beat than the old sparrow
+    // boxes — ravens row, they don't flutter.
+    w.wg.rotation.x = -w.sx * (0.25 + Math.sin(time * 6.5 + w.phase) * 0.55);
   }
 }
 
@@ -4389,15 +4467,19 @@ function makeStreetLampAsset(lit = true) {
   return g;
 }
 
-// One sky bird (buildBirds renders every wing of every flock as ONE instanced
-// mesh of these quads, flapped per frame; a "bird" is just two of them).
-function makeSkyBirdAsset() {
+// One sky bird in its gliding pose, assembled from the exact geometry the
+// flocks instance (see skyBirdGeos/buildBirds). `color` picks the species —
+// default raven black; pass e.g. 0xe8ecf0 for a gull, 0xb8a8c8 for a dove.
+function makeSkyBirdAsset(color = SKY_BIRD_COLOR) {
+  const { wingGeo, bodyGeo } = skyBirdGeos();
+  const material = skyBirdMaterial(color);
   const g = new THREE.Group();
-  const birdMat = mat(0x33373d, { flatShading: true });
+  g.add(new THREE.Mesh(bodyGeo, material));
   for (const sx of [-1, 1]) {
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat);
-    wing.position.x = sx * 1.1;
-    wing.rotation.z = sx * 0.25; // mid-flap pose
+    const wing = new THREE.Mesh(wingGeo, material);
+    wing.position.z = sx * 0.22;
+    wing.scale.z = sx; // mirror the left wing
+    wing.rotation.x = -sx * 0.25; // gliding V
     g.add(wing);
   }
   return g;
