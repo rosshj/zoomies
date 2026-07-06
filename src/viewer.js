@@ -384,4 +384,5 @@ renderer.setAnimationLoop((now) => {
   renderer.render(scene, camera);
 });
 
+window.__viewer = { orbit, camera, scene }; // debug hook (headless screenshot tours aim the camera)
 console.log(`[zoomies] asset viewer: ${entries.length} assets · ${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"}`);

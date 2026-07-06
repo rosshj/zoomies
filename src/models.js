@@ -406,13 +406,16 @@ function makeEyeTexture(eyeColor) {
   ctx.fillStyle = "#fbfbfb"; // sclera
   ctx.fillRect(0, 0, S, S);
   const cx = S * 0.25, cy = S * 0.5; // forward-facing point of the sphere
-  ctx.fillStyle = "#" + hex; // iris (tall oval — cat eye)
-  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.2, S * 0.27, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#141414"; // vertical slit pupil
-  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.07, S * 0.23, 0, 0, Math.PI * 2); ctx.fill();
+  // Toy-figure eye: the iris fills most of the visible ball (only a thin
+  // sclera ring survives at the edges), with a big soft-slit pupil and two
+  // bold catch-lights — the "vinyl collectible" look.
+  ctx.fillStyle = "#" + hex; // iris (big round — fills the eye)
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.39, S * 0.44, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#141414"; // wide soft-slit pupil
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.16, S * 0.3, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.95)"; // double catch-light
-  ctx.beginPath(); ctx.arc(cx - S * 0.07, cy - S * 0.12, S * 0.055, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(cx + S * 0.04, cy + S * 0.09, S * 0.028, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx - S * 0.09, cy - S * 0.14, S * 0.075, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + S * 0.06, cy + S * 0.11, S * 0.04, 0, Math.PI * 2); ctx.fill();
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.needsUpdate = true;
@@ -502,17 +505,32 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const catStatic = [];
   const headStatic = [];
 
-  // Body (sitting torso) — painted pattern for tabbies/spotted cats.
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 0.78, 6, 16), coat);
-  body.position.y = 1.0;
+  // Body (sitting torso) — a plump pear (wide hips, narrower shoulders) like a
+  // vinyl toy, painted pattern for tabbies/spotted cats.
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 0.52, 6, 16), coat);
+  body.position.y = 0.94;
+  body.scale.set(0.98, 1.0, 0.94);
   catStatic.push(body);
+  // Haunches: big folded thighs at the hips, with oval feet poking out in
+  // front — the classic sitting-toy base. Hidden inside the seat well in a
+  // kart; they complete the silhouette in the garage/viewer.
+  for (const sx of [-1, 1]) {
+    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.46, 14, 14), coat);
+    haunch.position.set(sx * 0.5, 0.44, 0.22);
+    haunch.scale.set(0.92, 0.86, 1.05);
+    catStatic.push(haunch);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), pawMat);
+    foot.position.set(sx * 0.42, 0.16, 0.72);
+    foot.scale.set(0.95, 0.7, 1.35);
+    catStatic.push(foot);
+  }
 
   // Chest + belly fluff. Tuxedo/mitten cats get a big white bib; solid coats keep
   // the body colour (no bib); others get a soft pale chest.
   const chestMat = (isSolid || isTortie) ? fur : white;
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), chestMat);
-  chest.position.set(0, 0.78, 0.57);
-  chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.14 : 1.04, hasBib ? 0.62 : 0.54);
+  chest.position.set(0, 0.76, 0.55);
+  chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.1 : 1.0, hasBib ? 0.6 : 0.52);
   catStatic.push(chest);
 
   // Front paws on the wheel. Each arm hangs off a shoulder pivot so it can be
@@ -524,76 +542,72 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     pivot.position.set(sx * 0.5, 1.05, 0.45);
     cat.add(pivot);
     const parts = [];
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.6, 4, 10), pawMat);
+    // Stubby toy arms: chunky and short, ending in a fat round mitt.
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.46, 4, 10), pawMat);
     arm.position.set(0, 0, 0.15);
     arm.rotation.x = -1.0;
     parts.push(arm);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
-    paw.position.set(0, 0.15, 0.52);
-    paw.scale.set(1, 0.82, 1.05);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 12), pawMat);
+    paw.position.set(0, 0.15, 0.5);
+    paw.scale.set(1, 0.86, 1.02);
     parts.push(paw);
-    // Toe-bean detail: three little dark pads on the front of each paw.
-    for (const tx of [-0.07, 0, 0.07]) {
-      const bean = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pink);
-      bean.position.set(tx, 0.1, 0.7);
+    // Toe-bean detail: three little pink pads on the front of each mitt.
+    for (const tx of [-0.08, 0, 0.08]) {
+      const bean = new THREE.Mesh(new THREE.SphereGeometry(0.036, 6, 6), pink);
+      bean.position.set(tx, 0.1, 0.72);
       parts.push(bean);
     }
     pivot.add(mergeMeshes(parts)); // one mesh per arm; the pivot still pumps it
     arms[sx < 0 ? "L" : "R"] = pivot;
   }
 
-  // --- Head (animated for lean/pitch) — a touch bigger for a cuter ratio ---
+  // --- Head (animated for lean/pitch) — HUGE, the vinyl-toy ratio: nearly as
+  // wide as the whole body, sitting low on the shoulders. ---
   const head = new THREE.Group();
-  head.position.set(0, 2.06, 0.12);
+  head.position.set(0, 2.02, 0.12);
   cat.add(head);
 
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.78, 20, 20), coat);
-  skull.scale.set(1.04, 0.98, 0.96);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.98, 22, 22), coat);
+  skull.scale.set(1.06, 0.94, 0.94);
   headStatic.push(skull);
   // Masked breeds (Siamese point / snowshoe): a dark mask across the eyes +
-  // muzzle bridge. The white cheeks/muzzle below and the eyes on top leave a
-  // band of colour around the eyes — the signature masked face. (Tabby/spotted
-  // head markings come from the painted coat.)
+  // muzzle bridge. The white muzzle below and the eyes on top leave a band of
+  // colour around the eyes — the signature masked face. (Tabby/spotted head
+  // markings come from the painted coat.)
   if (hasMask) {
-    const mask = new THREE.Mesh(new THREE.SphereGeometry(0.54, 16, 16), extremity);
-    mask.position.set(0, 0.02, 0.46);
-    mask.scale.set(0.96, 0.84, 0.6);
+    const mask = new THREE.Mesh(new THREE.SphereGeometry(0.68, 16, 16), extremity);
+    mask.position.set(0, 0.06, 0.56);
+    mask.scale.set(0.98, 0.82, 0.58);
     headStatic.push(mask);
   }
-  // Cheeks — fuller floof for a rounder face. White, except solid coats keep the
-  // body colour so the face isn't oddly two-toned.
-  const cheekMat = isSolid ? fur : white;
-  for (const sx of [-1, 1]) {
-    const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), cheekMat);
-    cheek.position.set(sx * 0.36, -0.18, 0.52);
-    cheek.scale.set(0.95, 0.74, 0.72);
-    headStatic.push(cheek);
-  }
 
-  // Ears on pivots so they can flick/lag. Point cats darken at the ear tips.
-  const earGeo = new THREE.ConeGeometry(0.35, 0.66, 6);
-  const innerGeo = new THREE.ConeGeometry(0.19, 0.4, 6);
+  // Ears on pivots so they can flick/lag — big wide triangles high on the
+  // corners of the skull. Point cats darken at the ear tips.
+  const earGeo = new THREE.ConeGeometry(0.44, 0.8, 6);
+  const innerGeo = new THREE.ConeGeometry(0.24, 0.5, 6);
   const ears = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.46, 0.52, -0.02);
+    pivot.position.set(sx * 0.58, 0.62, -0.04);
     head.add(pivot);
     const ear = new THREE.Mesh(earGeo, extremity);
-    ear.position.y = 0.3;
-    ear.rotation.z = sx * -0.22;
+    ear.position.y = 0.36;
+    ear.rotation.z = sx * -0.26;
     const inner = new THREE.Mesh(innerGeo, pink);
-    inner.position.set(0, 0.27, 0.07);
-    inner.rotation.z = sx * -0.22;
+    inner.position.set(0, 0.32, 0.09);
+    inner.rotation.z = sx * -0.26;
     pivot.add(mergeMeshes([ear, inner])); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
-  // Eyes — one painted eyeball each (iris + slit pupil + catch-lights baked into
-  // the texture), so it's a single clean ball. Merged into the head like the rest.
+  // Eyes — enormous painted eyeballs (iris + pupil + catch-lights baked into
+  // the texture): together they span most of the face, resting right on top of
+  // the muzzle. Merged into the head like the rest.
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), eyeballMat);
-    eye.position.set(sx * 0.31, 0.1, 0.6);
-    eye.scale.set(0.96, 1.12, 0.7);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 18), eyeballMat);
+    eye.position.set(sx * 0.36, 0.12, 0.68);
+    eye.scale.set(0.95, 1.08, 0.62);
+    eye.rotation.y = sx * 0.08; // sclera peeks at the INNER corners, like the toy
     headStatic.push(eye);
   }
 
@@ -605,31 +619,40 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const eyelids = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.31, 0.36, 0.6); // top edge of the eye
+    pivot.position.set(sx * 0.37, 0.5, 0.68); // top edge of the eye
     pivot.scale.y = 0;
     pivot.visible = false;
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), coat);
-    lid.position.set(0, -0.26, 0.02); // centre hangs over the eyeball when scale.y = 1
-    lid.scale.set(1.0, 1.15, 0.8);
+    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.39, 14, 10), coat);
+    lid.position.set(0, -0.38, 0.02); // centre hangs over the eyeball when scale.y = 1
+    lid.scale.set(1.0, 1.12, 0.72);
     pivot.add(lid);
     head.add(pivot);
     eyelids.push(pivot);
   }
 
-  // Muzzle + nose + a tiny "ω" smile. White, except solid coats (a clean grey
-  // face shouldn't sprout a white snout).
-  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), isSolid ? fur : white);
-  muzzle.position.set(0, -0.2, 0.66);
-  muzzle.scale.set(1.12, 0.7, 0.62);
-  headStatic.push(muzzle);
-  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.11, 6), pink);
-  nose.rotation.x = Math.PI;
-  nose.position.set(0, -0.08, 0.94);
+  // Muzzle: two big side-by-side white lobes spanning most of the lower face
+  // (the "ω" cheeks of the reference toy), tucked right under the eyes, with a
+  // small pink triangle nose where they meet. White, except solid coats (a
+  // clean grey face shouldn't sprout a white snout).
+  const muzMat = isSolid ? fur : white;
+  for (const sx of [-1, 1]) {
+    const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.37, 16, 14), muzMat);
+    lobe.position.set(sx * 0.19, -0.25, 0.68); // tucked right under the eyes
+    lobe.scale.set(1.02, 0.82, 0.66);
+    headStatic.push(lobe);
+  }
+  // Nose: a small flat pink triangle FACING FORWARD (a squat 3-sided prism —
+  // a down-pointing cone read as dark plum because its visible surface tilted
+  // away from the light).
+  const noseGeo = new THREE.CylinderGeometry(0.145, 0.145, 0.06, 3);
+  noseGeo.rotateX(Math.PI / 2); // axis along +z; the cross-section vertex swings to point DOWN
+  const nose = new THREE.Mesh(noseGeo, pink);
+  nose.position.set(0, -0.13, 0.95);
   headStatic.push(nose);
   // The "ω" smile — both strokes baked into one LineSegments (4 points → 2 segs).
   const mouthGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(-0.12, -0.26, 0.86),
-    new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(0.12, -0.26, 0.86),
+    new THREE.Vector3(0, -0.22, 0.99), new THREE.Vector3(-0.15, -0.36, 0.92),
+    new THREE.Vector3(0, -0.22, 0.99), new THREE.Vector3(0.15, -0.36, 0.92),
   ]);
   head.add(new THREE.LineSegments(mouthGeo, _cMouth));
 
@@ -640,12 +663,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const shade = _cShade;
   const glassParts = [];
   for (const sx of [-1, 1]) {
-    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.24, 0.06), shade);
-    lens.position.set(sx * 0.3, 0.12, 0.64);
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.32, 0.06), shade);
+    lens.position.set(sx * 0.37, 0.14, 0.92);
     glassParts.push(lens);
   }
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.05), shade);
-  bridge.position.set(0, 0.16, 0.64);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 0.05), shade);
+  bridge.position.set(0, 0.19, 0.92);
   glassParts.push(bridge);
   glasses.add(mergeMeshes(glassParts));
   glasses.visible = false;
@@ -657,11 +680,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const whiskers = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.18, -0.12, 0.78);
+    pivot.position.set(sx * 0.3, -0.24, 0.88);
     head.add(pivot);
     const pts = [];
     for (const dy of [-0.08, 0.0, 0.08]) {
-      pts.push(new THREE.Vector3(0, dy * 0.4, 0), new THREE.Vector3(sx * 0.75, dy, 0.05));
+      pts.push(new THREE.Vector3(0, dy * 0.4, 0), new THREE.Vector3(sx * 0.62, dy - 0.03, 0.02));
     }
     pivot.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), whiskerMat));
     whiskers[sx < 0 ? "L" : "R"] = pivot;
@@ -837,7 +860,17 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie) sits
   // on the body. `acc` is at the origin, so its children's transforms already read
   // in the right frame — route them into the matching static bucket to merge.
+  // Headwear coordinates were tuned for the old 0.78-radius skull; bake the
+  // enlarged head's scale into each piece (a group scale would be lost when the
+  // children are pushed into the merge bucket).
   const accToBody = accId === "bandana" || accId === "collar" || accId === "bow";
+  if (!accToBody) {
+    const HEAD_S = 1.26; // new skull radius 0.98 / old 0.78
+    for (const ch of acc.children) {
+      ch.position.multiplyScalar(HEAD_S);
+      ch.scale.multiplyScalar(HEAD_S);
+    }
+  }
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
@@ -988,16 +1021,17 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const group = new THREE.Group();
   const body = new THREE.Color(bodyColor);
   // Body silhouette variants (cockpit height stays constant so the cat always
-  // seats correctly; the nose, wing, tyres and roll-cage change the profile):
-  //   gp        — long nose, big rear wing, low slick tyres (default)
-  //   roadster  — short nose, ducktail lip spoiler, classic rounded tail
-  //   buggy     — stubby nose, no wing, fat tyres + a roll hoop
-  //   speedster — longest needle nose, low slicks, twin swept rocket tail-fins
+  // seats correctly; the nose fairing, rear aero, tyres and roll-cage change
+  // the profile). All four ride the same open-frame classic-kart base:
+  //   gp        — the reference kart: long nose fairing, no wing, low slicks
+  //   roadster  — shorter fairing, ducktail lip on the rear bumper
+  //   buggy     — stubby fairing, fat tyres + a roll hoop
+  //   speedster — longest fairing, low slicks, twin swept rocket tail-fins
   const STYLES = [
-    { nose: 1.7, noseZ: 2.0, tipZ: 2.95, wing: "big", tire: 1.0, hoop: false },
-    { nose: 1.25, noseZ: 1.85, tipZ: 2.6, wing: "lip", tire: 1.06, hoop: false },
-    { nose: 1.0, noseZ: 1.75, tipZ: 2.45, wing: "none", tire: 1.2, hoop: true },
-    { nose: 1.95, noseZ: 2.15, tipZ: 3.2, wing: "fin", tire: 0.94, hoop: false },
+    { fair: 2.45, wing: "none", tire: 1.0, hoop: false },
+    { fair: 2.1, wing: "lip", tire: 1.06, hoop: false },
+    { fair: 1.8, wing: "none", tire: 1.2, hoop: true },
+    { fair: 2.75, wing: "fin", tire: 0.94, hoop: false },
   ];
   const st = STYLES[opts.style ?? 0] || STYLES[0];
   const kartNumber = opts.number ?? 1;
@@ -1036,133 +1070,154 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     color: 0xfff4d0, emissive: 0xfff0c0, emissiveIntensity: 0.4 + _lightLevel * 2.3,
   }));
 
-  // --- Moulded shell ---
+  // --- Open-frame classic kart ---
   // Every rigid, opaque body part is collected here and baked into ONE
-  // multi-material mesh at the end (one draw call per livery material) instead of
+  // multi-material mesh at the end (one draw call per material) instead of
   // ~25 separate meshes. Transparent/emissive/animated parts (number roundels,
   // headlight bulbs, tail lights, flames, underglow) stay separate below.
+  // Layout (z+ forward): a low dark floor pan on exposed frame tubes, a wide
+  // black wrap-around front bumper, a paint nose fairing rising to the wheel
+  // with the number roundel on its face, side pods with a white lower band, a
+  // black bucket seat, and an engine block + muffler behind the seat.
+  const frame = sharedMat("kframe", () => new THREE.MeshStandardMaterial({ color: 0x878c94, roughness: 0.55, metalness: 0.35 }));
   const shell = [];
   const add = (mesh) => { shell.push(mesh); return mesh; };
-  // Floor pan: the wide, low monocoque the whole car is built on.
-  const pan = add(new THREE.Mesh(rbox(2.55, 0.42, 4.7, 0.3), paint));
-  pan.position.y = 0.56;
-  // Lower accent skirt (two-tone) — slightly wider + darker, hugging the ground.
-  const skirt = add(new THREE.Mesh(rbox(2.66, 0.3, 4.3, 0.22), accent));
-  skirt.position.y = 0.36;
-  // Cockpit spine: the raised centre body that the seat sinks into.
-  const spine = add(new THREE.Mesh(rbox(1.6, 0.78, 3.1, 0.34), paint));
-  spine.position.set(0, 0.92, -0.25);
-  // Nose: a single tapering wedge flowing off the front of the pan + soft tip.
-  // Length/reach vary by style (long GP snout vs stubby buggy).
-  const nose = add(new THREE.Mesh(rbox(1.7, 0.46, st.nose, 0.3), paint));
-  nose.position.set(0, 0.62, st.noseZ);
-  const noseTip = add(new THREE.Mesh(rbox(1.16, 0.42, 1.2, 0.42), paint));
-  noseTip.position.set(0, 0.58, st.tipZ);
-  // Nose flash (accent) over the snout.
-  const flash = add(new THREE.Mesh(rbox(0.95, 0.2, 1.5, 0.12), accent));
-  flash.position.set(0, 0.84, st.noseZ + 0.6);
-  // Side fairings — flush to the floor sides, same paint: bodywork, not pods. A
-  // numbered roundel sits on each side (a plane decal facing outward).
+  // Floor pan: low, flat, dark — the kart is built on it, not enclosed by it.
+  const pan = add(new THREE.Mesh(rbox(1.9, 0.16, 3.7, 0.08), dark));
+  pan.position.set(0, 0.42, 0.2);
+  // Frame tubes: two side rails + front/rear cross members, visible under and
+  // around the pan.
+  for (const sx of [-1, 1]) {
+    const rail = add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 4.3, 10), frame));
+    rail.rotation.x = Math.PI / 2;
+    rail.position.set(sx * 0.98, 0.38, 0.2);
+  }
+  for (const [cz, cw] of [[2.2, 2.0], [-1.62, 2.1]]) {
+    const cross = add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, cw, 10), frame));
+    cross.rotation.z = Math.PI / 2;
+    cross.position.set(0, 0.38, cz);
+  }
+  // Front bumper: the wide black wrap bar with swept-back corner arms hugging
+  // the nose, sitting low like the reference.
+  const bumper = add(new THREE.Mesh(rbox(2.35, 0.3, 0.44, 0.2), dark));
+  bumper.position.set(0, 0.46, 2.82);
+  for (const sx of [-1, 1]) {
+    const arm = add(new THREE.Mesh(rbox(0.3, 0.26, 1.05, 0.13), dark));
+    arm.position.set(sx * 1.16, 0.44, 2.34);
+    arm.rotation.y = sx * 0.38;
+  }
+  // Nose panel just behind the bar: white with a paint band over the top —
+  // the reference's white/red front.
+  const bPanel = add(new THREE.Mesh(rbox(1.7, 0.3, 0.72, 0.12), stripe));
+  bPanel.position.set(0, 0.5, 2.32);
+  const bBand = add(new THREE.Mesh(rbox(1.72, 0.16, 0.74, 0.07), paint));
+  bBand.position.set(0, 0.64, 2.32);
+  // Nose fairing: the paint wedge rising from the pan to the steering column,
+  // carrying the white number roundel on its upper face. Length varies by
+  // style; a filler block underneath grounds its raised rear on the pan.
+  const fairing = add(new THREE.Mesh(rbox(0.88, 0.3, st.fair, 0.14), paint));
+  fairing.position.set(0, 0.74, 1.95 - st.fair / 2);
+  fairing.rotation.x = -0.22; // rises toward the column
+  const fairBase = add(new THREE.Mesh(rbox(0.72, 0.42, 0.9, 0.12), paint));
+  fairBase.position.set(0, 0.6, 0.55);
   const numMat = sharedMat(`knum|${kartNumber}`, () =>
     new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
+  // Roundel lying on the fairing's tilted upper face, reading up-and-forward.
+  const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.78), numMat);
+  roundel.position.set(0, 0.94, 1.95 - st.fair / 2 + 0.1);
+  roundel.rotation.x = -Math.PI / 2 + 0.22;
+  group.add(roundel);
+  // Side pods: paint boxes between the wheels with a white lower band, plus a
+  // numbered roundel facing outward (identifies rivals at a glance mid-race).
   for (const sx of [-1, 1]) {
-    const fairing = add(new THREE.Mesh(rbox(0.62, 0.5, 2.7, 0.26), paint));
-    fairing.position.set(sx * 1.2, 0.64, 0.0);
-    const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), numMat);
-    roundel.position.set(sx * 1.53, 0.8, 0.1);
-    roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
-    group.add(roundel);
+    const pod = add(new THREE.Mesh(rbox(0.52, 0.34, 2.05, 0.14), paint));
+    pod.position.set(sx * 1.08, 0.56, 0.1);
+    const band = add(new THREE.Mesh(rbox(0.54, 0.15, 2.07, 0.07), stripe));
+    band.position.set(sx * 1.08, 0.36, 0.1);
+    const sideNum = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.56), numMat);
+    sideNum.position.set(sx * 1.36, 0.6, 0.2);
+    sideNum.rotation.y = sx * Math.PI / 2; // face outward (±X)
+    group.add(sideNum);
   }
-  // Painted racing stripe — flat decals lying flush on the nose flash panel and
-  // the rear deck (zero thickness, a hair proud), so it reads as paint on the
-  // bodywork rather than a raised block bolted on top.
-  const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 1.5), stripe));
-  noseStripe.rotation.x = -Math.PI / 2;
-  noseStripe.position.set(0, 0.951, st.noseZ + 0.6); // flush on the nose flash
-  const deckStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.95), stripe));
-  deckStripe.rotation.x = -Math.PI / 2;
-  deckStripe.position.set(0, 1.122, -1.95); // flush on the rear deck
-
-  // Seat well (where the cat sits) — sunk into the spine.
-  const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
-  seat.position.set(0, 1.06, -0.5);
-  const seatBack = add(new THREE.Mesh(rbox(1.4, 0.9, 0.4, 0.18), dark));
-  seatBack.position.set(0, 1.3, -1.2);
-
-  // Steering wheel (black) with a small chrome hub.
+  // Bucket seat: base, tall curved back (leaning back), and side bolsters.
+  const seatBase = add(new THREE.Mesh(rbox(1.1, 0.22, 1.05, 0.1), dark));
+  seatBase.position.set(0, 0.64, -0.45);
+  const seatBack = add(new THREE.Mesh(rbox(1.14, 1.05, 0.26, 0.13), dark));
+  seatBack.position.set(0, 1.12, -1.02);
+  seatBack.rotation.x = -0.14;
+  for (const sx of [-1, 1]) {
+    const bolster = add(new THREE.Mesh(rbox(0.22, 0.46, 0.62, 0.1), dark));
+    bolster.position.set(sx * 0.58, 0.82, -0.72);
+  }
+  // Steering column rising from the fairing to the wheel; black wheel with a
+  // chrome hub (position unchanged — the cat's paws grip exactly here).
+  const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.95, 10), frame));
+  column.position.set(0, 1.05, 0.72);
+  column.rotation.x = 0.5;
   const wheel = add(new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), dark));
   wheel.position.set(0, 1.4, 0.55);
   wheel.rotation.x = Math.PI / 2.6;
   const wheelHub = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), chrome));
   wheelHub.position.set(0, 1.4, 0.55);
   wheelHub.rotation.x = Math.PI / 2.6;
+  // Engine block on the right of the seat back + air box, and a fat muffler
+  // with a dark tip on the left — the classic kart's asymmetric rear.
+  const block = add(new THREE.Mesh(rbox(0.62, 0.44, 0.62, 0.08), dark));
+  block.position.set(0.52, 0.66, -1.62);
+  const head = add(new THREE.Mesh(rbox(0.42, 0.22, 0.44, 0.06), frame));
+  head.position.set(0.52, 0.98, -1.62);
+  const airbox = add(new THREE.Mesh(rbox(0.3, 0.3, 0.3, 0.1), frame));
+  airbox.position.set(0.2, 0.9, -1.9);
+  const muffler = add(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.95, 12), chrome));
+  muffler.rotation.x = Math.PI / 2;
+  muffler.position.set(-0.6, 0.56, -1.95);
+  const muffTip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.14, 12), dark));
+  muffTip.rotation.x = Math.PI / 2;
+  muffTip.position.set(-0.6, 0.56, -2.48);
+  // Rear bumper bar.
+  const rearBar = add(new THREE.Mesh(rbox(2.15, 0.22, 0.32, 0.11), dark));
+  rearBar.position.set(0, 0.46, -2.35);
 
-  // Rear deck behind the cockpit, housing the tail lights + a single wing pylon.
-  const deck = add(new THREE.Mesh(rbox(1.7, 0.5, 1.0, 0.26), paint));
-  deck.position.set(0, 0.86, -1.95);
-
-  // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
-  if (st.wing === "big") {
-    const pylon = add(new THREE.Mesh(rbox(0.34, 0.7, 0.34, 0.1), dark));
-    pylon.position.set(0, 1.25, -2.3);
-    const wing = add(new THREE.Mesh(rbox(2.7, 0.14, 0.74, 0.06), paint));
-    wing.position.set(0, 1.62, -2.32);
-    for (const sx of [-1, 1]) {
-      const plate = add(new THREE.Mesh(rbox(0.08, 0.36, 0.78, 0.03), accent));
-      plate.position.set(sx * 1.32, 1.55, -2.32);
-    }
-  } else if (st.wing === "lip") {
-    // Ducktail lip spoiler hugging the rear deck.
-    const lip = add(new THREE.Mesh(rbox(2.0, 0.12, 0.5, 0.06), paint));
-    lip.position.set(0, 1.18, -2.3);
-    lip.rotation.x = -0.18;
+  // Rear aero varies by style (the reference GP kart runs clean — no wing).
+  if (st.wing === "lip") {
+    // Ducktail lip riding the rear bumper.
+    const lip = add(new THREE.Mesh(rbox(1.9, 0.1, 0.46, 0.05), paint));
+    lip.position.set(0, 0.72, -2.3);
+    lip.rotation.x = -0.2;
   } else if (st.wing === "fin") {
-    // Twin swept rocket tail-fins flanking the rear deck (body paint, accent edge),
-    // plus a small central spine fin — a jet-age speedster look.
+    // Twin swept rocket tail-fins flanking the engine — jet-age speedster.
     for (const sx of [-1, 1]) {
-      const fin = add(new THREE.Mesh(rbox(0.16, 0.98, 1.05, 0.06), paint));
-      fin.position.set(sx * 0.72, 1.34, -2.18);
-      fin.rotation.x = -0.34; // rake the fin back
-      fin.rotation.z = sx * 0.12; // splay outward a touch
-      const edge = add(new THREE.Mesh(rbox(0.1, 0.16, 1.05, 0.04), accent));
-      edge.position.set(sx * 0.72, 1.82, -2.18);
+      const fin = add(new THREE.Mesh(rbox(0.14, 0.85, 0.95, 0.06), paint));
+      fin.position.set(sx * 0.78, 1.05, -1.95);
+      fin.rotation.x = -0.34;
+      fin.rotation.z = sx * 0.12;
+      const edge = add(new THREE.Mesh(rbox(0.09, 0.15, 0.95, 0.04), accent));
+      edge.position.set(sx * 0.78, 1.47, -1.95);
       edge.rotation.x = -0.34;
       edge.rotation.z = sx * 0.12;
     }
-    const spineFin = add(new THREE.Mesh(rbox(0.12, 0.62, 0.86, 0.05), accent));
-    spineFin.position.set(0, 1.2, -2.24);
-    spineFin.rotation.x = -0.32;
   }
-
-  // --- Greebles: chrome roll hoop (buggy) + twin exhaust tips (all) ---
+  // Roll hoop (buggy): arcs over the seat back.
   if (st.hoop) {
-    const hoop = add(new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.08, 10, 20, Math.PI), chrome));
-    hoop.position.set(0, 1.32, -1.15);
-    // little diagonal brace behind it
-    const brace = add(new THREE.Mesh(rbox(0.12, 0.12, 0.9, 0.05), chrome));
-    brace.position.set(0, 1.0, -1.55);
+    const hoop = add(new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.07, 10, 20, Math.PI), frame));
+    hoop.position.set(0, 1.5, -1.05);
+    const brace = add(new THREE.Mesh(rbox(0.1, 0.1, 0.85, 0.04), frame));
+    brace.position.set(0, 1.25, -1.5);
     brace.rotation.x = 0.6;
   }
-  for (const sx of [-0.42, 0.42]) {
-    const pipe = add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.6, 12), chrome));
-    pipe.rotation.x = Math.PI / 2; // axis along Z, poking out the back
-    pipe.position.set(sx, 0.58, -2.62);
-    const pipeTip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.12, 12), dark));
-    pipeTip.rotation.x = Math.PI / 2;
-    pipeTip.position.set(sx, 0.58, -2.92);
-  }
 
-  // Bake the whole rigid shell into one mesh (≈5 draw calls — one per material).
+  // Bake the whole rigid shell into one mesh (≈6 draw calls — one per material).
   // Karts don't cast a real sun shadow: each already has a soft contact-shadow
   // blob (kart.js), so casting into the 2048 shadow map too just doubled the
   // field's vertex/fill cost when cars bunched up. The blob grounds them.
   const shellMesh = mergeMeshes(shell, { castShadow: false });
   group.add(shellMesh);
 
-  // Headlights, set into the nose.
+  // Headlights, tucked into the front bumper (tiny by day; night beams are a
+  // ground-projected pool managed in main.js).
   for (const sx of [-1, 1]) {
-    const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), glass);
-    light.position.set(sx * 0.46, 0.66, 2.92);
+    const light = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 12), glass);
+    light.position.set(sx * 0.72, 0.54, 2.96);
     group.add(light);
   }
   // The forward beam that lights the road is NOT parented here (it would tilt with
@@ -1175,63 +1230,50 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     color: 0x6e0d0d, emissive: 0xff2a1e, emissiveIntensity: 0.25, roughness: 0.5,
   });
   for (const sx of [-1, 1]) {
-    const tl = new THREE.Mesh(rbox(0.4, 0.26, 0.16, 0.06), brakeMat);
-    tl.position.set(sx * 0.62, 0.86, -2.46);
+    const tl = new THREE.Mesh(rbox(0.36, 0.2, 0.14, 0.06), brakeMat);
+    tl.position.set(sx * 0.78, 0.5, -2.46); // on the rear bumper bar
     group.add(tl);
   }
 
-  // --- Wheels: matte tyres with a contact tread band, a spoked body-coloured
-  // rim + chrome hub cap, and a brake caliper at the rim. Fronts a touch smaller
-  // than the rears; tyre size scales with the body style. Each wheel's parts are
-  // baked into ONE mesh (≈5 draw calls) inside a Group the kart still spins/steers. ---
-  const caliperMat = _kCaliper;
+  // --- Wheels: fat matte slicks with a contact tread band and a plain flat
+  // grey hub + small chrome cap (the reference kart's simple wheels). Rears
+  // are bigger AND wider than the fronts; tyre size scales with the body
+  // style. Each wheel's parts bake into ONE mesh inside a Group the kart
+  // still spins/steers. ---
   const wheels = [];
-  // `side` is the sign of the wheel's x position so the spokes / hub cap sit on
-  // the OUTER face (the visible one) on both sides of the kart.
-  function buildWheel(radius, side) {
+  // `side` is the sign of the wheel's x position so the hub face sits on the
+  // OUTER side (the visible one) on both sides of the kart.
+  function buildWheel(radius, width, side) {
     const w = new THREE.Group();
     const parts = [];
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 22), tire);
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, width, 22), tire);
     t.rotation.z = Math.PI / 2;
     parts.push(t);
-    // A slightly proud, slightly wider tread band around the centre.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.02, radius * 1.02, 0.34, 22), tread);
+    // A slightly proud, slightly narrower tread band around the centre.
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.02, radius * 1.02, width * 0.66, 22), tread);
     band.rotation.z = Math.PI / 2;
     parts.push(band);
-    // Hub + 5 spokes on the outer face.
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.26, radius * 0.26, 0.54, 12), rimMat);
+    // Big flat grey hub disc on the outer face + a small chrome cap.
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.52, radius * 0.52, width * 0.3, 16), frame);
     hub.rotation.z = Math.PI / 2;
+    hub.position.x = side * width * 0.42;
     parts.push(hub);
-    // 5 spokes spaced around the axle. The old per-spoke pivot Group orbited the
-    // spoke's y-offset about the X axle; bake that orbit straight into each spoke's
-    // own transform so they all merge into the single wheel mesh.
-    for (let i = 0; i < 5; i++) {
-      const ang = (i / 5) * Math.PI * 2;
-      const spoke = new THREE.Mesh(rbox(0.1, radius * 0.66, 0.1, 0.03), rimMat);
-      spoke.rotation.x = ang;
-      spoke.position.set(side * 0.24, Math.cos(ang) * radius * 0.36, Math.sin(ang) * radius * 0.36);
-      parts.push(spoke);
-    }
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.24, 12, 12), chrome);
-    cap.position.x = side * 0.26;
-    cap.scale.set(0.5, 1, 1);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.18, radius * 0.18, 0.06, 12), chrome);
+    cap.rotation.z = Math.PI / 2;
+    cap.position.x = side * (width * 0.38 + width * 0.15);
     parts.push(cap);
-    // Brake caliper clamped on the inner-upper rim.
-    const caliper = new THREE.Mesh(rbox(0.16, 0.24, 0.18, 0.04), caliperMat);
-    caliper.position.set(-side * 0.12, radius * 0.62, 0.02);
-    parts.push(caliper);
     w.add(mergeMeshes(parts, { castShadow: false }));
     return w;
   }
   const wheelDefs = [
-    [1.32, 1.55, 0.55],
-    [-1.32, 1.55, 0.55],
-    [1.42, -1.6, 0.66],
-    [-1.42, -1.6, 0.66],
+    [1.28, 1.62, 0.5, 0.46],
+    [-1.28, 1.62, 0.5, 0.46],
+    [1.36, -1.58, 0.64, 0.62],
+    [-1.36, -1.58, 0.64, 0.62],
   ];
-  for (const [x, z, baseR] of wheelDefs) {
+  for (const [x, z, baseR, width] of wheelDefs) {
     const radius = baseR * st.tire;
-    const w = buildWheel(radius, Math.sign(x));
+    const w = buildWheel(radius, width, Math.sign(x));
     w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
     group.add(w);
     wheels.push(w);
@@ -1247,14 +1289,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const flameCore = new THREE.MeshBasicMaterial({
     color: 0xfff2c0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
   });
-  for (const sx of [-0.7, 0.7]) {
+  for (const sx of [-0.6, 0.6]) {
     const outer = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.5, 8), flameOuter);
     outer.rotation.x = -Math.PI / 2; // taper trailing backward (-Z)
-    outer.position.set(sx, 0.55, -2.7);
+    outer.position.set(sx, 0.56, -2.85); // off the muffler / engine side
     flames.add(outer);
     const core = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 8), flameCore);
     core.rotation.x = -Math.PI / 2;
-    core.position.set(sx, 0.55, -2.5);
+    core.position.set(sx, 0.56, -2.65);
     flames.add(core);
   }
   group.add(flames);
