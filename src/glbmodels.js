@@ -45,6 +45,34 @@ export function loadCatGLB(url = "./assets/models/cat.glb") {
   return _catPromise;
 }
 
+// Plane normal of a flat-ish mesh (a steering wheel disc): the least-spread
+// PCA axis of its vertex positions. Power iteration on (trace(C)·I − C) —
+// its dominant eigenvector is C's smallest — avoids a full eigen solve.
+function discNormal(geometry) {
+  const p = geometry.getAttribute("position").array;
+  const n = p.length / 3;
+  let mx = 0, my = 0, mz = 0;
+  for (let i = 0; i < p.length; i += 3) { mx += p[i]; my += p[i + 1]; mz += p[i + 2]; }
+  mx /= n; my /= n; mz /= n;
+  let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i] - mx, y = p[i + 1] - my, z = p[i + 2] - mz;
+    xx += x * x; xy += x * y; xz += x * z; yy += y * y; yz += y * z; zz += z * z;
+  }
+  const tr = xx + yy + zz;
+  // M = tr·I − C
+  const m = [tr - xx, -xy, -xz, -xy, tr - yy, -yz, -xz, -yz, tr - zz];
+  const v = new THREE.Vector3(0.577, 0.577, 0.577);
+  for (let it = 0; it < 32; it++) {
+    v.set(
+      m[0] * v.x + m[1] * v.y + m[2] * v.z,
+      m[3] * v.x + m[4] * v.y + m[5] * v.z,
+      m[6] * v.x + m[7] * v.y + m[8] * v.z,
+    ).normalize();
+  }
+  return v;
+}
+
 let _kartPromise = null;
 export function loadKartGLB(url = "./assets/models/kart.glb") {
   if (!_kartPromise) {
@@ -83,6 +111,14 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
       for (const w of wheels) w.rotation.order = "YZX";
       holder.userData.wheels = wheels;
       holder.userData.steering = steering;
+      // The steering wheel must turn about its own tilted column, not a world
+      // axis. The column axis is the disc's plane normal: the direction of
+      // least positional spread (smallest PCA axis) of the rim geometry,
+      // in the part's local space. Sign: toward the driver (-x, +y source
+      // space), so a positive angle turns the wheel the way the road wheels
+      // turn for a left steer.
+      holder.userData.steeringAxis = discNormal(steering.geometry).normalize();
+      if (holder.userData.steeringAxis.x > 0) holder.userData.steeringAxis.negate();
       return holder;
     });
   }

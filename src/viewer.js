@@ -76,6 +76,8 @@ if (kartGLB)
         // Same demo loop as the procedural karts: rolling wheels, front pair
         // + steering wheel sweeping the steering range. GLB axles run along
         // the part-local z, so roll is rotation.z (order YZX, steer outer).
+        // The steering wheel turns about its own tilted column (the disc
+        // normal the loader measured), not a world axis.
         animate: (t) => {
           const steer = Math.sin(t * 0.9) * 0.4;
           for (let j = 0; j < wheels.length; j++) {
@@ -84,7 +86,7 @@ if (kartGLB)
             w.rotation.y = j < 2 ? steer : 0;
             w.rotation.z = -t * 6;
           }
-          if (steering) steering.rotation.x = steer * 1.4;
+          if (steering) steering.quaternion.setFromAxisAngle(kartGLB.userData.steeringAxis, steer * 1.4);
         },
         duration: Math.PI * 2 / 0.9,
       };
