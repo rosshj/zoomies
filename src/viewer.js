@@ -12,6 +12,7 @@ import {
   createCat,
   createKartModel,
   updateCatRig,
+  makeNumberTexture,
   CAT_PATTERNS,
   CAT_ACCESSORIES,
   ACCESSORY_LABELS,
@@ -20,7 +21,7 @@ import {
 import { assetCatalog } from "./scenery.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
-import { loadCatGLB, loadKartGLB } from "./glbmodels.js";
+import { loadCatGLB, loadKartGLB, makeKartGLBInstance } from "./glbmodels.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -67,38 +68,50 @@ const keep = (obj) => {
 const catGLB = await loadCatGLB().catch((e) => { console.warn("[viewer] cat.glb:", e.message); return null; });
 if (catGLB) entries.push({ group: "Imported (GLB)", name: "Cat — Tripo import", build: () => keep(catGLB.clone()) });
 const kartGLB = await loadKartGLB().catch((e) => { console.warn("[viewer] kart.glb:", e.message); return null; });
-if (kartGLB)
-  entries.push({
-    group: "Imported (GLB)",
-    name: "Kart — Tripo import",
-    build: () => {
-      // Clone shares geometry/materials; re-find the tagged parts inside the
-      // clone by matching names against the template's userData.
-      const obj = keep(kartGLB.clone());
-      const names = kartGLB.userData.wheels.map((w) => w.name);
-      const wheels = names.map((n) => obj.getObjectByName(n));
-      const steering = obj.getObjectByName(kartGLB.userData.steering.name);
-      return {
-        object: obj,
-        // Same demo loop as the procedural karts: rolling wheels, front pair
-        // + steering wheel sweeping the steering range. GLB axles run along
-        // the part-local z, so roll is rotation.z (order YZX, steer outer).
-        // The steering wheel turns about its own tilted column (the disc
-        // normal the loader measured), not a world axis.
-        animate: (t) => {
-          const steer = Math.sin(t * 0.9) * 0.4;
-          for (let j = 0; j < wheels.length; j++) {
-            const w = wheels[j];
-            if (!w) continue;
-            w.rotation.y = j < 2 ? steer : 0;
-            w.rotation.z = -t * 6;
-          }
-          if (steering) steering.quaternion.setFromAxisAngle(kartGLB.userData.steeringAxis, steer * 1.4);
-        },
-        duration: Math.PI * 2 / 0.9,
-      };
-    },
-  });
+if (kartGLB) {
+  // One entry per livery: the paint color and the roundel number are both
+  // procedural (makeKartGLBInstance recolors the baked texture and mounts a
+  // crisp canvas-number decal), demonstrating the per-racer pipeline.
+  const LIVERIES = [
+    { name: "Kart — Tripo import", color: null, number: 7 },
+    { name: "Kart — Tripo (blue #2)", color: 0x1e88e5, number: 2 },
+    { name: "Kart — Tripo (green #3)", color: 0x43a047, number: 3 },
+    { name: "Kart — Tripo (yellow #4)", color: 0xfdd835, number: 4 },
+    { name: "Kart — Tripo (purple #5)", color: 0x8e24aa, number: 5 },
+  ];
+  for (const livery of LIVERIES)
+    entries.push({
+      group: "Imported (GLB)",
+      name: livery.name,
+      build: () => {
+        const obj = makeKartGLBInstance(kartGLB, {
+          number: livery.number,
+          color: livery.color,
+          numberTexture: makeNumberTexture,
+        });
+        const { wheels, steering, steeringAxis } = obj.userData;
+        return {
+          object: obj,
+          // Same demo loop as the procedural karts: rolling wheels, front
+          // pair + steering wheel sweeping the steering range. GLB axles run
+          // along the part-local z, so roll is rotation.z (order YZX, steer
+          // outer). The steering wheel turns about its own tilted column
+          // (the disc normal the loader measured), not a world axis.
+          animate: (t) => {
+            const steer = Math.sin(t * 0.9) * 0.4;
+            for (let j = 0; j < wheels.length; j++) {
+              const w = wheels[j];
+              if (!w) continue;
+              w.rotation.y = j < 2 ? steer : 0;
+              w.rotation.z = -t * 6;
+            }
+            if (steering) steering.quaternion.setFromAxisAngle(steeringAxis, steer * 1.4);
+          },
+          duration: Math.PI * 2 / 0.9,
+        };
+      },
+    });
+}
 for (const p of CAT_PATTERNS)
   entries.push({ group: "Cats", name: `Cat — ${cap(p)}`, build: () => animatedCat(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {

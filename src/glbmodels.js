@@ -114,6 +114,21 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
       for (const w of wheels) w.rotation.order = "YZX";
       holder.userData.wheels = wheels;
       holder.userData.steering = steering;
+      holder.userData.chassis = parts.find((p) => p !== steering && !wheels.includes(p));
+      // Anchor for the nose number roundel: drop a ray onto the cowl's top
+      // face (just ahead of the steering wheel) and remember the hit point +
+      // surface orientation. Instances mount their own crisp canvas-number
+      // decal here, covering the fuzzy "7" baked into the texture.
+      holder.updateMatrixWorld(true);
+      const ray = new THREE.Raycaster(new THREE.Vector3(0, 3, 1.18), new THREE.Vector3(0, -1, 0));
+      const hit = ray.intersectObject(holder.userData.chassis, false)[0];
+      if (hit) {
+        const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+        holder.userData.roundel = {
+          position: hit.point.clone().addScaledVector(n, 0.015),
+          quaternion: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n),
+        };
+      }
       // The steering wheel must turn about its own tilted column, not a world
       // axis. The column axis is the disc's plane normal: the direction of
       // least positional spread (smallest PCA axis) of the rim geometry,
@@ -126,4 +141,82 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
     });
   }
   return _kartPromise;
+}
+
+// --- Procedural livery for the GLB kart -------------------------------------
+// The baked chassis texture's paint is the ONLY saturated hue on the part
+// (frame, seat, roundel and trims are all greys), so recoloring is a
+// selective hue swap: red-dominant texels are re-lit in the target color
+// (target * relative luminance), everything else passes through. Done once
+// per color on a canvas and cached — no extra shader work per frame.
+const _tintCache = new Map();
+function tintedChassisMaterial(template, colorHex) {
+  const key = colorHex ?? "base";
+  if (_tintCache.has(key)) return _tintCache.get(key);
+  const base = template.userData.chassis.material;
+  let mat = base;
+  if (colorHex != null) {
+    const img = base.map.image;
+    const S = 1024; // variants are AI-racer karts; 1K is plenty at race distance
+    const c = document.createElement("canvas");
+    c.width = c.height = S;
+    const ctx = c.getContext("2d");
+    ctx.drawImage(img, 0, 0, S, S);
+    const d = ctx.getImageData(0, 0, S, S);
+    const p = d.data;
+    const tint = new THREE.Color(colorHex);
+    // Luminance of the baked flat red — the divisor that turns each painted
+    // texel into a shading factor for the replacement color.
+    const RED_LUMA = 0.30;
+    for (let i = 0; i < p.length; i += 4) {
+      const r = p[i], g = p[i + 1], b = p[i + 2];
+      const m = Math.min(1, Math.max(0, (r - Math.max(g, b)) / 40)); // red-dominance mask
+      if (m <= 0) continue;
+      const f = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 / RED_LUMA;
+      p[i] = r + (Math.min(255, tint.r * 255 * f) - r) * m;
+      p[i + 1] = g + (Math.min(255, tint.g * 255 * f) - g) * m;
+      p[i + 2] = b + (Math.min(255, tint.b * 255 * f) - b) * m;
+    }
+    ctx.putImageData(d, 0, 0);
+    const tex = new THREE.CanvasTexture(c);
+    tex.flipY = false; // match glTF texture orientation
+    tex.colorSpace = THREE.SRGBColorSpace;
+    mat = base.clone();
+    mat.map = tex;
+  }
+  _tintCache.set(key, mat);
+  return mat;
+}
+
+// A ready-to-show GLB kart: cloned from the template, painted `color`
+// (null = the baked red), wearing a crisp procedural number roundel on the
+// nose. Returns the same contract the template exposes (wheels, steering,
+// steeringAxis in userData) with part references remapped into the clone.
+// numberTexture: pass models.js's makeNumberTexture (kept as a parameter so
+// this module doesn't pull the whole procedural-model file in).
+export function makeKartGLBInstance(template, { number = 7, color = null, numberTexture } = {}) {
+  const obj = template.clone();
+  const find = (part) => obj.getObjectByName(part.name);
+  const chassis = find(template.userData.chassis);
+  chassis.material = tintedChassisMaterial(template, color);
+  if (template.userData.roundel && numberTexture) {
+    const decal = new THREE.Mesh(
+      new THREE.CircleGeometry(0.36, 24),
+      new THREE.MeshStandardMaterial({
+        map: numberTexture(number),
+        transparent: true,
+        roughness: 0.5,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+      }),
+    );
+    decal.position.copy(template.userData.roundel.position);
+    decal.quaternion.copy(template.userData.roundel.quaternion);
+    obj.add(decal);
+  }
+  obj.userData.wheels = template.userData.wheels.map(find);
+  obj.userData.steering = find(template.userData.steering);
+  obj.userData.steeringAxis = template.userData.steeringAxis;
+  obj.userData.keepResources = true; // parts borrow the template's buffers
+  return obj;
 }
