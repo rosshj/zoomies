@@ -49,14 +49,17 @@ export function loadCatGLB(url = "./assets/models/cat.glb") {
 // PCA axis of its vertex positions. Power iteration on (trace(C)·I − C) —
 // its dominant eigenvector is C's smallest — avoids a full eigen solve.
 function discNormal(geometry) {
-  const p = geometry.getAttribute("position").array;
-  const n = p.length / 3;
+  // Read through the attribute API — GLTFLoader often loads positions
+  // INTERLEAVED with normals/uvs, so indexing .array with stride 3 reads
+  // garbage (that bug pointed the steering axis 40° off its column).
+  const attr = geometry.getAttribute("position");
+  const n = attr.count;
   let mx = 0, my = 0, mz = 0;
-  for (let i = 0; i < p.length; i += 3) { mx += p[i]; my += p[i + 1]; mz += p[i + 2]; }
+  for (let i = 0; i < n; i++) { mx += attr.getX(i); my += attr.getY(i); mz += attr.getZ(i); }
   mx /= n; my /= n; mz /= n;
   let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
-  for (let i = 0; i < p.length; i += 3) {
-    const x = p[i] - mx, y = p[i + 1] - my, z = p[i + 2] - mz;
+  for (let i = 0; i < n; i++) {
+    const x = attr.getX(i) - mx, y = attr.getY(i) - my, z = attr.getZ(i) - mz;
     xx += x * x; xy += x * y; xz += x * z; yy += y * y; yz += y * z; zz += z * z;
   }
   const tr = xx + yy + zz;
