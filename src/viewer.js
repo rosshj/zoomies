@@ -57,8 +57,15 @@ function animatedCat(fur, opts) {
 const entries = [];
 // Imported GLB hero models lead the list when present (viewer boot waits for
 // them; the game loads them in the background).
+// GLB clones share geometry/materials with the loaded template, so they are
+// tagged keepResources: the teardown in show() must NOT dispose them, or the
+// template is gutted and the entry renders empty on every later visit.
+const keep = (obj) => {
+  obj.userData.keepResources = true;
+  return obj;
+};
 const catGLB = await loadCatGLB().catch((e) => { console.warn("[viewer] cat.glb:", e.message); return null; });
-if (catGLB) entries.push({ group: "Imported (GLB)", name: "Cat — Tripo import", build: () => catGLB.clone() });
+if (catGLB) entries.push({ group: "Imported (GLB)", name: "Cat — Tripo import", build: () => keep(catGLB.clone()) });
 const kartGLB = await loadKartGLB().catch((e) => { console.warn("[viewer] kart.glb:", e.message); return null; });
 if (kartGLB)
   entries.push({
@@ -67,7 +74,7 @@ if (kartGLB)
     build: () => {
       // Clone shares geometry/materials; re-find the tagged parts inside the
       // clone by matching names against the template's userData.
-      const obj = kartGLB.clone();
+      const obj = keep(kartGLB.clone());
       const names = kartGLB.userData.wheels.map((w) => w.name);
       const wheels = names.map((n) => obj.getObjectByName(n));
       const steering = obj.getObjectByName(kartGLB.userData.steering.name);
@@ -173,11 +180,9 @@ resize();
 
 // ---------------------------------------------------------------------------
 // Orbit rig: spherical camera around the framed asset. One finger/mouse drag
-// spins (yaw + a clamped tilt), pinch or wheel dollies. Auto-spin idles the
-// turntable and pauses whenever a finger is down.
+// spins (yaw + a clamped tilt), pinch or wheel dollies.
 // ---------------------------------------------------------------------------
 const orbit = { target: new THREE.Vector3(), radius: 10, minR: 1, maxR: 100, theta: 0.7, phi: 1.12 };
-let autoSpin = true;
 const pointers = new Map(); // active pointerId → {x, y}
 let pinchDist = 0;
 
@@ -251,18 +256,6 @@ lookBtn.addEventListener("click", () => {
   applyLook();
 });
 
-const spinBtn = document.getElementById("spin-btn");
-function refreshSpinBtn() {
-  spinBtn.classList.toggle("on", autoSpin);
-  spinBtn.textContent = autoSpin ? "⏸" : "▶";
-  spinBtn.setAttribute("aria-label", autoSpin ? "Pause spin" : "Play spin");
-}
-spinBtn.addEventListener("click", () => {
-  autoSpin = !autoSpin;
-  refreshSpinBtn();
-});
-refreshSpinBtn();
-
 // ---------------------------------------------------------------------------
 // Asset selection: build fresh, sit it on the ground plane, frame the camera
 // on its bounding sphere, size the ground disc to it, report mesh/tri counts.
@@ -299,7 +292,9 @@ function show(entry) {
   if (current) {
     scene.remove(current);
     restoreRawMaterials(current); // dispose what the builder created, not the toon twins
-    disposeGroup(current); // shared (cached) materials are skipped
+    // GLB clones borrow the template's geometry/materials — disposing them
+    // would gut the template for every later visit.
+    if (!current.userData.keepResources) disposeGroup(current); // shared (cached) materials are skipped
     current = null;
   }
   let obj;
@@ -398,7 +393,6 @@ const _sunTravel = new THREE.Vector3();
 renderer.setAnimationLoop((now) => {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
-  if (autoSpin && pointers.size === 0) orbit.theta += dt * 0.4;
   if (gameLook) {
     // Keep the toon rim/backlight sun in view space, like updateAtmosphere
     // does in-game: the key light stands in for the sun.

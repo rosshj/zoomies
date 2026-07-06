@@ -87,28 +87,8 @@
       padding: 6px 10px;
       border-radius: 8px;
       pointer-events: none;
-      max-width: min(calc(100% - 88px), 560px); /* keep clear of the spin button */
+      max-width: min(calc(100% - 24px), 560px);
     }
-    /* Play/pause for the auto-spin turntable: a round FAB in the bottom-right. */
-    #spin-btn {
-      position: absolute;
-      right: 14px;
-      bottom: 14px;
-      z-index: 5; /* above the runtime-appended canvas (later in DOM order) */
-      width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      border: 1px solid rgba(255, 255, 255, 0.25);
-      background: rgba(10, 14, 25, 0.78);
-      color: #eef1f8;
-      font-size: 17px;
-      line-height: 1;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    #spin-btn.on { border-color: #ffd54f; color: #ffd54f; }
     .hidden { display: none !important; }
     /* Game-look toggle (top-right). Gold when the cel shading is active. */
     #look-btn {
@@ -191,7 +171,6 @@
     <!-- Raw studio materials vs the game's cel shading (the exact toon
          conversion main.js applies at boot — see src/toon.js). -->
     <button id="look-btn" title="Toggle the game's cel shading">🎮 Game look</button>
-    <button id="spin-btn" class="on" aria-label="Pause spin" title="Play/pause auto-spin">⏸</button>
     <!-- Animation transport: shown only for assets that move in-game.
          Play/pause + a scrubber over one loop of the asset's animation. -->
     <div id="anim-bar" class="hidden">
