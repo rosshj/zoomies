@@ -1,7 +1,7 @@
 {
   "name": "zoomies",
   "version": "0.1.0",
-  "description": "Cat kart racing — a three.js web game with accelerometer steering.",
+  "description": "Cat kart racing \u2014 a three.js web game with accelerometer steering.",
   "type": "module",
   "scripts": {
     "start": "npx --yes serve -l 8080 .",
@@ -34,6 +34,12 @@
     "partykit": "^0.0.115",
     "partysocket": "^1.0.2",
     "playwright-core": "^1.49.0",
-    "three": "^0.185.1"
+    "three": "^0.185.1",
+    "@gltf-transform/core": "^4.2.1",
+    "@gltf-transform/extensions": "^4.2.1",
+    "@gltf-transform/functions": "^4.2.1",
+    "meshoptimizer": "^0.25.0",
+    "three-mesh-bvh": "^0.9.1",
+    "sharp": "^0.34.5"
   }
 }

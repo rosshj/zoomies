@@ -124,10 +124,56 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
       const hit = ray.intersectObject(holder.userData.chassis, false)[0];
       if (hit) {
         const n = hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-        holder.userData.roundel = {
-          position: hit.point.clone().addScaledVector(n, 0.015),
-          quaternion: new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n),
-        };
+        const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), n);
+        // Shrink-wrap a subdivided disc onto the cowl: every vertex is
+        // dropped along the anchor normal onto the chassis surface, then
+        // lifted a hair — the decal follows the curve like a real sticker
+        // instead of a flat plate slapped on at one angle. Built once here;
+        // instances share the geometry and swap only the number texture.
+        const R = 0.36;
+        // RingGeometry lays vertices ring-major (phi rings x theta spokes);
+        // walking rings inward->outward lets a spoke whose ray misses the
+        // cowl (past the silhouette) reuse its last projected point instead
+        // of falling back to the anchor plane — which sat BELOW the surface
+        // and let the chassis paint poke through the sticker.
+        const THETA = 32, PHI = 10;
+        const disc = new THREE.RingGeometry(R * 0.001, R, THETA, PHI); // hole must be sub-pixel — it shows the chassis paint through the sticker's centre
+        const pos = disc.getAttribute("position");
+        const v = new THREE.Vector3(), radial = new THREE.Vector3();
+        const lastGood = new Array(THETA + 1).fill(null);
+        const hn = new THREE.Vector3();
+        for (let ring = 0; ring <= PHI; ring++) {
+          for (let jTheta = 0; jTheta <= THETA; jTheta++) {
+            const i = ring * (THETA + 1) + jTheta;
+            v.set(pos.getX(i), pos.getY(i), 0).applyQuaternion(q).add(hit.point).addScaledVector(n, 0.5);
+            ray.set(v, n.clone().negate());
+            // The chassis material is double-sided, so the raycaster reports
+            // INNER-shell backfaces too; landing on one buries the sticker
+            // under the paint. Accept only outer hits facing the anchor.
+            // Accept only outer hits facing the anchor AND near the cowl's
+            // own surface (origin sits 0.5 above it) — rays past the cowl
+            // silhouette otherwise land on the bumper far below and wrap the
+            // sticker over the edge like a melted flap.
+            const h = ray.intersectObject(holder.userData.chassis, false).find((c) => {
+              if (c.distance > 0.68) return false;
+              hn.copy(c.face.normal).transformDirection(c.object.matrixWorld);
+              return hn.dot(n) > 0.2;
+            });
+            if (h) {
+              hn.copy(h.face.normal).transformDirection(h.object.matrixWorld);
+              v.copy(h.point).addScaledVector(hn, 0.035);
+              lastGood[jTheta] = v.clone();
+            } else if (lastGood[jTheta]) {
+              v.copy(lastGood[jTheta]); // off the silhouette: collapse the rim
+            } else {
+              v.addScaledVector(n, -0.5 + 0.035);
+            }
+            pos.setXYZ(i, v.x, v.y, v.z);
+          }
+        }
+        void radial;
+        disc.computeVertexNormals();
+        holder.userData.roundelGeometry = disc; // already in holder space
       }
       // The steering wheel must turn about its own tilted column, not a world
       // axis. The column axis is the disc's plane normal: the direction of
@@ -199,19 +245,17 @@ export function makeKartGLBInstance(template, { number = 7, color = null, number
   const find = (part) => obj.getObjectByName(part.name);
   const chassis = find(template.userData.chassis);
   chassis.material = tintedChassisMaterial(template, color);
-  if (template.userData.roundel && numberTexture) {
+  if (template.userData.roundelGeometry && numberTexture) {
     const decal = new THREE.Mesh(
-      new THREE.CircleGeometry(0.36, 24),
+      template.userData.roundelGeometry, // conformed to the cowl, holder space
       new THREE.MeshStandardMaterial({
-        map: numberTexture(number),
+        map: numberTexture(number, 512), // decal is a big sticker; 128px stairs
         transparent: true,
         roughness: 0.5,
         polygonOffset: true,
         polygonOffsetFactor: -2,
       }),
     );
-    decal.position.copy(template.userData.roundel.position);
-    decal.quaternion.copy(template.userData.roundel.quaternion);
     obj.add(decal);
   }
   obj.userData.wheels = template.userData.wheels.map(find);

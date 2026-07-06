@@ -65,9 +65,10 @@ export function setLightLevel(v) {
 // Racing-number roundel decal: a white disc with a dark ring and the kart's
 // number, drawn to a transparent canvas so it sits on a plane on each fairing.
 const _numTexCache = new Map();
-export function makeNumberTexture(n) {
-  if (_numTexCache.has(n)) return _numTexCache.get(n);
-  const S = 128;
+export function makeNumberTexture(n, size = 128) {
+  const cacheKey = `${n}|${size}`;
+  if (_numTexCache.has(cacheKey)) return _numTexCache.get(cacheKey);
+  const S = size;
   const c = document.createElement("canvas");
   c.width = c.height = S;
   const ctx = c.getContext("2d");
@@ -87,7 +88,7 @@ export function makeNumberTexture(n) {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.needsUpdate = true;
-  _numTexCache.set(n, t);
+  _numTexCache.set(cacheKey, t);
   return t;
 }
 
