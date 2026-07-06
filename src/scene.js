@@ -66,8 +66,15 @@ export function cloudClusterGeo(rand = Math.random) {
     const r = baseR * (1 - t * 0.5) * (0.8 + rand() * 0.35); // head big, tail small
     // Detail-1 icosahedron (80 faces), WELDED first: PolyhedronGeometry ships
     // un-indexed, so jittering raw verts would tear the faces apart instead
-    // of crumpling shared corners.
-    const g = mergeVertices(new THREE.IcosahedronGeometry(r, 1));
+    // of crumpling shared corners. Strip uv/normal BEFORE welding — they
+    // differ across the sphere's uv seams, and mergeVertices only welds
+    // vertices whose every attribute matches, so keeping them left the seams
+    // split and the jitter tore visible slits along them. (No map on the
+    // cloud material, and flat shading derives face normals itself.)
+    const raw = new THREE.IcosahedronGeometry(r, 1);
+    raw.deleteAttribute("normal");
+    raw.deleteAttribute("uv");
+    const g = mergeVertices(raw);
     const p = g.attributes.position;
     for (let v = 0; v < p.count; v++) {
       const jit = 0.85 + rand() * 0.3;
