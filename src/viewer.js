@@ -11,6 +11,7 @@ import * as THREE from "three";
 import {
   createCat,
   createKartModel,
+  updateCatRig,
   CAT_PATTERNS,
   CAT_ACCESSORIES,
   ACCESSORY_LABELS,
@@ -32,20 +33,58 @@ const KART_STYLES = ["GP", "Roadster", "Buggy", "Finned"];
 const KART_COLORS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
+// A cat with its live rig: idle sway + blinking, exactly what updateCatRig
+// does at a standstill in-game. The rig is dt-driven, so the driver diffs the
+// scrub time (scrubbing backwards holds the pose — the rig can't run in
+// reverse, and a held frame is still useful for inspection).
+function animatedCat(fur, opts) {
+  const cat = createCat(fur, opts);
+  const rig = cat.userData.rig;
+  let last = 0;
+  return {
+    object: cat,
+    animate: (t) => {
+      const dt = Math.max(0, Math.min(0.05, t - last));
+      last = t;
+      if (dt > 0) updateCatRig(rig, dt, 0, 0, false, false, true);
+    },
+    duration: 8, // long enough to catch a blink or two
+  };
+}
+
 const entries = [];
 for (const p of CAT_PATTERNS)
-  entries.push({ group: "Cats", name: `Cat — ${cap(p)}`, build: () => createCat(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
+  entries.push({ group: "Cats", name: `Cat — ${cap(p)}`, build: () => animatedCat(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {
   if (a === "none") continue;
   entries.push({
     group: "Cat accessories",
     name: ACCESSORY_LABELS[a] || cap(a),
-    build: () => createCat(0xf0a830, { pattern: "solid", accessory: a }),
+    build: () => animatedCat(0xf0a830, { pattern: "solid", accessory: a }),
   });
 }
 KART_STYLES.forEach((n, i) =>
-  // createKartModel returns { group, wheels, ... } — the mesh tree is .group
-  entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => createKartModel(KART_COLORS[i], { style: i, number: i + 1 }).group })
+  entries.push({
+    group: "Karts",
+    name: `Kart — ${n}`,
+    build: () => {
+      const { group, wheels } = createKartModel(KART_COLORS[i], { style: i, number: i + 1 });
+      return {
+        object: group,
+        // Rolling wheels + the front axle sweeping through its steering range
+        // (the same transforms Kart.update applies from live inputs).
+        animate: (t) => {
+          for (let j = 0; j < wheels.length; j++) {
+            const w = wheels[j];
+            w.rotation.order = "YXZ";
+            w.rotation.y = j < 2 ? Math.sin(t * 0.9) * 0.4 : 0;
+            w.rotation.x = t * 6;
+          }
+        },
+        duration: Math.PI * 2 / 0.9, // one full steering sweep
+      };
+    },
+  })
 );
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
@@ -153,7 +192,32 @@ refreshSpinBtn();
 // on its bounding sphere, size the ground disc to it, report mesh/tri counts.
 // ---------------------------------------------------------------------------
 const infoEl = document.getElementById("info");
+const animBar = document.getElementById("anim-bar");
+const animPlayBtn = document.getElementById("anim-play");
+const animScrub = document.getElementById("anim-scrub");
 let current = null;
+// Animation transport state: assets that move in-game expose animate(t) over
+// one loop of `animDur` seconds; the bar plays/loops it and the scrubber sets
+// t directly.
+let curAnim = null;
+let animDur = 0;
+let animT = 0;
+let animPlaying = true;
+let scrubbing = false;
+
+function refreshAnimPlayBtn() {
+  animPlayBtn.textContent = animPlaying ? "⏸" : "▶";
+  animPlayBtn.setAttribute("aria-label", animPlaying ? "Pause animation" : "Play animation");
+}
+animPlayBtn.addEventListener("click", () => {
+  animPlaying = !animPlaying;
+  refreshAnimPlayBtn();
+});
+animScrub.addEventListener("input", () => {
+  animT = parseFloat(animScrub.value) || 0;
+});
+animScrub.addEventListener("pointerdown", () => { scrubbing = true; });
+window.addEventListener("pointerup", () => { scrubbing = false; });
 
 function show(entry) {
   if (current) {
@@ -163,12 +227,22 @@ function show(entry) {
   }
   let obj;
   try {
-    obj = entry.build();
+    const res = entry.build();
+    obj = res.isObject3D ? res : res.object;
+    curAnim = res.isObject3D ? null : res.animate ?? null;
+    animDur = (!res.isObject3D && res.duration) || Math.PI * 2;
   } catch (err) {
     console.error("[viewer] build failed:", entry.name, err);
     infoEl.textContent = `${entry.name} — failed to build: ${err.message}`;
     return;
   }
+  animT = 0;
+  animPlaying = true;
+  refreshAnimPlayBtn();
+  animBar.classList.toggle("hidden", !curAnim);
+  animScrub.max = animDur.toFixed(3);
+  animScrub.value = "0";
+  curAnim?.(0); // measure/frame the posed asset
   const box = new THREE.Box3().setFromObject(obj);
   obj.position.y -= box.min.y; // feet on the floor
   box.translate(new THREE.Vector3(0, -box.min.y, 0));
@@ -246,6 +320,13 @@ renderer.setAnimationLoop((now) => {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (autoSpin && pointers.size === 0) orbit.theta += dt * 0.4;
+  if (curAnim) {
+    if (animPlaying && !scrubbing) {
+      animT = (animT + dt) % animDur;
+      animScrub.value = animT.toFixed(3);
+    }
+    curAnim(animT);
+  }
   const sp = Math.sin(orbit.phi);
   camera.position.set(
     orbit.target.x + orbit.radius * sp * Math.sin(orbit.theta),

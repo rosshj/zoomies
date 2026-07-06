@@ -4542,12 +4542,45 @@ function makeStringLightsAsset() {
 // Every procedural set piece above is module-private (the game only ever wants
 // whole worlds), but the asset viewer (viewer.html) needs to build ONE of each
 // to inspect. This registry wraps the makers with representative default args.
-// Entries are { group, name, build } where build() returns a fresh Object3D;
-// nothing here runs unless the viewer calls it, so the game pays zero cost.
+// Entries are { group, name, build } where build() returns either a fresh
+// Object3D or { object, animate(t), duration } for assets that move in-game —
+// the viewer drives animate(t) from its play/scrub bar. Makers that register
+// their motion for the game's world-update loop (windmill sails, the Ferris
+// wheel, the lighthouse beam, flag cloth) are captured automatically: the
+// wrapper below snapshots what a build pushed into _spinners/_flutterers,
+// removes it (viewer rebuilds must not pile up dead registrations), and
+// replays the exact world-update formulas on it. Nothing here runs unless the
+// viewer calls it, so the game pays zero cost.
 export function assetCatalog() {
   const biome = (name) => BIOMES.find((b) => b.name === name) || BIOMES[0];
   const entries = [];
-  const add = (group, name, build) => entries.push({ group, name, build });
+  const TAU = Math.PI * 2;
+  const add = (group, name, build) => entries.push({
+    group,
+    name,
+    build: () => {
+      const s0 = _spinners.length, f0 = _flutterers.length;
+      const res = build();
+      const spinners = _spinners.splice(s0);
+      const flutterers = _flutterers.splice(f0);
+      const object = res.isObject3D ? res : res.object;
+      let animate = res.isObject3D ? null : res.animate ?? null;
+      let duration = (res.isObject3D ? 0 : res.duration) || 0;
+      if (spinners.length || flutterers.length) {
+        const custom = animate;
+        animate = (t) => {
+          // Same formulas as buildWorld's update() — see the registries above.
+          for (const s of spinners) s.obj.rotation[s.ax] = t * s.speed + s.phase;
+          for (const f of flutterers) f.obj.rotation.y = Math.sin(t * 5 + f.phase) * 0.4;
+          custom?.(t);
+        };
+        // Long enough for the slowest spinner to complete one revolution.
+        for (const s of spinners) duration = Math.max(duration, TAU / Math.abs(s.speed));
+        if (flutterers.length) duration = Math.max(duration, TAU);
+      }
+      return { object, animate, duration: duration || TAU };
+    },
+  });
 
   // Trees per biome silhouette (round/pine/acacia/blossom — the distinct shapes).
   for (const bn of ["meadow", "forest", "autumn", "blossom", "savanna", "desert"])
@@ -4562,9 +4595,26 @@ export function assetCatalog() {
   add("Animals", "Goat", () => makeGoat());
   add("Animals", "Crab", () => makeCrab());
   add("Animals", "Gull", () => makeGull());
-  add("Animals", "Pigeon", () => makePigeon().group); // returns { group, wings }
+  add("Animals", "Pigeon", () => {
+    const { group, wings } = makePigeon();
+    return {
+      object: group,
+      // The scatter-burst wingbeat from updatePigeons (perched wings just fold).
+      animate: (t) => { for (const w of wings) w.wg.rotation.z = w.sx * (0.3 + Math.sin(t * 24) * 0.8); },
+      duration: Math.PI / 3, // a few beats
+    };
+  });
   add("Animals", "Duck", () => makeDuck());
-  add("Animals", "Sky bird", () => makeSkyBirdAsset());
+  add("Animals", "Sky bird", () => {
+    const g = makeSkyBirdAsset();
+    const wings = g.children.slice(1); // [body, wingL, wingR] — see makeSkyBirdAsset
+    return {
+      object: g,
+      // The flock wingbeat from updateFlock.
+      animate: (t) => { for (const w of wings) w.rotation.x = -Math.sign(w.scale.z) * (0.25 + Math.sin(t * 6.5) * 0.55); },
+      duration: Math.PI, // ~3 beats
+    };
+  });
 
   add("Town & farm", "House", () => makeHouse());
   add("Town & farm", "Building — village", () => makeBuilding(0.4, biome("meadow")));
@@ -4595,7 +4645,11 @@ export function assetCatalog() {
   add("Sky & transit", "Cloud", () => makeCloudAsset());
   add("Sky & transit", "Hot-air balloon", () => makeBalloon(0));
   add("Sky & transit", "Sky train", () => makeTrain());
-  add("Sky & transit", "Wind turbine", () => makeWindTurbine().group);
+  add("Sky & transit", "Wind turbine", () => {
+    const { group, rotor } = makeWindTurbine();
+    // buildWindFarm spins rotors at 0.9-1.4 rad/s; show the middle of that.
+    return { object: group, animate: (t) => { rotor.rotation.z = t * 1.15; }, duration: Math.PI * 2 / 1.15 };
+  });
 
   add("Landmarks", "Lighthouse", () => makeLighthouse());
   add("Landmarks", "Castle", () => makeCastle());

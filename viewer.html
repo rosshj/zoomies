@@ -109,6 +109,33 @@
       justify-content: center;
     }
     #spin-btn.on { border-color: #ffd54f; color: #ffd54f; }
+    .hidden { display: none !important; }
+    /* Animation transport (play/pause + scrubber), centred above the info bar. */
+    #anim-bar {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 52px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(10, 14, 25, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    #anim-play {
+      background: none;
+      border: 0;
+      color: #ffd54f;
+      font-size: 15px;
+      line-height: 1;
+      width: 22px;
+      cursor: pointer;
+      padding: 0;
+    }
+    #anim-scrub { width: min(38vw, 340px); accent-color: #ffd54f; }
     #side-toggle { display: none; }
     @media (max-width: 720px) {
       #side {
@@ -147,6 +174,12 @@
   <main id="main">
     <button id="side-toggle">☰ Assets</button>
     <button id="spin-btn" class="on" aria-label="Pause spin" title="Play/pause auto-spin">⏸</button>
+    <!-- Animation transport: shown only for assets that move in-game.
+         Play/pause + a scrubber over one loop of the asset's animation. -->
+    <div id="anim-bar" class="hidden">
+      <button id="anim-play" aria-label="Pause animation">⏸</button>
+      <input id="anim-scrub" type="range" min="0" max="6.28" step="0.001" value="0" aria-label="Animation time" />
+    </div>
     <div id="info">Loading renderer…</div>
   </main>
   <script type="module" src="./src/viewer.js"></script>
