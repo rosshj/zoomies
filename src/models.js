@@ -262,17 +262,21 @@ function makeSpotTexture(furColor, spotColor) {
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#" + furColor.getHexString();
   ctx.fillRect(0, 0, S, S);
-  ctx.fillStyle = "#" + spotColor.getHexString();
-  // fractions of S: [x, y, radius]
+  // A few LARGE soft-edged patches (the reference toy's spots), not confetti.
+  // Soft edge via a radial gradient per spot: solid to ~70%, fading out.
+  const spotHex = "#" + spotColor.getHexString();
   const spots = [
-    [0.14, 0.16, 0.05], [0.4, 0.1, 0.04], [0.66, 0.15, 0.055], [0.88, 0.24, 0.04],
-    [0.1, 0.42, 0.045], [0.36, 0.4, 0.06], [0.6, 0.46, 0.045], [0.84, 0.5, 0.05],
-    [0.2, 0.68, 0.05], [0.46, 0.72, 0.045], [0.72, 0.7, 0.06], [0.92, 0.78, 0.04],
-    [0.32, 0.9, 0.045], [0.6, 0.9, 0.05],
+    [0.16, 0.2, 0.1], [0.62, 0.12, 0.085], [0.9, 0.4, 0.095],
+    [0.34, 0.48, 0.115], [0.72, 0.62, 0.1], [0.14, 0.74, 0.09], [0.52, 0.88, 0.095],
   ];
   for (const [x, y, r] of spots) {
+    const g = ctx.createRadialGradient(x * S, y * S, 0, x * S, y * S, r * S);
+    g.addColorStop(0, spotHex);
+    g.addColorStop(0.72, spotHex);
+    g.addColorStop(1, spotHex + "00");
+    ctx.fillStyle = g;
     ctx.beginPath();
-    ctx.ellipse(x * S, y * S, r * S, r * S * 1.2, 0.4, 0, Math.PI * 2);
+    ctx.ellipse(x * S, y * S, r * S, r * S * 1.25, 0.4, 0, Math.PI * 2);
     ctx.fill();
   }
   const t = _finishTex(c);
@@ -409,10 +413,13 @@ function makeEyeTexture(eyeColor) {
   // Toy-figure eye: the iris fills most of the visible ball (only a thin
   // sclera ring survives at the edges), with a big soft-slit pupil and two
   // bold catch-lights — the "vinyl collectible" look.
-  ctx.fillStyle = "#" + hex; // iris (big round — fills the eye)
+  // Darker rim ring first, then the iris inside it — the toy eye's depth.
+  ctx.fillStyle = "#" + col.clone().multiplyScalar(0.5).getHexString();
   ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.39, S * 0.44, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#" + hex; // iris (big round — fills the eye)
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.35, S * 0.4, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#141414"; // soft-slit pupil (the iris colour stays the star)
-  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.125, S * 0.24, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.14, S * 0.26, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.95)"; // double catch-light
   ctx.beginPath(); ctx.arc(cx - S * 0.09, cy - S * 0.14, S * 0.075, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(cx + S * 0.06, cy + S * 0.11, S * 0.04, 0, Math.PI * 2); ctx.fill();
@@ -655,6 +662,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const nose = new THREE.Mesh(noseGeo, pink);
   nose.position.set(0, -0.1, 0.97);
   headStatic.push(nose);
+  // Chin puff nestled under the lobe seam — completes the toy's lower face.
+  const chin = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), muzMat);
+  chin.position.set(0, -0.52, 0.62);
+  chin.scale.set(1.15, 0.75, 0.7);
+  headStatic.push(chin);
   // The "ω" smile — both strokes baked into one LineSegments (4 points → 2 segs).
   const mouthGeo = new THREE.BufferGeometry().setFromPoints([
     new THREE.Vector3(0, -0.22, 0.99), new THREE.Vector3(-0.15, -0.36, 0.92),
@@ -680,19 +692,24 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   glasses.visible = false;
   head.add(glasses);
 
-  // Whiskers on pivots (sweep with cornering) — three strokes per side baked into
-  // one LineSegments so each side is a single draw.
-  const whiskerMat = _cWhisker;
+  // Whiskers on pivots (sweep with cornering) — three real drooping strands
+  // per side (thin curved tubes, not hairline screen-space lines), baked into
+  // one mesh per side so each side stays a single draw.
   const whiskers = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.3, -0.24, 0.88);
     head.add(pivot);
-    const pts = [];
+    const strands = [];
     for (const dy of [-0.08, 0.0, 0.08]) {
-      pts.push(new THREE.Vector3(0, dy * 0.4, 0), new THREE.Vector3(sx * 0.62, dy - 0.03, 0.02));
+      const curve = new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(0, dy * 0.4, 0),
+        new THREE.Vector3(sx * 0.4, dy * 0.7 + 0.03, 0.05),
+        new THREE.Vector3(sx * 0.7, dy - 0.07, 0.0)
+      );
+      strands.push(new THREE.Mesh(new THREE.TubeGeometry(curve, 6, 0.013, 5), white));
     }
-    pivot.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), whiskerMat));
+    pivot.add(mergeMeshes(strands, { castShadow: false }));
     whiskers[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -1103,6 +1120,16 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     cross.rotation.z = Math.PI / 2;
     cross.position.set(0, 0.38, cz);
   }
+  // Front steering gear: a kingpin + tie rod per side connecting the frame to
+  // the front hubs — the exposed linkage that makes it read as a real kart.
+  for (const sx of [-1, 1]) {
+    const kingpin = add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.34, 8), frame));
+    kingpin.position.set(sx * 1.02, 0.5, 1.62);
+    const rod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.95, 8), frame));
+    rod.rotation.z = Math.PI / 2;
+    rod.rotation.y = sx * -0.25;
+    rod.position.set(sx * 0.55, 0.42, 1.44);
+  }
   // Front bumper: the wide black wrap bar with swept-back corner arms hugging
   // the nose, sitting low like the reference.
   const bumper = add(new THREE.Mesh(rbox(2.35, 0.32, 0.5, 0.24), dark));
@@ -1135,6 +1162,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const fairing = add(new THREE.Mesh(fairGeo, paint));
   fairing.position.set(0, 0.72, 1.98 - st.fair / 2);
   fairing.rotation.x = -0.2; // rises toward the column
+  // White swoosh band across the cowl's low front (the reference livery).
+  const swoosh = add(new THREE.Mesh(rbox(1.06, 0.18, 0.34, 0.06), stripe));
+  swoosh.position.set(0, 0.6, 1.78);
+  swoosh.rotation.x = -0.2;
   const numMat = sharedMat(`knum|${kartNumber}`, () =>
     new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
   // Roundel lying on the fairing's tilted upper face, reading up-and-forward.
@@ -1155,14 +1186,16 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     group.add(sideNum);
   }
   // Bucket seat: base + tall leaned-back shell whose side wings wrap FORWARD
-  // (attached flush to the back, not floating alongside).
-  const seatBase = add(new THREE.Mesh(rbox(1.1, 0.22, 1.05, 0.1), dark));
+  // (attached flush to the back, not floating alongside). Glossier than the
+  // matte trim — the reference seat reads as smooth moulded plastic.
+  const seatMat = sharedMat("kseat", () => new THREE.MeshStandardMaterial({ color: 0x17181c, roughness: 0.32 }));
+  const seatBase = add(new THREE.Mesh(rbox(1.1, 0.22, 1.05, 0.1), seatMat));
   seatBase.position.set(0, 0.64, -0.45);
-  const seatBack = add(new THREE.Mesh(rbox(1.16, 1.08, 0.28, 0.14), dark));
+  const seatBack = add(new THREE.Mesh(rbox(1.16, 1.08, 0.28, 0.14), seatMat));
   seatBack.position.set(0, 1.12, -1.02);
   seatBack.rotation.x = -0.14;
   for (const sx of [-1, 1]) {
-    const wing = add(new THREE.Mesh(rbox(0.24, 0.72, 0.5, 0.12), dark));
+    const wing = add(new THREE.Mesh(rbox(0.24, 0.72, 0.5, 0.12), seatMat));
     wing.position.set(sx * 0.55, 1.0, -0.86);
     wing.rotation.x = -0.14;
     wing.rotation.y = sx * -0.2; // curls forward around the driver
@@ -1192,20 +1225,35 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       spoke.quaternion.setFromUnitVectors(X, dir);
     }
   }
-  // Engine block on the right of the seat back + air box, and a fat muffler
-  // with a dark tip on the left — the classic kart's asymmetric rear.
+  // Engine block on the right of the seat back with a FINNED cylinder head
+  // (stacked cooling fins — the little detail that sells "engine"), an air
+  // box, a visible rear axle, and a fat round-ended muffler on the left fed
+  // by a curved header pipe — the classic kart's asymmetric rear.
   const block = add(new THREE.Mesh(rbox(0.62, 0.44, 0.62, 0.08), dark));
   block.position.set(0.52, 0.66, -1.62);
-  const head = add(new THREE.Mesh(rbox(0.42, 0.22, 0.44, 0.06), frame));
-  head.position.set(0.52, 0.98, -1.62);
+  for (let f = 0; f < 4; f++) {
+    const fin = add(new THREE.Mesh(rbox(0.5 - f * 0.03, 0.05, 0.52 - f * 0.03, 0.02), frame));
+    fin.position.set(0.52, 0.92 + f * 0.085, -1.62);
+  }
   const airbox = add(new THREE.Mesh(rbox(0.3, 0.3, 0.3, 0.1), frame));
-  airbox.position.set(0.2, 0.9, -1.9);
-  const muffler = add(new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.95, 12), chrome));
+  airbox.position.set(0.16, 0.88, -1.92);
+  // Rear axle tube spanning the frame behind the seat.
+  const axle = add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 2.5, 10), frame));
+  axle.rotation.z = Math.PI / 2;
+  axle.position.set(0, 0.64, -1.58);
+  // Header pipe: a quarter-torus curving down-and-left out of the block into
+  // the muffler's snout.
+  const header = add(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.055, 8, 10, Math.PI * 0.55), chrome));
+  header.position.set(0.1, 0.68, -1.66);
+  header.rotation.y = Math.PI / 2;
+  header.rotation.x = Math.PI;
+  // Muffler: a capsule (soft rounded ends like the toy) with a dark tip.
+  const muffler = add(new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.66, 4, 12), chrome));
   muffler.rotation.x = Math.PI / 2;
-  muffler.position.set(-0.6, 0.56, -1.95);
-  const muffTip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.12, 0.14, 12), dark));
+  muffler.position.set(-0.62, 0.56, -1.95);
+  const muffTip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.12, 10), dark));
   muffTip.rotation.x = Math.PI / 2;
-  muffTip.position.set(-0.6, 0.56, -2.48);
+  muffTip.position.set(-0.62, 0.56, -2.48);
   // Rear bumper bar.
   const rearBar = add(new THREE.Mesh(rbox(2.15, 0.22, 0.32, 0.11), dark));
   rearBar.position.set(0, 0.46, -2.35);
@@ -1299,10 +1347,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     return w;
   }
   const wheelDefs = [
-    [1.28, 1.62, 0.5, 0.46],
-    [-1.28, 1.62, 0.5, 0.46],
-    [1.36, -1.58, 0.64, 0.62],
-    [-1.36, -1.58, 0.64, 0.62],
+    [1.28, 1.62, 0.48, 0.42],
+    [-1.28, 1.62, 0.48, 0.42],
+    [1.38, -1.58, 0.66, 0.66],
+    [-1.38, -1.58, 0.66, 0.66],
   ];
   for (const [x, z, baseR, width] of wheelDefs) {
     const radius = baseR * st.tire;

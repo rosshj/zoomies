@@ -188,8 +188,8 @@ export class Kart {
     this.flames = flames; // boost exhaust flames; shown/flickered while boosting
     this.group.add(kart);
     const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor });
-    cat.scale.setScalar(0.62);
-    cat.position.set(0, 0.85, -0.35);
+    cat.scale.setScalar(0.66); // the toy reference's cat towers over its kart
+    cat.position.set(0, 0.82, -0.38);
     this.group.add(cat);
     this.catRig = cat.userData.rig;
 
