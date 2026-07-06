@@ -20,7 +20,7 @@ import {
 import { assetCatalog } from "./scenery.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
-import { loadCatGLB } from "./glbmodels.js";
+import { loadCatGLB, loadKartGLB } from "./glbmodels.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -59,6 +59,37 @@ const entries = [];
 // them; the game loads them in the background).
 const catGLB = await loadCatGLB().catch((e) => { console.warn("[viewer] cat.glb:", e.message); return null; });
 if (catGLB) entries.push({ group: "Imported (GLB)", name: "Cat — Tripo import", build: () => catGLB.clone() });
+const kartGLB = await loadKartGLB().catch((e) => { console.warn("[viewer] kart.glb:", e.message); return null; });
+if (kartGLB)
+  entries.push({
+    group: "Imported (GLB)",
+    name: "Kart — Tripo import",
+    build: () => {
+      // Clone shares geometry/materials; re-find the tagged parts inside the
+      // clone by matching names against the template's userData.
+      const obj = kartGLB.clone();
+      const names = kartGLB.userData.wheels.map((w) => w.name);
+      const wheels = names.map((n) => obj.getObjectByName(n));
+      const steering = obj.getObjectByName(kartGLB.userData.steering.name);
+      return {
+        object: obj,
+        // Same demo loop as the procedural karts: rolling wheels, front pair
+        // + steering wheel sweeping the steering range. GLB axles run along
+        // the part-local z, so roll is rotation.z (order YZX, steer outer).
+        animate: (t) => {
+          const steer = Math.sin(t * 0.9) * 0.4;
+          for (let j = 0; j < wheels.length; j++) {
+            const w = wheels[j];
+            if (!w) continue;
+            w.rotation.y = j < 2 ? steer : 0;
+            w.rotation.z = -t * 6;
+          }
+          if (steering) steering.rotation.x = steer * 1.4;
+        },
+        duration: Math.PI * 2 / 0.9,
+      };
+    },
+  });
 for (const p of CAT_PATTERNS)
   entries.push({ group: "Cats", name: `Cat — ${cap(p)}`, build: () => animatedCat(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {
