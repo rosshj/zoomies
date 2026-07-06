@@ -442,6 +442,7 @@ export function buildWorld(scene, track, opts = {}) {
 
   return {
     grass,
+    lakes, // water entries (level/floor/spine) — debug probes verify carve vs water level
     heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
     groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
@@ -677,7 +678,9 @@ function makeWaterMaterial(darken = 1) {
   const mat = new THREE.MeshStandardNodeMaterial({ transparent: true, side: THREE.DoubleSide });
   const shore = attribute("aShore");
   const len = attribute("aLen");
-  const deep = tslColor(0x1f6f8c).mul(darken);
+  // Deep water leans clearly BLUE: the old 0x1f6f8c teal picked up the green
+  // terrain under the 92%-opaque surface and read as swamp from above.
+  const deep = tslColor(0x2578ab).mul(darken);
   const shallow = tslColor(0x57c6d6).mul(darken);
   const foamCol = tslColor(0xeafcff).mul(0.4 + 0.6 * darken);
   const w1 = len.mul(40).add(shore.mul(8)).add(time.mul(1.4)).sin();
@@ -697,11 +700,15 @@ function makeWaterMaterial(darken = 1) {
   const fres = normalView.dot(positionViewDirection).clamp(0, 1).oneMinus().pow(3);
   const shoreFade = smoothstep(0.9, 0.7, shore);
   const skyTint = tslColor(0xcfe6f2).mul(0.4 + 0.6 * darken);
-  col = mix(col, skyTint, fres.mul(0.55).mul(shoreFade));
+  // The fresnel term goes to ~0 looking straight down, which left overhead
+  // views (track viewer, high camera sweeps) totally untinted — a flat murky
+  // slab. A small constant floor keeps a hint of sky in the water from every
+  // angle; grazing views still get the full effect on top.
+  col = mix(col, skyTint, fres.mul(0.5).add(0.12).mul(shoreFade));
   col = mix(col, foamCol, smoothstep(0.84, 0.995, shore));
   mat.colorNode = col;
   mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // tight sun glints; ripples shimmer them
-  mat.opacityNode = float(0.92);
+  mat.opacityNode = float(0.95); // a touch more opaque: the dark lake bed was muddying the colour
   // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
   // harmless no-op (animation is via `time`).
   mat.uniforms = { uTime: { value: 0 } };
@@ -741,12 +748,37 @@ function circleWaterMesh(L, mat) {
 // sample) with rounded end caps, so the water hugs the curve of the road.
 function ribbonWaterMesh(L, mat) {
   const sp = L.spine, half = L.waterR, n = sp.length;
+  // Edge polylines at ±half. On the inside of a bend tighter than the ribbon
+  // is wide, the raw offset points REVERSE direction (the offset curve
+  // self-intersects): the folded quads z-fight with themselves and smear
+  // bright shallow/foam colour across the middle of the lake as a striped
+  // "fan". Enforce monotone edges instead: any edge point that would step
+  // backwards against the spine's travel is welded to the previous edge
+  // point — the folded quads collapse to zero area (invisible), and the
+  // slight overreach past the true offset boundary hides under the bank,
+  // which rises above water level right there.
+  const edges = [[], []]; // [-side, +side], one {x, z, welded} per spine sample
+  for (const sgn of [-1, 1]) {
+    const e = edges[(sgn + 1) / 2];
+    for (let j = 0; j < n; j++) {
+      const s = sp[j];
+      e.push({ x: s.x + s.sx * sgn * half, z: s.z + s.sz * sgn * half, welded: false });
+    }
+    for (let j = 1; j < n; j++) {
+      const k = Math.min(j + 1, n - 1);
+      const tx = sp[k].x - sp[j - 1].x, tz = sp[k].z - sp[j - 1].z; // spine travel
+      if ((e[j].x - e[j - 1].x) * tx + (e[j].z - e[j - 1].z) * tz < 0) e[j] = { x: e[j - 1].x, z: e[j - 1].z, welded: true };
+    }
+  }
   const pos = [], shore = [], lenA = [], idx = [];
   for (let j = 0; j < n; j++) {
     const s = sp[j], u = j / (n - 1);
-    pos.push(s.x - s.sx * half, 0, s.z - s.sz * half); shore.push(1); lenA.push(u);
+    // Welded edge points sit INSIDE the water (at the fold pinch), so give
+    // them a shore value under the foam threshold — full shore=1 painted a
+    // white foam streak across the middle of the pinch.
+    pos.push(edges[0][j].x, 0, edges[0][j].z); shore.push(edges[0][j].welded ? 0.7 : 1); lenA.push(u);
     pos.push(s.x, 0, s.z); shore.push(0); lenA.push(u);
-    pos.push(s.x + s.sx * half, 0, s.z + s.sz * half); shore.push(1); lenA.push(u);
+    pos.push(edges[1][j].x, 0, edges[1][j].z); shore.push(edges[1][j].welded ? 0.7 : 1); lenA.push(u);
   }
   for (let j = 0; j < n - 1; j++) {
     const a = j * 3, b = (j + 1) * 3;
@@ -759,17 +791,48 @@ function ribbonWaterMesh(L, mat) {
     const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
     const c = pos.length / 3;
     pos.push(s.x, 0, s.z); shore.push(0); lenA.push(end === 0 ? 0 : 1);
-    const SEG = 8, start = c + 1;
-    for (let k = 0; k <= SEG; k++) {
-      const ang = (k / SEG) * Math.PI - Math.PI / 2;
-      const dx = Math.cos(ang) * tx + Math.sin(ang) * s.sx;
-      const dz = Math.cos(ang) * tz + Math.sin(ang) * s.sz;
-      pos.push(s.x + dx * half, 0, s.z + dz * half); shore.push(1); lenA.push(end === 0 ? 0 : 1);
+    // Radial RINGS so aShore grades across the cap the way it does across the
+    // ribbon body. The old single fan interpolated shore over whole
+    // half-width-sized triangles, so the cap rendered as one solid bright
+    // shallow disc with a hard seam against the dark body.
+    const SEG = 8, RINGS = 3;
+    const ringStart = [];
+    for (let r = 1; r <= RINGS; r++) {
+      ringStart[r] = pos.length / 3;
+      const f = r / RINGS;
+      for (let k = 0; k <= SEG; k++) {
+        const ang = (k / SEG) * Math.PI - Math.PI / 2;
+        const dx = Math.cos(ang) * tx + Math.sin(ang) * s.sx;
+        const dz = Math.cos(ang) * tz + Math.sin(ang) * s.sz;
+        pos.push(s.x + dx * half * f, 0, s.z + dz * half * f);
+        shore.push(f); lenA.push(end === 0 ? 0 : 1);
+      }
     }
-    for (let k = 0; k < SEG; k++) idx.push(c, start + k, start + k + 1);
+    for (let k = 0; k < SEG; k++) idx.push(c, ringStart[1] + k, ringStart[1] + k + 1);
+    for (let r = 1; r < RINGS; r++)
+      for (let k = 0; k < SEG; k++) {
+        const a = ringStart[r] + k, b = ringStart[r + 1] + k;
+        idx.push(a, b, a + 1, a + 1, b, b + 1);
+      }
   };
   cap(0, 1);
   cap(n - 1, n - 2);
+  // Enforce UPWARD-facing winding on every triangle. The spine's side vector
+  // flips handedness with the lake's infield sign (and each cap's outward
+  // tangent flips it again), so the raw winding faced DOWN on some lakes and
+  // caps. DoubleSide still drew those triangles, but the renderer flips the
+  // +Y vertex normals on backfaces and lit the water from BELOW — the whole
+  // lake rendered as a near-black slab (hemisphere ground light only), with
+  // bright shallow colour only on the odd cap/fold whose winding flipped
+  // back. The "sometimes odd" was literally which side of the road the
+  // lake's spine sat on.
+  for (let t = 0; t < idx.length; t += 3) {
+    const a = idx[t] * 3, b = idx[t + 1] * 3, c = idx[t + 2] * 3;
+    const abx = pos[b] - pos[a], abz = pos[b + 2] - pos[a + 2];
+    const acx = pos[c] - pos[a], acz = pos[c + 2] - pos[a + 2];
+    // (ab × ac).y < 0 → faces down → swap two indices to flip it up.
+    if (abz * acx - abx * acz < 0) { const k = idx[t + 1]; idx[t + 1] = idx[t + 2]; idx[t + 2] = k; }
+  }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   // The ribbon is flat (y=0 everywhere), so every normal is straight up. The lit

@@ -430,6 +430,7 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 Object.assign(window.__zoomies, { world, track });
 _boot.world = performance.now();
 
