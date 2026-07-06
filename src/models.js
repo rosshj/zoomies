@@ -512,32 +512,32 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const catStatic = [];
   const headStatic = [];
 
-  // Body (sitting torso) — a plump pear (wide hips, narrower shoulders) like a
-  // vinyl toy, painted pattern for tabbies/spotted cats.
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.88, 0.52, 6, 16), coat);
-  body.position.y = 0.94;
-  body.scale.set(0.98, 1.0, 0.94);
+  // Body (sitting torso) — a COMPACT egg, clearly narrower than the huge head
+  // (the reference toy is nearly all head; the body just peeks out under it).
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.72, 0.42, 6, 16), coat);
+  body.position.y = 0.9;
+  body.scale.set(1.0, 1.0, 0.92);
   catStatic.push(body);
-  // Haunches: big folded thighs at the hips, with oval feet poking out in
-  // front — the classic sitting-toy base. Hidden inside the seat well in a
-  // kart; they complete the silhouette in the garage/viewer.
+  // Haunches: folded thighs at the hips, with small oval feet poking out in
+  // front — the sitting-toy base. Hidden inside the seat well in a kart;
+  // they complete the silhouette in the garage/viewer.
   for (const sx of [-1, 1]) {
-    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.46, 14, 14), coat);
-    haunch.position.set(sx * 0.5, 0.44, 0.22);
-    haunch.scale.set(0.92, 0.86, 1.05);
+    const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), coat);
+    haunch.position.set(sx * 0.42, 0.38, 0.2);
+    haunch.scale.set(0.9, 0.82, 1.0);
     catStatic.push(haunch);
-    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 10), pawMat);
-    foot.position.set(sx * 0.42, 0.16, 0.72);
-    foot.scale.set(0.95, 0.7, 1.35);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10), pawMat);
+    foot.position.set(sx * 0.34, 0.14, 0.6);
+    foot.scale.set(0.95, 0.7, 1.3);
     catStatic.push(foot);
   }
 
   // Chest + belly fluff. Tuxedo/mitten cats get a big white bib; solid coats keep
   // the body colour (no bib); others get a soft pale chest.
   const chestMat = (isSolid || isTortie) ? fur : white;
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), chestMat);
-  chest.position.set(0, 0.76, 0.55);
-  chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.1 : 1.0, hasBib ? 0.6 : 0.52);
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.52, 16, 16), chestMat);
+  chest.position.set(0, 0.74, 0.44);
+  chest.scale.set(hasBib ? 0.95 : 0.82, hasBib ? 1.1 : 1.0, hasBib ? 0.6 : 0.52);
   catStatic.push(chest);
 
   // Front paws on the wheel. Each arm hangs off a shoulder pivot so it can be
@@ -546,22 +546,22 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const arms = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.5, 1.05, 0.45);
+    pivot.position.set(sx * 0.42, 1.14, 0.34); // high on the shoulders, tucked in
     cat.add(pivot);
     const parts = [];
-    // Stubby toy arms: chunky and short, ending in a fat round mitt.
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.21, 0.46, 4, 10), pawMat);
-    arm.position.set(0, 0, 0.15);
-    arm.rotation.x = -1.0;
+    // Stubby toy arms: short, hugging the chest, ending in a fat round mitt.
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.18, 0.34, 4, 10), pawMat);
+    arm.position.set(0, -0.02, 0.12);
+    arm.rotation.x = -1.15;
     parts.push(arm);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.26, 12, 12), pawMat);
-    paw.position.set(0, 0.15, 0.5);
-    paw.scale.set(1, 0.86, 1.02);
+    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.23, 12, 12), pawMat);
+    paw.position.set(0, 0.06, 0.42);
+    paw.scale.set(1, 0.88, 1.0);
     parts.push(paw);
     // Toe-bean detail: three little pink pads on the front of each mitt.
-    for (const tx of [-0.08, 0, 0.08]) {
-      const bean = new THREE.Mesh(new THREE.SphereGeometry(0.036, 6, 6), pink);
-      bean.position.set(tx, 0.1, 0.72);
+    for (const tx of [-0.07, 0, 0.07]) {
+      const bean = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pink);
+      bean.position.set(tx, 0.04, 0.62);
       parts.push(bean);
     }
     pivot.add(mergeMeshes(parts)); // one mesh per arm; the pivot still pumps it
@@ -571,7 +571,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // --- Head (animated for lean/pitch) — HUGE, the vinyl-toy ratio: nearly as
   // wide as the whole body, sitting low on the shoulders. ---
   const head = new THREE.Group();
-  head.position.set(0, 2.02, 0.12);
+  head.position.set(0, 1.9, 0.1); // sunk onto the shoulders — no neck, all head
   cat.add(head);
 
   // Wide, softly squashed skull — the toy's rounded-square face, not a balloon.
@@ -593,20 +593,25 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // bases sink into the skull so they grow out of the silhouette instead of
   // sitting on it. The inner ear is a darker fur tone (the loud pink pockets
   // read wrong on the toy). Point cats darken at the ear tips.
-  const earGeo = new THREE.ConeGeometry(0.56, 0.9, 6);
-  const innerGeo = new THREE.ConeGeometry(0.28, 0.55, 6);
+  // FLAT triangular panels (a squashed cone reads as a thick triangle, not a
+  // party hat) growing from the head's outer top corners so their outer edge
+  // continues the skull's silhouette line — exactly how the toy's ears sit.
+  const earGeo = new THREE.ConeGeometry(0.58, 0.88, 8);
+  earGeo.scale(1, 1, 0.42); // flatten front-to-back
+  const innerGeo = new THREE.ConeGeometry(0.3, 0.52, 8);
+  innerGeo.scale(1, 1, 0.42);
   const innerEarMat = hasMask ? extremity : (isTextured ? stripeMat : sharedMat(`cinner|${furHex}`, () => new THREE.MeshStandardMaterial({ color: pal.fur.clone().multiplyScalar(0.72), roughness: 0.92 })));
   const ears = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.58, 0.5, -0.04); // base buried in the crown
+    pivot.position.set(sx * 0.66, 0.42, -0.06); // base buried at the outer crown
     head.add(pivot);
     const ear = new THREE.Mesh(earGeo, extremity);
-    ear.position.y = 0.4;
-    ear.rotation.z = sx * -0.3; // tilted outward
+    ear.position.y = 0.38;
+    ear.rotation.z = sx * -0.34; // tilted outward, continuing the head outline
     const inner = new THREE.Mesh(innerGeo, innerEarMat);
-    inner.position.set(sx * 0.02, 0.38, 0.12);
-    inner.rotation.z = sx * -0.3;
+    inner.position.set(sx * 0.01, 0.36, 0.1);
+    inner.rotation.z = sx * -0.34;
     pivot.add(mergeMeshes([ear, inner])); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
@@ -615,9 +620,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // the texture): together they span most of the face, resting right on top of
   // the muzzle. Merged into the head like the rest.
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.36, 18, 18), eyeballMat);
-    eye.position.set(sx * 0.35, 0.14, 0.7);
-    eye.scale.set(0.92, 1.16, 0.56); // tall ovals, gently bulging off the face
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.37, 18, 18), eyeballMat);
+    eye.position.set(sx * 0.32, 0.08, 0.7); // close together, low on the face
+    eye.scale.set(0.92, 1.18, 0.56); // tall ovals, gently bulging off the face
     eye.rotation.y = sx * 0.05;
     headStatic.push(eye);
   }
@@ -630,7 +635,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const eyelids = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.37, 0.5, 0.68); // top edge of the eye
+    pivot.position.set(sx * 0.32, 0.46, 0.68); // top edge of the eye
     pivot.scale.y = 0;
     pivot.visible = false;
     const lid = new THREE.Mesh(new THREE.SphereGeometry(0.39, 14, 10), coat);
@@ -660,7 +665,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const noseGeo = new THREE.CylinderGeometry(0.13, 0.13, 0.06, 3);
   noseGeo.rotateX(Math.PI / 2); // axis along +z; the cross-section vertex swings to point DOWN
   const nose = new THREE.Mesh(noseGeo, pink);
-  nose.position.set(0, -0.1, 0.97);
+  nose.position.set(0, -0.16, 0.97);
   headStatic.push(nose);
   // Chin puff nestled under the lobe seam — completes the toy's lower face.
   const chin = new THREE.Mesh(new THREE.SphereGeometry(0.19, 12, 10), muzMat);
@@ -669,8 +674,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   headStatic.push(chin);
   // The "ω" smile — both strokes baked into one LineSegments (4 points → 2 segs).
   const mouthGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, -0.22, 0.99), new THREE.Vector3(-0.15, -0.36, 0.92),
-    new THREE.Vector3(0, -0.22, 0.99), new THREE.Vector3(0.15, -0.36, 0.92),
+    new THREE.Vector3(0, -0.28, 0.99), new THREE.Vector3(-0.15, -0.42, 0.92),
+    new THREE.Vector3(0, -0.28, 0.99), new THREE.Vector3(0.15, -0.42, 0.92),
   ]);
   head.add(new THREE.LineSegments(mouthGeo, _cMouth));
 
@@ -681,12 +686,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const shade = _cShade;
   const glassParts = [];
   for (const sx of [-1, 1]) {
-    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.32, 0.06), shade);
-    lens.position.set(sx * 0.37, 0.14, 0.92);
+    const lens = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.32, 0.06), shade);
+    lens.position.set(sx * 0.34, 0.1, 0.92);
     glassParts.push(lens);
   }
-  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.08, 0.05), shade);
-  bridge.position.set(0, 0.19, 0.92);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.08, 0.05), shade);
+  bridge.position.set(0, 0.15, 0.92);
   glassParts.push(bridge);
   glasses.add(mergeMeshes(glassParts));
   glasses.visible = false;
@@ -1105,9 +1110,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const frame = sharedMat("kframe", () => new THREE.MeshStandardMaterial({ color: 0x878c94, roughness: 0.55, metalness: 0.35 }));
   const shell = [];
   const add = (mesh) => { shell.push(mesh); return mesh; };
-  // Floor pan: low, flat, dark — the kart is built on it, not enclosed by it.
-  const pan = add(new THREE.Mesh(rbox(1.9, 0.16, 3.7, 0.08), dark));
-  pan.position.set(0, 0.42, 0.2);
+  // Floor pan: low, flat, THIN, narrow — the kart is built on it, not enclosed
+  // by it; most of the reference kart is open air.
+  const pan = add(new THREE.Mesh(rbox(1.6, 0.12, 3.9, 0.06), dark));
+  pan.position.set(0, 0.38, 0.2);
   // Frame tubes: two side rails + front/rear cross members, visible under and
   // around the pan.
   for (const sx of [-1, 1]) {
@@ -1130,58 +1136,59 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     rod.rotation.y = sx * -0.25;
     rod.position.set(sx * 0.55, 0.42, 1.44);
   }
-  // Front bumper: the wide black wrap bar with swept-back corner arms hugging
-  // the nose, sitting low like the reference.
-  const bumper = add(new THREE.Mesh(rbox(2.35, 0.32, 0.5, 0.24), dark));
-  bumper.position.set(0, 0.46, 2.82);
+  // Front bumper: a THIN black tube staple (capsule bar + two capsule
+  // returns), floating low ahead of the nose — the reference bumper is a
+  // slender tube, not a slab.
+  const fBar = add(new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 2.0, 4, 10), dark));
+  fBar.rotation.z = Math.PI / 2;
+  fBar.position.set(0, 0.42, 2.9);
   for (const sx of [-1, 1]) {
-    // Straight side returns hugging the nose panel (angled arms read clunky).
-    const arm = add(new THREE.Mesh(rbox(0.3, 0.3, 0.9, 0.15), dark));
-    arm.position.set(sx * 1.03, 0.46, 2.42);
+    const ret = add(new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.55, 4, 10), dark));
+    ret.rotation.x = Math.PI / 2;
+    ret.position.set(sx * 1.0, 0.42, 2.55);
   }
   // Nose panel just behind the bar: white with a paint band over the top —
-  // the reference's white/red front.
-  const bPanel = add(new THREE.Mesh(rbox(1.7, 0.3, 0.72, 0.12), stripe));
-  bPanel.position.set(0, 0.5, 2.32);
-  const bBand = add(new THREE.Mesh(rbox(1.72, 0.16, 0.74, 0.07), paint));
-  bBand.position.set(0, 0.64, 2.32);
+  // the reference's white/red front. Slimmer than the bumper span.
+  const bPanel = add(new THREE.Mesh(rbox(1.4, 0.26, 0.6, 0.1), stripe));
+  bPanel.position.set(0, 0.46, 2.38);
+  const bBand = add(new THREE.Mesh(rbox(1.42, 0.14, 0.62, 0.06), paint));
+  bBand.position.set(0, 0.58, 2.38);
   // Nose fairing: ONE moulded cowl sweeping from the bumper panel up to the
   // steering column — a rounded box tapered per-vertex (wide low front,
   // narrow raised rear) so it reads as a single smooth wedge, not stacked
   // slabs. Length varies by style.
-  const fairGeo = rbox(1.0, 0.42, st.fair, 0.2);
+  const fairGeo = rbox(0.7, 0.3, st.fair + 0.3, 0.14);
   {
     const p = fairGeo.attributes.position;
+    const L = st.fair + 0.3;
     for (let v = 0; v < p.count; v++) {
-      const t = p.getZ(v) / st.fair + 0.5; // 0 rear .. 1 front
-      p.setX(v, p.getX(v) * (0.68 + t * 0.5)); // widen toward the front
-      p.setY(v, p.getY(v) * (1 - t * 0.35)); // thin toward the front
+      const t = p.getZ(v) / L + 0.5; // 0 rear .. 1 front
+      p.setX(v, p.getX(v) * (0.72 + t * 0.42)); // widen a little toward the front
+      p.setY(v, p.getY(v) * (1 - t * 0.3)); // thin toward the front
     }
     fairGeo.computeVertexNormals();
   }
   const fairing = add(new THREE.Mesh(fairGeo, paint));
-  fairing.position.set(0, 0.72, 1.98 - st.fair / 2);
-  fairing.rotation.x = -0.2; // rises toward the column
-  // White swoosh band across the cowl's low front (the reference livery).
-  const swoosh = add(new THREE.Mesh(rbox(1.06, 0.18, 0.34, 0.06), stripe));
-  swoosh.position.set(0, 0.6, 1.78);
-  swoosh.rotation.x = -0.2;
+  fairing.position.set(0, 0.68, 2.1 - (st.fair + 0.3) / 2);
+  fairing.rotation.x = -0.16; // long, low rise toward the column
   const numMat = sharedMat(`knum|${kartNumber}`, () =>
     new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
   // Roundel lying on the fairing's tilted upper face, reading up-and-forward.
-  const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.78), numMat);
-  roundel.position.set(0, 0.94, 1.95 - st.fair / 2 + 0.1);
-  roundel.rotation.x = -Math.PI / 2 + 0.22;
+  const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.58), numMat);
+  roundel.position.set(0, 0.84, 2.1 - (st.fair + 0.3) / 2 + 0.12);
+  roundel.rotation.x = -Math.PI / 2 + 0.16;
   group.add(roundel);
   // Side pods: paint boxes between the wheels with a white lower band, plus a
   // numbered roundel facing outward (identifies rivals at a glance mid-race).
   for (const sx of [-1, 1]) {
-    const pod = add(new THREE.Mesh(rbox(0.54, 0.36, 2.35, 0.17), paint));
-    pod.position.set(sx * 1.08, 0.57, 0.1);
-    const band = add(new THREE.Mesh(rbox(0.56, 0.16, 2.37, 0.08), stripe));
-    band.position.set(sx * 1.08, 0.36, 0.1);
-    const sideNum = new THREE.Mesh(new THREE.PlaneGeometry(0.56, 0.56), numMat);
-    sideNum.position.set(sx * 1.36, 0.6, 0.2);
+    // Long SLIM pods riding low — the reference pods are shallow trays, not
+    // fat boxes.
+    const pod = add(new THREE.Mesh(rbox(0.46, 0.28, 2.55, 0.13), paint));
+    pod.position.set(sx * 1.06, 0.5, 0.1);
+    const band = add(new THREE.Mesh(rbox(0.48, 0.14, 2.57, 0.07), stripe));
+    band.position.set(sx * 1.06, 0.33, 0.1);
+    const sideNum = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.46), numMat);
+    sideNum.position.set(sx * 1.3, 0.52, 0.2);
     sideNum.rotation.y = sx * Math.PI / 2; // face outward (±X)
     group.add(sideNum);
   }
@@ -1254,9 +1261,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const muffTip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.12, 10), dark));
   muffTip.rotation.x = Math.PI / 2;
   muffTip.position.set(-0.62, 0.56, -2.48);
-  // Rear bumper bar.
-  const rearBar = add(new THREE.Mesh(rbox(2.15, 0.22, 0.32, 0.11), dark));
-  rearBar.position.set(0, 0.46, -2.35);
+  // Rear bumper: a thin tube like the front.
+  const rearBar = add(new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 1.9, 4, 10), dark));
+  rearBar.rotation.z = Math.PI / 2;
+  rearBar.position.set(0, 0.42, -2.42);
 
   // Rear aero varies by style (the reference GP kart runs clean — no wing).
   if (st.wing === "lip") {
@@ -1310,8 +1318,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     color: 0x6e0d0d, emissive: 0xff2a1e, emissiveIntensity: 0.25, roughness: 0.5,
   });
   for (const sx of [-1, 1]) {
-    const tl = new THREE.Mesh(rbox(0.36, 0.2, 0.14, 0.06), brakeMat);
-    tl.position.set(sx * 0.78, 0.5, -2.46); // on the rear bumper bar
+    const tl = new THREE.Mesh(rbox(0.3, 0.16, 0.12, 0.05), brakeMat);
+    tl.position.set(sx * 0.72, 0.56, -2.4); // riding the rear bumper tube
     group.add(tl);
   }
 
@@ -1347,10 +1355,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     return w;
   }
   const wheelDefs = [
-    [1.28, 1.62, 0.48, 0.42],
-    [-1.28, 1.62, 0.48, 0.42],
-    [1.38, -1.58, 0.66, 0.66],
-    [-1.38, -1.58, 0.66, 0.66],
+    [1.3, 1.72, 0.46, 0.4],
+    [-1.3, 1.72, 0.46, 0.4],
+    [1.42, -1.62, 0.68, 0.68],
+    [-1.42, -1.62, 0.68, 0.68],
   ];
   for (const [x, z, baseR, width] of wheelDefs) {
     const radius = baseR * st.tire;
