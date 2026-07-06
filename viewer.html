@@ -110,6 +110,21 @@
     }
     #spin-btn.on { border-color: #ffd54f; color: #ffd54f; }
     .hidden { display: none !important; }
+    /* Game-look toggle (top-right). Gold when the cel shading is active. */
+    #look-btn {
+      position: absolute;
+      right: 12px;
+      top: 10px;
+      z-index: 5;
+      padding: 7px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(10, 14, 25, 0.72);
+      color: #eef1f8;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #look-btn.on { border-color: #ffd54f; color: #ffd54f; }
     /* Animation transport (play/pause + scrubber), centred above the info bar. */
     #anim-bar {
       position: absolute;
@@ -173,6 +188,9 @@
   </aside>
   <main id="main">
     <button id="side-toggle">☰ Assets</button>
+    <!-- Raw studio materials vs the game's cel shading (the exact toon
+         conversion main.js applies at boot — see src/toon.js). -->
+    <button id="look-btn" title="Toggle the game's cel shading">🎮 Game look</button>
     <button id="spin-btn" class="on" aria-label="Pause spin" title="Play/pause auto-spin">⏸</button>
     <!-- Animation transport: shown only for assets that move in-game.
          Play/pause + a scrubber over one loop of the asset's animation. -->

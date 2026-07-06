@@ -19,6 +19,7 @@ import {
 } from "./models.js";
 import { assetCatalog } from "./scenery.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
+import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -175,6 +176,43 @@ canvas.addEventListener("wheel", (e) => {
 }, { passive: false });
 const clampR = (r) => Math.max(orbit.minR, Math.min(orbit.maxR, r));
 
+// --- "Game look": the exact cel-shading conversion the game applies at boot
+// (src/toon.js) vs the raw studio materials. Originals are stashed per mesh so
+// the toggle swaps back and forth without rebuilding; the toon twins come from
+// toon.js's shared cache, exactly like in-game.
+const lookBtn = document.getElementById("look-btn");
+let gameLook = false;
+function applyLook() {
+  if (!current) return;
+  current.traverse((o) => {
+    if (!o.material) return;
+    if (gameLook) {
+      if (!o.userData._rawMat) o.userData._rawMat = o.material;
+      const raw = o.userData._rawMat;
+      o.material = Array.isArray(raw) ? raw.map(toToon) : toToon(raw);
+    } else if (o.userData._rawMat) {
+      o.material = o.userData._rawMat;
+    }
+  });
+}
+// Restore raw materials so disposal sees what the builder created (the toon
+// twins live in toon.js's cache keyed by the raw material — dropping the raw
+// frees both).
+function restoreRawMaterials(root) {
+  root.traverse((o) => {
+    if (o.userData._rawMat) o.material = o.userData._rawMat;
+  });
+}
+lookBtn.addEventListener("click", () => {
+  gameLook = !gameLook;
+  lookBtn.classList.toggle("on", gameLook);
+  // A warm midday-ish sun tint for the rim/backlight/paint-glint terms (the
+  // game feeds these from the live mood each frame).
+  uSunColNode.value.set(gameLook ? 0xffe6b0 : 0x000000);
+  if (gameLook) uSunColNode.value.multiplyScalar(0.6);
+  applyLook();
+});
+
 const spinBtn = document.getElementById("spin-btn");
 function refreshSpinBtn() {
   spinBtn.classList.toggle("on", autoSpin);
@@ -222,6 +260,7 @@ window.addEventListener("pointerup", () => { scrubbing = false; });
 function show(entry) {
   if (current) {
     scene.remove(current);
+    restoreRawMaterials(current); // dispose what the builder created, not the toon twins
     disposeGroup(current); // shared (cached) materials are skipped
     current = null;
   }
@@ -258,6 +297,7 @@ function show(entry) {
 
   scene.add(obj);
   current = obj;
+  if (gameLook) applyLook();
 
   let meshes = 0, tris = 0;
   obj.traverse((o) => {
@@ -316,10 +356,17 @@ entries[0]?._btn?.click();
 // Frame loop
 // ---------------------------------------------------------------------------
 let last = performance.now();
+const _sunTravel = new THREE.Vector3();
 renderer.setAnimationLoop((now) => {
   const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (autoSpin && pointers.size === 0) orbit.theta += dt * 0.4;
+  if (gameLook) {
+    // Keep the toon rim/backlight sun in view space, like updateAtmosphere
+    // does in-game: the key light stands in for the sun.
+    _sunTravel.copy(key.position).normalize().negate().transformDirection(camera.matrixWorldInverse);
+    uSunViewNode.value.copy(_sunTravel);
+  }
   if (curAnim) {
     if (animPlaying && !scrubbing) {
       animT = (animT + dt) % animDur;
