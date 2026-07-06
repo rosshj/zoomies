@@ -20,6 +20,7 @@ import {
 import { assetCatalog } from "./scenery.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
+import { loadCatGLB } from "./glbmodels.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -54,6 +55,10 @@ function animatedCat(fur, opts) {
 }
 
 const entries = [];
+// Imported GLB hero models lead the list when present (viewer boot waits for
+// them; the game loads them in the background).
+const catGLB = await loadCatGLB().catch((e) => { console.warn("[viewer] cat.glb:", e.message); return null; });
+if (catGLB) entries.push({ group: "Imported (GLB)", name: "Cat — Tripo import", build: () => catGLB.clone() });
 for (const p of CAT_PATTERNS)
   entries.push({ group: "Cats", name: `Cat — ${cap(p)}`, build: () => animatedCat(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {
