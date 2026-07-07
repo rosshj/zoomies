@@ -166,12 +166,15 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
             });
             if (h) {
               hn.copy(h.face.normal).transformDirection(h.object.matrixWorld);
-              v.copy(h.point).addScaledVector(hn, 0.035);
+              // Sit the sticker just off the paint — polygonOffset handles the
+              // z-fight, so this only needs to clear the cowl's facet bumps. A
+              // bigger lift (was 0.035) read as a coin floating above the nose.
+              v.copy(h.point).addScaledVector(hn, 0.012);
               lastGood[jTheta] = v.clone();
             } else if (lastGood[jTheta]) {
               v.copy(lastGood[jTheta]); // off the silhouette: collapse the rim
             } else {
-              v.addScaledVector(n, -0.5 + 0.035);
+              v.addScaledVector(n, -0.5 + 0.012);
             }
             pos.setXYZ(i, v.x, v.y, v.z);
           }

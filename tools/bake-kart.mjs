@@ -258,52 +258,13 @@ for (const node of hi.getRoot().listNodes()) {
   // 1) simplify
   const S = simplifyCanonical(oPos, oIdx, budget.tris);
 
-  // 1b) Chassis: drop the interior shell. Tripo models carry a full inner
-  // shell a few mm under the skin; after decimation the two interpenetrate
-  // and z-fight, which shreds every clean paint boundary into hairy fringes
-  // (inner and outer skins straddle the cut and alternate per pixel).
-  // Interior faces sit inside a millimetres-thin wall cavity, so a short
-  // hemisphere occlusion probe (5 rays, 4cm reach) finds them boxed in from
-  // every direction — while legitimately concave exteriors (seat bucket,
-  // bumper trough) always have centimetres of open sky on some ray. Wheels
-  // are immune (the rotational profile paints both shells alike).
-  if (isChassis) {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(S.pos.slice(), 3));
-    g.setIndex(new THREE.BufferAttribute(S.idx.slice(), 1));
-    const selfBvh = new MeshBVH(g);
-    const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3();
-    const tri = new THREE.Triangle(), n = new THREE.Vector3();
-    const t1 = new THREE.Vector3(), t2 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
-    const ray = new THREE.Ray();
-    const OPEN = 0.04;
-    const triN = S.idx.length / 3;
-    const kept = [];
-    let dropped = 0;
-    for (let t = 0; t < triN; t++) {
-      const a = S.idx[t * 3], b = S.idx[t * 3 + 1], c = S.idx[t * 3 + 2];
-      va.fromArray(S.pos, a * 3); vb.fromArray(S.pos, b * 3); vc.fromArray(S.pos, c * 3);
-      tri.set(va, vb, vc);
-      tri.getNormal(n);
-      t1.crossVectors(n, Math.abs(n.y) < 0.9 ? up : va).normalize();
-      t2.crossVectors(n, t1);
-      ray.origin.copy(va).add(vb).add(vc).multiplyScalar(1 / 3).addScaledVector(n, 0.002);
-      let open = false;
-      for (const [wn, wt1, wt2] of [[1, 0, 0], [0.707, 0.707, 0], [0.707, -0.707, 0], [0.707, 0, 0.707], [0.707, 0, -0.707]]) {
-        ray.direction.set(
-          n.x * wn + t1.x * wt1 + t2.x * wt2,
-          n.y * wn + t1.y * wt1 + t2.y * wt2,
-          n.z * wn + t1.z * wt1 + t2.z * wt2,
-        );
-        const h = selfBvh.raycastFirst(ray, THREE.DoubleSide);
-        if (!h || h.distance > OPEN) { open = true; break; }
-      }
-      if (!open) { dropped++; continue; }
-      kept.push(a, b, c);
-    }
-    S.idx = new Uint32Array(kept);
-    console.log(`${name}: interior-shell cull dropped ${dropped}/${triN} tris`);
-  }
+  // (No interior-shell cull: a ray-crossing census of the source chassis
+  // showed it's mostly ONE hollow skin, with genuine double walls only where
+  // the geometry really is double — seat bucket, hollow pods, frame tubes.
+  // The old occlusion cull couldn't tell those from a spurious inner shell,
+  // so it punched holes through thin walls while barely denting the fringe.
+  // The fringe was never a stray shell anyway — it was the 3D colour vote
+  // bleeding across surface gaps, fixed at its source in step 3c below.)
   const nrm = smoothNormals(S.pos, S.idx);
 
   // 2) unwrap: paired-triangle grid atlas
@@ -606,68 +567,21 @@ for (const node of hi.getRoot().listNodes()) {
     out[o] = CLS[cls][0]; out[o + 1] = CLS[cls][1]; out[o + 2] = CLS[cls][2];
   };
   if (isChassis) {
-    const paintOK = (x, y, z) => inPod(x, y, z) || (x > LIV.XFRONT && Math.abs(z) < LIV.ZPAINT);
-    // --- cell vote
-    const HV = 0.004, RV = 0.025, PASSES = 10;
-    const cells = new Map(); // key -> {n,x,y,z,nx,ny,nz,hist,cls,paint}
-    const ckey = (i, j, k) => `${i},${j},${k}`;
-    for (let i = 0; i < nRec; i++) {
-      const x = recs[i * 7], y = recs[i * 7 + 1], z = recs[i * 7 + 2];
-      const key = ckey(Math.floor(x / HV), Math.floor(y / HV), Math.floor(z / HV));
-      let c = cells.get(key);
-      if (!c) cells.set(key, (c = { n: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, hist: [0, 0, 0, 0], cls: DARK }));
-      c.n++; c.x += x; c.y += y; c.z += z;
-      c.nx += recs[i * 7 + 3]; c.ny += recs[i * 7 + 4]; c.nz += recs[i * 7 + 5];
-      c.hist[texClass(i)]++;
-    }
-    for (const c of cells.values()) {
-      c.x /= c.n; c.y /= c.n; c.z /= c.n;
-      const nl = Math.hypot(c.nx, c.ny, c.nz) || 1;
-      c.nx /= nl; c.ny /= nl; c.nz /= nl;
-      c.paint = paintOK(c.x, c.y, c.z);
-      let best = c.paint ? 0 : FRAME, bv = -1;
-      for (let q = c.paint ? 0 : FRAME; q < 4; q++) if (c.hist[q] > bv) { bv = c.hist[q]; best = q; }
-      c.cls = best;
-    }
-    const RC = Math.ceil(RV / HV);
-    const G2 = 1 / (2 * (RV / 2) ** 2);
-    for (let pass = 0; pass < PASSES; pass++) {
-      const next = [];
-      let flips = 0;
-      for (const [key, c] of cells) {
-        const [i, j, k] = key.split(",").map(Number);
-        const acc = [0, 0, 0, 0];
-        for (let di = -RC; di <= RC; di++) for (let dj = -RC; dj <= RC; dj++) for (let dk = -RC; dk <= RC; dk++) {
-          const nb = cells.get(ckey(i + di, j + dj, k + dk));
-          if (!nb) continue;
-          const dot = c.nx * nb.nx + c.ny * nb.ny + c.nz * nb.nz;
-          if (dot < 0.2) continue;
-          const d2 = (nb.x - c.x) ** 2 + (nb.y - c.y) ** 2 + (nb.z - c.z) ** 2;
-          if (d2 > RV * RV) continue;
-          acc[nb.cls] += nb.n * Math.exp(-d2 * G2) * dot;
-        }
-        let best = c.paint ? 0 : FRAME, bv = -1;
-        for (let q = c.paint ? 0 : FRAME; q < 4; q++) if (acc[q] > bv) { bv = acc[q]; best = q; }
-        if (best !== c.cls) flips++;
-        next.push([c, best]);
-      }
-      for (const [c, cls] of next) c.cls = cls;
-      console.log(`${name}: livery vote pass ${pass}: ${flips} cell flips`);
-      if (!flips) break;
-    }
-    // --- per-texel: overrides else interpolated vote field. One-cell reach
-    // only: a wider kernel leaks classes across nearby unrelated surfaces
-    // (seat side picking up the white floor boxes 8mm away).
+    // Paint (red/white) is stamped PURELY from geometry — solid zones with
+    // anti-aliased cut lines — so there is NO per-texel colour vote that can
+    // bleed one region into another. Grey frame vs dark seat/engine keep
+    // their clean per-texel classification (step 3b already killed in-cell
+    // noise). The earlier 3D vote is gone: it dragged frame grey into the
+    // seat (and back) wherever two separate surfaces passed within a cell,
+    // which was the "hairy" fringing on the seat and rails.
     //
-    // Geometric cuts are ANTI-ALIASED over ~1 texel: a hard texel-quantized
-    // boundary staircases by ±1 texel (0.9mm), and on view-tangent surfaces
-    // (the cowl-base flare) foreshortening magnifies that into long visible
-    // hairs. A 1-texel blend band lets bilinear filtering draw the cut as
-    // one smooth line from any angle. (The runtime hue-swap recolors blends
-    // correctly — red-dominance is a continuous mask.)
-    const SIG2 = 1 / (2 * (0.9 * HV) ** 2);
-    const W_AA = 0.0022; // half-width of the blend band (~2.4 texels)
-    const CUT = LIV.PLATE.y1; // the waterline height (== COWL.y)
+    // Cuts are anti-aliased over ~2 texels: a hard texel-quantised boundary
+    // staircases by ±1 texel and grazing views magnify that into visible
+    // hairs; a blend band lets bilinear filtering draw one smooth line. The
+    // runtime hue-swap recolours blends correctly (red-dominance is
+    // continuous).
+    const W_AA = 0.0022;       // blend half-width (~2.4 texels)
+    const CUT = LIV.PLATE.y1;  // waterline height (== COWL.y)
     const writeMix = (i, a, b, t) => {
       const o = recs[i * 7 + 6] * 4;
       out[o] = Math.round(CLS[a][0] + (CLS[b][0] - CLS[a][0]) * t);
@@ -708,25 +622,19 @@ for (const node of hi.getRoot().listNodes()) {
         }
       }
       if (blended) { painted++; continue; }
-      if (cls < 0) {
-        // vote field: Gaussian-interpolated class masses from nearby cells
-        const bi = Math.floor(x / HV), bj = Math.floor(y / HV), bk = Math.floor(z / HV);
-        const acc = [0, 0, 0, 0];
-        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
-          const nb = cells.get(ckey(bi + di, bj + dj, bk + dk));
-          if (!nb) continue;
-          if (nx * nb.nx + ny * nb.ny + nz * nb.nz < 0.2) continue;
-          const d2 = (nb.x - x) ** 2 + (nb.y - y) ** 2 + (nb.z - z) ** 2;
-          acc[nb.cls] += nb.n * Math.exp(-d2 * SIG2);
-        }
-        let bv = 0;
-        for (let q = 0; q < 4; q++) if (acc[q] > bv) { bv = acc[q]; cls = q; }
-        if (cls < 0) continue; // no cells in range: keep the classified color
-      } else painted++;
+      if (cls < 0) continue; // grey/dark structure: keep the clean classified value
       writeClass(i, cls);
+      painted++;
     }
-    console.log(`${name}: livery override painted ${painted} texels, vote-smoothed ${nRec - painted}`);
-  } else if (name !== "tripo_part_2") {
+    console.log(`${name}: livery stamped ${painted}/${nRec} texels (rest = classified grey/dark)`);
+  } else if (name === "tripo_part_2") {
+    // Steering wheel: a toy kart's wheel is uniformly black. Tripo painted
+    // its spokes/hub a noisy silver that classified into blotchy grey, so
+    // force the whole part flat dark — one clean moulded piece; the cel
+    // shader still models the rim and spokes from geometry.
+    for (let i = 0; i < nRec; i++) writeClass(i, DARK);
+    console.log(`${name}: forced flat dark (${nRec} texels)`);
+  } else {
     // Road wheels are bodies of revolution about their (local z) axle: snap
     // every texel to the majority class of its (radius, axle-z) profile bin.
     // Tread chevron noise and ragged rim-ring edges average into perfect
