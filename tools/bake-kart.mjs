@@ -20,9 +20,18 @@
 //      shells) -> 5-tap smoothed sample of the original basecolor ->
 //      CLASSIFY into the flat toy palette (red paint / white trim / frame
 //      grey / dark) — crisp lines, zero painterly streaking
-//   3b/3c. per-cell mode filter + a 3D red/white paint vote clean up
-//      threshold noise and Tripo's paint-spill smudges; the baked nose "7"
-//      is erased outright (the game mounts a crisp procedural decal there)
+//   3b. per-cell mode filter cleans in-cell threshold noise
+//   3c. GEOMETRIC LIVERY: Tripo's airbrushed paint boundaries threshold into
+//      ragged red/white mottle no local filter can fix (they're features, not
+//      noise). Instead the livery is re-authored clean on the real geometry:
+//      a normal-aware 3D voxel-cell majority vote hardens every surface to
+//      its dominant class (paint classes only allowed in authorized zones),
+//      then hard geometric overrides stamp the design: solid red cowl, white
+//      crown band / dark outer face / red inner wall on the bumper (normal +
+//      silhouette-depth contours), red pods with a white inset side panel,
+//      and rotational profile snapping makes the wheels perfectly
+//      axisymmetric. The baked nose "7" is erased outright (the game mounts
+//      a crisp procedural decal there).
 //   4. dilate cell edges into the gutters; lossless palette PNG output
 //
 // Output: same 6-node layout (names + pivots preserved for loadKartGLB),
@@ -179,6 +188,18 @@ const PALETTE = {
   frame: [92, 92, 96],
   dark: [42, 42, 45],
 };
+const CLS = [PALETTE.red, PALETTE.white, PALETTE.frame, PALETTE.dark];
+const RED = 0, WHITE = 1, FRAME = 2, DARK = 3;
+const clsOfRGB = (r, g, b) => {
+  // exact palette lookup (every written texel is a palette color)
+  for (let i = 0; i < 4; i++) if (CLS[i][0] === r && CLS[i][1] === g && CLS[i][2] === b) return i;
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < 4; i++) {
+    const d = (r - CLS[i][0]) ** 2 + (g - CLS[i][1]) ** 2 + (b - CLS[i][2]) ** 2;
+    if (d < bd) { bd = d; best = i; }
+  }
+  return best;
+};
 function classify(rgb, redAllowed = true) {
   const [r, g, b] = rgb;
   if (redAllowed && r - Math.max(g, b) > 25) return PALETTE.red;
@@ -187,6 +208,30 @@ function classify(rgb, redAllowed = true) {
   if (luma > 60) return PALETTE.frame;
   return PALETTE.dark;
 }
+
+// --- Livery geometry (chassis-local coords, nose +x, measured off the hi-res
+// source; the chassis is ~1.0 long). Paint (red/white) is only authorized in
+// these zones — everywhere else the surface votes between frame and dark,
+// which kills Tripo's paint-spill on the seat, rails and rear boxes.
+const LIV = {
+  XFRONT: 0.135,      // front region starts (bumper/cowl/plate territory)
+  ARC_CX: 0.18,       // plan polar center for the bumper silhouette table
+  ARC_RMIN: 0.34,     // silhouette radius that counts as "bumper arc"
+  D_TUBE: 0.095,      // bumper tube depth: crown white / rest dark inside this
+  NY_UP: 0.3,         // up-facing normal split (crown/plate vs faces)
+  PLATE: { y0: -0.062, y1: 0.008 }, // white plate height band (up-facing)
+  ZPAINT: 0.17,       // vote may paint red/white only this close to centre
+  COWL: { x0: 0.145, x1: 0.52, z: 0.14, y: 0.008 },
+  POD: { z: 0.2, x0: -0.115, x1: 0.155, y0: -0.105, y1: 0.055 },
+  // Panel edges sit on the pod's FLAT outer face: a cut that runs along the
+  // coarse top-edge roundover tears (the y iso-contour zigzags across bumpy
+  // simplified triangles).
+  PANEL: { x0: -0.04, x1: 0.13, y0: -0.062, y1: 0.005, nz: 0.45 },
+};
+const inPod = (x, y, z) =>
+  Math.abs(z) >= LIV.POD.z && x >= LIV.POD.x0 && x <= LIV.POD.x1 && y >= LIV.POD.y0 && y <= LIV.POD.y1;
+const inCowl = (x, y, z) =>
+  Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1 && y > LIV.COWL.y;
 
 // ---------------------------------------------------------------------------
 const outDoc = new Document();
@@ -208,9 +253,57 @@ for (const node of hi.getRoot().listNodes()) {
   const oUV = prim.getAttribute("TEXCOORD_0").getArray();
   const oIdx = prim.getIndices().getArray();
   const img = await decodeTexture(prim.getMaterial());
+  const isChassis = name === "tripo_part_19";
 
   // 1) simplify
   const S = simplifyCanonical(oPos, oIdx, budget.tris);
+
+  // 1b) Chassis: drop the interior shell. Tripo models carry a full inner
+  // shell a few mm under the skin; after decimation the two interpenetrate
+  // and z-fight, which shreds every clean paint boundary into hairy fringes
+  // (inner and outer skins straddle the cut and alternate per pixel).
+  // Interior faces sit inside a millimetres-thin wall cavity, so a short
+  // hemisphere occlusion probe (5 rays, 4cm reach) finds them boxed in from
+  // every direction — while legitimately concave exteriors (seat bucket,
+  // bumper trough) always have centimetres of open sky on some ray. Wheels
+  // are immune (the rotational profile paints both shells alike).
+  if (isChassis) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(S.pos.slice(), 3));
+    g.setIndex(new THREE.BufferAttribute(S.idx.slice(), 1));
+    const selfBvh = new MeshBVH(g);
+    const va = new THREE.Vector3(), vb = new THREE.Vector3(), vc = new THREE.Vector3();
+    const tri = new THREE.Triangle(), n = new THREE.Vector3();
+    const t1 = new THREE.Vector3(), t2 = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    const ray = new THREE.Ray();
+    const OPEN = 0.04;
+    const triN = S.idx.length / 3;
+    const kept = [];
+    let dropped = 0;
+    for (let t = 0; t < triN; t++) {
+      const a = S.idx[t * 3], b = S.idx[t * 3 + 1], c = S.idx[t * 3 + 2];
+      va.fromArray(S.pos, a * 3); vb.fromArray(S.pos, b * 3); vc.fromArray(S.pos, c * 3);
+      tri.set(va, vb, vc);
+      tri.getNormal(n);
+      t1.crossVectors(n, Math.abs(n.y) < 0.9 ? up : va).normalize();
+      t2.crossVectors(n, t1);
+      ray.origin.copy(va).add(vb).add(vc).multiplyScalar(1 / 3).addScaledVector(n, 0.002);
+      let open = false;
+      for (const [wn, wt1, wt2] of [[1, 0, 0], [0.707, 0.707, 0], [0.707, -0.707, 0], [0.707, 0, 0.707], [0.707, 0, -0.707]]) {
+        ray.direction.set(
+          n.x * wn + t1.x * wt1 + t2.x * wt2,
+          n.y * wn + t1.y * wt1 + t2.y * wt2,
+          n.z * wn + t1.z * wt1 + t2.z * wt2,
+        );
+        const h = selfBvh.raycastFirst(ray, THREE.DoubleSide);
+        if (!h || h.distance > OPEN) { open = true; break; }
+      }
+      if (!open) { dropped++; continue; }
+      kept.push(a, b, c);
+    }
+    S.idx = new Uint32Array(kept);
+    console.log(`${name}: interior-shell cull dropped ${dropped}/${triN} tris`);
+  }
   const nrm = smoothNormals(S.pos, S.idx);
 
   // 2) unwrap: paired-triangle grid atlas
@@ -330,23 +423,33 @@ for (const node of hi.getRoot().listNodes()) {
       .filter((h) => faceNormal(h.faceIndex, _fn) && _fn.y > 0.3)
       .sort((a, b) => a.distance - b.distance)[0];
     if (top) {
-      const r = 0.44 * (len / 4.1); // erase disc slightly wider than the decal
+      const r = 0.34 * (len / 4.1); // erase disc slightly wider than the decal (R=0.27 at runtime)
       roundel = { x: top.point.x, y: top.point.y, z: top.point.z, r2: r * r };
-      // Cowl paint zone: white-classified texels here are Tripo's painterly
-      // smudges over the red paint, not real trim — reclaim them as red. The
-      // white nose band starts further forward (x > cx + 0.355*len), the
-      // white pod panels sit far outboard; both stay outside this box.
-      roundel.zone = {
-        x0: (xmin + xmax) / 2 + 0.13 * len,
-        x1: (xmin + xmax) / 2 + 0.35 * len,
-        zHalf: 0.13 * len,
-      };
       console.log(`${name}: roundel erase at (${top.point.x.toFixed(3)}, ${top.point.y.toFixed(3)}, 0) r=${r.toFixed(3)}`);
     }
   }
 
+  // Chassis: bumper silhouette table — farthest surface point per plan angle
+  // around (ARC_CX, 0). Where that silhouette exceeds ARC_RMIN the front arc
+  // is the bumper tube; the white band / dark face / red inner wall rules key
+  // off depth inward from it.
+  const ARC_TB = 256;
+  let arcOuter = null;
+  const arcBinOf = (x, z) =>
+    Math.min(ARC_TB - 1, Math.max(0, Math.floor((Math.atan2(z, x - LIV.ARC_CX) + Math.PI) / (2 * Math.PI) * ARC_TB)));
+  if (isChassis) {
+    arcOuter = new Float32Array(ARC_TB).fill(0);
+    for (let i = 0; i < oPos.length; i += 3) {
+      if (oPos[i] < LIV.XFRONT) continue;
+      const r = Math.hypot(oPos[i] - LIV.ARC_CX, oPos[i + 2]);
+      const tb = arcBinOf(oPos[i], oPos[i + 2]);
+      if (r > arcOuter[tb]) arcOuter[tb] = r;
+    }
+  }
+
   const out = new Uint8Array(TEX * TEX * 4); // RGBA, alpha 0 = unbaked
-  const rwTexels = []; // [x,y,z, texelIndex, isRed] — for the 3D paint vote below
+  const recs = []; // [x,y,z, nx,ny,nz, texelIndex] — for the 3D vote + livery overrides
+  const texelRec = new Int32Array(TEX * TEX).fill(-1); // texel -> its recs row
   for (let t = 0; t < triCount; t++) {
     const i0 = fIdx[t * 3], i1 = fIdx[t * 3 + 1], i2 = fIdx[t * 3 + 2];
     const u0 = fUV[i0 * 2] * TEX, v0 = fUV[i0 * 2 + 1] * TEX;
@@ -364,8 +467,11 @@ for (const node of hi.getRoot().listNodes()) {
         let w1 = ((qx - u0) * (v2 - v0) - (qy - v0) * (u2 - u0)) / det;
         let w2 = ((qy - v0) * (u1 - u0) - (qx - u0) * (v1 - v0)) / det;
         let w0 = 1 - w1 - w2;
-        // small tolerance so cell interiors bake fully to the gutter edge
-        if (w0 < -0.15 || w1 < -0.15 || w2 < -0.15) continue;
+        // Near-zero tolerance: texels outside the triangle would bake with
+        // clamped-extrapolated positions (up to ~3mm of 3D error), which
+        // shreds the geometric livery's straight cuts into hairy fringes.
+        // Unbaked slivers along cell diagonals are filled by dilation instead.
+        if (w0 < -0.02 || w1 < -0.02 || w2 < -0.02) continue;
         w0 = Math.max(w0, 0); w1 = Math.max(w1, 0); w2 = Math.max(w2, 0);
         const wt = w0 + w1 + w2;
         w0 /= wt; w1 /= wt; w2 /= wt;
@@ -380,13 +486,11 @@ for (const node of hi.getRoot().listNodes()) {
         if (roundel && (x - roundel.x) ** 2 + (y - roundel.y) ** 2 + (z - roundel.z) ** 2 < roundel.r2) {
           rgb = PALETTE.red; // erase the baked fuzzy "7" — the decal replaces it
         } else {
-          // Red is only legitimate on the chassis' paint regions. Wheels and
-          // the steering wheel are rubber/trim, and the chassis' rear-center
-          // (seat, engine bay) is grey/dark — red samples there are Tripo's
+          // Red is only legitimate in the chassis' authorized paint zones
+          // (front region + pods); elsewhere red samples are Tripo's
           // paint-spill smudges, snapped to the luma-matched grey instead.
-          const isChassis = name === "tripo_part_19";
-          const rearCenter = isChassis && roundel?.zone &&
-            x < roundel.zone.x0 - 0.05 && Math.abs(z) < roundel.zone.zHalf * 1.4;
+          // Wheels and the steering wheel are rubber/trim: never red.
+          const redOK = isChassis && (x > LIV.XFRONT || inPod(x, y, z));
           // 5-tap surface smoothing before thresholding: Tripo's airbrushed
           // gradients wobble across the class cut and threshold into a noisy
           // red/white dissolve (mips blur it into pink streaks). Averaging a
@@ -405,16 +509,40 @@ for (const node of hi.getRoot().listNodes()) {
             );
             sr += c[0]; sg += c[1]; sb += c[2];
           }
-          rgb = classify([sr / 5, sg / 5, sb / 5], isChassis && !rearCenter);
-          if (
-            rgb === PALETTE.white && roundel?.zone &&
-            x > roundel.zone.x0 && x < roundel.zone.x1 && Math.abs(z) < roundel.zone.zHalf
-          ) rgb = PALETTE.red; // painterly smudge over the cowl paint, not trim
+          rgb = classify([sr / 5, sg / 5, sb / 5], redOK);
         }
         const o = (py * TEX + px) * 4;
         out[o] = rgb[0]; out[o + 1] = rgb[1]; out[o + 2] = rgb[2]; out[o + 3] = 255;
-        if (rgb === PALETTE.red || rgb === PALETTE.white)
-          rwTexels.push(x, y, z, texelIndex, rgb === PALETTE.red ? 1 : 0);
+        texelRec[texelIndex] = recs.length / 7;
+        recs.push(x, y, z, nx, ny, nz, texelIndex);
+      }
+    }
+  }
+
+  // 3a) POSITION dilation into gutters and diagonal slivers: unbaked texels
+  // inherit their nearest baked neighbour's surface position (and a
+  // provisional color), so the geometric livery rules later evaluate
+  // exactly at the cut lines. Color-copy dilation here would pick an
+  // arbitrary side of a cut per texel and shred straight boundaries into
+  // texel-scale hair.
+  for (let pass = 0; pass < 6; pass++) {
+    const prev = out.slice();
+    for (let py = 0; py < TEX; py++) {
+      for (let px = 0; px < TEX; px++) {
+        const ti = py * TEX + px;
+        if (prev[ti * 4 + 3]) continue;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = px + dx, ny = py + dy;
+          if (nx < 0 || ny < 0 || nx >= TEX || ny >= TEX) continue;
+          const q = ny * TEX + nx;
+          if (!prev[q * 4 + 3] || texelRec[q] < 0) continue;
+          const r = texelRec[q] * 7;
+          texelRec[ti] = recs.length / 7;
+          recs.push(recs[r], recs[r + 1], recs[r + 2], recs[r + 3], recs[r + 4], recs[r + 5], ti);
+          out[ti * 4] = prev[q * 4]; out[ti * 4 + 1] = prev[q * 4 + 1]; out[ti * 4 + 2] = prev[q * 4 + 2];
+          out[ti * 4 + 3] = 255;
+          break;
+        }
       }
     }
   }
@@ -452,59 +580,205 @@ for (const node of hi.getRoot().listNodes()) {
     }
   }
 
-  // 3c) 3D paint vote: Tripo strews red painterly streaks across the white
-  //     trim. In 3D (true surface space) those streaks are surrounded by
-  //     white, so each red texel polls its 3D neighbourhood and flips when
-  //     white dominates; erosion passes eat wide streaks inward. Voting in
-  //     the atlas can't do this — cells scatter surface neighbours.
-  {
-    const R3 = 0.02; // neighbourhood radius, ~2% of the kart's length
-    const inv = 1 / R3;
-    const keyOf = (x, y, z) => `${Math.floor(x * inv)},${Math.floor(y * inv)},${Math.floor(z * inv)}`;
-    const n = rwTexels.length / 5;
-    const cls = new Uint8Array(n); // 1 = red
-    const grid = new Map();
-    for (let i = 0; i < n; i++) {
-      cls[i] = rwTexels[i * 5 + 4];
-      const key = keyOf(rwTexels[i * 5], rwTexels[i * 5 + 1], rwTexels[i * 5 + 2]);
-      let arr = grid.get(key);
-      if (!arr) grid.set(key, (arr = []));
-      arr.push(i);
+  // 3c) Geometric livery. Two stages:
+  //
+  //  VOTE — normal-aware 3D majority vote on voxel cells (h=4mm, R=25mm):
+  //  every smooth surface region converges to its locally dominant class,
+  //  with boundaries settling into smooth curves (curvature-flow-like).
+  //  Paint classes are only eligible where the livery authorizes paint —
+  //  everywhere else cells vote frame-vs-dark only, so spill can never win.
+  //  The normal gate keeps votes from crossing between the outer skin and
+  //  Tripo's near-black interior shell, and between perpendicular surfaces.
+  //
+  //  OVERRIDES — where the design is unambiguous the class is stamped
+  //  outright from geometry: solid red cowl; bumper tube split into white
+  //  crown band / dark outer face / red inner wall by silhouette depth +
+  //  normal contours; pods solid red with a white inset panel on the outer
+  //  face. Wheels instead snap to their rotational (radius, axle) profile —
+  //  a body of revolution gets a perfectly axisymmetric paint job.
+  const nRec = recs.length / 7;
+  const texClass = (i) => {
+    const o = recs[i * 7 + 6] * 4;
+    return clsOfRGB(out[o], out[o + 1], out[o + 2]);
+  };
+  const writeClass = (i, cls) => {
+    const o = recs[i * 7 + 6] * 4;
+    out[o] = CLS[cls][0]; out[o + 1] = CLS[cls][1]; out[o + 2] = CLS[cls][2];
+  };
+  if (isChassis) {
+    const paintOK = (x, y, z) => inPod(x, y, z) || (x > LIV.XFRONT && Math.abs(z) < LIV.ZPAINT);
+    // --- cell vote
+    const HV = 0.004, RV = 0.025, PASSES = 10;
+    const cells = new Map(); // key -> {n,x,y,z,nx,ny,nz,hist,cls,paint}
+    const ckey = (i, j, k) => `${i},${j},${k}`;
+    for (let i = 0; i < nRec; i++) {
+      const x = recs[i * 7], y = recs[i * 7 + 1], z = recs[i * 7 + 2];
+      const key = ckey(Math.floor(x / HV), Math.floor(y / HV), Math.floor(z / HV));
+      let c = cells.get(key);
+      if (!c) cells.set(key, (c = { n: 0, x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, hist: [0, 0, 0, 0], cls: DARK }));
+      c.n++; c.x += x; c.y += y; c.z += z;
+      c.nx += recs[i * 7 + 3]; c.ny += recs[i * 7 + 4]; c.nz += recs[i * 7 + 5];
+      c.hist[texClass(i)]++;
     }
-    for (let pass = 0; pass < 8; pass++) {
-      const flips = [];
-      for (let i = 0; i < n; i++) {
-        if (!cls[i]) continue; // only red texels vote to flip
-        const x = rwTexels[i * 5], y = rwTexels[i * 5 + 1], z = rwTexels[i * 5 + 2];
-        let white = 0, total = 0;
-        const bx = Math.floor(x * inv), by = Math.floor(y * inv), bz = Math.floor(z * inv);
-        for (let dx = -1; dx <= 1; dx++)
-          for (let dy = -1; dy <= 1; dy++)
-            for (let dz = -1; dz <= 1; dz++) {
-              const arr = grid.get(`${bx + dx},${by + dy},${bz + dz}`);
-              if (!arr) continue;
-              for (const j of arr) {
-                const jx = rwTexels[j * 5] - x, jy = rwTexels[j * 5 + 1] - y, jz = rwTexels[j * 5 + 2] - z;
-                if (jx * jx + jy * jy + jz * jz > R3 * R3) continue;
-                total++;
-                if (!cls[j]) white++;
-              }
-            }
-        // Neutral majority: a straight red/white boundary sits at ~50%
-        // white and stays put; thin streaks and jagged fingers poll above
-        // it and erode away pass by pass (curvature-flow-like smoothing).
-        if (total > 6 && white / total > 0.48) flips.push(i);
+    for (const c of cells.values()) {
+      c.x /= c.n; c.y /= c.n; c.z /= c.n;
+      const nl = Math.hypot(c.nx, c.ny, c.nz) || 1;
+      c.nx /= nl; c.ny /= nl; c.nz /= nl;
+      c.paint = paintOK(c.x, c.y, c.z);
+      let best = c.paint ? 0 : FRAME, bv = -1;
+      for (let q = c.paint ? 0 : FRAME; q < 4; q++) if (c.hist[q] > bv) { bv = c.hist[q]; best = q; }
+      c.cls = best;
+    }
+    const RC = Math.ceil(RV / HV);
+    const G2 = 1 / (2 * (RV / 2) ** 2);
+    for (let pass = 0; pass < PASSES; pass++) {
+      const next = [];
+      let flips = 0;
+      for (const [key, c] of cells) {
+        const [i, j, k] = key.split(",").map(Number);
+        const acc = [0, 0, 0, 0];
+        for (let di = -RC; di <= RC; di++) for (let dj = -RC; dj <= RC; dj++) for (let dk = -RC; dk <= RC; dk++) {
+          const nb = cells.get(ckey(i + di, j + dj, k + dk));
+          if (!nb) continue;
+          const dot = c.nx * nb.nx + c.ny * nb.ny + c.nz * nb.nz;
+          if (dot < 0.2) continue;
+          const d2 = (nb.x - c.x) ** 2 + (nb.y - c.y) ** 2 + (nb.z - c.z) ** 2;
+          if (d2 > RV * RV) continue;
+          acc[nb.cls] += nb.n * Math.exp(-d2 * G2) * dot;
+        }
+        let best = c.paint ? 0 : FRAME, bv = -1;
+        for (let q = c.paint ? 0 : FRAME; q < 4; q++) if (acc[q] > bv) { bv = acc[q]; best = q; }
+        if (best !== c.cls) flips++;
+        next.push([c, best]);
       }
-      console.log(`${name}: 3D paint vote pass ${pass}: ${flips.length} red->white flips`);
-      if (!flips.length) break;
-      for (const i of flips) cls[i] = 0;
+      for (const [c, cls] of next) c.cls = cls;
+      console.log(`${name}: livery vote pass ${pass}: ${flips} cell flips`);
+      if (!flips) break;
     }
-    for (let i = 0; i < n; i++) {
-      if (rwTexels[i * 5 + 4] === 1 && cls[i] === 0) {
-        const o = rwTexels[i * 5 + 3] * 4;
-        out[o] = PALETTE.white[0]; out[o + 1] = PALETTE.white[1]; out[o + 2] = PALETTE.white[2];
+    // --- per-texel: overrides else interpolated vote field. One-cell reach
+    // only: a wider kernel leaks classes across nearby unrelated surfaces
+    // (seat side picking up the white floor boxes 8mm away).
+    //
+    // Geometric cuts are ANTI-ALIASED over ~1 texel: a hard texel-quantized
+    // boundary staircases by ±1 texel (0.9mm), and on view-tangent surfaces
+    // (the cowl-base flare) foreshortening magnifies that into long visible
+    // hairs. A 1-texel blend band lets bilinear filtering draw the cut as
+    // one smooth line from any angle. (The runtime hue-swap recolors blends
+    // correctly — red-dominance is a continuous mask.)
+    const SIG2 = 1 / (2 * (0.9 * HV) ** 2);
+    const W_AA = 0.0022; // half-width of the blend band (~2.4 texels)
+    const CUT = LIV.PLATE.y1; // the waterline height (== COWL.y)
+    const writeMix = (i, a, b, t) => {
+      const o = recs[i * 7 + 6] * 4;
+      out[o] = Math.round(CLS[a][0] + (CLS[b][0] - CLS[a][0]) * t);
+      out[o + 1] = Math.round(CLS[a][1] + (CLS[b][1] - CLS[a][1]) * t);
+      out[o + 2] = Math.round(CLS[a][2] + (CLS[b][2] - CLS[a][2]) * t);
+    };
+    let painted = 0;
+    for (let i = 0; i < nRec; i++) {
+      const x = recs[i * 7], y = recs[i * 7 + 1], z = recs[i * 7 + 2];
+      let nx = recs[i * 7 + 3], ny = recs[i * 7 + 4], nz = recs[i * 7 + 5];
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      nx /= nl; ny /= nl; nz /= nl;
+      let cls = -1, blended = false;
+      if (inPod(x, y, z)) {
+        const oz = z > 0 ? nz : -nz;
+        if (oz >= LIV.PANEL.nz) {
+          // signed distance into the panel rect (positive = inside)
+          const f = Math.min(x - LIV.PANEL.x0, LIV.PANEL.x1 - x, y - LIV.PANEL.y0, LIV.PANEL.y1 - y);
+          if (f > W_AA) cls = WHITE;
+          else if (f < -W_AA) cls = RED;
+          else { writeMix(i, RED, WHITE, f / (2 * W_AA) + 0.5); blended = true; }
+        } else cls = RED;
+      } else if (x > LIV.XFRONT) {
+        const tb = arcBinOf(x, z);
+        const onTube = arcOuter[tb] > LIV.ARC_RMIN &&
+          arcOuter[tb] - Math.hypot(x - LIV.ARC_CX, z) < LIV.D_TUBE;
+        // is this column red above the waterline? (cowl or raised nose furniture)
+        const redAbove = (Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1) ||
+          (x <= 0.3 && Math.abs(z) < 0.25);
+        if (onTube) cls = ny > LIV.NY_UP ? WHITE : DARK; // white crown, dark faces/ends
+        else if (y > CUT + W_AA) { if (redAbove) cls = RED; }
+        else if (y >= LIV.PLATE.y0) {
+          // Waterline: everything in the plate's height band goes white —
+          // the plate, the cowl-base flare, the corner-box skirts. One
+          // horizontal cut, anti-aliased where red sits above it.
+          if (redAbove && y > CUT - W_AA) { writeMix(i, WHITE, RED, (y - CUT) / (2 * W_AA) + 0.5); blended = true; }
+          else cls = WHITE;
+        }
+      }
+      if (blended) { painted++; continue; }
+      if (cls < 0) {
+        // vote field: Gaussian-interpolated class masses from nearby cells
+        const bi = Math.floor(x / HV), bj = Math.floor(y / HV), bk = Math.floor(z / HV);
+        const acc = [0, 0, 0, 0];
+        for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) for (let dk = -1; dk <= 1; dk++) {
+          const nb = cells.get(ckey(bi + di, bj + dj, bk + dk));
+          if (!nb) continue;
+          if (nx * nb.nx + ny * nb.ny + nz * nb.nz < 0.2) continue;
+          const d2 = (nb.x - x) ** 2 + (nb.y - y) ** 2 + (nb.z - z) ** 2;
+          acc[nb.cls] += nb.n * Math.exp(-d2 * SIG2);
+        }
+        let bv = 0;
+        for (let q = 0; q < 4; q++) if (acc[q] > bv) { bv = acc[q]; cls = q; }
+        if (cls < 0) continue; // no cells in range: keep the classified color
+      } else painted++;
+      writeClass(i, cls);
+    }
+    console.log(`${name}: livery override painted ${painted} texels, vote-smoothed ${nRec - painted}`);
+  } else if (name !== "tripo_part_2") {
+    // Road wheels are bodies of revolution about their (local z) axle: snap
+    // every texel to the majority class of its (radius, axle-z) profile bin.
+    // Tread chevron noise and ragged rim-ring edges average into perfect
+    // rings; the profile is mode-filtered so ring edges land on one bin line.
+    let cx = 0, cy = 0, cz = 0;
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity, zmin = Infinity, zmax = -Infinity;
+    for (let i = 0; i < oPos.length; i += 3) {
+      xmin = Math.min(xmin, oPos[i]); xmax = Math.max(xmax, oPos[i]);
+      ymin = Math.min(ymin, oPos[i + 1]); ymax = Math.max(ymax, oPos[i + 1]);
+      zmin = Math.min(zmin, oPos[i + 2]); zmax = Math.max(zmax, oPos[i + 2]);
+    }
+    cx = (xmin + xmax) / 2; cy = (ymin + ymax) / 2; cz = (zmin + zmax) / 2;
+    const DR = 0.0015;
+    const NR = Math.ceil(0.12 / DR), NZ2 = Math.ceil(0.12 / DR);
+    const prof = new Uint32Array(NR * NZ2 * 4);
+    const binOf = (i) => {
+      const r = Math.hypot(recs[i * 7] - cx, recs[i * 7 + 1] - cy);
+      const zc = recs[i * 7 + 2] - cz + 0.06;
+      const br = Math.min(NR - 1, Math.max(0, Math.floor(r / DR)));
+      const bz = Math.min(NZ2 - 1, Math.max(0, Math.floor(zc / DR)));
+      return br * NZ2 + bz;
+    };
+    for (let i = 0; i < nRec; i++) prof[binOf(i) * 4 + texClass(i)]++;
+    const profCls = new Int8Array(NR * NZ2).fill(-1);
+    for (let b = 0; b < NR * NZ2; b++) {
+      let best = -1, bv = 0;
+      for (let q = 0; q < 4; q++) if (prof[b * 4 + q] > bv) { bv = prof[b * 4 + q]; best = q; }
+      profCls[b] = best;
+    }
+    // 3x3 mode filter on the profile map (2 passes) straightens ring edges
+    for (let mp = 0; mp < 2; mp++) {
+      const prev = profCls.slice();
+      for (let br = 0; br < NR; br++) for (let bz = 0; bz < NZ2; bz++) {
+        const votes = [0, 0, 0, 0];
+        for (let dr = -1; dr <= 1; dr++) for (let dz = -1; dz <= 1; dz++) {
+          const qr = br + dr, qz = bz + dz;
+          if (qr < 0 || qz < 0 || qr >= NR || qz >= NZ2) continue;
+          const c = prev[qr * NZ2 + qz];
+          if (c >= 0) votes[c]++;
+        }
+        let best = prev[br * NZ2 + bz], bv = 0;
+        for (let q = 0; q < 4; q++) if (votes[q] > bv) { bv = votes[q]; best = q; }
+        profCls[br * NZ2 + bz] = best;
       }
     }
+    let snapped = 0;
+    for (let i = 0; i < nRec; i++) {
+      const c = profCls[binOf(i)];
+      if (c >= 0 && c !== texClass(i)) snapped++;
+      if (c >= 0) writeClass(i, c);
+    }
+    console.log(`${name}: rotational profile snap changed ${snapped}/${nRec} texels`);
   }
 
   // 4) dilate unbaked texels from baked neighbours (gutter fill). 6 passes
@@ -548,7 +822,7 @@ for (const node of hi.getRoot().listNodes()) {
   // both smaller than JPEG here AND free of the mosquito noise JPEG sprays
   // around crisp color boundaries (it read as residual streaking up close).
   const jpeg = await sharp(Buffer.from(out.buffer), { raw: { width: TEX, height: TEX, channels: 4 } })
-    .removeAlpha().png({ palette: true, colors: 32, dither: 0 }).toBuffer();
+    .removeAlpha().png({ palette: true, colors: 48, dither: 0 }).toBuffer();
 
   // 5) emit node
   const tex = outDoc.createTexture(`${name}_baked`).setImage(jpeg).setMimeType("image/png");

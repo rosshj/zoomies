@@ -104,6 +104,11 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
         // The retopologized shell can have hairline tears (nose cowl);
         // double-sided fill hides them for a trivial cost on one hero model.
         if (o.material) o.material.side = THREE.DoubleSide;
+        // Anisotropic filtering: the baked atlas packs unrelated surface
+        // patches into adjacent cells, so deep mips blend across cells and
+        // fringe grazing-angle silhouettes with neighbours' paint. Higher
+        // anisotropy keeps sampling in shallow mips along the stretched axis.
+        if (o.material?.map) o.material.map.anisotropy = 8;
       });
 
       const holder = new THREE.Group();
@@ -130,7 +135,7 @@ export function loadKartGLB(url = "./assets/models/kart.glb") {
         // lifted a hair — the decal follows the curve like a real sticker
         // instead of a flat plate slapped on at one angle. Built once here;
         // instances share the geometry and swap only the number texture.
-        const R = 0.36;
+        const R = 0.27;
         // RingGeometry lays vertices ring-major (phi rings x theta spokes);
         // walking rings inward->outward lets a spoke whose ray misses the
         // cowl (past the silhouette) reuse its last projected point instead
@@ -227,6 +232,7 @@ function tintedChassisMaterial(template, colorHex) {
     const tex = new THREE.CanvasTexture(c);
     tex.flipY = false; // match glTF texture orientation
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = base.map.anisotropy; // same grazing-mip fix as the base
     mat = base.clone();
     mat.map = tex;
   }
