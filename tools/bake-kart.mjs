@@ -221,7 +221,7 @@ const LIV = {
   NY_UP: 0.3,         // up-facing normal split (crown/plate vs faces)
   W_NY: 0.16,         // crown/face cut anti-alias half-width (in normal.y)
   NY_PLATE: 0.4,      // apron white only on up-facing surfaces (pipe sides stay grey)
-  THIN: 0.024,        // surfaces thinner than this (frame pipes) never take paint
+  THIN: 0.033,        // surfaces thinner than this (frame pipes) never take paint
   PLATE: { y0: -0.062, y1: 0.008 }, // white plate height band (up-facing)
   ZPAINT: 0.17,       // vote may paint red/white only this close to centre
   COWL: { x0: 0.145, x1: 0.52, z: 0.14, y: 0.008 },
@@ -609,31 +609,39 @@ for (const node of hi.getRoot().listNodes()) {
       const nl = Math.hypot(nx, ny, nz) || 1;
       nx /= nl; ny /= nl; nz /= nl;
       let cls = -1, blended = false;
+      // Every frame TUBE (rails, front hoops, pod connectors, the bumper-cage
+      // pipes) is thin — a ray into the surface exits within LIV.THIN. Paint
+      // ONLY lands on solid body panels (cowl, pods, the bumper fairing, the
+      // floor tray); tubes keep their classified frame-grey. This is the whole
+      // pipe fix: the thin gate now precedes the pod, bumper and apron rules
+      // (before, tubes in those zones were painted red / white).
       if (inPod(x, y, z)) {
-        cls = RED; // side pods: solid red, no inset panel
+        if (!isThin(x, y, z, nx, ny, nz)) cls = RED; // solid pod body only
       } else if (x > LIV.XFRONT) {
-        const tb = arcBinOf(x, z);
-        const onTube = arcOuter[tb] > LIV.ARC_RMIN &&
-          arcOuter[tb] - Math.hypot(x - LIV.ARC_CX, z) < LIV.D_TUBE;
-        // is this column red above the waterline? (cowl or raised nose furniture)
-        const redAbove = (Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1) ||
-          (x <= 0.3 && Math.abs(z) < 0.25);
-        if (onTube) {
-          // White crown over a dark face. The up-facing cut is anti-aliased so
-          // the rounded bumper's coarse facets don't tear it into fingers.
-          const t = (ny - LIV.NY_UP) / LIV.W_NY;
-          if (t >= 1) cls = WHITE;
-          else if (t <= -1) cls = DARK;
-          else { writeMix(i, DARK, WHITE, t * 0.5 + 0.5); blended = true; }
-        } else if (isThin(x, y, z, nx, ny, nz)) {
-          // a frame pipe threading the front region: leave it classified grey
-        } else if (y > CUT + W_AA) {
-          if (redAbove) cls = RED;
-        } else if (y >= LIV.PLATE.y0 && ny > LIV.NY_PLATE) {
-          // White nose apron: up-facing plate only (pipe sides/undersides keep
-          // grey). One horizontal waterline, anti-aliased where red sits above.
-          if (redAbove && y > CUT - W_AA) { writeMix(i, WHITE, RED, (y - CUT) / (2 * W_AA) + 0.5); blended = true; }
-          else cls = WHITE;
+        if (isThin(x, y, z, nx, ny, nz)) {
+          // frame tube in the nose: leave classified grey
+        } else {
+          const tb = arcBinOf(x, z);
+          const onTube = arcOuter[tb] > LIV.ARC_RMIN &&
+            arcOuter[tb] - Math.hypot(x - LIV.ARC_CX, z) < LIV.D_TUBE;
+          // red column above the waterline (cowl or raised nose furniture)
+          const redAbove = (Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1) ||
+            (x <= 0.3 && Math.abs(z) < 0.25);
+          if (onTube) {
+            // White crown over a dark face — anti-aliased across the up-facing
+            // cut so the fairing's coarse facets don't tear it into fingers.
+            const t = (ny - LIV.NY_UP) / LIV.W_NY;
+            if (t >= 1) cls = WHITE;
+            else if (t <= -1) cls = DARK;
+            else { writeMix(i, DARK, WHITE, t * 0.5 + 0.5); blended = true; }
+          } else if (y > CUT + W_AA) {
+            if (redAbove) cls = RED;
+          } else if (y >= LIV.PLATE.y0 && ny > LIV.NY_PLATE) {
+            // White nose apron: up-facing plate only. One horizontal waterline,
+            // anti-aliased where the red cowl sits above it.
+            if (redAbove && y > CUT - W_AA) { writeMix(i, WHITE, RED, (y - CUT) / (2 * W_AA) + 0.5); blended = true; }
+            else cls = WHITE;
+          }
         }
       }
       if (blended) { painted++; continue; }
