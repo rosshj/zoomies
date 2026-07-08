@@ -219,6 +219,9 @@ const LIV = {
   ARC_RMIN: 0.34,     // silhouette radius that counts as "bumper arc"
   D_TUBE: 0.095,      // bumper tube depth: crown white / rest dark inside this
   NY_UP: 0.3,         // up-facing normal split (crown/plate vs faces)
+  W_NY: 0.16,         // crown/face cut anti-alias half-width (in normal.y)
+  NY_PLATE: 0.4,      // apron white only on up-facing surfaces (pipe sides stay grey)
+  THIN: 0.024,        // surfaces thinner than this (frame pipes) never take paint
   PLATE: { y0: -0.062, y1: 0.008 }, // white plate height band (up-facing)
   ZPAINT: 0.17,       // vote may paint red/white only this close to centre
   COWL: { x0: 0.145, x1: 0.52, z: 0.14, y: 0.008 },
@@ -588,6 +591,17 @@ for (const node of hi.getRoot().listNodes()) {
       out[o + 1] = Math.round(CLS[a][1] + (CLS[b][1] - CLS[a][1]) * t);
       out[o + 2] = Math.round(CLS[a][2] + (CLS[b][2] - CLS[a][2]) * t);
     };
+    // Frame pipes are thin: a ray straight into the surface hits the far wall
+    // within a couple cm. Body panels (cowl, apron, pods) have deep solid or
+    // open space behind. Thin surfaces never take paint — every pipe keeps its
+    // classified frame-grey. (Probed on the original mesh via the bake BVH.)
+    const _thinRay = new THREE.Ray();
+    const isThin = (x, y, z, nx, ny, nz) => {
+      _thinRay.origin.set(x - nx * 0.001, y - ny * 0.001, z - nz * 0.001);
+      _thinRay.direction.set(-nx, -ny, -nz);
+      const h = bvh.raycastFirst(_thinRay, THREE.DoubleSide);
+      return h && h.distance < LIV.THIN;
+    };
     let painted = 0;
     for (let i = 0; i < nRec; i++) {
       const x = recs[i * 7], y = recs[i * 7 + 1], z = recs[i * 7 + 2];
@@ -596,14 +610,7 @@ for (const node of hi.getRoot().listNodes()) {
       nx /= nl; ny /= nl; nz /= nl;
       let cls = -1, blended = false;
       if (inPod(x, y, z)) {
-        const oz = z > 0 ? nz : -nz;
-        if (oz >= LIV.PANEL.nz) {
-          // signed distance into the panel rect (positive = inside)
-          const f = Math.min(x - LIV.PANEL.x0, LIV.PANEL.x1 - x, y - LIV.PANEL.y0, LIV.PANEL.y1 - y);
-          if (f > W_AA) cls = WHITE;
-          else if (f < -W_AA) cls = RED;
-          else { writeMix(i, RED, WHITE, f / (2 * W_AA) + 0.5); blended = true; }
-        } else cls = RED;
+        cls = RED; // side pods: solid red, no inset panel
       } else if (x > LIV.XFRONT) {
         const tb = arcBinOf(x, z);
         const onTube = arcOuter[tb] > LIV.ARC_RMIN &&
@@ -611,12 +618,20 @@ for (const node of hi.getRoot().listNodes()) {
         // is this column red above the waterline? (cowl or raised nose furniture)
         const redAbove = (Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1) ||
           (x <= 0.3 && Math.abs(z) < 0.25);
-        if (onTube) cls = ny > LIV.NY_UP ? WHITE : DARK; // white crown, dark faces/ends
-        else if (y > CUT + W_AA) { if (redAbove) cls = RED; }
-        else if (y >= LIV.PLATE.y0) {
-          // Waterline: everything in the plate's height band goes white —
-          // the plate, the cowl-base flare, the corner-box skirts. One
-          // horizontal cut, anti-aliased where red sits above it.
+        if (onTube) {
+          // White crown over a dark face. The up-facing cut is anti-aliased so
+          // the rounded bumper's coarse facets don't tear it into fingers.
+          const t = (ny - LIV.NY_UP) / LIV.W_NY;
+          if (t >= 1) cls = WHITE;
+          else if (t <= -1) cls = DARK;
+          else { writeMix(i, DARK, WHITE, t * 0.5 + 0.5); blended = true; }
+        } else if (isThin(x, y, z, nx, ny, nz)) {
+          // a frame pipe threading the front region: leave it classified grey
+        } else if (y > CUT + W_AA) {
+          if (redAbove) cls = RED;
+        } else if (y >= LIV.PLATE.y0 && ny > LIV.NY_PLATE) {
+          // White nose apron: up-facing plate only (pipe sides/undersides keep
+          // grey). One horizontal waterline, anti-aliased where red sits above.
           if (redAbove && y > CUT - W_AA) { writeMix(i, WHITE, RED, (y - CUT) / (2 * W_AA) + 0.5); blended = true; }
           else cls = WHITE;
         }
@@ -635,58 +650,10 @@ for (const node of hi.getRoot().listNodes()) {
     for (let i = 0; i < nRec; i++) writeClass(i, DARK);
     console.log(`${name}: forced flat dark (${nRec} texels)`);
   } else {
-    // Road wheels are bodies of revolution about their (local z) axle: snap
-    // every texel to the majority class of its (radius, axle-z) profile bin.
-    // Tread chevron noise and ragged rim-ring edges average into perfect
-    // rings; the profile is mode-filtered so ring edges land on one bin line.
-    let cx = 0, cy = 0, cz = 0;
-    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity, zmin = Infinity, zmax = -Infinity;
-    for (let i = 0; i < oPos.length; i += 3) {
-      xmin = Math.min(xmin, oPos[i]); xmax = Math.max(xmax, oPos[i]);
-      ymin = Math.min(ymin, oPos[i + 1]); ymax = Math.max(ymax, oPos[i + 1]);
-      zmin = Math.min(zmin, oPos[i + 2]); zmax = Math.max(zmax, oPos[i + 2]);
-    }
-    cx = (xmin + xmax) / 2; cy = (ymin + ymax) / 2; cz = (zmin + zmax) / 2;
-    const DR = 0.0015;
-    const NR = Math.ceil(0.12 / DR), NZ2 = Math.ceil(0.12 / DR);
-    const prof = new Uint32Array(NR * NZ2 * 4);
-    const binOf = (i) => {
-      const r = Math.hypot(recs[i * 7] - cx, recs[i * 7 + 1] - cy);
-      const zc = recs[i * 7 + 2] - cz + 0.06;
-      const br = Math.min(NR - 1, Math.max(0, Math.floor(r / DR)));
-      const bz = Math.min(NZ2 - 1, Math.max(0, Math.floor(zc / DR)));
-      return br * NZ2 + bz;
-    };
-    for (let i = 0; i < nRec; i++) prof[binOf(i) * 4 + texClass(i)]++;
-    const profCls = new Int8Array(NR * NZ2).fill(-1);
-    for (let b = 0; b < NR * NZ2; b++) {
-      let best = -1, bv = 0;
-      for (let q = 0; q < 4; q++) if (prof[b * 4 + q] > bv) { bv = prof[b * 4 + q]; best = q; }
-      profCls[b] = best;
-    }
-    // 3x3 mode filter on the profile map (2 passes) straightens ring edges
-    for (let mp = 0; mp < 2; mp++) {
-      const prev = profCls.slice();
-      for (let br = 0; br < NR; br++) for (let bz = 0; bz < NZ2; bz++) {
-        const votes = [0, 0, 0, 0];
-        for (let dr = -1; dr <= 1; dr++) for (let dz = -1; dz <= 1; dz++) {
-          const qr = br + dr, qz = bz + dz;
-          if (qr < 0 || qz < 0 || qr >= NR || qz >= NZ2) continue;
-          const c = prev[qr * NZ2 + qz];
-          if (c >= 0) votes[c]++;
-        }
-        let best = prev[br * NZ2 + bz], bv = 0;
-        for (let q = 0; q < 4; q++) if (votes[q] > bv) { bv = votes[q]; best = q; }
-        profCls[br * NZ2 + bz] = best;
-      }
-    }
-    let snapped = 0;
-    for (let i = 0; i < nRec; i++) {
-      const c = profCls[binOf(i)];
-      if (c >= 0 && c !== texClass(i)) snapped++;
-      if (c >= 0) writeClass(i, c);
-    }
-    console.log(`${name}: rotational profile snap changed ${snapped}/${nRec} texels`);
+    // Road wheels: tyre AND rim entirely black — one clean moulded wheel.
+    // (The cel shader still separates tyre / rim / hub from geometry.)
+    for (let i = 0; i < nRec; i++) writeClass(i, DARK);
+    console.log(`${name}: forced flat dark (${nRec} texels)`);
   }
 
   // 4) dilate unbaked texels from baked neighbours (gutter fill). 6 passes
