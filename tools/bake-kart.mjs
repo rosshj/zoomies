@@ -583,7 +583,7 @@ for (const node of hi.getRoot().listNodes()) {
     // hairs; a blend band lets bilinear filtering draw one smooth line. The
     // runtime hue-swap recolours blends correctly (red-dominance is
     // continuous).
-    const W_AA = 0.0022;       // blend half-width (~2.4 texels)
+    const W_AA = 0.004;        // blend half-width (softer red/white waterline)
     const CUT = LIV.PLATE.y1;  // waterline height (== COWL.y)
     const writeMix = (i, a, b, t) => {
       const o = recs[i * 7 + 6] * 4;
@@ -601,6 +601,23 @@ for (const node of hi.getRoot().listNodes()) {
       _thinRay.direction.set(-nx, -ny, -nz);
       const h = bvh.raycastFirst(_thinRay, THREE.DoubleSide);
       return h && h.distance < LIV.THIN;
+    };
+    // White apron only lands on a BROAD flat floor: drop rays down around the
+    // texel and require the surface to persist at nearly the same height on
+    // all sides. The floor pan passes; a tube top (even a fat joint the thin
+    // gate misses) fails — its neighbours fall off the tube to the deck below.
+    const _dnRay = new THREE.Ray(new THREE.Vector3(), new THREE.Vector3(0, -1, 0));
+    const onFlatFloor = (x, y, z) => {
+      const R = 0.03, DY = 0.02;
+      let ok = 0, seen = 0;
+      for (const [dx, dz] of [[R, 0], [-R, 0], [0, R], [0, -R], [R, R], [-R, -R]]) {
+        _dnRay.origin.set(x + dx, y + 0.05, z + dz);
+        const h = bvh.raycastFirst(_dnRay, THREE.DoubleSide);
+        if (!h) continue;
+        seen++;
+        if (Math.abs((y + 0.05 - h.distance) - y) < DY) ok++;
+      }
+      return seen >= 4 && ok >= 5;
     };
     let painted = 0;
     for (let i = 0; i < nRec; i++) {
@@ -624,9 +641,10 @@ for (const node of hi.getRoot().listNodes()) {
           const tb = arcBinOf(x, z);
           const onTube = arcOuter[tb] > LIV.ARC_RMIN &&
             arcOuter[tb] - Math.hypot(x - LIV.ARC_CX, z) < LIV.D_TUBE;
-          // red column above the waterline (cowl or raised nose furniture)
-          const redAbove = (Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1) ||
-            (x <= 0.3 && Math.abs(z) < 0.25);
+          // The solid cowl column: red on top, white "chin" below — a crisp
+          // horizontal waterline cut on the panel itself.
+          const inCowlCol = Math.abs(z) < LIV.COWL.z && x >= LIV.COWL.x0 && x <= LIV.COWL.x1;
+          const furnitureRed = x <= 0.3 && Math.abs(z) < 0.25; // raised nose boxes
           if (onTube) {
             // White crown over a dark face — anti-aliased across the up-facing
             // cut so the fairing's coarse facets don't tear it into fingers.
@@ -634,13 +652,16 @@ for (const node of hi.getRoot().listNodes()) {
             if (t >= 1) cls = WHITE;
             else if (t <= -1) cls = DARK;
             else { writeMix(i, DARK, WHITE, t * 0.5 + 0.5); blended = true; }
+          } else if (inCowlCol) {
+            if (y > CUT + W_AA) cls = RED;
+            else if (y < CUT - W_AA) cls = WHITE;
+            else { writeMix(i, WHITE, RED, (y - CUT) / (2 * W_AA) + 0.5); blended = true; }
           } else if (y > CUT + W_AA) {
-            if (redAbove) cls = RED;
-          } else if (y >= LIV.PLATE.y0 && ny > LIV.NY_PLATE) {
-            // White nose apron: up-facing plate only. One horizontal waterline,
-            // anti-aliased where the red cowl sits above it.
-            if (redAbove && y > CUT - W_AA) { writeMix(i, WHITE, RED, (y - CUT) / (2 * W_AA) + 0.5); blended = true; }
-            else cls = WHITE;
+            if (furnitureRed) cls = RED;
+          } else if (y >= LIV.PLATE.y0 && ny > LIV.NY_PLATE && onFlatFloor(x, y, z)) {
+            // White nose apron: the broad flat floor pan only (tube tops and
+            // narrow ledges fail onFlatFloor).
+            cls = WHITE;
           }
         }
       }
