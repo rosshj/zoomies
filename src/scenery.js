@@ -1145,7 +1145,9 @@ function buildGroundLeaves(scene, track, heightAt) {
 
   // Bucket placements into coarse chunks so off-screen leaves cull as a group; each
   // chunk gets its own geo carrying an aBase attribute (per-leaf world position).
-  const CHUNK = 130;
+  // 200u (was 130) ≈ half the chunk count/draws; still far smaller than the world,
+  // so off-screen chunks cull just as effectively.
+  const CHUNK = 200;
   const buckets = new Map();
   for (const s of placements) {
     const key = Math.round(s.x / CHUNK) + "_" + Math.round(s.z / CHUNK);
@@ -1260,7 +1262,7 @@ function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
   const _flut = vec3(0, _t.mul(2.3).sin().mul(cfg.tumble), 0);
   mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut);
 
-  const CHUNK = 130;
+  const CHUNK = 200; // (was 130 — see the ground-leaf chunk note)
   const buckets = new Map();
   for (const c of cols) {
     const key = Math.round(c.x / CHUNK) + "_" + Math.round(c.z / CHUNK);
@@ -1660,18 +1662,24 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   pools.renderOrder = 1;
   scene.add(pools);
 
-  // Soft halos around each bulb.
-  const haloMat = new THREE.SpriteMaterial({
-    map: tex, color: 0xffe6b0, transparent: true,
+  // Soft halos around each bulb: ONE instanced billboard field (same pattern as
+  // the effects sprites) instead of a THREE.Sprite per lamp — that was ~25
+  // individual transparent draws every night frame.
+  const haloPos = new THREE.InstancedBufferAttribute(new Float32Array(spots.length * 3), 3);
+  spots.forEach((sp, i) => haloPos.setXYZ(i, sp.x + sp.ax, sp.y + POST_H - 0.35, sp.z + sp.az));
+  const haloMat = new THREE.SpriteNodeMaterial({
+    map: tex, transparent: true,
     blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.85 * level,
   });
-  for (const sp of spots) {
-    const halo = new THREE.Sprite(haloMat);
-    halo.position.set(sp.x + sp.ax, sp.y + POST_H - 0.35, sp.z + sp.az);
-    halo.scale.setScalar(7);
-    halo.layers.set(1);
-    scene.add(halo);
-  }
+  haloMat.color.set(0xffe6b0);
+  haloMat.positionNode = attribute("aPos");
+  haloMat.scaleNode = float(7);
+  const haloGeo = new THREE.PlaneGeometry(1, 1);
+  haloGeo.setAttribute("aPos", haloPos);
+  const halos = new THREE.InstancedMesh(haloGeo, haloMat, spots.length);
+  halos.frustumCulled = false; // instances ring the whole lap
+  halos.layers.set(1);
+  scene.add(halos);
 }
 
 // Festive bulb strings strung in a catenary over a few road spans. The bulbs are
@@ -3543,6 +3551,7 @@ function buildLandmarks(scene, track, heightAt) {
     }
     if (!ok) return; // no clear spot on this map layout — skip rather than intrude
     const obj = make();
+    obj.name = make.name; // traceable in the scene census / debug tooling
     obj.position.set(x, heightAt(x, z), z);
     obj.rotation.y = Math.atan2(fx - x, fz - z); // face back toward the road
     scene.add(obj);
@@ -3572,29 +3581,26 @@ function makeLighthouse() {
   const g = new THREE.Group();
   const h = 20;
   const bands = 5;
+  // Static structure (striped bands + gallery + roof) bakes into ONE vertex-
+  // coloured mesh — same castle pattern — instead of ~7 single-colour meshes.
+  // Only the emissive lamp and the sweeping beam stay separate.
+  const parts = [];
   for (let i = 0; i < bands; i++) {
     const r0 = 2.4 - (i / bands) * 1.0;
     const r1 = 2.4 - ((i + 1) / bands) * 1.0;
-    const seg = new THREE.Mesh(
-      new THREE.CylinderGeometry(r1, r0, h / bands, 16),
-      mat(i % 2 ? 0xd23a2a : 0xf5f0e6)
-    );
-    seg.position.y = (i + 0.5) * (h / bands);
-    seg.castShadow = true;
-    g.add(seg);
+    part(parts, new THREE.CylinderGeometry(r1, r0, h / bands, 16).translate(0, (i + 0.5) * (h / bands), 0), i % 2 ? 0xd23a2a : 0xf5f0e6);
   }
-  const gallery = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 1.8, 0.6, 16), mat(0x37474f));
-  gallery.position.y = h;
-  g.add(gallery);
+  part(parts, new THREE.CylinderGeometry(1.8, 1.8, 0.6, 16).translate(0, h, 0), 0x37474f);
+  part(parts, new THREE.ConeGeometry(1.7, 1.6, 12).translate(0, h + 3.3, 0), 0x2b2b2b);
+  const tower = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  tower.castShadow = true;
+  g.add(tower);
   const lamp = new THREE.Mesh(
     new THREE.CylinderGeometry(1.3, 1.3, 2.2, 12),
     mat(0xfff3c4, { emissive: 0xffe082, emissiveIntensity: 0.9 })
   );
   lamp.position.y = h + 1.4;
   g.add(lamp);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.7, 1.6, 12), mat(0x2b2b2b));
-  roof.position.y = h + 3.3;
-  g.add(roof);
   // A long translucent beam that sweeps around (MeshBasic, so it stays glowing).
   const beamHub = new THREE.Group();
   beamHub.position.y = h + 1.4;
@@ -3651,73 +3657,72 @@ function makeCastle() {
 }
 
 function makeFerrisWheel() {
+  // Was ~30 meshes (12 cab materials for 6 colours among them) = ~30 draws.
+  // Everything rigid merges: legs → one steel mesh, rims + all 12 spokes → one
+  // steel mesh inside the rotating group, 12 cabs → one vertex-coloured mesh.
+  // Total: 3 draws, identical look and animation.
   const g = new THREE.Group();
   const R = 11;
   const steel = mat(0x9099a3);
   // A-frame supports.
+  const legGeos = [];
   for (const sx of [-1, 1])
     for (const lean of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.35, R * 1.55, 8), steel);
-      leg.position.set(sx * 4, R * 0.72, lean * 3);
-      leg.rotation.x = lean * 0.34;
-      leg.castShadow = true;
-      g.add(leg);
+      const leg = new THREE.CylinderGeometry(0.3, 0.35, R * 1.55, 8);
+      leg.rotateX(lean * 0.34);
+      leg.translate(sx * 4, R * 0.72, lean * 3);
+      legGeos.push(leg);
     }
+  const legs = new THREE.Mesh(mergeGeometries(legGeos), steel);
+  legs.castShadow = true;
+  g.add(legs);
   const wheel = new THREE.Group();
   wheel.position.set(0, R + 2, 0);
-  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(R, 0.3, 8, 36), steel));
-  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(R * 0.62, 0.2, 8, 28), steel));
+  const frameGeos = [
+    new THREE.TorusGeometry(R, 0.3, 8, 36),
+    new THREE.TorusGeometry(R * 0.62, 0.2, 8, 28),
+  ];
+  const cabParts = [];
   const cabCols = [0xd23a2a, 0x2a7ad2, 0x2e9e4a, 0xe0a52a, 0xab47bc, 0xff8f00];
   const n = 12;
   for (let i = 0; i < n; i++) {
     const a = (i / n) * Math.PI * 2;
     const cx = Math.cos(a) * R;
     const cy = Math.sin(a) * R;
-    const spoke = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, R, 6), steel);
-    spoke.position.set(cx / 2, cy / 2, 0);
-    spoke.rotation.z = a - Math.PI / 2;
-    wheel.add(spoke);
-    const cab = new THREE.Mesh(rbox(1.6, 1.4, 1.6, 0.35), mat(cabCols[i % cabCols.length]));
-    cab.position.set(cx, cy, 0);
-    wheel.add(cab);
+    const spoke = new THREE.CylinderGeometry(0.08, 0.08, R, 6);
+    spoke.rotateZ(a - Math.PI / 2);
+    spoke.translate(cx / 2, cy / 2, 0);
+    frameGeos.push(spoke);
+    part(cabParts, rbox(1.6, 1.4, 1.6, 0.35).translate(cx, cy, 0), cabCols[i % cabCols.length]);
   }
+  wheel.add(new THREE.Mesh(mergeGeometries(frameGeos), steel));
+  wheel.add(new THREE.Mesh(mergeGeometries(cabParts), _solidMat));
   g.add(wheel);
   _spinners.push({ obj: wheel, ax: "z", speed: 0.25, phase: 0 });
   return g;
 }
 
 function makeGiantCat() {
+  // All the stone (plus the base) bakes into ONE vertex-coloured mesh — was ~12
+  // separate meshes/draws. Only the emissive eyes (one merged pair) and glowing
+  // collar stay separate.
   const g = new THREE.Group();
-  const stone = mat(0xc9c2b4);
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 5, 1.2, 20), mat(0x8a8278));
-  base.position.y = 0.6;
-  g.add(base);
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.6, 8, 16), stone);
-  body.position.y = 4.8;
-  body.castShadow = true;
-  g.add(body);
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 16), stone);
-  chest.position.set(0, 4, 1.4);
-  chest.scale.set(1, 1.2, 0.8);
-  g.add(chest);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(2.6, 16, 16), stone);
-  head.position.y = 10.2;
-  g.add(head);
-  for (const sx of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.95, 1.9, 4), stone);
-    ear.position.set(sx * 1.3, 12.3, 0);
-    g.add(ear);
-    const eye = new THREE.Mesh(
-      new THREE.SphereGeometry(0.45, 10, 10),
-      mat(0x2b2b2b, { emissive: 0x0a3a2a, emissiveIntensity: 0.25 })
-    );
-    eye.position.set(sx * 0.95, 10.7, 2.2);
-    g.add(eye);
-  }
-  const tail = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.5, 8, 16, Math.PI * 1.2), stone);
-  tail.position.set(2.8, 2.0, 1.4);
-  tail.rotation.set(Math.PI / 2, 0, 0.5);
-  g.add(tail);
+  const stoneC = 0xc9c2b4;
+  const parts = [];
+  part(parts, new THREE.CylinderGeometry(4.5, 5, 1.2, 20).translate(0, 0.6, 0), 0x8a8278);
+  part(parts, new THREE.CylinderGeometry(2.4, 3.6, 8, 16).translate(0, 4.8, 0), stoneC);
+  part(parts, new THREE.SphereGeometry(2.6, 16, 16).scale(1, 1.2, 0.8).translate(0, 4, 1.4), stoneC);
+  part(parts, new THREE.SphereGeometry(2.6, 16, 16).translate(0, 10.2, 0), stoneC);
+  for (const sx of [-1, 1]) part(parts, new THREE.ConeGeometry(0.95, 1.9, 4).translate(sx * 1.3, 12.3, 0), stoneC);
+  // Tail: rotation.set(PI/2, 0, 0.5) with default XYZ order = Rx·Rz applied to
+  // the geometry as rotateZ first, then rotateX.
+  part(parts, new THREE.TorusGeometry(2.2, 0.5, 8, 16, Math.PI * 1.2).rotateZ(0.5).rotateX(Math.PI / 2).translate(2.8, 2.0, 1.4), stoneC);
+  const statue = new THREE.Mesh(mergeGeometries(parts), _solidMat);
+  statue.castShadow = true;
+  g.add(statue);
+  const eyeGeos = [];
+  for (const sx of [-1, 1]) eyeGeos.push(new THREE.SphereGeometry(0.45, 10, 10).translate(sx * 0.95, 10.7, 2.2));
+  g.add(new THREE.Mesh(mergeGeometries(eyeGeos), mat(0x2b2b2b, { emissive: 0x0a3a2a, emissiveIntensity: 0.25 })));
   const collar = new THREE.Mesh(
     new THREE.TorusGeometry(2.2, 0.32, 8, 16),
     mat(0xe0a52a, { emissive: 0xe0a52a, emissiveIntensity: 0.3 })
@@ -3730,31 +3735,26 @@ function makeGiantCat() {
 }
 
 function makeBigWindmill() {
+  // Tower + balcony + cap merge to one vertex-coloured mesh, and all four sail
+  // arms merge to another inside the rotating hub — 11 draws down to 2 (+flag).
   const g = new THREE.Group();
   const tH = 16;
-  const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 4, tH, 12), mat(0xe6dcc6));
-  tower.position.y = tH / 2;
+  const towerParts = [];
+  part(towerParts, new THREE.CylinderGeometry(2.6, 4, tH, 12).translate(0, tH / 2, 0), 0xe6dcc6);
+  part(towerParts, new THREE.CylinderGeometry(3, 3, 0.4, 12).translate(0, tH * 0.55, 0), 0x5d4037);
+  part(towerParts, new THREE.ConeGeometry(3.2, 3, 12).translate(0, tH + 1.2, 0), 0x7a4a36);
+  const tower = new THREE.Mesh(mergeGeometries(towerParts), _solidMat);
   tower.castShadow = true;
   g.add(tower);
-  const balcony = new THREE.Mesh(new THREE.CylinderGeometry(3, 3, 0.4, 12), mat(0x5d4037));
-  balcony.position.y = tH * 0.55;
-  g.add(balcony);
-  const cap = new THREE.Mesh(new THREE.ConeGeometry(3.2, 3, 12), mat(0x7a4a36));
-  cap.position.y = tH + 1.2;
-  g.add(cap);
   const hub = new THREE.Group();
   hub.position.set(0, tH * 0.92, 3.4);
+  const armParts = [];
   for (let i = 0; i < 4; i++) {
-    const arm = new THREE.Group();
-    const spar = new THREE.Mesh(new THREE.BoxGeometry(0.4, 9, 0.3), mat(0x6b4a2b));
-    spar.position.y = 4.5;
-    arm.add(spar);
-    const cloth = new THREE.Mesh(new THREE.BoxGeometry(2.2, 8, 0.1), mat(0xf4efe2));
-    cloth.position.set(1.3, 4.5, 0);
-    arm.add(cloth);
-    arm.rotation.z = (i / 4) * Math.PI * 2;
-    hub.add(arm);
+    const rot = (i / 4) * Math.PI * 2;
+    part(armParts, new THREE.BoxGeometry(0.4, 9, 0.3).translate(0, 4.5, 0).rotateZ(rot), 0x6b4a2b);
+    part(armParts, new THREE.BoxGeometry(2.2, 8, 0.1).translate(1.3, 4.5, 0).rotateZ(rot), 0xf4efe2);
   }
+  hub.add(new THREE.Mesh(mergeGeometries(armParts), _solidMat));
   g.add(hub);
   _spinners.push({ obj: hub, ax: "z", speed: 0.5, phase: rand() * 6.28 });
   const flag = makeFlag(2.6);
@@ -3814,7 +3814,13 @@ function buildBirds(scene) {
 }
 // Copy every wing marker's world matrix into the instance buffer (call after all
 // updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
+// Half-rate: the birds are tiny specks high in the sky — a 30 Hz wing beat is
+// indistinguishable, and it halves the 6 subtree matrix passes + 42 setMatrixAt
+// + instance upload this costs per frame.
+let _wingFlip = false;
 function syncBirdWings(birds) {
+  _wingFlip = !_wingFlip;
+  if (_wingFlip) return;
   for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
   for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
   birds.wingMesh.instanceMatrix.needsUpdate = true;

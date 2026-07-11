@@ -659,6 +659,8 @@ class AudioEngine {
     trem.start(t);
     g.gain.setTargetAtTime(0.02, t, 0.4);
     this._engine = { hum, sub, rush, bp, rushGain, trem, lp, g };
+    this._engFrac = -1; // force the first setEngine after a (re)start to apply
+    this._engBoost = null;
   }
 
   // speedFrac 0..1 drives pitch, the air rush, and tremolo rate; boosting opens
@@ -666,6 +668,12 @@ class AudioEngine {
   setEngine(speedFrac, boosting) {
     const e = this._engine;
     if (!e || !this.ctx) return;
+    // Called every frame — skip the 7 automation events when nothing audible
+    // changed (idle on the grid, steady cruising). The 0.08-0.1s time constants
+    // below already smooth between updates, so a 1% step is inaudible.
+    if (boosting === this._engBoost && Math.abs(speedFrac - this._engFrac) < 0.01) return;
+    this._engFrac = speedFrac;
+    this._engBoost = boosting;
     const t = this.ctx.currentTime;
     const f = 55 + speedFrac * 95; // ~55Hz idle -> ~150Hz; gentle, never whiny
     e.hum.frequency.setTargetAtTime(f, t, 0.08);
@@ -719,10 +727,15 @@ class AudioEngine {
       src.start(t);
       lfo.start(t);
       this._skid = { src, g };
+      this._skidTgt = undefined; // fresh node: don't let a stale target skip the ramp-in
     }
     if (this._skid) {
-      const t = this.ctx.currentTime;
-      this._skid.g.gain.setTargetAtTime(on ? 0.1 * intensity : 0.0001, t, 0.05);
+      // Per-frame caller: only reschedule the gain when the target changed.
+      const tgt = on ? 0.1 * intensity : 0.0001;
+      if (tgt !== this._skidTgt) {
+        this._skidTgt = tgt;
+        this._skid.g.gain.setTargetAtTime(tgt, this.ctx.currentTime, 0.05);
+      }
     }
   }
 

@@ -7,6 +7,11 @@ const UP = new THREE.Vector3(0, 1, 0);
 // fully written before it's read, and karts update sequentially).
 const _iFwd = new THREE.Vector3();
 const _iProbe = new THREE.Vector3();
+// driveAI scratch (karts update sequentially; each value is written before read).
+const _aiT0 = new THREE.Vector3();
+const _aiT1 = new THREE.Vector3();
+const _aiTarget = new THREE.Vector3();
+const _aiSide = new THREE.Vector3();
 
 // Projected-shadow sun parameters, set per race from the active mood's sunDir.
 // The contact shadow is a flat quad stretched + aimed along the sun so it reads
@@ -25,6 +30,20 @@ export function setSunShadow(sunDir) {
 
 // Shield bubble (WebGPU TSL): a glowing Fresnel energy orb — bright at the rim,
 // faint fill, with a travelling shimmer + gentle breathing pulse off `time`.
+// ONE material + ONE sphere shared by every kart: the TSL graph animates off the
+// global `time` node (no per-kart uniforms), so per-kart instances just meant six
+// identical shader compiles (each a documented first-use hitch) and six spheres.
+let _shieldGeoShared = null;
+let _shieldMatShared = null;
+function sharedShield() {
+  if (!_shieldGeoShared) {
+    _shieldGeoShared = new THREE.SphereGeometry(3.3, 24, 16);
+    _shieldGeoShared.userData.shared = true; // disposeGroup: hands off
+    _shieldMatShared = makeShieldMaterial();
+    _shieldMatShared.userData.shared = true;
+  }
+  return { geo: _shieldGeoShared, mat: _shieldMatShared };
+}
 function makeShieldMaterial() {
   const mat = new THREE.MeshBasicNodeMaterial({
     transparent: true,
@@ -48,8 +67,6 @@ function makeShieldMaterial() {
   // More translucent presence than before: a soft see-through fill (0.05) plus the
   // glowing rim, capped so the kart stays visible through the bubble.
   mat.opacityNode = fres.mul(0.7).add(0.05).add(band.mul(fres).mul(0.28)).clamp(0, 0.85);
-  // Dummy uniforms bag: the update loop writes material.uniforms.uTime.value.
-  mat.uniforms = { uTime: { value: 0 } };
   return mat;
 }
 
@@ -184,6 +201,7 @@ export class Kart {
     this.group.rotation.order = "YXZ";
     const { group: kart, wheels, brakeMat, flames } = createKartModel(color, { style: kartStyle, number: kartNumber });
     this.wheels = wheels;
+    for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
     this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
     this.flames = flames; // boost exhaust flames; shown/flickered while boosting
     this.group.add(kart);
@@ -196,10 +214,8 @@ export class Kart {
     // Shield bubble (held protection from hairballs) — a glowing Fresnel energy
     // orb: bright at the rim, faint fill, with travelling shimmer bands.
     this.shielding = false;
-    this.shieldMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(3.3, 24, 16),
-      makeShieldMaterial()
-    );
+    const shield = sharedShield();
+    this.shieldMesh = new THREE.Mesh(shield.geo, shield.mat);
     this.shieldMesh.position.y = 1.2;
     this.shieldMesh.visible = false;
     this.group.add(this.shieldMesh);
@@ -424,7 +440,14 @@ export class Kart {
     this.speed = Math.max(-this.maxReverse, this.speed);
 
     // Tail lights flare when braking or reversing (dim red glow otherwise).
-    if (this.brakeMat) this.brakeMat.emissiveIntensity = this.throttleInput < -0.05 ? 2.8 : 0.25;
+    // Binary value — only touch the material when it actually flips.
+    if (this.brakeMat) {
+      const bi = this.throttleInput < -0.05 ? 2.8 : 0.25;
+      if (bi !== this._brakeI) {
+        this._brakeI = bi;
+        this.brakeMat.emissiveIntensity = bi;
+      }
+    }
 
     // --- Drift: continues as long as jump is held; release fires the boost ---
     if (this.drifting) {
@@ -595,8 +618,8 @@ export class Kart {
         const green = this.catnipBoosting;
         if (green !== this._flamesGreen) {
           this._flamesGreen = green;
-          const oc = this.flames.children[0] && this.flames.children[0].material;
-          const cc = this.flames.children[1] && this.flames.children[1].material;
+          const oc = this.flames.userData.outerMat;
+          const cc = this.flames.userData.coreMat;
           if (oc) oc.color.set(green ? 0x49d62a : 0xff7a1e);
           if (cc) cc.color.set(green ? 0xd6ffb0 : 0xfff2c0);
         }
@@ -617,7 +640,11 @@ export class Kart {
     this.groundShadow.position.y = -this.y + 0.04;
     this.groundShadow.rotation.y = _sunAz - this.heading;
     this.groundShadow.scale.set(air, 1, air * _sunStretch);
-    this.shadowQuad.material.opacity = _sunAlpha * air;
+    const shOp = _sunAlpha * air; // only changes mid-hop — skip the write otherwise
+    if (shOp !== this._shadowOp) {
+      this._shadowOp = shOp;
+      this.shadowQuad.material.opacity = shOp;
+    }
 
     // Shield bubble: springy pop in/out (never an instant snap), plus a little
     // sway/lean as the kart corners so the orb feels like it has weight.
@@ -639,14 +666,13 @@ export class Kart {
       this.shieldMesh.position.x = -lat * 0.55;
       this.shieldMesh.position.y = 1.2 + sp.v * 0.04;
       this.shieldMesh.rotation.z = lat * 0.18;
-      this.shieldMesh.material.uniforms.uTime.value = now * 0.001;
+      // (the shield material animates itself off the TSL `time` node)
     }
 
     // Wheels roll; the fronts (indices 0,1) also steer with the input.
     const steerAng = (this.drifting ? this.driftDir * 0.6 : this.steerInput) * 0.45;
     for (let i = 0; i < this.wheels.length; i++) {
       const w = this.wheels[i];
-      w.rotation.order = "YXZ";
       w.rotation.y = i < 2 ? steerAng : 0; // front axle steers
       w.rotation.x = this._wheelSpin || 0; // roll
     }
@@ -665,8 +691,8 @@ export class Kart {
     // Sharpness of the corner just ahead. Using fixed DISTANCES (not a fixed t)
     // matters now the track is long — a fixed t-step would reach much further in
     // world units and make the AI cut across bends into the inside wall.
-    const t0 = track.getTangentAt(wrap(this.trackT + 5 / L));
-    const t1 = track.getTangentAt(wrap(this.trackT + (18 + speed) / L));
+    const t0 = track.getTangentAt(wrap(this.trackT + 5 / L), _aiT0);
+    const t1 = track.getTangentAt(wrap(this.trackT + (18 + speed) / L), _aiT1);
     const curve = angleDelta(Math.atan2(t1.x, t1.z), Math.atan2(t0.x, t0.z));
     const sharp = Math.min(1, Math.abs(curve) * 6);
 
@@ -675,8 +701,8 @@ export class Kart {
     // this driver's own lane bias so the field fans out instead of clumping.
     const aimDist = (8 + speed * 0.5) * (1 - 0.5 * sharp);
     const aT = wrap(this.trackT + aimDist / L);
-    const target = track.getPointAt(aT);
-    const side = new THREE.Vector3().crossVectors(track.getTangentAt(aT), UP).normalize();
+    const target = track.getPointAt(aT, _aiTarget);
+    const side = _aiSide.crossVectors(track.getTangentAt(aT, _aiT0), UP).normalize();
     const apex = Math.sign(curve) * (1 - sharp) * (track.halfWidth - 4);
     const lane = this.laneBias * (1 - sharp) * (track.halfWidth - 3); // hold a personal line
     target.addScaledVector(side, apex + lane);

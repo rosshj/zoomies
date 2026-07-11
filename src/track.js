@@ -628,9 +628,11 @@ export class Track {
       roughness: 0.85,
       side: THREE.DoubleSide,
     });
+    // Both painted lines share one material — bake them into ONE mesh (one draw).
+    const positions = [];
+    const indices = [];
     for (const sgn of [1, -1]) {
-      const positions = [];
-      const indices = [];
+      const base = positions.length / 3;
       for (let i = 0; i <= this.samples; i++) {
         const idx = i % this.samples;
         const p = this._pts[idx];
@@ -639,18 +641,18 @@ export class Track {
         const b = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset + hw));
         positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
         if (i < this.samples) {
-          const k = i * 2;
+          const k = base + i * 2;
           indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
         }
       }
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-      geo.setIndex(indices);
-      geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.receiveShadow = true;
-      this.group.add(mesh);
     }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.receiveShadow = true;
+    this.group.add(mesh);
   }
 
   _buildSandTrim() {
@@ -730,6 +732,8 @@ export class Track {
     // Continuous barriers (no gaps) down each side of the road. The two
     // alternating colours come from the biome the segment sits in, so the
     // fencing changes as you pass from meadow to forest to desert, etc.
+    // One material for both sides (was a fresh identical material per side).
+    const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 });
     for (const dirSign of [1, -1]) {
       const positions = [];
       const colors = [];
@@ -758,10 +762,7 @@ export class Track {
       geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
       geo.setIndex(indices);
       geo.computeVertexNormals();
-      const mesh = new THREE.Mesh(
-        geo,
-        new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 })
-      );
+      const mesh = new THREE.Mesh(geo, wallMat);
       // The "fence flicker" was really the global shadow-map instability on WebGPU
       // (the kart shadow flickers too) — fixed at the source via the shadow bias in
       // scene.js. So the barrier casts its shadow again (restoring the grounding it
@@ -1080,12 +1081,14 @@ export class Track {
     }
   }
 
-  getPointAt(t) {
-    return this.curve.getPointAt(((t % 1) + 1) % 1);
+  // `target` (optional) is written and returned instead of allocating — the AI
+  // drivers call these several times per kart per frame.
+  getPointAt(t, target) {
+    return this.curve.getPointAt(((t % 1) + 1) % 1, target);
   }
 
-  getTangentAt(t) {
-    return this.curve.getTangentAt(((t % 1) + 1) % 1);
+  getTangentAt(t, target) {
+    return this.curve.getTangentAt(((t % 1) + 1) % 1, target);
   }
 
   // Closest point on the polyline `pts` to (x,z), interpolated *along* the

@@ -513,6 +513,15 @@ const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at nig
 const _hlPool = []; // { light, target } reused across karts
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
 let _hlRamp = 1;
+// Hoisted beam-ranking comparator (camera XZ via module vars, no per-frame closure).
+let _hlCx = 0, _hlCz = 0;
+function _hlCmp(a, b) {
+  if (a === player) return -1;
+  if (b === player) return 1;
+  const da = (a.position.x - _hlCx) ** 2 + (a.position.z - _hlCz) ** 2;
+  const db = (b.position.x - _hlCx) ** 2 + (b.position.z - _hlCz) ** 2;
+  return da - db;
+}
 function buildHeadlightPool() {
   if (LIGHT_LEVEL <= 0 || _hlPool.length) return; // daytime needs none
   for (let i = 0; i < HEADLIGHT_BUDGET; i++) {
@@ -660,6 +669,7 @@ let _threatState = "none"; // "none" | "warn" | "lock"
 
 // Steering indicator + recalibrate button
 const steerDot = document.getElementById("steer-dot");
+let _steerDotLast = Infinity; // last written steer value (guards the style write)
 document.getElementById("calibrate").addEventListener("click", () => input.calibrate());
 
 const input = new Input();
@@ -670,17 +680,35 @@ const _warmPos = new THREE.Vector3();
 const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const hud = new HUD();
+const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
 // Boost (toot) meter UI reflects the player kart's own meter.
 const boostBtn = document.getElementById("btn-boost");
 const boostFill = document.getElementById("boost-fill");
 const shootBtn = document.getElementById("btn-shoot");
+let _boostPctLast = -1;
+let _boostDisLast = null;
+let _shootDisLast = null;
 function updateBoostUI() {
   const m = player ? player.boostMeter : 0;
-  boostFill.style.height = `${Math.round(m * 100)}%`;
-  boostBtn.classList.toggle("disabled", m < 1); // only fire when full
+  // Change-gated DOM writes: this runs every racing frame and the values move in
+  // whole-percent steps at most.
+  const pct = Math.round(m * 100);
+  if (pct !== _boostPctLast) {
+    _boostPctLast = pct;
+    boostFill.style.height = `${pct}%`;
+  }
+  const dis = m < 1;
+  if (dis !== _boostDisLast) {
+    _boostDisLast = dis;
+    boostBtn.classList.toggle("disabled", dis); // only fire when full
+  }
   // Dim the shoot button while it's recharging (or locked out after a hit).
-  if (shootBtn) shootBtn.classList.toggle("disabled", !!player && player.shootCooldown > 0);
+  const sd = !!player && player.shootCooldown > 0;
+  if (shootBtn && sd !== _shootDisLast) {
+    _shootDisLast = sd;
+    shootBtn.classList.toggle("disabled", sd);
+  }
 }
 
 // --- Karts: 1 player + 5 AI rivals ---
@@ -1235,20 +1263,24 @@ function updateRearThreat() {
   // During the opening furball grace, nobody can fire — so don't flash a
   // misleading "BEHIND!" threat warning.
   if (player && !player.finished && raceTime >= SHOOT_OPENING_LOCKOUT) {
-    const contenders = MP.enabled ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)] : karts;
-    for (const k of contenders) {
-      if (!k || k === player || k.finished || k.spinTimer > 0) continue;
+    // Returns true when k is a full lock (stop scanning); mutates `state`.
+    const check = (k) => {
+      if (!k || k === player || k.finished || k.spinTimer > 0) return false;
       _rtFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
       _rtTo.subVectors(player.position, k.position);
       const dist = _rtTo.length();
-      if (dist < 3 || dist > 50) continue; // out of hairball reach
+      if (dist < 3 || dist > 50) return false; // out of hairball reach
       const aim = _rtTo.normalize().dot(_rtFwd); // 1 = pointing straight at the player
-      if (aim < 0.78) continue; // not aimed at you
+      if (aim < 0.78) return false; // not aimed at you
       // Ready + dead-on + in solid range = imminent; otherwise just a warning.
       const ready = (k.shootCooldown ?? 0) <= 0.25;
-      if (ready && aim > 0.86 && dist < 46) { state = "lock"; break; }
+      if (ready && aim > 0.86 && dist < 46) { state = "lock"; return true; }
       state = "warn"; // keep scanning in case another kart is a full lock
-    }
+      return false;
+    };
+    let locked = false;
+    for (const k of karts) if (check(k)) { locked = true; break; }
+    if (!locked && MP.enabled) for (const r of MP.remotes.values()) if (check(r.kart)) break;
   }
   if (state !== _threatState) {
     _threatState = state;
@@ -1371,8 +1403,7 @@ function updateAtmosphere() {
   // Rain clouds the sun: fade the shafts/flare/backlight as it picks up.
   const clear = 1 - 0.7 * weather.rainAmount;
   vis *= clear;
-  godrayPass.uniforms.uVis.value = vis;
-  flarePass.uniforms.uVis.value = vis;
+  godrayPass.uniforms.uVis.value = vis; // (flarePass is a dead stub — no write)
   // Refresh the shaft target every OTHER frame while the sun shows (soft, low-
   // frequency content — half rate is invisible but halves the worst facing-the-
   // sun cost). Once the sun goes hidden, one last refresh writes the gated black
@@ -1390,7 +1421,6 @@ function updateAtmosphere() {
   // two full-frame passes every night frame. fxPass stays last, so the
   // render-to-screen pass is unaffected.
   godrayPass.enabled = vis > 0.001;
-  flarePass.enabled = vis > 0.001;
 
   // View-space light-travel direction + mood sun colour, shared by the backlit
   // tree foliage and the hero rim (the foliage/rim TSL emissive reads these nodes).
@@ -1550,8 +1580,31 @@ function paintTrackMap(canvas, controlPoints, glyphs = null) {
   }
 }
 
+// The minimap redraws at ~20 Hz, not every frame — dots crawling across a
+// 150px map can't show 60 Hz motion, and each redraw is a full canvas clear +
+// stroke + per-kart arcs. Glyphs are cached per track (they never move) and each
+// kart's CSS colour string is built once, not re-formatted per draw.
+let _miniNext = 0;
+let _miniGlyphs = null;
+function _miniDot(ctx, toX, toY, k) {
+  if (!k || !k.position) return;
+  const isPlayer = !!k.isPlayer;
+  ctx.beginPath();
+  ctx.arc(toX(k.position.x), toY(k.position.z), isPlayer ? 5 : 3.5, 0, Math.PI * 2);
+  if (k._miniCol === undefined) k._miniCol = "#" + ((k.color ?? 0xffffff) >>> 0).toString(16).padStart(6, "0");
+  ctx.fillStyle = k._miniCol;
+  ctx.fill();
+  if (isPlayer) {
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#fff";
+    ctx.stroke();
+  }
+}
 function drawMinimap() {
   if (!minimap) return;
+  const now = performance.now();
+  if (now < _miniNext) return;
+  _miniNext = now + 50; // ~20 Hz
   const { ctx, toX, toY, W, H, path } = minimap;
   ctx.clearRect(0, 0, W, H);
   ctx.strokeStyle = "rgba(255,255,255,0.5)";
@@ -1562,21 +1615,10 @@ function drawMinimap() {
   ctx.font = "11px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (const g of featureGlyphs(track.features)) ctx.fillText(g.glyph, toX(g.x), toY(g.z));
-  for (const e of raceField()) {
-    const k = e.kart || e; // remote wrappers hold their kart
-    if (!k.position) continue;
-    const isPlayer = !!k.isPlayer;
-    ctx.beginPath();
-    ctx.arc(toX(k.position.x), toY(k.position.z), isPlayer ? 5 : 3.5, 0, Math.PI * 2);
-    ctx.fillStyle = "#" + ((k.color ?? 0xffffff) >>> 0).toString(16).padStart(6, "0");
-    ctx.fill();
-    if (isPlayer) {
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = "#fff";
-      ctx.stroke();
-    }
-  }
+  if (!_miniGlyphs) _miniGlyphs = featureGlyphs(track.features);
+  for (const g of _miniGlyphs) ctx.fillText(g.glyph, toX(g.x), toY(g.z));
+  for (const k of karts) _miniDot(ctx, toX, toY, k);
+  if (MP.enabled) for (const r of MP.remotes.values()) _miniDot(ctx, toX, toY, r.kart);
 }
 
 // Inverse of the stage transform: viewport point -> stage-local point.
@@ -3448,7 +3490,9 @@ function updateFireworks(dt) {
   // the arch (not just the finished flag) so a flag that flips a touch early
   // (e.g. a networked ghost still gliding in) can't set them off beforehand.
   if (!_fireworksDone && track.archApex) {
-    const winner = raceField().find((k) => k.finished);
+    let winner = null;
+    for (const k of karts) if (k.finished) { winner = k; break; }
+    if (!winner && MP.enabled) for (const r of MP.remotes.values()) if (r.finished) { winner = r; break; }
     if (winner) {
       const dx = winner.position.x - track.archApex.x;
       const dz = winner.position.z - track.archApex.z;
@@ -3806,22 +3850,28 @@ function resolveRemoteCollisions() {
 // --- Placement ---
 // In multiplayer, remote ghost karts join the field as real participants: each
 // broadcasts its totalProgress, so a "2nd / 4" agrees across every screen.
+// Persistent scratch + hoisted comparator: this runs every racing frame, and the
+// old spread + closure pair allocated on each call.
+const _placeField = [];
+function _placeCmp(a, b) {
+  if (a.finished && b.finished) {
+    // Rank by the shared-clock finish instant when both have one (multiplayer);
+    // fall back to elapsed time for AI / solo where every clock is local.
+    if (a.finishClock && b.finishClock) return a.finishClock - b.finishClock;
+    return a.finishTime - b.finishTime;
+  }
+  if (a.finished) return -1;
+  if (b.finished) return 1;
+  return b.totalProgress - a.totalProgress;
+}
 function updatePlacement() {
-  const field = [...karts];
-  if (MP.enabled) for (const r of MP.remotes.values()) field.push(r);
-  field.sort((a, b) => {
-    if (a.finished && b.finished) {
-      // Rank by the shared-clock finish instant when both have one (multiplayer);
-      // fall back to elapsed time for AI / solo where every clock is local.
-      if (a.finishClock && b.finishClock) return a.finishClock - b.finishClock;
-      return a.finishTime - b.finishTime;
-    }
-    if (a.finished) return -1;
-    if (b.finished) return 1;
-    return b.totalProgress - a.totalProgress;
-  });
-  field.forEach((k, idx) => (k.place = idx + 1));
-  _fieldCount = field.length; // size of the field, for position-weighted item rolls
+  let n = 0;
+  for (const k of karts) _placeField[n++] = k;
+  if (MP.enabled) for (const r of MP.remotes.values()) _placeField[n++] = r;
+  _placeField.length = n;
+  _placeField.sort(_placeCmp);
+  for (let i = 0; i < n; i++) _placeField[i].place = i + 1;
+  _fieldCount = n; // size of the field, for position-weighted item rolls
 }
 let _fieldCount = 1;
 
@@ -3961,6 +4011,31 @@ function raceField() {
   const f = [...karts];
   if (MP.enabled) for (const r of MP.remotes.values()) f.push(r);
   return f;
+}
+
+// Per-frame kart snapshot shared by the prop/string-light updates (and anything
+// else that only needs positions/headings). ONE reused array of reused records —
+// the old per-consumer raceField().map(...) built two fresh arrays plus a dozen
+// object literals every frame, steady GC pressure on mobile.
+const _fieldSnap = [];
+function fieldSnapshot() {
+  let n = 0;
+  const take = (k) => {
+    if (!k || !k.position) return;
+    let s = _fieldSnap[n];
+    if (!s) s = _fieldSnap[n] = { x: 0, z: 0, dx: 0, dz: 0, speed: 0, kart: null };
+    s.x = k.position.x;
+    s.z = k.position.z;
+    s.dx = Math.sin(k.heading);
+    s.dz = Math.cos(k.heading);
+    s.speed = Math.abs(k.speed || 0);
+    s.kart = k;
+    n++;
+  };
+  for (const k of karts) take(k);
+  if (MP.enabled) for (const r of MP.remotes.values()) take(r.kart);
+  _fieldSnap.length = n;
+  return _fieldSnap;
 }
 
 function showResults() {
@@ -4195,15 +4270,11 @@ function loop(now) {
     _hlCands.length = 0;
     for (const k of karts) if (k && k.position) _hlCands.push(k);
     if (MP.enabled) for (const r of MP.remotes.values()) if (r.kart && r.kart.position) _hlCands.push(r.kart);
-    const cx = camera.position.x, cz = camera.position.z;
+    _hlCx = camera.position.x;
+    _hlCz = camera.position.z;
     // Player always keeps a beam; the rest are ranked by distance to the camera.
-    _hlCands.sort((a, b) => {
-      if (a === player) return -1;
-      if (b === player) return 1;
-      const da = (a.position.x - cx) ** 2 + (a.position.z - cz) ** 2;
-      const db = (b.position.x - cx) ** 2 + (b.position.z - cz) ** 2;
-      return da - db;
-    });
+    // (_hlCmp is hoisted — an inline comparator allocated a closure per frame.)
+    _hlCands.sort(_hlCmp);
     const lit = _hlBase * _hlRamp;
     for (let i = 0; i < _hlPool.length; i++) {
       const slot = _hlPool[i];
@@ -4226,28 +4297,14 @@ function loop(now) {
     _boostLight.color.set(player && player.catnipBoosting ? 0x6fe040 : 0xff8a2e);
   }
 
+  // One shared kart snapshot for the prop + string-light updates (alloc-free).
+  const fieldNow = (props || world.stringLights) ? fieldSnapshot() : null;
+
   // Step the knockable props and let the karts shove the ones they touch.
-  if (props) {
-    props.update(
-      dt,
-      raceField().map((e) => {
-        const k = e.kart || e;
-        return k && k.position ? { x: k.position.x, z: k.position.z, kart: k } : null;
-      })
-    );
-  }
+  if (props) props.update(dt, fieldNow);
 
   // Swing the festive string lights as karts pass under them.
-  if (world.stringLights) {
-    world.stringLights.update(
-      dt,
-      raceField().map((e) => {
-        const k = e.kart || e;
-        if (!k || !k.position) return null;
-        return { x: k.position.x, z: k.position.z, dx: Math.sin(k.heading), dz: Math.cos(k.heading), speed: Math.abs(k.speed || 0) };
-      })
-    );
-  }
+  if (world.stringLights) world.stringLights.update(dt, fieldNow);
   updateMultiplayer(dt); // broadcast my pose + interpolate ghost karts
 
   if (state === State.MENU) {
@@ -4348,7 +4405,12 @@ function loop(now) {
     player.throttleInput = input.throttle;
     player.shielding = input.shielding;
     player.driftHeld = input.jumpHeld;
-    steerDot.style.transform = `translateX(${input.steer * 80}px)`;
+    // Steering dot: skip the style write (string build + composite) when the
+    // needle hasn't visibly moved (~0.4px at the 80px throw).
+    if (Math.abs(input.steer - _steerDotLast) > 0.005) {
+      _steerDotLast = input.steer;
+      steerDot.style.transform = `translateX(${input.steer * 80}px)`;
+    }
     if (input.consumeJump()) player.jump();
     // Hold the shoot button to charge a faster/further shot; fire on release.
     if (input.shootHeld && player.shootCooldown <= 0)
@@ -4404,16 +4466,9 @@ function loop(now) {
       if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
       if (amt > 0.02) effects.dust(player, _dustCol, amt);
     }
-    // Chromatic aberration ramps up with the boost.
-    const aberrTarget = player.boosting ? 0.008 : 0;
-    fxPass.uniforms.uAberr.value += (aberrTarget - fxPass.uniforms.uAberr.value) * Math.min(1, dt * 6);
-    // Radial (zoom) motion blur: kept very subtle and only near top speed, with
-    // NO extra kick while boosting — boosting is frequent, so that kick smeared
-    // the screen most of the time. The FOV punch on boost already sells speed.
-    // Smoothed so it eases in/out, never snaps.
-    const spd = Math.abs(player.speed);
-    const radialTarget = Math.min(1, Math.max(0, (spd - 34) / 40)) * 0.006;
-    fxPass.uniforms.uRadial.value += (radialTarget - fxPass.uniforms.uRadial.value) * Math.min(1, dt * 4);
+    // (Chromatic aberration / radial blur: their uniforms are dead stubs — the
+    // effects aren't in the post graph (see fxPass) — so nothing eases them
+    // per-frame anymore. Re-add the easing when the passes are actually wired in.)
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.
@@ -4560,15 +4615,14 @@ function loop(now) {
     }
     prevPlayerLap = player.lap;
 
-    // HUD
-    hud.update({
-      lapNum: player.displayLap(laps),
-      totalLaps: laps,
-      place: player.place,
-      totalKarts: karts.length + (MP.enabled ? MP.remotes.size : 0),
-      speedKmh: Math.abs(player.speed) * 3.0,
-      time: timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime,
-    });
+    // HUD (reused options object — no per-frame literal)
+    _hudOpts.lapNum = player.displayLap(laps);
+    _hudOpts.totalLaps = laps;
+    _hudOpts.place = player.place;
+    _hudOpts.totalKarts = karts.length + (MP.enabled ? MP.remotes.size : 0);
+    _hudOpts.speedKmh = Math.abs(player.speed) * 3.0;
+    _hudOpts.time = timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
+    hud.update(_hudOpts);
     hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer);
 
     // Opening furball grace: count down the charge, then announce "armed". Skipped

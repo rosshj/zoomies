@@ -86,7 +86,9 @@ function build(scene, track, opts) {
     const lid = new THREE.Mesh(new THREE.BoxGeometry(s * 1.02, s * 0.16, s * 1.02), woodTop);
     lid.position.y = s * 0.5;
     g.add(lid);
-    g.traverse((o) => (o.castShadow = true));
+    // No castShadow: the sun map is baked ONCE, so a knocked/floating crate would
+    // leave a ghost shadow at its bake pose. The instanced blob shadow (below)
+    // tracks the live prop instead.
     return { mesh: g, rest: s / 2 };
   };
   const makeBarrel = () => {
@@ -101,7 +103,7 @@ function build(scene, track, opts) {
       parts.push(band);
     }
     const g = new THREE.Group();
-    g.add(mergeMeshes(parts, { castShadow: true }));
+    g.add(mergeMeshes(parts, { castShadow: false })); // blob-shadowed, like the crates
     return { mesh: g, rest: h / 2 };
   };
   // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state
@@ -144,8 +146,8 @@ function build(scene, track, opts) {
       leaf.position.set(Math.cos(a) * r, 0.04 + rand() * 0.22, Math.sin(a) * r);
       leaf.rotation.set(-Math.PI / 2 + (rand() - 0.5) * 0.6, rand() * Math.PI, (rand() - 0.5) * 0.6);
       leaf.scale.setScalar(0.6 + rand() * 0.4); // smaller leaves
-      leaf.castShadow = true;
-      g.add(leaf);
+      g.add(leaf); // no castShadow: piles scatter/resettle, but the sun map bakes once
+
       // phase/flutF drive the side-to-side flutter as the leaf falls; swirlSign
       // sends roughly half the leaves spiralling each way so a kicked pile reads
       // as turbulence, not a uniform puff; sway* is the per-leaf flutter strength.
@@ -177,7 +179,7 @@ function build(scene, track, opts) {
       lp.merged.geometry.dispose(); // materials are the shared leafMats — keep
     }
     for (const lf of lp.leaves) lf.mesh.updateMatrix();
-    lp.merged = mergeMeshes(lp.leaves.map((lf) => lf.mesh), { castShadow: true });
+    lp.merged = mergeMeshes(lp.leaves.map((lf) => lf.mesh), { castShadow: false });
     lp.g.add(lp.merged);
     for (const lf of lp.leaves) lf.mesh.visible = false;
     lp.dormant = true;
@@ -258,10 +260,22 @@ function build(scene, track, opts) {
   const _shDummy = new THREE.Object3D();
   function updatePropShadows() {
     if (!_shadowMesh) return;
+    let changed = false;
     for (let i = 0; i < props.length; i++) {
       const pr = props[i];
+      // A resting prop's shadow matrix is constant — skip it entirely. This used
+      // to re-run the FULL terrain sampler (the most expensive query in the game)
+      // for all ~64 props every frame, nearly all of them motionless.
+      const active = !pr.asleep || pr.settle || pr.mode !== "ground";
+      if (!active && pr._shBaked && pr._shVis === pr.mesh.visible) continue;
       const mp = pr.mesh.position;
-      const gy = groundAt(mp.x, mp.z);
+      // Ground height under the prop: only re-sample when it has moved in XZ.
+      if (pr._shGy === undefined || mp.x !== pr._shX || mp.z !== pr._shZ) {
+        pr._shGy = groundAt(mp.x, mp.z);
+        pr._shX = mp.x;
+        pr._shZ = mp.z;
+      }
+      const gy = pr._shGy;
       const h = Math.max(0, mp.y - pr.rest - gy); // clearance under the prop
       // Footprint from the prop's size, shrinking with height (perspective cue).
       const s = (pr.rest * 3.1) / (1 + h * 0.16);
@@ -269,8 +283,11 @@ function build(scene, track, opts) {
       _shDummy.scale.setScalar(pr.mesh.visible ? s : 0.0001);
       _shDummy.updateMatrix();
       _shadowMesh.setMatrixAt(i, _shDummy.matrix);
+      pr._shVis = pr.mesh.visible;
+      pr._shBaked = !active; // one final write after it comes to rest, then skip
+      changed = true;
     }
-    _shadowMesh.instanceMatrix.needsUpdate = true;
+    if (changed) _shadowMesh.instanceMatrix.needsUpdate = true;
   }
 
   const prevK = [];
@@ -287,8 +304,10 @@ function build(scene, track, opts) {
   };
   // scratch
   const _e = new THREE.Euler();
+  const _e2 = new THREE.Euler();
   const _qT = new THREE.Quaternion();
   const _wq = new THREE.Quaternion();
+  const _moving = []; // pooled swept-kart records (refilled in place each frame)
 
   // Advance one prop's custom rigid motion: gravity, integrate spin, clamp to the
   // road surface (bounce), bounce off the barriers, then settle upright at rest.
@@ -296,7 +315,7 @@ function build(scene, track, opts) {
     if (pr.asleep && !pr.settle) return;
     if (pr.settle) {
       _e.setFromQuaternion(pr.quat, "YXZ");
-      _qT.setFromEuler(new THREE.Euler(0, _e.y, 0));
+      _qT.setFromEuler(_e2.set(0, _e.y, 0));
       pr.quat.slerp(_qT, Math.min(1, dt * 6));
       const gy = track.groundInfo(pr.pos.x, pr.pos.z).y;
       pr.pos.y = gy + pr.rest;
@@ -357,24 +376,37 @@ function build(scene, track, opts) {
 
   function update(dt, karts) {
     dt = Math.min(dt, 0.05);
-    const moving = [];
+    // Pooled records — no per-frame array/object churn (this runs every frame).
+    let movingN = 0;
+    const moving = _moving;
     if (karts && karts.length) {
       for (let ki = 0; ki < karts.length; ki++) {
         const k = karts[ki];
         if (!k) continue;
-        const prev = prevK[ki] || { x: k.x, z: k.z };
+        let prev = prevK[ki];
+        if (!prev) prev = prevK[ki] = { x: k.x, z: k.z };
         const ax = prev.x, az = prev.z;
         const vx = (k.x - ax) / Math.max(dt, 1e-3);
         const vz = (k.z - az) / Math.max(dt, 1e-3);
-        prevK[ki] = { x: k.x, z: k.z };
+        prev.x = k.x;
+        prev.z = k.z;
         const speed = Math.hypot(vx, vz);
         if (speed < 2.5) continue;
         // Extend the swept segment a little past the nose so the kart's length is
         // accounted for (not just its centre point). Carry the kart ref so a
         // floating box can grant the power-up to whoever drove through it.
-        moving.push({ ax, az, bx: k.x + (vx / speed) * 2.5, bz: k.z + (vz / speed) * 2.5, dx: vx / speed, dz: vz / speed, speed, kart: k.kart });
+        let m = moving[movingN];
+        if (!m) m = moving[movingN] = { ax: 0, az: 0, bx: 0, bz: 0, dx: 0, dz: 0, speed: 0, kart: null };
+        m.ax = ax; m.az = az;
+        m.bx = k.x + (vx / speed) * 2.5;
+        m.bz = k.z + (vz / speed) * 2.5;
+        m.dx = vx / speed; m.dz = vz / speed;
+        m.speed = speed;
+        m.kart = k.kart;
+        movingN++;
       }
     }
+    moving.length = movingN;
 
     // Floating boxes grant a power-up (and sink into an ordinary crate); grounded
     // crates / barrels get FLUNG, scaling hard with speed. Rising/sinking crates
@@ -605,11 +637,20 @@ function build(scene, track, opts) {
   }
 
   // Current floating-box positions, so the AI drivers can seek them out and grab a
-  // power-up instead of ignoring them.
+  // power-up instead of ignoring them. Reuses one array + records (called per frame).
+  const _boxOut = [];
   function boxTargets() {
-    const out = [];
-    for (const pr of props) if (pr.kind === "crate" && pr.mode === "float") out.push({ x: pr.pos.x, z: pr.pos.z });
-    return out;
+    let n = 0;
+    for (const pr of props) {
+      if (pr.kind !== "crate" || pr.mode !== "float") continue;
+      let o = _boxOut[n];
+      if (!o) o = _boxOut[n] = { x: 0, z: 0 };
+      o.x = pr.pos.x;
+      o.z = pr.pos.z;
+      n++;
+    }
+    _boxOut.length = n;
+    return _boxOut;
   }
 
   // Turn the floating power-up boxes on/off (time trial runs with them off). Off
