@@ -23,8 +23,34 @@ function rbox(w, h, d, r = 0.18, seg = 4) {
 // Returns a single THREE.Mesh (material is a single material or an array), or
 // null when given nothing. Materials are reused by reference so toonify() still
 // maps them and dynamic refs (brake/flames) are unaffected.
-export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false } = {}) {
+// Merged-geometry cache (see geoKey below): kart shells / wheels / cat clusters
+// are byte-identical across every racer with the same style/pattern — only the
+// MATERIALS differ (colour-keyed instances). Caching the merged geometry means a
+// six-kart field holds ONE copy of each body in memory instead of six, and a
+// rebuilt race reuses it outright instead of re-merging. This is the lever that
+// makes high-poly kart/cat models affordable: geometry cost is per VARIANT, not
+// per racer. Entries are flagged shared so disposeGroup leaves them alone.
+const _geoCache = new Map();
+export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false, geoKey = null } = {}) {
   if (!meshes.length) return null;
+  // geoKey contract: for a given key, callers always pass parts with identical
+  // geometry/transforms and an identical material-identity pattern (same roles
+  // collapsing to the same slots), so the cached geometry + fresh material list
+  // line up group-for-group.
+  if (geoKey) {
+    const cached = _geoCache.get(geoKey);
+    if (cached) {
+      const mats = [];
+      const seen = new Set();
+      for (const m of meshes) {
+        if (!seen.has(m.material)) { seen.add(m.material); mats.push(m.material); }
+      }
+      const mesh = new THREE.Mesh(cached, mats.length === 1 ? mats[0] : mats);
+      mesh.castShadow = castShadow;
+      mesh.receiveShadow = receiveShadow;
+      return mesh;
+    }
+  }
   const order = [];          // material instances, in first-seen order
   const byMat = new Map();   // material -> [baked geometry]
   for (const m of meshes) {
@@ -47,6 +73,13 @@ export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false 
     mats.push(mat);
   }
   const finalGeo = perMat.length === 1 ? perMat[0] : mergeGeometries(perMat, true);
+  if (geoKey) {
+    finalGeo.userData.shared = true; // disposeGroup must not free it between races
+    // Soft cap (multiplayer can mint arbitrary accessory-colour variants):
+    // evict oldest-inserted. Live meshes keep their reference; GC reclaims later.
+    if (_geoCache.size >= 96) _geoCache.delete(_geoCache.keys().next().value);
+    _geoCache.set(geoKey, finalGeo);
+  }
   const mesh = new THREE.Mesh(finalGeo, mats.length === 1 ? mats[0] : mats);
   mesh.castShadow = castShadow;
   mesh.receiveShadow = receiveShadow;
@@ -217,7 +250,9 @@ export function sharedMat(key, make) {
 // are still used by other karts and are skipped.
 export function disposeGroup(root) {
   root.traverse((o) => {
-    if (o.geometry) o.geometry.dispose();
+    // Cached merged geometries (and other flagged-shared geometry) are reused by
+    // other racers / future rebuilds — never dispose those.
+    if (o.geometry && !o.geometry.userData?.shared) o.geometry.dispose();
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (!m?.userData?.shared) m?.dispose?.();
   });
@@ -432,6 +467,40 @@ const _cWhisker = _shared(new THREE.LineBasicMaterial({ color: 0xf0f0f0 }));
 const _cMouth = _shared(new THREE.LineBasicMaterial({ color: 0x6b4a4a }));
 const _cShade = _shared(new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughness: 0.3, metalness: 0.4 }));
 
+// Constant cat geometries — identical for every cat, so build each ONCE and let
+// all drivers reference it (flagged shared so disposeGroup leaves them alone).
+const _sharedGeo = (g) => { g.userData.shared = true; return g; };
+let _catConstGeo = null;
+function catConstGeo() {
+  if (_catConstGeo) return _catConstGeo;
+  const tailCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0.05, 0.4, -0.5),
+    new THREE.Vector3(0.35, 1.0, -0.45),
+    new THREE.Vector3(0.7, 1.45, -0.02),
+  ]);
+  const whisker = (sx) => {
+    const pts = [];
+    for (const dy of [-0.08, 0.0, 0.08]) {
+      pts.push(new THREE.Vector3(0, dy * 0.4, 0), new THREE.Vector3(sx * 0.75, dy, 0.05));
+    }
+    return _sharedGeo(new THREE.BufferGeometry().setFromPoints(pts));
+  };
+  _catConstGeo = {
+    tail: _sharedGeo(new THREE.TubeGeometry(tailCurve, 28, 0.2, 10)),
+    tailTipPos: tailCurve.getPoint(1),
+    tailTip: _sharedGeo(new THREE.SphereGeometry(0.2, 12, 12)),
+    eyelid: _sharedGeo(new THREE.SphereGeometry(0.26, 14, 10)),
+    mouth: _sharedGeo(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(-0.12, -0.26, 0.86),
+      new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(0.12, -0.26, 0.86),
+    ])),
+    whiskerL: whisker(-1),
+    whiskerR: whisker(1),
+  };
+  return _catConstGeo;
+}
+
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
 // origin sits at the seat base. `furColor` tints the fur; `opts.pattern` can
 // force a markings template (else it's derived from the colour). The returned
@@ -538,7 +607,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       bean.position.set(tx, 0.1, 0.7);
       parts.push(bean);
     }
-    pivot.add(mergeMeshes(parts)); // one mesh per arm; the pivot still pumps it
+    // one mesh per arm; the pivot still pumps it. Geometry is identical for every
+    // cat (colours live in the materials) — shared via the merge cache.
+    pivot.add(mergeMeshes(parts, { geoKey: "carm" }));
     arms[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -584,7 +655,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const inner = new THREE.Mesh(innerGeo, pink);
     inner.position.set(0, 0.27, 0.07);
     inner.rotation.z = sx * -0.22;
-    pivot.add(mergeMeshes([ear, inner])); // one mesh per ear; the pivot flicks it
+    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}` })); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -608,7 +679,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     pivot.position.set(sx * 0.31, 0.36, 0.6); // top edge of the eye
     pivot.scale.y = 0;
     pivot.visible = false;
-    const lid = new THREE.Mesh(new THREE.SphereGeometry(0.26, 14, 10), coat);
+    const lid = new THREE.Mesh(catConstGeo().eyelid, coat);
     lid.position.set(0, -0.26, 0.02); // centre hangs over the eyeball when scale.y = 1
     lid.scale.set(1.0, 1.15, 0.8);
     pivot.add(lid);
@@ -627,11 +698,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   nose.position.set(0, -0.08, 0.94);
   headStatic.push(nose);
   // The "ω" smile — both strokes baked into one LineSegments (4 points → 2 segs).
-  const mouthGeo = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(-0.12, -0.26, 0.86),
-    new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(0.12, -0.26, 0.86),
-  ]);
-  head.add(new THREE.LineSegments(mouthGeo, _cMouth));
+  head.add(new THREE.LineSegments(catConstGeo().mouth, _cMouth));
 
   // Cool-cat sunglasses, hidden until the victory celebration drops them on.
   // The two lenses + bridge bake into one mesh; the group is what the rig
@@ -647,7 +714,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.05), shade);
   bridge.position.set(0, 0.16, 0.64);
   glassParts.push(bridge);
-  glasses.add(mergeMeshes(glassParts));
+  glasses.add(mergeMeshes(glassParts, { geoKey: "cglasses" }));
   glasses.visible = false;
   head.add(glasses);
 
@@ -659,11 +726,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.18, -0.12, 0.78);
     head.add(pivot);
-    const pts = [];
-    for (const dy of [-0.08, 0.0, 0.08]) {
-      pts.push(new THREE.Vector3(0, dy * 0.4, 0), new THREE.Vector3(sx * 0.75, dy, 0.05));
-    }
-    pivot.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), whiskerMat));
+    pivot.add(new THREE.LineSegments(sx < 0 ? catConstGeo().whiskerL : catConstGeo().whiskerR, whiskerMat));
     whiskers[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -843,21 +906,15 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
   // rings up its length, a darker point tip on colour-point cats, a white tip on
   // tuxedos. A taper-radius function fattens the base and rounds the tip.
-  const tailCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(0, 0, 0),
-    new THREE.Vector3(0.05, 0.4, -0.5),
-    new THREE.Vector3(0.35, 1.0, -0.45),
-    new THREE.Vector3(0.7, 1.45, -0.02),
-  ]);
-  const tail = new THREE.Mesh(new THREE.TubeGeometry(tailCurve, 28, 0.2, 10), tailCoat);
+  const tail = new THREE.Mesh(catConstGeo().tail, tailCoat);
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
   // Tail tip cap: white for tuxedo, a dark tip for tabby/spotted coats, the
   // point colour for masked breeds, otherwise the coat colour.
   const tipMat = isTuxedo ? white : isTextured ? stripeMat : extremity;
-  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), tipMat);
-  tip.position.copy(tailCurve.getPoint(1));
+  const tip = new THREE.Mesh(catConstGeo().tailTip, tipMat);
+  tip.position.copy(catConstGeo().tailTipPos);
   tailPivot.add(tip);
   cat.add(tailPivot);
 
@@ -866,8 +923,13 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // Each becomes one multi-material mesh (one draw call per material).
   // Like the kart, the cat relies on the kart's contact blob rather than casting
   // into the sun shadow map — keeps the bunched-up field cheap.
-  head.add(mergeMeshes(headStatic, { castShadow: false }));
-  cat.add(mergeMeshes(catStatic, { castShadow: false }));
+  // Cluster geometry is a pure function of (pattern, accessory) — colours only
+  // pick material instances. The accessory COLOUR is in the key because a colour
+  // matching an accent piece (e.g. a white cap button on a white cap) collapses
+  // two materials into one and changes the merged group layout.
+  const accKey = `${accId}:${accCol}`;
+  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}` }));
+  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}` }));
 
   cat.userData.tail = tailPivot;
   cat.userData.rig = {
@@ -1000,6 +1062,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     { nose: 1.95, noseZ: 2.15, tipZ: 3.2, wing: "fin", tire: 0.94, hoop: false },
   ];
   const st = STYLES[opts.style ?? 0] || STYLES[0];
+  const styleIdx = STYLES.indexOf(st);
   const kartNumber = opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
   // userData.paint). Accent is a darker shade of the same hue; the stripe is a
@@ -1065,14 +1128,17 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // numbered roundel sits on each side (a plane decal facing outward).
   const numMat = sharedMat(`knum|${kartNumber}`, () =>
     new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
+  const roundels = [];
   for (const sx of [-1, 1]) {
     const fairing = add(new THREE.Mesh(rbox(0.62, 0.5, 2.7, 0.26), paint));
     fairing.position.set(sx * 1.2, 0.64, 0.0);
     const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), numMat);
     roundel.position.set(sx * 1.53, 0.8, 0.1);
     roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
-    group.add(roundel);
+    roundels.push(roundel);
   }
+  // Both roundels share one material — merge them into one mesh (one draw).
+  group.add(mergeMeshes(roundels, { geoKey: "kroundel" }));
   // Painted racing stripe — flat decals lying flush on the nose flash panel and
   // the rear deck (zero thickness, a hair proud), so it reads as paint on the
   // bodywork rather than a raised block bolted on top.
@@ -1156,15 +1222,20 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // Karts don't cast a real sun shadow: each already has a soft contact-shadow
   // blob (kart.js), so casting into the 2048 shadow map too just doubled the
   // field's vertex/fill cost when cars bunched up. The blob grounds them.
-  const shellMesh = mergeMeshes(shell, { castShadow: false });
+  // Shell geometry is a pure function of the STYLE (colours only pick which
+  // material instances fill the slots — role-keyed, so they never collapse into
+  // each other) — share it across every kart of that style via the merge cache.
+  const shellMesh = mergeMeshes(shell, { castShadow: false, geoKey: `kshell|${styleIdx}` });
   group.add(shellMesh);
 
-  // Headlights, set into the nose.
+  // Headlights, set into the nose — one merged mesh for the pair (one draw).
+  const hlParts = [];
   for (const sx of [-1, 1]) {
     const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), glass);
     light.position.set(sx * 0.46, 0.66, 2.92);
-    group.add(light);
+    hlParts.push(light);
   }
+  group.add(mergeMeshes(hlParts, { geoKey: "khl" }));
   // The forward beam that lights the road is NOT parented here (it would tilt with
   // the kart and clip the tarmac during drifts) — it's a ground-projected pool
   // managed per-frame in the main loop (see headlights in main.js).
@@ -1174,11 +1245,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const brakeMat = new THREE.MeshStandardMaterial({
     color: 0x6e0d0d, emissive: 0xff2a1e, emissiveIntensity: 0.25, roughness: 0.5,
   });
+  const tlParts = [];
   for (const sx of [-1, 1]) {
     const tl = new THREE.Mesh(rbox(0.4, 0.26, 0.16, 0.06), brakeMat);
     tl.position.set(sx * 0.62, 0.86, -2.46);
-    group.add(tl);
+    tlParts.push(tl);
   }
+  group.add(mergeMeshes(tlParts, { geoKey: "ktl" })); // one draw for the pair
 
   // --- Wheels: matte tyres with a contact tread band, a spoked body-coloured
   // rim + chrome hub cap, and a brake caliper at the rim. Fronts a touch smaller
@@ -1220,7 +1293,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const caliper = new THREE.Mesh(rbox(0.16, 0.24, 0.18, 0.04), caliperMat);
     caliper.position.set(-side * 0.12, radius * 0.62, 0.02);
     parts.push(caliper);
-    w.add(mergeMeshes(parts, { castShadow: false }));
+    // Wheel geometry depends only on (radius, side): every kart of a style
+    // shares the same four wheel geometries instead of merging 24 of them.
+    w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}` }));
     return w;
   }
   const wheelDefs = [
@@ -1247,16 +1322,22 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const flameCore = new THREE.MeshBasicMaterial({
     color: 0xfff2c0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
   });
+  const flameParts = [];
   for (const sx of [-0.7, 0.7]) {
     const outer = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.5, 8), flameOuter);
     outer.rotation.x = -Math.PI / 2; // taper trailing backward (-Z)
     outer.position.set(sx, 0.55, -2.7);
-    flames.add(outer);
+    flameParts.push(outer);
     const core = new THREE.Mesh(new THREE.ConeGeometry(0.16, 1.0, 8), flameCore);
     core.rotation.x = -Math.PI / 2;
     core.position.set(sx, 0.55, -2.5);
-    flames.add(core);
+    flameParts.push(core);
   }
+  // One merged mesh (2 draws — outer + core groups) instead of 4 cones; the
+  // group still flickers via its scale. The kart recolours via userData mats.
+  flames.add(mergeMeshes(flameParts, { geoKey: "kflames" }));
+  flames.userData.outerMat = flameOuter;
+  flames.userData.coreMat = flameCore;
   group.add(flames);
 
   // Neon underglow — a night-only effect (a soft additive pool under the chassis

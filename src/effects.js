@@ -49,13 +49,19 @@ export class EffectsManager {
     this.skidMax = 1100; // quads in the ring
     this.skidHead = 0;
     this.skidFill = 0;
-    this._skidDirty = false;
+    // Dirty window for partial uploads: this frame's appends are consecutive ring
+    // slots, so one (start, count) pair — split in two if it wraps — covers them.
+    this._skidDirtyFrom = 0;
+    this._skidDirtyN = 0;
     const sc = this.skidMax * 6; // 6 verts per quad (2 triangles)
     this.skidPos = new Float32Array(sc * 3);
     this.skidUV = new Float32Array(sc * 2);
+    // Every quad slot uses the same UVs, so fill them ALL once and keep the
+    // attribute static — appends then only ever touch (and upload) positions.
+    for (let q = 0; q < this.skidMax; q++) this.skidUV.set(_SKID_UVS, q * 12);
     this.skidGeo = new THREE.BufferGeometry();
     this.skidGeo.setAttribute("position", new THREE.BufferAttribute(this.skidPos, 3).setUsage(THREE.DynamicDrawUsage));
-    this.skidGeo.setAttribute("uv", new THREE.BufferAttribute(this.skidUV, 2).setUsage(THREE.DynamicDrawUsage));
+    this.skidGeo.setAttribute("uv", new THREE.BufferAttribute(this.skidUV, 2));
     // Flat-on-road decals: normals are straight up. The material is unlit, but
     // the SSR normal pre-pass samples normals from EVERY rendered mesh, so a
     // missing attribute logs a TSL.NormalNode warning per shader compile.
@@ -77,6 +83,9 @@ export class EffectsManager {
     // field's entries (and their vectors) for the whole session.
     this._skidPrev = new WeakMap();
     this._hue = 0;
+    // Retired particle objects, reused by _spawn — steady-state racing (dust,
+    // sparks, trails every frame) allocates nothing once the pool has warmed up.
+    this._pool = [];
   }
 
   // Build one instanced billboard field (additive) reading per-instance position,
@@ -114,20 +123,30 @@ export class EffectsManager {
   }
 
   _spawn(pos, color, opts) {
-    // Enforce the particle budget: retire the oldest before adding a new one.
-    if (this.parts.length >= this.maxParts) this.parts.shift();
-    this.parts.push({
-      pos: pos.clone(),
-      r: color.r, g: color.g, b: color.b,
-      opacity: opts.opacity ?? 0.9,
-      scale: opts.size ?? 1,
-      spark: !!opts.spark,
-      v: opts.v ? opts.v.clone() : new THREE.Vector3(),
-      life: opts.life,
-      grow: opts.grow ?? 0,
-      damp: opts.damp ?? 2,
-      gravity: opts.gravity ?? 0,
-    });
+    let p;
+    if (this.parts.length >= this.maxParts) {
+      // Over budget: recycle the particle closest to death in place (the old
+      // shift() moved the whole array per eviction — O(n) each, spiky in bursts).
+      let idx = 0, best = Infinity;
+      for (let i = 0; i < this.parts.length; i++) {
+        if (this.parts[i].life < best) { best = this.parts[i].life; idx = i; }
+      }
+      p = this.parts[idx];
+    } else {
+      p = this._pool.pop();
+      if (!p) p = { pos: new THREE.Vector3(), v: new THREE.Vector3(), r: 0, g: 0, b: 0, life: 0, opacity: 0, scale: 1, spark: false, grow: 0, damp: 2, gravity: 0 };
+      this.parts.push(p);
+    }
+    p.pos.copy(pos);
+    p.r = color.r; p.g = color.g; p.b = color.b;
+    p.opacity = opts.opacity ?? 0.9;
+    p.scale = opts.size ?? 1;
+    p.spark = !!opts.spark;
+    if (opts.v) p.v.copy(opts.v); else p.v.set(0, 0, 0);
+    p.life = opts.life;
+    p.grow = opts.grow ?? 0;
+    p.damp = opts.damp ?? 2;
+    p.gravity = opts.gravity ?? 0;
   }
 
   // Force one particle of each texture field and one (degenerate) skid quad so
@@ -145,7 +164,8 @@ export class EffectsManager {
       this.skidFill = 1;
       this.skidHead = 1;
       this.skidGeo.setDrawRange(0, 6);
-      this._skidDirty = true;
+      this._skidDirtyFrom = 0;
+      this._skidDirtyN = 1;
     }
   }
 
@@ -433,10 +453,11 @@ export class EffectsManager {
   }
 
   // Write one ribbon quad (2 triangles, 6 verts) into the skid ring buffer.
+  // (UVs are constant per slot and prefilled at construction — positions only.)
   _appendSkidQuad(aL, aR, bL, bR) {
     const q = this.skidHead;
-    const P = this.skidPos, U = this.skidUV;
-    const pB = q * 18, uB = q * 12;
+    const P = this.skidPos;
+    const pB = q * 18;
     // tri1: aL,aR,bR  tri2: aL,bR,bL — written via the module scratch list.
     _skidVerts[0] = aL; _skidVerts[1] = aR; _skidVerts[2] = bR;
     _skidVerts[3] = aL; _skidVerts[4] = bR; _skidVerts[5] = bL;
@@ -444,13 +465,12 @@ export class EffectsManager {
       P[pB + k * 3] = _skidVerts[k].x;
       P[pB + k * 3 + 1] = _skidVerts[k].y;
       P[pB + k * 3 + 2] = _skidVerts[k].z;
-      U[uB + k * 2] = _SKID_UVS[k * 2];
-      U[uB + k * 2 + 1] = _SKID_UVS[k * 2 + 1];
     }
+    if (this._skidDirtyN === 0) this._skidDirtyFrom = q;
+    this._skidDirtyN++;
     this.skidHead = (this.skidHead + 1) % this.skidMax;
     this.skidFill = Math.min(this.skidFill + 1, this.skidMax);
     this.skidGeo.setDrawRange(0, this.skidFill * 6);
-    this._skidDirty = true;
   }
 
   update(dt) {
@@ -463,7 +483,13 @@ export class EffectsManager {
       p.v.multiplyScalar(1 - Math.min(1, p.damp * dt));
       if (p.grow) p.scale += p.grow * dt;
       p.opacity = Math.max(0, p.opacity - dt * 1.5);
-      if (p.life <= 0) this.parts.splice(i, 1);
+      if (p.life <= 0) {
+        // Swap-remove (order doesn't matter — the fields repack every frame);
+        // splice() shifted the whole tail per death, O(n²) when a burst fades.
+        this.parts[i] = this.parts[this.parts.length - 1];
+        this.parts.pop();
+        this._pool.push(p);
+      }
     }
     // Pack the live particles into the two instanced fields (by texture).
     let ns = 0, np = 0;
@@ -477,20 +503,31 @@ export class EffectsManager {
     }
     this._flush(this.smokeField, ns);
     this._flush(this.sparkField, np);
-    // Upload skid-ribbon edits once per frame (batches all this frame's appends).
-    if (this._skidDirty) {
-      this.skidGeo.attributes.position.needsUpdate = true;
-      this.skidGeo.attributes.uv.needsUpdate = true;
-      this._skidDirty = false;
+    // Upload skid-ribbon edits once per frame — but only the quads appended this
+    // frame (two ranges if the ring wrapped), not the whole ~80 KB buffer. A bare
+    // needsUpdate re-uploaded every byte of the ring on every frame any kart was
+    // laying marks, which is most of the race.
+    if (this._skidDirtyN > 0) {
+      const pos = this.skidGeo.attributes.position;
+      const first = Math.min(this._skidDirtyN, this.skidMax - this._skidDirtyFrom);
+      pos.addUpdateRange(this._skidDirtyFrom * 18, first * 18);
+      if (this._skidDirtyN > first) pos.addUpdateRange(0, (this._skidDirtyN - first) * 18);
+      pos.needsUpdate = true;
+      this._skidDirtyN = 0;
     }
   }
 
   _flush(field, count) {
     field.mesh.count = count;
     if (!count) return;
+    // Upload only the live instances, not the full 240-slot capacity.
+    field.aPos.addUpdateRange(0, count * 3);
     field.aPos.needsUpdate = true;
+    field.aColor.addUpdateRange(0, count * 3);
     field.aColor.needsUpdate = true;
+    field.aScale.addUpdateRange(0, count);
     field.aScale.needsUpdate = true;
+    field.aOpacity.addUpdateRange(0, count);
     field.aOpacity.needsUpdate = true;
   }
 }

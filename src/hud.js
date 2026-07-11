@@ -44,11 +44,31 @@ export class HUD {
     el.classList.toggle("expiring", !!expiring);
   }
 
+  // Change-gated on the coarse values (not the built strings), so an unchanged
+  // frame — lap/place change a handful of times per race, speed sits steady on
+  // straights, the timer ticks in tenths — costs zero string building and zero
+  // DOM writes. Called every racing frame.
   update({ lapNum, totalLaps, place, totalKarts, speedKmh, time }) {
-    this.lap.textContent = `Lap ${lapNum}/${totalLaps}`;
-    this.place.textContent = `${ordinal(place)} / ${totalKarts}`;
-    this.speed.textContent = `${Math.round(speedKmh)} km/h`;
-    this.timer.textContent = formatTime(time);
+    if (lapNum !== this._lapNum || totalLaps !== this._totalLaps) {
+      this._lapNum = lapNum;
+      this._totalLaps = totalLaps;
+      this.lap.textContent = `Lap ${lapNum}/${totalLaps}`;
+    }
+    if (place !== this._place || totalKarts !== this._totalKarts) {
+      this._place = place;
+      this._totalKarts = totalKarts;
+      this.place.textContent = `${ordinal(place)} / ${totalKarts}`;
+    }
+    const kmh = Math.round(speedKmh);
+    if (kmh !== this._kmh) {
+      this._kmh = kmh;
+      this.speed.textContent = `${kmh} km/h`;
+    }
+    const tenths = Math.floor(time * 10);
+    if (tenths !== this._tenths) {
+      this._tenths = tenths;
+      this.timer.textContent = formatTime(time);
+    }
   }
 
   showToast(text) {
