@@ -12,7 +12,7 @@ import { Track, previewLoopPoints } from "./track.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
-import { setLightLevel, disposeGroup as _disposeGroup, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
+import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
@@ -1737,6 +1737,16 @@ let _drsUnderT = 0; // how long we've had comfortable headroom (for recovery)
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
   perfWatchdog(dt);
+  // While the race veil is up, frames are hidden AND full of one-off turbulence
+  // (kart build GC, the 12-angle pipeline prewarm). Acting on that junk dropped
+  // a resolution rung during the countdown — a realloc hitch at the start plus
+  // a needlessly blurry opening stretch. Freeze rung decisions until it's down.
+  if (_veilActive) {
+    _drsOverT = 0;
+    _drsUnderT = 0;
+    _drsCooldown = Math.max(_drsCooldown, 0.5); // and give the first live frames a beat
+    return;
+  }
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
   if (_frameMs > 18.6 && _drsRung < DRS_RUNGS.length - 1) {
@@ -2225,6 +2235,13 @@ function warmGarageKart() {
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
       if (o.isMesh) o.frustumCulled = false;
     });
+    // Draw the (normally hidden) boost flames too, at a speck of a scale: their
+    // additive pipeline otherwise compiles at the FIRST boost — which is usually
+    // the first drift release seconds after GO, i.e. a mid-race hitch.
+    if (wk.flames) {
+      wk.flames.visible = true;
+      wk.flames.scale.setScalar(0.001);
+    }
     toonify(wk.group);
     wk.group.position.set(0, -60, 0);
     scene.add(wk.group);
@@ -2237,7 +2254,33 @@ function warmKartStep() {
     scene.remove(_kartWarm.group);
     _disposeGroup(_kartWarm.group); // shared (cached) materials are skipped by disposeGroup
     _kartWarm = null;
+    warmRosterGeometries(); // then pre-bake the AI roster while the menu idles
   }
+}
+
+// Pre-bake the AI roster's merged geometries + shared materials/coat textures at
+// menu idle (one kart per tick, so the menu never hitches). The merge cache is
+// keyed by style/pattern, so the first race's buildKarts becomes cache hits
+// instead of six cold merges — the biggest slice of the old START-tap stall.
+// Everything cached is flagged shared and survives the throwaway disposal.
+let _rosterWarmed = false;
+function warmRosterGeometries() {
+  if (_rosterWarmed) return;
+  _rosterWarmed = true;
+  const roster = raceRoster().filter((c) => !c.isPlayer);
+  let i = 0;
+  const step = () => {
+    if (i >= roster.length || state !== State.MENU) return;
+    const cfg = roster[i++];
+    try {
+      const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber });
+      const cat = createCat(cfg.catColor, { pattern: cfg.catPattern });
+      _disposeGroup(group);
+      _disposeGroup(cat);
+    } catch { /* warm-up only */ }
+    setTimeout(step, 150);
+  };
+  setTimeout(step, 400);
 }
 function logPerfSummary(rawMs) {
   // Right after GO, report at a much lower bar: the felt "stall at the start
@@ -3278,14 +3321,25 @@ function beginRace() {
     return;
   }
 
-  prepareRace();
-  countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
-  countdownCalibrated = false;
-  prevCountN = 99;
-  track.setStartLight?.("off"); // gantry dark until the countdown's first red
-  state = State.COUNTDOWN;
+  // Veil FIRST, heavy build second. prepareRace (buildKarts + ghost + warmups)
+  // lands in one long frame — running it synchronously in the tap handler froze
+  // the still-visible menu before the veil ever painted (the reported "freeze
+  // when starting a race"). Two rAFs guarantee the browser has painted the
+  // veil, THEN the same stall happens invisibly behind it.
+  if (_racePrepPending) return; // double-tap while the deferred build is queued
+  _racePrepPending = true;
   showRaceVeil(); // hold the countdown behind a cover until frames settle
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    _racePrepPending = false;
+    prepareRace();
+    countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
+    countdownCalibrated = false;
+    prevCountN = 99;
+    track.setStartLight?.("off"); // gantry dark until the countdown's first red
+    state = State.COUNTDOWN;
+  }));
 }
+let _racePrepPending = false;
 
 // Everything to spin up a race that does NOT need a user gesture — so it can run
 // both from the local START click and from a network-triggered synchronized start.
