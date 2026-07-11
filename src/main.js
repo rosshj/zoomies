@@ -542,13 +542,22 @@ buildHeadlightPool();
 // A warm point light at the player's exhaust that flares while boosting, so a
 // boost actually throws coloured light on the road and nearby props. Player-only
 // (one event-driven light) to keep the night light count in check.
-let _boostLight = null;
+//
+// Created ONCE here — in the scene before the boot draw-everything pass — and
+// REPARENTED to each race's player kart. It used to be recreated per race,
+// which changed the scene's light configuration between boot and racing: that
+// invalidated every lit pipeline the boot warm pass had compiled, so scenery
+// recompiled piece-by-piece as it first entered view during the opening
+// stretch of the race (the reported "stalls at the start"). With the light
+// permanent (idle at zero intensity), the boot-compiled pipelines stay valid.
+const _boostLight = new THREE.PointLight(0xff8a2e, 0, 26, 1.6);
+_boostLight.position.set(0, 0.7, -2.7);
+_boostLight.castShadow = false;
+scene.add(_boostLight);
 function attachBoostLight(playerKart) {
   if (!playerKart || !playerKart.group) return;
-  _boostLight = new THREE.PointLight(0xff8a2e, 0, 26, 1.6);
   _boostLight.position.set(0, 0.7, -2.7);
-  _boostLight.castShadow = false;
-  playerKart.group.add(_boostLight);
+  playerKart.group.add(_boostLight); // add() re-parents from the previous kart
 }
 
 // Minimap: a static top-down outline of the track with a coloured dot per kart.
@@ -801,8 +810,7 @@ function buildKarts() {
     karts.push(kart);
     if (cfg.isPlayer) player = kart;
   });
-  _boostLight = null;
-  attachBoostLight(player); // player's exhaust glow while boosting
+  attachBoostLight(player); // reparent the persistent exhaust glow to the new player kart
   window.__zoomies.karts = karts;
 }
 
@@ -2196,6 +2204,11 @@ const _seg = { render: 0, atmos: 0, minimap: 0, world: 0 };
 // still covers the screen.
 let _warmAllFrames = 0;
 const _warmAllTouched = [];
+let _warmAllDone = null; // runs once when the pass retires
+function beginWarmAll(frames, done = null) {
+  _warmAllFrames = Math.max(_warmAllFrames, frames);
+  if (done) _warmAllDone = done;
+}
 function warmAllStep() {
   if (_warmAllFrames <= 0) return;
   if (_warmAllTouched.length === 0) {
@@ -2209,13 +2222,9 @@ function warmAllStep() {
   if (--_warmAllFrames === 0) {
     for (const o of _warmAllTouched) o.frustumCulled = true;
     _warmAllTouched.length = 0;
-    // Only now dismiss the splash (and apply the rest of the native chrome):
-    // the warm frames' compile stall must happen BEHIND the splash, not under
-    // a frozen first frame. No-op on the web.
-    getPlatform().then((p) => p.ready()).catch(() => {});
-    // A beat later (menu idle), warm the kart/cat material family too — the
-    // garage's first open otherwise compiles it on-screen (~0.8s pause).
-    setTimeout(warmGarageKart, 1200);
+    const done = _warmAllDone;
+    _warmAllDone = null;
+    done?.();
   }
 }
 
@@ -3266,8 +3275,11 @@ let _veilActive = false;
 let _veilStartedAt = 0;
 let _veilStableMs = 0;
 const VEIL_STABLE_FRAME_MS = 90; // a frame under this counts toward "stable"
-const VEIL_STABLE_NEED_MS = 600; // this much uninterrupted smoothness drops the veil
-const VEIL_MAX_MS = 6000; // hard cap: never hold the race longer than this
+// A longer smooth streak before the veil drops (600 → 1100ms): the player has
+// said they'd rather wait at "GET READY" a beat longer than feel stragglers
+// (late compiles, GC after the kart build) land inside the countdown or GO.
+const VEIL_STABLE_NEED_MS = 1100;
+const VEIL_MAX_MS = 9000; // hard cap: never hold the race longer than this
 let _veilHideTimer = 0;
 function showRaceVeil() {
   if (!raceVeilEl) return;
@@ -3337,6 +3349,14 @@ function beginRace() {
     prevCountN = 99;
     track.setStartLight?.("off"); // gantry dark until the countdown's first red
     state = State.COUNTDOWN;
+    // Behind the veil, redo the draw-everything pass with the RACE scene (karts,
+    // ghost, warmed effects now exist): any pipeline/upload the boot pass could
+    // not have covered takes its hit here instead of mid-race. The veil's
+    // stability gate won't drop until these heavy frames are done. This fully
+    // supersedes the 12-view prewarm spin (same pipelines, fewer renders) — and
+    // the two must never overlap (12 renders × culling disabled = one huge frame).
+    _prewarmed = true;
+    beginWarmAll(2);
   }));
 }
 let _racePrepPending = false;
@@ -3495,6 +3515,10 @@ function beginSyncedRace(at) {
   prevCountN = 99;
   track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
+  // Same supersession as the solo start: two draw-everything frames replace the
+  // single 12-render prewarm freeze (MP has no veil, so cheaper is better).
+  _prewarmed = true;
+  beginWarmAll(2);
 }
 
 const COUNTDOWN_LEAD_MS = 4000;
@@ -4781,7 +4805,17 @@ rendererReady
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => {
     _boot.renderer = performance.now();
-    _warmAllFrames = 2; // draw the whole world for the first frames (see warmAllStep)
+    // Draw the whole world for the first frames (see warmAllStep); when the
+    // pass retires, dismiss the native splash and queue the kart-family warm.
+    beginWarmAll(2, () => {
+      // Only now dismiss the splash (and apply the rest of the native chrome):
+      // the warm frames' compile stall must happen BEHIND the splash, not under
+      // a frozen first frame. No-op on the web.
+      getPlatform().then((p) => p.ready()).catch(() => {});
+      // A beat later (menu idle), warm the kart/cat material family too — the
+      // garage's first open otherwise compiles it on-screen (~0.8s pause).
+      setTimeout(warmGarageKart, 1200);
+    });
     requestAnimationFrame(loop);
     // Native shell chrome (landscape lock, status bar, splash dismissal) is
     // applied by warmAllStep once the draw-everything warm pass finishes, so
