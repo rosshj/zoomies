@@ -163,6 +163,17 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
     return taken.some((t) => loopDist(c, t.c, N) < t.half + half + Math.round(0.03 * N));
   };
 
+  // The crossover deck is STRUCTURAL, not a set-piece chip: if the generator
+  // built a self-crossing lap, the upper strand must always get its bridge.
+  // Registered first so every other feature plans around it.
+  if (track.crossover) {
+    const halfX = Math.max(4, Math.round((80 / track.length) * N));
+    const run = makeRun(track, "crossover", track.crossover.iUp, halfX);
+    run.lowY = pts[((track.crossover.iLow % N) + N) % N].y; // terrain pin level
+    feats.runs.push(run);
+    taken.push({ c: run.c, half: halfX + 8 });
+  }
+
   for (const spec of KIND_SPECS) {
     if (!allow.has(spec.kind)) continue;
     // A spec may list fallback lengths: try the full-length arc first, then
@@ -474,7 +485,7 @@ function runNear(run, x, z, pad) {
 
 // How far each kind's terrain field reaches from the spine (see the matching
 // bands in featureHeightMod). Kinds without a field never touch the terrain.
-const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150 };
+const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150, crossover: 64 };
 
 // Terrain fields: canyon walls up, overpass/dam/shelf sinks down, tunnel ridge
 // over the road. All fade along the run and across distance bands, and yield
@@ -537,6 +548,18 @@ export function featureHeightMod(feats, x, z, h) {
       if (t <= 0) continue;
       const sunk = s.y - run.depth;
       h += (Math.min(h, sunk) - h) * t;
+    } else if (run.kind === "crossover") {
+      // Under the deck, terrain pins DOWN to the lower road's level: the
+      // upper strand's samples are excluded from terrain anchoring (see
+      // groundInfoTerrain), and this field cuts the leftover approach
+      // shoulders so the bridge spans a clean gap instead of a dirt ridge.
+      const s = spineDist(run.spine, x, z);
+      if (s.u < 0 || s.d > 64) continue;
+      const endW = smooth01(s.u / 0.16) * smooth01((1 - s.u) / 0.16);
+      const t = (1 - smooth01((s.d - 24) / 34)) * endW;
+      if (t <= 0) continue;
+      const sunk = run.lowY - 0.4;
+      h += (Math.min(h, sunk) - h) * t;
     } else if (run.kind === "shelf" || run.kind === "dam") {
       // Sink ONE side (shelf: the infield drop; dam: the valley below the
       // wall). The shelf also raises a wall on its other side.
@@ -597,6 +620,7 @@ export function featureKeepClear(feats, x, z) {
       : run.kind === "arches" ? 40
       : run.kind === "flowers" ? 70
       : run.kind === "bridge" ? 34
+      : run.kind === "crossover" ? 44
       : 0;
     if (R && runNear(run, x, z, R)) {
       const s = spineDist(run.spine, x, z);
@@ -617,7 +641,7 @@ export function featureKeepClear(feats, x, z) {
 
 // Overhead spans (street banners, wooden footbridges) and street lamps stay
 // out of runs that carry their own structure overhead or ride a deck.
-const SPAN_BLOCK = new Set(["tunnel", "bridge", "overpass", "dam", "causeway", "arches", "rail"]);
+const SPAN_BLOCK = new Set(["tunnel", "bridge", "overpass", "dam", "causeway", "arches", "rail", "crossover"]);
 export function featureSpanBlock(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
@@ -633,8 +657,8 @@ export function featureSpanBlock(feats, x, z) {
 export function featureTreeBlock(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
-    if (run.kind !== "canyon" && run.kind !== "shelf" && run.kind !== "tunnel") continue;
-    const band = run.halfWidth + (run.kind === "tunnel" ? 34 : 58);
+    if (run.kind !== "canyon" && run.kind !== "shelf" && run.kind !== "tunnel" && run.kind !== "crossover") continue;
+    const band = run.halfWidth + (run.kind === "tunnel" ? 34 : run.kind === "crossover" ? 30 : 58);
     if (!runNear(run, x, z, band)) continue;
     const s = spineDist(run.spine, x, z);
     if (s.u >= 0 && s.d < band) return true;
@@ -845,6 +869,9 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
       const idx = ((i % N) + N) % N;
       const p = track._pts[idx];
+      // A crossover deck spans another live road: no pier ring may stand in
+      // that lane (run.others is exactly "every strand but this one").
+      if (run.kind === "crossover" && otherRoadDist(run.others, p.x, p.z) < track.halfWidth + 8) continue;
       const side = sideAt(track, idx);
       const yaw = Math.atan2(side.x, side.z);
       const deckBottom = p.y - 2.0;
@@ -1034,7 +1061,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   };
 
   for (const run of feats.runs) {
-    if (run.kind === "bridge" || run.kind === "overpass" || run.kind === "causeway") {
+    if (run.kind === "bridge" || run.kind === "overpass" || run.kind === "causeway" || run.kind === "crossover") {
       buildDeck(run, { piers: true });
       if (run.kind === "bridge") addBridgeVariant(run);
     } else if (run.kind === "dam") {

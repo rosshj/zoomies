@@ -390,7 +390,9 @@ export function buildWorld(scene, track, opts = {}) {
   // valley rise (outside only) so the surroundings climb into hillsides, plus a
   // little rolling detail. Used for the terrain and to set lake water levels.
   const baseHeight = (x, z) => {
-    const gi = track.groundInfo(x, z);
+    // Terrain variant: on crossover maps this ignores the deck strand, so the
+    // ground under the bridge anchors to the LOWER road (see track.js).
+    const gi = track.groundInfoTerrain(x, z);
     const rise = isOutside(x, z) ? valleyRise(gi.dist) : 0;
     return gi.y - 0.25 + rise + flatten(gi.dist) * detail(x, z);
   };

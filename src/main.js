@@ -179,6 +179,11 @@ function playerLook() {
 }
 
 const _seedParam = new URLSearchParams(location.search).get("seed");
+// Normalize the stored seed to the same casing the world stream uses: the
+// isolated plan streams (biome wedges, summit, crossover) key off cfg.seed,
+// and a hand-edited/URL-shared lowercase seed would otherwise plan against a
+// different string than the uppercased shared stream builds with.
+if (trackConfig.mode === "custom" && trackConfig.seed) trackConfig.seed = String(trackConfig.seed).toUpperCase();
 const WORLD_SEED = (
   (trackConfig.mode === "custom" && trackConfig.seed) ||
   _seedParam ||
