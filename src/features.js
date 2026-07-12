@@ -166,10 +166,10 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
   // The crossover deck is STRUCTURAL, not a set-piece chip: if the generator
   // built a self-crossing lap, the upper strand must always get its bridge.
   // Registered first so every other feature plans around it.
-  if (track.crossover) {
+  for (const xg of track.crossovers || []) {
     const halfX = Math.max(4, Math.round((80 / track.length) * N));
-    const run = makeRun(track, "crossover", track.crossover.iUp, halfX);
-    run.lowY = pts[((track.crossover.iLow % N) + N) % N].y; // terrain pin level
+    const run = makeRun(track, "crossover", xg.iUp, halfX);
+    run.lowY = pts[((xg.iLow % N) + N) % N].y; // terrain pin level
     feats.runs.push(run);
     taken.push({ c: run.c, half: halfX + 8 });
   }

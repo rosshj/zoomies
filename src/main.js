@@ -4005,8 +4005,12 @@ function updateCamera(dt, snap = false) {
 
   // Keep the camera above the track surface beneath it: on a steep descent the
   // spot behind the kart is up-slope (higher ground), which could otherwise leave
-  // the camera buried under the road. Sample the road height there and lift if low.
-  const camGroundY = track.groundInfo(camPos.x, camPos.z).y;
+  // the camera buried under the road. STRAND-AWARE: the plain 2D nearest-road
+  // height is wrong wherever two strands stack (crossover decks, stacked
+  // passes beside an overpass) — it returned the DECK overhead and launched
+  // the camera into its underside while the kart drove below. Biasing the
+  // query by the kart's own height keeps the clamp on the kart's road.
+  const camGroundY = track.groundYNear(camPos.x, camPos.z, player.position.y);
   if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
 
   // Don't let the camera poke into a tunnel's mountain: hugging the bore wall
