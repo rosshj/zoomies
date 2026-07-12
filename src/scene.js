@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, uniform, color as tslColor } from "three/tsl";
 import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 
@@ -51,6 +51,41 @@ export function moodForTimeOfDay(tod) {
 
 // Sets up renderer, scene, lights, sky and a chase camera, and returns an
 // applyMood() the game uses to switch time-of-day / weather lighting.
+// One low-poly cloud cluster: a plume of crumple-jittered icosahedron lumps
+// (big head tapering to a tail) with the underside clamped FLAT — the classic
+// stylised paper-cloud silhouette. Flat-shaded by the cloud material, so the
+// jitter reads as crisp facets. Origin: flat base on y=0, plume along X,
+// roughly centred. Shared by the sky ring (createScene) and the asset viewer.
+export function cloudClusterGeo(rand = Math.random) {
+  const geos = [];
+  const n = 4 + Math.floor(rand() * 3); // 4-6 lumps
+  const baseR = 7 + rand() * 3;
+  let x = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1);
+    const r = baseR * (1 - t * 0.5) * (0.8 + rand() * 0.35); // head big, tail small
+    // Detail-1 icosahedron (80 faces), WELDED first: PolyhedronGeometry ships
+    // un-indexed, so jittering raw verts would tear the faces apart instead
+    // of crumpling shared corners.
+    const g = mergeVertices(new THREE.IcosahedronGeometry(r, 1));
+    const p = g.attributes.position;
+    for (let v = 0; v < p.count; v++) {
+      const jit = 0.85 + rand() * 0.3;
+      p.setXYZ(v, p.getX(v) * jit, p.getY(v) * jit, p.getZ(v) * jit);
+    }
+    g.translate(x, r * 0.3 + (rand() - 0.5) * r * 0.2, (rand() - 0.5) * baseR * 0.4);
+    geos.push(g);
+    x += r * (1.05 + rand() * 0.35);
+  }
+  const geo = mergeGeometries(geos);
+  // Flat underside: clamp everything that dips below the base plane.
+  const p = geo.attributes.position;
+  for (let v = 0; v < p.count; v++) if (p.getY(v) < 0) p.setY(v, 0);
+  geo.translate(-x / 2, 0, 0);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 export function createScene() {
   const container = document.getElementById("game");
 
@@ -135,9 +170,11 @@ export function createScene() {
 
   // A few clouds for depth. They ring the whole map high up and never move, so
   // some are in frame from every camera angle — as individual puff meshes that
-  // was ~60-75 draw calls every frame. Bake every puff into ONE merged mesh
+  // was ~60-75 draw calls every frame. Bake every cluster into ONE merged mesh
   // (they all share cloudMat, which applyMood recolours) for a single draw.
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  // flatShading gives the crumpled low-poly facets; the silhouette comes from
+  // cloudClusterGeo (jittered icosahedron lumps over a clamped flat base).
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
   const puffGeos = [];
   for (let i = 0; i < 16; i++) {
     // Sit them out beyond the playable hills and high up, so they read as
@@ -146,14 +183,11 @@ export function createScene() {
     const r = 520 + Math.random() * 440;
     const cx = Math.cos(a) * r, cy = 150 + Math.random() * 90, cz = Math.sin(a) * r;
     const s = 1.6 + Math.random() * 1.2; // bigger since they're farther
-    const n = 3 + Math.floor(Math.random() * 3);
-    for (let j = 0; j < n; j++) {
-      const geo = new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8);
-      geo.translate((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
-      geo.scale(s, s, s);
-      geo.translate(cx, cy, cz);
-      puffGeos.push(geo);
-    }
+    const geo = cloudClusterGeo();
+    geo.rotateY(Math.random() * Math.PI * 2); // plumes drift every which way
+    geo.scale(s, s, s);
+    geo.translate(cx, cy, cz);
+    puffGeos.push(geo);
   }
   const clouds = new THREE.Mesh(mergeGeometries(puffGeos), cloudMat);
   clouds.frustumCulled = false; // the ring spans the sky — it's always partly visible

@@ -3,6 +3,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
 import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
+import { cloudClusterGeo } from "./scene.js"; // the sky ring's cloud lump (asset catalog shows one)
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
 // Track set pieces (river bridge / canyon / giant forest / overpass): the
@@ -675,7 +676,12 @@ function makeWaterMaterial(darken = 1) {
   // mirror) and the ripples modulate roughness so the reflection shimmers. aShore:
   // 0 at the centre/spine -> 1 at the bank. aLen: along the water. Animates off the
   // global TSL `time`. `darken` dims it at dusk/night.
-  const mat = new THREE.MeshStandardNodeMaterial({ transparent: true, side: THREE.DoubleSide });
+  // depthWrite off: the water never needs to occlude anything by depth (the
+  // depth TEST against the already-drawn opaque world still applies), and any
+  // coincident water triangles — the welded fold pinch, or two lakes stacked
+  // along a grazing view — blend smoothly instead of z-fighting as dithered
+  // blocky bands (visible from a low/underwater camera in the track viewer).
+  const mat = new THREE.MeshStandardNodeMaterial({ transparent: true, side: THREE.DoubleSide, depthWrite: false });
   const shore = attribute("aShore");
   const len = attribute("aLen");
   // Deep water leans clearly BLUE: the old 0x1f6f8c teal picked up the green
@@ -769,6 +775,22 @@ function ribbonWaterMesh(L, mat) {
       const tx = sp[k].x - sp[j - 1].x, tz = sp[k].z - sp[j - 1].z; // spine travel
       if ((e[j].x - e[j - 1].x) * tx + (e[j].z - e[j - 1].z) * tz < 0) e[j] = { x: e[j - 1].x, z: e[j - 1].z, welded: true };
     }
+    // Second pass: a slow spiral fold "advances" at every LOCAL step (the test
+    // above can't see it) yet still sweeps back over the water of an earlier
+    // stretch of spine. Those overlapping coplanar quads double-blend and
+    // z-fight — seen from a low or underwater camera they smear as blocky
+    // shimmering bands. Any edge point sitting well inside the corridor of a
+    // clearly-earlier spine section gets welded too.
+    for (let j = 2; j < n; j++) {
+      if (e[j].welded) continue;
+      for (let k = 0; k < j - 3; k++) {
+        const dx = e[j].x - sp[k].x, dz = e[j].z - sp[k].z;
+        if (dx * dx + dz * dz < half * half * 0.81) { // inside 0.9·half of an earlier section
+          e[j] = { x: e[j - 1].x, z: e[j - 1].z, welded: true };
+          break;
+        }
+      }
+    }
   }
   const pos = [], shore = [], lenA = [], idx = [];
   for (let j = 0; j < n; j++) {
@@ -791,6 +813,26 @@ function ribbonWaterMesh(L, mat) {
     const tl = Math.hypot(tx, tz) || 1; tx /= tl; tz /= tl;
     const c = pos.length / 3;
     pos.push(s.x, 0, s.z); shore.push(0); lenA.push(end === 0 ? 0 : 1);
+    // On a curving end the half-disc otherwise reaches back OVER the body's
+    // last quads — the overlap double-blends as a visibly deeper wedge with a
+    // hard seam. Pull any cap vertex that would land inside the corridor of a
+    // non-adjacent spine section back toward the cap centre (largest clear
+    // radius, found by a short bisection).
+    const capClamp = (dx, dz, f) => {
+      const clear = (ff) => {
+        const px = s.x + dx * half * ff, pz = s.z + dz * half * ff;
+        for (let k = 0; k < n; k++) {
+          if (Math.abs(k - end) <= 2) continue;
+          const ddx = px - sp[k].x, ddz = pz - sp[k].z;
+          if (ddx * ddx + ddz * ddz < half * half * 0.85) return false;
+        }
+        return true;
+      };
+      if (clear(f)) return f;
+      let lo = 0, hi = f;
+      for (let it = 0; it < 4; it++) { const mid = (lo + hi) / 2; if (clear(mid)) lo = mid; else hi = mid; }
+      return lo;
+    };
     // Radial RINGS so aShore grades across the cap the way it does across the
     // ribbon body. The old single fan interpolated shore over whole
     // half-width-sized triangles, so the cap rendered as one solid bright
@@ -804,8 +846,9 @@ function ribbonWaterMesh(L, mat) {
         const ang = (k / SEG) * Math.PI - Math.PI / 2;
         const dx = Math.cos(ang) * tx + Math.sin(ang) * s.sx;
         const dz = Math.cos(ang) * tz + Math.sin(ang) * s.sz;
-        pos.push(s.x + dx * half * f, 0, s.z + dz * half * f);
-        shore.push(f); lenA.push(end === 0 ? 0 : 1);
+        const fc = capClamp(dx, dz, f);
+        pos.push(s.x + dx * half * fc, 0, s.z + dz * half * fc);
+        shore.push(fc); lenA.push(end === 0 ? 0 : 1);
       }
     }
     for (let k = 0; k < SEG; k++) idx.push(c, ringStart[1] + k, ringStart[1] + k + 1);
@@ -4554,20 +4597,12 @@ function makeSkyBirdAsset(color = SKY_BIRD_COLOR) {
   return g;
 }
 
-// One cloud (scene.js merges 16 of these puff clusters into a single ring mesh
-// high above the map — see createScene).
+// One cloud (scene.js merges 16 of these clusters into a single ring mesh
+// high above the map — the exact same cloudClusterGeo builds both).
 function makeCloudAsset() {
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
-  const geos = [];
-  const n = 4;
-  for (let j = 0; j < n; j++) {
-    const geo = new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8);
-    geo.translate((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
-    geos.push(geo);
-  }
-  const m = new THREE.Mesh(mergeGeometries(geos), cloudMat);
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
   const g = new THREE.Group();
-  g.add(m);
+  g.add(new THREE.Mesh(cloudClusterGeo(), cloudMat));
   return g;
 }
 
