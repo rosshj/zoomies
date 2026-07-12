@@ -423,8 +423,13 @@ export function buildWorld(scene, track, opts = {}) {
     const u = clamp(1 - (d - track.halfWidth) / 3, 0, 1);
     return heightAt(x, z) - 1.2 * (u * u * (3 - 2 * u));
   };
-  buildTerrain(scene, terrainHeight, litLevel); // night/dusk darkening (snow handled hard inside)
-  buildMountains(scene, heightAt, track);
+  // World extents adapt to the track: big maps (rim radius grew with the
+  // size knob) can reach ~1060u out, past the old fixed 1900x1900 terrain
+  // sheet and into the fixed mountain ring's band.
+  let trackReach = 0;
+  for (const p of track._pts) trackReach = Math.max(trackReach, Math.hypot(p.x, p.z));
+  buildTerrain(scene, terrainHeight, litLevel, trackReach + 330); // night/dusk darkening (snow handled hard inside)
+  buildMountains(scene, heightAt, track, trackReach);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
@@ -1005,13 +1010,15 @@ function buildGrass(scene, track, heightAt) {
   return mesh;
 }
 
-function buildTerrain(scene, heightAt, litLevel = 0) {
+function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
   // General ground only dims a LITTLE at night (so the scene stays as bright as it
   // was before) — but snow is darkened HARD, because near-white snow reflects the
   // moonlight far more than anything else and is what reads "self-lit".
   const groundDarken = 1 - litLevel * 0.15; // ~0.85 at night
-  const SIZE = 1900;
-  const SEG = 280;
+  // Sheet size follows the track's reach; segment count follows the sheet so
+  // cell size (and the look of the rolling detail) stays roughly constant.
+  const SIZE = Math.max(1900, Math.ceil(halfExtent * 2));
+  const SEG = Math.min(380, Math.round(SIZE / 6.8));
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
 
@@ -1097,7 +1104,7 @@ function buildTerrain(scene, heightAt, litLevel = 0) {
   scene.add(mesh);
 }
 
-function buildMountains(scene, heightAt, track) {
+function buildMountains(scene, heightAt, track, trackReach = 900) {
   const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, roughness: 1 });
   const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
@@ -1123,13 +1130,14 @@ function buildMountains(scene, heightAt, track) {
     }
   };
 
-  // Distant mountain ring around the whole world. Pushed out far enough that even
-  // a max-size, max-curviness loop (which can reach ~900 units out) stays well
-  // inside it, so a ring peak never lands on the track.
+  // Distant mountain ring around the whole world. Pushed out past the loop's
+  // ACTUAL reach (big maps stretch further than the old fixed ring allowed),
+  // so a ring peak never lands on the track.
+  const ringBase = Math.max(1080, trackReach + 230);
   const count = 24;
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + rand() * 0.2;
-    const r = 1080 + rand() * 180;
+    const r = ringBase + rand() * 180;
     peak(Math.cos(a) * r, Math.sin(a) * r, 190 + rand() * 160, 90 + rand() * 70, 30);
   }
 

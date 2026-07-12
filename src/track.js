@@ -167,7 +167,7 @@ function planSummitPeak(cfg) {
   return {
     ang: (0.16 + r() * 0.68) * TAU, // peak centre (kept clear of the start line)
     w: (0.1 + r() * 0.05) * TAU, // Gaussian half-width, in lap angle
-    h: 40 + r() * 20 + elevation * 16 + size * 22, // summit height (size buys altitude)
+    h: 40 + r() * 20 + elevation * 16 + size * 34, // summit height (size buys altitude)
   };
 }
 
@@ -186,7 +186,9 @@ function planCrossover(cfg) {
   const r = makeRng(String(cfg.seed || "x") + "|xover");
   const roll = r(); // gate roll first so parameter draws line up across gates
   // Crossing odds scale with map size: no room below 0.4, common by 0.7+.
-  const p = size < 0.4 ? 0 : 0.35 + (size - 0.4) * 0.75;
+  // Crossings are a headline feature: on any map big enough to fit the
+  // inner loop they fire MOST of the time, and near-always on big maps.
+  const p = size < 0.32 ? 0 : 0.55 + (size - 0.32) * 0.5;
   if (roll > p) return null;
   // ONE crossing per lap, for now. A double crossing (m=2, two inner petals)
   // was fully explored and REVERTED: any single-valued polar loop passes
@@ -253,12 +255,15 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // road into corners too sharp for the roadside scenery to fit beside.
   const detail = curviness * (0.55 + 0.45 * size); // effective high-frequency curviness
   const N = 16 + Math.round(curviness * (8 + size * 20)); // ~24 on small maps, ~44 on big
-  const baseR = 260 + size * 220;
+  // Rim radius: the size knob now spans a much wider world — a max-size
+  // circuit is ~20% larger than before (laps well past 3500u), which also
+  // buys the room that tall climbs and crossings want.
+  const baseR = 250 + size * 330;
   // Hill amplitude grows with map SIZE as well as the elevation knob: a big
   // circuit has the run length to climb genuinely high at gentle grades (the
   // grade limiter enforces the "gently"), so the same knob feels like a real
   // journey on a large map instead of the same bumps stretched wider.
-  const hillAmp = elevation * (110 + 135 * size);
+  const hillAmp = elevation * (110 + 190 * size);
   // Tightest centreline corner radius. The road is laid out flat across its width,
   // so a centreline radius below halfWidth (15) folds the inner edge over itself —
   // which looks especially broken where a tight corner also falls on a steep grade.
