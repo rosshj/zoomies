@@ -190,15 +190,47 @@ function planCrossover(cfg) {
   // inner loop they fire MOST of the time, and near-always on big maps.
   const p = size < 0.32 ? 0 : 0.55 + (size - 0.32) * 0.5;
   if (roll > p) return null;
-  // ONE crossing per lap, for now. A double crossing (m=2, two inner petals)
-  // was fully explored and REVERTED: any single-valued polar loop passes
-  // through the exact origin at EVERY radius sign-change, so all four of the
-  // double-petal's passages funnel through one point — the two crossings can
-  // never separate, no matter how the shape is phased or detoured (tangential
-  // bypasses just shuffle which strands collide). Two separated crossings
-  // need a non-polar backbone (e.g. a parametric two-lobe folium); the
-  // machinery downstream (m crossings in the validator, one deck run per
-  // crossing, height-aware projection) is already generic and waiting.
+  // Big maps get a DOUBLE crossing from the EPITROCHOID family
+  // P(t) = e^(it) + e*e^(3it): two pinch loops on OPPOSITE sides of the map,
+  // each crossing locally just two strands. (The twin-petal POLAR attempt was
+  // reverted for a structural reason: a radius function passes through the
+  // exact origin at every sign change, funnelling all four passages through
+  // one point. The epitrochoid is parametric — its pinches live at
+  // +/-(1-e)R, hundreds of units apart, lab-swept 2 crossings at every e.)
+  const mRoll = r();
+  if (size >= 0.72 && mRoll < 0.55) {
+    const e = 0.56 + r() * 0.12; // loop size; bigger e = rounder, wider loops
+    const rot = r() * TAU;
+    // Locate the two self-intersections of the unit curve numerically; the
+    // passage params depend only on e. Pairs come out (enter, exit) per loop.
+    const D = 720, Q = [];
+    for (let i = 0; i < D; i++) {
+      const t = (i / D) * TAU;
+      Q.push([Math.cos(t) + e * Math.cos(3 * t), Math.sin(t) + e * Math.sin(3 * t)]);
+    }
+    const pairs = [];
+    const skip = 30;
+    for (let i = 0; i < D && pairs.length < 2; i += 2) {
+      for (let j = i + skip; j < D; j += 2) {
+        if (D - (j - i) < skip) continue;
+        const a = Q[i], bq = Q[(i + 2) % D], c = Q[j], d = Q[(j + 2) % D];
+        const rX = bq[0] - a[0], rZ = bq[1] - a[1], sX = d[0] - c[0], sZ = d[1] - c[1];
+        const den = rX * sZ - rZ * sX;
+        if (Math.abs(den) < 1e-9) continue;
+        const t2 = ((c[0] - a[0]) * sZ - (c[1] - a[1]) * sX) / den;
+        const u = ((c[0] - a[0]) * rZ - (c[1] - a[1]) * rX) / den;
+        if (t2 <= 0 || t2 >= 1 || u <= 0 || u >= 1) continue;
+        const hx = a[0] + rX * t2, hz = a[1] + rZ * t2;
+        if (pairs.some((q) => Math.hypot(q.x - hx, q.z - hz) < 0.1)) continue;
+        pairs.push({ x: hx, z: hz, tA: ((i + 2 * t2) / D) * TAU, tB: ((j + 2 * u) / D) * TAU });
+        break;
+      }
+    }
+    if (pairs.length === 2) {
+      return { kind: "epi", m: 2, e, rot, lows: pairs.map((q) => q.tA), ups: pairs.map((q) => q.tB), clear: 13 };
+    }
+  }
+  // Single crossing: the limacon inner loop (guaranteed one transversal).
   const m = 1;
   const k = 0.44 + r() * 0.12; // inner-loop size: ~0.24-0.35x of the rim radius
   const b = 0;
@@ -236,7 +268,7 @@ function planCrossover(cfg) {
     }
     if (ok) break;
   }
-  return { m, k, b, psi, phi, zeros, ups, lows, norm, clear: 13 };
+  return { kind: "lima", m, k, b, psi, phi, zeros, ups, lows, norm, clear: 13 };
 }
 
 function generateLoopPoints(cfg, rng = rand, wedges = null) {
@@ -263,7 +295,7 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // circuit has the run length to climb genuinely high at gentle grades (the
   // grade limiter enforces the "gently"), so the same knob feels like a real
   // journey on a large map instead of the same bumps stretched wider.
-  const hillAmp = elevation * (110 + 190 * size);
+  const hillAmp = elevation * (120 + 260 * size);
   // Tightest centreline corner radius. The road is laid out flat across its width,
   // so a centreline radius below halfWidth (15) folds the inner edge over itself —
   // which looks especially broken where a tight corner also falls on a steep grade.
@@ -333,14 +365,20 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   const xoPass = [];
   let xoW = null;
   if (xover) {
-    // ONE common pin level for every passage: with two crossings, an inbound
-    // strand of one petal crosses the OUTBOUND deck of the other — a shared
-    // ground level is what makes every such pairing clear by exactly `clear`.
-    const pin = hillsAt(xover.phi + xover.lows[0]);
-    for (const z of xover.lows) xoPass.push({ a: xover.phi + z, pin, up: false });
-    for (const z of xover.ups) xoPass.push({ a: xover.phi + z, pin, up: true });
-    xoW = xover.m === 2
-      ? { zone: 0.9, zoneRamp: 0.5, up: 0.5, upRamp: 0.3, plateau: 0.2 }
+    // One pin level per crossing (each pairs its own enter/exit strands; the
+    // epitrochoid's two crossings sit ~600u apart, so their pins are free to
+    // follow the local base profile independently). Passage "angles" are in
+    // PARAM space — for the limacon param == polar angle and the shape is
+    // rotated by phi, for the epitrochoid rotation is spatial so params pass
+    // through unshifted.
+    const base = xover.kind === "epi" ? 0 : xover.phi;
+    for (let ci = 0; ci < xover.lows.length; ci++) {
+      const pin = hillsAt(base + xover.lows[ci]);
+      xoPass.push({ a: base + xover.lows[ci], pin, up: false });
+      xoPass.push({ a: base + xover.ups[ci], pin, up: true });
+    }
+    xoW = xover.kind === "epi"
+      ? { zone: 0.85, zoneRamp: 0.45, up: 0.5, upRamp: 0.28, plateau: 0.22 }
       : { zone: 1.35, zoneRamp: 0.75, up: 0.62, upRamp: 0.38, plateau: 0.24 };
   }
 
@@ -370,30 +408,41 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       const envRaw = 0.6 + 0.7 * rhythmAt(a);
       const envK = attempt < 10 ? 1 : attempt < 20 ? 0.55 : attempt < 30 ? 0.25 : 0;
       const env = 1 + (envRaw - 1) * envK;
-      let r, tg;
-      if (xo) {
-        // Limacon base: signed radius factor sweeps negative through the
-        // inner loop(s). Wobble fades out near the zero crossings (keeps the
-        // transversal crisp) and scales with |lim| so the inner loops keep
-        // their proportions instead of inheriting rim-sized swings.
-        const rel = a - xo.phi;
-        const gv = xo.k + Math.cos(xo.m * rel) + xo.b * Math.cos(rel - xo.psi);
-        const lim = gv / xo.norm;
-        // Wobble fades near the crossings so the transversals stay crisp. The
-        // DOUBLE interchange is far more delicate — its four strands weave at
-        // barrier distance, so wobble only survives out on the rim lobes and
-        // at reduced strength (the twin-petal silhouette carries the drama).
-        const envX = xo.m === 2 ? sm01((Math.abs(gv) - 0.35) / 0.4) : sm01((Math.abs(gv) - 0.05) / 0.35);
-        const wf = xo.m === 2 ? 0.35 : 0.5;
-        const mag = Math.max(0.35, Math.abs(lim));
-        r = baseR * (lim + radVar * wf * envX * mag * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
-        tg = baseR * tangAmp * wf * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+      let x, z;
+      if (xo && xo.kind === "epi") {
+        // Epitrochoid base, rotated into place. Wobble scales the whole
+        // point radially from the origin and fades near the two pinches so
+        // the crossings stay crisp transversals.
+        const R = baseR / (1 + xo.e);
+        const px = (Math.cos(a) + xo.e * Math.cos(3 * a)) * R;
+        const pz = (Math.sin(a) + xo.e * Math.sin(3 * a)) * R;
+        const dmin = Math.min(Math.abs(wrapA(a - Math.PI / 2)), Math.abs(wrapA(a - (3 * Math.PI) / 2)));
+        const envX = sm01((dmin - 0.75) / 0.5);
+        const wob = 1 + radVar * 0.4 * envX * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
+        const cR = Math.cos(xo.rot), sR = Math.sin(xo.rot);
+        x = (px * cR - pz * sR) * wob;
+        z = (px * sR + pz * cR) * wob;
       } else {
-        r = baseR * (1 + radVar * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
-        tg = baseR * tangAmp * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+        let r, tg;
+        if (xo) {
+          // Limacon base: signed radius factor sweeps negative through the
+          // inner loop. Wobble fades out near the zero crossings (keeps the
+          // transversal crisp) and scales with |lim| so the inner loop keeps
+          // its proportions instead of inheriting rim-sized swings.
+          const rel = a - xo.phi;
+          const gv = xo.k + Math.cos(xo.m * rel) + xo.b * Math.cos(rel - xo.psi);
+          const lim = gv / xo.norm;
+          const envX = sm01((Math.abs(gv) - 0.05) / 0.35);
+          const mag = Math.max(0.35, Math.abs(lim));
+          r = baseR * (lim + radVar * 0.5 * envX * mag * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
+          tg = baseR * tangAmp * 0.5 * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+        } else {
+          r = baseR * (1 + radVar * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
+          tg = baseR * tangAmp * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+        }
+        x = Math.cos(a) * r - Math.sin(a) * tg;
+        z = Math.sin(a) * r + Math.cos(a) * tg;
       }
-      const x = Math.cos(a) * r - Math.sin(a) * tg;
-      const z = Math.sin(a) * r + Math.cos(a) * tg;
       let y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
       // The summit peak rides on top: base hills fade near the crest (the
       // mountain doesn't need bumps on its face, and damping them keeps the
@@ -418,7 +467,7 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
     // pin level and mark them immovable for the limiter below. (Re-pinning
     // AFTER the limiter instead used to snap plateaus back up next to freshly
     // relaxed ramps, minting steps far steeper than the limit.)
-    const TAN_MAX = 0.28;
+    const TAN_MAX = 0.27;
     const pinned = xo ? new Uint8Array(N) : null;
     if (xo) {
       for (let i = 0; i < N; i++) {
@@ -465,24 +514,40 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
     // needs. The spline overshoots the chord grade through plan-view corners
     // (run compresses while y keeps moving), so the chord cap sits well under
     // the ~24deg the built road and the kart tuning actually tolerate.
-    for (let pass = 0; pass < 8; pass++) {
-      let changed = false;
-      for (let i = 0; i < N; i++) {
-        const j = (i + 1) % N;
-        const p = pts[i], q = pts[j];
-        const lim = Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
-        const dy = q.y - p.y;
-        if (Math.abs(dy) <= lim) continue;
-        const pa = pinned && pinned[i], pb = pinned && pinned[j];
-        if (pa && pb) continue; // adjacent plateau points share a level anyway
-        changed = true;
-        if (pa) q.y = p.y + Math.sign(dy) * lim;
-        else if (pb) p.y = q.y - Math.sign(dy) * lim;
-        else if (dy > 0) q.y = p.y + lim;
-        else p.y = q.y + lim;
+    const runLimiter = (passes) => {
+      for (let pass = 0; pass < passes; pass++) {
+        let changed = false;
+        for (let i = 0; i < N; i++) {
+          const j = (i + 1) % N;
+          const p = pts[i], q = pts[j];
+          const lim = Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
+          const dy = q.y - p.y;
+          if (Math.abs(dy) <= lim) continue;
+          const pa = pinned && pinned[i], pb = pinned && pinned[j];
+          if (pa && pb) continue; // adjacent plateau points share a level anyway
+          changed = true;
+          if (pa) q.y = p.y + Math.sign(dy) * lim;
+          else if (pb) p.y = q.y - Math.sign(dy) * lim;
+          else if (dy > 0) q.y = p.y + lim;
+          else p.y = q.y + lim;
+        }
+        if (!changed) break;
       }
-      if (!changed) break;
+    };
+    runLimiter(8);
+    // De-lump: the limiter's per-chord clamps leave slope KINKS at ramp ends,
+    // and through a corner the spline rings off them — the "lumpy, folded
+    // hillside on a climbing turn". Two gentle rounding passes blend each
+    // point toward its neighbours' mean (pinned deck plateaus stay exact),
+    // then a short limiter sweep re-caps anything the rounding steepened.
+    for (let pass = 0; pass < 2; pass++) {
+      const y0 = pts.map((p) => p.y);
+      for (let i = 0; i < N; i++) {
+        if (pinned && pinned[i]) continue;
+        pts[i].y = y0[i] * 0.5 + (y0[(i - 1 + N) % N] + y0[(i + 1) % N]) * 0.25;
+      }
     }
+    runLimiter(3);
     best = pts;
     bestXo = xo;
     if (_loopOK(pts, MIN_CORNER, xo)) {
@@ -1551,8 +1616,31 @@ export class Track {
   // Terrain-anchoring variant: on crossover maps the deck window's samples
   // are excluded, so ground under the bridge follows the LOWER road. Distance
   // queries (prop placement, road-avoidance) keep the full list via groundInfo.
+  // Where TWO arc-separated strands share plan space at different heights
+  // (stacked passes, a low road under a mountainside approach), snapping to
+  // the nearest strand minted vertical terrace WALLS with baked tree shadows
+  // smeared down them — instead, blend toward the second strand as the point
+  // approaches equidistance, so the gap becomes a hillside.
   groundInfoTerrain(x, z) {
     const r = this._projectArr(this._coarseGround, x, z);
+    const pts = this._coarseGround;
+    const n = pts.length;
+    const win = Math.max(6, Math.ceil(((170 / this.length) * this.samples) / 2)); // arc window, in coarse indices
+    let d2 = Infinity, y2 = r.y;
+    for (let i = 0; i < n; i++) {
+      const ad = Math.abs(i - r.i);
+      if (Math.min(ad, n - ad) <= win) continue; // same strand as the winner
+      const dx = pts[i].x - x, dz = pts[i].z - z;
+      const d = dx * dx + dz * dz;
+      if (d < d2) { d2 = d; y2 = pts[i].y; }
+    }
+    if (d2 < Infinity) {
+      const gap = Math.sqrt(d2) - r.dist;
+      if (gap < 70) {
+        const w = 0.5 * (1 - gap / 70);
+        return { dist: r.dist, y: r.y * (1 - w) + y2 * w };
+      }
+    }
     return { dist: r.dist, y: r.y };
   }
 

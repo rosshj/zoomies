@@ -485,7 +485,7 @@ function runNear(run, x, z, pad) {
 
 // How far each kind's terrain field reaches from the spine (see the matching
 // bands in featureHeightMod). Kinds without a field never touch the terrain.
-const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150, crossover: 64 };
+const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150, crossover: 96 };
 
 // Terrain fields: canyon walls up, overpass/dam/shelf sinks down, tunnel ridge
 // over the road. All fade along the run and across distance bands, and yield
@@ -553,10 +553,13 @@ export function featureHeightMod(feats, x, z, h) {
       // upper strand's samples are excluded from terrain anchoring (see
       // groundInfoTerrain), and this field cuts the leftover approach
       // shoulders so the bridge spans a clean gap instead of a dirt ridge.
+      // WIDE, soft falloff — a tight field left near-vertical pit walls
+      // where the pin met high surrounding ground (ugly cliff faces with
+      // baked tree shadows smeared down them).
       const s = spineDist(run.spine, x, z);
-      if (s.u < 0 || s.d > 64) continue;
-      const endW = smooth01(s.u / 0.16) * smooth01((1 - s.u) / 0.16);
-      const t = (1 - smooth01((s.d - 24) / 34)) * endW;
+      if (s.u < 0 || s.d > 96) continue;
+      const endW = smooth01(s.u / 0.22) * smooth01((1 - s.u) / 0.22);
+      const t = (1 - smooth01((s.d - 20) / 72)) * endW;
       if (t <= 0) continue;
       const sunk = run.lowY - 0.4;
       h += (Math.min(h, sunk) - h) * t;

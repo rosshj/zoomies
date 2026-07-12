@@ -111,6 +111,24 @@ function build(scene, track, opts) {
 
   const leafCols = [0xb5532a, 0xd07b27, 0xe0a73a, 0x8a6e2f];
 
+  // Warm energy shell that marks a floating crate as a POWER-UP box (playtest:
+  // "hovering" alone wasn't an obvious tell that the box holds something). One
+  // shared additive material pulsed in update(); a shell mesh is lazily
+  // attached per crate the first time it floats — one extra draw call per
+  // active box, and there are only 3-5 on a map.
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffc44d, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide });
+  glowMat.userData.shared = true;
+  let glowT = 0;
+  const ensureGlow = (pr) => {
+    if (!pr.glow) {
+      const gs = pr.rest * 2 * 1.4;
+      pr.glow = new THREE.Mesh(new THREE.BoxGeometry(gs, gs, gs), glowMat);
+      pr.glow.renderOrder = 5;
+      pr.mesh.add(pr.glow);
+    }
+    return pr.glow;
+  };
+
   const props = []; // { mesh, pos, vel, quat, angVel, rest, half, hit, asleep, settle }
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
@@ -462,10 +480,14 @@ function build(scene, track, opts) {
         pr.hit = 0.4;
       }
     }
+    glowT += dt;
+    glowMat.opacity = 0.24 + 0.1 * Math.sin(glowT * 2.6); // slow breathing pulse
     for (const pr of props) {
       if (pr.hit > 0) pr.hit -= dt;
+      if (pr.glow) pr.glow.visible = pr.kind === "crate" && pr.mode !== "ground" && itemsEnabled;
       // Floating-box lifecycle (crates only): hover, or ride a rise/sink ramp.
       if (pr.kind === "crate" && pr.mode !== "ground") {
+        ensureGlow(pr);
         pr.phase += dt;
         const restY = pr.groundY + pr.rest, floatY = restY + HOVER;
         if (pr.mode === "float") {
