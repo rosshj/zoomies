@@ -88,7 +88,7 @@ function _loopOK(pts, minR, xover = null) {
   // 40-degree wall — reject and let the next attempt re-roll.
   for (let i = 0; i < F; i++) {
     const a = Q[i], b = Q[(i + 1) % F];
-    if (Math.abs(b.y - a.y) > Math.hypot(b.x - a.x, b.z - a.z) * 0.48) return false;
+    if (Math.abs(b.y - a.y) > Math.hypot(b.x - a.x, b.z - a.z) * 0.44) return false;
   }
   for (let i = 0; i < F; i++) {
     const p0 = Q[(i - 2 + F) % F], p1 = Q[i], p2 = Q[(i + 2) % F];
@@ -200,84 +200,21 @@ function planCrossover(cfg) {
   // inner loop they fire MOST of the time, and near-always on big maps.
   const p = size < 0.32 ? 0 : 0.55 + (size - 0.32) * 0.5;
   if (roll > p) return null;
-  // Big maps draw the lap from parametric EPICYCLE families
-  // P(t) = e^(it) + c*e^(i(kk*t + psi)):
-  //   kk = +3 (co-rotating):      TWO pinch loops diving INWARD, ~600u apart
-  //   kk = -2 (counter-rotating): THREE loops hanging OUTWARD off the rim
-  //                               corners (the sketchbook "spiral outwards")
-  // Each crossing is locally just two strands, far from the others. (A polar
-  // radius function can never do this — it passes through the exact origin at
-  // every sign change, funnelling all passages through one point.)
+  // Big maps draw the lap from a GENERATIVE EPICYCLE MIX
+  // P(t) = e^(it) + sum_j c_j*e^(i(k_j t + psi_j)),  k_j in {-4..-2, 2..4}:
+  // one or two epicycles of random order, direction and phase. Co-rotating
+  // terms pinch loops INWARD, counter-rotating hang them OUTWARD, and mixes
+  // scatter both around one lap — every accepted seed is its own layout
+  // instead of a stamped family silhouette. A candidate only graduates when
+  // the analytic curve passes the whole battery: 1..maxX well-separated
+  // transversal crossings, pre-styling corner radius, passage spacing, a
+  // greedy over/under assignment with ramp room, and start-line clearance.
+  // (Fixed limacon/epitrochoid/clover families used to live here — players
+  // learned their three silhouettes within a session.)
   const mRoll = r();
-  let fam = null;
-  if (size >= 0.82 && mRoll < 0.3) fam = { kk: -2, c: 0.82 + r() * 0.06, L: 3 };
-  else if (size >= 0.72 && mRoll < 0.62) fam = { kk: 3, c: 0.56 + r() * 0.12, L: 2 };
-  if (fam) {
-    const rot = r() * TAU;
-    // Locate the loops' self-intersections numerically; psi phases the whole
-    // pinch pattern around the lap, redrawn until every passage keeps clear
-    // of the start line (t=0). Deterministic per seed.
-    const D = 720;
-    for (let tries = 0; tries < 24; tries++) {
-      const psi = r() * TAU;
-      const Q = [];
-      for (let i = 0; i < D; i++) {
-        const t = (i / D) * TAU;
-        Q.push([Math.cos(t) + fam.c * Math.cos(fam.kk * t + psi), Math.sin(t) + fam.c * Math.sin(fam.kk * t + psi)]);
-      }
-      const pairs = [];
-      const skip = 30;
-      for (let i = 0; i < D && pairs.length <= fam.L; i += 2) {
-        for (let j = i + skip; j < D; j += 2) {
-          if (D - (j - i) < skip) continue;
-          const a = Q[i], bq = Q[(i + 2) % D], c2 = Q[j], d = Q[(j + 2) % D];
-          const rX = bq[0] - a[0], rZ = bq[1] - a[1], sX = d[0] - c2[0], sZ = d[1] - c2[1];
-          const den = rX * sZ - rZ * sX;
-          if (Math.abs(den) < 1e-9) continue;
-          const t2 = ((c2[0] - a[0]) * sZ - (c2[1] - a[1]) * sX) / den;
-          const u = ((c2[0] - a[0]) * rZ - (c2[1] - a[1]) * rX) / den;
-          if (t2 <= 0 || t2 >= 1 || u <= 0 || u >= 1) continue;
-          const hx = a[0] + rX * t2, hz = a[1] + rZ * t2;
-          if (pairs.some((q) => Math.hypot(q.x - hx, q.z - hz) < 0.08)) continue;
-          let tA = ((i + 2 * t2) / D) * TAU, tB = ((j + 2 * u) / D) * TAU;
-          if (tB - tA > Math.PI) { const sw = tA; tA = tB; tB = sw + TAU; } // wrapped pair
-          pairs.push({ x: hx, z: hz, tA, tB });
-          break;
-        }
-      }
-      if (pairs.length !== fam.L) continue;
-      const clearOfStart = pairs.every((q) => {
-        const d1 = Math.abs(Math.atan2(Math.sin(q.tA), Math.cos(q.tA)));
-        const d2 = Math.abs(Math.atan2(Math.sin(q.tB), Math.cos(q.tB)));
-        return Math.min(d1, d2) > 0.5;
-      });
-      if (!clearOfStart) continue;
-      let lows, ups;
-      if (fam.L >= 3) {
-        // The clover's passages INTERLEAVE along the lap (each petal edge
-        // serves two crossings), so per-pair enter=low/exit=up conflicts with
-        // itself. The trefoil is an ALTERNATING knot: flag passages up/down
-        // alternately in lap order and every crossing gets one of each.
-        const ps = [];
-        for (const q of pairs) ps.push(q.tA % TAU, q.tB % TAU);
-        ps.sort((x, y) => x - y);
-        lows = ps.filter((_, i) => i % 2 === 0);
-        ups = ps.filter((_, i) => i % 2 === 1);
-        const flagOf = (t) => (ups.some((u) => Math.abs(u - (t % TAU)) < 1e-6) ? 1 : 0);
-        if (!pairs.every((q) => flagOf(q.tA) + flagOf(q.tB) === 1)) continue; // parity broke: re-roll psi
-      } else {
-        lows = pairs.map((q) => q.tA);
-        ups = pairs.map((q) => q.tB);
-      }
-      return {
-        kind: "epi", m: fam.L, kk: fam.kk, c: fam.c, psi, rot,
-        lows, ups,
-        pinches: [...lows, ...ups], // wobble damps around every passage
-        clear: 13,
-      };
-    }
-  }
-  // Single crossing: the limacon inner loop (guaranteed one transversal).
+  // The limacon single-crossing plan is ALWAYS drawn first: it is the
+  // guaranteed fallback when a generative layout's styled attempts fail
+  // (better one crossing than none), and the primary plan for smaller maps.
   const m = 1;
   const k = 0.44 + r() * 0.12; // inner-loop size: ~0.24-0.35x of the rim radius
   const b = 0;
@@ -315,7 +252,158 @@ function planCrossover(cfg) {
     }
     if (ok) break;
   }
-  return { kind: "lima", m, k, b, psi, phi, zeros, ups, lows, norm, clear: 13 };
+  const limaPlan = { kind: "lima", m, k, b, psi, phi, zeros, ups, lows, norm, clear: 13 };
+  const GEN_KS = [-4, -3, -2, 2, 3, 4];
+  if (size >= 0.6 && mRoll < 0.75) {
+    const baseR = 250 + size * 330; // mirrors generateLoopPoints
+    const maxX = size < 0.72 ? 2 : size < 0.85 ? 3 : 4;
+    const D = 960;
+    let genFallback = null;
+    for (let cand = 0; cand < 60; cand++) {
+      const nE = r() < 0.45 ? 1 : 2;
+      const eps = [];
+      const used = new Set();
+      for (let j = 0; j < nE; j++) {
+        let k;
+        do { k = GEN_KS[Math.floor(r() * GEN_KS.length)]; } while (used.has(k));
+        used.add(k);
+        eps.push({ k, c: ((0.55 + r() * 0.85) / Math.abs(k)) * (nE === 1 ? 1.35 : 0.85), psi: r() * TAU });
+      }
+      const rot = r() * TAU;
+      const P = [];
+      let maxR = 0;
+      for (let i = 0; i < D; i++) {
+        const t = (i / D) * TAU;
+        let x = Math.cos(t), z = Math.sin(t);
+        for (const e of eps) { x += e.c * Math.cos(e.k * t + e.psi); z += e.c * Math.sin(e.k * t + e.psi); }
+        P.push([x, z]);
+        const rr = Math.hypot(x, z);
+        if (rr > maxR) maxR = rr;
+      }
+      const scale = baseR / maxR;
+      // -- crossings of the analytic curve
+      const hits = [];
+      const skip = 26;
+      let bad = false;
+      for (let i = 0; i < D && !bad; i += 2) {
+        for (let j = i + skip; j < D; j += 2) {
+          if (D - (j - i) < skip) continue;
+          const a = P[i], bq = P[(i + 2) % D], c2 = P[j], d = P[(j + 2) % D];
+          const rX = bq[0] - a[0], rZ = bq[1] - a[1], sX = d[0] - c2[0], sZ = d[1] - c2[1];
+          const den = rX * sZ - rZ * sX;
+          if (Math.abs(den) < 1e-12) continue;
+          const t2 = ((c2[0] - a[0]) * sZ - (c2[1] - a[1]) * sX) / den;
+          const u = ((c2[0] - a[0]) * rZ - (c2[1] - a[1]) * rX) / den;
+          if (t2 <= 0 || t2 >= 1 || u <= 0 || u >= 1) continue;
+          const hx = a[0] + rX * t2, hz = a[1] + rZ * t2;
+          if (hits.some((q) => Math.hypot(q.x - hx, q.z - hz) * scale < 30)) continue;
+          hits.push({ x: hx, z: hz, tA: ((i + 2 * t2) / D) * TAU, tB: ((j + 2 * u) / D) * TAU });
+          if (hits.length > maxX) { bad = true; break; }
+        }
+      }
+      if (bad || !hits.length) continue;
+      if (hits.some((h) => Math.hypot(h.x - P[0][0], h.z - P[0][1]) * scale < 165)) continue;
+      let minPair = Infinity;
+      for (let x = 0; x < hits.length; x++) {
+        for (let y = x + 1; y < hits.length; y++) {
+          minPair = Math.min(minPair, Math.hypot(hits[x].x - hits[y].x, hits[x].z - hits[y].z) * scale);
+        }
+      }
+      if (minPair < 140) continue;
+      // -- pre-styling corner radius + wobble envelope (one curvature pass)
+      const EW = 96;
+      const envW = new Float32Array(EW).fill(1);
+      let minRad = Infinity;
+      for (let i = 0; i < D; i++) {
+        const p0 = P[(i - 3 + D) % D], p1 = P[i], p2 = P[(i + 3) % D];
+        const A = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]);
+        const B = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
+        const C = Math.hypot(p0[0] - p2[0], p0[1] - p2[1]);
+        const area = Math.abs((p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1])) / 2;
+        if (area > 1e-9) {
+          const rho = ((A * B * C) / (4 * area)) * scale;
+          if (rho < minRad) minRad = rho;
+          const bin = Math.floor((i / D) * EW) % EW;
+          const e = rho >= 130 ? 1 : rho <= 60 ? 0 : (rho - 60) / 70;
+          if (e < envW[bin]) envW[bin] = e;
+        }
+      }
+      if (minRad < 29) continue;
+      // -- passages: lap order, spacing, over/under, clusters, windows
+      const passages = [];
+      hits.forEach((h, hi) => {
+        passages.push({ a: h.tA % TAU, pair: hi, up: false });
+        passages.push({ a: h.tB % TAU, pair: hi, up: false });
+      });
+      passages.sort((x, y) => x.a - y.a);
+      const nP = passages.length;
+      let minGap = TAU, minStart = Infinity;
+      for (let i = 0; i < nP; i++) {
+        minGap = Math.min(minGap, (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU);
+        minStart = Math.min(minStart, Math.abs(Math.atan2(Math.sin(passages[i].a), Math.cos(passages[i].a))));
+      }
+      if (minGap < 0.2 || minStart < 0.45) continue;
+      // greedy over/under: each pair is a free binary choice; walking the lap
+      // and alternating whenever a pair is still free keeps ramps sparse.
+      const oriented = new Array(hits.length).fill(false);
+      let prevUp = true;
+      for (const ps of passages) {
+        if (!oriented[ps.pair]) {
+          ps.up = !prevUp;
+          oriented[ps.pair] = true;
+          const other = passages.find((q) => q.pair === ps.pair && q !== ps);
+          other.up = !ps.up;
+        }
+        prevUp = ps.up;
+      }
+      // differing-flag neighbours need ramp room between them
+      let rampOK = true;
+      for (let i = 0; i < nP; i++) {
+        const q = passages[(i + 1) % nP];
+        const gap = (q.a - passages[i].a + TAU) % TAU;
+        if (q.up !== passages[i].up && gap < 0.3) { rampOK = false; break; }
+      }
+      if (!rampOK) continue;
+      // clusters share one pin level (arc-close passages can't afford
+      // independent heights); per-passage height window from local spacing
+      let cluster = 0;
+      for (let i = 0; i < nP; i++) {
+        const gapPrev = (passages[i].a - passages[(i - 1 + nP) % nP].a + TAU) % TAU;
+        if (i > 0 && gapPrev > 0.55) cluster++;
+        passages[i].cluster = cluster;
+        const gapNext = (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU;
+        passages[i].win = Math.min(0.2, Math.max(0.13, 0.38 * Math.min(gapPrev, gapNext)));
+      }
+      if ((passages[0].a - passages[nP - 1].a + TAU) % TAU <= 0.55) {
+        const last = passages[nP - 1].cluster;
+        for (const ps of passages) if (ps.cluster === last) ps.cluster = 0; // wrap-merge
+      }
+      // A crossing's OWN two passages must share a pin level (deck = pin+13
+      // over pin is the whole clearance contract) — union their clusters,
+      // however far apart along the lap the loop carries them.
+      for (let hi = 0; hi < hits.length; hi++) {
+        const pa = passages.filter((q) => q.pair === hi);
+        if (pa[0].cluster !== pa[1].cluster) {
+          const from = pa[1].cluster, to = pa[0].cluster;
+          for (const ps of passages) if (ps.cluster === from) ps.cluster = to;
+        }
+      }
+      const plan = { kind: "gen", m: hits.length, eps, rot, maxR, passages, envW, clear: 13 };
+      // Big maps hold out for a MULTI-crossing layout for most of the
+      // candidate budget; the first single-crossing plan is kept as fallback.
+      if (plan.m >= 2 || size < 0.72 || cand >= 44) {
+        plan.fallback = limaPlan;
+        return plan;
+      }
+      if (!genFallback) genFallback = plan;
+    }
+    if (genFallback) {
+      genFallback.fallback = limaPlan;
+      return genFallback;
+    }
+  }
+  return limaPlan;
+
 }
 
 function generateLoopPoints(cfg, rng = rand, wedges = null) {
@@ -338,7 +426,7 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // low-curviness knob's sparse control net the spline aliases the bays and
   // balloons them into spurious centre crossings. Their control budget is
   // set by the shape, not the knob.
-  if (xover && xover.kind === "epi") N = Math.max(N, 30 + 8 * xover.m);
+  if (xover && xover.kind === "gen") N = Math.max(N, 34 + 7 * xover.m);
   // Rim radius: the size knob now spans a much wider world — a max-size
   // circuit is ~20% larger than before (laps well past 3500u), which also
   // buys the room that tall climbs and crossings want.
@@ -414,32 +502,37 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // the deck clearance. Base hills flatten across each crossing's
   // neighbourhood so the pin ramps stay gentle and the grade limiter never
   // needs to touch a deck. Windows shrink with m (petals sit closer together).
-  const xoPass = [];
-  let xoW = null;
-  if (xover) {
-    // One pin level per crossing (each pairs its own enter/exit strands; the
-    // epitrochoid's two crossings sit ~600u apart, so their pins are free to
-    // follow the local base profile independently). Passage "angles" are in
-    // PARAM space — for the limacon param == polar angle and the shape is
-    // rotated by phi, for the epitrochoid rotation is spatial so params pass
-    // through unshifted.
-    const base = xover.kind === "epi" ? 0 : xover.phi;
-    // Three loops leave only 2-3 free control points between adjacent pinned
-    // passages — independent pin heights there are INFEASIBLE at legal grades
-    // (the feasibility bounds cross and mint cliffs), so the whole interchange
-    // shares one level. Two loops sit ~600u apart and keep their own.
-    const shared = xover.lows.length >= 3 ? hillsAt(base + xover.lows[0]) : null;
-    for (let ci = 0; ci < xover.lows.length; ci++) {
-      const pin = shared ?? hillsAt(base + xover.lows[ci]);
-      xoPass.push({ a: base + xover.lows[ci], pin, up: false });
-      xoPass.push({ a: base + xover.ups[ci], pin, up: true });
+  const buildXoPass = (plan) => {
+    const pass = [];
+    if (plan.kind === "gen") {
+      // Passages come pre-analysed: lap-ordered, over/under assigned, arc-
+      // close ones grouped into CLUSTERS (a cluster shares one pin level —
+      // independent heights across a short corridor are infeasible at legal
+      // grades), each with a height window sized from its local spacing.
+      const clusterPin = new Map();
+      for (const ps of plan.passages) {
+        if (!clusterPin.has(ps.cluster)) clusterPin.set(ps.cluster, hillsAt(ps.a));
+        pass.push({ a: ps.a, pin: clusterPin.get(ps.cluster), up: ps.up, win: ps.win });
+      }
+    } else {
+      // Limacon: param == polar angle, shape rotated by phi.
+      for (let ci = 0; ci < plan.lows.length; ci++) {
+        const pin = hillsAt(plan.phi + plan.lows[ci]);
+        pass.push({ a: plan.phi + plan.lows[ci], pin, up: false, win: 0.55 });
+        pass.push({ a: plan.phi + plan.ups[ci], pin, up: true, win: 0.55 });
+      }
     }
-    xoW = xover.kind !== "epi"
-      ? { zone: 1.35, zoneRamp: 0.75, up: 0.62, upRamp: 0.38, plateau: 0.24 }
-      : xover.m >= 3
-        ? { zone: 0.45, zoneRamp: 0.28, up: 0.18, upRamp: 0.1, plateau: 0.08 } // clover passages sit 0.2 rad apart
-        : { zone: 0.85, zoneRamp: 0.45, up: 0.5, upRamp: 0.28, plateau: 0.22 };
-  }
+    const w = plan.kind === "gen"
+      ? { zoneScale: 2.4, zoneCap: 0.9, plateauFrac: 0.45 }
+      : { zoneScale: 2.4, zoneCap: 1.35, plateauFrac: 0.44 };
+    return { pass, w };
+  };
+  const _xoCache = new Map();
+  const xoPassFor = (plan) => {
+    let e = _xoCache.get(plan);
+    if (!e) { e = buildXoPass(plan); _xoCache.set(plan, e); }
+    return e;
+  };
 
   let best = null, bestXo = null;
   // Attempt budget: the first 30 tries carry the biome-rhythm envelope at
@@ -448,9 +541,12 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // hard seeds converge as reliably as before the envelope existed. A
   // crossover map keeps its crossing through attempt 43, then falls back to a
   // plain loop — a hard seed still always converges to SOMETHING drivable.
-  for (let attempt = 0; attempt < 78; attempt++) {
-    const xo = attempt < 44 ? xover : null;
-    const damp = attempt < 70 ? 1 : Math.pow(0.85, attempt - 69);
+  for (let attempt = 0; attempt < 92; attempt++) {
+    const xo = attempt < 44 ? xover : attempt < 64 && xover ? xover.fallback || null : null;
+    const xp = xo ? xoPassFor(xo) : null;
+    const xoPass = xp ? xp.pass : null;
+    const xoW = xp ? xp.w : null;
+    const damp = attempt < 82 ? 1 : Math.pow(0.85, attempt - 81);
     const radVar = (0.12 + curviness * 0.55 + detail * 0.18) * damp;
     const tangAmp = (curviness * 0.18 + detail * 0.2) * damp;
     const rPhase = rH.map(() => rng() * TAU);
@@ -468,27 +564,28 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       const envK = attempt < 10 ? 1 : attempt < 20 ? 0.55 : attempt < 30 ? 0.25 : 0;
       const env = 1 + (envRaw - 1) * envK;
       let x, z;
-      if (xo && xo.kind === "epi") {
-        // Epicycle base, rotated into place. Wobble scales the whole point
-        // radially from the origin and fades near every pinch so the
-        // crossings stay crisp transversals.
-        const R = baseR / (1 + xo.c);
-        const px = (Math.cos(a) + xo.c * Math.cos(xo.kk * a + xo.psi)) * R;
-        const pz = (Math.sin(a) + xo.c * Math.sin(xo.kk * a + xo.psi)) * R;
+      if (xo && xo.kind === "gen") {
+        // Generative epicycle base, rotated into place. Wobble scales the
+        // point radially from the origin, gated by the plan's baked envelope:
+        // full strength where the analytic curve is gentle, zero where it is
+        // tight (loop tips, waist bays) or near a passage — so styling can
+        // never sharpen a corner past the floor or graze strands into an
+        // extra crossing.
+        const R = baseR / xo.maxR;
+        let px = Math.cos(a), pz = Math.sin(a);
+        for (const e of xo.eps) {
+          px += e.c * Math.cos(e.k * a + e.psi);
+          pz += e.c * Math.sin(e.k * a + e.psi);
+        }
+        px *= R; pz *= R;
         let dmin = Infinity;
-        for (const pc of xo.pinches) dmin = Math.min(dmin, Math.abs(wrapA(a - pc)));
-        const envX = sm01((dmin - 0.45) / 0.4);
-        // ... and fades again where the base curve dives toward the centre:
-        // the 3-loop family's waist bays pass within ~0.2R of the origin, and
-        // full-strength wobble there grazed them into extra flat crossings.
-        const rr0 = Math.hypot(px, pz) / R;
-        const envC = sm01((rr0 - 0.42) / 0.3);
-        // The clover's petal TIPS are its sharpest base geometry (radius ~35u
-        // before styling) — wobble there shaved them under the corner floor,
-        // so it fades out over the outermost radius band on 3-loop maps.
-        const envT = xo.m >= 3 ? sm01((1 + xo.c - rr0 - 0.2) / 0.45) : 1;
-        const wf = xo.m >= 3 ? 0.3 : 0.4;
-        const wob = 1 + radVar * wf * envX * envC * envT * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
+        for (const ps of xoPass) dmin = Math.min(dmin, Math.abs(wrapA(a - ps.a)));
+        const envP = sm01((dmin - 0.42) / 0.35);
+        const ew = xo.envW[Math.floor(((a / TAU) % 1) * xo.envW.length) % xo.envW.length];
+        // Crossover attempts cap the styling strength: at max curviness the
+        // full wobble (radVar ~0.85) overwhelms ANY crossing plan, and the
+        // map's character comes from its loops, not the jitter.
+        const wob = 1 + Math.min(radVar, 0.4) * 0.35 * ew * envP * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
         const cR = Math.cos(xo.rot), sR = Math.sin(xo.rot);
         x = (px * cR - pz * sR) * wob;
         z = (px * sR + pz * cR) * wob;
@@ -504,8 +601,9 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
           const lim = gv / xo.norm;
           const envX = sm01((Math.abs(gv) - 0.05) / 0.35);
           const mag = Math.max(0.35, Math.abs(lim));
-          r = baseR * (lim + radVar * 0.5 * envX * mag * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
-          tg = baseR * tangAmp * 0.5 * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+          const rvX = Math.min(radVar, 0.45); // same styling cap as gen maps
+          r = baseR * (lim + rvX * 0.5 * envX * mag * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
+          tg = baseR * Math.min(tangAmp, 0.24) * 0.5 * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
         } else {
           r = baseR * (1 + radVar * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
           tg = baseR * tangAmp * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
@@ -525,9 +623,10 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       if (xo) {
         for (const ps of xoPass) {
           const d = Math.abs(wrapA(a - ps.a));
-          const uZ = sm01((xoW.zone - d) / xoW.zoneRamp); // wide flatten
+          const zone = Math.min(xoW.zoneCap, ps.win * xoW.zoneScale);
+          const uZ = sm01((zone - d) / (zone * 0.55)); // wide flatten
           y = y * (1 - uZ) + ps.pin * uZ;
-          if (ps.up) y += xo.clear * sm01((xoW.up - d) / xoW.upRamp);
+          if (ps.up) y += xo.clear * sm01((ps.win - d) / (ps.win * 0.6));
         }
       }
       pts.push(new THREE.Vector3(x, y, z));
@@ -543,7 +642,7 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       for (let i = 0; i < N; i++) {
         const a = (i / N) * TAU;
         for (const ps of xoPass) {
-          if (Math.abs(wrapA(a - ps.a)) <= xoW.plateau) {
+          if (Math.abs(wrapA(a - ps.a)) <= ps.win * xoW.plateauFrac) {
             pts[i].y = ps.pin + (ps.up ? xo.clear : 0);
             pinned[i] = 1;
           }
