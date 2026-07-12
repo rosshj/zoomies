@@ -50,7 +50,10 @@ const smooth01 = (t) => {
 // (only kinds whose WATER carve can't locally yield need it).
 const KIND_SPECS = [
   { kind: "causeway", biomes: ["beach"], halfFrac: 0.026, flatW: 3.2, curvW: 150, clearR: 68 },
-  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.024, flatW: 1.4, curvW: 240 },
+  // Tunnels run LONG now (a proper underground stretch, ~3.5% of the lap each
+  // way) and fall back to shorter arcs when a seed can't place the long one —
+  // better a classic tunnel than none.
+  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240 },
   { kind: "dam", biomes: ["alpine", "forest"], halfFrac: 0.024, flatW: 3.2, curvW: 170, clearR: 72 },
   { kind: "overpass", biomes: ["city"], halfFrac: 0.038, flatW: 2.6, curvW: 120 },
   { kind: "canyon", biomes: ["desert", "alpine", "tundra"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
@@ -162,50 +165,56 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
 
   for (const spec of KIND_SPECS) {
     if (!allow.has(spec.kind)) continue;
-    const half = Math.round(spec.halfFrac * N);
-    // Score every viable arc, then take the best that passes the (rarely
-    // needed) water-clearance check — so a blocked best falls to second-best
-    // instead of dropping the feature.
-    const cands = [];
-    for (let c = 0; c < N; c += 5) {
-      if (overlapsTaken(c, half)) continue;
-      let hits = 0, total = 0;
-      for (let i = c - half; i <= c + half; i += 4) {
-        total++;
-        if (spec.biomes.includes(biomeNames[((i % N) + N) % N])) hits++;
-      }
-      if (hits < total * 0.86) continue;
-      let mn = Infinity, mx = -Infinity, curv = 0;
-      for (let i = c - half; i <= c + half; i += 2) {
-        const idx = ((i % N) + N) % N;
-        const y = pts[idx].y;
-        if (y < mn) mn = y;
-        if (y > mx) mx = y;
-        const t0 = tans[idx];
-        const t1 = tans[(idx + 2) % N];
-        let d = Math.atan2(t1.x, t1.z) - Math.atan2(t0.x, t0.z);
-        while (d > Math.PI) d -= TAU;
-        while (d < -Math.PI) d += TAU;
-        curv += Math.abs(d);
-      }
-      cands.push({ c, score: (mx - mn) * spec.flatW + curv * spec.curvW + rng() * 6 });
-    }
-    cands.sort((a, b) => a.score - b.score);
-
-    let run = null;
-    for (const cand of cands) {
-      const r = makeRun(track, spec.kind, cand.c, half);
-      if (spec.clearR) {
-        // Water carves can't yield locally, so the whole arc must be clear of
-        // genuinely-OTHER passes (othersW exempts the run's own continuation).
-        let ok = true;
-        for (let i = 0; i < r.spine.length && ok; i += 2) {
-          if (otherRoadDist(r.othersW, r.spine[i].x, r.spine[i].z) < spec.clearR + track.halfWidth) ok = false;
+    // A spec may list fallback lengths: try the full-length arc first, then
+    // progressively shorter ones, so a long set piece degrades to a shorter
+    // one on cramped seeds instead of vanishing.
+    let run = null, half = 0;
+    for (const frac of [spec.halfFrac, ...(spec.fallbacks || [])]) {
+      half = Math.round(frac * N);
+      // Score every viable arc, then take the best that passes the (rarely
+      // needed) water-clearance check — so a blocked best falls to second-best
+      // instead of dropping the feature.
+      const cands = [];
+      for (let c = 0; c < N; c += 5) {
+        if (overlapsTaken(c, half)) continue;
+        let hits = 0, total = 0;
+        for (let i = c - half; i <= c + half; i += 4) {
+          total++;
+          if (spec.biomes.includes(biomeNames[((i % N) + N) % N])) hits++;
         }
-        if (!ok) continue;
+        if (hits < total * 0.86) continue;
+        let mn = Infinity, mx = -Infinity, curv = 0;
+        for (let i = c - half; i <= c + half; i += 2) {
+          const idx = ((i % N) + N) % N;
+          const y = pts[idx].y;
+          if (y < mn) mn = y;
+          if (y > mx) mx = y;
+          const t0 = tans[idx];
+          const t1 = tans[(idx + 2) % N];
+          let d = Math.atan2(t1.x, t1.z) - Math.atan2(t0.x, t0.z);
+          while (d > Math.PI) d -= TAU;
+          while (d < -Math.PI) d += TAU;
+          curv += Math.abs(d);
+        }
+        cands.push({ c, score: (mx - mn) * spec.flatW + curv * spec.curvW + rng() * 6 });
       }
-      run = r;
-      break;
+      cands.sort((a, b) => a.score - b.score);
+
+      for (const cand of cands) {
+        const r = makeRun(track, spec.kind, cand.c, half);
+        if (spec.clearR) {
+          // Water carves can't yield locally, so the whole arc must be clear of
+          // genuinely-OTHER passes (othersW exempts the run's own continuation).
+          let ok = true;
+          for (let i = 0; i < r.spine.length && ok; i += 2) {
+            if (otherRoadDist(r.othersW, r.spine[i].x, r.spine[i].z) < spec.clearR + track.halfWidth) ok = false;
+          }
+          if (!ok) continue;
+        }
+        run = r;
+        break;
+      }
+      if (run) break;
     }
     if (!run) continue;
 
@@ -258,6 +267,9 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       const river = makeRiver(track, run, rng);
       if (!river) continue;
       feats.river = river;
+      // Visual variant per seed: the plain girder deck, a suspension span with
+      // towers + catenary cables, a covered wooden bridge, or stone arches.
+      run.bridgeVariant = ["girder", "suspension", "covered", "arch"][Math.floor(rng() * 4)];
     }
     taken.push({ c: run.c, half });
     feats.runs.push(run);
@@ -748,7 +760,9 @@ export function trackTitle(feats, seedStr) {
     h ^= str.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  const suffix = TITLE_SUFFIX[h % TITLE_SUFFIX.length];
+  // imul keeps h a SIGNED int32 — force unsigned or a negative hash indexes
+  // nothing and the menu shows "Tunnel undefined".
+  const suffix = TITLE_SUFFIX[(h >>> 0) % TITLE_SUFFIX.length];
   const kinds = new Set((feats?.runs || []).map((r) => r.kind));
   for (const k of TITLE_PRIORITY) {
     if (kinds.has(k)) return `${TITLE_WORDS[k]} ${suffix}`;
@@ -871,9 +885,158 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     }
   };
 
+  // --- Bridge visual variants -----------------------------------------------
+  // Dress the plain girder deck per run.bridgeVariant. Everything batches:
+  // timber/steel/stone parts bake into ONE vertex-coloured mesh (sharing the
+  // `concrete` material — vertex colours do the painting, so no new pipeline),
+  // suspension cables+hangers into ONE LineSegments, stone arches into ONE
+  // InstancedMesh — a variant costs 1-2 extra draw calls.
+  const addBridgeVariant = (run) => {
+    const v = run.bridgeVariant;
+    if (!v || v === "girder") return;
+    const span = run.i1 - run.i0;
+    const at = (i) => {
+      const idx = ((i % N) + N) % N;
+      return { p: track._pts[idx], side: sideAt(track, idx) };
+    };
+    const railW = track.halfWidth + 1.0;
+    const positions = [], colors = [], indices = [];
+    // An axis-yawed box as 8 verts / 12 tris straight into the batch arrays.
+    const pushBox = (cx, cy, cz, sx, sy, sz, yaw, col) => {
+      const c = Math.cos(yaw), sn = Math.sin(yaw);
+      const base = positions.length / 3;
+      for (const [ux, uy, uz] of [[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1],[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]]) {
+        const lx = ux * sx / 2, lz = uz * sz / 2;
+        positions.push(cx + lx * c + lz * sn, cy + uy * sy / 2, cz - lx * sn + lz * c);
+        colors.push(col.r, col.g, col.b);
+      }
+      for (const [a, b2, c2] of [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]]) {
+        indices.push(base + a, base + b2, base + c2);
+      }
+    };
+    const emitBatch = () => {
+      if (!positions.length) return;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, concrete);
+      mesh.castShadow = true;
+      scene.add(mesh);
+    };
+
+    if (v === "suspension") {
+      // Two tower frames + swooping main cables with vertical hangers.
+      const cRed = new THREE.Color(0xb3402e); // classic oxide red
+      const TOWER_H = 18;
+      const tA = run.i0 + Math.round(span * 0.24);
+      const tB = run.i1 - Math.round(span * 0.24);
+      const towerTopY = (i) => at(i).p.y + TOWER_H - 1.2;
+      for (const ti of [tA, tB]) {
+        const { p, side } = at(ti);
+        const yaw = Math.atan2(side.x, side.z);
+        for (const sgn of [1, -1]) {
+          pushBox(p.x + side.x * sgn * railW, p.y + TOWER_H / 2 - 1.5, p.z + side.z * sgn * railW, 1.5, TOWER_H + 2.4, 1.5, yaw, cRed);
+        }
+        pushBox(p.x, p.y + TOWER_H - 1.8, p.z, railW * 2 + 1.4, 1.2, 1.3, yaw, cRed); // top crossbeam
+        pushBox(p.x, p.y + TOWER_H * 0.45, p.z, railW * 2 + 1.2, 1.0, 1.1, yaw, cRed); // mid brace
+      }
+      // Cables: end anchor -> tower A -> tower B -> end anchor, sagging between;
+      // hangers drop to the deck across the main span. One LineSegments.
+      const segs = [];
+      for (const sgn of [1, -1]) {
+        let prev = null;
+        for (let i = run.i0; i <= run.i1; i += 2) {
+          const { p, side } = at(i);
+          let y;
+          if (i <= tA) { const t = (i - run.i0) / (tA - run.i0 || 1); y = at(run.i0).p.y + 1.4 + (towerTopY(tA) - at(run.i0).p.y - 1.4) * t * t; }
+          else if (i >= tB) { const t = (run.i1 - i) / (run.i1 - tB || 1); y = at(run.i1).p.y + 1.4 + (towerTopY(tB) - at(run.i1).p.y - 1.4) * t * t; }
+          else { const t = (i - tA) / (tB - tA || 1); const sag = TOWER_H * 0.72; y = towerTopY(tA) + (towerTopY(tB) - towerTopY(tA)) * t - sag * 4 * t * (1 - t); }
+          const x = p.x + side.x * sgn * railW, z = p.z + side.z * sgn * railW;
+          if (prev) segs.push(prev.x, prev.y, prev.z, x, y, z);
+          // hangers on the main span
+          if (i > tA + 2 && i < tB - 2 && i % 4 === 0) segs.push(x, y, z, x, p.y + 0.9, z);
+          prev = { x, y, z };
+        }
+      }
+      const cgeo = new THREE.BufferGeometry();
+      cgeo.setAttribute("position", new THREE.Float32BufferAttribute(segs, 3));
+      const cables = new THREE.LineSegments(cgeo, new THREE.LineBasicMaterial({ color: 0x2e3338 }));
+      scene.add(cables);
+      emitBatch();
+    } else if (v === "covered") {
+      // A covered wooden bridge: timber posts + rails and a gabled roof.
+      // Roof kept HIGH (eaves 7.8, ridge 11) so the chase camera clears it.
+      const cWood = new THREE.Color(0x7a4a30);
+      const cRoof = new THREE.Color(0x8c4030);
+      const cTrim = new THREE.Color(0xc9b08a);
+      const e = Math.max(2, Math.round(span * 0.08));
+      const i0 = run.i0 + e, i1 = run.i1 - e;
+      const postStep = Math.max(4, Math.round(10 / spacing));
+      for (let i = i0; i <= i1; i += postStep) {
+        const { p, side } = at(i);
+        const yaw = Math.atan2(side.x, side.z);
+        for (const sgn of [1, -1]) {
+          pushBox(p.x + side.x * sgn * railW, p.y + 3.9, p.z + side.z * sgn * railW, 0.55, 7.8, 0.55, yaw, cWood);
+          pushBox(p.x + side.x * sgn * railW, p.y + 1.35, p.z + side.z * sgn * railW, 0.35, 0.35, postStep * spacing + 0.6, yaw, cTrim); // hand rail
+        }
+      }
+      // Gabled roof ribbon: eaveL -> ridge -> eaveR, swept along the span.
+      const base = positions.length / 3;
+      let rows = 0;
+      for (let i = i0; i <= i1; i += 2) {
+        const { p, side } = at(i);
+        const ex = railW + 1.1;
+        positions.push(p.x + side.x * ex, p.y + 7.8, p.z + side.z * ex);
+        positions.push(p.x, p.y + 11.0, p.z);
+        positions.push(p.x - side.x * ex, p.y + 7.8, p.z - side.z * ex);
+        for (let k = 0; k < 3; k++) colors.push(cRoof.r, cRoof.g, cRoof.b);
+        if (i + 2 <= i1) {
+          const a = base + rows * 3, b2 = a + 3;
+          indices.push(a, b2, a + 1, a + 1, b2, b2 + 1);
+          indices.push(a + 1, b2 + 1, a + 2, a + 2, b2 + 1, b2 + 2);
+        }
+        rows++;
+      }
+      emitBatch();
+    } else if (v === "arch") {
+      // Stone viaduct arches under the deck: one instanced half-torus per bay.
+      const water = (feats.river && feats.river.level != null) ? feats.river.level : run.minY - 5.5;
+      const step = Math.max(6, Math.round(26 / spacing));
+      const arcs = [];
+      for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
+        const { p, side } = at(i);
+        const r = Math.min(9, Math.max(4.5, (p.y - water) * 0.8));
+        arcs.push({ x: p.x, y: p.y - 1.0 - r * 0.12, z: p.z, r, yaw: Math.atan2(side.x, side.z) });
+      }
+      if (arcs.length) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9d968b, roughness: 1 });
+        const mesh = new THREE.InstancedMesh(new THREE.TorusGeometry(1, 0.16, 6, 16, Math.PI), mat, arcs.length);
+        const m = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const pv = new THREE.Vector3();
+        const sv = new THREE.Vector3();
+        arcs.forEach((a, i) => {
+          // torus lies in its local XY plane; yaw it so the arc spans ALONG the road
+          q.setFromAxisAngle(_up, a.yaw + Math.PI / 2);
+          pv.set(a.x, a.y - a.r, a.z);
+          sv.set(a.r, a.r, a.r);
+          m.compose(pv, q, sv);
+          mesh.setMatrixAt(i, m);
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.castShadow = true;
+        scene.add(mesh);
+      }
+      emitBatch();
+    }
+  };
+
   for (const run of feats.runs) {
     if (run.kind === "bridge" || run.kind === "overpass" || run.kind === "causeway") {
       buildDeck(run, { piers: true });
+      if (run.kind === "bridge") addBridgeVariant(run);
     } else if (run.kind === "dam") {
       // Reservoir side rides a normal skirt; the valley side is the DAM WALL,
       // a full concrete face down to the sunken floor.

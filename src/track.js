@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler, planBiomeWedges } from "./scenery.js";
 import { planFeatures } from "./features.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -61,7 +61,10 @@ function _loopOK(pts, minR) {
   // radius-5 tip read as ~25 through 10u-spaced samples, passed validation,
   // and folded the 30-wide road over itself at the tip (the reported "sharp
   // turn where the track folds over and you can drive off").
-  const F = 520;
+  // 1000 matches the density the built track is sampled at — the biome-rhythm
+  // envelope packs wiggles tighter than the old generator, and 520 samples
+  // under-measured needle corners that the built road then exposed.
+  const F = 1000;
   const Q = [];
   for (let i = 0; i < F; i++) Q.push(cv.getPointAt(i / F));
   for (let i = 0; i < F; i++) {
@@ -81,13 +84,26 @@ function _loopOK(pts, minR) {
   // on the built curve.
   const MIN_SEP = 64;
   const SEP_ARC = 170;
+  // STACKED passes are legal when clearly separated in HEIGHT — a climbing
+  // stretch shouldering past a low one. 38u+ apart in plan with 9u+ of height
+  // between them can't interfere: containment keeps a kart within ~13u of its
+  // own centreline, so the nearest arm is always its own, and the terrain
+  // builder renders the gap as a terrace face. Tighter or flatter is a fold.
+  const SEP_TIGHT = 38;
+  const SEP_DY = 9;
   const win = Math.max(4, Math.ceil((SEP_ARC / cv.getLength()) * F));
-  for (let i = 0; i < F; i++) {
-    for (let j = i + win; j < F; j++) {
+  // Separation scans every OTHER sample (~5u steps, same coverage as the old
+  // 520-sample scan) so doubling F for the corner check doesn't quadruple the
+  // O(F^2) pair walk.
+  for (let i = 0; i < F; i += 2) {
+    for (let j = i + win; j < F; j += 2) {
       if (F - (j - i) < win) continue; // wrap-adjacent neighbours
       const dx = Q[i].x - Q[j].x;
       const dz = Q[i].z - Q[j].z;
-      if (dx * dx + dz * dz < MIN_SEP * MIN_SEP) return false;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < MIN_SEP * MIN_SEP) {
+        if (d2 < SEP_TIGHT * SEP_TIGHT || Math.abs(Q[i].y - Q[j].y) < SEP_DY) return false;
+      }
     }
   }
   return true;
@@ -96,11 +112,42 @@ function _loopOK(pts, minR) {
 // `rng` defaults to the shared world stream (so the built track matches the seed),
 // but the menu preview passes an isolated stream seeded from the same value to
 // draw the identical shape without disturbing the world build.
-function generateLoopPoints(cfg, rng = rand) {
+// Per-biome corner RHYTHM: how technical (wiggly) each biome's stretch of road
+// is. The generator scales its high-frequency harmonics by the wedge under each
+// angle — city blocks read tight and busy, deserts open into long fast sweeps —
+// so crossing a biome border changes how the road DRIVES, not just how it looks.
+const BIOME_RHYTHM = {
+  city: 1.0, forest: 0.8, autumn: 0.65, blossom: 0.6, alpine: 0.6,
+  meadow: 0.5, tundra: 0.45, beach: 0.35, savanna: 0.3, desert: 0.18,
+};
+// The summit: a per-seed mountain in the ELEVATION PROFILE — a big Gaussian
+// peak the road genuinely climbs over and dives off. Pure height change, so it
+// can never break the plan-view validity the generator fights for, and it
+// composes with everything downstream for free: terrain anchors to the road
+// (the mountainside builds itself), alpine tunnels bore through the shoulder,
+// grade physics makes the climb slow and the descent fast. Drawn from an
+// isolated stream so worlds with and without a peak keep every other roll
+// identical.
+function planSummitPeak(cfg) {
+  if (!cfg || cfg.mode !== "custom") return null;
+  const size = clamp01(cfg.size);
+  const elevation = clamp01(cfg.hilliness);
+  const r = makeRng(String(cfg.seed || "summit") + "|summit");
+  const roll = r(); // ALWAYS draw the gate roll first so param draws line up
+  if (size < 0.3 || elevation < 0.25 || roll > 0.55) return null;
+  return {
+    ang: (0.16 + r() * 0.68) * TAU, // peak centre (kept clear of the start line)
+    w: (0.1 + r() * 0.05) * TAU, // Gaussian half-width, in lap angle
+    h: 46 + r() * 22 + elevation * 16, // summit height over the base profile
+  };
+}
+
+function generateLoopPoints(cfg, rng = rand, wedges = null) {
   const size = clamp01(cfg.size);
   const curviness = clamp01(cfg.curviness);
   const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
   const hills = clamp01(cfg.hills ?? 0.5); // how MANY hills (frequency)
+  const summit = planSummitPeak(cfg);
 
   // How many curves the loop has scales with BOTH knobs, but the corner DENSITY
   // is tied to map size: a bigger circuit has room for more (and tighter-packed)
@@ -146,30 +193,89 @@ function generateLoopPoints(cfg, rng = rand) {
     { k: 4, w: detail * 0.95 },
     { k: 5, w: detail * 0.65 },
   ];
+  // Rhythm envelope: the technicality of the wedge under angle `a`, blended
+  // softly across wedge seams — EXACTLY the wedge formula scenery's warmBlend
+  // uses, so the rhythm lands in the biome that motivates it.
+  const rhythmAt = (a) => {
+    if (!wedges || wedges.order.length < 2) return 0.5;
+    const n = wedges.order.length;
+    const sWedge = ((a / TAU + wedges.offset + 1) % 1) * n;
+    const i0 = Math.floor(sWedge) % n;
+    const frac = sWedge - Math.floor(sWedge);
+    const t0 = BIOME_RHYTHM[wedges.order[i0]] ?? 0.5;
+    const t1 = BIOME_RHYTHM[wedges.order[(i0 + 1) % n]] ?? 0.5;
+    const bl = frac < 0.75 ? 0 : (frac - 0.75) / 0.25;
+    return t0 + (t1 - t0) * bl * bl * (3 - 2 * bl);
+  };
+  // High-frequency harmonics (the packed-in wiggle) take the rhythm envelope;
+  // the low ones (the loop's overall lobes) stay global so the silhouette holds.
+  const rLo = rH.slice(0, 3), rHi = rH.slice(3);
+  const tLo = tH.slice(0, 2), tHi = tH.slice(2);
+
   let best = null;
-  for (let attempt = 0; attempt < 48; attempt++) {
-    // Full strength for most attempts; only damp as a last resort if nothing valid.
-    const damp = attempt < 40 ? 1 : Math.pow(0.85, attempt - 39);
+  // Attempt budget: the first 30 tries carry the biome-rhythm envelope at
+  // stepping-down strength; after that the schedule matches the old
+  // generator's (40 clean full-strength tries, then damped last resorts) so
+  // hard seeds converge as reliably as before the envelope existed.
+  for (let attempt = 0; attempt < 78; attempt++) {
+    const damp = attempt < 70 ? 1 : Math.pow(0.85, attempt - 69);
     const radVar = (0.12 + curviness * 0.55 + detail * 0.18) * damp;
     const tangAmp = (curviness * 0.18 + detail * 0.2) * damp;
     const rPhase = rH.map(() => rng() * TAU);
     const tPhase = tH.map(() => rng() * TAU);
+    const rPhaseHi = rPhase.slice(3), tPhaseHi = tPhase.slice(2);
 
     const pts = [];
     for (let i = 0; i < N; i++) {
       const a = (i / N) * TAU;
-      const r = baseR * (1 + radVar * harmSum(rH, a, rPhase));
-      const tg = baseR * tangAmp * harmSum(tH, a, tPhase);
+      // desert ~0.66x wiggle … city ~1.3x — hot enough to FEEL at the wheel,
+      // cool enough that loop validity stays near the old generator's rate
+      // (pushing to 1.55x cratered it). Late attempts step the envelope back
+      // toward uniform so hard seeds still converge to SOME valid loop.
+      const envRaw = 0.6 + 0.7 * rhythmAt(a);
+      const envK = attempt < 10 ? 1 : attempt < 20 ? 0.55 : attempt < 30 ? 0.25 : 0;
+      const env = 1 + (envRaw - 1) * envK;
+      const r = baseR * (1 + radVar * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
+      const tg = baseR * tangAmp * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
       const x = Math.cos(a) * r - Math.sin(a) * tg;
       const z = Math.sin(a) * r + Math.cos(a) * tg;
-      const y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
+      let y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
+      // The summit peak rides on top: base hills fade near the crest (the
+      // mountain doesn't need bumps on its face, and damping them keeps the
+      // combined grade climbable where the Gaussian is steepest).
+      if (summit) {
+        const da = Math.atan2(Math.sin(a - summit.ang), Math.cos(a - summit.ang));
+        const g = Math.exp(-(da * da) / (summit.w * summit.w));
+        y = y * (1 - 0.55 * g) + summit.h * g;
+      }
       pts.push(new THREE.Vector3(x, y, z));
+    }
+    // Grade limiter: hill harmonics and the summit peak can stack into climbs
+    // or dives steeper than the karts are tuned for. Relax control-point
+    // heights until no segment exceeds ~18deg, always pulling the HIGH side
+    // down — valleys, lake shelves and the y>=0 floor stay put, and a too-
+    // eager summit just gets a slightly rounder crest. The spline overshoots
+    // the chord grade through plan-view corners (run compresses while y keeps
+    // moving), so the chord cap sits well under the ~24deg the built road and
+    // the kart tuning actually tolerate.
+    const TAN_MAX = 0.32;
+    for (let pass = 0; pass < 6; pass++) {
+      let changed = false;
+      for (let i = 0; i < N; i++) {
+        const p = pts[i], q = pts[(i + 1) % N];
+        const lim = Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
+        const dy = q.y - p.y;
+        if (dy > lim) { q.y = p.y + lim; changed = true; }
+        else if (dy < -lim) { p.y = q.y + lim; changed = true; }
+      }
+      if (!changed) break;
     }
     best = pts;
     if (_loopOK(pts, MIN_CORNER)) return pts;
   }
   return best;
 }
+
 
 // Centreline control points a given track config WILL produce, for the menu map
 // preview — without building the world or touching the shared RNG stream. Custom
@@ -179,7 +285,7 @@ export function previewLoopPoints(config) {
   if (!config || config.mode !== "custom") {
     return CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
   }
-  return generateLoopPoints(config, makeRng(config.seed || "preview"));
+  return generateLoopPoints(config, makeRng(config.seed || "preview"), planBiomeWedges(config.biomes, String(config.seed || "preview")));
 }
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
@@ -313,9 +419,12 @@ export class Track {
 
     // Control points (x, y, z). Either the procedural loop from the knobs, or
     // the classic hand-authored serpentine circuit.
+    // Custom tracks plan their biome wedges FIRST (isolated stream), so the
+    // generator's per-biome rhythm and scenery's wedge layout agree exactly.
+    const wedges = config && config.mode === "custom" ? planBiomeWedges(config.biomes, String(config.seed || "w")) : null;
     const pts =
       config && config.mode === "custom"
-        ? generateLoopPoints(config)
+        ? generateLoopPoints(config, rand, wedges)
         : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
@@ -352,6 +461,7 @@ export class Track {
       altitude: !!(config && config.mode === "custom"),
       elevMin: eMin,
       elevMax: eMax,
+      wedges,
     });
 
     // Set pieces (river bridge / canyon / giant forest / overpass): planned off

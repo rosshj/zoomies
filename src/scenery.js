@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
-import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
+import { rand, makeRng } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { cloudClusterGeo } from "./scene.js"; // the sky ring's cloud lump (asset catalog shows one)
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
@@ -125,6 +125,23 @@ let _biomeAngleOffset = 0;
 
 // Choose which biomes appear (by name). Empty/unknown -> all. opts:
 //   { altitude, elevMin, elevMax } enable altitude-driven layout (custom tracks).
+// Decide the warm-biome wedge ORDER + angular phase for a seed, from an
+// ISOLATED stream — so the track GENERATOR can read the same plan before the
+// world build starts (its per-biome corner rhythm aligns with the wedges) and
+// setBiomeLayout can adopt it without consuming the shared world stream.
+export function planBiomeWedges(names, seedStr) {
+  const sel = Array.isArray(names) && names.length ? BIOMES.filter((b) => names.includes(b.name)) : BIOMES;
+  let warm = sel.filter((b) => b.name !== "alpine");
+  if (!warm.length) warm = sel;
+  const r = makeRng(String(seedStr) + "|wedges");
+  const order = warm.map((b) => b.name);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return { order, offset: r() };
+}
+
 export function setBiomeLayout(names, opts = {}) {
   const sel = Array.isArray(names) && names.length ? BIOMES.filter((b) => names.includes(b.name)) : BIOMES;
   _activeBiomes = sel.length ? sel : BIOMES;
@@ -137,8 +154,15 @@ export function setBiomeLayout(names, opts = {}) {
   _biomeAngleOffset = 0;
   // Generated tracks: scramble both the ORDER of the warm biomes and the angular
   // phase, so the sequence of biomes and which one the start sits on are unique
-  // per seed (classic keeps its hand-authored fixed order).
-  if (_altMode) {
+  // per seed (classic keeps its hand-authored fixed order). When the track hands
+  // us its wedge PLAN (planBiomeWedges), adopt it — the generator already laid
+  // the road's rhythm out against those exact wedges.
+  if (opts.wedges) {
+    const byName = new Map(_warm.map((b) => [b.name, b]));
+    const ordered = opts.wedges.order.map((n) => byName.get(n)).filter(Boolean);
+    if (ordered.length === _warm.length) _warm = ordered;
+    _biomeAngleOffset = opts.wedges.offset;
+  } else if (_altMode) {
     for (let i = _warm.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [_warm[i], _warm[j]] = [_warm[j], _warm[i]];

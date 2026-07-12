@@ -18,7 +18,7 @@ import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { Net } from "./net/net.js";
@@ -275,6 +275,7 @@ setSunShadow(MOOD.sunDir);
 const weather = new Weather(scene);
 let moodSat = MOOD.sat; // this race's base saturation (rain desaturates from it)
 let moodExposure = MOOD.exposure; // this race's base exposure (rain darkens from it)
+let moodContrast = MOOD.contrast; // this race's base contrast (biome grade scales it)
 // The main camera sees everything; the rear-view camera stays on layer 0, so
 // scenery on layer 1 and grass on layer 2 are skipped in the mirror.
 camera.layers.enable(1);
@@ -406,6 +407,24 @@ const bloomPass = {
 };
 const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
 const BLOOM_THRESHOLD = bloomPass.threshold;
+// Per-biome colour grade: a SUBTLE atmosphere shift as you drive between
+// biomes, so each one reads different beyond its props — desert bakes a touch
+// warmer/brighter, alpine goes cool and crisp, the forest closes in darker and
+// greener, the city reads flat and contrasty. Multipliers on top of the mood's
+// saturation/exposure/contrast, crossfaded over ~1.5s at the borders.
+const BIOME_GRADE = {
+  meadow:  { sat: 1.0,  exp: 1.0,  con: 1.0 },
+  desert:  { sat: 1.06, exp: 1.05, con: 1.0 },
+  savanna: { sat: 1.05, exp: 1.03, con: 1.0 },
+  beach:   { sat: 1.06, exp: 1.04, con: 0.99 },
+  alpine:  { sat: 0.93, exp: 1.05, con: 1.03 },
+  tundra:  { sat: 0.92, exp: 1.03, con: 1.03 },
+  forest:  { sat: 1.05, exp: 0.93, con: 1.03 },
+  autumn:  { sat: 1.1,  exp: 1.0,  con: 1.0 },
+  blossom: { sat: 1.07, exp: 1.02, con: 0.99 },
+  city:    { sat: 0.96, exp: 1.0,  con: 1.05 },
+};
+let _bgSat = 1, _bgExp = 1, _bgCon = 1; // smoothed live multipliers
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 let _lightning = 0; // current lightning-flash intensity (decays each frame)
 let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
@@ -3586,6 +3605,7 @@ function prepareRace() {
   applyMood(mood);
   weather.setWeather("none");
   moodSat = mood.sat;
+  moodContrast = mood.contrast;
   fxPass.uniforms.uSat.value = mood.sat;
   fxPass.uniforms.uContrast.value = mood.contrast;
   // God-rays / lens-flare / warm backlight only for the daytime sun, not the moon.
@@ -4856,7 +4876,15 @@ function loop(now) {
         }
       }
     }
-    fxPass.uniforms.uSat.value = moodSat * (1 - 0.22 * wet);
+    // Ease the grade toward the biome under the player (the same smooth
+    // border feel as the weather crossfade).
+    const _bg = BIOME_GRADE[biomeNameAt(player.position.x, player.position.z, player.position.y)] || BIOME_GRADE.meadow;
+    const _bk = Math.min(1, dt * 0.7);
+    _bgSat += (_bg.sat - _bgSat) * _bk;
+    _bgExp += (_bg.exp - _bgExp) * _bk;
+    _bgCon += (_bg.con - _bgCon) * _bk;
+    fxPass.uniforms.uSat.value = moodSat * (1 - 0.22 * wet) * _bgSat;
+    fxPass.uniforms.uContrast.value = moodContrast * _bgCon;
     // The near-white snow section sails past the bloom threshold and blows the
     // whole frame out. Ease bloom down + raise its threshold + pull exposure
     // back in proportion to how deep into the snow we are (smoothed, not snapped).
@@ -4875,7 +4903,7 @@ function loop(now) {
     }
     _lightning = Math.max(0, _lightning - dt * 3.2);
     const flash = _lightning > 0 ? Math.max(0, 0.45 + 0.55 * Math.sin(_lightning * 42)) * _lightning : 0;
-    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend) * (1 + flash * 1.5);
+    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend) * (1 + flash * 1.5) * _bgExp;
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();

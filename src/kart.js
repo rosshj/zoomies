@@ -431,9 +431,23 @@ export class Kart {
       if (Math.abs(this.speed) < 0.05) this.speed = 0;
     }
 
+    // Grade: hills cost speed on the way up and hand it back on the way down,
+    // so elevation reads as EFFORT — the climb is a fight, the descent a rush.
+    // slopePitch is negative climbing (atan2(rearY - frontY, wheelbase) in
+    // _integrate), so sin(pitch) is the signed along-track gravity component;
+    // ~17 u/s² at 90° ≈ a bit over half true gravity feel — felt, not punishing
+    // (full accel still out-pulls any climb the generator makes). A small
+    // stationary deadband acts as the parking brake: a kart idling on a slope
+    // (the start grid, a spun-out AI) doesn't creep backwards downhill.
+    const _grade = Math.sin(this.slopePitch) * 17;
+    if (Math.abs(this.speed) > 1.5 || Math.abs(th) > 0.05 || boosting) this.speed += _grade * dt;
+
     // Clamp: boosting allows exceeding the normal top speed; afterwards the
-    // extra speed bleeds off gradually rather than snapping down.
-    const upper = boosting ? this.boostSpeed : this.maxSpeed;
+    // extra speed bleeds off gradually rather than snapping down. Descents
+    // raise the ceiling (up to +25%) so a long downhill genuinely runs away.
+    const upper = boosting
+      ? this.boostSpeed
+      : this.maxSpeed * (1 + Math.max(0, Math.sin(this.slopePitch)) * 0.25);
     if (this.speed > upper) {
       this.speed = boosting ? upper : Math.max(upper, this.speed - 26 * dt);
     }
