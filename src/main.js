@@ -1888,9 +1888,14 @@ function _flyTwoState() {
     ang: Math.atan2(b.y - a.y, b.x - a.x),
   };
 }
-// World-space ray through a stage point (camera matrices are fresh — the fly
-// loop lookAt()s and renders every frame).
+// World-space ray through a stage point. Refresh the camera's matrixWorld
+// first: gesture events land BETWEEN frames, and once this event (or an
+// earlier one this frame) has moved the camera, unprojecting through the
+// stale matrix produces a direction dominated by that movement — this was
+// the pinch-zoom "kick". Used at gesture start and for the wheel; live pinch
+// zoom steers by the tracked anchor instead (see the move handler).
 function _flyStageRay(sx, sy, out) {
+  camera.updateMatrixWorld();
   return out
     .set((sx / stageState.W) * 2 - 1, -(sy / stageState.H) * 2 + 1, 0.5)
     .unproject(camera)
@@ -1962,12 +1967,19 @@ flyCatch?.addEventListener("pointermove", (e) => {
     _fly.focal.addScaledVector(_fly.up, (s.cy - _fly.cy) * pxToWorld);
     // Pinch: zoom toward/away from the anchor itself (not the view centre),
     // exactly cancelling the separation ratio — spread 2× and the ground
-    // around the pinch reads 2× bigger. focalDist floors so you can't tunnel
-    // through the anchor; zoom-out is unlimited (the clamp catches the sky).
-    const ratio = s.dist / _fly.dist;
-    const zoomStep = _fly.focalDist * (1 - 1 / ratio);
-    _fly.focalDist = Math.max(3, _fly.focalDist - zoomStep);
-    camera.position.addScaledVector(_flyStageRay(s.cx, s.cy, _fly.focalRay), zoomStep);
+    // around the pinch reads 2× bigger. The zoom axis is the LIVE camera→
+    // anchor vector (the pan above drags the anchor with it, so the axis is
+    // always consistent — no unprojection through between-frame matrices).
+    // The applied step derives from the CLAMPED distance, so at the floor the
+    // camera stops dead at the anchor instead of tunnelling into the ground.
+    const ratio = Math.min(1.6, Math.max(0.6, s.dist / _fly.dist)); // event-burst spike guard
+    const newFocalDist = Math.min(900, Math.max(3, _fly.focalDist / ratio));
+    const zoomStep = _fly.focalDist - newFocalDist;
+    if (zoomStep !== 0) {
+      _fly.focalRay.copy(_fly.focal).sub(camera.position).normalize();
+      camera.position.addScaledVector(_fly.focalRay, zoomStep);
+      _fly.focalDist = newFocalDist;
+    }
     // Twist: rotate the MAP under your fingers — yaw the view and orbit the
     // camera about the anchor by the same angle, so the anchor stays put on
     // screen. (Stage y is down, so a visually-CCW twist is a negative delta.)
@@ -1997,6 +2009,10 @@ const _flyEndPointer = (e) => {
     _fly.panV.set(0, 0, 0);
     _fly.lookVX = _fly.lookVY = 0;
     _fly.tPrev = e.timeStamp;
+  } else if (_fly.pointers.size === 2) {
+    // 3+ fingers (a resting palm) dropping back to two: fresh baselines, or
+    // the pair state from before the extra finger landed makes the view jump.
+    _flyRebaseTwo(e.timeStamp);
   }
   // Last finger up: leave lookV/panV as-is — updateFlyCamera glides them out.
 };
