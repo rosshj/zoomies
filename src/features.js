@@ -1350,10 +1350,38 @@ function buildFlowers(scene, track, run, heightAt, rng) {
   scene.add(heads);
 }
 
+// One wind turbine (pole + nacelle + 3-blade rotor). Exported for the asset
+// viewer; buildWindFarm places a handful and spins the returned rotor.
+let _turbineMats = null;
+export function makeWindTurbine(H = 22) {
+  if (!_turbineMats) {
+    _turbineMats = {
+      pole: new THREE.MeshStandardMaterial({ color: 0xe8eaec, roughness: 0.6 }),
+      blade: new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.55 }),
+    };
+  }
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.7, H, 8), _turbineMats.pole);
+  pole.position.y = H / 2;
+  pole.castShadow = true;
+  g.add(pole);
+  const nacelle = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 2.4), _turbineMats.pole);
+  nacelle.position.set(0, H, 0.4);
+  g.add(nacelle);
+  const rotor = new THREE.Group();
+  for (let b = 0; b < 3; b++) {
+    const blade = new THREE.Mesh(new THREE.ConeGeometry(0.55, 8.5, 4).scale(1, 1, 0.28), _turbineMats.blade);
+    blade.geometry.translate?.(0, 4.25, 0);
+    blade.rotation.z = (b / 3) * TAU;
+    rotor.add(blade);
+  }
+  rotor.position.set(0, H, 1.8);
+  g.add(rotor);
+  return { group: g, rotor };
+}
+
 function buildWindFarm(scene, track, run, heightAt, rng, anims) {
   const N = track.samples;
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0xe8eaec, roughness: 0.6 });
-  const bladeMat = new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.55 });
   const count = 4 + Math.floor(rng() * 3);
   for (let k = 0; k < count; k++) {
     const i = run.i0 + Math.round(((k + 0.5) / count) * (run.i1 - run.i0));
@@ -1366,24 +1394,7 @@ function buildWindFarm(scene, track, run, heightAt, rng, anims) {
     const z = p.z + side.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 30) continue;
     const y = heightAt(x, z);
-    const H = 20 + rng() * 5;
-    const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.7, H, 8), poleMat);
-    pole.position.y = H / 2;
-    pole.castShadow = true;
-    g.add(pole);
-    const nacelle = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 2.4), poleMat);
-    nacelle.position.set(0, H, 0.4);
-    g.add(nacelle);
-    const rotor = new THREE.Group();
-    for (let b = 0; b < 3; b++) {
-      const blade = new THREE.Mesh(new THREE.ConeGeometry(0.55, 8.5, 4).scale(1, 1, 0.28), bladeMat);
-      blade.geometry.translate?.(0, 4.25, 0);
-      blade.rotation.z = (b / 3) * TAU;
-      rotor.add(blade);
-    }
-    rotor.position.set(0, H, 1.8);
-    g.add(rotor);
+    const { group: g, rotor } = makeWindTurbine(20 + rng() * 5);
     g.position.set(x, y, z);
     g.rotation.y = Math.atan2(p.x - x, p.z - z); // face the road
     scene.add(g);
@@ -1454,15 +1465,54 @@ function buildArches(scene, track, run, rng) {
   scene.add(mesh);
 }
 
+// The roadside sign roster + a single billboard maker (pole + emissive panel
+// with the text painted onto a canvas). Exported for the asset viewer.
+export const BILLBOARD_SIGNS = [
+  ["ZOOMIES!", "#22d3ee", "#0b1020"],
+  ["CATNIP CO.", "#a3e635", "#101408"],
+  ["MEOW MOTORS", "#f472b6", "#180a12"],
+  ["PAWS ⚡ POWER", "#facc15", "#141005"],
+];
+let _billboardPoleMat = null;
+export function makeBillboard([text, fg, bg] = BILLBOARD_SIGNS[0], lit = false, litLevel = 1) {
+  if (!_billboardPoleMat) _billboardPoleMat = new THREE.MeshStandardMaterial({ color: 0x30343c, roughness: 0.6, metalness: 0.4 });
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, 256, 128);
+  ctx.strokeStyle = fg;
+  ctx.lineWidth = 6;
+  ctx.strokeRect(6, 6, 244, 116);
+  ctx.fillStyle = fg;
+  ctx.font = "bold 34px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 128, 64);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const panelMat = new THREE.MeshStandardMaterial({
+    map: tex,
+    emissiveMap: tex,
+    emissive: 0xffffff,
+    emissiveIntensity: lit ? 1.6 * litLevel + 0.4 : 0.12,
+    roughness: 0.6,
+  });
+  const g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 8.6, 8), _billboardPoleMat);
+  pole.position.y = 4.3;
+  pole.castShadow = true;
+  g.add(pole);
+  const panel = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.2, 0.35), panelMat);
+  panel.position.y = 9.6;
+  panel.castShadow = true;
+  g.add(panel);
+  return g;
+}
+
 function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
   const N = track.samples;
-  const SIGNS = [
-    ["ZOOMIES!", "#22d3ee", "#0b1020"],
-    ["CATNIP CO.", "#a3e635", "#101408"],
-    ["MEOW MOTORS", "#f472b6", "#180a12"],
-    ["PAWS ⚡ POWER", "#facc15", "#141005"],
-  ];
-  const poleMat = new THREE.MeshStandardMaterial({ color: 0x30343c, roughness: 0.6, metalness: 0.4 });
   const count = 3 + Math.floor(rng() * 2);
   for (let k = 0; k < count; k++) {
     const i = run.i0 + Math.round(((k + 0.5) / count) * (run.i1 - run.i0));
@@ -1475,39 +1525,7 @@ function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
     const z = p.z + side.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 6) continue;
     const y = heightAt(x, z);
-    const [text, fg, bg] = SIGNS[Math.floor(rng() * SIGNS.length)];
-    const c = document.createElement("canvas");
-    c.width = 256;
-    c.height = 128;
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, 256, 128);
-    ctx.strokeStyle = fg;
-    ctx.lineWidth = 6;
-    ctx.strokeRect(6, 6, 244, 116);
-    ctx.fillStyle = fg;
-    ctx.font = "bold 34px system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(text, 128, 64);
-    const tex = new THREE.CanvasTexture(c);
-    tex.colorSpace = THREE.SRGBColorSpace;
-    const panelMat = new THREE.MeshStandardMaterial({
-      map: tex,
-      emissiveMap: tex,
-      emissive: 0xffffff,
-      emissiveIntensity: lit ? 1.6 * litLevel + 0.4 : 0.12,
-      roughness: 0.6,
-    });
-    const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 8.6, 8), poleMat);
-    pole.position.y = 4.3;
-    pole.castShadow = true;
-    g.add(pole);
-    const panel = new THREE.Mesh(new THREE.BoxGeometry(6.4, 3.2, 0.35), panelMat);
-    panel.position.y = 9.6;
-    panel.castShadow = true;
-    g.add(panel);
+    const g = makeBillboard(BILLBOARD_SIGNS[Math.floor(rng() * BILLBOARD_SIGNS.length)], lit, litLevel);
     g.position.set(x, y, z);
     g.rotation.y = Math.atan2(p.x - x, p.z - z);
     scene.add(g);
@@ -1515,6 +1533,27 @@ function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
 }
 
 // ---- Rail + train --------------------------------------------------------------
+// The sky-train consist (red engine + blue cars, glowing window bands), nose
+// toward +z. Exported for the asset viewer; buildRail slides it along its beam.
+export function makeTrain(cars = 4) {
+  const train = new THREE.Group();
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc94f3d, roughness: 0.6 });
+  const carMat = new THREE.MeshStandardMaterial({ color: 0x4f7dc9, roughness: 0.6 });
+  const winMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x9fc6e8, emissiveIntensity: 0.5, roughness: 0.3 });
+  for (let cIdx = 0; cIdx < cars; cIdx++) {
+    const car = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.1, 7.2), cIdx === 0 ? bodyMat : carMat);
+    body.castShadow = true;
+    car.add(body);
+    const win = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.7, 5.6), winMat);
+    win.position.y = 0.45;
+    car.add(win);
+    car.position.z = -cIdx * 8.2;
+    train.add(car);
+  }
+  return train;
+}
+
 function buildRail(scene, track, run, heightAt, rng, anims) {
   const L = run.rail;
   const beamMat = new THREE.MeshStandardMaterial({ color: 0x565c66, roughness: 0.7, metalness: 0.3 });
@@ -1561,22 +1600,8 @@ function buildRail(scene, track, run, heightAt, rng, anims) {
     scene.add(mesh);
   }
   // The train: engine + cars sliding along the beam, looping with a pause.
-  const train = new THREE.Group();
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc94f3d, roughness: 0.6 });
-  const carMat = new THREE.MeshStandardMaterial({ color: 0x4f7dc9, roughness: 0.6 });
-  const winMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x9fc6e8, emissiveIntensity: 0.5, roughness: 0.3 });
   const CARS = 4;
-  for (let cIdx = 0; cIdx < CARS; cIdx++) {
-    const car = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.1, 7.2), cIdx === 0 ? bodyMat : carMat);
-    body.castShadow = true;
-    car.add(body);
-    const win = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.7, 5.6), winMat);
-    win.position.y = 0.45;
-    car.add(win);
-    car.position.z = -cIdx * 8.2;
-    train.add(car);
-  }
+  const train = makeTrain(CARS);
   train.rotation.y = yaw;
   scene.add(train);
   const speed = 26;
@@ -1595,13 +1620,64 @@ function buildRail(scene, track, run, heightAt, rng, anims) {
 }
 
 // ---- Ambience ------------------------------------------------------------------
+// One mallard (cream body, green head, orange beak), facing +z. Exported for
+// the asset viewer; buildAmbience floats a handful on the water.
+let _duckMats = null;
+export function makeDuck() {
+  if (!_duckMats) {
+    _duckMats = {
+      body: new THREE.MeshStandardMaterial({ color: 0xf5efdd, roughness: 0.9 }),
+      head: new THREE.MeshStandardMaterial({ color: 0x3e7d3a, roughness: 0.8 }),
+      beak: new THREE.MeshStandardMaterial({ color: 0xf2a63c, roughness: 0.8 }),
+    };
+  }
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6).scale(1, 0.7, 1.3), _duckMats.body);
+  g.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), _duckMats.head);
+  head.position.set(0, 0.55, 0.55);
+  g.add(head);
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 5).rotateX(Math.PI / 2), _duckMats.beak);
+  beak.position.set(0, 0.5, 0.9);
+  g.add(beak);
+  return g;
+}
+
+// A canyon-rim goat: still white silhouette + horns, watching the race go by.
+let _goatMats = null;
+export function makeGoat() {
+  if (!_goatMats) {
+    _goatMats = {
+      body: new THREE.MeshStandardMaterial({ color: 0xf2eee6, roughness: 1 }),
+      horn: new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 0.9 }),
+    };
+  }
+  const parts = [];
+  parts.push(new THREE.BoxGeometry(0.9, 0.8, 1.5).translate(0, 1.05, 0));
+  parts.push(new THREE.BoxGeometry(0.5, 0.55, 0.6).translate(0, 1.6, 0.85));
+  for (const s of [0.28, -0.28]) {
+    parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, 0.5));
+    parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, -0.5));
+  }
+  const goat = new THREE.Mesh(mergeGeometries(parts), _goatMats.body);
+  goat.castShadow = true;
+  const horns = new THREE.Mesh(
+    mergeGeometries([
+      new THREE.ConeGeometry(0.07, 0.5, 5).translate(-0.16, 2.05, 0.75),
+      new THREE.ConeGeometry(0.07, 0.5, 5).translate(0.16, 2.05, 0.75),
+    ]),
+    _goatMats.horn
+  );
+  const g = new THREE.Group();
+  g.add(goat);
+  g.add(horns);
+  return g;
+}
+
 function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
   // Ducks: on the river (or the first big lake) — drift in lazy circles.
   const water = lakes.find((l) => l.river) || lakes.find((l) => l.ribbon) || lakes[0];
   if (water) {
-    const duckBody = new THREE.MeshStandardMaterial({ color: 0xf5efdd, roughness: 0.9 });
-    const duckHead = new THREE.MeshStandardMaterial({ color: 0x3e7d3a, roughness: 0.8 });
-    const beakMat = new THREE.MeshStandardMaterial({ color: 0xf2a63c, roughness: 0.8 });
     const spots = [];
     if (water.ribbon) {
       for (let k = 0; k < 5; k++) {
@@ -1616,15 +1692,7 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
       }
     }
     for (const sp of spots) {
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6).scale(1, 0.7, 1.3), duckBody);
-      g.add(body);
-      const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), duckHead);
-      head.position.set(0, 0.55, 0.55);
-      g.add(head);
-      const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 5).rotateX(Math.PI / 2), beakMat);
-      beak.position.set(0, 0.5, 0.9);
-      g.add(beak);
+      const g = makeDuck();
       scene.add(g);
       const r = 1.5 + rng() * 3;
       const sp2 = 0.14 + rng() * 0.12;
@@ -1640,8 +1708,6 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
   // Goats: still white silhouettes watching from the canyon/shelf rims.
   const rocky = feats.runs.find((r) => r.kind === "canyon" || r.kind === "shelf");
   if (rocky) {
-    const bodyMat = new THREE.MeshStandardMaterial({ color: 0xf2eee6, roughness: 1 });
-    const hornMat = new THREE.MeshStandardMaterial({ color: 0x8a7a5a, roughness: 0.9 });
     const N = track.samples;
     for (let k = 0; k < 3; k++) {
       const i = rocky.i0 + Math.round(((k + 0.5) / 3) * (rocky.i1 - rocky.i0));
@@ -1654,27 +1720,7 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
       const z = p.z + side.z * sgn * off;
       if (track.distanceToCenter(x, z) < track.halfWidth + 12) continue;
       const y = heightAt(x, z);
-      const parts = [];
-      const body = new THREE.BoxGeometry(0.9, 0.8, 1.5).translate(0, 1.05, 0);
-      parts.push(body);
-      const head = new THREE.BoxGeometry(0.5, 0.55, 0.6).translate(0, 1.6, 0.85);
-      parts.push(head);
-      for (const s of [0.28, -0.28]) {
-        parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, 0.5));
-        parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, -0.5));
-      }
-      const goat = new THREE.Mesh(mergeGeometries(parts), bodyMat);
-      goat.castShadow = true;
-      const horns = new THREE.Mesh(
-        mergeGeometries([
-          new THREE.ConeGeometry(0.07, 0.5, 5).translate(-0.16, 2.05, 0.75),
-          new THREE.ConeGeometry(0.07, 0.5, 5).translate(0.16, 2.05, 0.75),
-        ]),
-        hornMat
-      );
-      const g = new THREE.Group();
-      g.add(goat);
-      g.add(horns);
+      const g = makeGoat();
       g.position.set(x, y, z);
       g.rotation.y = Math.atan2(p.x - x, p.z - z); // watching the race
       scene.add(g);

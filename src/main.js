@@ -12,6 +12,7 @@ import { Track, previewLoopPoints } from "./track.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
+import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
 import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
@@ -430,6 +431,7 @@ track.raceTime = 0;
 scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 Object.assign(window.__zoomies, { world, track });
 _boot.world = performance.now();
 
@@ -564,107 +566,8 @@ function attachBoostLight(playerKart) {
 let minimap = setupMinimap();
 
 // --- Cel shading: convert lit (standard) materials to banded toon shading ---
-function makeToonGradient() {
-  // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
-  // matte "toy" cel rather than a hard 3-step terminator.
-  const steps = new Uint8Array([145, 195, 228, 255]);
-  const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
-  tex.minFilter = THREE.NearestFilter;
-  tex.magFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return tex;
-}
-const TOON_GRADIENT = makeToonGradient();
-// Sun-driven rim/backlight share two uniform nodes, updated once per frame in
-// updateAtmosphere: the view-space sun-travel direction and the (mood sun colour ×
-// glow) tint.
-const uSunViewNode = uniform(new THREE.Vector3(0, 0, 1));
-const uSunColNode = uniform(new THREE.Color(0x000000));
-// Cache the toon conversion per source material (WeakMap → auto-freed when the
-// source material is GC'd between races). With the merged kart/cat meshes a few
-// constant materials (chrome, tyre, dark…) are shared across every racer, so
-// caching collapses them to a single toon material / render pipeline instead of
-// one per occurrence.
-const _toonCache = new WeakMap();
-function toToon(m) {
-  if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
-  // TSL-authored materials (leaf wake pop, water ripples, puddle fresnel, petal
-  // fall) carry their behaviour in node graphs that a MeshToonMaterial can't
-  // hold — converting one silently strips its vertex/colour animation. (Node
-  // materials still pass the isMeshStandardMaterial check above: they copy that
-  // flag from the defaults they're initialised with.)
-  if (m.isNodeMaterial) return m;
-  if (_toonCache.has(m)) return _toonCache.get(m);
-  const params = {
-    color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
-    map: m.map || null,
-    gradientMap: TOON_GRADIENT,
-    vertexColors: m.vertexColors,
-    transparent: m.transparent,
-    opacity: m.opacity,
-    side: m.side,
-    emissive: m.emissive ? m.emissive.clone() : new THREE.Color(0x000000),
-    emissiveMap: m.emissiveMap || null,
-    emissiveIntensity: m.emissiveIntensity,
-    bumpMap: m.bumpMap || null,
-    bumpScale: m.bumpScale,
-  };
-  const ud = m.userData || {};
-  // Sun-driven add-ons (foliage backlight, hero rim) are added via emissiveNode,
-  // which REPLACES the material's emissive — so only apply them to MATTE materials
-  // (black emissive). Materials with a live emissive (brake lights, headlight
-  // bulbs, glowing pads) keep stock toon so their dynamic emissiveIntensity works.
-  const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim || ud.paint) && matte) {
-    const t = new THREE.MeshToonNodeMaterial(params);
-    let term = null;
-    if (ud.backlight) {
-      // glows warm where you look toward the sun through the foliage.
-      const backlit = positionViewDirection.negate().dot(uSunViewNode).max(0).pow(3);
-      term = uSunColNode.mul(backlit);
-    }
-    if (ud.rim) {
-      // a warm sun rim on the silhouette so the hero pops off the scene.
-      const ndv = normalView.dot(positionViewDirection).max(0);
-      const rimF = float(1).sub(ndv).pow(2.5).mul(normalView.dot(uSunViewNode.negate()).max(0));
-      const rimTerm = uSunColNode.mul(rimF.mul(1.6));
-      term = term ? term.add(rimTerm) : rimTerm;
-    }
-    if (ud.paint) {
-      // A soft, banded "toy gloss" highlight on kart paint: a single crisp
-      // specular bloom toward the sun. Toon-banded (smoothstep) so it reads as a
-      // shaped glint, not a smooth Phong lobe; kept gentle so it never blows out.
-      const lightDir = uSunViewNode.negate().normalize();
-      const half = lightDir.add(positionViewDirection).normalize();
-      const spec = normalView.dot(half).max(0).pow(26);
-      const glint = smoothstep(0.32, 0.58, spec);
-      // mostly white so the shine reads on any body colour, warmed by the sun
-      // tint; kept low so the paint is a soft satin, not glossy.
-      const paintTerm = tslColor(0xffffff).mul(0.22).add(uSunColNode.mul(0.6)).mul(glint);
-      term = term ? term.add(paintTerm) : paintTerm;
-    }
-    t.emissiveNode = term;
-    // A toon made from a shared source is itself shared across karts (the cache
-    // hands the same instance to every user) — carry the flag so teardown code
-    // (_disposeGroup) knows not to dispose it out from under the others.
-    if (ud.shared) t.userData.shared = true;
-    _toonCache.set(m, t);
-    return t;
-  }
-  // Everything else: stock toon (auto-converted to a node material by WebGPU,
-  // keeping the gradient banding and any dynamic emissiveIntensity).
-  const stock = new THREE.MeshToonMaterial(params);
-  if (ud.shared) stock.userData.shared = true;
-  _toonCache.set(m, stock);
-  return stock;
-}
-function toonify(root) {
-  root.traverse((o) => {
-    if (!o.material) return;
-    o.material = Array.isArray(o.material) ? o.material.map(toToon) : toToon(o.material);
-  });
-}
+// The conversion lives in toon.js (shared with the asset viewer's "game look"
+// toggle, so the viewer previews exactly what ships).
 toonify(scene);
 
 // --- Rear threat indicator ---
@@ -1151,7 +1054,7 @@ function updateMultiplayer(dt) {
 initMultiplayer();
 
 // --- Game state ---
-const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4 };
+const State = { MENU: 0, COUNTDOWN: 1, RACING: 2, FINISHED: 3, PAUSED: 4, FLYVIEW: 5 };
 let state = State.MENU;
 let countdown = 0;
 let raceTime = 0;
@@ -1893,6 +1796,289 @@ function resumeGame() {
   audio.startEngine();
   state = State.RACING;
 }
+
+// --- Track viewer (fly camera) ---------------------------------------------
+// A dev/inspection mode entered from the pause menu (revealed by the Advanced
+// "Track viewer" setting): the race stays frozen while the camera flies free
+// over the world. Touch: one-finger drag looks around, pinch moves along the
+// view direction, two-finger drag strafes and rises/descends. Desktop: mouse
+// drag looks, wheel moves, WASD + E/Q (Shift = faster) fly.
+const flyCatch = document.getElementById("fly-catch");
+const flyExitBtn = document.getElementById("fly-exit");
+const flyHint = document.getElementById("fly-hint");
+const _fly = {
+  yaw: 0, pitch: 0,
+  pointers: new Map(), // active pointerId → last stage-local {x, y}
+  keys: new Set(),
+  fwd: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(),
+  // Two-finger baseline (centroid / separation / finger-pair angle). The whole
+  // gesture is decomposed against these in ONE place per event, so pan, pinch
+  // and twist compose instead of fighting (the old code let each finger apply
+  // its own half-pan AND re-applied the pinch per event — zooming lurched).
+  cx: 0, cy: 0, dist: 0, ang: 0,
+  // Ground anchor under the pinch centroid, solved once per gesture: pan maps
+  // finger pixels to world units 1:1 at this depth (the map sticks to your
+  // fingers), pinch zooms toward it, twist orbits around it.
+  focal: new THREE.Vector3(), focalDist: 80, focalRay: new THREE.Vector3(),
+  // Release inertia: look (rad/s) and pan (world units/s), damped per frame.
+  lookVX: 0, lookVY: 0, panV: new THREE.Vector3(),
+  tPrev: 0, // last gesture event timeStamp (ms) for velocity estimates
+};
+function _flyBasis() {
+  const cp = Math.cos(_fly.pitch);
+  _fly.fwd.set(Math.sin(_fly.yaw) * cp, Math.sin(_fly.pitch), Math.cos(_fly.yaw) * cp);
+  _fly.right.crossVectors(_fly.fwd, UP_Y).normalize(); // screen-right in world space
+}
+// Movement scales with height above the terrain, so skimming the road is
+// precise and surveying from high up covers ground quickly.
+function _flySpeedScale() {
+  const g = track?.groundInfo?.(camera.position.x, camera.position.z)?.y ?? 0;
+  return Math.min(8, Math.max(0.5, (camera.position.y - g) * 0.06 + 0.4));
+}
+function _flyClamp() {
+  const p = camera.position;
+  const r = Math.hypot(p.x, p.z);
+  if (r > 1500) { p.x *= 1500 / r; p.z *= 1500 / r; } // stay over the world
+  const g = track?.groundInfo?.(p.x, p.z)?.y ?? 0;
+  p.y = Math.min(600, Math.max(g + 1.2, p.y));
+}
+function enterFlyView() {
+  if (state !== State.PAUSED) return;
+  state = State.FLYVIEW;
+  pauseOverlay.classList.add("hidden");
+  document.getElementById("hud").classList.add("hidden");
+  for (const el of [flyCatch, flyExitBtn, flyHint]) el?.classList.remove("hidden");
+  flyHint?.classList.remove("faded");
+  setTimeout(() => flyHint?.classList.add("faded"), 4000);
+  // Take off from the current chase-camera pose, looking the same way.
+  const dir = camera.getWorldDirection(new THREE.Vector3());
+  _fly.yaw = Math.atan2(dir.x, dir.z);
+  _fly.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
+  _fly.pointers.clear();
+  _fly.keys.clear();
+  _fly.lookVX = _fly.lookVY = 0;
+  _fly.panV.set(0, 0, 0);
+}
+function exitFlyView() {
+  if (state !== State.FLYVIEW) return;
+  hideFlyUI();
+  document.getElementById("hud").classList.remove("hidden");
+  updateCamera(0.016, true); // snap the chase camera back onto the kart
+  state = State.PAUSED;
+  pauseOverlay.classList.remove("hidden");
+}
+function hideFlyUI() {
+  for (const el of [flyCatch, flyExitBtn, flyHint]) el?.classList.add("hidden");
+  _fly.pointers.clear();
+  _fly.keys.clear();
+}
+flyExitBtn?.addEventListener("click", exitFlyView);
+document.getElementById("trackview-btn")?.addEventListener("click", enterFlyView);
+
+// All gesture positions go through stageToLocal: on phones the stage is
+// ROTATED for the landscape lock, so raw clientX/Y deltas had swapped or
+// mirrored axes in portrait — the biggest "mobile feels wrong" bug here.
+const _flyPt = (e) => stageToLocal(e.clientX, e.clientY);
+// Current two-finger state: centroid, separation, and finger-pair angle.
+function _flyTwoState() {
+  const [a, b] = [..._fly.pointers.values()];
+  return {
+    cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+    dist: Math.max(24, Math.hypot(a.x - b.x, a.y - b.y)), // floor: churning tiny pinches can't explode the ratio
+    ang: Math.atan2(b.y - a.y, b.x - a.x),
+  };
+}
+// World-space ray through a stage point. Refresh the camera's matrixWorld
+// first: gesture events land BETWEEN frames, and once this event (or an
+// earlier one this frame) has moved the camera, unprojecting through the
+// stale matrix produces a direction dominated by that movement — this was
+// the pinch-zoom "kick". Used at gesture start and for the wheel; live pinch
+// zoom steers by the tracked anchor instead (see the move handler).
+function _flyStageRay(sx, sy, out) {
+  camera.updateMatrixWorld();
+  return out
+    .set((sx / stageState.W) * 2 - 1, -(sy / stageState.H) * 2 + 1, 0.5)
+    .unproject(camera)
+    .sub(camera.position)
+    .normalize();
+}
+// Anchor the gesture: march the centroid ray to the terrain (coarse steps —
+// it's a gesture anchor, not a collision). Solved ONCE per two-finger gesture,
+// so the ~50 terrain samples never run per move event. Sky shots (no hit) get
+// a fixed mid-distance anchor, which keeps pan/zoom speeds sane.
+function _flySolveFocal(sx, sy) {
+  const r = _flyStageRay(sx, sy, _fly.focalRay);
+  let dist = 0;
+  for (let t = 6; t <= 520; t += t < 120 ? 6 : 16) {
+    const x = camera.position.x + r.x * t, y = camera.position.y + r.y * t, z = camera.position.z + r.z * t;
+    if (y <= (world?.heightAt?.(x, z) ?? 0)) { dist = t; break; }
+  }
+  _fly.focalDist = Math.min(500, Math.max(4, dist || 160));
+  _fly.focal.copy(camera.position).addScaledVector(r, _fly.focalDist);
+}
+function _flyRebaseTwo(ts) {
+  Object.assign(_fly, _flyTwoState());
+  _flySolveFocal(_fly.cx, _fly.cy);
+  _fly.tPrev = ts;
+}
+flyCatch?.addEventListener("pointerdown", (e) => {
+  // Capture can throw for a pointer that's already gone (fast cancel races,
+  // synthetic events) — losing capture just means a finger that slides off
+  // the layer stops tracking, never a broken gesture.
+  try { flyCatch.setPointerCapture(e.pointerId); } catch { /* keep going */ }
+  const q = _flyPt(e);
+  _fly.pointers.set(e.pointerId, { x: q.x, y: q.y });
+  // A fresh touch grabs the world: any glide-out stops dead (map-app feel).
+  _fly.lookVX = _fly.lookVY = 0;
+  _fly.panV.set(0, 0, 0);
+  _fly.tPrev = e.timeStamp;
+  if (_fly.pointers.size === 2) _flyRebaseTwo(e.timeStamp);
+});
+flyCatch?.addEventListener("pointermove", (e) => {
+  const p = _fly.pointers.get(e.pointerId);
+  if (!p || state !== State.FLYVIEW) return;
+  const q = _flyPt(e);
+  const dx = q.x - p.x, dy = q.y - p.y;
+  p.x = q.x; p.y = q.y;
+  const dtEv = Math.min(0.05, Math.max(0.004, (e.timeStamp - _fly.tPrev) / 1000));
+  _flyBasis();
+  if (_fly.pointers.size === 1) {
+    // Look: drag right looks right, drag up looks up — with a release flick.
+    const dyaw = -dx * 0.0042, dpitch = -dy * 0.0032;
+    _fly.yaw += dyaw;
+    _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch + dpitch));
+    _fly.lookVX = _fly.lookVX * 0.6 + (dyaw / dtEv) * 0.4;
+    _fly.lookVY = _fly.lookVY * 0.6 + (dpitch / dtEv) * 0.4;
+    _fly.tPrev = e.timeStamp;
+  } else if (_fly.pointers.size === 2) {
+    // Decompose the PAIR once: pan from the centroid, zoom from the
+    // separation, rotation from the finger-pair angle — all anchored to the
+    // ground point solved at gesture start.
+    const s = _flyTwoState();
+    const startX = camera.position.x, startY = camera.position.y, startZ = camera.position.z;
+    // Pan: world units per stage pixel at the anchor depth, so the terrain
+    // under your fingers tracks them 1:1 (drag right → the world comes with
+    // you). 0.6018 = 2·tan(62°/2 · vertical fov).
+    const pxToWorld = (1.2036 * _fly.focalDist) / stageState.H;
+    _fly.up.crossVectors(_fly.right, _fly.fwd); // screen-up in world space
+    camera.position.addScaledVector(_fly.right, -(s.cx - _fly.cx) * pxToWorld);
+    camera.position.addScaledVector(_fly.up, (s.cy - _fly.cy) * pxToWorld);
+    _fly.focal.addScaledVector(_fly.right, -(s.cx - _fly.cx) * pxToWorld);
+    _fly.focal.addScaledVector(_fly.up, (s.cy - _fly.cy) * pxToWorld);
+    // Pinch: zoom toward/away from the anchor itself (not the view centre),
+    // exactly cancelling the separation ratio — spread 2× and the ground
+    // around the pinch reads 2× bigger. The zoom axis is the LIVE camera→
+    // anchor vector (the pan above drags the anchor with it, so the axis is
+    // always consistent — no unprojection through between-frame matrices).
+    // The applied step derives from the CLAMPED distance, so at the floor the
+    // camera stops dead at the anchor instead of tunnelling into the ground.
+    const ratio = Math.min(1.6, Math.max(0.6, s.dist / _fly.dist)); // event-burst spike guard
+    const newFocalDist = Math.min(900, Math.max(3, _fly.focalDist / ratio));
+    const zoomStep = _fly.focalDist - newFocalDist;
+    if (zoomStep !== 0) {
+      _fly.focalRay.copy(_fly.focal).sub(camera.position).normalize();
+      camera.position.addScaledVector(_fly.focalRay, zoomStep);
+      _fly.focalDist = newFocalDist;
+    }
+    // Twist: rotate the MAP under your fingers — yaw the view and orbit the
+    // camera about the anchor by the same angle, so the anchor stays put on
+    // screen. (Stage y is down, so a visually-CCW twist is a negative delta.)
+    let da = s.ang - _fly.ang;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    const th = -da, c = Math.cos(th), sn = Math.sin(th);
+    const ox = camera.position.x - _fly.focal.x, oz = camera.position.z - _fly.focal.z;
+    camera.position.x = _fly.focal.x + ox * c + oz * sn;
+    camera.position.z = _fly.focal.z - ox * sn + oz * c;
+    _fly.yaw += th;
+    _flyClamp();
+    // Pan glide velocity from how the camera actually moved this event.
+    _fly.panV.x = _fly.panV.x * 0.6 + ((camera.position.x - startX) / dtEv) * 0.4;
+    _fly.panV.y = _fly.panV.y * 0.6 + ((camera.position.y - startY) / dtEv) * 0.4;
+    _fly.panV.z = _fly.panV.z * 0.6 + ((camera.position.z - startZ) / dtEv) * 0.4;
+    _fly.cx = s.cx; _fly.cy = s.cy; _fly.dist = s.dist; _fly.ang = s.ang;
+    _fly.tPrev = e.timeStamp;
+  }
+});
+const _flyEndPointer = (e) => {
+  const wasTwo = _fly.pointers.size === 2;
+  _fly.pointers.delete(e.pointerId);
+  if (wasTwo && _fly.pointers.size === 1) {
+    // Pinch → single finger: the survivor becomes a fresh LOOK gesture; a
+    // stale pan-glide from the pinch would yank the camera out from under it.
+    _fly.panV.set(0, 0, 0);
+    _fly.lookVX = _fly.lookVY = 0;
+    _fly.tPrev = e.timeStamp;
+  } else if (_fly.pointers.size === 2) {
+    // 3+ fingers (a resting palm) dropping back to two: fresh baselines, or
+    // the pair state from before the extra finger landed makes the view jump.
+    _flyRebaseTwo(e.timeStamp);
+  }
+  // Last finger up: leave lookV/panV as-is — updateFlyCamera glides them out.
+};
+flyCatch?.addEventListener("pointerup", _flyEndPointer);
+flyCatch?.addEventListener("pointercancel", _flyEndPointer);
+flyCatch?.addEventListener("wheel", (e) => {
+  if (state !== State.FLYVIEW) return;
+  e.preventDefault();
+  // Zoom along the ray under the CURSOR (map-style), not the view centre.
+  const q = stageToLocal(e.clientX, e.clientY);
+  camera.position.addScaledVector(
+    _flyStageRay(q.x, q.y, _fly.focalRay),
+    -e.deltaY * 0.05 * _flySpeedScale()
+  );
+  _flyClamp();
+}, { passive: false });
+window.addEventListener("keydown", (e) => { if (state === State.FLYVIEW) _fly.keys.add(e.code); });
+window.addEventListener("keyup", (e) => { _fly.keys.delete(e.code); });
+
+// Per-frame flight (keyboard movement + aiming). Touch moves the camera in the
+// event handlers above; this applies held keys, glides out any release
+// momentum, and points the camera.
+function updateFlyCamera(dt) {
+  // Touch inertia: after the last finger lifts, the look flick and the pan
+  // carry on and ease out (exponential damp ≈ a map app's glide). Grabbing
+  // the screen again zeroes these instantly (see pointerdown).
+  if (_fly.pointers.size === 0) {
+    // Sanity caps: a wild flick glides briskly, it doesn't launch the camera.
+    _fly.lookVX = Math.max(-3, Math.min(3, _fly.lookVX));
+    _fly.lookVY = Math.max(-3, Math.min(3, _fly.lookVY));
+    if (_fly.panV.lengthSq() > 320 * 320) _fly.panV.setLength(320);
+    const speed = Math.abs(_fly.lookVX) + Math.abs(_fly.lookVY) + _fly.panV.length();
+    if (speed > 0.01) {
+      _fly.yaw += _fly.lookVX * dt;
+      _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch + _fly.lookVY * dt));
+      camera.position.addScaledVector(_fly.panV, dt);
+      _flyClamp();
+      const damp = Math.exp(-3.6 * dt);
+      _fly.lookVX *= damp;
+      _fly.lookVY *= damp;
+      _fly.panV.multiplyScalar(damp);
+    }
+  }
+  _flyBasis();
+  const K = _fly.keys;
+  const boost = K.has("ShiftLeft") || K.has("ShiftRight") ? 3 : 1;
+  const move = 55 * boost * _flySpeedScale() * dt;
+  if (K.has("KeyW")) camera.position.addScaledVector(_fly.fwd, move);
+  if (K.has("KeyS")) camera.position.addScaledVector(_fly.fwd, -move);
+  if (K.has("KeyA")) camera.position.addScaledVector(_fly.right, -move);
+  if (K.has("KeyD")) camera.position.addScaledVector(_fly.right, move);
+  if (K.has("KeyE") || K.has("Space")) camera.position.y += move;
+  if (K.has("KeyQ")) camera.position.y -= move;
+  const turn = 1.6 * dt;
+  if (K.has("ArrowLeft")) _fly.yaw += turn;
+  if (K.has("ArrowRight")) _fly.yaw -= turn;
+  if (K.has("ArrowUp")) _fly.pitch = Math.min(1.35, _fly.pitch + turn * 0.7);
+  if (K.has("ArrowDown")) _fly.pitch = Math.max(-1.35, _fly.pitch - turn * 0.7);
+  _flyClamp();
+  _flyBasis();
+  camera.lookAt(
+    camera.position.x + _fly.fwd.x,
+    camera.position.y + _fly.fwd.y,
+    camera.position.z + _fly.fwd.z
+  );
+}
 // True while a single-player race is "parked" in the background (you opened the
 // main menu mid-race). The race state/karts are kept intact so you can resume
 // instead of losing your progress. Multiplayer races aren't parkable.
@@ -1904,6 +2090,7 @@ function refreshResumeBtn() {
 function toMenu() {
   // Opening the menu mid-race parks it (so START is a fresh race but you can also
   // Resume). Reaching the menu from results/lobby clears any parked race.
+  hideFlyUI(); // safety: never leave the fly-cam chrome up over the menu
   _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished && !MP.enabled;
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
@@ -2030,6 +2217,26 @@ fpsToggle?.addEventListener("click", () => {
   applyFpsSetting();
 });
 applyFpsSetting();
+
+// --- Track viewer setting (Advanced; persisted) ---
+// Gates the pause menu's TRACK VIEWER button (see enterFlyView above).
+const TRACKVIEW_KEY = "zoomies-trackview";
+const trackviewToggle = document.getElementById("set-trackview-toggle");
+let trackviewOn = false;
+try { trackviewOn = localStorage.getItem(TRACKVIEW_KEY) === "1"; } catch {}
+function applyTrackviewSetting() {
+  document.getElementById("trackview-btn")?.classList.toggle("hidden", !trackviewOn);
+  if (trackviewToggle) {
+    trackviewToggle.textContent = trackviewOn ? "On" : "Off";
+    trackviewToggle.classList.toggle("off", !trackviewOn);
+  }
+}
+trackviewToggle?.addEventListener("click", () => {
+  trackviewOn = !trackviewOn;
+  try { localStorage.setItem(TRACKVIEW_KEY, trackviewOn ? "1" : "0"); } catch {}
+  applyTrackviewSetting();
+});
+applyTrackviewSetting();
 
 // --- Compatibility mode (renderer backend) ---
 // The renderer backend is picked once at startup (gpu.js reads this same flag), so
@@ -3062,6 +3269,7 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "Escape" || e.code === "KeyP") {
     if (state === State.RACING) pauseGame();
     else if (state === State.PAUSED) resumeGame();
+    else if (state === State.FLYVIEW) exitFlyView();
   }
 });
 
@@ -4333,6 +4541,12 @@ function loop(now) {
 
   if (state === State.PAUSED) {
     renderFrame(); // hold the frozen frame behind the overlay
+    return;
+  }
+
+  if (state === State.FLYVIEW) {
+    updateFlyCamera(dt); // free-flying inspection camera over the frozen race
+    renderFrame();
     return;
   }
 
