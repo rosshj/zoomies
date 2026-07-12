@@ -260,14 +260,24 @@ function planCrossover(cfg) {
     const D = 960;
     let genFallback = null;
     for (let cand = 0; cand < 60; cand++) {
-      const nE = r() < 0.45 ? 1 : 2;
-      const eps = [];
-      const used = new Set();
-      for (let j = 0; j < nE; j++) {
-        let k;
-        do { k = GEN_KS[Math.floor(r() * GEN_KS.length)]; } while (used.has(k));
-        used.add(k);
-        eps.push({ k, c: ((0.55 + r() * 0.85) / Math.abs(k)) * (nE === 1 ? 1.35 : 0.85), psi: r() * TAU });
+      // Direction FLAVOR first: loop roundness needs very different
+      // amplitudes per rotation direction (counter-rotating/outward loops
+      // only round out at high c), and a shared prior let inward candidates
+      // pass the corner check far more often — every accepted map curled
+      // inward. The primary epicycle draws inside its order's lab-measured
+      // round-loop window; a flavor roll forces outward-led seeds regularly.
+      const K_WIN = { "-3": [0.58, 0.95], "-2": [0.83, 1.0], 2: [0.73, 1.05], 3: [0.53, 1.02], 4: [0.44, 0.85] };
+      const flavor = r();
+      const pool = flavor < 0.42 ? [-3, -2] : flavor < 0.8 ? [2, 3, 4] : r() < 0.5 ? [-3, -2] : [2, 3, 4];
+      const k1 = pool[Math.floor(r() * pool.length)];
+      const w1 = K_WIN[k1];
+      const eps = [{ k: k1, c: w1[0] + r() * (w1[1] - w1[0]), psi: r() * TAU }];
+      if (r() < 0.5) {
+        // small secondary perturbation (either direction): asymmetrizes the
+        // layout without minting loops of its own
+        let k2;
+        do { k2 = GEN_KS[Math.floor(r() * GEN_KS.length)]; } while (k2 === k1 || k2 === -4);
+        eps.push({ k: k2, c: 0.08 + r() * 0.18, psi: r() * TAU });
       }
       const rot = r() * TAU;
       const P = [];
