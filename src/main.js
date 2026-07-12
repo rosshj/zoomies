@@ -2788,6 +2788,7 @@ function syncTrackPanel() {
     if (val) val.textContent = pct;
   };
   set("track-curvy", _trackDraft.curviness);
+  set("track-twist", _trackDraft.twist ?? 0.5);
   set("track-hilly", _trackDraft.hilliness);
   set("track-hills", _trackDraft.hills);
   set("track-size", _trackDraft.size);
@@ -2842,6 +2843,7 @@ function openTrackPanel() {
         : [...ALL_BIOMES],
     // Set-piece chips: absent config means "all on".
     features: Array.isArray(trackConfig.features) ? [...trackConfig.features] : [...ALL_FEATS],
+    twist: trackConfig.twist ?? 0.5,
     seed: trackConfig.seed || randomSeed(),
     timeOfDay: trackConfig.timeOfDay || "midday",
   };
@@ -2901,6 +2903,11 @@ const setTrackVal = (id, v) => {
 document.getElementById("track-curvy")?.addEventListener("input", (e) => {
   _trackDraft.curviness = e.target.value / 100;
   setTrackVal("track-curvy", e.target.value);
+  scheduleTrackPreview();
+});
+document.getElementById("track-twist")?.addEventListener("input", (e) => {
+  _trackDraft.twist = e.target.value / 100;
+  setTrackVal("track-twist", e.target.value);
   scheduleTrackPreview();
 });
 document.getElementById("track-hilly")?.addEventListener("input", (e) => {

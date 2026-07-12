@@ -194,31 +194,56 @@ function planSummitPeak(cfg) {
 // lap without ever losing or doubling the crossing — the validator only has
 // to confirm what the family already guarantees. Heights pin the two passages
 // `clear` apart; features build the upper one as a deck.
+// Windowed-loop lap shape: unit circle plus one Gaussian-windowed epicycle
+// per loop. Shared by the plan's analytic battery and the styling pass — the
+// two MUST sample the same curve or the plan's guarantees are void.
+function xoShape(loops, t) {
+  let x = Math.cos(t), z = Math.sin(t);
+  for (const L of loops) {
+    const d = Math.atan2(Math.sin(t - L.t0), Math.cos(t - L.t0));
+    const B = L.A * Math.exp(-(d * d) / (L.sig * L.sig));
+    const a2 = L.s * L.w * d + L.ph;
+    x += B * Math.cos(a2);
+    z += B * Math.sin(a2);
+  }
+  return [x, z];
+}
+
 function planCrossover(cfg) {
   if (!cfg || cfg.mode !== "custom") return null;
   const size = clamp01(cfg.size);
+  const twist = clamp01(cfg.twist ?? 0.5);
   const r = makeRng(String(cfg.seed || "x") + "|xover");
-  const roll = r(); // gate roll first so parameter draws line up across gates
-  // Crossing odds scale with map size: no room below 0.4, common by 0.7+.
-  // Crossings are a headline feature: on any map big enough to fit the
-  // inner loop they fire MOST of the time, and near-always on big maps.
-  const p = size < 0.32 ? 0 : 0.55 + (size - 0.32) * 0.5;
-  if (roll > p) return null;
-  // Big maps draw the lap from a GENERATIVE EPICYCLE MIX
-  // P(t) = e^(it) + sum_j c_j*e^(i(k_j t + psi_j)),  k_j in {-4..-2, 2..4}:
-  // one or two epicycles of random order, direction and phase. Co-rotating
-  // terms pinch loops INWARD, counter-rotating hang them OUTWARD, and mixes
-  // scatter both around one lap — every accepted seed is its own layout
-  // instead of a stamped family silhouette. A candidate only graduates when
-  // the analytic curve passes the whole battery: 1..maxX well-separated
-  // transversal crossings, pre-styling corner radius, passage spacing, a
-  // greedy over/under assignment with ramp room, and start-line clearance.
-  // (Fixed limacon/epitrochoid/clover families used to live here — players
-  // learned their three silhouettes within a session.)
-  const mRoll = r();
+  const roll = r(); // drawn first for stream stability across versions
+  // Loop BUDGET: the Twisty knob decides how many loops the lap should carry
+  // (0..3), capped by what the map size can physically host — a small map
+  // never loops, a big one at full twist aims for three. A gentle seed jitter
+  // keeps rerolls at the same sliders from all landing the same count.
+  const cap = size < 0.32 ? 0 : size < 0.6 ? 1 : size < 0.8 ? 2 : 3;
+  let want = Math.min(cap, Math.round(twist * (0.9 + size * 2.3)));
+  if (want > 1 && roll < 0.3) want--;
+  if (want <= 0 || twist <= 0.02) return null;
+  // Loops are WINDOWED LOCAL EPICYCLES on a circle:
+  //   P(t) = e^(it) + A*exp(-(d/sigma)^2)*e^(i(s*omega*d + ph)),  d = t - t0.
+  // Each budgeted loop is its own Gaussian-windowed spinner parked at a spot
+  // t0 on the lap: co-rotating spin aimed at the centre (s=+1, ph=t0+pi)
+  // curls the road INWARD, counter-rotating spin aimed away (s=-1, ph=t0)
+  // hangs it OUTWARD — and because the window dies off within ~2 sigma the
+  // loops are independent, so one lap can carry exactly the count the budget
+  // asks for, in any in/out combination. (Global epicycles e^(ikt) lived
+  // here before: their petal families are symmetric — always 2..4 equal
+  // loops, all the same direction — so "one or two outward loops" was
+  // unreachable; suppressing extra petals passes through a cusp regime the
+  // corner check rightly kills. Rounded windowed loops need the spin rate
+  // DECOUPLED from the window: sigma*omega ~ 1.9-2.4 with amplitude ~0.5.)
+  // A candidate only graduates when the analytic curve passes the whole
+  // battery: exactly-budgeted well-separated transversal crossings,
+  // pre-styling corner radius, passage spacing, a greedy over/under
+  // assignment with ramp room, and start-line clearance.
   // The limacon single-crossing plan is ALWAYS drawn first: it is the
-  // guaranteed fallback when a generative layout's styled attempts fail
-  // (better one crossing than none), and the primary plan for smaller maps.
+  // guaranteed fallback when a windowed layout's styled attempts fail
+  // (better one inward crossing than none) and the last resort when no
+  // candidate survives the battery.
   const m = 1;
   const k = 0.44 + r() * 0.12; // inner-loop size: ~0.24-0.35x of the rim radius
   const b = 0;
@@ -257,50 +282,56 @@ function planCrossover(cfg) {
     if (ok) break;
   }
   const limaPlan = { kind: "lima", m, k, b, psi, phi, zeros, ups, lows, norm, clear: 13 };
-  const GEN_KS = [-4, -3, -2, 2, 3, 4];
-  if (size >= 0.6 && mRoll < 0.75) {
+  {
     const baseR = 250 + size * 330; // mirrors generateLoopPoints
-    const maxX = size < 0.72 ? 2 : size < 0.85 ? 3 : 4;
+    const maxX = want;
     const D = 960;
     let genFallback = null;
     // ONE direction flavor per seed (drawn before the candidate hunt):
     // outward candidates fail their checks more often, so redrawing flavor
-    // per candidate let inward survivors replace them — the whole pool
-    // skewed inward AGAIN, one level down from the amplitude bias.
+    // per candidate would let inward survivors replace them. Three flavors:
+    // all-inward, all-outward, or MIXED — one loop curling in AND one
+    // hanging out on the same lap (needs a 2-loop budget).
     const flavorRoll = r();
-    const outwardSeed = flavorRoll < 0.45;
+    const flavor = flavorRoll < 0.36 ? "in" : flavorRoll < 0.72 ? "out" : want >= 2 ? "mix" : "out";
+    const outwardSeed = flavor !== "in";
+    // Window width shrinks with the budget so the Gaussians fit around one
+    // lap without bleeding into each other; centre jitter follows suit.
+    const SIG = want === 1 ? [0.42, 0.6] : want === 2 ? [0.38, 0.52] : [0.33, 0.39];
+    const JIT = want === 1 ? 1.6 : want === 2 ? 0.5 : 0.22;
     for (let cand = 0; cand < 60; cand++) {
-      // Direction FLAVOR first: loop roundness needs very different
-      // amplitudes per rotation direction (counter-rotating/outward loops
-      // only round out at high c), and a shared prior let inward candidates
-      // pass the corner check far more often — every accepted map curled
-      // inward. The primary epicycle draws inside its order's lab-measured
-      // round-loop window; a flavor roll forces outward-led seeds regularly.
-      const K_WIN = { "-3": [0.58, 0.9], "-2": [0.83, 0.92], 2: [0.73, 1.05], 3: [0.53, 1.02], 4: [0.44, 0.85] };
-      const pool = outwardSeed ? [-3, -2] : [2, 3, 4];
-      const k1 = pool[Math.floor(r() * pool.length)];
-      const w1 = K_WIN[k1];
-      const eps = [{ k: k1, c: w1[0] + r() * (w1[1] - w1[0]), psi: r() * TAU }];
-      if (r() < (outwardSeed ? 0.3 : 0.5)) {
-        // small secondary perturbation (either direction): asymmetrizes the
-        // layout without minting loops of its own; outward petals get less
-        // of it (it muddies the protrusion)
-        let k2;
-        do { k2 = GEN_KS[Math.floor(r() * GEN_KS.length)]; } while (k2 === k1 || k2 === -4);
-        eps.push({ k: k2, c: 0.08 + r() * (outwardSeed ? 0.1 : 0.18), psi: r() * TAU });
+      // Loop centres ride evenly-spaced slots with jitter (guaranteed
+      // spacing beats rejection churn); a slot too close to the start line
+      // (t=0) voids the draw — passages must keep clear of the grid.
+      const spacing = TAU / want;
+      const mixLead = r() < 0.5; // mix flavor: which direction leads the lap
+      const loops = [];
+      for (let j = 0; j < want; j++) {
+        const t0 = spacing * (j + 0.5) + (r() - 0.5) * JIT;
+        const sig = SIG[0] + r() * (SIG[1] - SIG[0]);
+        // Lab-measured ROUND regime: spin rate decoupled from the window,
+        // sigma*omega ~ 1.9-2.4, amplitude ~0.45-0.6 of base radius. Tighter
+        // (the old petal-suppression instinct) needles the tip; the corner
+        // check rejects everything below ~29u.
+        const w = (1.9 + r() * 0.5) / sig;
+        const A = 0.45 + r() * 0.15;
+        const out = flavor === "mix" ? (j % 2 === 0) === mixLead : flavor === "out";
+        if (Math.abs(Math.atan2(Math.sin(t0), Math.cos(t0))) < sig + 0.5) { loops.length = 0; break; }
+        loops.push({ t0, sig, w, A, s: out ? -1 : 1, ph: out ? t0 : t0 + Math.PI });
       }
+      if (!loops.length) continue;
       const rot = r() * TAU;
       const P = [];
-      let maxR = 0;
       for (let i = 0; i < D; i++) {
         const t = (i / D) * TAU;
-        let x = Math.cos(t), z = Math.sin(t);
-        for (const e of eps) { x += e.c * Math.cos(e.k * t + e.psi); z += e.c * Math.sin(e.k * t + e.psi); }
-        P.push([x, z]);
-        const rr = Math.hypot(x, z);
-        if (rr > maxR) maxR = rr;
+        P.push(xoShape(loops, t));
       }
-      const scale = baseR / maxR;
+      // Rim-normalized: the base circle maps to baseR (same footprint as a
+      // plain or limacon lap of this size) and OUTWARD loops hang beyond it.
+      // Normalizing by the apex instead shrank the whole map by up to 1.6x,
+      // scaling outward tips under the corner floor on mid-size maps — the
+      // seeds all quietly fell back to the inward limacon.
+      const scale = baseR;
       // -- crossings of the analytic curve
       const hits = [];
       const skip = 26;
@@ -432,14 +463,18 @@ function planCrossover(cfg) {
           for (const ps of passages) if (ps.cluster === from) ps.cluster = to;
         }
       }
-      const plan = { kind: "gen", m: hits.length, eps, rot, maxR, passages, envW, clear: 13 };
+      // clear 14 (vs the limacon's 13): multi-loop plans at full hill strength
+      // ride pins on sloped base profiles, and the spline sags ~2-3u below
+      // the plateau contract between control points — the extra headroom
+      // keeps the built gap above the 10.5u legality floor.
+      const plan = { kind: "gen", m: hits.length, loops, rot, passages, envW, clear: 14 };
       // Big maps hold out for a MULTI-crossing layout for most of the
       // candidate budget; the first single-crossing plan is kept as fallback.
-      if (plan.m >= 2 || size < 0.72 || cand >= 44) {
+      if (plan.m >= want || cand >= 44) {
         plan.fallback = limaPlan;
         return plan;
       }
-      if (!genFallback) genFallback = plan;
+      if (!genFallback || plan.m > genFallback.m) genFallback = plan;
     }
     if (genFallback) {
       genFallback.fallback = limaPlan;
@@ -609,19 +644,14 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       const env = 1 + (envRaw - 1) * envK;
       let x, z;
       if (xo && xo.kind === "gen") {
-        // Generative epicycle base, rotated into place. Wobble scales the
-        // point radially from the origin, gated by the plan's baked envelope:
+        // Windowed-loop base, rotated into place. Wobble scales the point
+        // radially from the origin, gated by the plan's baked envelope:
         // full strength where the analytic curve is gentle, zero where it is
-        // tight (loop tips, waist bays) or near a passage — so styling can
-        // never sharpen a corner past the floor or graze strands into an
-        // extra crossing.
-        const R = baseR / xo.maxR;
-        let px = Math.cos(a), pz = Math.sin(a);
-        for (const e of xo.eps) {
-          px += e.c * Math.cos(e.k * a + e.psi);
-          pz += e.c * Math.sin(e.k * a + e.psi);
-        }
-        px *= R; pz *= R;
+        // tight (loop tips, necks) or near a passage — so styling can never
+        // sharpen a corner past the floor or graze strands into an extra
+        // crossing.
+        let [px, pz] = xoShape(xo.loops, a);
+        px *= baseR; pz *= baseR;
         let dmin = Infinity;
         for (const ps of xoPass) dmin = Math.min(dmin, Math.abs(wrapA(a - ps.a)));
         const envP = sm01((dmin - 0.42) / 0.35);
