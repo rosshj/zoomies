@@ -1808,10 +1808,21 @@ const flyExitBtn = document.getElementById("fly-exit");
 const flyHint = document.getElementById("fly-hint");
 const _fly = {
   yaw: 0, pitch: 0,
-  pointers: new Map(), // active pointerId → last {x, y}
-  pinch: 0,            // last two-finger separation (px)
+  pointers: new Map(), // active pointerId → last stage-local {x, y}
   keys: new Set(),
-  fwd: new THREE.Vector3(), right: new THREE.Vector3(),
+  fwd: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(),
+  // Two-finger baseline (centroid / separation / finger-pair angle). The whole
+  // gesture is decomposed against these in ONE place per event, so pan, pinch
+  // and twist compose instead of fighting (the old code let each finger apply
+  // its own half-pan AND re-applied the pinch per event — zooming lurched).
+  cx: 0, cy: 0, dist: 0, ang: 0,
+  // Ground anchor under the pinch centroid, solved once per gesture: pan maps
+  // finger pixels to world units 1:1 at this depth (the map sticks to your
+  // fingers), pinch zooms toward it, twist orbits around it.
+  focal: new THREE.Vector3(), focalDist: 80, focalRay: new THREE.Vector3(),
+  // Release inertia: look (rad/s) and pan (world units/s), damped per frame.
+  lookVX: 0, lookVY: 0, panV: new THREE.Vector3(),
+  tPrev: 0, // last gesture event timeStamp (ms) for velocity estimates
 };
 function _flyBasis() {
   const cp = Math.cos(_fly.pitch);
@@ -1845,6 +1856,8 @@ function enterFlyView() {
   _fly.pitch = Math.asin(Math.max(-1, Math.min(1, dir.y)));
   _fly.pointers.clear();
   _fly.keys.clear();
+  _fly.lookVX = _fly.lookVY = 0;
+  _fly.panV.set(0, 0, 0);
 }
 function exitFlyView() {
   if (state !== State.FLYVIEW) return;
@@ -1862,53 +1875,171 @@ function hideFlyUI() {
 flyExitBtn?.addEventListener("click", exitFlyView);
 document.getElementById("trackview-btn")?.addEventListener("click", enterFlyView);
 
-flyCatch?.addEventListener("pointerdown", (e) => {
-  flyCatch.setPointerCapture(e.pointerId);
-  _fly.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (_fly.pointers.size === 2) {
-    const [a, b] = [..._fly.pointers.values()];
-    _fly.pinch = Math.hypot(a.x - b.x, a.y - b.y);
+// All gesture positions go through stageToLocal: on phones the stage is
+// ROTATED for the landscape lock, so raw clientX/Y deltas had swapped or
+// mirrored axes in portrait — the biggest "mobile feels wrong" bug here.
+const _flyPt = (e) => stageToLocal(e.clientX, e.clientY);
+// Current two-finger state: centroid, separation, and finger-pair angle.
+function _flyTwoState() {
+  const [a, b] = [..._fly.pointers.values()];
+  return {
+    cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+    dist: Math.max(24, Math.hypot(a.x - b.x, a.y - b.y)), // floor: churning tiny pinches can't explode the ratio
+    ang: Math.atan2(b.y - a.y, b.x - a.x),
+  };
+}
+// World-space ray through a stage point (camera matrices are fresh — the fly
+// loop lookAt()s and renders every frame).
+function _flyStageRay(sx, sy, out) {
+  return out
+    .set((sx / stageState.W) * 2 - 1, -(sy / stageState.H) * 2 + 1, 0.5)
+    .unproject(camera)
+    .sub(camera.position)
+    .normalize();
+}
+// Anchor the gesture: march the centroid ray to the terrain (coarse steps —
+// it's a gesture anchor, not a collision). Solved ONCE per two-finger gesture,
+// so the ~50 terrain samples never run per move event. Sky shots (no hit) get
+// a fixed mid-distance anchor, which keeps pan/zoom speeds sane.
+function _flySolveFocal(sx, sy) {
+  const r = _flyStageRay(sx, sy, _fly.focalRay);
+  let dist = 0;
+  for (let t = 6; t <= 520; t += t < 120 ? 6 : 16) {
+    const x = camera.position.x + r.x * t, y = camera.position.y + r.y * t, z = camera.position.z + r.z * t;
+    if (y <= (world?.heightAt?.(x, z) ?? 0)) { dist = t; break; }
   }
+  _fly.focalDist = Math.min(500, Math.max(4, dist || 160));
+  _fly.focal.copy(camera.position).addScaledVector(r, _fly.focalDist);
+}
+function _flyRebaseTwo(ts) {
+  Object.assign(_fly, _flyTwoState());
+  _flySolveFocal(_fly.cx, _fly.cy);
+  _fly.tPrev = ts;
+}
+flyCatch?.addEventListener("pointerdown", (e) => {
+  // Capture can throw for a pointer that's already gone (fast cancel races,
+  // synthetic events) — losing capture just means a finger that slides off
+  // the layer stops tracking, never a broken gesture.
+  try { flyCatch.setPointerCapture(e.pointerId); } catch { /* keep going */ }
+  const q = _flyPt(e);
+  _fly.pointers.set(e.pointerId, { x: q.x, y: q.y });
+  // A fresh touch grabs the world: any glide-out stops dead (map-app feel).
+  _fly.lookVX = _fly.lookVY = 0;
+  _fly.panV.set(0, 0, 0);
+  _fly.tPrev = e.timeStamp;
+  if (_fly.pointers.size === 2) _flyRebaseTwo(e.timeStamp);
 });
 flyCatch?.addEventListener("pointermove", (e) => {
   const p = _fly.pointers.get(e.pointerId);
   if (!p || state !== State.FLYVIEW) return;
-  const dx = e.clientX - p.x, dy = e.clientY - p.y;
-  p.x = e.clientX; p.y = e.clientY;
+  const q = _flyPt(e);
+  const dx = q.x - p.x, dy = q.y - p.y;
+  p.x = q.x; p.y = q.y;
+  const dtEv = Math.min(0.05, Math.max(0.004, (e.timeStamp - _fly.tPrev) / 1000));
   _flyBasis();
   if (_fly.pointers.size === 1) {
-    // Look: drag right looks right, drag up looks up.
-    _fly.yaw -= dx * 0.0042;
-    _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch - dy * 0.0032));
+    // Look: drag right looks right, drag up looks up — with a release flick.
+    const dyaw = -dx * 0.0042, dpitch = -dy * 0.0032;
+    _fly.yaw += dyaw;
+    _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch + dpitch));
+    _fly.lookVX = _fly.lookVX * 0.6 + (dyaw / dtEv) * 0.4;
+    _fly.lookVY = _fly.lookVY * 0.6 + (dpitch / dtEv) * 0.4;
+    _fly.tPrev = e.timeStamp;
   } else if (_fly.pointers.size === 2) {
-    // This finger carries half the two-finger pan (each contributes its own
-    // movement, so the combined gesture pans at finger speed).
-    const k = 0.045 * _flySpeedScale();
-    camera.position.addScaledVector(_fly.right, dx * k * 0.5);
-    camera.position.y -= dy * k * 0.5; // drag up = rise
-    const [a, b] = [..._fly.pointers.values()];
-    const d = Math.hypot(a.x - b.x, a.y - b.y);
-    if (_fly.pinch > 0) camera.position.addScaledVector(_fly.fwd, (d - _fly.pinch) * 0.09 * _flySpeedScale());
-    _fly.pinch = d;
+    // Decompose the PAIR once: pan from the centroid, zoom from the
+    // separation, rotation from the finger-pair angle — all anchored to the
+    // ground point solved at gesture start.
+    const s = _flyTwoState();
+    const startX = camera.position.x, startY = camera.position.y, startZ = camera.position.z;
+    // Pan: world units per stage pixel at the anchor depth, so the terrain
+    // under your fingers tracks them 1:1 (drag right → the world comes with
+    // you). 0.6018 = 2·tan(62°/2 · vertical fov).
+    const pxToWorld = (1.2036 * _fly.focalDist) / stageState.H;
+    _fly.up.crossVectors(_fly.right, _fly.fwd); // screen-up in world space
+    camera.position.addScaledVector(_fly.right, -(s.cx - _fly.cx) * pxToWorld);
+    camera.position.addScaledVector(_fly.up, (s.cy - _fly.cy) * pxToWorld);
+    _fly.focal.addScaledVector(_fly.right, -(s.cx - _fly.cx) * pxToWorld);
+    _fly.focal.addScaledVector(_fly.up, (s.cy - _fly.cy) * pxToWorld);
+    // Pinch: zoom toward/away from the anchor itself (not the view centre),
+    // exactly cancelling the separation ratio — spread 2× and the ground
+    // around the pinch reads 2× bigger. focalDist floors so you can't tunnel
+    // through the anchor; zoom-out is unlimited (the clamp catches the sky).
+    const ratio = s.dist / _fly.dist;
+    const zoomStep = _fly.focalDist * (1 - 1 / ratio);
+    _fly.focalDist = Math.max(3, _fly.focalDist - zoomStep);
+    camera.position.addScaledVector(_flyStageRay(s.cx, s.cy, _fly.focalRay), zoomStep);
+    // Twist: rotate the MAP under your fingers — yaw the view and orbit the
+    // camera about the anchor by the same angle, so the anchor stays put on
+    // screen. (Stage y is down, so a visually-CCW twist is a negative delta.)
+    let da = s.ang - _fly.ang;
+    while (da > Math.PI) da -= Math.PI * 2;
+    while (da < -Math.PI) da += Math.PI * 2;
+    const th = -da, c = Math.cos(th), sn = Math.sin(th);
+    const ox = camera.position.x - _fly.focal.x, oz = camera.position.z - _fly.focal.z;
+    camera.position.x = _fly.focal.x + ox * c + oz * sn;
+    camera.position.z = _fly.focal.z - ox * sn + oz * c;
+    _fly.yaw += th;
     _flyClamp();
+    // Pan glide velocity from how the camera actually moved this event.
+    _fly.panV.x = _fly.panV.x * 0.6 + ((camera.position.x - startX) / dtEv) * 0.4;
+    _fly.panV.y = _fly.panV.y * 0.6 + ((camera.position.y - startY) / dtEv) * 0.4;
+    _fly.panV.z = _fly.panV.z * 0.6 + ((camera.position.z - startZ) / dtEv) * 0.4;
+    _fly.cx = s.cx; _fly.cy = s.cy; _fly.dist = s.dist; _fly.ang = s.ang;
+    _fly.tPrev = e.timeStamp;
   }
 });
-const _flyEndPointer = (e) => { _fly.pointers.delete(e.pointerId); _fly.pinch = 0; };
+const _flyEndPointer = (e) => {
+  const wasTwo = _fly.pointers.size === 2;
+  _fly.pointers.delete(e.pointerId);
+  if (wasTwo && _fly.pointers.size === 1) {
+    // Pinch → single finger: the survivor becomes a fresh LOOK gesture; a
+    // stale pan-glide from the pinch would yank the camera out from under it.
+    _fly.panV.set(0, 0, 0);
+    _fly.lookVX = _fly.lookVY = 0;
+    _fly.tPrev = e.timeStamp;
+  }
+  // Last finger up: leave lookV/panV as-is — updateFlyCamera glides them out.
+};
 flyCatch?.addEventListener("pointerup", _flyEndPointer);
 flyCatch?.addEventListener("pointercancel", _flyEndPointer);
 flyCatch?.addEventListener("wheel", (e) => {
   if (state !== State.FLYVIEW) return;
   e.preventDefault();
-  _flyBasis();
-  camera.position.addScaledVector(_fly.fwd, -e.deltaY * 0.05 * _flySpeedScale());
+  // Zoom along the ray under the CURSOR (map-style), not the view centre.
+  const q = stageToLocal(e.clientX, e.clientY);
+  camera.position.addScaledVector(
+    _flyStageRay(q.x, q.y, _fly.focalRay),
+    -e.deltaY * 0.05 * _flySpeedScale()
+  );
   _flyClamp();
 }, { passive: false });
 window.addEventListener("keydown", (e) => { if (state === State.FLYVIEW) _fly.keys.add(e.code); });
 window.addEventListener("keyup", (e) => { _fly.keys.delete(e.code); });
 
 // Per-frame flight (keyboard movement + aiming). Touch moves the camera in the
-// event handlers above; this applies held keys and points the camera.
+// event handlers above; this applies held keys, glides out any release
+// momentum, and points the camera.
 function updateFlyCamera(dt) {
+  // Touch inertia: after the last finger lifts, the look flick and the pan
+  // carry on and ease out (exponential damp ≈ a map app's glide). Grabbing
+  // the screen again zeroes these instantly (see pointerdown).
+  if (_fly.pointers.size === 0) {
+    // Sanity caps: a wild flick glides briskly, it doesn't launch the camera.
+    _fly.lookVX = Math.max(-3, Math.min(3, _fly.lookVX));
+    _fly.lookVY = Math.max(-3, Math.min(3, _fly.lookVY));
+    if (_fly.panV.lengthSq() > 320 * 320) _fly.panV.setLength(320);
+    const speed = Math.abs(_fly.lookVX) + Math.abs(_fly.lookVY) + _fly.panV.length();
+    if (speed > 0.01) {
+      _fly.yaw += _fly.lookVX * dt;
+      _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch + _fly.lookVY * dt));
+      camera.position.addScaledVector(_fly.panV, dt);
+      _flyClamp();
+      const damp = Math.exp(-3.6 * dt);
+      _fly.lookVX *= damp;
+      _fly.lookVY *= damp;
+      _fly.panV.multiplyScalar(damp);
+    }
+  }
   _flyBasis();
   const K = _fly.keys;
   const boost = K.has("ShiftLeft") || K.has("ShiftRight") ? 3 : 1;
