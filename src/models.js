@@ -98,7 +98,7 @@ export function setLightLevel(v) {
 // Racing-number roundel decal: a white disc with a dark ring and the kart's
 // number, drawn to a transparent canvas so it sits on a plane on each fairing.
 const _numTexCache = new Map();
-function makeNumberTexture(n) {
+export function makeNumberTexture(n) {
   if (_numTexCache.has(n)) return _numTexCache.get(n);
   const S = 128;
   const c = document.createElement("canvas");

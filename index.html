@@ -124,6 +124,14 @@
     <p class="rv-text">GET READY…</p>
   </div>
 
+  <!-- Track viewer (fly camera): full-stage gesture surface + exit button.
+       Shown only while flying (entered from the pause menu when the Advanced
+       setting is on). The catch layer owns ALL pointer input in that mode, so
+       none of the game's steering/HUD handlers can grab a finger. -->
+  <div id="fly-catch" class="hidden"></div>
+  <button id="fly-exit" class="hidden">✕ EXIT VIEWER</button>
+  <div id="fly-hint" class="hidden">Drag to look · pinch to move · two-finger drag to pan &amp; rise</div>
+
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
     <!-- Pause (top-left) -->
@@ -214,6 +222,9 @@
         <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
         <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
       </div>
+      <!-- Dev/inspection tool, revealed by the Advanced settings toggle: fly the
+           camera freely around the frozen race world. -->
+      <button id="trackview-btn" class="secondary small hidden">🎥 TRACK VIEWER</button>
       <button id="menu-btn" class="secondary pause-exit">🏠 MAIN MENU</button>
     </div>
   </div>
@@ -710,6 +721,11 @@
               <span class="setting-label">P2P multiplayer</span>
               <button id="set-rtc-toggle" class="secondary small toggle off">Off</button>
             </div>
+            <div class="setting-row">
+              <span class="setting-label">Track viewer</span>
+              <button id="set-trackview-toggle" class="secondary small toggle off">Off</button>
+            </div>
+            <p class="setting-note">Adds a Track Viewer to the pause menu: fly the camera freely around the world — drag to look, pinch to move, two fingers to pan.</p>
             <p class="setting-note">Experimental: routes multiplayer directly between players for lower lag (best on the same Wi-Fi). Takes effect next time you Host or Join.</p>
           </div>
         </section>

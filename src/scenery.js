@@ -8,7 +8,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // Track set pieces (river bridge / canyon / giant forest / overpass): the
 // planner lives on the track (track.features); these helpers shape the terrain
 // around the runs and build their structures. See features.js for the system.
-import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures } from "./features.js";
+import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -1691,9 +1691,10 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
 // sides. Static + shared materials, so batchStaticProps() merges the lot into
 // a few draws; the green lens is emissive so it glows at dusk/night.
 let _tlMats = null;
-function buildTrafficLights(scene, track, heightAt) {
-  const N = track.samples;
-  const up = new THREE.Vector3(0, 1, 0);
+// One traffic signal (pole + mast arm + 3-lens head, green LIT — this is a
+// race, nobody stops). Local +Z is the arm's reach toward the road. Also built
+// standalone by the asset viewer.
+function makeTrafficLight() {
   if (!_tlMats) {
     _tlMats = {
       pole: mat(0x3c4047, { roughness: 0.5, metalness: 0.45 }),
@@ -1703,6 +1704,36 @@ function buildTrafficLights(scene, track, heightAt) {
       green: mat(0x2ecc55, { roughness: 0.4, emissive: 0x2ecc55, emissiveIntensity: 1.9 }), // LIT
     };
   }
+  const g = new THREE.Group();
+  const armY = 7.8, armLen = 4.6;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, armY + 0.2, 8), _tlMats.pole);
+  pole.position.y = (armY + 0.2) / 2;
+  pole.castShadow = true;
+  g.add(pole);
+  const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, armLen, 8), _tlMats.pole);
+  arm.rotation.x = Math.PI / 2; // lie along local +Z (toward the road)
+  arm.position.set(0, armY, armLen / 2);
+  arm.castShadow = true;
+  g.add(arm);
+  // Signal head hanging near the arm's end: dark housing + three lenses that
+  // poke out of BOTH faces (readable from either driving direction).
+  const headZ = armLen - 0.5;
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.5, 0.52), _tlMats.head);
+  head.position.set(0, armY - 0.85, headZ);
+  head.castShadow = true;
+  g.add(head);
+  const lensDefs = [[_tlMats.red, 0.46], [_tlMats.amber, 0], [_tlMats.green, -0.46]];
+  for (const [m, dy] of lensDefs) {
+    const lens = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), m);
+    lens.position.set(0, armY - 0.85 + dy, headZ);
+    g.add(lens);
+  }
+  return g;
+}
+
+function buildTrafficLights(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
   const spacing = track.length / N;
   const step = Math.max(1, Math.round(60 / spacing));
   let flip = 1;
@@ -1717,30 +1748,7 @@ function buildTrafficLights(scene, track, heightAt) {
     if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
     if (_inLake(x, z)) continue;
 
-    const g = new THREE.Group();
-    const armY = 7.8, armLen = 4.6;
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, armY + 0.2, 8), _tlMats.pole);
-    pole.position.y = (armY + 0.2) / 2;
-    pole.castShadow = true;
-    g.add(pole);
-    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, armLen, 8), _tlMats.pole);
-    arm.rotation.x = Math.PI / 2; // lie along local +Z (toward the road)
-    arm.position.set(0, armY, armLen / 2);
-    arm.castShadow = true;
-    g.add(arm);
-    // Signal head hanging near the arm's end: dark housing + three lenses that
-    // poke out of BOTH faces (readable from either driving direction).
-    const headZ = armLen - 0.5;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.34, 1.5, 0.52), _tlMats.head);
-    head.position.set(0, armY - 0.85, headZ);
-    head.castShadow = true;
-    g.add(head);
-    const lensDefs = [[_tlMats.red, 0.46], [_tlMats.amber, 0], [_tlMats.green, -0.46]];
-    for (const [m, dy] of lensDefs) {
-      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 8), m);
-      lens.position.set(0, armY - 0.85 + dy, headZ);
-      g.add(lens);
-    }
+    const g = makeTrafficLight();
     g.position.set(x, heightAt(x, z), z);
     // Local +Z points from the pole back toward the road centre.
     g.rotation.y = Math.atan2(-side.x * flip, -side.z * flip);
@@ -3770,22 +3778,89 @@ function makeBigWindmill() {
 // The flock→bird→wing-pivot group hierarchy still exists and animates exactly as
 // before, but the pivots hold invisible markers whose world matrices are copied
 // into the instance buffer after the flock update.
+// Sky-bird geometry + materials, shared by every bird in every flock (they
+// render as two InstancedMeshes) and by the asset viewer. The silhouette is
+// corvid — fingered primaries, fan tail — but the COLOUR is a parameter, so
+// the same geometry serves ravens (the default near-black), gulls, doves…
+// Local axes: the bird flies along +X (beak forward), wings span ±Z. Kept
+// deliberately light — these are distant sky silhouettes: a fingered wing
+// shape (~16 tris) and a low-poly body/head/beak/fan-tail (~80 tris).
+export const SKY_BIRD_COLOR = 0x24272c; // default: raven black
+let _skyBirdGeos = null;
+const _skyBirdMats = new Map(); // colour → shared material (flocks + viewer)
+function skyBirdMaterial(color = SKY_BIRD_COLOR) {
+  let m = _skyBirdMats.get(color);
+  if (!m) {
+    // DoubleSide: the wings are flat shapes, and each LEFT wing is the same
+    // geometry mirrored by a negative instance scale (which flips the winding).
+    m = mat(color, { flatShading: true, side: THREE.DoubleSide });
+    _skyBirdMats.set(color, m);
+  }
+  return m;
+}
+function skyBirdGeos() {
+  if (_skyBirdGeos) return _skyBirdGeos;
+
+  // One RIGHT wing in (x = chord, y = span), shoulder at the origin: a swept
+  // leading edge out to the wrist, splayed primary-feather "fingers" at the
+  // tip, and a trailing edge curving back to the body — the raven silhouette.
+  const s = new THREE.Shape();
+  s.moveTo(0.42, 0);
+  s.quadraticCurveTo(0.4, 1.3, 0.16, 2.05); // leading edge, swept back at the wrist
+  s.lineTo(0.02, 2.42); // first (leading) finger tip
+  s.lineTo(-0.1, 2.02); // notch
+  s.lineTo(-0.24, 2.34); // finger
+  s.lineTo(-0.32, 1.94); // notch
+  s.lineTo(-0.47, 2.18); // finger
+  s.lineTo(-0.5, 1.78); // notch
+  s.lineTo(-0.66, 1.94); // last (trailing) finger
+  s.quadraticCurveTo(-0.62, 1.1, -0.45, 0); // trailing edge back to the flank
+  s.closePath();
+  // Lay it flat: span along +Z, chord along X (leading edge toward +X = travel).
+  const wingGeo = new THREE.ShapeGeometry(s, 3).rotateX(Math.PI / 2);
+
+  // Body: fusiform torso, round head, short beak, and a flat fan tail with a
+  // notched trailing edge — merged into one geometry (one instanced draw).
+  const tail = new THREE.Shape();
+  tail.moveTo(0, 0.07);
+  tail.lineTo(-0.72, 0.33);
+  tail.lineTo(-0.79, 0.11); // notch between fan feathers
+  tail.lineTo(-0.79, -0.11);
+  tail.lineTo(-0.72, -0.33);
+  tail.lineTo(0, -0.07);
+  tail.closePath();
+  const bodyGeo = mergeGeometries([
+    new THREE.SphereGeometry(0.34, 6, 4).scale(2.0, 0.75, 0.8), // torso, nose +x
+    new THREE.SphereGeometry(0.17, 5, 4).translate(0.62, 0.14, 0), // head
+    new THREE.ConeGeometry(0.07, 0.34, 4).rotateZ(-Math.PI / 2).translate(0.88, 0.1, 0), // beak
+    new THREE.ShapeGeometry(tail, 2).rotateX(Math.PI / 2).translate(-0.5, 0.03, 0), // fan tail
+  ]);
+  _skyBirdGeos = { wingGeo, bodyGeo };
+  return _skyBirdGeos;
+}
+
 function buildBirds(scene) {
   const flocks = [];
-  const markers = [];
+  const markers = []; // one per wing
+  const bodyMarkers = []; // one per bird
   for (let f = 0; f < 6; f++) {
     const flock = new THREE.Group();
     const wings = [];
     const count = 4 + Math.floor(rand() * 4);
     for (let i = 0; i < count; i++) {
       const bird = new THREE.Group();
+      const bodyMarker = new THREE.Object3D();
+      bird.add(bodyMarker);
+      bodyMarkers.push(bodyMarker);
+      const birdPhase = rand() * 6.28; // per BIRD, so its two wings beat together
       for (const sx of [-1, 1]) {
-        const wg = new THREE.Group();
+        const wg = new THREE.Group(); // flap pivot at the shoulder
         const marker = new THREE.Object3D();
-        marker.position.x = sx * 1.1;
+        marker.position.z = sx * 0.22; // wing root sits at the body's flank
+        marker.scale.z = sx; // one wing geometry, mirrored for the left side
         wg.add(marker);
         bird.add(wg);
-        wings.push({ wg, sx, phase: rand() * 6.28 });
+        wings.push({ wg, sx, phase: birdPhase });
         markers.push(marker);
       }
       bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
@@ -3804,15 +3879,21 @@ function buildBirds(scene) {
       phase: rand() * 6.28,
     });
   }
-  const birdMat = mat(0x33373d, { flatShading: true });
-  const wingMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 0.1, 0.9), birdMat, markers.length);
-  wingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  wingMesh.frustumCulled = false; // flocks span the whole sky; it's 1 draw regardless
-  wingMesh.layers.set(1);
-  scene.add(wingMesh);
-  return { flocks, wingMesh, markers };
+  // Two draws for every bird in the sky: one instanced mesh of wings, one of
+  // bodies (was one draw of wing boxes — the body/tail/beak cost exactly +1).
+  const { wingGeo, bodyGeo } = skyBirdGeos();
+  const material = skyBirdMaterial();
+  const wingMesh = new THREE.InstancedMesh(wingGeo, material, markers.length);
+  const bodyMesh = new THREE.InstancedMesh(bodyGeo, material, bodyMarkers.length);
+  for (const m of [wingMesh, bodyMesh]) {
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false; // flocks span the whole sky; it's 2 draws regardless
+    m.layers.set(1);
+    scene.add(m);
+  }
+  return { flocks, wingMesh, markers, bodyMesh, bodyMarkers };
 }
-// Copy every wing marker's world matrix into the instance buffer (call after all
+// Copy every marker's world matrix into the instance buffers (call after all
 // updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
 // Half-rate: the birds are tiny specks high in the sky — a 30 Hz wing beat is
 // indistinguishable, and it halves the 6 subtree matrix passes + 42 setMatrixAt
@@ -3823,7 +3904,9 @@ function syncBirdWings(birds) {
   if (_wingFlip) return;
   for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
   for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
+  for (let i = 0; i < birds.bodyMarkers.length; i++) birds.bodyMesh.setMatrixAt(i, birds.bodyMarkers[i].matrixWorld);
   birds.wingMesh.instanceMatrix.needsUpdate = true;
+  birds.bodyMesh.instanceMatrix.needsUpdate = true;
 }
 
 function updateFlock(fl, time) {
@@ -3835,7 +3918,10 @@ function updateFlock(fl, time) {
   );
   fl.flock.rotation.y = -a + (fl.speed > 0 ? -Math.PI / 2 : Math.PI / 2); // face travel
   for (const w of fl.wings) {
-    w.wg.rotation.z = w.sx * (0.25 + Math.sin(time * 8 + w.phase) * 0.55);
+    // Negative bias = wings held in a shallow raised V (a corvid's glide);
+    // the flap swings around that. Slightly slower beat than the old sparrow
+    // boxes — ravens row, they don't flutter.
+    w.wg.rotation.x = -w.sx * (0.25 + Math.sin(time * 6.5 + w.phase) * 0.55);
   }
 }
 
@@ -4275,69 +4361,79 @@ function updatePigeons(flock, dt, time, playerPos) {
   }
 }
 
+// One hot-air balloon: a plump teardrop envelope with alternating vertical
+// gores, a skirt at the throat, suspension ropes and a two-tone wicker basket.
+// `paletteIndex` picks the main gore colour. Shared by buildBalloons (the
+// drifting fleet) and the asset viewer.
+const BALLOON_MAINS = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
+let _balloonShared = null;
+function makeBalloon(paletteIndex = 0) {
+  if (!_balloonShared) {
+    _balloonShared = {
+      cream: new THREE.Color(0xfff3dc),
+      // Envelope profile, throat lip -> plump belly -> rounded crown.
+      prof: [
+        [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
+        [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
+      ].map(([r, y]) => new THREE.Vector2(r, y)),
+      skirtMat: new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide }),
+      ropeMat: new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 }),
+      wickMat: new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 }),
+      wickRimMat: new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 }),
+      envMat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }), // colours live in the vertices — one material serves the whole fleet
+    };
+  }
+  const S = _balloonShared;
+  const g = new THREE.Group();
+  const main = new THREE.Color(BALLOON_MAINS[paletteIndex % BALLOON_MAINS.length]);
+  // Crisp gores need per-face colour: un-index the lathe and paint each
+  // triangle by its centroid's longitude — 8 panels alternating main/cream.
+  const geo = new THREE.LatheGeometry(S.prof, 16).toNonIndexed();
+  const pos = geo.getAttribute("position");
+  const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
+  for (let f = 0; f < pos.count; f += 3) {
+    const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
+    const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
+    const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
+    const c = panel % 2 === 0 ? main : S.cream;
+    colAttr.setXYZ(f, c.r, c.g, c.b);
+    colAttr.setXYZ(f + 1, c.r, c.g, c.b);
+    colAttr.setXYZ(f + 2, c.r, c.g, c.b);
+  }
+  geo.setAttribute("color", colAttr);
+  const envelope = new THREE.Mesh(geo, S.envMat);
+  envelope.position.y = 5.2;
+  g.add(envelope);
+
+  // The rigid rig under the envelope — skirt, four ropes, wicker basket with
+  // a darker woven rim — bakes into one merged mesh (one draw per material).
+  const parts = [];
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), S.skirtMat);
+  skirt.position.y = 4.55;
+  parts.push(skirt);
+  const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), S.wickMat);
+  basket.position.y = 1.2;
+  parts.push(basket);
+  const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), S.wickRimMat);
+  rim.position.y = 2.5;
+  parts.push(rim);
+  for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
+    const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
+    const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
+    const dir = b.clone().sub(a);
+    const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), S.ropeMat);
+    rope.position.copy(a).addScaledVector(dir, 0.5);
+    rope.quaternion.setFromUnitVectors(UP_Y, dir.normalize());
+    parts.push(rope);
+  }
+  g.add(mergeMeshes(parts));
+  return g;
+}
+
 function buildBalloons(scene, heightAt) {
-  // Classic illustrated hot-air balloons: a plump teardrop envelope with
-  // alternating vertical gores, a skirt at the throat, suspension ropes and a
-  // two-tone wicker basket (was: a single-colour sphere over a floating cube).
   const balloons = [];
-  const mains = [0xe64a3c, 0x2f8fdd, 0xf2b53a, 0x9c4fc4, 0x4caf50, 0xff8a3c];
-  const cream = new THREE.Color(0xfff3dc);
-  // Envelope profile, throat lip -> plump belly -> rounded crown.
-  const prof = [
-    [2.6, 0], [4.4, 1.5], [6.6, 4.0], [7.8, 7.2], [8.0, 9.6],
-    [7.3, 12.3], [5.4, 14.5], [2.8, 15.8], [0.01, 16.4],
-  ].map(([r, y]) => new THREE.Vector2(r, y));
-  const skirtMat = new THREE.MeshStandardMaterial({ color: 0x54432e, roughness: 0.9, side: THREE.DoubleSide });
-  const ropeMat = new THREE.MeshStandardMaterial({ color: 0x6e5a40, roughness: 0.85 });
-  const wickMat = new THREE.MeshStandardMaterial({ color: 0x9a7440, roughness: 0.95 });
-  const wickRimMat = new THREE.MeshStandardMaterial({ color: 0x77552c, roughness: 0.95 });
-  const envMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }); // colours live in the vertices — one material serves the whole fleet
-  const _up = new THREE.Vector3(0, 1, 0);
   for (let i = 0; i < 6; i++) {
-    const g = new THREE.Group();
-    const main = new THREE.Color(mains[i % mains.length]);
-    // Crisp gores need per-face colour: un-index the lathe and paint each
-    // triangle by its centroid's longitude — 8 panels alternating main/cream.
-    const geo = new THREE.LatheGeometry(prof, 16).toNonIndexed();
-    const pos = geo.getAttribute("position");
-    const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
-    for (let f = 0; f < pos.count; f += 3) {
-      const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
-      const cz = (pos.getZ(f) + pos.getZ(f + 1) + pos.getZ(f + 2)) / 3;
-      const panel = Math.floor((Math.atan2(cz, cx) / (Math.PI * 2) + 1) * 8);
-      const c = panel % 2 === 0 ? main : cream;
-      colAttr.setXYZ(f, c.r, c.g, c.b);
-      colAttr.setXYZ(f + 1, c.r, c.g, c.b);
-      colAttr.setXYZ(f + 2, c.r, c.g, c.b);
-    }
-    geo.setAttribute("color", colAttr);
-    const envelope = new THREE.Mesh(geo, envMat);
-    envelope.position.y = 5.2;
-    g.add(envelope);
-
-    // The rigid rig under the envelope — skirt, four ropes, wicker basket with
-    // a darker woven rim — bakes into one merged mesh (one draw per material).
-    const parts = [];
-    const skirt = new THREE.Mesh(new THREE.CylinderGeometry(2.55, 1.7, 1.5, 10, 1, true), skirtMat);
-    skirt.position.y = 4.55;
-    parts.push(skirt);
-    const basket = new THREE.Mesh(rbox(3.2, 2.4, 3.2, 0.35), wickMat);
-    basket.position.y = 1.2;
-    parts.push(basket);
-    const rim = new THREE.Mesh(rbox(3.5, 0.55, 3.5, 0.2), wickRimMat);
-    rim.position.y = 2.5;
-    parts.push(rim);
-    for (const [sx, sz] of [[1, 1], [1, -1], [-1, 1], [-1, -1]]) {
-      const a = new THREE.Vector3(sx * 1.35, 2.6, sz * 1.35); // rim corner
-      const b = new THREE.Vector3(sx * 1.84, 5.35, sz * 1.84); // throat lip
-      const dir = b.clone().sub(a);
-      const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, dir.length(), 5), ropeMat);
-      rope.position.copy(a).addScaledVector(dir, 0.5);
-      rope.quaternion.setFromUnitVectors(_up, dir.normalize());
-      parts.push(rope);
-    }
-    g.add(mergeMeshes(parts));
-
+    const g = makeBalloon(i);
     const a = rand() * Math.PI * 2;
     const r = 150 + rand() * 300;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
@@ -4348,4 +4444,170 @@ function buildBalloons(scene, heightAt) {
     balloons.push({ mesh: g, baseY: ground + 75 + rand() * 45, phase: rand() * 6.28 });
   }
   return balloons;
+}
+
+// ===========================================================================
+//  Catalog-only makers — art that exists in the world only as instanced/merged
+//  buffers (no per-item group to borrow), rebuilt here as one representative
+//  item from the SAME geometry dimensions and material recipes as the builders
+//  above. If a builder's art changes, change its maker here to match.
+// ===========================================================================
+
+// One street lamp (buildStreetLamps instances post/head/bulb across the map).
+function makeStreetLampAsset(lit = true) {
+  const POST_H = 9;
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.7, metalness: 0.3 });
+  const bulbMat = new THREE.MeshStandardMaterial({
+    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 2.4 : 0.0, roughness: 0.4,
+  });
+  const g = new THREE.Group();
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.4, POST_H, 7), postMat);
+  post.position.y = POST_H / 2;
+  g.add(post);
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.55, 0.7, 8), postMat);
+  head.position.set(0, POST_H + 0.1, 1); // juts toward the road
+  g.add(head);
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), bulbMat);
+  bulb.position.set(0, POST_H - 0.35, 1);
+  g.add(bulb);
+  return g;
+}
+
+// One sky bird in its gliding pose, assembled from the exact geometry the
+// flocks instance (see skyBirdGeos/buildBirds). `color` picks the species —
+// default raven black; pass e.g. 0xe8ecf0 for a gull, 0xb8a8c8 for a dove.
+function makeSkyBirdAsset(color = SKY_BIRD_COLOR) {
+  const { wingGeo, bodyGeo } = skyBirdGeos();
+  const material = skyBirdMaterial(color);
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(bodyGeo, material));
+  for (const sx of [-1, 1]) {
+    const wing = new THREE.Mesh(wingGeo, material);
+    wing.position.z = sx * 0.22;
+    wing.scale.z = sx; // mirror the left wing
+    wing.rotation.x = -sx * 0.25; // gliding V
+    g.add(wing);
+  }
+  return g;
+}
+
+// One cloud (scene.js merges 16 of these puff clusters into a single ring mesh
+// high above the map — see createScene).
+function makeCloudAsset() {
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 });
+  const geos = [];
+  const n = 4;
+  for (let j = 0; j < n; j++) {
+    const geo = new THREE.SphereGeometry(6 + Math.random() * 6, 8, 8);
+    geo.translate((Math.random() - 0.5) * 18, Math.random() * 4, (Math.random() - 0.5) * 10);
+    geos.push(geo);
+  }
+  const m = new THREE.Mesh(mergeGeometries(geos), cloudMat);
+  const g = new THREE.Group();
+  g.add(m);
+  return g;
+}
+
+// One festive string-light span (buildStringLights hangs these over the road
+// as an instanced bulb mesh + swinging line; this is a static short garland).
+function makeStringLightsAsset() {
+  const COLS = [0xff3b30, 0xffd60a, 0x34c759, 0x0a84ff, 0xff9f0a, 0xffffff];
+  const g = new THREE.Group();
+  const postMat = new THREE.MeshStandardMaterial({ color: 0x4a3829, roughness: 0.92 });
+  const span = 16, topY = 8.5, sag = 3.0, per = 12;
+  for (const sx of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.22, topY + 0.3, 8), postMat);
+    post.position.set(sx * span * 0.5, (topY + 0.3) / 2, 0);
+    g.add(post);
+  }
+  const wirePts = [];
+  const bulbGeo = new THREE.SphereGeometry(0.34, 8, 8);
+  for (let k = 0; k <= per; k++) {
+    const t = k / per;
+    const x = -span * 0.5 + span * t;
+    const y = topY - Math.sin(t * Math.PI) * sag;
+    wirePts.push(new THREE.Vector3(x, y, 0));
+    if (k > 0 && k < per) {
+      const bulbMat = new THREE.MeshBasicMaterial({ color: COLS[k % COLS.length], toneMapped: false, fog: false });
+      const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+      bulb.position.set(x, y - 0.3, 0);
+      g.add(bulb);
+    }
+  }
+  const wire = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(wirePts),
+    new THREE.LineBasicMaterial({ color: 0x2a2622, transparent: true, opacity: 0.7 })
+  );
+  g.add(wire);
+  return g;
+}
+
+// ===========================================================================
+//  Asset catalog — the dev asset viewer's window into this module
+// ===========================================================================
+// Every procedural set piece above is module-private (the game only ever wants
+// whole worlds), but the asset viewer (viewer.html) needs to build ONE of each
+// to inspect. This registry wraps the makers with representative default args.
+// Entries are { group, name, build } where build() returns a fresh Object3D;
+// nothing here runs unless the viewer calls it, so the game pays zero cost.
+export function assetCatalog() {
+  const biome = (name) => BIOMES.find((b) => b.name === name) || BIOMES[0];
+  const entries = [];
+  const add = (group, name, build) => entries.push({ group, name, build });
+
+  // Trees per biome silhouette (round/pine/acacia/blossom — the distinct shapes).
+  for (const bn of ["meadow", "forest", "autumn", "blossom", "savanna", "desert"])
+    add("Trees & plants", `Tree — ${bn}`, () => makeTree(biome(bn)));
+  add("Trees & plants", "Bush", () => makeBush());
+  add("Trees & plants", "Cactus", () => makeCactusProp());
+  add("Trees & plants", "Rock", () => makeRockProp());
+
+  add("Animals", "Cow", () => makeCow());
+  add("Animals", "Sheep", () => makeSheep());
+  add("Animals", "Deer", () => makeDeer());
+  add("Animals", "Goat", () => makeGoat());
+  add("Animals", "Crab", () => makeCrab());
+  add("Animals", "Gull", () => makeGull());
+  add("Animals", "Pigeon", () => makePigeon().group); // returns { group, wings }
+  add("Animals", "Duck", () => makeDuck());
+  add("Animals", "Sky bird", () => makeSkyBirdAsset());
+
+  add("Town & farm", "House", () => makeHouse());
+  add("Town & farm", "Building — village", () => makeBuilding(0.4, biome("meadow")));
+  add("Town & farm", "Building — snowy", () => makeBuilding(0.4, biome("alpine")));
+  add("Town & farm", "Church", () => makeChurch());
+  add("Town & farm", "Barn", () => makeBarn());
+  add("Town & farm", "Windmill", () => makeWindmill());
+  add("Town & farm", "Silo", () => makeSilo());
+  add("Town & farm", "Water tower", () => makeWaterTower());
+  add("Town & farm", "Hay bale", () => makeHayBale());
+  add("Town & farm", "Fence", () => makeFence(0xfafafa));
+  add("Town & farm", "Flag", () => makeFlag(3));
+
+  add("City & street", "Tower", () => makeTower(0.8));
+  add("City & street", "City store", () => makeCityStore());
+  add("City & street", "Market stall", () => makeMarketStall());
+  add("City & street", "Planter", () => makePlanter());
+  add("City & street", "Bench", () => makeBench());
+  add("City & street", "Hydrant", () => makeHydrant());
+  add("City & street", "Sign", () => makeSign());
+  add("City & street", "Lamp", () => makeLamp());
+  add("City & street", "Street lamp", () => makeStreetLampAsset());
+  add("City & street", "Traffic light", () => makeTrafficLight());
+  add("City & street", "String lights", () => makeStringLightsAsset());
+  add("City & street", "Billboard", () => makeBillboard(BILLBOARD_SIGNS[0], true));
+  add("City & street", "Parasol", () => makeParasol());
+
+  add("Sky & transit", "Cloud", () => makeCloudAsset());
+  add("Sky & transit", "Hot-air balloon", () => makeBalloon(0));
+  add("Sky & transit", "Sky train", () => makeTrain());
+  add("Sky & transit", "Wind turbine", () => makeWindTurbine().group);
+
+  add("Landmarks", "Lighthouse", () => makeLighthouse());
+  add("Landmarks", "Castle", () => makeCastle());
+  add("Landmarks", "Ferris wheel", () => makeFerrisWheel());
+  add("Landmarks", "Giant cat statue", () => makeGiantCat());
+  add("Landmarks", "Big windmill", () => makeBigWindmill());
+
+  return entries;
 }
