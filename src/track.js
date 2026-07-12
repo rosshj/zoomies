@@ -67,7 +67,7 @@ function _loopOK(pts, minR, xover = null) {
       if (xings.length >= wantX) return false; // unsanctioned / one too many
       const y1 = P[i].y + (P[(i + 1) % S].y - P[i].y) * hit.t;
       const y2 = P[j].y + (P[(j + 1) % S].y - P[j].y) * hit.u;
-      if (Math.abs(y1 - y2) < xover.clear - 2.5) return false; // too flat to bridge
+      if (Math.abs(y1 - y2) < xover.clear - 4) return false; // too flat to bridge
       xings.push({ x: P[i].x + (P[(i + 1) % S].x - P[i].x) * hit.t, z: P[i].z + (P[(i + 1) % S].z - P[i].z) * hit.t });
     }
   }
@@ -130,10 +130,13 @@ function _loopOK(pts, minR, xover = null) {
         // crossing interchange — two same-level strands running parallel at
         // barrier distance (38u+, containment never lets karts meet).
         // Everywhere else the stacked-pass rule applies untouched.
-        if (xings.length && (Math.abs(Q[i].y - Q[j].y) >= 8 || d2 >= SEP_TIGHT * SEP_TIGHT)) {
-          // The 3-loop family's crossings sit close enough that the corridor
-          // BETWEEN adjacent loops needs the same grace as the crossings.
-          const xr = wantX >= 3 ? 150 : 100;
+        if (xings.length && (Math.abs(Q[i].y - Q[j].y) >= 8 || d2 >= 34 * 34)) {
+          // Crossing corridors get grace: right at a crossing the strands
+          // legitimately share plan space with deck clearance, and a loop's
+          // NECK converges in plan and height together as its ramps fade —
+          // at 34u+ that is a paddock-style parallel corridor, not a fold
+          // (terrain blends between strands; karts project height-aware).
+          const xr = 260;
           let nearX = false;
           for (const xg of xings) {
             const ex = Q[i].x - xg.x, ez = Q[i].z - xg.z;
@@ -141,7 +144,8 @@ function _loopOK(pts, minR, xover = null) {
           }
           if (nearX) continue;
         }
-        if (d2 < SEP_TIGHT * SEP_TIGHT || Math.abs(Q[i].y - Q[j].y) < SEP_DY) return false;
+        const sepDy = Math.abs(Q[i].y - Q[j].y);
+        if (d2 < 34 * 34 || (d2 < SEP_TIGHT * SEP_TIGHT ? sepDy < 12 : sepDy < SEP_DY)) return false;
       }
     }
   }
@@ -259,6 +263,12 @@ function planCrossover(cfg) {
     const maxX = size < 0.72 ? 2 : size < 0.85 ? 3 : 4;
     const D = 960;
     let genFallback = null;
+    // ONE direction flavor per seed (drawn before the candidate hunt):
+    // outward candidates fail their checks more often, so redrawing flavor
+    // per candidate let inward survivors replace them — the whole pool
+    // skewed inward AGAIN, one level down from the amplitude bias.
+    const flavorRoll = r();
+    const outwardSeed = flavorRoll < 0.45;
     for (let cand = 0; cand < 60; cand++) {
       // Direction FLAVOR first: loop roundness needs very different
       // amplitudes per rotation direction (counter-rotating/outward loops
@@ -266,18 +276,18 @@ function planCrossover(cfg) {
       // pass the corner check far more often — every accepted map curled
       // inward. The primary epicycle draws inside its order's lab-measured
       // round-loop window; a flavor roll forces outward-led seeds regularly.
-      const K_WIN = { "-3": [0.58, 0.95], "-2": [0.83, 1.0], 2: [0.73, 1.05], 3: [0.53, 1.02], 4: [0.44, 0.85] };
-      const flavor = r();
-      const pool = flavor < 0.42 ? [-3, -2] : flavor < 0.8 ? [2, 3, 4] : r() < 0.5 ? [-3, -2] : [2, 3, 4];
+      const K_WIN = { "-3": [0.58, 0.9], "-2": [0.83, 0.92], 2: [0.73, 1.05], 3: [0.53, 1.02], 4: [0.44, 0.85] };
+      const pool = outwardSeed ? [-3, -2] : [2, 3, 4];
       const k1 = pool[Math.floor(r() * pool.length)];
       const w1 = K_WIN[k1];
       const eps = [{ k: k1, c: w1[0] + r() * (w1[1] - w1[0]), psi: r() * TAU }];
-      if (r() < 0.5) {
+      if (r() < (outwardSeed ? 0.3 : 0.5)) {
         // small secondary perturbation (either direction): asymmetrizes the
-        // layout without minting loops of its own
+        // layout without minting loops of its own; outward petals get less
+        // of it (it muddies the protrusion)
         let k2;
         do { k2 = GEN_KS[Math.floor(r() * GEN_KS.length)]; } while (k2 === k1 || k2 === -4);
-        eps.push({ k: k2, c: 0.08 + r() * 0.18, psi: r() * TAU });
+        eps.push({ k: k2, c: 0.08 + r() * (outwardSeed ? 0.1 : 0.18), psi: r() * TAU });
       }
       const rot = r() * TAU;
       const P = [];
@@ -320,6 +330,30 @@ function planCrossover(cfg) {
         }
       }
       if (minPair < 140) continue;
+      if (outwardSeed) {
+        let protrudes = 0;
+        for (const h of hits) {
+          let tA = h.tA, tB = h.tB;
+          if (tB - tA > Math.PI) { const sw = tA; tA = tB; tB = sw + TAU; }
+          const iA = Math.round((tA / TAU) * D), iB = Math.round((tB / TAU) * D);
+          let apex = 0, shoulder = 0;
+          for (let i = iA; i <= iB; i++) {
+            const q = P[((i % D) + D) % D];
+            apex = Math.max(apex, Math.hypot(q[0], q[1]));
+          }
+          const SH = Math.round((0.6 / TAU) * D);
+          for (let i = iA - SH; i < iA; i++) {
+            const q = P[((i % D) + D) % D];
+            shoulder = Math.max(shoulder, Math.hypot(q[0], q[1]));
+          }
+          for (let i = iB + 1; i <= iB + SH; i++) {
+            const q = P[((i % D) + D) % D];
+            shoulder = Math.max(shoulder, Math.hypot(q[0], q[1]));
+          }
+          if ((apex - shoulder) * scale >= 14) protrudes++;
+        }
+        if (!protrudes) continue; // reads inward — not what this seed is for
+      }
       // -- pre-styling corner radius + wobble envelope (one curvature pass)
       const EW = 96;
       const envW = new Float32Array(EW).fill(1);
@@ -352,7 +386,7 @@ function planCrossover(cfg) {
         minGap = Math.min(minGap, (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU);
         minStart = Math.min(minStart, Math.abs(Math.atan2(Math.sin(passages[i].a), Math.cos(passages[i].a))));
       }
-      if (minGap < 0.2 || minStart < 0.45) continue;
+      if (minGap < 0.17 || minStart < 0.45) continue;
       // greedy over/under: each pair is a free binary choice; walking the lap
       // and alternating whenever a pair is still free keeps ramps sparse.
       const oriented = new Array(hits.length).fill(false);
@@ -382,7 +416,7 @@ function planCrossover(cfg) {
         if (i > 0 && gapPrev > 0.55) cluster++;
         passages[i].cluster = cluster;
         const gapNext = (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU;
-        passages[i].win = Math.min(0.2, Math.max(0.13, 0.38 * Math.min(gapPrev, gapNext)));
+        passages[i].win = Math.min(0.2, Math.max(0.16, 0.38 * Math.min(gapPrev, gapNext)));
       }
       if ((passages[0].a - passages[nP - 1].a + TAU) % TAU <= 0.55) {
         const last = passages[nP - 1].cluster;
@@ -594,8 +628,11 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
         const ew = xo.envW[Math.floor(((a / TAU) % 1) * xo.envW.length) % xo.envW.length];
         // Crossover attempts cap the styling strength: at max curviness the
         // full wobble (radVar ~0.85) overwhelms ANY crossing plan, and the
-        // map's character comes from its loops, not the jitter.
-        const wob = 1 + Math.min(radVar, 0.4) * 0.35 * ew * envP * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
+        // map's character comes from its loops, not the jitter. Wobble also
+        // fades where the base curve dives toward the centre — waist bays
+        // pass close to each other there and grazing them mints crossings.
+        const envC = sm01((Math.hypot(px, pz) / baseR - 0.3) / 0.22);
+        const wob = 1 + Math.min(radVar, 0.4) * 0.35 * ew * envP * envC * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
         const cR = Math.cos(xo.rot), sR = Math.sin(xo.rot);
         x = (px * cR - pz * sR) * wob;
         z = (px * sR + pz * cR) * wob;
