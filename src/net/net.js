@@ -19,13 +19,24 @@
 import { ClockSync } from "./clock.js";
 
 export class Net {
-  constructor(transport, identity, { localNow = () => Date.now() } = {}) {
+  // `timers` is injectable so tests can run the ping burst/re-sync loop on a
+  // virtual clock. Defaults MUST stay arrow wrappers — a bare `setTimeout`
+  // reference throws "Illegal invocation" in Chrome when called unbound.
+  constructor(transport, identity, {
+    localNow = () => Date.now(),
+    timers = {
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      setInterval: (fn, ms) => setInterval(fn, ms),
+      clearInterval: (id) => clearInterval(id),
+    },
+  } = {}) {
     this.transport = transport;
     this.identity = identity; // { name, color, catColor }
     this.id = null;
     this.connected = false;
     this.clock = new ClockSync(localNow);
     this._localNow = localNow;
+    this._timers = timers;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
     this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], finish: [], close: [] };
     this._pingTimer = null;
@@ -158,18 +169,18 @@ export class Net {
   }
   // A quick burst at join nails the clock down fast; then occasional re-syncs.
   _burstPings() {
-    for (let i = 0; i < 4; i++) setTimeout(() => this._ping(), i * 120);
+    for (let i = 0; i < 4; i++) this._timers.setTimeout(() => this._ping(), i * 120);
   }
   _startPing() {
     this._stopPing();
-    this._pingTimer = setInterval(() => {
+    this._pingTimer = this._timers.setInterval(() => {
       this.clock.relaxBestRtt();
       this._ping();
     }, 3000);
   }
   _stopPing() {
     if (this._pingTimer) {
-      clearInterval(this._pingTimer);
+      this._timers.clearInterval(this._pingTimer);
       this._pingTimer = null;
     }
   }
