@@ -10,6 +10,7 @@ import { Net } from "../src/net/net.js";
 import { LoopbackHub } from "../src/net/loopback.js";
 import { SimClock } from "../src/net/sim/sched.js";
 import { makeRng } from "../src/rng.js";
+import { RemotePose, FLAG } from "../src/net/remotepose.js";
 
 let failures = 0;
 const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
@@ -86,6 +87,62 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   const states = gotB.filter((m) => m.type === "state");
   check("state routes peer-to-peer to the other side", states.some((m) => m.x === 42));
   check("no duplicate state (P2P only, no Ably copy)", states.length - beforeStates === 1);
+}
+
+// --- RemotePose golden sequences ---
+// The pure tracker extracted from RemoteKart must reproduce the old inline math
+// exactly. Expected values are transcribed independently from the same formulas
+// (not read back from the implementation), down to float-operation order.
+{
+  const dt = 1 / 60;
+  let wall = 0;
+  const rp = new RemotePose({ now: () => wall });
+
+  check("empty buffer → no frame", rp.sample(1000, dt) === null && rp.ready === false);
+
+  rp.pushState({ t: 1000, x: 0, y: 0, z: 0, h: 0, p: 0, s: 30, f: FLAG.DRIFT | FLAG.BOOST, pr: 0.1 });
+  rp.pushState({ t: 1100, x: 3, y: 0, z: 1, h: 0.2, p: 0, s: 30, f: FLAG.DRIFT, pr: 0.12 });
+  check("progress: latest value wins", rp.totalProgress === 0.12);
+
+  // Midpoint interpolation; the very first frame snaps to the raw sample.
+  const f1 = rp.sample(1050, dt);
+  check("first frame snaps to the raw sample", f1.snapped === true && f1.x === 1.5 && f1.z === 0.5);
+  check("midpoint interpolates heading", Math.abs(f1.h - 0.1) < 1e-12);
+  check("interpolated frames carry no flags (latent quirk, preserved)", f1.f === 0);
+  check("ready after first frame", rp.ready === true);
+
+  // Second frame eases toward the new sample with a = 1 - e^(-dt/0.06).
+  const rawX2 = 0 + (3 - 0) * ((1060 - 1000) / (1100 - 1000));
+  const a = 1 - Math.exp(-dt / 0.06);
+  const exX2 = 1.5 + (rawX2 - 1.5) * a;
+  const f2 = rp.sample(1060, dt);
+  check("render smoothing eases toward the sample", f2.snapped === false && f2.x === exX2);
+
+  // Past the newest snapshot: dead-reckon from heading × speed, capped at 250ms;
+  // the resulting jump is > 6u so the smoother snaps rather than smears.
+  const exX3 = 3 + Math.sin(0.2) * 30 * 0.25;
+  const f3 = rp.sample(1700, dt);
+  check("dead-reckons past newest, capped at 250ms", f3.extrapolated === true && f3.rawX === exX3);
+  check("big correction snaps instead of smearing", f3.snapped === true && f3.x === exX3);
+
+  // Bump: impulse capped at 10 (THREE clampLength float-op order), integrated
+  // for one frame, then faded — all before the 5u safety clamp.
+  const rp2 = new RemotePose({ now: () => 0 });
+  rp2.pushState({ t: 0, x: 0, y: 0, z: 0, h: 0, p: 0, s: 0, f: 0, pr: 0 });
+  rp2.bump(1, 0, 20);
+  let vel = 1 * 20;
+  { const len = Math.sqrt(vel * vel + 0); vel = vel * (1 / (len || 1)) * Math.max(0, Math.min(10, len)); }
+  let off = vel * dt;
+  off *= 1 - Math.min(1, 1.5 * dt);
+  { const len = Math.sqrt(off * off + 0); off = off * (1 / (len || 1)) * Math.max(0, Math.min(5, len)); }
+  const f4 = rp2.sample(0, dt);
+  check("bump capped + integrated (THREE-order float math)", f4.bumpX === off && f4.bumpZ === 0);
+
+  // Staleness: hidden after 2.5s of silence, back the instant data resumes.
+  wall = 3000;
+  check("stale after 2.5s of silence", rp.stale === true && rp.sample(1050, dt) === null);
+  rp.pushState({ t: 1200, x: 4, y: 0, z: 2, h: 0.2, p: 0, s: 30, f: 0, pr: 0.15 });
+  check("reappears on fresh data", rp.stale === false && rp.sample(1150, dt) !== null);
 }
 
 // --- Determinism: a two-client loopback session on a virtual clock ---
