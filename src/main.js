@@ -17,6 +17,7 @@ import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCa
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
+import { ItemManager } from "./items.js";
 import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
@@ -456,7 +457,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
-Object.assign(window.__zoomies, { world, track });
+Object.assign(window.__zoomies, { world, track, items }); // items: headless item-behavior probes
 _boot.world = performance.now();
 
 
@@ -493,17 +494,44 @@ function grantItem(kart) {
 
   const n = Math.max(2, _fieldCount);
   const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
-  const wShield = 0.65 - 0.5 * f; // 0.65 (leader) .. 0.15 (last)
-  const wTri = 0.25 + 0.15 * f;   // 0.25 (leader) .. 0.40 (last)
-  // catnip takes the remainder: 0.10 (leader) .. 0.45 (last)
 
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
+  if (MP.enabled) {
+    // Multiplayer keeps the old networked-safe roster: yarn balls and milk
+    // puddles only simulate locally (no replication protocol yet), so a remote
+    // rival would never see the thing that just spun them out.
+    const wShield = 0.65 - 0.5 * f;
+    const wTri = 0.25 + 0.15 * f;
+    const r = Math.random();
+    if (r < wShield) {
+      kart.giveShield(15);
+      if (kart === player) hud.showToast("🛡️ Shield — 15s!");
+    } else if (r < wShield + wTri) {
+      kart.giveTriShots(3);
+      if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
+    } else {
+      kart.giveCatnip();
+      if (kart === player) hud.showToast("🌿 Catnip boost!");
+    }
+    return true;
+  }
+  // Single-player roster. Catnip is the honest comeback item — STRICTLY never
+  // rolled near the front (it out-runs everything and grants invincibility),
+  // ramping up toward the back. The rest splits between milk (placed trap),
+  // yarn (pressure with counterplay) and the tri-furball fan.
+  const wCat = f < 0.3 ? 0 : 0.45 * ((f - 0.3) / 0.7);
+  const rest = 1 - wCat;
+  const wMilk = rest * 0.35;
+  const wYarn = rest * 0.35;
   const r = Math.random();
-  if (r < wShield) {
-    kart.giveShield(15);
-    if (kart === player) hud.showToast("🛡️ Shield — 15s!");
-  } else if (r < wShield + wTri) {
+  if (r < wMilk) {
+    kart.giveMilk();
+    if (kart === player) hud.showToast("🥛 Milk bottle — drop it behind you!");
+  } else if (r < wMilk + wYarn) {
+    kart.giveYarn();
+    if (kart === player) hud.showToast("🧶 Yarn ball — next shot homes!");
+  } else if (r < wMilk + wYarn + rest * 0.3) {
     kart.giveTriShots(3);
     if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
   } else {
@@ -610,6 +638,7 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 
 const input = new Input();
 const hairballs = new HairballManager(scene);
+const items = new ItemManager(scene, track); // yarn balls + milk puddles
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).
 const _warmPos = new THREE.Vector3();
@@ -622,9 +651,14 @@ const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0
 const boostBtn = document.getElementById("btn-boost");
 const boostFill = document.getElementById("boost-fill");
 const shootBtn = document.getElementById("btn-shoot");
+const milkBtn = document.getElementById("btn-milk");
+const yarnWarnEl = document.getElementById("yarn-warn");
 let _boostPctLast = -1;
 let _boostDisLast = null;
 let _shootDisLast = null;
+let _yarnArmedLast = null;
+let _milkOnLast = null;
+let _yarnWarnLast = null;
 function updateBoostUI() {
   const m = player ? player.boostMeter : 0;
   // Change-gated DOM writes: this runs every racing frame and the values move in
@@ -638,6 +672,18 @@ function updateBoostUI() {
   if (dis !== _boostDisLast) {
     _boostDisLast = dis;
     boostBtn.classList.toggle("disabled", dis); // only fire when full
+  }
+  // Milk bottle button only exists while a bottle is held; the shoot button
+  // shows the yarn while one is armed (it takes over the next shot).
+  const yarnArmed = !!player && player.yarnShots > 0;
+  if (yarnArmed !== _yarnArmedLast) {
+    _yarnArmedLast = yarnArmed;
+    if (shootBtn) shootBtn.textContent = yarnArmed ? "\u{1F9F6}" : "\u{1F43E}";
+  }
+  const milkOn = !!player && player.milkBottles > 0;
+  if (milkOn !== _milkOnLast) {
+    _milkOnLast = milkOn;
+    milkBtn?.classList.toggle("hidden", !milkOn);
   }
   // Dim the shoot button while it's recharging (or locked out after a hit).
   const sd = !!player && player.shootCooldown > 0;
@@ -946,7 +992,7 @@ function initMultiplayer() {
       net.on("hit", (h) => {
         // Only the targeted client reacts; the victim's own shield gets last say.
         if (h.target !== net.id || !player || state !== State.RACING) return;
-        if (player.shielding) return;
+        if (player.shielding || player.catnipBoosting) return; // catnip = invincible
         const dir = new THREE.Vector3(h.hx, 0, h.hz);
         player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
       });
@@ -1554,6 +1600,27 @@ function drawMinimap() {
   for (const g of _miniGlyphs) ctx.fillText(g.glyph, toX(g.x), toY(g.z));
   for (const k of karts) _miniDot(ctx, toX, toY, k);
   if (MP.enabled) for (const r of MP.remotes.values()) _miniDot(ctx, toX, toY, r.kart);
+  // Live yarn balls crawl the map from launch — the EARLY information channel
+  // (the hard "!" ping only lands in the last second).
+  if (items.yarns.length) {
+    ctx.fillStyle = "#ffd54f";
+    for (const y of items.yarns) {
+      ctx.beginPath();
+      ctx.arc(toX(y.mesh.position.x), toY(y.mesh.position.z), 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  // Catnip runners get a pulsing halo: everyone can see the surge coming (and
+  // knows not to waste a shot on an invincible kart).
+  const _cnPulse = 6 + Math.sin(now * 0.014) * 2;
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#7CFC66";
+  for (const k of karts) {
+    if (!k.catnipBoosting || !k.position) continue;
+    ctx.beginPath();
+    ctx.arc(toX(k.position.x), toY(k.position.z), _cnPulse, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 }
 
 // Inverse of the stage transform: viewport point -> stage-local point.
@@ -3650,6 +3717,9 @@ function prepareRace() {
   // the clock has no rivals to use them on, and they'd pollute the ghost lap).
   props?.setItemsEnabled?.(!timeTrial);
   raceTime = 0;
+  items.clear(); // no yarn/puddles carry over between races
+  _yarnWarnLast = null;
+  yarnWarnEl?.classList.add("hidden");
   _furballsArmed = false;
   hud.setShootLock(0); // clear any leftover charge banner from a previous race
   track.raceTime = 0;
@@ -4227,6 +4297,35 @@ const SHOOT_OPENING_LOCKOUT = 15;
 
 // Fire a hairball if allowed (recharge done, not spun out), and start the
 // recharge. Shared by the player and the AI so the rules are identical.
+// Fire whatever the trigger is loaded with: an armed yarn ball takes over the
+// shot slot for one roll, then the button goes back to furballs.
+function fireShot(kart, charge = 0) {
+  if (kart.yarnShots > 0) return fireYarn(kart);
+  return fireHairball(kart, charge);
+}
+
+// Roll a yarn ball at the nearest kart ahead on the lap (it follows the track
+// and homes weakly — see items.js). Same trigger rules as the furball.
+function fireYarn(kart) {
+  if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
+  kart.yarnShots = 0;
+  let target = null;
+  let best = 0.28; // only lock on within a workable window (fraction of a lap)
+  for (const other of karts) {
+    if (other === kart || other.finished) continue;
+    let gap = (other.trackT - kart.trackT) % 1;
+    if (gap < 0) gap += 1;
+    if (gap < best) {
+      best = gap;
+      target = other;
+    }
+  }
+  items.spawnYarn(kart, target);
+  audio.shoot(kart === player ? null : kart.position);
+  kart.shootCooldown = SHOOT_RECHARGE;
+  return true;
+}
+
 function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
   const wasTri = kart.triShots > 0; // capture before spawn() consumes the charge
@@ -4311,13 +4410,62 @@ function aiActions(dt) {
         }
       }
     }
+    // Incoming yarn: the read is ETA-based (slow homing roller, not a straight
+    // shot). Each incoming ball gets ONE plan, decided when it first pings:
+    // hop it at the last beat (free, needs timing — favoured mid-drift where a
+    // shield would forfeit the charge) or shield it (safe, costs pace + slot).
+    const yEta = items.yarnEta(k);
+    if (yEta < 1.0) {
+      if (!k._yarnPlan) {
+        const skill = k.diff ? k.diff.shield : 1;
+        const hopBias = k.drifting && k.driftCharge > 0.8 ? 0.75 : 0.4;
+        k._yarnPlan = Math.random() < skill * hopBias ? 1 : 2; // 1 = hop, 2 = shield
+      }
+      if (k._yarnPlan === 2) threat = true;
+      else if (yEta < 0.34 && !k.airborne && !k.shielding) k.jump(); // clean hop
+    } else {
+      k._yarnPlan = 0;
+    }
     if (threat && !k._threatPrev) {
-      k._shieldTry = Math.random() < k.shieldSkill; // sometimes they just don't react
+      // Sometimes they just don't react — and a charged drift makes shielding
+      // genuinely less attractive (raising it forfeits the mini-turbo).
+      const keepDrift = k.drifting && k.driftCharge > 1.0 ? 0.55 : 1;
+      k._shieldTry = Math.random() < k.shieldSkill * keepDrift;
       k._shieldDelay = 0.18 + Math.random() * 0.32; // human-ish reaction time
     }
     if (threat) k._shieldDelay -= dt;
     k.shielding = threat && k._shieldTry && k._shieldDelay <= 0;
     k._threatPrev = threat;
+
+    // Milk on the line ahead: steer around it; too late and quick enough, hop.
+    const pa = items.puddleAhead(k, 30);
+    if (pa) {
+      let a = Math.atan2(pa.puddle.x - k.position.x, pa.puddle.z - k.position.z) - k.heading;
+      while (a > Math.PI) a -= Math.PI * 2;
+      while (a < -Math.PI) a += Math.PI * 2;
+      if (Math.abs(a) < 0.4) {
+        const skill = k.diff ? k.diff.shield : 1;
+        const dodge = a >= 0 ? -1 : 1; // swerve to the emptier side
+        k.steerInput = Math.max(-1, Math.min(1, k.steerInput + dodge * skill * 0.55));
+        if (pa.dist < 11 && k.speed > 13 && !k.airborne && !k.shielding && Math.random() < skill * 0.06) {
+          k.jump(); // last-ditch hop (skill-gated, so easy AI eats some spills)
+        }
+      }
+    }
+
+    // Carrying a bottle: spill it when a rival is right on our tail.
+    if (k.milkBottles > 0) {
+      for (const other of karts) {
+        if (other === k || other.finished) continue;
+        let gapT = (k.trackT - other.trackT) % 1;
+        if (gapT < 0) gapT += 1;
+        if (gapT < 42 / track.length && Math.random() < 0.035) {
+          k.milkBottles = 0;
+          items.dropMilk(k);
+          break;
+        }
+      }
+    }
 
     // --- Toot boost when full, on a straightish stretch (not mid-shield). ---
     if (k.boostMeter >= 1 && !threat && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
@@ -4328,18 +4476,46 @@ function aiActions(dt) {
       }
     }
 
-    // --- Shoot at a kart ahead, gated by the same recharge as the player. ---
+    // --- Shoot at a kart ahead, gated by the same recharge as the player.
+    // ONE ACTION: never while the shield is up, and pulling the trigger moves
+    // the thumb off jump — the drift releases (keeping its earned boost, same
+    // as the player letting go of jump to shoot). ---
     k._aiShootTimer -= dt;
-    if (k.shootCooldown <= 0 && k._aiShootTimer <= 0) {
+    if (k.shootCooldown <= 0 && k._aiShootTimer <= 0 && !k.shielding) {
       k._aiShootTimer = (1.0 + Math.random() * 2.2) / (k.diff ? k.diff.shoot : 1); // easier = longer gaps
-      for (const other of karts) {
-        if (other === k || other.finished) continue;
-        _aiTo.subVectors(other.position, k.position);
-        const dist = _aiTo.length();
-        if (dist > 3 && dist < 46 && _aiTo.normalize().dot(_aiFwd) > 0.8) {
-          fireHairball(k, Math.random() < 0.4 ? 0.8 : 0); // sometimes a charged shot
-          break;
+      // Don't burn a fat drift charge on a pot-shot; wait for the release.
+      const driftWorth = k.drifting && k.driftCharge > 0.8;
+      if (k.yarnShots > 0 && !driftWorth) {
+        // The yarn homes along the track — any rival in the window is a roll.
+        let gap = 1;
+        for (const other of karts) {
+          if (other === k || other.finished) continue;
+          let g = (other.trackT - k.trackT) % 1;
+          if (g < 0) g += 1;
+          gap = Math.min(gap, g);
         }
+        if (gap < 0.24 && fireShot(k)) k.driftHeld = false;
+      } else if (!driftWorth) {
+        for (const other of karts) {
+          if (other === k || other.finished) continue;
+          _aiTo.subVectors(other.position, k.position);
+          const dist = _aiTo.length();
+          if (dist > 3 && dist < 46 && _aiTo.normalize().dot(_aiFwd) > 0.8) {
+            if (fireShot(k, Math.random() < 0.4 ? 0.8 : 0)) k.driftHeld = false;
+            break;
+          }
+        }
+      }
+    }
+
+    // ONE ACTION AT A TIME, enforced: a raised shield owns the slot. It drops
+    // the drift hold and forfeits any charge — exactly the player's trade.
+    if (k.shielding) {
+      k.driftHeld = false;
+      if (k.drifting) {
+        k.drifting = false;
+        k.driftCharge = 0;
+        k.driftRamp = 0;
       }
     }
   }
@@ -4750,6 +4926,14 @@ function loop(now) {
     input.update(dt);
     player.steerInput = input.steer;
     player.throttleInput = input.throttle;
+    // Raising the shield mid-drift is the one-thumb trade: the drift ends NOW
+    // and its charge is forfeit (no mini-turbo). Letting go of jump to shoot
+    // still releases the drift normally — that path keeps its earned boost.
+    if (input.consumeShieldEngage() && player.drifting) {
+      player.drifting = false;
+      player.driftCharge = 0;
+      player.driftRamp = 0;
+    }
     player.shielding = input.shielding;
     player.driftHeld = input.jumpHeld;
     // Steering dot: skip the style write (string build + composite) when the
@@ -4763,8 +4947,13 @@ function loop(now) {
     if (input.shootHeld && player.shootCooldown <= 0)
       player.shootCharge = Math.min(player.shootCharge + dt / SHOOT_CHARGE_TIME, 1);
     if (input.consumeShootRelease()) {
-      fireHairball(player, player.shootCharge);
+      fireShot(player, player.shootCharge);
       player.shootCharge = 0;
+    }
+    if (input.consumeMilk() && player.milkBottles > 0 && player.spinTimer <= 0) {
+      player.milkBottles = 0;
+      items.dropMilk(player);
+      hud.showToast("🥛 Spilled!");
     }
     if (input.consumeBoost() && player.boostMeter >= 1) {
       if (player.tootBoost()) {
@@ -4848,6 +5037,18 @@ function loop(now) {
           }
         : null
     );
+    // Yarn balls + milk puddles (local karts only; no MP replication yet).
+    items.update(dt, karts, {
+      onYarnHit: (k) => {
+        effects.tootBurst(k, 2, false);
+        audio.shoot(k === player ? null : k.position);
+      },
+      onYarnBlocked: (k) => effects.tootBurst(k, 1, false),
+      onMilkHit: (k) => {
+        effects.tootBurst(k, 2, false);
+        audio.shoot(k === player ? null : k.position);
+      },
+    });
     // Sparks where a kart scraped a railing; skid marks while spinning out;
     // a charge-coloured cloud puff when a drift boost is released.
     for (const k of karts) {
@@ -4978,7 +5179,15 @@ function loop(now) {
     _hudOpts.speedKmh = Math.abs(player.speed) * 3.0;
     _hudOpts.time = timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
     hud.update(_hudOpts);
-    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer);
+    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles);
+    // Incoming-yarn ping: only lights inside the ~1s reaction window — early
+    // enough to defend on a read, late enough that pre-arming a shield costs.
+    const _yEta = items.yarnEta(player);
+    const _yWarn = _yEta < 1.15;
+    if (_yWarn !== _yarnWarnLast) {
+      _yarnWarnLast = _yWarn;
+      yarnWarnEl?.classList.toggle("hidden", !_yWarn);
+    }
 
     // Opening furball grace: count down the charge, then announce "armed". Skipped
     // in time trial (there's no one to shoot).

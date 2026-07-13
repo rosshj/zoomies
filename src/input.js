@@ -11,7 +11,9 @@ export class Input {
     this.shootHeld = false; // shoot button held (charging)
     this._shootRelease = false; // a press→release happened (fire request)
     this._boostQueued = false;
+    this._milkQueued = false;
     this.shielding = false; // held, not queued
+    this._shieldEngaged = false; // rising edge (drift-forfeit signal)
     this.jumpHeld = false; // held — sustains a drift
 
     this._g = null; // last gravity vector (for the tilt-debug readout)
@@ -204,10 +206,30 @@ export class Input {
     zone.addEventListener("pointercancel", end);
   }
 
+  // ONE ACTION AT A TIME: the right thumb can only physically press one button,
+  // so the inputs enforce it — engaging any action releases every other held
+  // one. That single rule IS the risk/reward system: let go of the shield to
+  // shoot or hop, give up the drift (jump-hold) to defend. A shoot-charge
+  // interrupted by another press cancels WITHOUT firing (the thumb slid off).
+  _releaseOthers(except) {
+    if (except !== "jump" && this.jumpHeld) this.jumpHeld = false;
+    if (except !== "shoot" && this.shootHeld) {
+      this.shootHeld = false; // cancelled, not fired
+      this._shootBtn?.classList.remove("charging");
+    }
+    if (except !== "shield" && this.shielding) {
+      this.shielding = false;
+      this._shieldBtn?.classList.remove("active");
+    }
+  }
+
   _bindTapZones() {
     const jump = document.getElementById("btn-jump");
     const shoot = document.getElementById("btn-shoot");
     const boost = document.getElementById("btn-boost");
+    const milk = document.getElementById("btn-milk");
+    this._shootBtn = shoot;
+    this._shieldBtn = document.getElementById("btn-shield");
 
     const flash = (el) => {
       el.classList.add("flash");
@@ -217,6 +239,7 @@ export class Input {
     if (jump) {
       jump.addEventListener("pointerdown", (e) => {
         e.preventDefault();
+        this._releaseOthers("jump");
         this._jumpQueued = true;
         this.jumpHeld = true;
         jump.setPointerCapture(e.pointerId);
@@ -231,6 +254,7 @@ export class Input {
       // just a tiny hold, so it fires a normal shot.
       const press = (e) => {
         e.preventDefault();
+        this._releaseOthers("shoot");
         this.shootHeld = true;
         shoot.setPointerCapture?.(e.pointerId);
         shoot.classList.add("charging");
@@ -249,16 +273,26 @@ export class Input {
       boost.addEventListener("pointerdown", (e) => {
         e.preventDefault();
         if (boost.classList.contains("disabled")) return;
+        this._releaseOthers(null); // a tap still moves the thumb
         this._boostQueued = true;
         flash(boost);
       });
+    if (milk)
+      milk.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        this._releaseOthers(null);
+        this._milkQueued = true;
+        flash(milk);
+      });
 
     // Shield: held (press and hold to stay protected).
-    const shield = document.getElementById("btn-shield");
+    const shield = this._shieldBtn;
     if (shield) {
       const on = (e) => {
         e.preventDefault();
+        this._releaseOthers("shield");
         this.shielding = true;
+        this._shieldEngaged = true;
         shield.classList.add("active");
         shield.setPointerCapture(e.pointerId);
       };
@@ -277,12 +311,27 @@ export class Input {
       if (e.repeat) return;
       this._keys[e.code] = true;
       if (e.code === "Space") {
+        this._releaseOthers("jump");
         this._jumpQueued = true;
         this.jumpHeld = true;
       }
-      if (e.code === "KeyF") this.shootHeld = true; // hold to charge
-      if (e.code === "KeyB") this._boostQueued = true;
-      if (e.code === "ShiftLeft" || e.code === "ShiftRight") this.shielding = true;
+      if (e.code === "KeyF") {
+        this._releaseOthers("shoot");
+        this.shootHeld = true; // hold to charge
+      }
+      if (e.code === "KeyB") {
+        this._releaseOthers(null);
+        this._boostQueued = true;
+      }
+      if (e.code === "KeyM") {
+        this._releaseOthers(null);
+        this._milkQueued = true;
+      }
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        this._releaseOthers("shield");
+        this.shielding = true;
+        this._shieldEngaged = true;
+      }
     });
     window.addEventListener("keyup", (e) => {
       this._keys[e.code] = false;
@@ -357,5 +406,19 @@ export class Input {
     const b = this._boostQueued;
     this._boostQueued = false;
     return b;
+  }
+
+  consumeMilk() {
+    const m = this._milkQueued;
+    this._milkQueued = false;
+    return m;
+  }
+
+  // True once when the shield was just engaged (rising edge). Raising the
+  // shield mid-drift forfeits the drift's charge — the caller needs the edge.
+  consumeShieldEngage() {
+    const s = this._shieldEngaged;
+    this._shieldEngaged = false;
+    return s;
   }
 }

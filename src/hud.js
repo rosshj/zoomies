@@ -10,6 +10,8 @@ export class HUD {
     this.puShield = document.getElementById("pu-shield");
     this.puTri = document.getElementById("pu-tri");
     this.puCatnip = document.getElementById("pu-catnip");
+    this.puYarn = document.getElementById("pu-yarn");
+    this.puMilk = document.getElementById("pu-milk");
     this.shootLock = document.getElementById("shoot-lock");
     this._shootLockText = this.shootLock?.querySelector(".sl-text");
   }
@@ -29,10 +31,12 @@ export class HUD {
   // Reflect the player's active item-box power-ups as top-left pills. Timed ones
   // (shield / catnip) show whole seconds remaining and blink in the last 3s; the
   // tri-furball shows how many fan-shots are left.
-  setPowerups(shieldT, triN, catnipT) {
+  setPowerups(shieldT, triN, catnipT, yarnN = 0, milkN = 0) {
     this._pu(this.puShield, shieldT > 0, Math.ceil(shieldT) + "s", shieldT > 0 && shieldT <= 3);
     this._pu(this.puTri, triN > 0, "×" + triN, false);
     this._pu(this.puCatnip, catnipT > 0, Math.ceil(catnipT) + "s", catnipT > 0 && catnipT <= 3);
+    this._pu(this.puYarn, yarnN > 0, "×" + yarnN, false);
+    this._pu(this.puMilk, milkN > 0, "×" + milkN, false);
   }
 
   _pu(el, on, text, expiring) {

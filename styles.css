@@ -1633,6 +1633,37 @@ kbd {
   background: linear-gradient(0deg, #5a6a4a, #7a8a6a);
 }
 
+#btn-milk {
+  right: 178px;
+  bottom: 30px;
+  background: rgba(240, 244, 248, 0.55);
+  border-color: rgba(255, 255, 255, 0.8);
+}
+#btn-milk.hidden { display: none; }
+
+/* Incoming-yarn ping: a brief, urgent pulse at the top centre. */
+#yarn-warn {
+  position: absolute;
+  top: max(54px, calc(var(--safe-top, 0px) + 44px));
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 30px;
+  padding: 4px 14px;
+  border-radius: var(--pill);
+  background: rgba(200, 40, 50, 0.78);
+  border: 2px solid rgba(255, 160, 160, 0.9);
+  color: #fff;
+  pointer-events: none;
+  z-index: 30;
+  animation: yarn-pulse 0.5s ease-in-out infinite;
+}
+#yarn-warn.hidden { display: none; }
+#yarn-warn .yw-mark { font-weight: 800; margin-left: 4px; }
+@keyframes yarn-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.18); }
+}
+
 .action-btn.flash {
   transform: scale(0.9);
   background: var(--accent);
