@@ -158,7 +158,10 @@ export class Kart {
     this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
     this.shieldTimer = 0; // item-box shield: hands-free protection (no button held)
     this.triShots = 0; // item-box tri-furball: this many upcoming shots fire a wide 3-way fan
+    this.yarnShots = 0; // item-box yarn ball: next shot rolls a homing yarn instead of a furball
+    this.milkBottles = 0; // item-box spilled milk: bottles ready to drop behind
     this.boxCooldown = 0; // brief lockout after grabbing a power-up box (no vacuuming)
+    this.driftRamp = 0; // sustained-drift speed bonus (0..0.05 of top speed)
 
     // Lap tracking
     this.lap = -1; // becomes 0 when crossing start line the first time
@@ -332,16 +335,28 @@ export class Kart {
     if (this.finished) return;
     this.triShots = Math.max(this.triShots, n);
   }
+  // Item-box yarn ball: the next shot rolls a track-following yarn instead.
+  giveYarn() {
+    if (this.finished) return;
+    this.yarnShots = 1;
+  }
+  // Item-box spilled milk: one bottle, dropped behind on demand.
+  giveMilk() {
+    if (this.finished) return;
+    this.milkBottles = 1;
+  }
 
   // Spin out — keep the kart's momentum so it slides out realistically and
   // the spin decays, rather than whipping around in place. `impactDir` (xz)
   // adds a modest shove from the hit.
   spinOut(impactDir = null) {
     if (this.spinTimer > 0) return;
+    if (this.catnipBoosting) return; // catnip = invincible: nothing stops the zoom
     this.spinTimer = 1.4;
     // Can't fire back for a couple of seconds after taking a hairball.
     this.shootCooldown = Math.max(this.shootCooldown, 2.0);
     this.driftHeld = false;
+    this.driftRamp = 0;
     this.spinDir = Math.random() < 0.5 ? -1 : 1;
     this.spinAngVel = this.spinDir * (4.5 + Math.random() * 1.5);
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
@@ -384,9 +399,11 @@ export class Kart {
     if (this.boostTimer > 0) this.boostTimer -= dt;
     this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
     // Catnip keeps the boost topped up (so `boosting` stays true) for its duration.
+    // 1.75x: STRICTLY the fastest thing in the game (toot 1.6x, max drift-release
+    // 1.5x) — it's the honest comeback item, so it must actually out-run everyone.
     if (this.catnipTimer > 0) {
       this.catnipTimer -= dt;
-      this.applyBoost(1.5, 0.18, true);
+      this.applyBoost(1.75, 0.18, true);
     }
     // Item-box shield: force the bubble on for the duration, whatever the button
     // says. Runs after the input/AI assignment of `shielding` so it can't be
@@ -445,9 +462,17 @@ export class Kart {
     // Clamp: boosting allows exceeding the normal top speed; afterwards the
     // extra speed bleeds off gradually rather than snapping down. Descents
     // raise the ceiling (up to +25%) so a long downhill genuinely runs away.
-    const upper = boosting
+    let upper = boosting
       ? this.boostSpeed
       : this.maxSpeed * (1 + Math.max(0, Math.sin(this.slopePitch)) * 0.25);
+    // Sustained-drift ramp: committing to a long slide earns a LITTLE pace on
+    // top (accrued below, only while genuinely cornering — see the drift
+    // steering block), capped at +5%. It rides the ceiling so it fades with
+    // the drift instead of snapping.
+    if (this.driftRamp > 0) upper *= 1 + this.driftRamp;
+    // A raised shield drags: ~4% off the top while it's up. Defense occupies
+    // the action slot AND costs pace — that's the whole trade.
+    if (this.shielding && !boosting) upper *= 0.96;
     if (this.speed > upper) {
       this.speed = boosting ? upper : Math.max(upper, this.speed - 26 * dt);
     }
@@ -486,6 +511,19 @@ export class Kart {
       const rel = this.steerInput * this.driftDir; // +1 into, -1 counter
       const amount = Math.max(-0.4, 0.2 + rel * 0.7);
       steer = this.driftDir * amount;
+      // Drift speed ramp: ~+1% per half second of REAL cornering, capped +5%.
+      // `amount` only stays high while the slide is actually arcing — hold a
+      // "drift" straight down the road (or snake it) and it sits near the 0.2
+      // idle pull, so the ramp decays instead of accruing. No free speed.
+      if (amount >= 0.35 && Math.abs(this.speed) > 10) {
+        this.driftRamp = Math.min(0.05, this.driftRamp + 0.02 * dt);
+      } else {
+        this.driftRamp = Math.max(0, this.driftRamp - 0.1 * dt);
+      }
+    } else if (this.driftRamp > 0) {
+      // Out of the drift the earned pace evaporates fast (the release boost
+      // is the payoff for a clean exit, not a lingering ramp).
+      this.driftRamp = Math.max(0, this.driftRamp - 0.2 * dt);
     }
     // Catnip is fast, which makes tight corners hard — give it extra steering
     // authority so it stays controllable through bends.
@@ -532,6 +570,7 @@ export class Kart {
       if (this.drifting) {
         this.drifting = false;
         this.driftCharge = 0;
+        this.driftRamp = 0;
       }
       if (Math.abs(this.speed) > 6) {
         this.wallHit = true;
