@@ -20,7 +20,7 @@ const _tan = new THREE.Vector3();
 const _side = new THREE.Vector3();
 
 const YARN_LIFE = 12; // seconds before an unspent ball unravels
-const YARN_HOME_RATE = 6; // u/s of lateral pull — beatable by a hard late juke
+const YARN_HOME_RATE = 9; // u/s of lateral pull — beatable only by a hard LATE juke
 const MILK_LIFE = 30; // unhit puddles dry up eventually
 const MILK_GRACE = 1.5; // the dropper can't hit their own bottle immediately
 
@@ -84,7 +84,10 @@ export class ItemManager {
       mesh: ball,
       t: proj.t,
       lat: Math.max(-8, Math.min(8, proj.lateral)),
-      speed: Math.max(36, Math.min(48, Math.abs(owner.speed) + 14)),
+      // Properly quick: it RUNS DOWN a fleeing kart (top speed ~34, boosts to
+      // ~54) instead of fizzling behind one. The defense is the read — shield,
+      // late juke, or hop — not the throttle.
+      speed: Math.max(58, Math.min(72, Math.abs(owner.speed) + 26)),
       owner,
       target: target || null,
       life: YARN_LIFE,
@@ -189,6 +192,7 @@ export class ItemManager {
       y.roll += (y.speed * dt) / 0.62;
       y.mesh.rotation.set(0, Math.atan2(_tan.x, _tan.z), 0);
       y.mesh.rotateX(y.roll);
+      if (callbacks.onYarnMove) callbacks.onYarnMove(y); // dust trail hook
 
       // Contact test against every live kart near its arc position.
       let dead = false;

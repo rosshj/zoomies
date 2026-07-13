@@ -4321,10 +4321,16 @@ function fireYarn(kart) {
     }
   }
   items.spawnYarn(kart, target);
+  effects.tootBurst(kart, 1.4, false); // launch kick: the ball leaves in a puff
   audio.shoot(kart === player ? null : kart.position);
   kart.shootCooldown = SHOOT_RECHARGE;
   return true;
 }
+
+// Shim + colour for the yarn's rolling dust plume (effects.dust wants a
+// kart-shaped record; one reused object, zero per-frame allocation).
+const _yarnShim = { position: null, heading: 0, groundY: 0 };
+const _yarnDustCol = new THREE.Color(0xd9b6a0);
 
 function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
@@ -5039,6 +5045,13 @@ function loop(now) {
     );
     // Yarn balls + milk puddles (local karts only; no MP replication yet).
     items.update(dt, karts, {
+      onYarnMove: (y) => {
+        // Rolling dust plume so the ball reads as a THREAT bearing down.
+        _yarnShim.position = y.mesh.position;
+        _yarnShim.heading = y.mesh.rotation.y;
+        _yarnShim.groundY = y.mesh.position.y - 0.55;
+        effects.dust(_yarnShim, _yarnDustCol, 0.9);
+      },
       onYarnHit: (k) => {
         effects.tootBurst(k, 2, false);
         audio.shoot(k === player ? null : k.position);
