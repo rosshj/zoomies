@@ -431,9 +431,23 @@ export class Kart {
       if (Math.abs(this.speed) < 0.05) this.speed = 0;
     }
 
+    // Grade: hills cost speed on the way up and hand it back on the way down,
+    // so elevation reads as EFFORT — the climb is a fight, the descent a rush.
+    // slopePitch is negative climbing (atan2(rearY - frontY, wheelbase) in
+    // _integrate), so sin(pitch) is the signed along-track gravity component;
+    // ~17 u/s² at 90° ≈ a bit over half true gravity feel — felt, not punishing
+    // (full accel still out-pulls any climb the generator makes). A small
+    // stationary deadband acts as the parking brake: a kart idling on a slope
+    // (the start grid, a spun-out AI) doesn't creep backwards downhill.
+    const _grade = Math.sin(this.slopePitch) * 17;
+    if (Math.abs(this.speed) > 1.5 || Math.abs(th) > 0.05 || boosting) this.speed += _grade * dt;
+
     // Clamp: boosting allows exceeding the normal top speed; afterwards the
-    // extra speed bleeds off gradually rather than snapping down.
-    const upper = boosting ? this.boostSpeed : this.maxSpeed;
+    // extra speed bleeds off gradually rather than snapping down. Descents
+    // raise the ceiling (up to +25%) so a long downhill genuinely runs away.
+    const upper = boosting
+      ? this.boostSpeed
+      : this.maxSpeed * (1 + Math.max(0, Math.sin(this.slopePitch)) * 0.25);
     if (this.speed > upper) {
       this.speed = boosting ? upper : Math.max(upper, this.speed - 26 * dt);
     }
@@ -723,6 +737,13 @@ export class Kart {
         const d = Math.hypot(dx, dz);
         if (d < 3 || d > bestD) continue;
         if ((dx * fwx + dz * fwz) / d < 0.25) continue; // must be roughly ahead, not behind
+        // Self-crossing maps put OTHER strands of the road within seek range:
+        // a box on the deck overhead (or across the barrier at a loop neck)
+        // reads as "20u ahead" in 2D forever, and every kart chasing it parks
+        // nose-first against the wall. It must be at our level AND near our
+        // own forward corridor to count.
+        if (cn.y !== undefined && Math.abs(cn.y - this.position.y) > 6) continue;
+        if (Math.abs(dx * fwz - dz * fwx) > track.halfWidth + 4 + d * 0.22) continue;
         bestD = d; best = cn;
       }
       if (best) {
@@ -744,6 +765,15 @@ export class Kart {
       sharp > 0.6 ? 0.34 : 0.55,
       1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45)
     );
+    // Grade compensation: a max-grade climb drags ~0.35 of full accel, which
+    // eats the sharp-corner throttle floor almost exactly — the kart stalls,
+    // trips stuck-recovery, reverses back down the ramp and loops forever
+    // ("stuck on the road, still steering"). Uphill (negative slopePitch),
+    // raise the floor so there is always real headroom over the drag.
+    if (this.slopePitch < -0.04) {
+      const need = (-Math.sin(this.slopePitch) * 17) / this.accel + 0.3;
+      this.throttleInput = Math.max(this.throttleInput, Math.min(1, need));
+    }
 
     // Drift through sweeping corners and HOLD it well into the exit for a long
     // charge (bigger boost). Hysteresis: start only on a real sweeper, but once

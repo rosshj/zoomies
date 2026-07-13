@@ -188,7 +188,9 @@ export function createScene() {
     // distant sky and never clip the track (the alpine hill rises high).
     const a = Math.random() * Math.PI * 2;
     const r = 520 + Math.random() * 440;
-    const cx = Math.cos(a) * r, cy = 150 + Math.random() * 90, cz = Math.sin(a) * r;
+    // High band: big maps climb past 250u mid-map now, and a cloud UNDER the
+    // road reads as a rendering bug rather than sky.
+    const cx = Math.cos(a) * r, cy = 310 + Math.random() * 120, cz = Math.sin(a) * r;
     const s = 1.6 + Math.random() * 1.2; // bigger since they're farther
     const geo = cloudClusterGeo();
     geo.rotateY(Math.random() * Math.PI * 2); // plumes drift every which way

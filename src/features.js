@@ -50,7 +50,13 @@ const smooth01 = (t) => {
 // (only kinds whose WATER carve can't locally yield need it).
 const KIND_SPECS = [
   { kind: "causeway", biomes: ["beach"], halfFrac: 0.026, flatW: 3.2, curvW: 150, clearR: 68 },
-  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.024, flatW: 1.4, curvW: 240 },
+  // Tunnels run LONG now (a proper underground stretch, ~3.5% of the lap each
+  // way) and fall back to shorter arcs when a seed can't place the long one —
+  // better a classic tunnel than none.
+  // clearR: the tube shell reaches halfWidth+2.6 out and 15 up — taller than a
+  // crossover deck's clearance — so no other pass of the lap may come near the
+  // arc at all, or the arch pokes up through the road running above it.
+  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
   { kind: "dam", biomes: ["alpine", "forest"], halfFrac: 0.024, flatW: 3.2, curvW: 170, clearR: 72 },
   { kind: "overpass", biomes: ["city"], halfFrac: 0.038, flatW: 2.6, curvW: 120 },
   { kind: "canyon", biomes: ["desert", "alpine", "tundra"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
@@ -135,6 +141,7 @@ function makeRun(track, kind, c, half) {
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
+const _pv3 = new THREE.Vector3(); // scratch for road-surface probes
 function sideAt(track, i) {
   const N = track.samples;
   return new THREE.Vector3().crossVectors(track._tans[((i % N) + N) % N], _up).normalize();
@@ -160,52 +167,69 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
     return taken.some((t) => loopDist(c, t.c, N) < t.half + half + Math.round(0.03 * N));
   };
 
+  // The crossover deck is STRUCTURAL, not a set-piece chip: if the generator
+  // built a self-crossing lap, the upper strand must always get its bridge.
+  // Registered first so every other feature plans around it.
+  for (const xg of track.crossovers || []) {
+    const halfX = Math.max(4, Math.round((80 / track.length) * N));
+    const run = makeRun(track, "crossover", xg.iUp, halfX);
+    run.lowY = pts[((xg.iLow % N) + N) % N].y; // terrain pin level
+    feats.runs.push(run);
+    taken.push({ c: run.c, half: halfX + 8 });
+  }
+
   for (const spec of KIND_SPECS) {
     if (!allow.has(spec.kind)) continue;
-    const half = Math.round(spec.halfFrac * N);
-    // Score every viable arc, then take the best that passes the (rarely
-    // needed) water-clearance check — so a blocked best falls to second-best
-    // instead of dropping the feature.
-    const cands = [];
-    for (let c = 0; c < N; c += 5) {
-      if (overlapsTaken(c, half)) continue;
-      let hits = 0, total = 0;
-      for (let i = c - half; i <= c + half; i += 4) {
-        total++;
-        if (spec.biomes.includes(biomeNames[((i % N) + N) % N])) hits++;
-      }
-      if (hits < total * 0.86) continue;
-      let mn = Infinity, mx = -Infinity, curv = 0;
-      for (let i = c - half; i <= c + half; i += 2) {
-        const idx = ((i % N) + N) % N;
-        const y = pts[idx].y;
-        if (y < mn) mn = y;
-        if (y > mx) mx = y;
-        const t0 = tans[idx];
-        const t1 = tans[(idx + 2) % N];
-        let d = Math.atan2(t1.x, t1.z) - Math.atan2(t0.x, t0.z);
-        while (d > Math.PI) d -= TAU;
-        while (d < -Math.PI) d += TAU;
-        curv += Math.abs(d);
-      }
-      cands.push({ c, score: (mx - mn) * spec.flatW + curv * spec.curvW + rng() * 6 });
-    }
-    cands.sort((a, b) => a.score - b.score);
-
-    let run = null;
-    for (const cand of cands) {
-      const r = makeRun(track, spec.kind, cand.c, half);
-      if (spec.clearR) {
-        // Water carves can't yield locally, so the whole arc must be clear of
-        // genuinely-OTHER passes (othersW exempts the run's own continuation).
-        let ok = true;
-        for (let i = 0; i < r.spine.length && ok; i += 2) {
-          if (otherRoadDist(r.othersW, r.spine[i].x, r.spine[i].z) < spec.clearR + track.halfWidth) ok = false;
+    // A spec may list fallback lengths: try the full-length arc first, then
+    // progressively shorter ones, so a long set piece degrades to a shorter
+    // one on cramped seeds instead of vanishing.
+    let run = null, half = 0;
+    for (const frac of [spec.halfFrac, ...(spec.fallbacks || [])]) {
+      half = Math.round(frac * N);
+      // Score every viable arc, then take the best that passes the (rarely
+      // needed) water-clearance check — so a blocked best falls to second-best
+      // instead of dropping the feature.
+      const cands = [];
+      for (let c = 0; c < N; c += 5) {
+        if (overlapsTaken(c, half)) continue;
+        let hits = 0, total = 0;
+        for (let i = c - half; i <= c + half; i += 4) {
+          total++;
+          if (spec.biomes.includes(biomeNames[((i % N) + N) % N])) hits++;
         }
-        if (!ok) continue;
+        if (hits < total * 0.86) continue;
+        let mn = Infinity, mx = -Infinity, curv = 0;
+        for (let i = c - half; i <= c + half; i += 2) {
+          const idx = ((i % N) + N) % N;
+          const y = pts[idx].y;
+          if (y < mn) mn = y;
+          if (y > mx) mx = y;
+          const t0 = tans[idx];
+          const t1 = tans[(idx + 2) % N];
+          let d = Math.atan2(t1.x, t1.z) - Math.atan2(t0.x, t0.z);
+          while (d > Math.PI) d -= TAU;
+          while (d < -Math.PI) d += TAU;
+          curv += Math.abs(d);
+        }
+        cands.push({ c, score: (mx - mn) * spec.flatW + curv * spec.curvW + rng() * 6 });
       }
-      run = r;
-      break;
+      cands.sort((a, b) => a.score - b.score);
+
+      for (const cand of cands) {
+        const r = makeRun(track, spec.kind, cand.c, half);
+        if (spec.clearR) {
+          // Water carves can't yield locally, so the whole arc must be clear of
+          // genuinely-OTHER passes (othersW exempts the run's own continuation).
+          let ok = true;
+          for (let i = 0; i < r.spine.length && ok; i += 2) {
+            if (otherRoadDist(r.othersW, r.spine[i].x, r.spine[i].z) < spec.clearR + track.halfWidth) ok = false;
+          }
+          if (!ok) continue;
+        }
+        run = r;
+        break;
+      }
+      if (run) break;
     }
     if (!run) continue;
 
@@ -258,6 +282,9 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       const river = makeRiver(track, run, rng);
       if (!river) continue;
       feats.river = river;
+      // Visual variant per seed: the plain girder deck, a suspension span with
+      // towers + catenary cables, a covered wooden bridge, or stone arches.
+      run.bridgeVariant = ["girder", "suspension", "covered", "arch"][Math.floor(rng() * 4)];
     }
     taken.push({ c: run.c, half });
     feats.runs.push(run);
@@ -462,7 +489,7 @@ function runNear(run, x, z, pad) {
 
 // How far each kind's terrain field reaches from the spine (see the matching
 // bands in featureHeightMod). Kinds without a field never touch the terrain.
-const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150 };
+const FIELD_REACH = { canyon: 132, tunnel: 112, overpass: 74, shelf: 130, dam: 150, crossover: 96 };
 
 // Terrain fields: canyon walls up, overpass/dam/shelf sinks down, tunnel ridge
 // over the road. All fade along the run and across distance bands, and yield
@@ -525,6 +552,21 @@ export function featureHeightMod(feats, x, z, h) {
       if (t <= 0) continue;
       const sunk = s.y - run.depth;
       h += (Math.min(h, sunk) - h) * t;
+    } else if (run.kind === "crossover") {
+      // Under the deck, terrain pins DOWN to the lower road's level: the
+      // upper strand's samples are excluded from terrain anchoring (see
+      // groundInfoTerrain), and this field cuts the leftover approach
+      // shoulders so the bridge spans a clean gap instead of a dirt ridge.
+      // WIDE, soft falloff — a tight field left near-vertical pit walls
+      // where the pin met high surrounding ground (ugly cliff faces with
+      // baked tree shadows smeared down them).
+      const s = spineDist(run.spine, x, z);
+      if (s.u < 0 || s.d > 96) continue;
+      const endW = smooth01(s.u / 0.22) * smooth01((1 - s.u) / 0.22);
+      const t = (1 - smooth01((s.d - 20) / 72)) * endW;
+      if (t <= 0) continue;
+      const sunk = run.lowY - 0.4;
+      h += (Math.min(h, sunk) - h) * t;
     } else if (run.kind === "shelf" || run.kind === "dam") {
       // Sink ONE side (shelf: the infield drop; dam: the valley below the
       // wall). The shelf also raises a wall on its other side.
@@ -585,6 +627,7 @@ export function featureKeepClear(feats, x, z) {
       : run.kind === "arches" ? 40
       : run.kind === "flowers" ? 70
       : run.kind === "bridge" ? 34
+      : run.kind === "crossover" ? 44
       : 0;
     if (R && runNear(run, x, z, R)) {
       const s = spineDist(run.spine, x, z);
@@ -605,7 +648,7 @@ export function featureKeepClear(feats, x, z) {
 
 // Overhead spans (street banners, wooden footbridges) and street lamps stay
 // out of runs that carry their own structure overhead or ride a deck.
-const SPAN_BLOCK = new Set(["tunnel", "bridge", "overpass", "dam", "causeway", "arches", "rail"]);
+const SPAN_BLOCK = new Set(["tunnel", "bridge", "overpass", "dam", "causeway", "arches", "rail", "crossover"]);
 export function featureSpanBlock(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
@@ -621,8 +664,8 @@ export function featureSpanBlock(feats, x, z) {
 export function featureTreeBlock(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
-    if (run.kind !== "canyon" && run.kind !== "shelf" && run.kind !== "tunnel") continue;
-    const band = run.halfWidth + (run.kind === "tunnel" ? 34 : 58);
+    if (run.kind !== "canyon" && run.kind !== "shelf" && run.kind !== "tunnel" && run.kind !== "crossover") continue;
+    const band = run.halfWidth + (run.kind === "tunnel" ? 34 : run.kind === "crossover" ? 30 : 58);
     if (!runNear(run, x, z, band)) continue;
     const s = spineDist(run.spine, x, z);
     if (s.u >= 0 && s.d < band) return true;
@@ -705,7 +748,17 @@ export function featureCameraClamp(feats, track, pos) {
     const ex = (lat - skew * Math.max(0, Math.min(1, ey))) / W;
     if (ey < 0 || ex * ex + ey * ey >= 1) continue; // not inside the rock
     const M = 1.1; // stay this far off the bore surface
-    const latC = Math.max(-(halfW - M), Math.min(halfW - M, lat));
+    // CENTER-FIRST: pushing the camera DOWN under the arch made every wall
+    // hug dip the view a few units, and the recovery at the portal read as a
+    // slow pan (fast snap before the easing, slow glide after). Instead pull
+    // the camera toward the bore axis until its CURRENT height fits under the
+    // arch — height stays constant through the tunnel, so leaving it needs no
+    // vertical correction at all. The y caps below only catch the leftovers
+    // (a camera higher than the apex itself).
+    const relY = (pos.y - (p.y + 0.2)) / APEX;
+    const latRoom = relY >= 1 ? 0 : halfW * Math.sqrt(Math.max(0, 1 - relY * relY)) - M;
+    const latLim = Math.min(halfW - M, Math.max(0, latRoom));
+    const latC = Math.max(-latLim, Math.min(latLim, lat));
     pos.x -= sideX * (lat - latC);
     pos.z -= sideZ * (lat - latC);
     const ceil = p.y + 0.2 + APEX * Math.sqrt(Math.max(0, 1 - (latC / halfW) * (latC / halfW)));
@@ -748,7 +801,9 @@ export function trackTitle(feats, seedStr) {
     h ^= str.charCodeAt(i);
     h = Math.imul(h, 16777619);
   }
-  const suffix = TITLE_SUFFIX[h % TITLE_SUFFIX.length];
+  // imul keeps h a SIGNED int32 — force unsigned or a negative hash indexes
+  // nothing and the menu shows "Tunnel undefined".
+  const suffix = TITLE_SUFFIX[(h >>> 0) % TITLE_SUFFIX.length];
   const kinds = new Set((feats?.runs || []).map((r) => r.kind));
   for (const k of TITLE_PRIORITY) {
     if (kinds.has(k)) return `${TITLE_WORDS[k]} ${suffix}`;
@@ -831,25 +886,50 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
       const idx = ((i % N) + N) % N;
       const p = track._pts[idx];
+      // A crossover deck spans another live road: no pier ring may stand in
+      // that lane (run.others is exactly "every strand but this one").
+      if (run.kind === "crossover" && otherRoadDist(run.others, p.x, p.z) < track.halfWidth + 8) continue;
       const side = sideAt(track, idx);
       const yaw = Math.atan2(side.x, side.z);
       const deckBottom = p.y - 2.0;
       const legOff = track.halfWidth * 0.42;
+      // Every pier element (legs at ±legOff, crossbeam ends further out) is
+      // seated at (own sample − 2.0) — which is only "under the deck" when the
+      // road above is straight and level. On a curving, descending ramp the
+      // ribbon sweeps back over the pier's own footprint a few samples lower
+      // (tight hairpins overlap themselves in plan), and at loop necks another
+      // strand runs right alongside — either way an element top ends up ABOVE
+      // the actual road surface at its spot, surfacing as a row of stubs. One
+      // universal test: project each element's xz onto the whole spline (at
+      // pier-top height, so the nearest SURFACE wins) and require clearance;
+      // any failure drops the whole ring (a one-legged pier reads broken).
+      const beamHalf = track.halfWidth * 0.75;
       const legs = [];
       let lowest = Infinity;
-      for (const sgn of [1, -1]) {
-        const x = p.x + side.x * sgn * legOff;
-        const z = p.z + side.z * sgn * legOff;
-        const gy = heightAt(x, z);
-        legs.push({ x, z, gy });
-        if (gy < lowest) lowest = gy;
+      let ringClear = true;
+      for (const [off, isLeg] of [[legOff, true], [-legOff, true], [beamHalf, false], [-beamHalf, false]]) {
+        const x = p.x + side.x * off;
+        const z = p.z + side.z * off;
+        if (otherRoadDist(run.others, x, z) < track.halfWidth + 2) { ringClear = false; break; }
+        const r = track.project(_pv3.set(x, deckBottom, z));
+        if (deckBottom > r.groundY - 1.4) { ringClear = false; break; }
+        if (isLeg) {
+          const gy = heightAt(x, z);
+          legs.push({ x, z, gy });
+          if (gy < lowest) lowest = gy;
+        }
       }
+      if (!ringClear) continue;
       if (deckBottom - lowest < 1.6) continue;
       for (const leg of legs) {
         const hgt = deckBottom - leg.gy + 1.6;
         pierBoxes.push({ x: leg.x, y: leg.gy - 1.6 + hgt / 2, z: leg.z, sx: 2.5, sy: hgt, sz: 2.1, yaw });
       }
-      pierBoxes.push({ x: p.x, y: deckBottom - 0.55, z: p.z, sx: track.halfWidth * 1.5, sy: 1.1, sz: 2.4, yaw });
+      // Length in sz: with yaw = atan2(side.x, side.z), instance local Z maps
+      // to the ACROSS direction and local X to the tangent — length in sx laid
+      // the beam ALONG the road, walking its ends down the ramp and up through
+      // the tarmac (the marching stubs at pier spacing).
+      pierBoxes.push({ x: p.x, y: deckBottom - 0.55, z: p.z, sx: 2.4, sy: 1.1, sz: track.halfWidth * 1.5, yaw });
     }
   };
 
@@ -871,9 +951,206 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     }
   };
 
+  // --- Bridge visual variants -----------------------------------------------
+  // Dress the plain girder deck per run.bridgeVariant. Everything batches:
+  // timber/steel/stone parts bake into ONE vertex-coloured mesh (sharing the
+  // `concrete` material — vertex colours do the painting, so no new pipeline),
+  // suspension cables+hangers into ONE LineSegments, stone arches into ONE
+  // InstancedMesh — a variant costs 1-2 extra draw calls.
+  const addBridgeVariant = (run) => {
+    const v = run.bridgeVariant;
+    if (!v || v === "girder") return;
+    const span = run.i1 - run.i0;
+    const at = (i) => {
+      const idx = ((i % N) + N) % N;
+      return { p: track._pts[idx], side: sideAt(track, idx) };
+    };
+    const railW = track.halfWidth + 1.0;
+    const positions = [], colors = [], indices = [];
+    // An axis-yawed box as 8 verts / 12 tris straight into the batch arrays.
+    const pushBox = (cx, cy, cz, sx, sy, sz, yaw, col) => {
+      const c = Math.cos(yaw), sn = Math.sin(yaw);
+      const base = positions.length / 3;
+      for (const [ux, uy, uz] of [[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1],[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]]) {
+        const lx = ux * sx / 2, lz = uz * sz / 2;
+        positions.push(cx + lx * c + lz * sn, cy + uy * sy / 2, cz - lx * sn + lz * c);
+        colors.push(col.r, col.g, col.b);
+      }
+      for (const [a, b2, c2] of [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]]) {
+        indices.push(base + a, base + b2, base + c2);
+      }
+    };
+    const emitBatch = () => {
+      if (!positions.length) return;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+      geo.setIndex(indices);
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, concrete);
+      mesh.castShadow = true;
+      scene.add(mesh);
+    };
+
+    if (v === "suspension") {
+      // Two tower frames + swooping main cables with vertical hangers.
+      const cRed = new THREE.Color(0xb3402e); // classic oxide red
+      const TOWER_H = 18;
+      let tA = run.i0 + Math.round(span * 0.24);
+      let tB = run.i1 - Math.round(span * 0.24);
+      // A tower spot must keep its legs off every OTHER pass of the lap (loop
+      // necks put strands ~34u out — legs there stand in that road). Nudge
+      // along the run for a clear spot; a stubborn side drops the dressing
+      // and the run stays a plain girder deck.
+      const towerClear = (i) => {
+        const { p, side } = at(i);
+        for (const sgn of [1, -1]) {
+          if (otherRoadDist(run.others, p.x + side.x * sgn * railW, p.z + side.z * sgn * railW) < track.halfWidth + 4) return false;
+        }
+        return true;
+      };
+      for (let n = 1; n <= 8 && !towerClear(tA); n++) tA += 2;
+      for (let n = 1; n <= 8 && !towerClear(tB); n++) tB -= 2;
+      if (!towerClear(tA) || !towerClear(tB) || tB - tA < span * 0.2) return;
+      const towerTopY = (i) => at(i).p.y + TOWER_H - 1.2;
+      for (const ti of [tA, tB]) {
+        const { p, side } = at(ti);
+        const yaw = Math.atan2(side.x, side.z);
+        for (const sgn of [1, -1]) {
+          const lx = p.x + side.x * sgn * railW, lz = p.z + side.z * sgn * railW;
+          // Legs run to the real ground (river bank, gorge floor), not a fixed
+          // stub below deck level — stubs read as the whole tower floating
+          // when the deck flies high.
+          const footY = Math.min(p.y - 2.7, heightAt(lx, lz) - 0.6);
+          const topY = p.y + TOWER_H + 0.9;
+          pushBox(lx, (topY + footY) / 2, lz, 1.5, topY - footY, 1.5, yaw, cRed);
+        }
+        // Length in sz: pushBox local X is the TANGENT — length in sx ran both
+        // beams ALONG the road (a 37u red rail floating beside the lane at
+        // kart-head height) instead of ACROSS between the tower legs.
+        pushBox(p.x, p.y + TOWER_H - 1.8, p.z, 1.3, 1.2, railW * 2 + 1.4, yaw, cRed); // top crossbeam
+        pushBox(p.x, p.y + TOWER_H * 0.45, p.z, 1.1, 1.0, railW * 2 + 1.2, yaw, cRed); // mid brace
+      }
+      // Cables: end anchor -> tower A -> tower B -> end anchor, sagging between;
+      // hangers drop to the deck across the main span. One LineSegments.
+      const segs = [];
+      for (const sgn of [1, -1]) {
+        let prev = null;
+        for (let i = run.i0; i <= run.i1; i += 2) {
+          const { p, side } = at(i);
+          let y;
+          if (i <= tA) { const t = (i - run.i0) / (tA - run.i0 || 1); y = at(run.i0).p.y + 1.4 + (towerTopY(tA) - at(run.i0).p.y - 1.4) * t * t; }
+          else if (i >= tB) { const t = (run.i1 - i) / (run.i1 - tB || 1); y = at(run.i1).p.y + 1.4 + (towerTopY(tB) - at(run.i1).p.y - 1.4) * t * t; }
+          else { const t = (i - tA) / (tB - tA || 1); const sag = TOWER_H * 0.72; y = towerTopY(tA) + (towerTopY(tB) - towerTopY(tA)) * t - sag * 4 * t * (1 - t); }
+          const x = p.x + side.x * sgn * railW, z = p.z + side.z * sgn * railW;
+          if (prev) segs.push(prev.x, prev.y, prev.z, x, y, z);
+          // hangers on the main span
+          if (i > tA + 2 && i < tB - 2 && i % 4 === 0) segs.push(x, y, z, x, p.y + 0.9, z);
+          prev = { x, y, z };
+        }
+      }
+      const cgeo = new THREE.BufferGeometry();
+      cgeo.setAttribute("position", new THREE.Float32BufferAttribute(segs, 3));
+      const cables = new THREE.LineSegments(cgeo, new THREE.LineBasicMaterial({ color: 0x2e3338 }));
+      scene.add(cables);
+      emitBatch();
+    } else if (v === "covered") {
+      // A covered wooden bridge: timber posts + rails and a gabled roof.
+      // Roof kept HIGH (eaves 7.8, ridge 11) so the chase camera clears it.
+      // The dressing assumes a near-straight span: on a bend the straight
+      // rails chord into the lane at kart height and the roof blankets the
+      // curve's inside — a curvy run stays a plain girder deck instead.
+      let maxTurn = 0;
+      const tStep = Math.max(2, Math.round(10 / spacing));
+      for (let i = run.i0; i + tStep <= run.i1; i += tStep) {
+        const a = track._tans[((i % N) + N) % N];
+        const b = track._tans[(((i + tStep) % N) + N) % N];
+        let d = Math.atan2(b.x, b.z) - Math.atan2(a.x, a.z);
+        while (d > Math.PI) d -= TAU;
+        while (d < -Math.PI) d += TAU;
+        maxTurn = Math.max(maxTurn, Math.abs(d));
+      }
+      if (maxTurn > 0.14) return;
+      const cWood = new THREE.Color(0x7a4a30);
+      const cRoof = new THREE.Color(0x8c4030);
+      const cTrim = new THREE.Color(0xc9b08a);
+      const e = Math.max(2, Math.round(span * 0.08));
+      const i0 = run.i0 + e, i1 = run.i1 - e;
+      const postStep = Math.max(4, Math.round(10 / spacing));
+      for (let i = i0; i <= i1; i += postStep) {
+        const { p, side } = at(i);
+        const yaw = Math.atan2(side.x, side.z);
+        for (const sgn of [1, -1]) {
+          pushBox(p.x + side.x * sgn * railW, p.y + 3.9, p.z + side.z * sgn * railW, 0.55, 7.8, 0.55, yaw, cWood);
+        }
+      }
+      // Hand rails run POST TO POST (a chord per bay, yawed along its own
+      // gap), not one fixed-length beam per post — centred beams swung their
+      // free ends into the lane on any curvature the veto still admits.
+      for (let i = i0; i + postStep <= i1; i += postStep) {
+        const a = at(i), b = at(i + postStep);
+        for (const sgn of [1, -1]) {
+          const ax = a.p.x + a.side.x * sgn * railW, az = a.p.z + a.side.z * sgn * railW;
+          const bx = b.p.x + b.side.x * sgn * railW, bz = b.p.z + b.side.z * sgn * railW;
+          const yaw = Math.atan2(bx - ax, bz - az);
+          pushBox((ax + bx) / 2, (a.p.y + b.p.y) / 2 + 1.35, (az + bz) / 2, 0.35, 0.35, Math.hypot(bx - ax, bz - az) + 0.4, yaw, cTrim);
+        }
+      }
+      // Gabled roof ribbon: eaveL -> ridge -> eaveR, swept along the span.
+      const base = positions.length / 3;
+      let rows = 0;
+      for (let i = i0; i <= i1; i += 2) {
+        const { p, side } = at(i);
+        const ex = railW + 1.1;
+        positions.push(p.x + side.x * ex, p.y + 7.8, p.z + side.z * ex);
+        positions.push(p.x, p.y + 11.0, p.z);
+        positions.push(p.x - side.x * ex, p.y + 7.8, p.z - side.z * ex);
+        for (let k = 0; k < 3; k++) colors.push(cRoof.r, cRoof.g, cRoof.b);
+        if (i + 2 <= i1) {
+          const a = base + rows * 3, b2 = a + 3;
+          indices.push(a, b2, a + 1, a + 1, b2, b2 + 1);
+          indices.push(a + 1, b2 + 1, a + 2, a + 2, b2 + 1, b2 + 2);
+        }
+        rows++;
+      }
+      emitBatch();
+    } else if (v === "arch") {
+      // Stone viaduct arches under the deck: one instanced half-torus per bay.
+      const water = (feats.river && feats.river.level != null) ? feats.river.level : run.minY - 5.5;
+      const step = Math.max(6, Math.round(26 / spacing));
+      const arcs = [];
+      for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
+        const { p, side } = at(i);
+        const r = Math.min(9, Math.max(4.5, (p.y - water) * 0.8));
+        arcs.push({ x: p.x, y: p.y - 1.0 - r * 0.12, z: p.z, r, yaw: Math.atan2(side.x, side.z) });
+      }
+      if (arcs.length) {
+        const mat = new THREE.MeshStandardMaterial({ color: 0x9d968b, roughness: 1 });
+        const mesh = new THREE.InstancedMesh(new THREE.TorusGeometry(1, 0.16, 6, 16, Math.PI), mat, arcs.length);
+        const m = new THREE.Matrix4();
+        const q = new THREE.Quaternion();
+        const pv = new THREE.Vector3();
+        const sv = new THREE.Vector3();
+        arcs.forEach((a, i) => {
+          // torus lies in its local XY plane; yaw it so the arc spans ALONG the road
+          q.setFromAxisAngle(_up, a.yaw + Math.PI / 2);
+          pv.set(a.x, a.y - a.r, a.z);
+          sv.set(a.r, a.r, a.r);
+          m.compose(pv, q, sv);
+          mesh.setMatrixAt(i, m);
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.castShadow = true;
+        scene.add(mesh);
+      }
+      emitBatch();
+    }
+  };
+
   for (const run of feats.runs) {
-    if (run.kind === "bridge" || run.kind === "overpass" || run.kind === "causeway") {
+    if (run.kind === "bridge" || run.kind === "overpass" || run.kind === "causeway" || run.kind === "crossover") {
       buildDeck(run, { piers: true });
+      if (run.kind === "bridge") addBridgeVariant(run);
     } else if (run.kind === "dam") {
       // Reservoir side rides a normal skirt; the valley side is the DAM WALL,
       // a full concrete face down to the sunken floor.
@@ -894,7 +1171,12 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
           return Math.max(0.35 + 2.0 * endW, (p.y - heightAt(gx, gz)) * endW + 0.4);
         },
       });
-      // Buttresses down the dam face.
+      // Buttresses down the dam face. Tops sat exactly at road level, which
+      // only works on a straight, level run: on a curving descent the ribbon
+      // sweeps back over the buttress footprint a couple of samples lower
+      // (and at a loop neck another strand runs alongside), so the rib tops
+      // surfaced through the tarmac as a row of stubs at buttress spacing.
+      // Seat each top under the LOWEST road surface at its own spot instead.
       const step = Math.max(6, Math.round(30 / spacing));
       for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
         const idx = ((i % N) + N) % N;
@@ -902,8 +1184,10 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         const side = sideAt(track, idx);
         const x = p.x + side.x * run.inSign * (track.halfWidth + 1.6);
         const z = p.z + side.z * run.inSign * (track.halfWidth + 1.6);
+        if (otherRoadDist(run.others, x, z) < track.halfWidth + 2) continue;
         const gy = heightAt(x, z);
-        const hgt = p.y - gy;
+        const top = Math.min(p.y, track.project(_pv3.set(x, p.y, z)).groundY) - 0.5;
+        const hgt = top - gy;
         if (hgt < 6) continue;
         pierBoxes.push({ x, y: gy + hgt / 2, z, sx: 3.2, sy: hgt, sz: 2.6, yaw: Math.atan2(side.x, side.z) });
       }
@@ -1558,10 +1842,22 @@ function buildRail(scene, track, run, heightAt, rng, anims) {
   const L = run.rail;
   const beamMat = new THREE.MeshStandardMaterial({ color: 0x565c66, roughness: 0.7, metalness: 0.3 });
   const pylonMat = new THREE.MeshStandardMaterial({ color: 0x9a968e, roughness: 1 });
-  // Clip the line where terrain climbs past the beam.
+  // Clip the line where terrain climbs past the beam, and where it meets
+  // ANOTHER pass of the lap (the beam crosses its own road on purpose, but a
+  // second strand — a loop neck, a climbing return leg — can sit anywhere
+  // from 0-9u below the beam, which parks the train at kart-head height over
+  // that road).
+  const nearOtherRoad = (x, z) => track.distanceToCenter(x, z) < track.halfWidth + 8;
   let lo = L.len0, hi = L.len1;
-  for (let t = -20; t >= L.len0; t -= 20) if (heightAt(L.x + L.dx * t, L.z + L.dz * t) > L.y - 3) { lo = t + 20; break; }
-  for (let t = 20; t <= L.len1; t += 20) if (heightAt(L.x + L.dx * t, L.z + L.dz * t) > L.y - 3) { hi = t - 20; break; }
+  const OWN = track.halfWidth + 12; // the beam's own road crossing corridor
+  for (let t = -20; t >= L.len0; t -= 20) {
+    const x = L.x + L.dx * t, z = L.z + L.dz * t;
+    if (heightAt(x, z) > L.y - 3 || (-t > OWN && nearOtherRoad(x, z))) { lo = t + 20; break; }
+  }
+  for (let t = 20; t <= L.len1; t += 20) {
+    const x = L.x + L.dx * t, z = L.z + L.dz * t;
+    if (heightAt(x, z) > L.y - 3 || (t > OWN && nearOtherRoad(x, z))) { hi = t - 20; break; }
+  }
   if (hi - lo < 90) return;
   const len = hi - lo;
   const cx = L.x + L.dx * (lo + hi) / 2;

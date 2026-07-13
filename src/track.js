@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler } from "./scenery.js";
+import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler, planBiomeWedges } from "./scenery.js";
 import { planFeatures } from "./features.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -41,29 +41,55 @@ function harmSum(list, a, phases) {
 // Does the closed Catmull-Rom through `pts` (XZ plane) avoid crossing itself AND
 // keep every corner above `minR`? A pure radius-per-angle loop can't fold or
 // snake, so we let the points snake sideways and just validate the result.
-function _loopOK(pts, minR) {
+function _loopOK(pts, minR, xover = null) {
   const cv = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
   const S = 260;
   const P = [];
   for (let i = 0; i < S; i++) P.push(cv.getPointAt(i / S));
-  const seg = (a, b, c, d) => {
-    const ccw = (p, q, r) => (r.z - p.z) * (q.x - p.x) - (q.z - p.z) * (r.x - p.x);
-    return (ccw(a, c, d) > 0) !== (ccw(b, c, d) > 0) && (ccw(a, b, c) > 0) !== (ccw(a, b, d) > 0);
+  // Segment intersection with parameters, so a hit can be judged: a plan-view
+  // crossing is fatal UNLESS this is a crossover map and the two strands pass
+  // with (near) full deck clearance — then exactly ONE such crossing is legal.
+  const xseg = (a, b, c, d) => {
+    const rX = b.x - a.x, rZ = b.z - a.z, sX = d.x - c.x, sZ = d.z - c.z;
+    const den = rX * sZ - rZ * sX;
+    if (Math.abs(den) < 1e-9) return null;
+    const t = ((c.x - a.x) * sZ - (c.z - a.z) * sX) / den;
+    const u = ((c.x - a.x) * rZ - (c.z - a.z) * rX) / den;
+    return t > 0 && t < 1 && u > 0 && u < 1 ? { t, u } : null;
   };
+  const xings = [];
+  const wantX = xover ? xover.m : 0;
   for (let i = 0; i < S; i++) {
     for (let j = i + 2; j < S; j++) {
       if (i === 0 && j === S - 1) continue;
-      if (seg(P[i], P[(i + 1) % S], P[j], P[(j + 1) % S])) return false;
+      const hit = xseg(P[i], P[(i + 1) % S], P[j], P[(j + 1) % S]);
+      if (!hit) continue;
+      if (xings.length >= wantX) return false; // unsanctioned / one too many
+      const y1 = P[i].y + (P[(i + 1) % S].y - P[i].y) * hit.t;
+      const y2 = P[j].y + (P[(j + 1) % S].y - P[j].y) * hit.u;
+      if (Math.abs(y1 - y2) < xover.clear - 4) return false; // too flat to bridge
+      xings.push({ x: P[i].x + (P[(i + 1) % S].x - P[i].x) * hit.t, z: P[i].z + (P[(i + 1) % S].z - P[i].z) * hit.t });
     }
   }
+  if (xings.length !== wantX) return false; // crossings promised but the shape lost one
   // Curvature + separation are validated on a FINER sampling. The coarse
   // 260-sample chords above smoothed over needle-tip hairpins — a true
   // radius-5 tip read as ~25 through 10u-spaced samples, passed validation,
   // and folded the 30-wide road over itself at the tip (the reported "sharp
   // turn where the track folds over and you can drive off").
-  const F = 520;
+  // 1000 matches the density the built track is sampled at — the biome-rhythm
+  // envelope packs wiggles tighter than the old generator, and 520 samples
+  // under-measured needle corners that the built road then exposed.
+  const F = 1000;
   const Q = [];
   for (let i = 0; i < F; i++) Q.push(cv.getPointAt(i / F));
+  // Grade is a hard invariant too: the limiter enforces it by construction,
+  // but any pin-conflict corner case that slips through must NOT ship a
+  // 40-degree wall — reject and let the next attempt re-roll.
+  for (let i = 0; i < F; i++) {
+    const a = Q[i], b = Q[(i + 1) % F];
+    if (Math.abs(b.y - a.y) > Math.hypot(b.x - a.x, b.z - a.z) * 0.44) return false;
+  }
   for (let i = 0; i < F; i++) {
     const p0 = Q[(i - 2 + F) % F], p1 = Q[i], p2 = Q[(i + 2) % F];
     const a = Math.hypot(p0.x - p1.x, p0.z - p1.z);
@@ -81,13 +107,46 @@ function _loopOK(pts, minR) {
   // on the built curve.
   const MIN_SEP = 64;
   const SEP_ARC = 170;
+  // STACKED passes are legal when clearly separated in HEIGHT — a climbing
+  // stretch shouldering past a low one. 38u+ apart in plan with 9u+ of height
+  // between them can't interfere: containment keeps a kart within ~13u of its
+  // own centreline, so the nearest arm is always its own, and the terrain
+  // builder renders the gap as a terrace face. Tighter or flatter is a fold.
+  const SEP_TIGHT = 38;
+  const SEP_DY = 9;
   const win = Math.max(4, Math.ceil((SEP_ARC / cv.getLength()) * F));
-  for (let i = 0; i < F; i++) {
-    for (let j = i + win; j < F; j++) {
+  // Separation scans every OTHER sample (~5u steps, same coverage as the old
+  // 520-sample scan) so doubling F for the corner check doesn't quadruple the
+  // O(F^2) pair walk.
+  for (let i = 0; i < F; i += 2) {
+    for (let j = i + win; j < F; j += 2) {
       if (F - (j - i) < win) continue; // wrap-adjacent neighbours
       const dx = Q[i].x - Q[j].x;
       const dz = Q[i].z - Q[j].z;
-      if (dx * dx + dz * dz < MIN_SEP * MIN_SEP) return false;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < MIN_SEP * MIN_SEP) {
+        // Around a sanctioned crossing the strands legitimately share plan
+        // space: right down to d=0 with deck clearance, and — the double-
+        // crossing interchange — two same-level strands running parallel at
+        // barrier distance (38u+, containment never lets karts meet).
+        // Everywhere else the stacked-pass rule applies untouched.
+        if (xings.length && (Math.abs(Q[i].y - Q[j].y) >= 8 || d2 >= 34 * 34)) {
+          // Crossing corridors get grace: right at a crossing the strands
+          // legitimately share plan space with deck clearance, and a loop's
+          // NECK converges in plan and height together as its ramps fade —
+          // at 34u+ that is a paddock-style parallel corridor, not a fold
+          // (terrain blends between strands; karts project height-aware).
+          const xr = 260;
+          let nearX = false;
+          for (const xg of xings) {
+            const ex = Q[i].x - xg.x, ez = Q[i].z - xg.z;
+            if (ex * ex + ez * ez < xr * xr) { nearX = true; break; }
+          }
+          if (nearX) continue;
+        }
+        const sepDy = Math.abs(Q[i].y - Q[j].y);
+        if (d2 < 34 * 34 || (d2 < SEP_TIGHT * SEP_TIGHT ? sepDy < 12 : sepDy < SEP_DY)) return false;
+      }
     }
   }
   return true;
@@ -96,20 +155,366 @@ function _loopOK(pts, minR) {
 // `rng` defaults to the shared world stream (so the built track matches the seed),
 // but the menu preview passes an isolated stream seeded from the same value to
 // draw the identical shape without disturbing the world build.
-function generateLoopPoints(cfg, rng = rand) {
+// Per-biome corner RHYTHM: how technical (wiggly) each biome's stretch of road
+// is. The generator scales its high-frequency harmonics by the wedge under each
+// angle — city blocks read tight and busy, deserts open into long fast sweeps —
+// so crossing a biome border changes how the road DRIVES, not just how it looks.
+const BIOME_RHYTHM = {
+  city: 1.0, forest: 0.8, autumn: 0.65, blossom: 0.6, alpine: 0.6,
+  meadow: 0.5, tundra: 0.45, beach: 0.35, savanna: 0.3, desert: 0.18,
+};
+// The summit: a per-seed mountain in the ELEVATION PROFILE — a big Gaussian
+// peak the road genuinely climbs over and dives off. Pure height change, so it
+// can never break the plan-view validity the generator fights for, and it
+// composes with everything downstream for free: terrain anchors to the road
+// (the mountainside builds itself), alpine tunnels bore through the shoulder,
+// grade physics makes the climb slow and the descent fast. Drawn from an
+// isolated stream so worlds with and without a peak keep every other roll
+// identical.
+function planSummitPeak(cfg) {
+  if (!cfg || cfg.mode !== "custom") return null;
+  const size = clamp01(cfg.size);
+  const elevation = clamp01(cfg.hilliness);
+  const r = makeRng(String(cfg.seed || "summit") + "|summit");
+  const roll = r(); // ALWAYS draw the gate roll first so param draws line up
+  if (size < 0.3 || elevation < 0.25 || roll > 0.55) return null;
+  return {
+    ang: (0.16 + r() * 0.68) * TAU, // peak centre (kept clear of the start line)
+    w: (0.1 + r() * 0.05) * TAU, // Gaussian half-width, in lap angle
+    h: 40 + r() * 20 + elevation * 16 + size * 34, // summit height (size buys altitude)
+  };
+}
+
+// The crossover: a TRUE self-crossing lap — the road passes over itself on a
+// deck. Instead of splicing a crossing into a plain loop (fragile: every weld
+// is a chance for a cusp), the whole loop is drawn from the LIMACON family
+// r = k + cos(a): for k < 1 the curve has an inner loop and crosses itself
+// exactly once, BY CONSTRUCTION. Transversal crossings are topologically
+// stable, so the harmonic wobble (damped near the crossing) can restyle the
+// lap without ever losing or doubling the crossing — the validator only has
+// to confirm what the family already guarantees. Heights pin the two passages
+// `clear` apart; features build the upper one as a deck.
+// Windowed-loop lap shape: unit circle plus one Gaussian-windowed epicycle
+// per loop. Shared by the plan's analytic battery and the styling pass — the
+// two MUST sample the same curve or the plan's guarantees are void.
+function xoShape(loops, t) {
+  let x = Math.cos(t), z = Math.sin(t);
+  for (const L of loops) {
+    const d = Math.atan2(Math.sin(t - L.t0), Math.cos(t - L.t0));
+    const B = L.A * Math.exp(-(d * d) / (L.sig * L.sig));
+    const a2 = L.s * L.w * d + L.ph;
+    x += B * Math.cos(a2);
+    z += B * Math.sin(a2);
+  }
+  return [x, z];
+}
+
+function planCrossover(cfg) {
+  if (!cfg || cfg.mode !== "custom") return null;
+  const size = clamp01(cfg.size);
+  const twist = clamp01(cfg.twist ?? 0.5);
+  const r = makeRng(String(cfg.seed || "x") + "|xover");
+  const roll = r(); // drawn first for stream stability across versions
+  // Loop BUDGET: the Twisty knob decides how many loops the lap should carry
+  // (0..3), capped by what the map size can physically host — a small map
+  // never loops, a big one at full twist aims for three. A gentle seed jitter
+  // keeps rerolls at the same sliders from all landing the same count.
+  const cap = size < 0.32 ? 0 : size < 0.6 ? 1 : size < 0.8 ? 2 : 3;
+  let want = Math.min(cap, Math.round(twist * (0.9 + size * 2.3)));
+  if (want > 1 && roll < 0.3) want--;
+  if (want <= 0 || twist <= 0.02) return null;
+  // Loops are WINDOWED LOCAL EPICYCLES on a circle:
+  //   P(t) = e^(it) + A*exp(-(d/sigma)^2)*e^(i(s*omega*d + ph)),  d = t - t0.
+  // Each budgeted loop is its own Gaussian-windowed spinner parked at a spot
+  // t0 on the lap: co-rotating spin aimed at the centre (s=+1, ph=t0+pi)
+  // curls the road INWARD, counter-rotating spin aimed away (s=-1, ph=t0)
+  // hangs it OUTWARD — and because the window dies off within ~2 sigma the
+  // loops are independent, so one lap can carry exactly the count the budget
+  // asks for, in any in/out combination. (Global epicycles e^(ikt) lived
+  // here before: their petal families are symmetric — always 2..4 equal
+  // loops, all the same direction — so "one or two outward loops" was
+  // unreachable; suppressing extra petals passes through a cusp regime the
+  // corner check rightly kills. Rounded windowed loops need the spin rate
+  // DECOUPLED from the window: sigma*omega ~ 1.9-2.4 with amplitude ~0.5.)
+  // A candidate only graduates when the analytic curve passes the whole
+  // battery: exactly-budgeted well-separated transversal crossings,
+  // pre-styling corner radius, passage spacing, a greedy over/under
+  // assignment with ramp room, and start-line clearance.
+  // The limacon single-crossing plan is ALWAYS drawn first: it is the
+  // guaranteed fallback when a windowed layout's styled attempts fail
+  // (better one inward crossing than none) and the last resort when no
+  // candidate survives the battery.
+  const m = 1;
+  const k = 0.44 + r() * 0.12; // inner-loop size: ~0.24-0.35x of the rim radius
+  const b = 0;
+  const psi = 0;
+  const g = (rel) => k + Math.cos(m * rel) + b * Math.cos(rel - psi);
+  // Passage angles: the signed radius factor's zeros (numeric — the b term
+  // shifts them off the analytic acos). Petal arcs are where g < 0.
+  const zeros = [];
+  let prev = g(0);
+  for (let i = 1; i <= 1440; i++) {
+    const rel = (i / 1440) * TAU, v = g(rel);
+    if (prev < 0 !== v < 0) zeros.push(rel - (TAU / 1440) * v / (v - prev));
+    prev = v;
+  }
+  if (zeros.length !== 2 * m) return null; // malformed petal count: no crossing
+  const norm = 1 + k + b;
+  // Which passages carry the deck: for m=1 the petal's exit strand; for m=2
+  // the MIDDLE two zeros (petal-1 exit + petal-2 entry) — the pairing the
+  // sweep found bridges both crossings; bumping the outer pair leaves one
+  // crossing between two ground-level strands.
+  const ups = m === 2 ? [zeros[1], zeros[2]] : [zeros[1]];
+  const lows = m === 2 ? [zeros[0], zeros[3]] : [zeros[0]];
+  // The start line (a=0) must sit on positive-radius rim, clear of every
+  // passage's flattened zone. Seeded rejection keeps it deterministic.
+  const marg = m === 2 ? 0.5 : 0.75;
+  let phi = 0;
+  for (let t = 0; t < 32; t++) {
+    phi = r() * TAU;
+    const rel0 = ((-phi % TAU) + TAU) % TAU;
+    if (g(rel0) / norm < 0.25) continue; // start must be on the outer rim
+    let ok = true;
+    for (const z of zeros) {
+      const d = Math.abs(Math.atan2(Math.sin(phi + z), Math.cos(phi + z)));
+      if (d < marg) { ok = false; break; }
+    }
+    if (ok) break;
+  }
+  const limaPlan = { kind: "lima", m, k, b, psi, phi, zeros, ups, lows, norm, clear: 13 };
+  {
+    const baseR = 250 + size * 330; // mirrors generateLoopPoints
+    const maxX = want;
+    const D = 960;
+    let genFallback = null;
+    // ONE direction flavor per seed (drawn before the candidate hunt):
+    // outward candidates fail their checks more often, so redrawing flavor
+    // per candidate would let inward survivors replace them. Three flavors:
+    // all-inward, all-outward, or MIXED — one loop curling in AND one
+    // hanging out on the same lap (needs a 2-loop budget).
+    const flavorRoll = r();
+    const flavor = flavorRoll < 0.36 ? "in" : flavorRoll < 0.72 ? "out" : want >= 2 ? "mix" : "out";
+    const outwardSeed = flavor !== "in";
+    // Window width shrinks with the budget so the Gaussians fit around one
+    // lap without bleeding into each other; centre jitter follows suit.
+    const SIG = want === 1 ? [0.42, 0.6] : want === 2 ? [0.38, 0.52] : [0.33, 0.39];
+    const JIT = want === 1 ? 1.6 : want === 2 ? 0.5 : 0.22;
+    for (let cand = 0; cand < 60; cand++) {
+      // Loop centres ride evenly-spaced slots with jitter (guaranteed
+      // spacing beats rejection churn); a slot too close to the start line
+      // (t=0) voids the draw — passages must keep clear of the grid.
+      const spacing = TAU / want;
+      const mixLead = r() < 0.5; // mix flavor: which direction leads the lap
+      const loops = [];
+      for (let j = 0; j < want; j++) {
+        const t0 = spacing * (j + 0.5) + (r() - 0.5) * JIT;
+        const sig = SIG[0] + r() * (SIG[1] - SIG[0]);
+        // Lab-measured ROUND regime: spin rate decoupled from the window,
+        // sigma*omega ~ 1.9-2.4, amplitude ~0.45-0.6 of base radius. Tighter
+        // (the old petal-suppression instinct) needles the tip; the corner
+        // check rejects everything below ~29u.
+        const w = (1.9 + r() * 0.5) / sig;
+        const A = 0.45 + r() * 0.15;
+        const out = flavor === "mix" ? (j % 2 === 0) === mixLead : flavor === "out";
+        if (Math.abs(Math.atan2(Math.sin(t0), Math.cos(t0))) < sig + 0.5) { loops.length = 0; break; }
+        loops.push({ t0, sig, w, A, s: out ? -1 : 1, ph: out ? t0 : t0 + Math.PI });
+      }
+      if (!loops.length) continue;
+      const rot = r() * TAU;
+      const P = [];
+      for (let i = 0; i < D; i++) {
+        const t = (i / D) * TAU;
+        P.push(xoShape(loops, t));
+      }
+      // Rim-normalized: the base circle maps to baseR (same footprint as a
+      // plain or limacon lap of this size) and OUTWARD loops hang beyond it.
+      // Normalizing by the apex instead shrank the whole map by up to 1.6x,
+      // scaling outward tips under the corner floor on mid-size maps — the
+      // seeds all quietly fell back to the inward limacon.
+      const scale = baseR;
+      // -- crossings of the analytic curve
+      const hits = [];
+      const skip = 26;
+      let bad = false;
+      for (let i = 0; i < D && !bad; i += 2) {
+        for (let j = i + skip; j < D; j += 2) {
+          if (D - (j - i) < skip) continue;
+          const a = P[i], bq = P[(i + 2) % D], c2 = P[j], d = P[(j + 2) % D];
+          const rX = bq[0] - a[0], rZ = bq[1] - a[1], sX = d[0] - c2[0], sZ = d[1] - c2[1];
+          const den = rX * sZ - rZ * sX;
+          if (Math.abs(den) < 1e-12) continue;
+          const t2 = ((c2[0] - a[0]) * sZ - (c2[1] - a[1]) * sX) / den;
+          const u = ((c2[0] - a[0]) * rZ - (c2[1] - a[1]) * rX) / den;
+          if (t2 <= 0 || t2 >= 1 || u <= 0 || u >= 1) continue;
+          const hx = a[0] + rX * t2, hz = a[1] + rZ * t2;
+          if (hits.some((q) => Math.hypot(q.x - hx, q.z - hz) * scale < 30)) continue;
+          hits.push({ x: hx, z: hz, tA: ((i + 2 * t2) / D) * TAU, tB: ((j + 2 * u) / D) * TAU });
+          if (hits.length > maxX) { bad = true; break; }
+        }
+      }
+      if (bad || !hits.length) continue;
+      if (hits.some((h) => Math.hypot(h.x - P[0][0], h.z - P[0][1]) * scale < 165)) continue;
+      let minPair = Infinity;
+      for (let x = 0; x < hits.length; x++) {
+        for (let y = x + 1; y < hits.length; y++) {
+          minPair = Math.min(minPair, Math.hypot(hits[x].x - hits[y].x, hits[x].z - hits[y].z) * scale);
+        }
+      }
+      if (minPair < 140) continue;
+      if (outwardSeed) {
+        let protrudes = 0;
+        for (const h of hits) {
+          let tA = h.tA, tB = h.tB;
+          if (tB - tA > Math.PI) { const sw = tA; tA = tB; tB = sw + TAU; }
+          const iA = Math.round((tA / TAU) * D), iB = Math.round((tB / TAU) * D);
+          let apex = 0, shoulder = 0;
+          for (let i = iA; i <= iB; i++) {
+            const q = P[((i % D) + D) % D];
+            apex = Math.max(apex, Math.hypot(q[0], q[1]));
+          }
+          const SH = Math.round((0.6 / TAU) * D);
+          for (let i = iA - SH; i < iA; i++) {
+            const q = P[((i % D) + D) % D];
+            shoulder = Math.max(shoulder, Math.hypot(q[0], q[1]));
+          }
+          for (let i = iB + 1; i <= iB + SH; i++) {
+            const q = P[((i % D) + D) % D];
+            shoulder = Math.max(shoulder, Math.hypot(q[0], q[1]));
+          }
+          if ((apex - shoulder) * scale >= 14) protrudes++;
+        }
+        if (!protrudes) continue; // reads inward — not what this seed is for
+      }
+      // -- pre-styling corner radius + wobble envelope (one curvature pass)
+      const EW = 96;
+      const envW = new Float32Array(EW).fill(1);
+      let minRad = Infinity;
+      for (let i = 0; i < D; i++) {
+        const p0 = P[(i - 3 + D) % D], p1 = P[i], p2 = P[(i + 3) % D];
+        const A = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]);
+        const B = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
+        const C = Math.hypot(p0[0] - p2[0], p0[1] - p2[1]);
+        const area = Math.abs((p1[0] - p0[0]) * (p2[1] - p0[1]) - (p2[0] - p0[0]) * (p1[1] - p0[1])) / 2;
+        if (area > 1e-9) {
+          const rho = ((A * B * C) / (4 * area)) * scale;
+          if (rho < minRad) minRad = rho;
+          const bin = Math.floor((i / D) * EW) % EW;
+          const e = rho >= 130 ? 1 : rho <= 60 ? 0 : (rho - 60) / 70;
+          if (e < envW[bin]) envW[bin] = e;
+        }
+      }
+      if (minRad < 29) continue;
+      // -- passages: lap order, spacing, over/under, clusters, windows
+      const passages = [];
+      hits.forEach((h, hi) => {
+        passages.push({ a: h.tA % TAU, pair: hi, up: false });
+        passages.push({ a: h.tB % TAU, pair: hi, up: false });
+      });
+      passages.sort((x, y) => x.a - y.a);
+      const nP = passages.length;
+      let minGap = TAU, minStart = Infinity;
+      for (let i = 0; i < nP; i++) {
+        minGap = Math.min(minGap, (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU);
+        minStart = Math.min(minStart, Math.abs(Math.atan2(Math.sin(passages[i].a), Math.cos(passages[i].a))));
+      }
+      if (minGap < 0.17 || minStart < 0.45) continue;
+      // greedy over/under: each pair is a free binary choice; walking the lap
+      // and alternating whenever a pair is still free keeps ramps sparse.
+      const oriented = new Array(hits.length).fill(false);
+      let prevUp = true;
+      for (const ps of passages) {
+        if (!oriented[ps.pair]) {
+          ps.up = !prevUp;
+          oriented[ps.pair] = true;
+          const other = passages.find((q) => q.pair === ps.pair && q !== ps);
+          other.up = !ps.up;
+        }
+        prevUp = ps.up;
+      }
+      // differing-flag neighbours need ramp room between them
+      let rampOK = true;
+      for (let i = 0; i < nP; i++) {
+        const q = passages[(i + 1) % nP];
+        const gap = (q.a - passages[i].a + TAU) % TAU;
+        if (q.up !== passages[i].up && gap < 0.3) { rampOK = false; break; }
+      }
+      if (!rampOK) continue;
+      // clusters share one pin level (arc-close passages can't afford
+      // independent heights); per-passage height window from local spacing
+      let cluster = 0;
+      for (let i = 0; i < nP; i++) {
+        const gapPrev = (passages[i].a - passages[(i - 1 + nP) % nP].a + TAU) % TAU;
+        if (i > 0 && gapPrev > 0.55) cluster++;
+        passages[i].cluster = cluster;
+        const gapNext = (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU;
+        passages[i].win = Math.min(0.2, Math.max(0.16, 0.38 * Math.min(gapPrev, gapNext)));
+      }
+      if ((passages[0].a - passages[nP - 1].a + TAU) % TAU <= 0.55) {
+        const last = passages[nP - 1].cluster;
+        for (const ps of passages) if (ps.cluster === last) ps.cluster = 0; // wrap-merge
+      }
+      // A crossing's OWN two passages must share a pin level (deck = pin+13
+      // over pin is the whole clearance contract) — union their clusters,
+      // however far apart along the lap the loop carries them.
+      for (let hi = 0; hi < hits.length; hi++) {
+        const pa = passages.filter((q) => q.pair === hi);
+        if (pa[0].cluster !== pa[1].cluster) {
+          const from = pa[1].cluster, to = pa[0].cluster;
+          for (const ps of passages) if (ps.cluster === from) ps.cluster = to;
+        }
+      }
+      // clear 14 (vs the limacon's 13): multi-loop plans at full hill strength
+      // ride pins on sloped base profiles, and the spline sags ~2-3u below
+      // the plateau contract between control points — the extra headroom
+      // keeps the built gap above the 10.5u legality floor.
+      const plan = { kind: "gen", m: hits.length, loops, rot, passages, envW, clear: 14 };
+      // Big maps hold out for a MULTI-crossing layout for most of the
+      // candidate budget; the first single-crossing plan is kept as fallback.
+      if (plan.m >= want || cand >= 44) {
+        plan.fallback = limaPlan;
+        return plan;
+      }
+      if (!genFallback || plan.m > genFallback.m) genFallback = plan;
+    }
+    if (genFallback) {
+      genFallback.fallback = limaPlan;
+      return genFallback;
+    }
+  }
+  return limaPlan;
+
+}
+
+function generateLoopPoints(cfg, rng = rand, wedges = null) {
   const size = clamp01(cfg.size);
   const curviness = clamp01(cfg.curviness);
   const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
   const hills = clamp01(cfg.hills ?? 0.5); // how MANY hills (frequency)
+  const xover = planCrossover(cfg);
+  // One centrepiece per lap: a crossing map skips the summit (its flattened
+  // crossing zone and the peak's Gaussian would fight over the profile).
+  const summit = xover ? null : planSummitPeak(cfg);
 
   // How many curves the loop has scales with BOTH knobs, but the corner DENSITY
   // is tied to map size: a bigger circuit has room for more (and tighter-packed)
   // curves, a small one gets fewer, gentler bends — so small maps don't pinch the
   // road into corners too sharp for the roadside scenery to fit beside.
   const detail = curviness * (0.55 + 0.45 * size); // effective high-frequency curviness
-  const N = 16 + Math.round(curviness * (8 + size * 20)); // ~24 on small maps, ~44 on big
-  const baseR = 260 + size * 220;
-  const hillAmp = elevation * 155;
+  let N = 16 + Math.round(curviness * (8 + size * 20)); // ~24 on small maps, ~44 on big
+  // Parametric crossover families carry loops AND deep waist bays — through a
+  // low-curviness knob's sparse control net the spline aliases the bays and
+  // balloons them into spurious centre crossings. Their control budget is
+  // set by the shape, not the knob.
+  if (xover && xover.kind === "gen") N = Math.max(N, 34 + 7 * xover.m);
+  // Rim radius: the size knob now spans a much wider world — a max-size
+  // circuit is ~20% larger than before (laps well past 3500u), which also
+  // buys the room that tall climbs and crossings want.
+  const baseR = 250 + size * 330;
+  // Hill amplitude grows with map SIZE as well as the elevation knob: a big
+  // circuit has the run length to climb genuinely high at gentle grades (the
+  // grade limiter enforces the "gently"), so the same knob feels like a real
+  // journey on a large map instead of the same bumps stretched wider.
+  const hillAmp = elevation * (120 + 260 * size);
   // Tightest centreline corner radius. The road is laid out flat across its width,
   // so a centreline radius below halfWidth (15) folds the inner edge over itself —
   // which looks especially broken where a tight corner also falls on a steep grade.
@@ -121,7 +526,10 @@ function generateLoopPoints(cfg, rng = rand) {
   // (the amplitude lives in the big low-frequency hill, with smaller bumps on top).
   const hillFreq = Math.max(1, Math.round((0.6 + hills * 5) * (0.6 + size * 0.7)));
   const eH = [];
-  for (let k = 1; k <= hillFreq; k++) eH.push({ k, w: 1 / k });
+  // 1/k^1.35 weighting (was 1/k): even more of the amplitude lives in the
+  // single big lap-scale hill, so elevation reads as one long climb-and-
+  // return with detail on top, not a series of equal rollers.
+  for (let k = 1; k <= hillFreq; k++) eH.push({ k, w: 1 / Math.pow(k, 1.35) });
   const ePhase = eH.map(() => rng() * TAU);
 
   // Build the XZ loop with a radial wobble (lobes/bays) PLUS a smaller tangential
@@ -146,30 +554,268 @@ function generateLoopPoints(cfg, rng = rand) {
     { k: 4, w: detail * 0.95 },
     { k: 5, w: detail * 0.65 },
   ];
-  let best = null;
-  for (let attempt = 0; attempt < 48; attempt++) {
-    // Full strength for most attempts; only damp as a last resort if nothing valid.
-    const damp = attempt < 40 ? 1 : Math.pow(0.85, attempt - 39);
+  // Rhythm envelope: the technicality of the wedge under angle `a`, blended
+  // softly across wedge seams — EXACTLY the wedge formula scenery's warmBlend
+  // uses, so the rhythm lands in the biome that motivates it.
+  const rhythmAt = (a) => {
+    if (!wedges || wedges.order.length < 2) return 0.5;
+    const n = wedges.order.length;
+    const sWedge = ((a / TAU + wedges.offset + 1) % 1) * n;
+    const i0 = Math.floor(sWedge) % n;
+    const frac = sWedge - Math.floor(sWedge);
+    const t0 = BIOME_RHYTHM[wedges.order[i0]] ?? 0.5;
+    const t1 = BIOME_RHYTHM[wedges.order[(i0 + 1) % n]] ?? 0.5;
+    const bl = frac < 0.75 ? 0 : (frac - 0.75) / 0.25;
+    return t0 + (t1 - t0) * bl * bl * (3 - 2 * bl);
+  };
+  // High-frequency harmonics (the packed-in wiggle) take the rhythm envelope;
+  // the low ones (the loop's overall lobes) stay global so the silhouette holds.
+  const rLo = rH.slice(0, 3), rHi = rH.slice(3);
+  const tLo = tH.slice(0, 2), tHi = tH.slice(2);
+
+  const sm01 = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+  const wrapA = (d) => Math.atan2(Math.sin(d), Math.cos(d));
+  const hillsAt = (a) => Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
+  // Crossover height plan: each crossing's two passages pin to a COMMON level
+  // (the base profile at that pair's lower passage), the upper one lifted by
+  // the deck clearance. Base hills flatten across each crossing's
+  // neighbourhood so the pin ramps stay gentle and the grade limiter never
+  // needs to touch a deck. Windows shrink with m (petals sit closer together).
+  const buildXoPass = (plan) => {
+    const pass = [];
+    if (plan.kind === "gen") {
+      // Passages come pre-analysed: lap-ordered, over/under assigned, arc-
+      // close ones grouped into CLUSTERS (a cluster shares one pin level —
+      // independent heights across a short corridor are infeasible at legal
+      // grades), each with a height window sized from its local spacing.
+      const clusterPin = new Map();
+      for (const ps of plan.passages) {
+        if (!clusterPin.has(ps.cluster)) clusterPin.set(ps.cluster, hillsAt(ps.a));
+        pass.push({ a: ps.a, pin: clusterPin.get(ps.cluster), up: ps.up, win: ps.win });
+      }
+    } else {
+      // Limacon: param == polar angle, shape rotated by phi.
+      for (let ci = 0; ci < plan.lows.length; ci++) {
+        const pin = hillsAt(plan.phi + plan.lows[ci]);
+        pass.push({ a: plan.phi + plan.lows[ci], pin, up: false, win: 0.55 });
+        pass.push({ a: plan.phi + plan.ups[ci], pin, up: true, win: 0.55 });
+      }
+    }
+    const w = plan.kind === "gen"
+      ? { zoneScale: 2.4, zoneCap: 0.9, plateauFrac: 0.45 }
+      : { zoneScale: 2.4, zoneCap: 1.35, plateauFrac: 0.44 };
+    return { pass, w };
+  };
+  const _xoCache = new Map();
+  const xoPassFor = (plan) => {
+    let e = _xoCache.get(plan);
+    if (!e) { e = buildXoPass(plan); _xoCache.set(plan, e); }
+    return e;
+  };
+
+  let best = null, bestXo = null;
+  // Attempt budget: the first 30 tries carry the biome-rhythm envelope at
+  // stepping-down strength; after that the schedule matches the old
+  // generator's (40 clean full-strength tries, then damped last resorts) so
+  // hard seeds converge as reliably as before the envelope existed. A
+  // crossover map keeps its crossing through attempt 43, then falls back to a
+  // plain loop — a hard seed still always converges to SOMETHING drivable.
+  for (let attempt = 0; attempt < 92; attempt++) {
+    const xo = attempt < 44 ? xover : attempt < 64 && xover ? xover.fallback || null : null;
+    const xp = xo ? xoPassFor(xo) : null;
+    const xoPass = xp ? xp.pass : null;
+    const xoW = xp ? xp.w : null;
+    const damp = attempt < 82 ? 1 : Math.pow(0.85, attempt - 81);
     const radVar = (0.12 + curviness * 0.55 + detail * 0.18) * damp;
     const tangAmp = (curviness * 0.18 + detail * 0.2) * damp;
     const rPhase = rH.map(() => rng() * TAU);
     const tPhase = tH.map(() => rng() * TAU);
+    const rPhaseHi = rPhase.slice(3), tPhaseHi = tPhase.slice(2);
 
     const pts = [];
     for (let i = 0; i < N; i++) {
       const a = (i / N) * TAU;
-      const r = baseR * (1 + radVar * harmSum(rH, a, rPhase));
-      const tg = baseR * tangAmp * harmSum(tH, a, tPhase);
-      const x = Math.cos(a) * r - Math.sin(a) * tg;
-      const z = Math.sin(a) * r + Math.cos(a) * tg;
-      const y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
+      // desert ~0.66x wiggle … city ~1.3x — hot enough to FEEL at the wheel,
+      // cool enough that loop validity stays near the old generator's rate
+      // (pushing to 1.55x cratered it). Late attempts step the envelope back
+      // toward uniform so hard seeds still converge to SOME valid loop.
+      const envRaw = 0.6 + 0.7 * rhythmAt(a);
+      const envK = attempt < 10 ? 1 : attempt < 20 ? 0.55 : attempt < 30 ? 0.25 : 0;
+      const env = 1 + (envRaw - 1) * envK;
+      let x, z;
+      if (xo && xo.kind === "gen") {
+        // Windowed-loop base, rotated into place. Wobble scales the point
+        // radially from the origin, gated by the plan's baked envelope:
+        // full strength where the analytic curve is gentle, zero where it is
+        // tight (loop tips, necks) or near a passage — so styling can never
+        // sharpen a corner past the floor or graze strands into an extra
+        // crossing.
+        let [px, pz] = xoShape(xo.loops, a);
+        px *= baseR; pz *= baseR;
+        let dmin = Infinity;
+        for (const ps of xoPass) dmin = Math.min(dmin, Math.abs(wrapA(a - ps.a)));
+        const envP = sm01((dmin - 0.42) / 0.35);
+        const ew = xo.envW[Math.floor(((a / TAU) % 1) * xo.envW.length) % xo.envW.length];
+        // Crossover attempts cap the styling strength: at max curviness the
+        // full wobble (radVar ~0.85) overwhelms ANY crossing plan, and the
+        // map's character comes from its loops, not the jitter. Wobble also
+        // fades where the base curve dives toward the centre — waist bays
+        // pass close to each other there and grazing them mints crossings.
+        const envC = sm01((Math.hypot(px, pz) / baseR - 0.3) / 0.22);
+        const wob = 1 + Math.min(radVar, 0.4) * 0.35 * ew * envP * envC * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
+        const cR = Math.cos(xo.rot), sR = Math.sin(xo.rot);
+        x = (px * cR - pz * sR) * wob;
+        z = (px * sR + pz * cR) * wob;
+      } else {
+        let r, tg;
+        if (xo) {
+          // Limacon base: signed radius factor sweeps negative through the
+          // inner loop. Wobble fades out near the zero crossings (keeps the
+          // transversal crisp) and scales with |lim| so the inner loop keeps
+          // its proportions instead of inheriting rim-sized swings.
+          const rel = a - xo.phi;
+          const gv = xo.k + Math.cos(xo.m * rel) + xo.b * Math.cos(rel - xo.psi);
+          const lim = gv / xo.norm;
+          const envX = sm01((Math.abs(gv) - 0.05) / 0.35);
+          const mag = Math.max(0.35, Math.abs(lim));
+          const rvX = Math.min(radVar, 0.45); // same styling cap as gen maps
+          r = baseR * (lim + rvX * 0.5 * envX * mag * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
+          tg = baseR * Math.min(tangAmp, 0.24) * 0.5 * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+        } else {
+          r = baseR * (1 + radVar * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
+          tg = baseR * tangAmp * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+        }
+        x = Math.cos(a) * r - Math.sin(a) * tg;
+        z = Math.sin(a) * r + Math.cos(a) * tg;
+      }
+      let y = Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
+      // The summit peak rides on top: base hills fade near the crest (the
+      // mountain doesn't need bumps on its face, and damping them keeps the
+      // combined grade climbable where the Gaussian is steepest).
+      if (summit) {
+        const da = Math.atan2(Math.sin(a - summit.ang), Math.cos(a - summit.ang));
+        const g = Math.exp(-(da * da) / (summit.w * summit.w));
+        y = y * (1 - 0.55 * g) + summit.h * g;
+      }
+      if (xo) {
+        for (const ps of xoPass) {
+          const d = Math.abs(wrapA(a - ps.a));
+          const zone = Math.min(xoW.zoneCap, ps.win * xoW.zoneScale);
+          const uZ = sm01((zone - d) / (zone * 0.55)); // wide flatten
+          y = y * (1 - uZ) + ps.pin * uZ;
+          if (ps.up) y += xo.clear * sm01((ps.win - d) / (ps.win * 0.6));
+        }
+      }
       pts.push(new THREE.Vector3(x, y, z));
     }
+    // Crossover plateau points are exact CONTRACTS (the deck build and the
+    // validator's clearance check both rely on them): assign them their exact
+    // pin level and mark them immovable for the limiter below. (Re-pinning
+    // AFTER the limiter instead used to snap plateaus back up next to freshly
+    // relaxed ramps, minting steps far steeper than the limit.)
+    const TAN_MAX = 0.27;
+    const pinned = xo ? new Uint8Array(N) : null;
+    if (xo) {
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * TAU;
+        for (const ps of xoPass) {
+          if (Math.abs(wrapA(a - ps.a)) <= ps.win * xoW.plateauFrac) {
+            pts[i].y = ps.pin + (ps.up ? xo.clear : 0);
+            pinned[i] = 1;
+          }
+        }
+      }
+      // A plateau narrower than the control spacing could miss every point —
+      // each passage always pins its NEAREST control point.
+      for (const ps of xoPass) {
+        const i0 = ((Math.round((ps.a / TAU) * N) % N) + N) % N;
+        pts[i0].y = ps.pin + (ps.up ? xo.clear : 0);
+        pinned[i0] = 1;
+      }
+      // Feasibility clamp: propagate pin-anchored height bounds around the
+      // ring (Bellman-style), then squeeze free points inside them. Without
+      // this the limiter below can face an UNSATISFIABLE spot — a tall hill
+      // two chords from a pinned deck — and oscillate a point between "pull
+      // down toward the hill" and "pull up toward the pin", leaving a cliff.
+      const UB = new Float64Array(N).fill(Infinity);
+      const LB = new Float64Array(N).fill(-Infinity);
+      for (let i = 0; i < N; i++) if (pinned[i]) { UB[i] = LB[i] = pts[i].y; }
+      const limAt = (i) => {
+        const p = pts[i], q = pts[(i + 1) % N];
+        return Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
+      };
+      for (let lap = 0; lap < 3; lap++) {
+        for (let i = 0; i < N; i++) {
+          const j = (i + 1) % N, L = limAt(i);
+          if (UB[i] + L < UB[j]) UB[j] = UB[i] + L;
+          if (LB[i] - L > LB[j]) LB[j] = LB[i] - L;
+        }
+        for (let i = N - 1; i >= 0; i--) {
+          const j = (i + 1) % N, L = limAt(i);
+          if (UB[j] + L < UB[i]) UB[i] = UB[j] + L;
+          if (LB[j] - L > LB[i]) LB[i] = LB[j] - L;
+        }
+      }
+      for (let i = 0; i < N; i++) {
+        if (pinned[i]) continue;
+        if (LB[i] > UB[i]) pts[i].y = (LB[i] + UB[i]) / 2; // conflicting pins: split the difference
+        else pts[i].y = Math.max(LB[i], Math.min(UB[i], pts[i].y));
+      }
+    }
+    // Grade limiter: hill harmonics and the summit peak can stack into climbs
+    // or dives steeper than the karts are tuned for. Relax control-point
+    // heights until no segment exceeds ~17deg — normally pulling the HIGH
+    // side down (valleys, lake shelves and the y>=0 floor stay put; a too-
+    // eager summit just gets a rounder crest), but around a pinned crossover
+    // plateau the FREE side moves instead, whichever direction feasibility
+    // needs. The spline overshoots the chord grade through plan-view corners
+    // (run compresses while y keeps moving), so the chord cap sits well under
+    // the ~24deg the built road and the kart tuning actually tolerate.
+    const runLimiter = (passes) => {
+      for (let pass = 0; pass < passes; pass++) {
+        let changed = false;
+        for (let i = 0; i < N; i++) {
+          const j = (i + 1) % N;
+          const p = pts[i], q = pts[j];
+          const lim = Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
+          const dy = q.y - p.y;
+          if (Math.abs(dy) <= lim) continue;
+          const pa = pinned && pinned[i], pb = pinned && pinned[j];
+          if (pa && pb) continue; // adjacent plateau points share a level anyway
+          changed = true;
+          if (pa) q.y = p.y + Math.sign(dy) * lim;
+          else if (pb) p.y = q.y - Math.sign(dy) * lim;
+          else if (dy > 0) q.y = p.y + lim;
+          else p.y = q.y + lim;
+        }
+        if (!changed) break;
+      }
+    };
+    runLimiter(8);
+    // De-lump: the limiter's per-chord clamps leave slope KINKS at ramp ends,
+    // and through a corner the spline rings off them — the "lumpy, folded
+    // hillside on a climbing turn". Two gentle rounding passes blend each
+    // point toward its neighbours' mean (pinned deck plateaus stay exact),
+    // then a short limiter sweep re-caps anything the rounding steepened.
+    for (let pass = 0; pass < 2; pass++) {
+      const y0 = pts.map((p) => p.y);
+      for (let i = 0; i < N; i++) {
+        if (pinned && pinned[i]) continue;
+        pts[i].y = y0[i] * 0.5 + (y0[(i - 1 + N) % N] + y0[(i + 1) % N]) * 0.25;
+      }
+    }
+    runLimiter(3);
     best = pts;
-    if (_loopOK(pts, MIN_CORNER)) return pts;
+    bestXo = xo;
+    if (_loopOK(pts, MIN_CORNER, xo)) {
+      if (xo) pts._xover = xo;
+      return pts;
+    }
   }
+  if (bestXo) best._xover = bestXo; // last resort: keep the deck machinery on
   return best;
 }
+
 
 // Centreline control points a given track config WILL produce, for the menu map
 // preview — without building the world or touching the shared RNG stream. Custom
@@ -179,7 +825,7 @@ export function previewLoopPoints(config) {
   if (!config || config.mode !== "custom") {
     return CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
   }
-  return generateLoopPoints(config, makeRng(config.seed || "preview"));
+  return generateLoopPoints(config, makeRng(config.seed || "preview"), planBiomeWedges(config.biomes, String(config.seed || "preview")));
 }
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
@@ -313,9 +959,12 @@ export class Track {
 
     // Control points (x, y, z). Either the procedural loop from the knobs, or
     // the classic hand-authored serpentine circuit.
+    // Custom tracks plan their biome wedges FIRST (isolated stream), so the
+    // generator's per-biome rhythm and scenery's wedge layout agree exactly.
+    const wedges = config && config.mode === "custom" ? planBiomeWedges(config.biomes, String(config.seed || "w")) : null;
     const pts =
       config && config.mode === "custom"
-        ? generateLoopPoints(config)
+        ? generateLoopPoints(config, rand, wedges)
         : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
@@ -335,6 +984,51 @@ export class Track {
     this._coarse = [];
     for (let i = 0; i < this.samples; i += 2) this._coarse.push(this._pts[i]);
 
+    // Crossover: locate the actual crossing on the BUILT samples (the plan's
+    // angles only approximate where the spline put it), remember which strand
+    // is the deck, and give terrain a sample list that ignores the deck window
+    // — ground anchors to the LOWER road there, so the world builds a valley
+    // floor for the deck to span instead of ramping terrain up to the bridge.
+    this.crossovers = [];
+    this._coarseGround = this._coarse;
+    if (pts._xover) {
+      const P = this._pts, S = this.samples;
+      const skip = Math.ceil((170 / this.length) * S); // ignore arc-adjacent pairs
+      for (let i = 0; i < S && this.crossovers.length < pts._xover.m; i += 2) {
+        const a = P[i], b = P[(i + 2) % S];
+        for (let j = i + skip; j < S; j += 2) {
+          if (S - (j - i) < skip) continue;
+          // one crossing per neighbourhood: skip pairs near an already-found one
+          const c = P[j], d = P[(j + 2) % S];
+          const rX = b.x - a.x, rZ = b.z - a.z, sX = d.x - c.x, sZ = d.z - c.z;
+          const den = rX * sZ - rZ * sX;
+          if (Math.abs(den) < 1e-9) continue;
+          const t = ((c.x - a.x) * sZ - (c.z - a.z) * sX) / den;
+          const u = ((c.x - a.x) * rZ - (c.z - a.z) * rX) / den;
+          if (t < 0 || t > 1 || u < 0 || u > 1) continue;
+          const hx = a.x + rX * t, hz = a.z + rZ * t;
+          if (this.crossovers.some((xg) => Math.hypot(xg.x - hx, xg.z - hz) < 60)) continue;
+          const y1 = a.y + (b.y - a.y) * t;
+          const y2 = c.y + (d.y - c.y) * u;
+          this.crossovers.push({ x: hx, z: hz, iUp: y1 > y2 ? i : j, iLow: y1 > y2 ? j : i, clear: pts._xover.clear });
+          break;
+        }
+      }
+      if (this.crossovers.length) {
+        const ground = [];
+        for (let ci = 0; ci < this._coarse.length; ci++) {
+          const si = ci * 2;
+          let clearOfDecks = true;
+          for (const xg of this.crossovers) {
+            const d = Math.abs(si - xg.iUp);
+            if (Math.min(d, S - d) * (this.length / S) <= 92) { clearOfDecks = false; break; }
+          }
+          if (clearOfDecks) ground.push(this._coarse[ci]);
+        }
+        if (ground.length > 8) this._coarseGround = ground;
+      }
+    }
+
     // Biome layout for this track: altitude-driven (alpine on the peaks, warm
     // biomes in the lows) for generated tracks; angular wedges for the classic
     // one. The height sampler lets biomeAt read the local road elevation. Set
@@ -352,6 +1046,7 @@ export class Track {
       altitude: !!(config && config.mode === "custom"),
       elevMin: eMin,
       elevMax: eMax,
+      wedges,
     });
 
     // Set pieces (river bridge / canyon / giant forest / overpass): planned off
@@ -1094,14 +1789,24 @@ export class Track {
   // Closest point on the polyline `pts` to (x,z), interpolated *along* the
   // nearest segment so the result (especially height) is continuous — no
   // stair-stepping as you cross sample boundaries.
-  _projectArr(pts, x, z) {
+  // When `py` is given, sample selection weighs height difference too (dy
+  // doubled) — on a crossover map two strands share plan space at the
+  // crossing, and only the kart's own height says which road it is on. The
+  // deck clearance (13u → 26u weighted) dwarfs any wheel-contact wobble, so
+  // karts, wheels probes and lap progress all stay glued to their own strand.
+  _projectArr(pts, x, z, py) {
     const N = pts.length;
     let best = 0;
     let bestD = Infinity;
+    const useY = py !== undefined;
     for (let i = 0; i < N; i++) {
       const dx = pts[i].x - x;
       const dz = pts[i].z - z;
-      const d = dx * dx + dz * dz;
+      let d = dx * dx + dz * dz;
+      if (useY) {
+        const dy = pts[i].y - py;
+        d += dy * dy * 4;
+      }
       if (d < bestD) {
         bestD = d;
         best = i;
@@ -1142,8 +1847,15 @@ export class Track {
 
   // Projection onto the centerline with an interpolated ground height:
   // { t, point, tangent, side, lateral, distance, groundY }.
+  // Road height near (x,z) as seen from height y — strand-aware, for the
+  // chase camera's above-road clamp (2D-nearest picks the deck overhead when
+  // strands stack; this picks the strand the kart is actually on).
+  groundYNear(x, z, y) {
+    return this._projectArr(this._pts, x, z, y).y;
+  }
+
   project(pos) {
-    const r = this._projectArr(this._pts, pos.x, pos.z);
+    const r = this._projectArr(this._pts, pos.x, pos.z, pos.y);
     const t = (r.i + r.u) / this.samples;
     const point = new THREE.Vector3(r.cx, r.y, r.cz);
     const tangent = this._tans[r.i];
@@ -1155,6 +1867,43 @@ export class Track {
   // Nearest XZ distance + interpolated height (coarse, for scenery).
   groundInfo(x, z) {
     const r = this._projectArr(this._coarse, x, z);
+    return { dist: r.dist, y: r.y };
+  }
+
+  // Terrain-anchoring variant: on crossover maps the deck window's samples
+  // are excluded, so ground under the bridge follows the LOWER road. Distance
+  // queries (prop placement, road-avoidance) keep the full list via groundInfo.
+  // Where TWO arc-separated strands share plan space at different heights
+  // (stacked passes, a low road under a mountainside approach), snapping to
+  // the nearest strand minted vertical terrace WALLS with baked tree shadows
+  // smeared down them — instead, blend toward the second strand as the point
+  // approaches equidistance, so the gap becomes a hillside.
+  groundInfoTerrain(x, z) {
+    const r = this._projectArr(this._coarseGround, x, z);
+    const pts = this._coarseGround;
+    const n = pts.length;
+    const win = Math.max(6, Math.ceil(((170 / this.length) * this.samples) / 2)); // arc window, in coarse indices
+    let d2 = Infinity, y2 = r.y;
+    for (let i = 0; i < n; i++) {
+      const ad = Math.abs(i - r.i);
+      if (Math.min(ad, n - ad) <= win) continue; // same strand as the winner
+      const dx = pts[i].x - x, dz = pts[i].z - z;
+      const d = dx * dx + dz * dz;
+      if (d < d2) { d2 = d; y2 = pts[i].y; }
+    }
+    if (d2 < Infinity) {
+      const gap = Math.sqrt(d2) - r.dist;
+      if (gap < 70) {
+        // The blend must die out ON the road itself: at a tight neck (strands
+        // ~34u apart, 12u+ of height between them) half-weighting the higher
+        // strand lifted terrain 3-4u ABOVE the lower tarmac — a snow wall
+        // lying across the road. Terrain may only start easing toward the
+        // second strand beyond the shoulder.
+        const onRoad = Math.max(0, Math.min(1, (r.dist - this.halfWidth - 3) / 14));
+        const w = 0.5 * (1 - gap / 70) * onRoad * (3 - 2 * onRoad) * onRoad; // smoothstep
+        if (w > 0) return { dist: r.dist, y: r.y * (1 - w) + y2 * w };
+      }
+    }
     return { dist: r.dist, y: r.y };
   }
 

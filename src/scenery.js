@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
-import { rand } from "./rng.js"; // seeded RNG so the world is identical per seed
+import { rand, makeRng } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { cloudClusterGeo } from "./scene.js"; // the sky ring's cloud lump (asset catalog shows one)
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
@@ -125,6 +125,23 @@ let _biomeAngleOffset = 0;
 
 // Choose which biomes appear (by name). Empty/unknown -> all. opts:
 //   { altitude, elevMin, elevMax } enable altitude-driven layout (custom tracks).
+// Decide the warm-biome wedge ORDER + angular phase for a seed, from an
+// ISOLATED stream — so the track GENERATOR can read the same plan before the
+// world build starts (its per-biome corner rhythm aligns with the wedges) and
+// setBiomeLayout can adopt it without consuming the shared world stream.
+export function planBiomeWedges(names, seedStr) {
+  const sel = Array.isArray(names) && names.length ? BIOMES.filter((b) => names.includes(b.name)) : BIOMES;
+  let warm = sel.filter((b) => b.name !== "alpine");
+  if (!warm.length) warm = sel;
+  const r = makeRng(String(seedStr) + "|wedges");
+  const order = warm.map((b) => b.name);
+  for (let i = order.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [order[i], order[j]] = [order[j], order[i]];
+  }
+  return { order, offset: r() };
+}
+
 export function setBiomeLayout(names, opts = {}) {
   const sel = Array.isArray(names) && names.length ? BIOMES.filter((b) => names.includes(b.name)) : BIOMES;
   _activeBiomes = sel.length ? sel : BIOMES;
@@ -137,8 +154,15 @@ export function setBiomeLayout(names, opts = {}) {
   _biomeAngleOffset = 0;
   // Generated tracks: scramble both the ORDER of the warm biomes and the angular
   // phase, so the sequence of biomes and which one the start sits on are unique
-  // per seed (classic keeps its hand-authored fixed order).
-  if (_altMode) {
+  // per seed (classic keeps its hand-authored fixed order). When the track hands
+  // us its wedge PLAN (planBiomeWedges), adopt it — the generator already laid
+  // the road's rhythm out against those exact wedges.
+  if (opts.wedges) {
+    const byName = new Map(_warm.map((b) => [b.name, b]));
+    const ordered = opts.wedges.order.map((n) => byName.get(n)).filter(Boolean);
+    if (ordered.length === _warm.length) _warm = ordered;
+    _biomeAngleOffset = opts.wedges.offset;
+  } else if (_altMode) {
     for (let i = _warm.length - 1; i > 0; i--) {
       const j = Math.floor(rand() * (i + 1));
       [_warm[i], _warm[j]] = [_warm[j], _warm[i]];
@@ -366,7 +390,9 @@ export function buildWorld(scene, track, opts = {}) {
   // valley rise (outside only) so the surroundings climb into hillsides, plus a
   // little rolling detail. Used for the terrain and to set lake water levels.
   const baseHeight = (x, z) => {
-    const gi = track.groundInfo(x, z);
+    // Terrain variant: on crossover maps this ignores the deck strand, so the
+    // ground under the bridge anchors to the LOWER road (see track.js).
+    const gi = track.groundInfoTerrain(x, z);
     const rise = isOutside(x, z) ? valleyRise(gi.dist) : 0;
     return gi.y - 0.25 + rise + flatten(gi.dist) * detail(x, z);
   };
@@ -397,8 +423,13 @@ export function buildWorld(scene, track, opts = {}) {
     const u = clamp(1 - (d - track.halfWidth) / 3, 0, 1);
     return heightAt(x, z) - 1.2 * (u * u * (3 - 2 * u));
   };
-  buildTerrain(scene, terrainHeight, litLevel); // night/dusk darkening (snow handled hard inside)
-  buildMountains(scene, heightAt, track);
+  // World extents adapt to the track: big maps (rim radius grew with the
+  // size knob) can reach ~1060u out, past the old fixed 1900x1900 terrain
+  // sheet and into the fixed mountain ring's band.
+  let trackReach = 0;
+  for (const p of track._pts) trackReach = Math.max(trackReach, Math.hypot(p.x, p.z));
+  buildTerrain(scene, terrainHeight, litLevel, trackReach + 330); // night/dusk darkening (snow handled hard inside)
+  buildMountains(scene, heightAt, track, trackReach);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
   buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
@@ -489,6 +520,21 @@ function makeLakes(track, baseHeight) {
   const lakes = [];
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
+  // Feature height-mods run AFTER the lake carve in the final height chain
+  // (heightAt wraps carveLakes), so a crossover ramp's terrain pin or a
+  // canyon ridge inside the water ring silently overwrites the carved beach —
+  // terrain drops below the waterline and the water sheet hangs in the air
+  // at its rim. A candidate is only valid when no mod fights the waterline.
+  const waterlineClear = (cx, cz, L) => {
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      for (const r of [L.waterR, (L.waterR + L.shoreR) / 2]) {
+        const sx = cx + Math.cos(a) * r, sz = cz + Math.sin(a) * r;
+        if (Math.abs(featureHeightMod(track.features, sx, sz, L.level) - L.level) > 0.6) return false;
+      }
+    }
+    return true;
+  };
 
   // Set-piece water goes in FIRST so every lake placed below keeps clear of it:
   // the river (split into two reaches around a waterfall when the land drops),
@@ -554,10 +600,19 @@ function makeLakes(track, baseHeight) {
     // fold this fails, so we skip it rather than spill water onto the track. It must
     // also keep clear of the set-piece water (which touches the road on purpose).
     const clearOfFeat = spine.every((s) => featWater.every((L) => lakeDist(L, s.x, s.z) > waterR + L.blendR + 6));
-    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat) {
+    // Same waterline test as the circle lakes: no feature height-mod may
+    // fight the carved water level anywhere across the ribbon.
+    const level = minY - 2;
+    const modsOK = spine.every((s) => {
+      for (const rr of [-waterR * 0.7, 0, waterR * 0.7]) {
+        if (Math.abs(featureHeightMod(track.features, s.x + s.sx * rr, s.z + s.sz * rr, level) - level) > 0.6) return false;
+      }
+      return true;
+    });
+    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat && modsOK) {
       lakes.push({
-        ribbon: true, spine, level: minY - 2,
-        floor: minY - 2 - 8,
+        ribbon: true, spine, level,
+        floor: level - 8,
         waterR,
         shoreR: waterR, // no flat beach; the whole bank rises to the road
         blendR: waterR + bankW, // ramp reaches road height at the barrier
@@ -584,11 +639,13 @@ function makeLakes(track, baseHeight) {
     // Keep clear of the hero ribbon lake too.
     if (lakes.some((L) => L.ribbon && lakeDist(L, x, z) < blendR + L.blendR + 6)) continue;
     const level = baseHeight(x, z);
-    lakes.push({
+    const cand = {
       x, z, level,
       floor: level - (6 + rand() * 3),
       waterR, shoreR, blendR,
-    });
+    };
+    if (!waterlineClear(x, z, cand)) continue;
+    lakes.push(cand);
     placedHill++;
   }
 
@@ -622,7 +679,9 @@ function makeLakes(track, baseHeight) {
         if (track.distanceToCenter(x, z) < track.halfWidth + blendR + 8) continue; // shore/blend would touch the road
         if (lakes.some((L) => (L.ribbon ? lakeDist(L, x, z) : Math.hypot(x - L.x, z - L.z)) < blendR + (L.blendR || 0) + 6)) continue;
         const level = baseHeight(x, z) - 1.5;
-        lakes.push({ x, z, level, floor: level - 7, waterR, shoreR, blendR, beach: true });
+        const cand = { x, z, level, floor: level - 7, waterR, shoreR, blendR, beach: true };
+        if (!waterlineClear(x, z, cand)) continue;
+        lakes.push(cand);
         break;
       }
     }
@@ -979,13 +1038,15 @@ function buildGrass(scene, track, heightAt) {
   return mesh;
 }
 
-function buildTerrain(scene, heightAt, litLevel = 0) {
+function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
   // General ground only dims a LITTLE at night (so the scene stays as bright as it
   // was before) — but snow is darkened HARD, because near-white snow reflects the
   // moonlight far more than anything else and is what reads "self-lit".
   const groundDarken = 1 - litLevel * 0.15; // ~0.85 at night
-  const SIZE = 1900;
-  const SEG = 280;
+  // Sheet size follows the track's reach; segment count follows the sheet so
+  // cell size (and the look of the rolling detail) stays roughly constant.
+  const SIZE = Math.max(1900, Math.ceil(halfExtent * 2));
+  const SEG = Math.min(380, Math.round(SIZE / 6.8));
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
   geo.rotateX(-Math.PI / 2);
 
@@ -1071,7 +1132,7 @@ function buildTerrain(scene, heightAt, litLevel = 0) {
   scene.add(mesh);
 }
 
-function buildMountains(scene, heightAt, track) {
+function buildMountains(scene, heightAt, track, trackReach = 900) {
   const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, roughness: 1 });
   const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
   const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
@@ -1097,13 +1158,14 @@ function buildMountains(scene, heightAt, track) {
     }
   };
 
-  // Distant mountain ring around the whole world. Pushed out far enough that even
-  // a max-size, max-curviness loop (which can reach ~900 units out) stays well
-  // inside it, so a ring peak never lands on the track.
+  // Distant mountain ring around the whole world. Pushed out past the loop's
+  // ACTUAL reach (big maps stretch further than the old fixed ring allowed),
+  // so a ring peak never lands on the track.
+  const ringBase = Math.max(1080, trackReach + 230);
   const count = 24;
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + rand() * 0.2;
-    const r = 1080 + rand() * 180;
+    const r = ringBase + rand() * 180;
     peak(Math.cos(a) * r, Math.sin(a) * r, 190 + rand() * 160, 90 + rand() * 70, 30);
   }
 
@@ -1697,6 +1759,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue; // folded over road
     if (_inLake(x, z)) continue;
     if (featureSpanBlock(track.features, x, z)) continue; // decks/tunnel carry their own furniture
+    if (p.y - heightAt(x, z) > 4) continue; // elevated ramp: a ground-planted lamp turns into a stilt
     spots.push({ x, z, y: heightAt(x, z), ax: -s.x * dir, az: -s.z * dir }); // arm aims at road
   }
   if (!spots.length) return;
@@ -1842,6 +1905,22 @@ function buildTrafficLights(scene, track, heightAt) {
   const up = new THREE.Vector3(0, 1, 0);
   const spacing = track.length / N;
   const step = Math.max(1, Math.round(60 / spacing));
+  // The mast arm reaches ~5u from the pole with the head at ~6-7u up: fine
+  // over its own road, but a pole standing between two passes of the lap can
+  // hang that head over the LOWER strand at kart-graze height.
+  const otherStrandNear = (x, z, i) => {
+    // Exclusion window ~2% of the lap: just past the legal-hairpin arc, so a
+    // hairpin's far leg (or a crossing corridor's other strand) still counts
+    // as foreign road even though it is close along the lap.
+    const win = Math.ceil(N * 0.02);
+    for (let k = 0; k < N; k += 2) {
+      const ad = Math.abs(k - i);
+      if (Math.min(ad, N - ad) <= win) continue;
+      const q = track._pts[k];
+      if ((q.x - x) ** 2 + (q.z - z) ** 2 < 26 * 26) return true;
+    }
+    return false;
+  };
   let flip = 1;
   for (let i = 0; i < N; i += step) {
     const p = track._pts[i];
@@ -1853,9 +1932,16 @@ function buildTrafficLights(scene, track, heightAt) {
     const z = p.z + side.z * flip * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
     if (_inLake(x, z)) continue;
+    // Elevated stretch (deck/ramp): the pole grounds on the terrain below and
+    // its mast arm ends up hanging in the lower lane at kart height.
+    if (p.y - heightAt(x, z) > 3) continue;
+    if (otherStrandNear(x, z, i)) continue;
 
     const g = makeTrafficLight();
-    g.position.set(x, heightAt(x, z), z);
+    // Never below the road it serves: on a climbing curve the verge beside
+    // the boulevard can dip ~1.5u — planted there, the mast head ends up at
+    // kart-graze height over the rising road ahead.
+    g.position.set(x, Math.max(heightAt(x, z), p.y - 0.5), z);
     // Local +Z points from the pole back toward the road centre.
     g.rotation.y = Math.atan2(-side.x * flip, -side.z * flip);
     g.traverse((o) => o.layers.set(1));
@@ -2004,6 +2090,19 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
     if (biomeAt(p.x, p.z).name === "city") continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
+    // A span needs honest footings: skip spots where a post would land on
+    // ANOTHER pass of the lap (loop necks put strands a post-width away) or
+    // where this road is elevated — a ground-planted post under a deck
+    // becomes a stilt rising through whatever runs below (the lower lane).
+    {
+      let ok = true;
+      for (const sgn of [1, -1]) {
+        const px = p.x + side.x * sgn * off, pz = p.z + side.z * sgn * off;
+        if (track.distanceToCenter(px, pz) < track.halfWidth + 1.5) { ok = false; break; }
+        if (heightAt && p.y - heightAt(px, pz) > 4) { ok = false; break; }
+      }
+      if (!ok) continue;
+    }
     const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
     const B = new THREE.Vector3(p.x - side.x * off, p.y + 8.5, p.z - side.z * off);
     postSpots.push([A.x, A.z, A.y], [B.x, B.z, B.y]);
@@ -2228,13 +2327,29 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
     return { p, sx: -t.z / tl, sz: t.x / tl, yaw: Math.atan2(t.x / tl, t.z / tl) };
   };
 
+  // A road-spanning structure needs the ground BESIDE its own road to be free
+  // of every other pass of the lap. Self-crossing maps run strands as close as
+  // ~34u apart at loop necks — a banner or footbridge planted there hangs its
+  // cloth/deck straight across the neighbouring tarmac at kart height (and its
+  // poles stand in that road). Walk the span line and reject any spot whose
+  // samples beyond our own corridor land on another strand.
+  const spanClear = (p, sx, sz, reach) => {
+    for (let s = -reach; s <= reach; s += 5) {
+      if (Math.abs(s) <= track.halfWidth + 1) continue; // our own corridor
+      if (track.distanceToCenter(p.x + sx * s, p.z + sz * s) < track.halfWidth - 1) return false;
+    }
+    return true;
+  };
+  const bannerBlocked = (sp) =>
+    featureSpanBlock(track.features, sp.p.x, sp.p.z) || !spanClear(sp.p, sp.sx, sp.sz, track.halfWidth + 19);
+
   // --- Printed street banners (2) ---
   // Nudged along the lap if their spot lands inside a set piece that carries
   // its own overhead structure (a banner inside the tunnel clips the tube).
   [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
     let sp = spanAt(frac);
-    for (let n = 0; n < 6 && featureSpanBlock(track.features, sp.p.x, sp.p.z); n++) sp = spanAt(frac + 0.04 * (n + 1));
-    if (featureSpanBlock(track.features, sp.p.x, sp.p.z)) return;
+    for (let n = 0; n < 6 && bannerBlocked(sp); n++) sp = spanAt(frac + 0.04 * (n + 1));
+    if (bannerBlocked(sp)) return;
     const { p, sx, sz, yaw } = sp;
     addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_COLS.length) | 0));
   });
@@ -2275,6 +2390,14 @@ function pickFootbridgeSpans(track, heightAt, count) {
     const rx = p.x - sx * reach, rz = p.z - sz * reach; // right landing
     if (_inLake(lx, lz) || _inLake(rx, rz)) continue; // a post would stand in the lake
     if (featureSpanBlock(track.features, p.x, p.z)) continue; // tunnel/deck runs span themselves
+    // Another pass of the lap inside the span's reach (a loop neck) would put
+    // the bridge deck and its landing ramp straight across that road.
+    let clearSpan = true;
+    for (let s = -(reach + 8); s <= reach + 8 && clearSpan; s += 5) {
+      if (Math.abs(s) <= track.halfWidth + 1) continue;
+      if (track.distanceToCenter(p.x + sx * s, p.z + sz * s) < track.halfWidth - 1) clearSpan = false;
+    }
+    if (!clearSpan) continue;
     // Avoid a sharp corner — the straight deck would cut the barrier on a tight bend.
     const t1 = track._tans[(i + 6) % N];
     const turn = Math.abs(Math.atan2(t1.x, t1.z) - Math.atan2(t.x, t.z));
