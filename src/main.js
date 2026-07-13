@@ -457,6 +457,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
+const items = new ItemManager(scene, track); // yarn balls + milk puddles
 Object.assign(window.__zoomies, { world, track, items }); // items: headless item-behavior probes
 _boot.world = performance.now();
 
@@ -638,7 +639,6 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 
 const input = new Input();
 const hairballs = new HairballManager(scene);
-const items = new ItemManager(scene, track); // yarn balls + milk puddles
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).
 const _warmPos = new THREE.Vector3();
