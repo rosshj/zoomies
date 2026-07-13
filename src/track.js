@@ -1894,8 +1894,14 @@ export class Track {
     if (d2 < Infinity) {
       const gap = Math.sqrt(d2) - r.dist;
       if (gap < 70) {
-        const w = 0.5 * (1 - gap / 70);
-        return { dist: r.dist, y: r.y * (1 - w) + y2 * w };
+        // The blend must die out ON the road itself: at a tight neck (strands
+        // ~34u apart, 12u+ of height between them) half-weighting the higher
+        // strand lifted terrain 3-4u ABOVE the lower tarmac — a snow wall
+        // lying across the road. Terrain may only start easing toward the
+        // second strand beyond the shoulder.
+        const onRoad = Math.max(0, Math.min(1, (r.dist - this.halfWidth - 3) / 14));
+        const w = 0.5 * (1 - gap / 70) * onRoad * (3 - 2 * onRoad) * onRoad; // smoothstep
+        if (w > 0) return { dist: r.dist, y: r.y * (1 - w) + y2 * w };
       }
     }
     return { dist: r.dist, y: r.y };

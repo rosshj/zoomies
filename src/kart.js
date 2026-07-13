@@ -758,6 +758,15 @@ export class Kart {
       sharp > 0.6 ? 0.34 : 0.55,
       1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45)
     );
+    // Grade compensation: a max-grade climb drags ~0.35 of full accel, which
+    // eats the sharp-corner throttle floor almost exactly — the kart stalls,
+    // trips stuck-recovery, reverses back down the ramp and loops forever
+    // ("stuck on the road, still steering"). Uphill (negative slopePitch),
+    // raise the floor so there is always real headroom over the drag.
+    if (this.slopePitch < -0.04) {
+      const need = (-Math.sin(this.slopePitch) * 17) / this.accel + 0.3;
+      this.throttleInput = Math.max(this.throttleInput, Math.min(1, need));
+    }
 
     // Drift through sweeping corners and HOLD it well into the exit for a long
     // charge (bigger boost). Hysteresis: start only on a real sweeper, but once

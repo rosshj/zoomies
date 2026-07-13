@@ -960,14 +960,34 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       // Two tower frames + swooping main cables with vertical hangers.
       const cRed = new THREE.Color(0xb3402e); // classic oxide red
       const TOWER_H = 18;
-      const tA = run.i0 + Math.round(span * 0.24);
-      const tB = run.i1 - Math.round(span * 0.24);
+      let tA = run.i0 + Math.round(span * 0.24);
+      let tB = run.i1 - Math.round(span * 0.24);
+      // A tower spot must keep its legs off every OTHER pass of the lap (loop
+      // necks put strands ~34u out — legs there stand in that road). Nudge
+      // along the run for a clear spot; a stubborn side drops the dressing
+      // and the run stays a plain girder deck.
+      const towerClear = (i) => {
+        const { p, side } = at(i);
+        for (const sgn of [1, -1]) {
+          if (otherRoadDist(run.others, p.x + side.x * sgn * railW, p.z + side.z * sgn * railW) < track.halfWidth + 4) return false;
+        }
+        return true;
+      };
+      for (let n = 1; n <= 8 && !towerClear(tA); n++) tA += 2;
+      for (let n = 1; n <= 8 && !towerClear(tB); n++) tB -= 2;
+      if (!towerClear(tA) || !towerClear(tB) || tB - tA < span * 0.2) return;
       const towerTopY = (i) => at(i).p.y + TOWER_H - 1.2;
       for (const ti of [tA, tB]) {
         const { p, side } = at(ti);
         const yaw = Math.atan2(side.x, side.z);
         for (const sgn of [1, -1]) {
-          pushBox(p.x + side.x * sgn * railW, p.y + TOWER_H / 2 - 1.5, p.z + side.z * sgn * railW, 1.5, TOWER_H + 2.4, 1.5, yaw, cRed);
+          const lx = p.x + side.x * sgn * railW, lz = p.z + side.z * sgn * railW;
+          // Legs run to the real ground (river bank, gorge floor), not a fixed
+          // stub below deck level — stubs read as the whole tower floating
+          // when the deck flies high.
+          const footY = Math.min(p.y - 2.7, heightAt(lx, lz) - 0.6);
+          const topY = p.y + TOWER_H + 0.9;
+          pushBox(lx, (topY + footY) / 2, lz, 1.5, topY - footY, 1.5, yaw, cRed);
         }
         pushBox(p.x, p.y + TOWER_H - 1.8, p.z, railW * 2 + 1.4, 1.2, 1.3, yaw, cRed); // top crossbeam
         pushBox(p.x, p.y + TOWER_H * 0.45, p.z, railW * 2 + 1.2, 1.0, 1.1, yaw, cRed); // mid brace
@@ -1751,10 +1771,22 @@ function buildRail(scene, track, run, heightAt, rng, anims) {
   const L = run.rail;
   const beamMat = new THREE.MeshStandardMaterial({ color: 0x565c66, roughness: 0.7, metalness: 0.3 });
   const pylonMat = new THREE.MeshStandardMaterial({ color: 0x9a968e, roughness: 1 });
-  // Clip the line where terrain climbs past the beam.
+  // Clip the line where terrain climbs past the beam, and where it meets
+  // ANOTHER pass of the lap (the beam crosses its own road on purpose, but a
+  // second strand — a loop neck, a climbing return leg — can sit anywhere
+  // from 0-9u below the beam, which parks the train at kart-head height over
+  // that road).
+  const nearOtherRoad = (x, z) => track.distanceToCenter(x, z) < track.halfWidth + 8;
   let lo = L.len0, hi = L.len1;
-  for (let t = -20; t >= L.len0; t -= 20) if (heightAt(L.x + L.dx * t, L.z + L.dz * t) > L.y - 3) { lo = t + 20; break; }
-  for (let t = 20; t <= L.len1; t += 20) if (heightAt(L.x + L.dx * t, L.z + L.dz * t) > L.y - 3) { hi = t - 20; break; }
+  const OWN = track.halfWidth + 12; // the beam's own road crossing corridor
+  for (let t = -20; t >= L.len0; t -= 20) {
+    const x = L.x + L.dx * t, z = L.z + L.dz * t;
+    if (heightAt(x, z) > L.y - 3 || (-t > OWN && nearOtherRoad(x, z))) { lo = t + 20; break; }
+  }
+  for (let t = 20; t <= L.len1; t += 20) {
+    const x = L.x + L.dx * t, z = L.z + L.dz * t;
+    if (heightAt(x, z) > L.y - 3 || (t > OWN && nearOtherRoad(x, z))) { hi = t - 20; break; }
+  }
   if (hi - lo < 90) return;
   const len = hi - lo;
   const cx = L.x + L.dx * (lo + hi) / 2;

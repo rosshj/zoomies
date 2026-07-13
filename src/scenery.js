@@ -2262,13 +2262,29 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
     return { p, sx: -t.z / tl, sz: t.x / tl, yaw: Math.atan2(t.x / tl, t.z / tl) };
   };
 
+  // A road-spanning structure needs the ground BESIDE its own road to be free
+  // of every other pass of the lap. Self-crossing maps run strands as close as
+  // ~34u apart at loop necks — a banner or footbridge planted there hangs its
+  // cloth/deck straight across the neighbouring tarmac at kart height (and its
+  // poles stand in that road). Walk the span line and reject any spot whose
+  // samples beyond our own corridor land on another strand.
+  const spanClear = (p, sx, sz, reach) => {
+    for (let s = -reach; s <= reach; s += 5) {
+      if (Math.abs(s) <= track.halfWidth + 1) continue; // our own corridor
+      if (track.distanceToCenter(p.x + sx * s, p.z + sz * s) < track.halfWidth - 1) return false;
+    }
+    return true;
+  };
+  const bannerBlocked = (sp) =>
+    featureSpanBlock(track.features, sp.p.x, sp.p.z) || !spanClear(sp.p, sp.sx, sp.sz, track.halfWidth + 19);
+
   // --- Printed street banners (2) ---
   // Nudged along the lap if their spot lands inside a set piece that carries
   // its own overhead structure (a banner inside the tunnel clips the tube).
   [0.2 + rand() * 0.1, 0.66 + rand() * 0.1].forEach((frac, bi) => {
     let sp = spanAt(frac);
-    for (let n = 0; n < 6 && featureSpanBlock(track.features, sp.p.x, sp.p.z); n++) sp = spanAt(frac + 0.04 * (n + 1));
-    if (featureSpanBlock(track.features, sp.p.x, sp.p.z)) return;
+    for (let n = 0; n < 6 && bannerBlocked(sp); n++) sp = spanAt(frac + 0.04 * (n + 1));
+    if (bannerBlocked(sp)) return;
     const { p, sx, sz, yaw } = sp;
     addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, poleMat, barMat, bi + ((rand() * BANNER_COLS.length) | 0));
   });
@@ -2309,6 +2325,14 @@ function pickFootbridgeSpans(track, heightAt, count) {
     const rx = p.x - sx * reach, rz = p.z - sz * reach; // right landing
     if (_inLake(lx, lz) || _inLake(rx, rz)) continue; // a post would stand in the lake
     if (featureSpanBlock(track.features, p.x, p.z)) continue; // tunnel/deck runs span themselves
+    // Another pass of the lap inside the span's reach (a loop neck) would put
+    // the bridge deck and its landing ramp straight across that road.
+    let clearSpan = true;
+    for (let s = -(reach + 8); s <= reach + 8 && clearSpan; s += 5) {
+      if (Math.abs(s) <= track.halfWidth + 1) continue;
+      if (track.distanceToCenter(p.x + sx * s, p.z + sz * s) < track.halfWidth - 1) clearSpan = false;
+    }
+    if (!clearSpan) continue;
     // Avoid a sharp corner — the straight deck would cut the barrier on a tight bend.
     const t1 = track._tans[(i + 6) % N];
     const turn = Math.abs(Math.atan2(t1.x, t1.z) - Math.atan2(t.x, t.z));
