@@ -3775,6 +3775,7 @@ if (lobbyStartBtn) {
 // --- Camera follow ---
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
+let _camYPrev = NaN; // last frame's clamped camera height (vertical rate limiter)
 // Scratch vectors for updateCamera — reused every frame so the camera path
 // allocates nothing per frame. (_camFwd is shared with updateAtmosphere's
 // facing test; both write before they read, so the reuse is safe.)
@@ -4023,6 +4024,24 @@ function updateCamera(dt, snap = false) {
   // Don't let the camera poke into a tunnel's mountain: hugging the bore wall
   // (or reversing sideways inside) can park the camera in solid rock.
   featureCameraClamp(track.features, track, camPos);
+
+  // Vertical rate limiter: the clamps above are HARD (they must be — they keep
+  // the camera out of roads and rock), but the moment one disengages the
+  // camera used to snap several units in a frame or two — leaving a tunnel
+  // (ceiling clamp lets go, ground clamp on the ridge behind releases as the
+  // road drops away) read as the view lurching down for a beat. Ease toward
+  // the new height instead, while the geometry floors/ceilings still win
+  // instantly (re-applied after the ease so a low bore can never be clipped).
+  if (!snap && Number.isFinite(_camYPrev)) {
+    const cap = (camPos.y > _camYPrev ? 9 : 18) * dt; // rise gently; fall fast enough for max-grade descents
+    const dy = camPos.y - _camYPrev;
+    if (Math.abs(dy) > cap) {
+      camPos.y = _camYPrev + Math.sign(dy) * cap;
+      if (camPos.y < camGroundY + 3) camPos.y = camGroundY + 3;
+      featureCameraClamp(track.features, track, camPos);
+    }
+  }
+  _camYPrev = camPos.y;
 
   // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
   // a rush — but only a touch, so the road stays readable and easy to drive.
