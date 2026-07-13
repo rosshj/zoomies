@@ -748,7 +748,17 @@ export function featureCameraClamp(feats, track, pos) {
     const ex = (lat - skew * Math.max(0, Math.min(1, ey))) / W;
     if (ey < 0 || ex * ex + ey * ey >= 1) continue; // not inside the rock
     const M = 1.1; // stay this far off the bore surface
-    const latC = Math.max(-(halfW - M), Math.min(halfW - M, lat));
+    // CENTER-FIRST: pushing the camera DOWN under the arch made every wall
+    // hug dip the view a few units, and the recovery at the portal read as a
+    // slow pan (fast snap before the easing, slow glide after). Instead pull
+    // the camera toward the bore axis until its CURRENT height fits under the
+    // arch — height stays constant through the tunnel, so leaving it needs no
+    // vertical correction at all. The y caps below only catch the leftovers
+    // (a camera higher than the apex itself).
+    const relY = (pos.y - (p.y + 0.2)) / APEX;
+    const latRoom = relY >= 1 ? 0 : halfW * Math.sqrt(Math.max(0, 1 - relY * relY)) - M;
+    const latLim = Math.min(halfW - M, Math.max(0, latRoom));
+    const latC = Math.max(-latLim, Math.min(latLim, lat));
     pos.x -= sideX * (lat - latC);
     pos.z -= sideZ * (lat - latC);
     const ceil = p.y + 0.2 + APEX * Math.sqrt(Math.max(0, 1 - (latC / halfW) * (latC / halfW)));
