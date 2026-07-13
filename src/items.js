@@ -198,10 +198,13 @@ export class ItemManager {
         if (gap < 0) gap += 1;
         if (gap > 0.5) gap -= 1;
         const arc = gap * L;
-        if (arc < -2.5 || arc > 2.5) continue;
+        // ASYMMETRIC window: a ball that has rolled PAST a kart's centre is
+        // spent for that kart — a symmetric window used to catch a hopping
+        // kart on the way DOWN after the ball had already passed underneath.
+        if (arc < -1.2 || arc > 2.5) continue;
         const kl = k._proj ? k._proj.lateral : 0;
         if (Math.abs(kl - y.lat) > 3.1) continue;
-        if (k.y > 1.05) continue; // hopped it — clean dodge
+        if (k.y > 0.9) continue; // hopped it — clean dodge (same bar as milk)
         if (k.shielding || k.catnipBoosting) {
           dead = true; // blocked: the ball unravels on the bubble
           if (callbacks.onYarnBlocked) callbacks.onYarnBlocked(k, y);
