@@ -737,6 +737,13 @@ export class Kart {
         const d = Math.hypot(dx, dz);
         if (d < 3 || d > bestD) continue;
         if ((dx * fwx + dz * fwz) / d < 0.25) continue; // must be roughly ahead, not behind
+        // Self-crossing maps put OTHER strands of the road within seek range:
+        // a box on the deck overhead (or across the barrier at a loop neck)
+        // reads as "20u ahead" in 2D forever, and every kart chasing it parks
+        // nose-first against the wall. It must be at our level AND near our
+        // own forward corridor to count.
+        if (cn.y !== undefined && Math.abs(cn.y - this.position.y) > 6) continue;
+        if (Math.abs(dx * fwz - dz * fwx) > track.halfWidth + 4 + d * 0.22) continue;
         bestD = d; best = cn;
       }
       if (best) {

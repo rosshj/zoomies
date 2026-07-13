@@ -520,6 +520,21 @@ function makeLakes(track, baseHeight) {
   const lakes = [];
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
+  // Feature height-mods run AFTER the lake carve in the final height chain
+  // (heightAt wraps carveLakes), so a crossover ramp's terrain pin or a
+  // canyon ridge inside the water ring silently overwrites the carved beach —
+  // terrain drops below the waterline and the water sheet hangs in the air
+  // at its rim. A candidate is only valid when no mod fights the waterline.
+  const waterlineClear = (cx, cz, L) => {
+    for (let k = 0; k < 12; k++) {
+      const a = (k / 12) * Math.PI * 2;
+      for (const r of [L.waterR, (L.waterR + L.shoreR) / 2]) {
+        const sx = cx + Math.cos(a) * r, sz = cz + Math.sin(a) * r;
+        if (Math.abs(featureHeightMod(track.features, sx, sz, L.level) - L.level) > 0.6) return false;
+      }
+    }
+    return true;
+  };
 
   // Set-piece water goes in FIRST so every lake placed below keeps clear of it:
   // the river (split into two reaches around a waterfall when the land drops),
@@ -585,10 +600,19 @@ function makeLakes(track, baseHeight) {
     // fold this fails, so we skip it rather than spill water onto the track. It must
     // also keep clear of the set-piece water (which touches the road on purpose).
     const clearOfFeat = spine.every((s) => featWater.every((L) => lakeDist(L, s.x, s.z) > waterR + L.blendR + 6));
-    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat) {
+    // Same waterline test as the circle lakes: no feature height-mod may
+    // fight the carved water level anywhere across the ribbon.
+    const level = minY - 2;
+    const modsOK = spine.every((s) => {
+      for (const rr of [-waterR * 0.7, 0, waterR * 0.7]) {
+        if (Math.abs(featureHeightMod(track.features, s.x + s.sx * rr, s.z + s.sz * rr, level) - level) > 0.6) return false;
+      }
+      return true;
+    });
+    if (minDist > waterR + track.halfWidth + 5 && clearOfFeat && modsOK) {
       lakes.push({
-        ribbon: true, spine, level: minY - 2,
-        floor: minY - 2 - 8,
+        ribbon: true, spine, level,
+        floor: level - 8,
         waterR,
         shoreR: waterR, // no flat beach; the whole bank rises to the road
         blendR: waterR + bankW, // ramp reaches road height at the barrier
@@ -615,11 +639,13 @@ function makeLakes(track, baseHeight) {
     // Keep clear of the hero ribbon lake too.
     if (lakes.some((L) => L.ribbon && lakeDist(L, x, z) < blendR + L.blendR + 6)) continue;
     const level = baseHeight(x, z);
-    lakes.push({
+    const cand = {
       x, z, level,
       floor: level - (6 + rand() * 3),
       waterR, shoreR, blendR,
-    });
+    };
+    if (!waterlineClear(x, z, cand)) continue;
+    lakes.push(cand);
     placedHill++;
   }
 
@@ -653,7 +679,9 @@ function makeLakes(track, baseHeight) {
         if (track.distanceToCenter(x, z) < track.halfWidth + blendR + 8) continue; // shore/blend would touch the road
         if (lakes.some((L) => (L.ribbon ? lakeDist(L, x, z) : Math.hypot(x - L.x, z - L.z)) < blendR + (L.blendR || 0) + 6)) continue;
         const level = baseHeight(x, z) - 1.5;
-        lakes.push({ x, z, level, floor: level - 7, waterR, shoreR, blendR, beach: true });
+        const cand = { x, z, level, floor: level - 7, waterR, shoreR, blendR, beach: true };
+        if (!waterlineClear(x, z, cand)) continue;
+        lakes.push(cand);
         break;
       }
     }
@@ -1731,6 +1759,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue; // folded over road
     if (_inLake(x, z)) continue;
     if (featureSpanBlock(track.features, x, z)) continue; // decks/tunnel carry their own furniture
+    if (p.y - heightAt(x, z) > 4) continue; // elevated ramp: a ground-planted lamp turns into a stilt
     spots.push({ x, z, y: heightAt(x, z), ax: -s.x * dir, az: -s.z * dir }); // arm aims at road
   }
   if (!spots.length) return;
@@ -1876,6 +1905,22 @@ function buildTrafficLights(scene, track, heightAt) {
   const up = new THREE.Vector3(0, 1, 0);
   const spacing = track.length / N;
   const step = Math.max(1, Math.round(60 / spacing));
+  // The mast arm reaches ~5u from the pole with the head at ~6-7u up: fine
+  // over its own road, but a pole standing between two passes of the lap can
+  // hang that head over the LOWER strand at kart-graze height.
+  const otherStrandNear = (x, z, i) => {
+    // Exclusion window ~2% of the lap: just past the legal-hairpin arc, so a
+    // hairpin's far leg (or a crossing corridor's other strand) still counts
+    // as foreign road even though it is close along the lap.
+    const win = Math.ceil(N * 0.02);
+    for (let k = 0; k < N; k += 2) {
+      const ad = Math.abs(k - i);
+      if (Math.min(ad, N - ad) <= win) continue;
+      const q = track._pts[k];
+      if ((q.x - x) ** 2 + (q.z - z) ** 2 < 26 * 26) return true;
+    }
+    return false;
+  };
   let flip = 1;
   for (let i = 0; i < N; i += step) {
     const p = track._pts[i];
@@ -1887,9 +1932,16 @@ function buildTrafficLights(scene, track, heightAt) {
     const z = p.z + side.z * flip * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
     if (_inLake(x, z)) continue;
+    // Elevated stretch (deck/ramp): the pole grounds on the terrain below and
+    // its mast arm ends up hanging in the lower lane at kart height.
+    if (p.y - heightAt(x, z) > 3) continue;
+    if (otherStrandNear(x, z, i)) continue;
 
     const g = makeTrafficLight();
-    g.position.set(x, heightAt(x, z), z);
+    // Never below the road it serves: on a climbing curve the verge beside
+    // the boulevard can dip ~1.5u — planted there, the mast head ends up at
+    // kart-graze height over the rising road ahead.
+    g.position.set(x, Math.max(heightAt(x, z), p.y - 0.5), z);
     // Local +Z points from the pole back toward the road centre.
     g.rotation.y = Math.atan2(-side.x * flip, -side.z * flip);
     g.traverse((o) => o.layers.set(1));
@@ -2038,6 +2090,19 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
     if (biomeAt(p.x, p.z).name === "city") continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
+    // A span needs honest footings: skip spots where a post would land on
+    // ANOTHER pass of the lap (loop necks put strands a post-width away) or
+    // where this road is elevated — a ground-planted post under a deck
+    // becomes a stilt rising through whatever runs below (the lower lane).
+    {
+      let ok = true;
+      for (const sgn of [1, -1]) {
+        const px = p.x + side.x * sgn * off, pz = p.z + side.z * sgn * off;
+        if (track.distanceToCenter(px, pz) < track.halfWidth + 1.5) { ok = false; break; }
+        if (heightAt && p.y - heightAt(px, pz) > 4) { ok = false; break; }
+      }
+      if (!ok) continue;
+    }
     const A = new THREE.Vector3(p.x + side.x * off, p.y + 8.5, p.z + side.z * off);
     const B = new THREE.Vector3(p.x - side.x * off, p.y + 8.5, p.z - side.z * off);
     postSpots.push([A.x, A.z, A.y], [B.x, B.z, B.y]);

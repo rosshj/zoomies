@@ -53,7 +53,10 @@ const KIND_SPECS = [
   // Tunnels run LONG now (a proper underground stretch, ~3.5% of the lap each
   // way) and fall back to shorter arcs when a seed can't place the long one —
   // better a classic tunnel than none.
-  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240 },
+  // clearR: the tube shell reaches halfWidth+2.6 out and 15 up — taller than a
+  // crossover deck's clearance — so no other pass of the lap may come near the
+  // arc at all, or the arch pokes up through the road running above it.
+  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
   { kind: "dam", biomes: ["alpine", "forest"], halfFrac: 0.024, flatW: 3.2, curvW: 170, clearR: 72 },
   { kind: "overpass", biomes: ["city"], halfFrac: 0.038, flatW: 2.6, curvW: 120 },
   { kind: "canyon", biomes: ["desert", "alpine", "tundra"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
@@ -138,6 +141,7 @@ function makeRun(track, kind, c, half) {
 }
 
 const _up = new THREE.Vector3(0, 1, 0);
+const _pv3 = new THREE.Vector3(); // scratch for road-surface probes
 function sideAt(track, i) {
   const N = track.samples;
   return new THREE.Vector3().crossVectors(track._tans[((i % N) + N) % N], _up).normalize();
@@ -879,21 +883,43 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       const yaw = Math.atan2(side.x, side.z);
       const deckBottom = p.y - 2.0;
       const legOff = track.halfWidth * 0.42;
+      // Every pier element (legs at ±legOff, crossbeam ends further out) is
+      // seated at (own sample − 2.0) — which is only "under the deck" when the
+      // road above is straight and level. On a curving, descending ramp the
+      // ribbon sweeps back over the pier's own footprint a few samples lower
+      // (tight hairpins overlap themselves in plan), and at loop necks another
+      // strand runs right alongside — either way an element top ends up ABOVE
+      // the actual road surface at its spot, surfacing as a row of stubs. One
+      // universal test: project each element's xz onto the whole spline (at
+      // pier-top height, so the nearest SURFACE wins) and require clearance;
+      // any failure drops the whole ring (a one-legged pier reads broken).
+      const beamHalf = track.halfWidth * 0.75;
       const legs = [];
       let lowest = Infinity;
-      for (const sgn of [1, -1]) {
-        const x = p.x + side.x * sgn * legOff;
-        const z = p.z + side.z * sgn * legOff;
-        const gy = heightAt(x, z);
-        legs.push({ x, z, gy });
-        if (gy < lowest) lowest = gy;
+      let ringClear = true;
+      for (const [off, isLeg] of [[legOff, true], [-legOff, true], [beamHalf, false], [-beamHalf, false]]) {
+        const x = p.x + side.x * off;
+        const z = p.z + side.z * off;
+        if (otherRoadDist(run.others, x, z) < track.halfWidth + 2) { ringClear = false; break; }
+        const r = track.project(_pv3.set(x, deckBottom, z));
+        if (deckBottom > r.groundY - 1.4) { ringClear = false; break; }
+        if (isLeg) {
+          const gy = heightAt(x, z);
+          legs.push({ x, z, gy });
+          if (gy < lowest) lowest = gy;
+        }
       }
+      if (!ringClear) continue;
       if (deckBottom - lowest < 1.6) continue;
       for (const leg of legs) {
         const hgt = deckBottom - leg.gy + 1.6;
         pierBoxes.push({ x: leg.x, y: leg.gy - 1.6 + hgt / 2, z: leg.z, sx: 2.5, sy: hgt, sz: 2.1, yaw });
       }
-      pierBoxes.push({ x: p.x, y: deckBottom - 0.55, z: p.z, sx: track.halfWidth * 1.5, sy: 1.1, sz: 2.4, yaw });
+      // Length in sz: with yaw = atan2(side.x, side.z), instance local Z maps
+      // to the ACROSS direction and local X to the tangent — length in sx laid
+      // the beam ALONG the road, walking its ends down the ramp and up through
+      // the tarmac (the marching stubs at pier spacing).
+      pierBoxes.push({ x: p.x, y: deckBottom - 0.55, z: p.z, sx: 2.4, sy: 1.1, sz: track.halfWidth * 1.5, yaw });
     }
   };
 
@@ -989,8 +1015,11 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
           const topY = p.y + TOWER_H + 0.9;
           pushBox(lx, (topY + footY) / 2, lz, 1.5, topY - footY, 1.5, yaw, cRed);
         }
-        pushBox(p.x, p.y + TOWER_H - 1.8, p.z, railW * 2 + 1.4, 1.2, 1.3, yaw, cRed); // top crossbeam
-        pushBox(p.x, p.y + TOWER_H * 0.45, p.z, railW * 2 + 1.2, 1.0, 1.1, yaw, cRed); // mid brace
+        // Length in sz: pushBox local X is the TANGENT — length in sx ran both
+        // beams ALONG the road (a 37u red rail floating beside the lane at
+        // kart-head height) instead of ACROSS between the tower legs.
+        pushBox(p.x, p.y + TOWER_H - 1.8, p.z, 1.3, 1.2, railW * 2 + 1.4, yaw, cRed); // top crossbeam
+        pushBox(p.x, p.y + TOWER_H * 0.45, p.z, 1.1, 1.0, railW * 2 + 1.2, yaw, cRed); // mid brace
       }
       // Cables: end anchor -> tower A -> tower B -> end anchor, sagging between;
       // hangers drop to the deck across the main span. One LineSegments.
@@ -1018,6 +1047,20 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     } else if (v === "covered") {
       // A covered wooden bridge: timber posts + rails and a gabled roof.
       // Roof kept HIGH (eaves 7.8, ridge 11) so the chase camera clears it.
+      // The dressing assumes a near-straight span: on a bend the straight
+      // rails chord into the lane at kart height and the roof blankets the
+      // curve's inside — a curvy run stays a plain girder deck instead.
+      let maxTurn = 0;
+      const tStep = Math.max(2, Math.round(10 / spacing));
+      for (let i = run.i0; i + tStep <= run.i1; i += tStep) {
+        const a = track._tans[((i % N) + N) % N];
+        const b = track._tans[(((i + tStep) % N) + N) % N];
+        let d = Math.atan2(b.x, b.z) - Math.atan2(a.x, a.z);
+        while (d > Math.PI) d -= TAU;
+        while (d < -Math.PI) d += TAU;
+        maxTurn = Math.max(maxTurn, Math.abs(d));
+      }
+      if (maxTurn > 0.14) return;
       const cWood = new THREE.Color(0x7a4a30);
       const cRoof = new THREE.Color(0x8c4030);
       const cTrim = new THREE.Color(0xc9b08a);
@@ -1029,7 +1072,18 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         const yaw = Math.atan2(side.x, side.z);
         for (const sgn of [1, -1]) {
           pushBox(p.x + side.x * sgn * railW, p.y + 3.9, p.z + side.z * sgn * railW, 0.55, 7.8, 0.55, yaw, cWood);
-          pushBox(p.x + side.x * sgn * railW, p.y + 1.35, p.z + side.z * sgn * railW, 0.35, 0.35, postStep * spacing + 0.6, yaw, cTrim); // hand rail
+        }
+      }
+      // Hand rails run POST TO POST (a chord per bay, yawed along its own
+      // gap), not one fixed-length beam per post — centred beams swung their
+      // free ends into the lane on any curvature the veto still admits.
+      for (let i = i0; i + postStep <= i1; i += postStep) {
+        const a = at(i), b = at(i + postStep);
+        for (const sgn of [1, -1]) {
+          const ax = a.p.x + a.side.x * sgn * railW, az = a.p.z + a.side.z * sgn * railW;
+          const bx = b.p.x + b.side.x * sgn * railW, bz = b.p.z + b.side.z * sgn * railW;
+          const yaw = Math.atan2(bx - ax, bz - az);
+          pushBox((ax + bx) / 2, (a.p.y + b.p.y) / 2 + 1.35, (az + bz) / 2, 0.35, 0.35, Math.hypot(bx - ax, bz - az) + 0.4, yaw, cTrim);
         }
       }
       // Gabled roof ribbon: eaveL -> ridge -> eaveR, swept along the span.
@@ -1107,7 +1161,12 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
           return Math.max(0.35 + 2.0 * endW, (p.y - heightAt(gx, gz)) * endW + 0.4);
         },
       });
-      // Buttresses down the dam face.
+      // Buttresses down the dam face. Tops sat exactly at road level, which
+      // only works on a straight, level run: on a curving descent the ribbon
+      // sweeps back over the buttress footprint a couple of samples lower
+      // (and at a loop neck another strand runs alongside), so the rib tops
+      // surfaced through the tarmac as a row of stubs at buttress spacing.
+      // Seat each top under the LOWEST road surface at its own spot instead.
       const step = Math.max(6, Math.round(30 / spacing));
       for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
         const idx = ((i % N) + N) % N;
@@ -1115,8 +1174,10 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         const side = sideAt(track, idx);
         const x = p.x + side.x * run.inSign * (track.halfWidth + 1.6);
         const z = p.z + side.z * run.inSign * (track.halfWidth + 1.6);
+        if (otherRoadDist(run.others, x, z) < track.halfWidth + 2) continue;
         const gy = heightAt(x, z);
-        const hgt = p.y - gy;
+        const top = Math.min(p.y, track.project(_pv3.set(x, p.y, z)).groundY) - 0.5;
+        const hgt = top - gy;
         if (hgt < 6) continue;
         pierBoxes.push({ x, y: gy + hgt / 2, z, sx: 3.2, sy: hgt, sz: 2.6, yaw: Math.atan2(side.x, side.z) });
       }

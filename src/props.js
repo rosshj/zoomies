@@ -679,8 +679,9 @@ function build(scene, track, opts) {
     for (const pr of props) {
       if (pr.kind !== "crate" || pr.mode !== "float") continue;
       let o = _boxOut[n];
-      if (!o) o = _boxOut[n] = { x: 0, z: 0 };
+      if (!o) o = _boxOut[n] = { x: 0, y: 0, z: 0 };
       o.x = pr.pos.x;
+      o.y = pr.pos.y; // height matters: a box on a deck overhead is not "ahead"
       o.z = pr.pos.z;
       n++;
     }
