@@ -135,12 +135,16 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("interpolated frames now carry nearest-snapshot flags", f1.f === FLAG.DRIFT);
   check("ready after first frame", rp.ready === true);
 
-  // Second frame eases toward the new Hermite sample (u = 0.6) with a = 1 - e^(-dt/0.06).
+  // Second frame: projective velocity blending onto the Hermite sample (u = 0.6).
+  // Advance the displayed x at the sample's own velocity, then decay the residual
+  // toward the base over tau = 0.12s. Heading at u=0.6 is lerpAngle(0,0.2,0.6).
   const her2 = hermiteXZ(sa, sb, 100, 0.6);
-  const a = 1 - Math.exp(-dt / 0.06);
-  const exX2 = her1.x + (her2.x - her1.x) * a;
+  const sH2 = 0.2 * 0.6; // lerpAngle(0, 0.2, 0.6)
+  const decay = Math.exp(-dt / 0.12);
+  const velX2 = Math.sin(sH2) * 30;
+  const exX2 = (her1.x + velX2 * dt) * decay + her2.x * (1 - decay);
   const f2 = rp.sample(1060, dt);
-  check("render smoothing eases toward the Hermite sample", f2.snapped === false && f2.x === exX2);
+  check("projective blending converges onto the Hermite path", f2.snapped === false && f2.x === exX2);
 
   // Past the newest snapshot: dead-reckon from heading × speed, capped at 250ms;
   // the resulting jump is > 6u so the smoother snaps rather than smears. The

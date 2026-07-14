@@ -121,18 +121,30 @@ export class RemotePose {
     this._bumpOff.z *= offFade;
     clampLength2D(this._bumpOff, 0, 5); // safety only
 
-    // Ease the rendered pose toward the sampled one (render smoothing). Snap on a
-    // big jump (first sample / respawn / spin-out reposition) so we don't smear
-    // across the map.
+    // Converge the displayed pose onto the interpolated path. Snap on a big jump
+    // (first sample / respawn / spin-out reposition) so we don't smear across the
+    // map.
     let snapped = false;
     if (!this._rinit || Math.hypot(s.x - this._rx, s.z - this._rz) > this.snapDist) {
       this._rx = s.x; this._rz = s.z; this._ry = s.y; this._rh = s.h;
       this._rinit = true;
       snapped = true;
     } else {
-      const a = 1 - Math.exp(-dt / 0.06); // catch up ~95% in ~3-4 frames
-      this._rx += (s.x - this._rx) * a;
-      this._rz += (s.z - this._rz) * a;
+      // Projective velocity blending for x/z: first advance the displayed point at
+      // the sample's OWN velocity (V = (sin h, cos h)·s — the same model interp/
+      // dead-reckon use), then decay the residual error toward the base over ~tau.
+      // The advance means there is NO steady-state follow-lag (the old ease chased
+      // a moving target and always trailed it by ~V·(1−a)/a); err→0 means the
+      // ghost rides the true interpolated path exactly, and a correction is
+      // absorbed smoothly instead of snapping.
+      const decay = Math.exp(-dt / 0.12); // tau = 0.12s (~95% converge in ~0.35s)
+      const velX = Math.sin(s.h) * s.s;
+      const velZ = Math.cos(s.h) * s.s;
+      this._rx = (this._rx + velX * dt) * decay + s.x * (1 - decay);
+      this._rz = (this._rz + velZ * dt) * decay + s.z * (1 - decay);
+      // y (elevation) and heading have no velocity channel here — keep the simple
+      // exponential ease; their follow-lag is minor and not what this fixes.
+      const a = 1 - Math.exp(-dt / 0.06);
       this._ry += (s.y - this._ry) * a;
       this._rh = lerpAngle(this._rh, s.h, a);
     }
