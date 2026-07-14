@@ -41,15 +41,36 @@ export class RemotePose {
     snapDist = 6,
     maxExtrapMs = 250,
     staleMs = STALE_HIDE_MS,
+    // Jitter-aware delay tuning (per peer). target = clamp(rtt/2 + baseMargin +
+    // jitterK·jitter, delayFloor, delayCeil). baseMargin covers ~one send
+    // interval (62.5ms) plus headroom so two snapshots reliably bracket the
+    // render time and a clean link mostly interpolates rather than dead-reckons;
+    // delayFloor keeps a LAN peer responsive (~90ms vs the old pinned 180ms).
+    baseMargin = 75,
+    jitterK = 2,
+    delayFloor = 90,
+    delayCeil = 300,
   } = {}) {
     this._now = now;
     this.snapDist = snapDist;
     this.maxExtrapMs = maxExtrapMs;
     this.staleMs = staleMs;
+    this.baseMargin = baseMargin;
+    this.jitterK = jitterK;
+    this.delayFloor = delayFloor;
+    this.delayCeil = delayCeil;
     this.buffer = []; // sorted snapshots { t, x, y, z, h, p, s, f }
     this._prevH = 0;
     this._prevS = 0;
     this._readyFlag = false;
+    // How far in the past THIS peer is rendered, eased toward the jitter-aware
+    // target each frame. Per-peer so a clean link stays responsive (~90ms) while
+    // a jittery one buffers more. Init to the neutral default to avoid a first-
+    // second wobble before the estimator warms up.
+    this.interpDelay = INTERP_DELAY;
+    this._lastArrival = 0;
+    this._meanInterval = 62.5; // nominal 16 Hz send interval (ms)
+    this._jitter = 0; // EWMA of |inter-arrival − mean| (RFC 3550 style)
     // Render-smoothing state: the displayed pose eases toward the sampled (interp/
     // dead-reckoned) pose, so a late-packet correction is spread over a few frames
     // instead of teleporting — kills the residual jitter. A big delta (respawn /
@@ -69,11 +90,33 @@ export class RemotePose {
 
   // A pose snapshot arrived from the network (already in shared-clock time).
   pushState(pose) {
-    this._lastRecv = this._now();
+    const arrival = this._now();
+    // Track arrival jitter (RFC 3550): the EWMA of how much each inter-arrival
+    // gap deviates from the running mean. Feeds the adaptive delay so a bursty
+    // link buffers enough that late packets still land before render time.
+    if (this._lastArrival) {
+      const interval = arrival - this._lastArrival;
+      this._meanInterval += (interval - this._meanInterval) / 16;
+      this._jitter += (Math.abs(interval - this._meanInterval) - this._jitter) / 16;
+    }
+    this._lastArrival = arrival;
+    this._lastRecv = arrival;
     pushSnapshot(this.buffer, pose);
     // Progress isn't interpolated through the buffer — latest value wins. It only
     // feeds placement, which doesn't need sub-frame accuracy.
     if (typeof pose.pr === "number") this.totalProgress = pose.pr;
+  }
+
+  // Advance the per-peer adaptive delay from the live RTT + measured jitter, then
+  // render at (nowShared − delay). Replaces the old single session-wide delay so
+  // each ghost renders at its own optimal offset. `sample(rt, dt)` is unchanged
+  // and still callable directly (the golden tests do).
+  sampleAt(nowShared, rttMs, dt) {
+    const rtt = Number.isFinite(rttMs) ? rttMs : 0;
+    const target = Math.max(this.delayFloor, Math.min(this.delayCeil,
+      rtt * 0.5 + this.baseMargin + this.jitterK * this._jitter));
+    this.interpDelay += (target - this.interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
+    return this.sample(nowShared - this.interpDelay, dt);
   }
 
   // Give the ghost a SMALL, brief bump for instant local feedback. This is just

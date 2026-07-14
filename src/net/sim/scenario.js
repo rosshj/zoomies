@@ -40,11 +40,11 @@ class SimRemote {
   get _ready() { return this.pose.ready; }
   pushState(pose) { this.pose.pushState(pose); }
   bump(nx, nz, impulse) { this.pose.bump(nx, nz, impulse); }
-  update(renderTime, dt) {
+  update(nowShared, rttMs, dt) {
     this.hidden = this.pose.stale;
     this.group.visible = !this.hidden;
     if (this.hidden) { this.lastFrame = null; return; }
-    const f = this.pose.sample(renderTime, dt);
+    const f = this.pose.sampleAt(nowShared, rttMs, dt);
     this.lastFrame = f;
     if (f) {
       this.kart.position.x = f.x + f.bumpX;
@@ -127,8 +127,10 @@ export async function runScenario(cfg = {}) {
     if (t < warmupMs) continue;
     for (let i = 0; i < N; i++) {
       const mp = sessions[i];
-      const interpDelay = mp.interpDelay;
       for (const r of mp.remotes.values()) {
+        // Score the delayed-truth error against THIS peer's own delay — delay is
+        // per-peer now, so using the session mean would misattribute the error.
+        const interpDelay = r.pose.interpDelay;
         // Which player is this a ghost of? Map its net id to its driver once.
         let driver = idToDriver.get(r.id);
         if (!driver) {

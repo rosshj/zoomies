@@ -64,15 +64,16 @@ export class RemoteKart {
     this.pose.bump(nx, nz, impulse);
   }
 
-  // Render the kart at `renderTime` (shared clock minus the interp delay).
-  update(renderTime, dt) {
+  // Render the kart. The pose owns its own jitter-aware delay now, so it just
+  // needs the shared-clock now + live RTT to pick its render offset.
+  update(nowShared, rttMs, dt) {
     // Hide (don't freeze) a peer whose updates have dried up; show it again the
     // moment data resumes. Uses wall-clock so it's independent of the shared clock.
     const stale = this.pose.stale;
     this.group.visible = !stale;
     if (stale) return;
 
-    const frame = this.pose.sample(renderTime, dt);
+    const frame = this.pose.sampleAt(nowShared, rttMs, dt);
     if (!frame) return; // nothing buffered yet
     const k = this.kart;
 

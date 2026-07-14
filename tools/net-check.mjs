@@ -175,6 +175,46 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("reappears on fresh data", rp.stale === false && rp.sample(1150, dt) !== null);
 }
 
+// --- Per-peer jitter-aware adaptive delay (sampleAt) ---
+// A clean, steady feed drives the delay to its jitter-aware target; a bursty
+// feed raises it. Verifies the RFC-3550 estimator + easing + clamp end to end.
+{
+  const dt = 1 / 60;
+  function driveDelay(intervalsMs, rttMs) {
+    let w = 0;
+    const rp = new RemotePose({ now: () => w });
+    let st = 1000;
+    let nextIdx = 0;
+    let sendAt = 0;
+    let x = 0;
+    // 20s of frames; push a snapshot on the given (repeating) interval schedule.
+    for (let frame = 0; frame < 1200; frame++) {
+      w = frame * (1000 * dt);
+      while (sendAt <= w) {
+        rp.pushState({ t: st, x: x++, y: 0, z: 0, h: 0, p: 0, s: 16, f: 0, pr: 0 });
+        const gap = intervalsMs[nextIdx % intervalsMs.length];
+        st += gap; sendAt += gap; nextIdx++;
+      }
+      rp.sampleAt(w + 100000, rttMs, dt); // nowShared arbitrary — delay easing is independent
+    }
+    return rp;
+  }
+
+  // Clean link: steady 62.5ms, rtt 20 → target = 10 + 60 + 2·jitter, clamped to
+  // the 90ms floor. Assert it converged to its own formula (robust to tiny
+  // quantization jitter) AND that it actually dropped below the old 180ms floor.
+  const clean = driveDelay([62.5], 20);
+  const cleanTarget = Math.max(90, Math.min(300, 20 * 0.5 + 75 + 2 * clean._jitter));
+  check("clean-link delay converges to the jitter-aware target", Math.abs(clean.interpDelay - cleanTarget) < 0.5);
+  check("clean-link delay drops well below the old 180ms floor", clean.interpDelay < 140);
+
+  // Bursty link (alternating 30/95ms gaps → high jitter) with the same rtt must
+  // buffer MORE than the clean link — the whole point of jitter-awareness.
+  const bursty = driveDelay([30, 95], 20);
+  check("bursty link buffers more than a clean one", bursty.interpDelay > clean.interpDelay + 20);
+  check("delay never exceeds the ceiling", bursty.interpDelay <= 300 && clean.interpDelay >= 90);
+}
+
 // --- Determinism: a two-client loopback session on a virtual clock ---
 // Everything that moves (message delays, ping timers, send cadence, device
 // clocks) runs off one SimClock + one seeded rng, so an identical seed must
@@ -251,6 +291,7 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
       kart: { position: { x: 0, y: 0, z: 0 }, mass: 1, speed: 0 },
       _ready: false, _lastPose: null, _bumps: 0, disposed: false,
       finished: false, finishTime: 0, finishClock: 0, totalProgress: -1,
+      pose: { interpDelay: 200 }, // enough surface for the session delay aggregate
       pushState(pose) { this._lastPose = pose; this._ready = true; this.kart.position.x = pose.x; this.kart.position.z = pose.z; },
       bump() { this._bumps++; },
       update() {},
@@ -297,7 +338,7 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("roster hook fired on join", rosterTicks.length >= 1 && rosterTicks[rosterTicks.length - 1] === 1);
   check("session broadcast my pose at ~16 Hz", otherGotState.length > 25 && otherGotState.length < 40);
   check("my broadcast carried the drift flag + progress", otherGotState[0].f === FLAG.DRIFT && otherGotState[0].pr === 0.4);
-  check("adaptive interp delay stayed in [180,280]", mp.interpDelay >= 180 && mp.interpDelay <= 280);
+  check("session delay aggregate stays sane [90,300]", mp.interpDelay >= 90 && mp.interpDelay <= 300);
 
   // Collision pass: put the player right on top of the ghost and confirm the
   // session knocks the player, nudges (bumps) the ghost, and separates them.

@@ -223,15 +223,19 @@ export class MpSession {
         if (pose) net.sendState(pose);
       }
     }
-    // Adapt the interpolation delay to the live connection: cover roughly one-way
-    // latency (half the round-trip) plus a jitter margin, so a laggy link buffers
-    // more (smoother, fewer dead-reckon snaps) and a snappy link buffers less (more
-    // responsive). Eased slowly so the render time never lurches.
+    // Each remote now owns its jitter-aware interp delay (a clean peer renders
+    // ~90ms back, a jittery one buffers more), so just hand every ghost the shared
+    // clock + live RTT and let it pick its own render offset.
+    const now = net.now();
     const rttMs = net.clock && Number.isFinite(net.clock.rtt) ? net.clock.rtt : 0;
-    const targetDelay = Math.max(180, Math.min(280, rttMs * 0.5 + 150));
-    this.interpDelay += (targetDelay - this.interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
-    const rt = net.now() - this.interpDelay; // render remote karts slightly in the past
-    for (const r of this.remotes.values()) r.update(rt, dt);
+    let delaySum = 0;
+    let delayN = 0;
+    for (const r of this.remotes.values()) {
+      r.update(now, rttMs, dt);
+      if (r.pose) { delaySum += r.pose.interpDelay; delayN++; }
+    }
+    // Keep a session aggregate (mean peer delay) for the debug readout / harness.
+    if (delayN) this.interpDelay = delaySum / delayN;
     // Reap parked ghosts whose grace has elapsed (peer really left, not a flap).
     if (this.parked.size) {
       const nowMs = this._wallNow();
