@@ -101,30 +101,55 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
 
   check("empty buffer → no frame", rp.sample(1000, dt) === null && rp.ready === false);
 
-  rp.pushState({ t: 1000, x: 0, y: 0, z: 0, h: 0, p: 0, s: 30, f: FLAG.DRIFT | FLAG.BOOST, pr: 0.1 });
-  rp.pushState({ t: 1100, x: 3, y: 0, z: 1, h: 0.2, p: 0, s: 30, f: FLAG.DRIFT, pr: 0.12 });
+  const sa = { t: 1000, x: 0, y: 0, z: 0, h: 0, p: 0, s: 30, f: FLAG.DRIFT | FLAG.BOOST, pr: 0.1 };
+  const sb = { t: 1100, x: 3, y: 0, z: 1, h: 0.2, p: 0, s: 30, f: FLAG.DRIFT, pr: 0.12 };
+  rp.pushState(sa);
+  rp.pushState(sb);
   check("progress: latest value wins", rp.totalProgress === 0.12);
 
-  // Midpoint interpolation; the very first frame snaps to the raw sample.
+  // Cubic-Hermite position between two snapshots, tangents = velocity·span_sec.
+  // Transcribed independently from the math (not read back from interp.js).
+  function hermiteXZ(a, b, span, u) {
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1;
+    const h10 = u3 - 2 * u2 + u;
+    const h01 = -2 * u3 + 3 * u2;
+    const h11 = u3 - u2;
+    const spanSec = span / 1000;
+    const maX = Math.sin(a.h) * a.s * spanSec;
+    const maZ = Math.cos(a.h) * a.s * spanSec;
+    const mbX = Math.sin(b.h) * b.s * spanSec;
+    const mbZ = Math.cos(b.h) * b.s * spanSec;
+    return {
+      x: h00 * a.x + h10 * maX + h01 * b.x + h11 * mbX,
+      z: h00 * a.z + h10 * maZ + h01 * b.z + h11 * mbZ,
+    };
+  }
+
+  // The very first frame snaps to the raw Hermite sample at u = 0.5.
+  const her1 = hermiteXZ(sa, sb, 100, 0.5);
   const f1 = rp.sample(1050, dt);
-  check("first frame snaps to the raw sample", f1.snapped === true && f1.x === 1.5 && f1.z === 0.5);
-  check("midpoint interpolates heading", Math.abs(f1.h - 0.1) < 1e-12);
-  check("interpolated frames carry no flags (latent quirk, preserved)", f1.f === 0);
+  check("first frame snaps to the raw Hermite sample", f1.snapped === true && f1.x === her1.x && f1.z === her1.z);
+  check("heading still lerps (authoritative facing, not tangent)", Math.abs(f1.h - 0.1) < 1e-12);
+  check("interpolated frames now carry nearest-snapshot flags", f1.f === FLAG.DRIFT);
   check("ready after first frame", rp.ready === true);
 
-  // Second frame eases toward the new sample with a = 1 - e^(-dt/0.06).
-  const rawX2 = 0 + (3 - 0) * ((1060 - 1000) / (1100 - 1000));
+  // Second frame eases toward the new Hermite sample (u = 0.6) with a = 1 - e^(-dt/0.06).
+  const her2 = hermiteXZ(sa, sb, 100, 0.6);
   const a = 1 - Math.exp(-dt / 0.06);
-  const exX2 = 1.5 + (rawX2 - 1.5) * a;
+  const exX2 = her1.x + (her2.x - her1.x) * a;
   const f2 = rp.sample(1060, dt);
-  check("render smoothing eases toward the sample", f2.snapped === false && f2.x === exX2);
+  check("render smoothing eases toward the Hermite sample", f2.snapped === false && f2.x === exX2);
 
   // Past the newest snapshot: dead-reckon from heading × speed, capped at 250ms;
-  // the resulting jump is > 6u so the smoother snaps rather than smears.
+  // the resulting jump is > 6u so the smoother snaps rather than smears. The
+  // dead-reckon branch is unchanged, but now carries the last snapshot's flags.
   const exX3 = 3 + Math.sin(0.2) * 30 * 0.25;
   const f3 = rp.sample(1700, dt);
   check("dead-reckons past newest, capped at 250ms", f3.extrapolated === true && f3.rawX === exX3);
   check("big correction snaps instead of smearing", f3.snapped === true && f3.x === exX3);
+  check("dead-reckon carries the last snapshot's flags", f3.f === FLAG.DRIFT);
 
   // Bump: impulse capped at 10 (THREE clampLength float-op order), integrated
   // for one frame, then faded — all before the 5u safety clamp.

@@ -83,6 +83,10 @@ function keyMetrics(summary) {
     snaps: summary.counters.snaps || 0,
     extrapShare: Math.round(((summary.counters["frames.extrap"] || 0) / total) * 1e4) / 1e4,
     stalenessP50: (summary.series.staleness || {}).p50 || 0,
+    // rawAccel p95 = the interpolated path's acceleration spike at snapshot
+    // boundaries (u/s²). Hermite (C1-continuous) collapses it vs linear's kinks.
+    // Tracked for the record; not banded (Hermite legitimately raises p50).
+    rawAccelP95: (summary.series.rawAccel || {}).p95 || 0,
   };
 }
 
@@ -99,6 +103,7 @@ for (const sc of MATRIX) {
   const errD = summary.series.errDelayed || { p50: 0, p95: 0, avg: 0 };
   const errA = summary.series.errAbs || { p95: 0 };
   const stale = summary.series.staleness || { p50: 0, p95: 0 };
+  const rawAcc = summary.series.rawAccel || { p50: 0, p95: 0 };
   const teleports = summary.counters.teleports || 0;
   const snaps = summary.counters.snaps || 0;
   const total = summary.counters["frames.total"] || 1;
@@ -111,7 +116,7 @@ for (const sc of MATRIX) {
     `\n[${sc.name}] ${sc.players.length}p  lat ${sc.hub.latency}±${sc.hub.jitter}ms loss ${sc.hub.loss}` +
     `\n   errDelayed p50=${errD.p50}u p95=${errD.p95}u avg=${errD.avg}u · errAbs p95=${errA.p95}u` +
     `\n   staleness p50=${stale.p50}ms p95=${stale.p95}ms · interpDelay=${summary.interpDelayFinal.join("/")}ms` +
-    `\n   extrap ${(extrapShare * 100).toFixed(1)}% · hidden ${(hiddenShare * 100).toFixed(1)}% · snaps ${snaps} · teleports ${teleports}`,
+    `\n   path-accel p50=${rawAcc.p50} p95=${rawAcc.p95}u/s² · extrap ${(extrapShare * 100).toFixed(1)}% · hidden ${(hiddenShare * 100).toFixed(1)}% · snaps ${snaps} · teleports ${teleports}`,
   );
 
   // Hard invariants (condition-independent):

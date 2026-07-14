@@ -116,6 +116,7 @@ export async function runScenario(cfg = {}) {
   // Previous displayed position per (client i, remote id) for the teleport check.
   const prevPos = new Map();
   const idToDriver = new Map(); // remote id -> that peer's driver
+  const prevRaw = new Map(); // (client:remote) -> prev raw pos+vel for smoothness
 
   for (let step = 0; ; step++) {
     const t = step * tickMs;
@@ -148,6 +149,23 @@ export async function runScenario(cfg = {}) {
         metrics.record("correction", Math.hypot(f.rawX - f.x, f.rawZ - f.z));
         // Staleness: how far in the past (shared clock) the shown pose is.
         metrics.record("staleness", mp.net.now() - f.t);
+
+        // Path smoothness: acceleration magnitude of the RAW interpolated path
+        // (u/s²). Isolates the interpolator from the display smoother. Linear
+        // interp holds constant velocity mid-segment then SPIKES at every
+        // snapshot boundary (a visible kink every ~62ms); Hermite is C1-
+        // continuous, so its p95/max here collapse. Only scored on consecutive
+        // non-extrapolated frames (the dead-reckon path is trivially straight).
+        const skey = i + ":" + r.id;
+        const pr = prevRaw.get(skey);
+        if (pr && !f.extrapolated && !pr.extrap) {
+          const vx = (f.rawX - pr.x) / dt;
+          const vz = (f.rawZ - pr.z) / dt;
+          if (pr.hasVel) metrics.record("rawAccel", Math.hypot(vx - pr.vx, vz - pr.vz) / dt);
+          prevRaw.set(skey, { x: f.rawX, z: f.rawZ, vx, vz, hasVel: true, extrap: false });
+        } else {
+          prevRaw.set(skey, { x: f.rawX, z: f.rawZ, vx: 0, vz: 0, hasVel: false, extrap: !!f.extrapolated });
+        }
 
         if (driver) {
           const absTruth = driver.poseAt(t);
