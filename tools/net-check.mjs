@@ -81,13 +81,54 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
 
   check("both peers report a live P2P link", A.p2pCount() === 1 && B.p2pCount() === 1);
 
-  // A sends a pose; B should receive it directly, exactly once (no Ably duplicate).
+  // A sends a pose; B receives it directly (binary), decoded + stamped with A's
+  // id, exactly once (no Ably duplicate). Quantized, so compare within tolerance.
   const beforeStates = gotB.filter((m) => m.type === "state").length;
-  A.send({ type: "state", x: 42, id: "aaa" });
+  A.send({ type: "state", id: "aaa", t: 1_700_000_000_000, x: 42, y: 3, z: -7, h: 0.5, p: 0.1, s: 25, f: 5, pr: 1.5 });
   await tick(); await tick();
   const states = gotB.filter((m) => m.type === "state");
-  check("state routes peer-to-peer to the other side", states.some((m) => m.x === 42));
+  const got = states[states.length - 1];
+  check("state routes peer-to-peer to the other side", !!got && Math.abs(got.x - 42) < 0.02 && Math.abs(got.z - (-7)) < 0.02);
+  check("binary pose decodes + is stamped with the sender's peer id", got && got.id === "aaa" && got.f === 5);
   check("no duplicate state (P2P only, no Ably copy)", states.length - beforeStates === 1);
+
+  // --- Binary is really on the channel; the Ably fallback stays JSON-object. ---
+  // Spy on the mock channel payload and on A's Ably send.
+  let lastChannelData = null;
+  const dcA = A._peers.get("bbb").dc;
+  const origSend = dcA.send.bind(dcA);
+  dcA.send = (d) => { lastChannelData = d; return origSend(d); };
+  A.send({ type: "state", id: "aaa", t: 1_700_000_000_050, x: 1, y: 0, z: 0, h: 0, p: 0, s: 0, f: 0, pr: 0 });
+  await tick();
+  check("the P2P channel carries binary (ArrayBuffer/Uint8Array), not a string", lastChannelData && typeof lastChannelData !== "string" && lastChannelData.byteLength > 0);
+
+  // --- FEC: with 1-of-2 packets dropped, redundancy still delivers every pose. ---
+  {
+    const C = new WebRTCTransport(new FakeAbly("ccc"));
+    const D = new WebRTCTransport(new FakeAbly("ddd"));
+    const gotD = [];
+    D.onmessage = (m) => { if (m.type === "state") gotD.push(m.t); };
+    C.onmessage = () => {};
+    C.open(); D.open();
+    await tick(); await tick(); await tick();
+    // Drop every other datagram C→D (whole-packet loss), then stream rising-t poses.
+    const dc = C._peers.get("ddd").dc;
+    const realSend = dc.send.bind(dc);
+    let n = 0;
+    dc.send = (d) => { if (n++ % 2 === 1) return; return realSend(d); }; // drop odds
+    // Anchor to real wall time — decodePosePacket reconstructs t's high bits from
+    // Date.now(), so the fake timestamps must sit within its window.
+    const base = Date.now();
+    const sentTs = [];
+    for (let i = 0; i < 12; i++) { const t = base + i * 33; sentTs.push(t); C.send({ type: "state", id: "ccc", t, x: i, y: 0, z: 0, h: 0, p: 0, s: 30, f: 0, pr: 0 }); await tick(); }
+    await tick(); await tick();
+    const distinct = new Set(gotD.map((t) => Math.round(t)));
+    // Interior poses (all but the final 2, which have no later packet to carry
+    // their redundancy in this finite stream) must every one be recovered — each
+    // rides 3 consecutive packets and 1-of-2 loss always spares one.
+    const interior = sentTs.slice(0, 10);
+    check("FEC recovers every interior pose despite 1-of-2 packet loss", interior.every((t) => distinct.has(t)));
+  }
 }
 
 // --- RemotePose golden sequences ---

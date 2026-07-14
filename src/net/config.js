@@ -23,3 +23,24 @@ export function resolveHost() {
   const p = new URLSearchParams(location.search).get("host");
   return (p || PARTY_HOST || "").trim();
 }
+
+// === WebRTC ICE servers ===
+// A public STUN server is enough for LAN + many home networks. Peers behind a
+// SYMMETRIC NAT (some mobile carriers) can't form a direct link and need a TURN
+// relay — they otherwise fall back to Ably automatically. Provide TURN either by
+// filling TURN below (prefer short-lived/ephemeral credentials — this ships in
+// client code) or per-session via ?turn=turn:host:port&turnUser=...&turnCred=...
+export const ICE_SERVERS = [{ urls: "stun:stun.l.google.com:19302" }];
+// export const TURN = { urls: "turn:your-relay:3478", username: "...", credential: "..." };
+
+export function resolveIceServers() {
+  const list = [...ICE_SERVERS];
+  if (typeof TURN !== "undefined" && TURN) list.push(TURN);
+  // Node-safe: net-check imports webrtc.js (→ this), where `location` is absent.
+  if (typeof location !== "undefined") {
+    const p = new URLSearchParams(location.search);
+    const turn = p.get("turn");
+    if (turn) list.push({ urls: turn, username: p.get("turnUser") || "", credential: p.get("turnCred") || "" });
+  }
+  return list;
+}

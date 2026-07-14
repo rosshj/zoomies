@@ -16,11 +16,13 @@
 // A non-WebRTC peer simply never opens a channel, so everything with them stays on
 // Ably — the mode is backward-compatible.
 import { createAblyTransport } from "./ably.js";
+import { resolveIceServers } from "./config.js";
+import { encodePosePacket, decodePosePacket } from "./posecodec.js";
 
-// Public STUN for ICE candidate gathering. Not needed for a pure LAN (host/mDNS
-// candidates connect locally), but it lets it also work across networks; if it's
-// unreachable (fully offline), local candidates still form the LAN link.
-const RTC_CONFIG = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+// ICE servers (STUN, and optional TURN relay for symmetric-NAT peers) come from
+// config.js so a deploy can add TURN without touching this file. Computed once at
+// module load (config guards `location` so this is node-safe for net-check).
+const RTC_CONFIG = { iceServers: resolveIceServers() };
 
 // Deterministic initiator so the two sides don't both send an offer (glare):
 // the lexicographically-lower id makes the offer, the other one answers.
@@ -43,6 +45,10 @@ export class WebRTCTransport {
     this._onmessage = null;
     this.onopen = null;
     this.onclose = null;
+    // Our own recent outgoing poses (newest-first, cap 3) — each P2P packet
+    // piggybacks the last few for loss recovery (see posecodec.js).
+    this._poseHistory = [];
+    this._lastAblyState = 0; // throttle the Ably state fallback to ~16 Hz
   }
 
   get onmessage() { return this._onmessage; }
@@ -101,16 +107,34 @@ export class WebRTCTransport {
   _emit(m) { if (this._onmessage) this._onmessage(m); }
 
   _broadcastState(obj) {
+    // Piggyback the last few poses so a dropped datagram is recovered from the
+    // next packet (FEC). History is always our own outgoing pose.
+    this._poseHistory.unshift(obj);
+    if (this._poseHistory.length > 3) this._poseHistory.length = 3;
+    const packet = encodePosePacket(this._poseHistory); // binary; no id/type (peer-known)
+
     let anyOnAbly = this._peers.size === 0; // no peers yet → nothing to do but keep Ably warm
     for (const p of this._peers.values()) {
       if (p.ready && p.dc && p.dc.readyState === "open") {
-        try { p.dc.send(JSON.stringify({ ...obj, id: this._selfId })); }
+        try { p.dc.send(packet); }
         catch { anyOnAbly = true; }
       } else {
         anyOnAbly = true; // still connecting — this peer needs the Ably copy
       }
     }
-    if (anyOnAbly) this._ably.send(obj); // reaches connecting peers; live P2P peers drop the dupe
+    if (anyOnAbly) this._ablyState(obj); // reaches connecting peers; live P2P peers drop the dupe
+  }
+
+  // Ably state fallback, throttled to ~16 Hz. The P2P channel may run at 30 Hz,
+  // but during the brief connecting window we don't want to push 30 messages/s
+  // onto the shared Ably connection (per-message rate limits). The fallback peer
+  // is the degraded path anyway; 16 Hz there is plenty. Uses Date.now (wall) — a
+  // rate gate, unrelated to the shared clock.
+  _ablyState(obj) {
+    const now = Date.now();
+    if (now - this._lastAblyState < 1000 / 16) return;
+    this._lastAblyState = now;
+    this._ably.send(obj); // unchanged JSON-object shape (Ably path stays object-based)
   }
 
   // --- Peer connections (mesh) ---
@@ -133,13 +157,30 @@ export class WebRTCTransport {
 
     const wire = (dc) => {
       rec.dc = dc;
+      dc.binaryType = "arraybuffer"; // receive pose packets as ArrayBuffer, not Blob
       dc.onopen = () => { rec.ready = true; };
       dc.onclose = () => { rec.ready = false; };
-      dc.onmessage = (ev) => { try { this._emit(JSON.parse(ev.data)); } catch { /* ignore */ } };
+      dc.onmessage = (ev) => {
+        if (typeof ev.data === "string") {
+          // Safety / back-compat path (a peer still sending JSON).
+          try { this._emit(JSON.parse(ev.data)); } catch { /* ignore */ }
+          return;
+        }
+        // Binary pose packet: the sender is THIS channel's peer, so stamp its id
+        // (the payload carries none). Emit each pose ascending-t so pushSnapshot
+        // accepts the piggybacked redundancy.
+        try {
+          const poses = decodePosePacket(ev.data);
+          for (const pose of poses) this._emit({ type: "state", id: peerId, ...pose });
+        } catch { /* ignore a malformed frame */ }
+      };
     };
 
     if (isInitiator(this._selfId, peerId)) {
-      wire(pc.createDataChannel("game", { ordered: true }));
+      // Unreliable + unordered: a lossy pose stream must not head-of-line-block
+      // (one dropped datagram would stall every later pose behind a retransmit).
+      // FEC (piggybacked poses) recovers drops; pushSnapshot tolerates reordering.
+      wire(pc.createDataChannel("game", { ordered: false, maxRetransmits: 0 }));
       pc.createOffer()
         .then((o) => pc.setLocalDescription(o))
         .then(() => this._signal(peerId, { kind: "offer", sdp: pc.localDescription }))
