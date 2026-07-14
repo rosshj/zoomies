@@ -14,7 +14,8 @@
     "check": "node tools/headless-check.mjs",
     "check:offline": "node tools/offline-check.mjs",
     "check:items": "node tools/items-check.mjs",
-    "check:net": "node tools/net-check.mjs"
+    "check:net": "node tools/net-check.mjs",
+    "check:netsim": "node tools/netsim-check.mjs"
   },
   "license": "MIT",
   "dependencies": {
