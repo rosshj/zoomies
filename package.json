@@ -15,7 +15,8 @@
     "check:offline": "node tools/offline-check.mjs",
     "check:items": "node tools/items-check.mjs",
     "check:net": "node tools/net-check.mjs",
-    "check:netsim": "node tools/netsim-check.mjs"
+    "check:netsim": "node tools/netsim-check.mjs",
+    "check:codec": "node tools/codec-check.mjs"
   },
   "license": "MIT",
   "dependencies": {
