@@ -18,20 +18,25 @@ loaded until you add `&mp=1`.
 ```
    your kart          the wire                    a rival's kart
   (local, instant) ── sendState 30Hz ─► WebRTC P2P ─► onState ─► Hermite interp
-                                    (binary+FEC; Ably           buffer (per-peer
-   RemoteKart  ◄── Hermite + velocity-blend ── relay fallback)   jitter-aware ~90-
-                                                + shared clock)   280ms) + dead-reckon
+                                    (binary+FEC; Ably           buffer + curved
+   RemoteKart  ◄── velocity-blend + predict-to-present ── fallback)  extrapolation
+                                                + shared clock)   → drawn at PRESENT
 ```
 
 - **Your own kart** runs the normal local physics — zero input lag, unchanged.
 - **Rival karts** are `RemoteKart` puppets: the full kart visual, but driven by
   interpolated network snapshots instead of physics. Remote motion uses **cubic
   Hermite** interpolation (curves through corners at 16 Hz), **projective
-  velocity blending** (converges onto the true path with no follow-lag), and a
-  **per-peer jitter-aware delay** (a clean link renders ~90 ms back, a jittery one
-  buffers more) — so a clean connection feels ~2× fresher than the old fixed
-  200 ms. See `src/net/remotepose.js` + `interp.js`; the wins are measured in the
-  netsim harness against `tools/netsim/baseline.json`.
+  velocity blending** (converges onto the true path with no follow-lag), a
+  **per-peer jitter-aware delay** (a jittery link buffers more), and
+  **predict-to-present**: the ghost is drawn where the kart *is now*, not where
+  it was. A **curved (turn-rate + acceleration aware) extrapolator** rides the
+  kart's real arc past the newest snapshot, and the render offset is pulled toward
+  present on a clean link — so absolute position error collapses (netsim errAbs
+  p95 ~4→1.5 u on LAN, staleness ~90→33 ms) — while jitter re-inflates the offset
+  back toward the buffered value so a bursty link stays in safe interpolation. See
+  `src/net/remotepose.js` + `interp.js`; the wins are measured in the netsim
+  harness against `tools/netsim/baseline.json`.
 - **Transport is abstracted** (`src/net/net.js`). Ably (cloud relay) by default,
   or a WebRTC peer-to-peer transport — same facade, no gameplay changes.
 
