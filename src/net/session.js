@@ -85,6 +85,7 @@ export class MpSession {
     return transportPromise.then((transport) => {
       const net = new Net(transport, identityFn(), this._netOptions);
       this.net = net;
+      this._emit("onNet", net); // hook point for dev tooling (e.g. the recorder)
       net.on("peer", (identity) => {
         this.spawn(identity);
         this._emit("onRoster"); // refresh the "N friends here" count immediately

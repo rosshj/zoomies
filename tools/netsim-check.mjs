@@ -5,13 +5,39 @@
 //
 //   npm run check:netsim            run the matrix, invariants + determinism
 //   node tools/netsim-check.mjs --json   also dump full metrics JSON
+//   node tools/netsim-check.mjs --trace <file>   replay a recorded trace instead
 //
 // Baseline capture/compare (--write-baseline) is wired in a later step.
+import { readFileSync } from "node:fs";
 import { runScenario } from "../src/net/sim/scenario.js";
 import { circleDriver, figureEightDriver } from "../src/net/sim/drivers.js";
+import { replayTrace, validateTrace } from "../src/net/sim/trace.js";
 
 const argv = process.argv.slice(2);
 const wantJson = argv.includes("--json");
+const traceIdx = argv.indexOf("--trace");
+
+// --- Trace replay mode: score a real recorded session, receive-side only ---
+if (traceIdx !== -1) {
+  const file = argv[traceIdx + 1];
+  if (!file) { console.error("usage: --trace <file.json>"); process.exit(2); }
+  const trace = validateTrace(JSON.parse(readFileSync(file, "utf8")));
+  const summary = await replayTrace(trace);
+  const s = summary.series;
+  const c = summary.counters;
+  const total = c["frames.total"] || 1;
+  const ia = s.interArrival || { p50: 0, p95: 0, max: 0 };
+  console.log(`trace: ${file}`);
+  console.log(`  transport=${summary.transport} peers=${summary.peers} captured poses=${Object.values(trace.peers).reduce((n, a) => n + a.length, 0)}`);
+  console.log(`  inter-arrival p50=${ia.p50}ms p95=${ia.p95}ms max=${ia.max}ms`);
+  console.log(`  staleness p50=${(s.staleness || {}).p50}ms p95=${(s.staleness || {}).p95}ms`);
+  console.log(`  correction avg=${(s.correction || {}).avg}u p95=${(s.correction || {}).p95}u`);
+  console.log(`  extrap ${(((c["frames.extrap"] || 0) / total) * 100).toFixed(1)}% · hidden ${(((c["frames.hidden"] || 0) / total) * 100).toFixed(1)}% · snaps ${c.snaps || 0} · teleports ${c.teleports || 0}`);
+  if (wantJson) console.log("\n" + JSON.stringify(summary, null, 2));
+  if ((c.teleports || 0) > 0) { console.log("\nFAIL: replay produced teleports"); process.exit(1); }
+  console.log("\ntrace replay ok");
+  process.exit(0);
+}
 
 // Build a mixed field of drivers, spread in phase so karts don't stack.
 function field(n) {

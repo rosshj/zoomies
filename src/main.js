@@ -27,6 +27,7 @@ import { createAblyTransport } from "./net/ably.js";
 import { createWebRTCTransport } from "./net/webrtc.js";
 import { resolveHost, resolveAblyKey } from "./net/config.js";
 import { RemoteKart, FLAG } from "./remotekart.js";
+import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -849,8 +850,32 @@ const MP = new MpSession({
       // update while connected and the live connection state shows otherwise.
       setMpStatus(MP.net && MP.net.connected ? "connected" : MP.connState || "connecting");
     },
+    // Dev-only: capture arriving poses so a real cellular session can be replayed
+    // through the netsim harness. Off unless ?rec=1 / the persisted pref is set.
+    onNet: (net) => {
+      if (!recorderEnabled()) return;
+      _netRecorder = new NetRecorder().attach(net);
+      if (MP.hud) attachRecBtn(MP.hud);
+    },
   },
 });
+
+// The recorder + its export chip live outside the session (they're dev UI/DOM).
+let _netRecorder = null;
+function attachRecBtn(hud) {
+  if (hud.querySelector(".rec-btn")) return;
+  const btn = document.createElement("span");
+  btn.className = "rec-btn";
+  btn.textContent = " REC ⬇";
+  // The HUD is pointer-events:none so it never eats taps; re-enable just the chip.
+  btn.style.cssText = "pointer-events:auto;cursor:pointer;color:#ff9a8a";
+  btn.addEventListener("click", () => {
+    const ok = _netRecorder && _netRecorder.export();
+    btn.textContent = ok ? ` SAVED (${_netRecorder.count})` : " no data yet";
+    setTimeout(() => { btn.textContent = " REC ⬇"; }, 1500);
+  });
+  hud.appendChild(btn);
+}
 
 // Thin wrappers so the many existing call sites read as before.
 function mpPlayerCount() { return MP.playerCount(); }
