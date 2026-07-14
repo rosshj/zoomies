@@ -17,7 +17,8 @@
     "check:net": "node tools/net-check.mjs",
     "check:netsim": "node tools/netsim-check.mjs",
     "check:codec": "node tools/codec-check.mjs",
-    "check:sim": "node tools/sim-check.mjs"
+    "check:sim": "node tools/sim-check.mjs",
+    "check:referee": "node tools/referee-check.mjs"
   },
   "license": "MIT",
   "dependencies": {
