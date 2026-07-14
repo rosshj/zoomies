@@ -720,6 +720,10 @@ function raceRoster() {
   return [playerCfg, ...ai];
 }
 
+// Per-race seeded RNG for the SIM path (grid shuffle, AI lane/shield, spinouts),
+// so a given world seed replays identically. Re-forked each race in buildKarts.
+let _simRng = Math.random;
+
 function buildKarts() {
   // Tear down last race's karts properly: freeing the merged geometries + the
   // per-kart materials (shared ones are skipped) releases their GPU buffers
@@ -729,6 +733,7 @@ function buildKarts() {
     _disposeGroup(k.group);
   }
   karts = [];
+  _simRng = makeRng(WORLD_SEED + "|sim"); // fresh seeded stream for this race
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
   // humans-only and time trial is solo, so both are just the player's kart.
@@ -739,13 +744,13 @@ function buildKarts() {
   const slots = roster.map((_, i) => i);
   if (!MP.enabled) {
     for (let i = slots.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(_simRng() * (i + 1));
       [slots[i], slots[j]] = [slots[j], slots[i]];
     }
   }
   const diff = AI_DIFFICULTY[DIFFICULTY] || AI_DIFFICULTY.hard;
   roster.forEach((cfg, i) => {
-    const kart = new Kart(cfg);
+    const kart = new Kart({ ...cfg, rng: _simRng });
     // Scale the AI down for the chosen difficulty (hard = no change). Slower top
     // speed + weaker rubber-band, set on baseMaxSpeed so the per-frame catch-up
     // (aiActions) scales from it; the rest of the knobs live on kart.diff.
@@ -4299,7 +4304,7 @@ function aiActions(dt) {
       if (!k._yarnPlan) {
         const skill = k.diff ? k.diff.shield : 1;
         const hopBias = k.drifting && k.driftCharge > 0.8 ? 0.75 : 0.4;
-        k._yarnPlan = Math.random() < skill * hopBias ? 1 : 2; // 1 = hop, 2 = shield
+        k._yarnPlan = _simRng() < skill * hopBias ? 1 : 2; // 1 = hop, 2 = shield
       }
       if (k._yarnPlan === 2) threat = true;
       else if (yEta < 0.34 && !k.airborne && !k.shielding) k.jump(); // clean hop
@@ -4310,8 +4315,8 @@ function aiActions(dt) {
       // Sometimes they just don't react — and a charged drift makes shielding
       // genuinely less attractive (raising it forfeits the mini-turbo).
       const keepDrift = k.drifting && k.driftCharge > 1.0 ? 0.55 : 1;
-      k._shieldTry = Math.random() < k.shieldSkill * keepDrift;
-      k._shieldDelay = 0.18 + Math.random() * 0.32; // human-ish reaction time
+      k._shieldTry = _simRng() < k.shieldSkill * keepDrift;
+      k._shieldDelay = 0.18 + _simRng() * 0.32; // human-ish reaction time
     }
     if (threat) k._shieldDelay -= dt;
     k.shielding = threat && k._shieldTry && k._shieldDelay <= 0;
@@ -4327,7 +4332,7 @@ function aiActions(dt) {
         const skill = k.diff ? k.diff.shield : 1;
         const dodge = a >= 0 ? -1 : 1; // swerve to the emptier side
         k.steerInput = Math.max(-1, Math.min(1, k.steerInput + dodge * skill * 0.55));
-        if (pa.dist < 11 && k.speed > 13 && !k.airborne && !k.shielding && Math.random() < skill * 0.06) {
+        if (pa.dist < 11 && k.speed > 13 && !k.airborne && !k.shielding && _simRng() < skill * 0.06) {
           k.jump(); // last-ditch hop (skill-gated, so easy AI eats some spills)
         }
       }
@@ -4339,7 +4344,7 @@ function aiActions(dt) {
         if (other === k || other.finished) continue;
         let gapT = (k.trackT - other.trackT) % 1;
         if (gapT < 0) gapT += 1;
-        if (gapT < 42 / track.length && Math.random() < 0.035) {
+        if (gapT < 42 / track.length && _simRng() < 0.035) {
           k.milkBottles = 0;
           items.dropMilk(k);
           break;
