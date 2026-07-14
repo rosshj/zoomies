@@ -49,6 +49,10 @@ export class WebRTCTransport {
     // piggybacks the last few for loss recovery (see posecodec.js).
     this._poseHistory = [];
     this._lastAblyState = 0; // throttle the Ably state fallback to ~16 Hz
+    // Direct P2P has no per-message relay limit, so the pose stream runs faster.
+    // The session reads this via Net.sendRateHz; other transports leave it unset
+    // and default to 16 Hz. Binary + FEC keep the higher rate cheap on bandwidth.
+    this.sendRateHz = 30;
   }
 
   get onmessage() { return this._onmessage; }

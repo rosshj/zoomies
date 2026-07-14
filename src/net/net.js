@@ -63,6 +63,13 @@ export class Net {
     return this;
   }
 
+  // Pose send rate (Hz). The transport advertises it (WebRTC runs 30 Hz on the
+  // direct channel; Ably/loopback/party leave it unset → 16 Hz, the relay-safe
+  // default). The session's send loop divides by this.
+  get sendRateHz() {
+    return (this.transport && this.transport.sendRateHz) || 16;
+  }
+
   // Server-aligned current time (ms), shared across clients — used to stamp
   // outgoing snapshots and to pick the render time for interpolation.
   now() {

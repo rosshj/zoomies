@@ -444,5 +444,41 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("kartBumpPower preserved", kartBumpPower(20, 10) === 10 + (20 + 10) * 0.4);
 }
 
+// --- Transport-gated send rate (30 Hz on the direct WebRTC channel) ---
+{
+  const plain = new Net({ send() {}, close() {}, open() {} }, {});
+  check("Net.sendRateHz defaults to 16", plain.sendRateHz === 16);
+  const fast = new Net({ send() {}, close() {}, open() {}, sendRateHz: 30 }, {});
+  check("Net.sendRateHz reflects a fast transport", fast.sendRateHz === 30);
+
+  // End-to-end: the session send loop divides by net.sendRateHz, so a 30 Hz
+  // transport ~doubles the pose count over the same wall time.
+  async function countSends(rateHz) {
+    const clock = new SimClock();
+    const hub = new LoopbackHub({ latency: 5, jitter: 0, rng: makeRng("RATE"), schedule: (fn, ms) => clock.setTimeout(fn, ms), now: () => clock.now() });
+    const netOpts = { localNow: () => clock.now(), timers: clock.timers() };
+    let sends = 0;
+    const mp = new MpSession({
+      createRemote: () => ({ update() {}, dispose() {}, pose: { interpDelay: 200 } }),
+      disposeRemote() {}, hasLocalPlayer: () => true,
+      getPose: () => { sends++; return { x: 0, y: 0, z: 0, h: 0, p: 0, s: 0, f: 0, pr: 0 }; },
+      amHost: () => true, wallNow: () => clock.now(), netOptions: netOpts,
+    });
+    mp.enabled = true;
+    const transport = hub.connect();
+    if (rateHz) transport.sendRateHz = rateHz;
+    await mp.begin(Promise.resolve(transport), () => ({ name: "R" }));
+    const iv = clock.setInterval(() => mp.update(1 / 60), 1000 / 60);
+    clock.run(2000);
+    clock.clearInterval(iv);
+    return sends;
+  }
+  const at16 = await countSends(null);
+  const at30 = await countSends(30);
+  check(`session sends ~16 Hz by default (${at16} over 2s)`, at16 >= 28 && at16 <= 36);
+  check(`session sends ~30 Hz on a fast transport (${at30} over 2s)`, at30 >= 55 && at30 <= 65);
+  check("fast transport ~doubles the send count", at30 > at16 * 1.7);
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log("\nall net checks passed");

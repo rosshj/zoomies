@@ -218,11 +218,10 @@ export class MpSession {
     const net = this.net;
     if (net.connected && this._hasLocalPlayer()) {
       this.sendAcc += dt;
-      // ~16 Hz. Interpolation (with the 200ms delay) reconstructs smooth motion from
-      // this, and the lower rate roughly halves the per-channel message load vs the
-      // old 25 Hz — easing the relay so a busy room is less likely to drop/throttle
-      // a player's updates (which froze their kart on everyone else's screen).
-      if (this.sendAcc >= 1 / 16) {
+      // Rate is transport-gated (net.sendRateHz): the WebRTC direct channel runs
+      // 30 Hz (no relay limit; binary+FEC keep it cheap), Ably/loopback stay at
+      // the relay-safe 16 Hz. Interpolation reconstructs smooth motion from it.
+      if (this.sendAcc >= 1 / net.sendRateHz) {
         this.sendAcc = 0;
         const pose = this._getPose();
         if (pose) net.sendState(pose);
