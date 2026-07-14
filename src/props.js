@@ -116,7 +116,8 @@ function build(scene, track, opts) {
   // shared additive material pulsed in update(); a shell mesh is lazily
   // attached per crate the first time it floats — one extra draw call per
   // active box, and there are only 3-5 on a map.
-  const glowMat = new THREE.MeshBasicMaterial({ color: 0xffc44d, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide });
+  // Hot pink so the boxes pop against every biome's palette.
+  const glowMat = new THREE.MeshBasicMaterial({ color: 0xff6fd8, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.BackSide });
   glowMat.userData.shared = true;
   let glowT = 0;
   const ensureGlow = (pr) => {

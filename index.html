@@ -168,6 +168,8 @@
       <button id="btn-boost" class="action-btn"><span id="boost-fill"></span><span class="btn-emoji">💨</span></button>
       <button id="btn-shoot" class="action-btn">🐾</button>
       <button id="btn-jump" class="action-btn">⬆</button>
+      <!-- Appears only while holding a milk bottle: tap to spill it behind you. -->
+      <button id="btn-milk" class="action-btn hidden">🥛</button>
     </div>
 
     <!-- Active power-ups (top-left): a pill per live item-box power-up, with its
@@ -176,7 +178,13 @@
       <div id="pu-shield" class="powerup hidden"><span class="pu-ico">🛡️</span><span class="pu-val"></span></div>
       <div id="pu-tri" class="powerup hidden"><span class="pu-ico">🐾</span><span class="pu-val"></span></div>
       <div id="pu-catnip" class="powerup hidden"><span class="pu-ico">🌿</span><span class="pu-val"></span></div>
+      <div id="pu-yarn" class="powerup hidden"><span class="pu-ico">🧶</span><span class="pu-val"></span></div>
+      <div id="pu-milk" class="powerup hidden"><span class="pu-ico">🥛</span><span class="pu-val"></span></div>
     </div>
+
+    <!-- Incoming-yarn ping: flashes ~a second before a yarn ball connects — the
+         reaction window for shield / juke / hop. -->
+    <div id="yarn-warn" class="hidden">🧶<span class="yw-mark">!</span></div>
 
     <!-- Rear threat warning (top center): replaces the rear-view mirror. Lights
          amber when a kart has you in hairball range/cone behind you, and pulses
