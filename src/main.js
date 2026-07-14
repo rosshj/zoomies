@@ -951,6 +951,7 @@ function maybeStartReferee() {
     room: resolveRefereeRoom(),
     id: MP.net.id,
     name: makeMpIdentity().name || "",
+    debug: new URLSearchParams(location.search).has("refdebug"), // ?refdebug=1 → console logs
     // Authoritative verdict: I was struck. Same last-say rules as the P2P path.
     onHit: (target, by, dir) => { if (target === MP.net.id) applyRefVictimSpin(dir); },
     // A finish was ranked by the referee's clock — refresh results if they're up.

@@ -24,6 +24,7 @@ export class RefereeClient {
     makeSocket = (u) => new WebSocket(u),
     now = () => Date.now(),
     stateHz = 10,          // lag-comp feed rate (well under the pose rate)
+    debug = false,         // ?refdebug=1 → log connect / verdicts / rejects to console
   } = {}) {
     this.url = url;
     this.room = room;
@@ -40,6 +41,7 @@ export class RefereeClient {
     this.open = false;
     this._lastState = 0;
     this._joined = false;
+    this._log = debug ? (...a) => console.log("[referee]", ...a) : () => {};
   }
 
   connect() {
@@ -49,13 +51,15 @@ export class RefereeClient {
     let ws;
     try { ws = this._makeSocket(full); } catch { return this; }
     this.ws = ws;
+    this._log("connecting to", full);
     ws.onopen = () => {
       this.open = true;
       this._joined = true;
       this._send({ type: "join", id: this.id, name: this.name });
+      this._log("connected ✓ (joined room", this.room + ")");
     };
-    ws.onclose = () => { this.open = false; };
-    ws.onerror = () => { this.open = false; };
+    ws.onclose = () => { this.open = false; this._log("disconnected"); };
+    ws.onerror = () => { this.open = false; this._log("socket error"); };
     ws.onmessage = (ev) => this._onMessage(ev && ev.data !== undefined ? ev.data : ev);
     return this;
   }
@@ -65,11 +69,11 @@ export class RefereeClient {
     try { m = typeof raw === "string" ? JSON.parse(raw) : raw; } catch { return; }
     if (!m || typeof m.type !== "string") return;
     switch (m.type) {
-      case "welcome": this._onWelcome(m.standings || []); break;
-      case "hitv": this._onHit(m.target, m.by, m.dir || { x: 0, z: 0 }, m.at); break;
-      case "lapv": this._onLap(m.id, m.lap, m.at); break;
-      case "finishv": this._onFinish(m.id, m.place, m.at); break;
-      case "reject": break; // diagnostic only
+      case "welcome": this._log("welcome — standings:", m.standings || []); this._onWelcome(m.standings || []); break;
+      case "hitv": this._log(`HIT verdict: ${m.by} → ${m.target}`); this._onHit(m.target, m.by, m.dir || { x: 0, z: 0 }, m.at); break;
+      case "lapv": this._log(`LAP verdict: ${m.id} → lap ${m.lap}`); this._onLap(m.id, m.lap, m.at); break;
+      case "finishv": this._log(`FINISH verdict: ${m.id} → place ${m.place}`); this._onFinish(m.id, m.place, m.at); break;
+      case "reject": this._log(`rejected ${m.of}: ${m.reason}`); break; // e.g. shielded / cooldown / out-of-range
     }
   }
 
