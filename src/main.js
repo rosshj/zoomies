@@ -26,9 +26,10 @@ import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/s
 import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
 import { createWebRTCTransport } from "./net/webrtc.js";
-import { resolveHost, resolveAblyKey } from "./net/config.js";
+import { resolveHost, resolveAblyKey, resolveRefereeUrl, resolveRefereeRoom } from "./net/config.js";
 import { RemoteKart, FLAG } from "./remotekart.js";
 import { NetRecorder, recorderEnabled } from "./net/recorder.js";
+import { RefereeClient } from "./net/refereeclient.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -873,6 +874,9 @@ const MP = new MpSession({
       // The session already checked the hit targets me; the victim's own shield
       // (or catnip invincibility) gets last say.
       if (!player || state !== State.RACING) return;
+      // When a referee is live, its lag-compensated verdict is authoritative — let
+      // it decide the spin so both screens agree, instead of applying twice.
+      if (_ref && _ref.ready) return;
       if (player.shielding || player.catnipBoosting) return; // catnip = invincible
       const dir = new THREE.Vector3(h.hx, 0, h.hz);
       player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
@@ -924,6 +928,49 @@ function attachRecBtn(hud) {
     setTimeout(() => { btn.textContent = " REC ⬇"; }, 1500);
   });
   hud.appendChild(btn);
+}
+
+// === Optional race referee (Stage 4; Cloudflare Durable Object) ===============
+// Off unless a referee URL is configured (?ref=wss://… or config.REFEREE_URL) —
+// with none, `_ref` stays null and every guard below is skipped, so the game is
+// byte-for-byte its current self. When it IS configured it runs ALONGSIDE the P2P
+// channel: it streams a light lag-comp feed + forwards hit/finish claims, and the
+// server's verdicts become authoritative — but ONLY while the socket is actually
+// open (`_ref.ready`). A missing/unreachable Worker falls straight back to the
+// existing peer-to-peer behaviour, so it can never leave the game worse off.
+// Deploy + usage: workers/referee/DEPLOY.md.
+let _ref = null;
+let _refTried = false;
+function maybeStartReferee() {
+  if (_ref || _refTried) return;
+  if (!(MP.enabled && MP.net && MP.net.id)) return; // wait for our shared id
+  _refTried = true;
+  const url = resolveRefereeUrl();
+  if (!url) return; // referee not configured → permanent no-op
+  _ref = new RefereeClient({
+    url,
+    room: resolveRefereeRoom(),
+    id: MP.net.id,
+    name: makeMpIdentity().name || "",
+    // Authoritative verdict: I was struck. Same last-say rules as the P2P path.
+    onHit: (target, by, dir) => { if (target === MP.net.id) applyRefVictimSpin(dir); },
+    // A finish was ranked by the referee's clock — refresh results if they're up.
+    onFinish: () => { if (state === State.FINISHED) renderResults(); },
+  });
+  _ref.connect();
+}
+function applyRefVictimSpin(dir) {
+  if (!player || state !== State.RACING) return;
+  if (player.shielding || player.catnipBoosting) return; // shield/catnip = invincible
+  const v = new THREE.Vector3(dir ? dir.x : 0, 0, dir ? dir.z : 0);
+  player.spinOut(v.lengthSq() > 0.0001 ? v : null);
+}
+// A lightweight pose for the referee's lag-comp buffer — it only reads SHIELD (to
+// rewind shield state to fire-time) plus position + progress.
+function refPose() {
+  let f = 0;
+  if (player.shielding) f |= FLAG.SHIELD;
+  return { t: MP.net.now(), x: player.position.x, z: player.position.z, f, pr: player.totalProgress };
 }
 
 // Thin wrappers so the many existing call sites read as before.
@@ -1046,6 +1093,10 @@ function setMpStatus(state, reason) {
 // exact code that ships.
 function updateMultiplayer(dt) {
   MP.update(dt);
+  // Optional referee: connect once we have our shared id, then stream a throttled
+  // lag-comp feed while racing. Both are no-ops when no referee is configured.
+  maybeStartReferee();
+  if (_ref && _ref.ready && player && state === State.RACING) _ref.sendState(refPose());
 }
 
 initMultiplayer();
@@ -3404,6 +3455,7 @@ function enterMultiplayer() {
 // mode on the Game Mode screen). Pure teardown — the caller owns the UI state.
 function teardownMultiplayer() {
   MP.teardown(); // netcode teardown: close the connection, drop remotes + parked ghosts
+  if (_ref) { _ref.close(); _ref = null; _refTried = false; } // drop the referee link too
   _mpWantsHigh = false; // next MP session re-defaults to lean
   applyMpQuality(); // restore the pre-multiplayer graphics setting
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
@@ -4915,6 +4967,7 @@ function loop(now) {
         ? (id, dir) => {
             if (!MP.net) return;
             MP.net.sendHit(id, dir);
+            if (_ref) _ref.claimHit(id, MP.net.now(), dir); // referee adjudicates (no-op if off)
             // Instant local feedback: jolt the ghost in the hairball's direction
             // so the hit reads immediately, bridging the round-trip until the
             // victim's real spin-out streams back over the network.
@@ -4949,6 +5002,7 @@ function loop(now) {
       ? (id, dir) => {
           if (!MP.net) return;
           MP.net.sendHit(id, dir);
+          if (_ref) _ref.claimHit(id, MP.net.now(), dir); // referee adjudicates (no-op if off)
           const r = MP.remotes.get(id);
           if (r) r.bump(dir.x, dir.z, 15); // instant local feedback, like hairballs
         }
@@ -5142,6 +5196,7 @@ function loop(now) {
           // same way (local elapsed time drifts apart over a long race).
           player.finishClock = MP.net.now();
           MP.net.sendFinish(player.finishTime, player.finishClock);
+          if (_ref) _ref.claimFinish(); // referee stamps the authoritative place (no-op if off)
         }
         setTimeout(showResults, 13000);
       }

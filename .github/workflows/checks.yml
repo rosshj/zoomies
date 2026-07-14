@@ -20,3 +20,9 @@ jobs:
         run: npm run check:net
       - name: netsim harness + baseline
         run: npm run check:netsim
+      - name: binary pose codec
+        run: npm run check:codec
+      - name: deterministic kart sim
+        run: npm run check:sim
+      - name: race referee (lag-comp/hits/laps/finish)
+        run: npm run check:referee

@@ -39,6 +39,12 @@ loaded until you add `&mp=1`.
   harness against `tools/netsim/baseline.json`.
 - **Transport is abstracted** (`src/net/net.js`). Ably (cloud relay) by default,
   or a WebRTC peer-to-peer transport — same facade, no gameplay changes.
+- **An optional referee** (`workers/referee/`, a Cloudflare Durable Object) can run
+  alongside the P2P channel to make the contested events — hits, laps, finish order
+  — agree across clients, adjudicated on one lag-compensated clock. It owns no
+  positions and is **off unless a `?ref=wss://…` URL is given**, so the game is
+  unchanged without it. Deploy at $0 on the Workers free plan: see
+  `workers/referee/DEPLOY.md`.
 
 ### Files
 
@@ -54,9 +60,12 @@ loaded until you add `&mp=1`.
 | `src/net/webrtc.js` | WebRTC peer-to-peer transport (DEFAULT; binary+FEC pose stream, `?rtc=0` opts out) |
 | `src/net/posecodec.js` | Binary quantized pose packet + piggyback FEC (P2P channel only; pure, unit-tested) |
 | `src/net/partysocket.js` | PartyKit client adapter (legacy) |
-| `src/net/config.js` | `ABLY_KEY` / `PARTY_HOST` settings + URL overrides |
+| `src/net/config.js` | `ABLY_KEY` / `PARTY_HOST` / `REFEREE_URL` settings + URL overrides |
 | `src/net/recorder.js` | Dev-only arrival recorder → exports a replayable trace (`?rec=1`) |
 | `src/net/sim/` | Netsim harness: virtual clock, scripted drivers, metrics, scenario runner, trace replay |
+| `src/net/referee.js` | Pure race-referee brain: lag-comp buffers, hit/lap/finish adjudication (headless, unit-tested) |
+| `src/net/refereeclient.js` | Client connector for the referee WebSocket (default-off; socket-injectable, unit-tested) |
+| `workers/referee/` | Cloudflare Worker + Durable Object hosting the referee (see `DEPLOY.md`) |
 | `src/remotekart.js` | Render-only ghost kart: a THREE adapter over `RemotePose` |
 | `party/zoomies.js` | PartyKit server (relay + presence + clock) |
 | `partykit.json` | PartyKit project config |

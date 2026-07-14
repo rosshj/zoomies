@@ -3,6 +3,7 @@
 // clock so hit rewinding, lap counting and finish ordering are exercised without
 // any network or Cloudflare runtime. Run: `npm run check:referee`.
 import { RefereeRoom, REFEREE_CONSTS } from "../src/net/referee.js";
+import { RefereeClient } from "../src/net/refereeclient.js";
 
 let failures = 0;
 const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
@@ -133,6 +134,78 @@ function scripted() {
   return room.adjudicateHit({ shooter: "s", target: "v", t: 199990, dir: { x: 1, z: 0 } });
 }
 check("same script → identical verdict", JSON.stringify(scripted()) === JSON.stringify(scripted()));
+
+// --- Client ↔ referee protocol, end to end through a mock socket ---
+// A tiny in-process stand-in for the Durable Object: it holds a RefereeRoom and
+// routes messages exactly like workers/referee/worker.js, so this exercises the
+// real RefereeClient wire protocol + the real room logic without the Cloudflare
+// runtime (which needs WebSocketPair). The mock socket delivers instantly.
+{
+  let t = 500000;
+  const room = new RefereeRoom({ now: () => t, totalLaps: 2 });
+  const sockets = new Set();
+  const broadcast = (obj) => { const s = JSON.stringify(obj); for (const ws of sockets) ws._deliver(s); };
+  class MockSocket {
+    constructor() { this.onopen = null; this.onclose = null; this.onerror = null; this.onmessage = null; sockets.add(this); }
+    // client → DO: mirror worker.js routing
+    send(raw) {
+      const m = JSON.parse(raw);
+      if (m.type === "join") { room.join(m.id); this._deliver(JSON.stringify({ type: "welcome", id: m.id, standings: room.standings() })); }
+      else if (m.type === "state") { const lap = room.ingestState(m.id, { t: m.t, x: m.x, z: m.z, f: m.f | 0, pr: m.pr }); if (lap) broadcast({ type: "lapv", id: lap.id, lap: lap.lap, at: lap.at }); }
+      else if (m.type === "hitclaim") { const v = room.adjudicateHit({ shooter: m.id, target: m.target, t: m.t, dir: m.dir }); if (v.ok) broadcast({ type: "hitv", target: v.event.target, by: v.event.by, dir: v.event.dir, at: v.event.at }); }
+      else if (m.type === "finishclaim") { const v = room.adjudicateFinish(m.id); if (v.ok) broadcast({ type: "finishv", id: v.event.id, place: v.event.place, at: v.event.at }); }
+    }
+    _deliver(s) { if (this.onmessage) this.onmessage({ data: s }); }
+    _open() { if (this.onopen) this.onopen(); } // test fires the open event synchronously
+    close() { sockets.delete(this); if (this.onclose) this.onclose(); }
+  }
+  const mk = () => new MockSocket();
+
+  const hitsSeen = [];
+  const lapsSeen = [];
+  const finSeen = [];
+  let welcomed = false;
+  const shooter = new RefereeClient({ url: "ws://x", id: "S", makeSocket: mk, now: () => t,
+    onWelcome: () => { welcomed = true; }, onHit: (target, by) => hitsSeen.push([by, target]),
+    onLap: (id, lap) => lapsSeen.push([id, lap]), onFinish: (id, place) => finSeen.push([id, place]) });
+  const victim = new RefereeClient({ url: "ws://x", id: "V", makeSocket: mk, now: () => t,
+    onHit: (target, by) => hitsSeen.push([by, target]), onFinish: (id, place) => finSeen.push([id, place]) });
+  shooter.connect(); victim.connect();
+  shooter.ws._open(); victim.ws._open();
+  check("client connect → open + welcome", shooter.ready && welcomed);
+
+  // Both stream a lag-comp state near each other; then the shooter claims a hit.
+  shooter.sendState({ t, x: 0, z: 0, f: 0, pr: 0 });
+  victim.sendState({ t, x: 5, z: 0, f: 0, pr: 0 });
+  t += 30;
+  shooter.claimHit("V", t - 30, { x: 1, z: 0 });
+  check("hit verdict broadcast to BOTH clients", hitsSeen.length === 2 && hitsSeen.every(([by, tg]) => by === "S" && tg === "V"));
+
+  // A shielded victim: the referee rejects, so no client applies a spin.
+  const before = hitsSeen.length;
+  t += 1000; // clear the cooldown
+  victim.sendState({ t, x: 5, z: 0, f: REFEREE_CONSTS.FLAG_SHIELD, pr: 0 });
+  t += 20;
+  shooter.claimHit("V", t - 20, { x: 1, z: 0 });
+  check("shielded victim → no hit verdict reaches clients", hitsSeen.length === before);
+
+  // Lap + finish verdicts propagate. Advance past the ~10Hz state throttle
+  // between manual sends (in-game the feed is continuous, so this is automatic).
+  t += 200;
+  victim.sendState({ t, x: 5, z: 0, f: 0, pr: 1.02 });
+  check("lap verdict broadcast", lapsSeen.length === 1 && lapsSeen[0][0] === "V" && lapsSeen[0][1] === 1);
+  t += 200;
+  victim.sendState({ t, x: 5, z: 0, f: 0, pr: 2.01 }); // race distance = 2
+  victim.claimFinish();
+  check("finish verdict broadcast with place 1", finSeen.some(([id, place]) => id === "V" && place === 1));
+
+  // Degrades safely: claims before/after the socket is open are silent no-ops.
+  const lonely = new RefereeClient({ url: "", id: "Z", makeSocket: mk }); // no url → never connects
+  lonely.connect();
+  lonely.sendState({ t, x: 0, z: 0, f: 0, pr: 0 });
+  lonely.claimHit("V", t, { x: 1, z: 0 });
+  check("misconfigured client is a silent no-op", !lonely.ready);
+}
 
 if (failures) { console.log(`\n${failures} referee check(s) FAILED`); process.exit(1); }
 console.log("\nall referee checks passed");

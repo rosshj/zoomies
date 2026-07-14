@@ -44,3 +44,21 @@ export function resolveIceServers() {
   }
   return list;
 }
+
+// === Race referee (optional Cloudflare Durable Object; Stage 4) ===
+// The referee adjudicates hits/laps/finish over one lag-compensated clock so every
+// client agrees on them. It's OFF unless a URL is provided — the game is unchanged
+// without it. Deploy it yourself (free): see workers/referee/DEPLOY.md, then either
+// paste your Worker's WebSocket URL below or pass ?ref=wss://…workers.dev per race.
+export const REFEREE_URL = ""; // e.g. "wss://zoomies-referee.<subdomain>.workers.dev"
+
+export function resolveRefereeUrl() {
+  if (typeof location === "undefined") return (REFEREE_URL || "").trim();
+  const p = new URLSearchParams(location.search).get("ref");
+  return (p || REFEREE_URL || "").trim();
+}
+
+export function resolveRefereeRoom() {
+  if (typeof location === "undefined") return "main";
+  return (new URLSearchParams(location.search).get("refroom") || "main").trim() || "main";
+}
