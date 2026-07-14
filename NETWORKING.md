@@ -17,14 +17,21 @@ loaded until you add `&mp=1`.
 
 ```
    your kart          the wire                    a rival's kart
-  (local, instant) ── sendState ~16Hz ─► Ably relay ─► onState ─► interpolation
-                                     (or WebRTC P2P               buffer (adaptive
-   RemoteKart  ◄── interpolate/dead-reckon ── + shared clock)     ~200ms) + dead-reckoning
+  (local, instant) ── sendState ~16Hz ─► Ably relay ─► onState ─► Hermite interp
+                                     (or WebRTC P2P               buffer (per-peer
+   RemoteKart  ◄── Hermite + velocity-blend ── + shared clock)    jitter-aware ~90-
+                                                                  280ms) + dead-reckon
 ```
 
 - **Your own kart** runs the normal local physics — zero input lag, unchanged.
 - **Rival karts** are `RemoteKart` puppets: the full kart visual, but driven by
-  interpolated network snapshots instead of physics.
+  interpolated network snapshots instead of physics. Remote motion uses **cubic
+  Hermite** interpolation (curves through corners at 16 Hz), **projective
+  velocity blending** (converges onto the true path with no follow-lag), and a
+  **per-peer jitter-aware delay** (a clean link renders ~90 ms back, a jittery one
+  buffers more) — so a clean connection feels ~2× fresher than the old fixed
+  200 ms. See `src/net/remotepose.js` + `interp.js`; the wins are measured in the
+  netsim harness against `tools/netsim/baseline.json`.
 - **Transport is abstracted** (`src/net/net.js`). Ably (cloud relay) by default,
   or a WebRTC peer-to-peer transport — same facade, no gameplay changes.
 
@@ -32,9 +39,9 @@ loaded until you add `&mp=1`.
 
 | File | Role |
 | --- | --- |
-| `src/net/interp.js` | Snapshot buffer + interpolation/dead-reckoning (pure, unit-tested) |
+| `src/net/interp.js` | Snapshot buffer + cubic-Hermite interpolation + dead-reckoning (pure, unit-tested) |
 | `src/net/clock.js` | NTP-style shared-clock sync (pure, unit-tested; injectable clock) |
-| `src/net/remotepose.js` | Pure remote-pose tracking: buffer, render smoothing, bump, stale, flags (headless, unit-tested) |
+| `src/net/remotepose.js` | Pure remote-pose tracking: buffer, velocity-blend convergence, per-peer jitter-aware delay, bump, stale, flags (headless, unit-tested) |
 | `src/net/session.js` | `MpSession` — dependency-injected multiplayer orchestration (send loop, adaptive delay, roster, collisions) |
 | `src/net/net.js` | Transport-agnostic facade: presence, clock, send/receive (injectable timers) |
 | `src/net/loopback.js` | In-process fake server for tests/local dev (injectable latency/jitter/clock-skew/loss sim) |
