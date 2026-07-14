@@ -6,7 +6,7 @@
 // transport (loopback for tests, PartyKit today, WebRTC later) changes nothing
 // in gameplay code. See net/loopback.js and net/partysocket.js.
 //
-// Wire protocol (JSON messages, tiny at 6 players / ~18 Hz):
+// Wire protocol (JSON messages, tiny at 6 players / ~16 Hz):
 //   server -> client : {type:'welcome', id}        connection accepted, here's your id
 //                      {type:'pong', c, S}          clock round-trip reply (S = server now)
 //                      {type:'hello', id, name,...}  another player's identity (presence)
@@ -14,7 +14,7 @@
 //                      {type:'bye', id}              a player left
 //   client -> server : {type:'ping', c}             clock round-trip probe
 //                      {type:'hello', id, name,...}  my identity (broadcast on join)
-//                      {type:'state', id, t, x,...}  my pose (broadcast ~18 Hz)
+//                      {type:'state', id, t, x,...}  my pose (broadcast ~16 Hz)
 
 import { ClockSync } from "./clock.js";
 

@@ -1,0 +1,22 @@
+name: checks
+
+# Node-only netcode checks: fast, dependency-free, and the regression gate the
+# multiplayer overhaul relies on. (The Playwright/three.js smoke tests need a
+# browser and are left to run locally.)
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  netcode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: net unit checks
+        run: npm run check:net
+      - name: netsim harness + baseline
+        run: npm run check:netsim

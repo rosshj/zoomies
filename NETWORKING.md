@@ -33,14 +33,18 @@ loaded until you add `&mp=1`.
 | File | Role |
 | --- | --- |
 | `src/net/interp.js` | Snapshot buffer + interpolation/dead-reckoning (pure, unit-tested) |
-| `src/net/clock.js` | NTP-style shared-clock sync (pure, unit-tested) |
-| `src/net/net.js` | Transport-agnostic facade: presence, clock, send/receive |
-| `src/net/loopback.js` | In-process fake server for tests/local dev (latency/jitter/clock-skew sim) |
+| `src/net/clock.js` | NTP-style shared-clock sync (pure, unit-tested; injectable clock) |
+| `src/net/remotepose.js` | Pure remote-pose tracking: buffer, render smoothing, bump, stale, flags (headless, unit-tested) |
+| `src/net/session.js` | `MpSession` — dependency-injected multiplayer orchestration (send loop, adaptive delay, roster, collisions) |
+| `src/net/net.js` | Transport-agnostic facade: presence, clock, send/receive (injectable timers) |
+| `src/net/loopback.js` | In-process fake server for tests/local dev (injectable latency/jitter/clock-skew/loss sim) |
 | `src/net/ably.js` | Ably realtime adapter (default cloud transport) |
 | `src/net/webrtc.js` | WebRTC peer-to-peer transport (`?rtc=1`; pose stream goes direct) |
 | `src/net/partysocket.js` | PartyKit client adapter (legacy) |
 | `src/net/config.js` | `ABLY_KEY` / `PARTY_HOST` settings + URL overrides |
-| `src/remotekart.js` | Render-only ghost kart driven by the interpolation buffer |
+| `src/net/recorder.js` | Dev-only arrival recorder → exports a replayable trace (`?rec=1`) |
+| `src/net/sim/` | Netsim harness: virtual clock, scripted drivers, metrics, scenario runner, trace replay |
+| `src/remotekart.js` | Render-only ghost kart: a THREE adapter over `RemotePose` |
 | `party/zoomies.js` | PartyKit server (relay + presence + clock) |
 | `partykit.json` | PartyKit project config |
 
@@ -121,23 +125,61 @@ is **two phones on cellular** — that's where jitter and packet loss reveal
 whether the interpolation buffer and dead-reckoning are doing their job. Watch a
 rival kart: it should glide, not teleport or stutter, even when your bars drop.
 
+Short of two phones, the **netsim harness** reproduces those conditions offline
+(see below), and you can **record a real cellular session and replay it** through
+that harness for a repeatable measurement.
+
+### Netsim harness (`npm run check:netsim`)
+
+`src/net/sim/` drives the *real* send loop + interpolation + clock sync (the same
+`Net` + `MpSession` + `RemotePose` the game ships) over the loopback hub on a
+virtual clock with a seeded RNG. It runs a matrix of network conditions
+(`lan` / `wifi` / `cellular` / `awful`, from 20 ms clean up to 250±120 ms with 5%
+loss and multi-second clock skew) and measures per-frame positional error,
+staleness, correction magnitude, extrapolation share, snap-corrections and a hard
+no-teleport invariant. Because every timing/random source is injected, a run is
+**bit-for-bit reproducible** — the harness asserts this by running twice and
+comparing.
+
+Metrics are compared against a committed baseline (`tools/netsim/baseline.json`)
+with tolerance bands, so a change that meaningfully worsens smoothness fails CI.
+Recapture the baseline (after an intended improvement) with:
+```
+node tools/netsim-check.mjs --write-baseline
+```
+
+### Recording + replaying a real trace
+
+Add `?rec=1` (or set `localStorage["zoomies-netrec"]="1"` in an installed PWA),
+race, then tap **REC ⬇** on the bottom-left debug readout to save a trace of
+every pose you received (arrival time + pose per peer). Replay it offline:
+```
+node tools/netsim-check.mjs --trace zoomies-trace-<...>.json
+```
+This reconstructs exactly what your device interpolated, so you can see the snap
+count, extrapolation share and staleness a real link produced — no ground truth,
+receive-side only.
+
 ## What's verified vs. what needs you
 
 - **Verified here (no infra):** the interpolation, dead-reckoning, snapshot
-  buffering, and clock-sync math are unit-tested; the full presence + clock +
-  state-relay flow is tested end-to-end against the loopback server with
-  simulated latency, jitter, and a skewed server clock.
-- **Live against Ably:** the lobby, host election, synchronized countdown,
-  collisions, and shared placement have been exercised on real Ably channels
-  across multiple clients. Plug in your own key (above) to run it yourself.
+  buffering, and clock-sync math are unit-tested (`npm run check:net`); the full
+  presence + clock + state-relay flow, the extracted `MpSession` orchestration,
+  and the end-to-end send→interpolate pipeline are tested against the loopback
+  server with simulated latency, jitter, loss, and a skewed server clock, plus
+  the scenario matrix above (`npm run check:netsim`). Both run node-only in CI.
+- **Live against Ably:** the lobby, synchronized countdown, collisions, and
+  shared placement have been exercised on real Ably channels across multiple
+  clients. Plug in your own key (above) to run it yourself.
 - **Needs your account:** the real on-device feel test on cellular — only you
   can judge that, and it's the test that matters (see "How to actually validate
-  it" above).
+  it" above). Record a trace there and replay it to turn feel into numbers.
 
 ## Current scope
 
-- Up to 6 humans per room; the host is the room creator, and a new host is
-  elected if they leave.
+- Up to 6 humans per room; the host is the room creator. If the host leaves, the
+  room just can't launch a new race — host migration is a separate feature, not
+  yet built.
 - Collisions are resolved locally with single-player-parity physics (no item/
   hairball sync yet — projectiles are local).
 - Multiplayer races are humans-only; AI rivals only fill the field in

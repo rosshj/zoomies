@@ -3,19 +3,23 @@
 // sync extracted from main.js, checks hard invariants, and proves the whole thing
 // is deterministic (same seed → byte-identical metrics).
 //
-//   npm run check:netsim            run the matrix, invariants + determinism
+//   npm run check:netsim            run the matrix, invariants, determinism +
+//                                   baseline comparison
+//   node tools/netsim-check.mjs --write-baseline   capture tools/netsim/baseline.json
 //   node tools/netsim-check.mjs --json   also dump full metrics JSON
 //   node tools/netsim-check.mjs --trace <file>   replay a recorded trace instead
-//
-// Baseline capture/compare (--write-baseline) is wired in a later step.
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { runScenario } from "../src/net/sim/scenario.js";
 import { circleDriver, figureEightDriver } from "../src/net/sim/drivers.js";
 import { replayTrace, validateTrace } from "../src/net/sim/trace.js";
 
 const argv = process.argv.slice(2);
 const wantJson = argv.includes("--json");
+const writeBaseline = argv.includes("--write-baseline");
 const traceIdx = argv.indexOf("--trace");
+const BASELINE_PATH = join(dirname(fileURLToPath(import.meta.url)), "netsim", "baseline.json");
 
 // --- Trace replay mode: score a real recorded session, receive-side only ---
 if (traceIdx !== -1) {
@@ -69,13 +73,28 @@ const MATRIX = [
 let failures = 0;
 const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
 
+// Reduce a full summary to the small set of numbers we track as a baseline.
+function keyMetrics(summary) {
+  const errD = summary.series.errDelayed || { p50: 0, p95: 0 };
+  const total = summary.counters["frames.total"] || 1;
+  return {
+    errDelayedP50: errD.p50,
+    errDelayedP95: errD.p95,
+    snaps: summary.counters.snaps || 0,
+    extrapShare: Math.round(((summary.counters["frames.extrap"] || 0) / total) * 1e4) / 1e4,
+    stalenessP50: (summary.series.staleness || {}).p50 || 0,
+  };
+}
+
 const results = {};
+const current = {};
 for (const sc of MATRIX) {
   const summary = await runScenario({
     seed: sc.seed, players: sc.players, durationMs: 60000, tickHz: 60,
     hub: sc.hub, clientSkews: sc.clientSkews,
   });
   results[sc.name] = summary;
+  current[sc.name] = keyMetrics(summary);
 
   const errD = summary.series.errDelayed || { p50: 0, p95: 0, avg: 0 };
   const errA = summary.series.errAbs || { p95: 0 };
@@ -110,6 +129,32 @@ for (const sc of MATRIX) {
 }
 
 if (wantJson) console.log("\n" + JSON.stringify(results, null, 2));
+
+// --- Baseline capture / comparison ---
+if (writeBaseline) {
+  mkdirSync(dirname(BASELINE_PATH), { recursive: true });
+  writeFileSync(BASELINE_PATH, JSON.stringify(current, null, 2) + "\n");
+  console.log(`\nbaseline written → ${BASELINE_PATH}`);
+} else if (existsSync(BASELINE_PATH)) {
+  // Regression bands: a change may not meaningfully worsen delayed-error p95,
+  // add snap-corrections, or extrapolate more. Slack absorbs float noise; a real
+  // regression blows past it, a Stage-1 improvement passes comfortably (and
+  // should be re-captured with --write-baseline).
+  const base = JSON.parse(readFileSync(BASELINE_PATH, "utf8"));
+  console.log("\n— baseline comparison —");
+  for (const sc of MATRIX) {
+    const b = base[sc.name];
+    const c = current[sc.name];
+    if (!b) { console.log(`  (no baseline for ${sc.name})`); continue; }
+    const errCap = b.errDelayedP95 * 1.15 + 0.05;
+    const extrapCap = b.extrapShare * 1.25 + 0.01;
+    check(`[${sc.name}] delayed-error p95 not regressed (${c.errDelayedP95} ≤ ${errCap.toFixed(4)})`, c.errDelayedP95 <= errCap);
+    check(`[${sc.name}] no new snap-corrections (${c.snaps} ≤ ${b.snaps})`, c.snaps <= b.snaps);
+    check(`[${sc.name}] extrapolation not regressed (${c.extrapShare} ≤ ${extrapCap.toFixed(4)})`, c.extrapShare <= extrapCap);
+  }
+} else {
+  console.log("\n(no baseline yet — run with --write-baseline to capture one)");
+}
 
 if (failures) { console.log(`\n${failures} netsim check(s) FAILED`); process.exit(1); }
 console.log("\nall netsim checks passed");
