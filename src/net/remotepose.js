@@ -50,6 +50,15 @@ export class RemotePose {
     jitterK = 2,
     delayFloor = 90,
     delayCeil = 300,
+    // Predict-to-present tuning. The BUFFERED delay above (interpDelay) is where a
+    // pure-interpolation render would sit; the ACTUAL render delay is pulled toward
+    // present so the curved extrapolator draws the kart where it IS now, not where
+    // it was. renderTarget = clamp(presentMargin + jitterK·jitter, presentFloor,
+    // interpDelay): a clean link collapses to ~presentMargin (near-zero perceived
+    // latency); jitter re-inflates it back toward the buffered delay so a bursty
+    // link stays in safe interpolation rather than extrapolating on noisy data.
+    presentMargin = 30,
+    presentFloor = 20,
   } = {}) {
     this._now = now;
     this.snapDist = snapDist;
@@ -59,6 +68,8 @@ export class RemotePose {
     this.jitterK = jitterK;
     this.delayFloor = delayFloor;
     this.delayCeil = delayCeil;
+    this.presentMargin = presentMargin;
+    this.presentFloor = presentFloor;
     this.buffer = []; // sorted snapshots { t, x, y, z, h, p, s, f }
     this._prevH = 0;
     this._prevS = 0;
@@ -68,6 +79,11 @@ export class RemotePose {
     // a jittery one buffers more. Init to the neutral default to avoid a first-
     // second wobble before the estimator warms up.
     this.interpDelay = INTERP_DELAY;
+    // The ACTUAL render offset (nowShared − renderDelay is what we sample at),
+    // eased toward the predict-to-present target each frame. Starts at the buffered
+    // delay so there's no first-second lurch before the jitter estimator warms up;
+    // it then collapses toward presentMargin on a clean link.
+    this.renderDelay = INTERP_DELAY;
     this._lastArrival = 0;
     this._meanInterval = 62.5; // nominal 16 Hz send interval (ms)
     this._jitter = 0; // EWMA of |inter-arrival − mean| (RFC 3550 style)
@@ -113,10 +129,21 @@ export class RemotePose {
   // and still callable directly (the golden tests do).
   sampleAt(nowShared, rttMs, dt) {
     const rtt = Number.isFinite(rttMs) ? rttMs : 0;
+    const ease = Math.min(1, dt * 0.5); // ~2s time-constant
+    // Buffered interp delay — where a pure-interpolation render would sit. Still
+    // the reported/aggregated delay; adapts to ping + jitter (Stage 1).
     const target = Math.max(this.delayFloor, Math.min(this.delayCeil,
       rtt * 0.5 + this.baseMargin + this.jitterK * this._jitter));
-    this.interpDelay += (target - this.interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
-    return this.sample(nowShared - this.interpDelay, dt);
+    this.interpDelay += (target - this.interpDelay) * ease;
+    // Predict-to-present: pull the ACTUAL render delay toward present. Clean link
+    // (low jitter) → renderTarget ≈ presentMargin, so the curved extrapolator draws
+    // the kart near NOW and perceived latency collapses; jitter re-inflates it back
+    // toward the buffered delay (never exceeding it) so a bursty link keeps
+    // interpolating instead of extrapolating on noisy samples.
+    const renderTarget = Math.max(this.presentFloor,
+      Math.min(this.interpDelay, this.presentMargin + this.jitterK * this._jitter));
+    this.renderDelay += (renderTarget - this.renderDelay) * ease;
+    return this.sample(nowShared - this.renderDelay, dt);
   }
 
   // Give the ghost a SMALL, brief bump for instant local feedback. This is just

@@ -1,34 +1,38 @@
 {
   "lan": {
-    "errDelayedP50": 0.0183,
-    "errDelayedP95": 0.0395,
+    "errDelayedP50": 0.0186,
+    "errDelayedP95": 0.0454,
+    "errAbsP95": 1.5236,
     "snaps": 0,
-    "extrapShare": 0,
-    "stalenessP50": 90.0016,
-    "rawAccelP95": 39.251
+    "extrapShare": 0.9395,
+    "stalenessP50": 32.6562,
+    "rawAccelP95": 34.4423
   },
   "wifi": {
-    "errDelayedP50": 0.0532,
-    "errDelayedP95": 0.1406,
+    "errDelayedP50": 0.0587,
+    "errDelayedP95": 0.143,
+    "errAbsP95": 1.9651,
     "snaps": 0,
-    "extrapShare": 0.1324,
-    "stalenessP50": 118.0759,
-    "rawAccelP95": 39.2175
+    "extrapShare": 0.9905,
+    "stalenessP50": 43.0777,
+    "rawAccelP95": 0
   },
   "cellular": {
-    "errDelayedP50": 0.2681,
-    "errDelayedP95": 1.2903,
-    "snaps": 18,
-    "extrapShare": 0.2495,
-    "stalenessP50": 202.7529,
-    "rawAccelP95": 39.3994
+    "errDelayedP50": 0.2746,
+    "errDelayedP95": 1.2832,
+    "errAbsP95": 4.9853,
+    "snaps": 5,
+    "extrapShare": 0.9257,
+    "stalenessP50": 97.1323,
+    "rawAccelP95": 0
   },
   "awful": {
-    "errDelayedP50": 0.5624,
-    "errDelayedP95": 67.0617,
-    "snaps": 26,
-    "extrapShare": 0.4106,
-    "stalenessP50": 269.051,
-    "rawAccelP95": 39.1246
+    "errDelayedP50": 0.5446,
+    "errDelayedP95": 67.1777,
+    "errAbsP95": 67.4845,
+    "snaps": 15,
+    "extrapShare": 0.8685,
+    "stalenessP50": 114.0807,
+    "rawAccelP95": 0
   }
 }

@@ -58,18 +58,20 @@ function field(n) {
 }
 
 // 60s virtual each, fixed seeds. `strict` links (clean) must never snap-correct.
-// `p50Budget` = typical-frame delayed-error ceiling (u), tightened after the
-// Stage 1 convergence win. `staleMax` = staleness p50 ceiling (ms): proves the
-// jitter-aware delay dropped clean links well under the old 180ms floor.
-// `extrapMax` = extrapolation-share ceiling: with the lower delay a clean link
-// dead-reckons the sub-send-interval tail (healthy, short-horizon, < 62ms), so
-// an ABSOLUTE ceiling is the right guard here — not a "never increases" band,
-// since some extrap is the intended cost of low latency.
+// `p50Budget` = typical-frame delayed-error ceiling (u) — how well the smoother
+// tracks its OWN render target (now scored against renderDelay), tightened after
+// the Stage 1 convergence win. `staleMax` = staleness p50 ceiling (ms): with
+// predict-to-present the shown pose is now near PRESENT, so clean links sit far
+// under the old 180ms floor (~33ms). `errAbsMax` = absolute-error ceiling (u) vs
+// truth-NOW — the Stage 5 headline: it proves the curved extrapolator draws the
+// kart where it actually is, collapsing perceived latency. Extrapolation share is
+// now HIGH by design (we render ahead of the newest snapshot), so it's printed for
+// the record but no longer a ceiling — teleports=0 + errAbs + snaps guard quality.
 const MATRIX = [
-  { name: "lan", seed: "LAN", players: field(2), hub: { latency: 20, jitter: 2, clockSkew: 0, loss: 0 }, clientSkews: [0, 0], strict: true, p50Budget: 0.6, staleMax: 140, extrapMax: 0.05 },
-  { name: "wifi", seed: "WIFI", players: field(3), hub: { latency: 60, jitter: 10, clockSkew: 300, loss: 0 }, clientSkews: [0, 5000, -5000], strict: true, p50Budget: 0.6, staleMax: 140, extrapMax: 0.20 },
-  { name: "cellular", seed: "CELL", players: field(4), hub: { latency: 140, jitter: 60, clockSkew: -1200, loss: 0.02 }, clientSkews: [0, 12000, -8000, 3000], p50Budget: 2, extrapMax: 0.35 },
-  { name: "awful", seed: "AWFUL", players: field(6), hub: { latency: 250, jitter: 120, clockSkew: 5000, loss: 0.05 }, clientSkews: [0, 40000, -40000, 15000, -22000, 8000], p50Budget: 4, extrapMax: 0.55 },
+  { name: "lan", seed: "LAN", players: field(2), hub: { latency: 20, jitter: 2, clockSkew: 0, loss: 0 }, clientSkews: [0, 0], strict: true, p50Budget: 0.6, staleMax: 90, errAbsMax: 2.5 },
+  { name: "wifi", seed: "WIFI", players: field(3), hub: { latency: 60, jitter: 10, clockSkew: 300, loss: 0 }, clientSkews: [0, 5000, -5000], strict: true, p50Budget: 0.6, staleMax: 90, errAbsMax: 3.0 },
+  { name: "cellular", seed: "CELL", players: field(4), hub: { latency: 140, jitter: 60, clockSkew: -1200, loss: 0.02 }, clientSkews: [0, 12000, -8000, 3000], p50Budget: 2, errAbsMax: 7.0 },
+  { name: "awful", seed: "AWFUL", players: field(6), hub: { latency: 250, jitter: 120, clockSkew: 5000, loss: 0.05 }, clientSkews: [0, 40000, -40000, 15000, -22000, 8000], p50Budget: 4, errAbsMax: 80 },
 ];
 
 let failures = 0;
@@ -78,10 +80,14 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
 // Reduce a full summary to the small set of numbers we track as a baseline.
 function keyMetrics(summary) {
   const errD = summary.series.errDelayed || { p50: 0, p95: 0 };
+  const errA = summary.series.errAbs || { p95: 0 };
   const total = summary.counters["frames.total"] || 1;
   return {
     errDelayedP50: errD.p50,
     errDelayedP95: errD.p95,
+    // Absolute error vs truth-now — the predict-to-present headline. Banded below
+    // so a regression that quietly reintroduces render lag fails the check.
+    errAbsP95: errA.p95,
     snaps: summary.counters.snaps || 0,
     extrapShare: Math.round(((summary.counters["frames.extrap"] || 0) / total) * 1e4) / 1e4,
     stalenessP50: (summary.series.staleness || {}).p50 || 0,
@@ -125,7 +131,7 @@ for (const sc of MATRIX) {
   check(`[${sc.name}] no teleports (smooth displayed motion)`, teleports === 0);
   check(`[${sc.name}] ghosts actually rendered`, (summary.counters["frames.shown"] || 0) > 1000);
   check(`[${sc.name}] typical-frame error within budget (p50 ${errD.p50} < ${sc.p50Budget}u)`, errD.p50 < sc.p50Budget);
-  check(`[${sc.name}] extrapolation within ceiling (${(extrapShare * 100).toFixed(1)}% < ${(sc.extrapMax * 100).toFixed(0)}%)`, extrapShare < sc.extrapMax);
+  check(`[${sc.name}] absolute error vs truth-now within ceiling (p95 ${errA.p95} < ${sc.errAbsMax}u)`, errA.p95 < sc.errAbsMax);
   if (sc.strict) check(`[${sc.name}] clean link → no snap-corrections`, snaps === 0);
   if (sc.staleMax) check(`[${sc.name}] staleness p50 under the jitter-aware target (${stale.p50}ms < ${sc.staleMax}ms)`, stale.p50 < sc.staleMax);
 }
@@ -159,6 +165,11 @@ if (writeBaseline) {
     if (!b) { console.log(`  (no baseline for ${sc.name})`); continue; }
     const errCap = b.errDelayedP95 * 1.15 + 0.05;
     check(`[${sc.name}] delayed-error p95 not regressed (${c.errDelayedP95} ≤ ${errCap.toFixed(4)})`, c.errDelayedP95 <= errCap);
+    // errAbs may be absent in a pre-Stage-5 baseline — only band it once captured.
+    if (typeof b.errAbsP95 === "number") {
+      const absCap = b.errAbsP95 * 1.15 + 0.3;
+      check(`[${sc.name}] absolute-error p95 not regressed (${c.errAbsP95} ≤ ${absCap.toFixed(4)})`, c.errAbsP95 <= absCap);
+    }
     check(`[${sc.name}] no new snap-corrections (${c.snaps} ≤ ${b.snaps})`, c.snaps <= b.snaps);
   }
 } else {

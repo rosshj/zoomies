@@ -128,9 +128,12 @@ export async function runScenario(cfg = {}) {
     for (let i = 0; i < N; i++) {
       const mp = sessions[i];
       for (const r of mp.remotes.values()) {
-        // Score the delayed-truth error against THIS peer's own delay — delay is
-        // per-peer now, so using the session mean would misattribute the error.
-        const interpDelay = r.pose.interpDelay;
+        // Score the delayed-truth error against THIS peer's own ACTUAL render
+        // offset — predict-to-present pulls the render delay below the buffered
+        // interpDelay, so errDelayed must reference where we're really drawing
+        // (renderDelay), not the buffered value. errAbs (vs truth-now) is the
+        // latency headline; this stays the smoother/interp-fidelity number.
+        const interpDelay = r.pose.renderDelay;
         // Which player is this a ghost of? Map its net id to its driver once.
         let driver = idToDriver.get(r.id);
         if (!driver) {
