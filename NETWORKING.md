@@ -187,8 +187,12 @@ receive-side only.
 - Up to 6 humans per room; the host is the room creator. If the host leaves, the
   room just can't launch a new race — host migration is a separate feature, not
   yet built.
-- Collisions are resolved locally with single-player-parity physics (no item/
-  hairball sync yet — projectiles are local).
+- Collisions are resolved locally with single-player-parity physics.
+- All combat replicates: hairballs and yarn balls are shooter-authoritative
+  (rivals render a cosmetic ghost projectile; the shooter decides the hit and
+  sends it), and spilled milk is victim-authoritative (the puddle is replicated
+  and each client trips its own player on it). The spin-out itself streams over
+  the normal pose channel.
 - Multiplayer races are humans-only; AI rivals only fill the field in
   single-player.
 - Each client picks its own cat/kart appearance from its garage.
