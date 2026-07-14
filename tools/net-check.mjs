@@ -355,6 +355,12 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("rival milk routed to onMilk with exact fields",
     milkEvents.length === 1 && milkEvents[0].x === 12.5 && milkEvents[0].z === -3.5 && milkEvents[0].r === 4.25 && milkEvents[0].owner === other.id);
 
+  // The rival launches a yarn → onYarn fires with the exact ball + target id.
+  other.sendYarn(0.5, 1.25, 60, "remote-x", 12);
+  clock.run(clock.now() + 400);
+  check("rival yarn routed to onYarn with exact fields",
+    yarnEvents.length === 1 && yarnEvents[0].t === 0.5 && yarnEvents[0].lat === 1.25 && yarnEvents[0].speed === 60 && yarnEvents[0].target === "remote-x" && yarnEvents[0].life === 12 && yarnEvents[0].owner === other.id);
+
   // Hit filter still works: a hit aimed at me fires onHit; one aimed elsewhere is
   // dropped (this is the path the authoritative yarn spin reuses).
   other.sendHit(mp.net.id, { x: 1, z: 0 });

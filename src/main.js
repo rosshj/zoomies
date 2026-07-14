@@ -499,29 +499,11 @@ function grantItem(kart) {
 
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
-  if (MP.enabled) {
-    // Multiplayer roster: milk now replicates (dropped puddles cross the wire),
-    // so it's back in the online roll. Yarn is still local-only until its
-    // replication lands, so it stays excluded here.
-    const wShield = 0.55 - 0.45 * f;
-    const wMilk = 0.18;
-    const wTri = 0.22 + 0.15 * f;
-    const r = Math.random();
-    if (r < wShield) {
-      kart.giveShield(15);
-      if (kart === player) hud.showToast("🛡️ Shield — 15s!");
-    } else if (r < wShield + wMilk) {
-      kart.giveMilk();
-      if (kart === player) hud.showToast("🥛 Milk bottle — drop it behind you!");
-    } else if (r < wShield + wMilk + wTri) {
-      kart.giveTriShots(3);
-      if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
-    } else {
-      kart.giveCatnip();
-      if (kart === player) hud.showToast("🌿 Catnip boost!");
-    }
-    return true;
-  }
+  // Both yarn and milk now replicate online, so multiplayer uses the SAME roster
+  // as single-player (the old MP-only branch existed solely because those two
+  // items didn't cross the wire yet). Every kart rolls locally; remotes short-
+  // circuit at the top of this function, and the resulting spawn replicates.
+  //
   // Single-player roster. Catnip is the honest comeback item — STRICTLY never
   // rolled near the front (it out-runs everything and grants invincibility),
   // ramping up toward the back. The rest splits between milk (placed trap),
@@ -893,6 +875,15 @@ const MP = new MpSession({
     // A remote player dropped milk: replicate the puddle (victim-authoritative —
     // our own player trips it locally via items.update, so no hit event).
     onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r }); },
+    // A remote player launched a yarn ball: render a cosmetic ghost that homes on
+    // OUR copy of the target (our own player if we're the mark, else our ghost of
+    // them). The hit stays shooter-authoritative and arrives via onHit.
+    onYarn: (y) => {
+      const tgt = y.target
+        ? (y.target === MP.net.id ? player : (MP.remotes.get(y.target)?.kart ?? null))
+        : null;
+      items.spawnYarnGhost({ t: y.t, lat: y.lat, speed: y.speed, life: y.life, target: tgt });
+    },
     onRemoteFinish: () => {
       // If the results screen is already up, slot the late finisher in live.
       if (state === State.FINISHED) renderResults();
@@ -4181,10 +4172,28 @@ function fireYarn(kart) {
       target = other;
     }
   }
-  items.spawnYarn(kart, target);
+  // Multiplayer: rivals are remote ghosts (not in `karts`). Lock onto the nearest
+  // ghost ahead by lap progress (ghosts have no trackT) and home on the ghost the
+  // shooter sees, so the authoritative world-space hit matches the shooter's screen.
+  let tgtRemote = null;
+  if (MP.enabled) {
+    for (const r of MP.remotes.values()) {
+      if (!r._ready || r.finished) continue;
+      const rf = ((r.totalProgress % 1) + 1) % 1; // within-lap fraction
+      let gap = (rf - kart.trackT) % 1;
+      if (gap < 0) gap += 1;
+      if (gap < best) { best = gap; tgtRemote = r; target = r.kart; }
+    }
+  }
+  const y = items.spawnYarn(kart, target);
   effects.tootBurst(kart, 1.4, false); // launch kick: the ball leaves in a puff
   audio.shoot(kart === player ? null : kart.position);
   kart.shootCooldown = SHOOT_RECHARGE;
+  // Replicate the ball (exact values read back from the record) so every client
+  // renders a homing ghost; the hit rides sendHit from items.update, like hairballs.
+  if (MP.enabled && MP.net && kart === player) {
+    MP.net.sendYarn(y.t, y.lat, y.speed, tgtRemote ? tgtRemote.id : null, y.life);
+  }
   return true;
 }
 
@@ -4923,7 +4932,19 @@ function loop(now) {
         effects.tootBurst(k, 2, false);
         audio.shoot(k === player ? null : k.position);
       },
-    });
+    },
+    // Multiplayer: the shooter's live yarn hits remote ghosts and reports it
+    // authoritatively — same bridge as hairballs.update.
+    MP.enabled ? MP.remotes : null,
+    MP.enabled
+      ? (id, dir) => {
+          if (!MP.net) return;
+          MP.net.sendHit(id, dir);
+          const r = MP.remotes.get(id);
+          if (r) r.bump(dir.x, dir.z, 15); // instant local feedback, like hairballs
+        }
+      : null,
+    );
     // Sparks where a kart scraped a railing; skid marks while spinning out;
     // a charge-coloured cloud puff when a drift boost is released.
     for (const k of karts) {

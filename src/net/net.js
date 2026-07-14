@@ -110,6 +110,15 @@ export class Net {
     this.transport.send({ type: "hit", id: this.id, target, hx: dir.x, hz: dir.z });
   }
 
+  // Shooter-authoritative yarn: replicate the ball so every client renders a
+  // cosmetic ghost that homes on its local copy of `target` (a RemoteKart id, or
+  // "" for an unlocked roll). The hit itself is reported separately via sendHit,
+  // exactly like ghost hairballs.
+  sendYarn(t, lat, speed, target, life) {
+    if (!this.connected) return;
+    this.transport.send({ type: "yarn", id: this.id, yt: t, yl: lat, ys: speed, tg: target || "", lf: life });
+  }
+
   // Victim-authoritative milk: replicate a dropped puddle by its final world
   // position + radius. Each client re-creates the puddle and trips its OWN player
   // on it, so no hit message is needed (the spin streams via the pose channel).
@@ -164,6 +173,9 @@ export class Net {
         break;
       case "hit":
         this._emit("hit", { target: m.target, hx: m.hx, hz: m.hz });
+        break;
+      case "yarn":
+        this._emit("yarn", { owner: m.id, t: m.yt, lat: m.yl, speed: m.ys, target: m.tg || null, life: m.lf });
         break;
       case "milk":
         this._emit("milk", { owner: m.id, x: m.mx, z: m.mz, r: m.mr });

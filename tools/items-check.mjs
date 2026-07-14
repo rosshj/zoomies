@@ -122,5 +122,42 @@ function check(name, cond) {
   check("a kart clear of every puddle is untouched", far.spun === false);
 }
 
+// --- Yarn replication (ghost cosmetic, shooter-authoritative remote bridge) --
+{
+  const track = straightTrack();
+  const im = new ItemManager(stubScene, track);
+  // Owner near t=0.1 (x=20). spawnYarn reads owner._proj + speed.
+  const owner = { position: new THREE.Vector3(20, 0, 0), speed: 20, _proj: { t: 0.1, lateral: 0 }, trackT: 0.1 };
+
+  // A REAL yarn spins a local kart sitting in its arc window.
+  const yr = im.spawnYarn(owner, null);
+  check("spawnYarn returns a non-ghost record", !!yr && yr.ghost === false);
+  const victim = milkKart(21.5, { trackT: 0.1075, _proj: { lateral: 0 } });
+  im.update(0.001, [owner, victim], {});
+  check("a real yarn spins a kart in its arc window", victim.spun === true);
+
+  // A GHOST yarn (a remote's, replicated) never decides a hit — cosmetic only.
+  const gy = im.spawnYarnGhost({ t: 0.1, lat: 0, speed: 60, life: 12, target: null });
+  check("spawnYarnGhost creates a ghost record", !!gy && gy.ghost === true);
+  const bystander = milkKart(21.5, { trackT: 0.1075, _proj: { lateral: 0 } });
+  im.update(0.001, [bystander], {});
+  check("a ghost yarn never spins a kart (cosmetic)", bystander.spun === false);
+
+  // The shooter's live yarn hits a remote GHOST world-space via the bridge.
+  function bridgeHit(ghostOver) {
+    const im2 = new ItemManager(stubScene, track);
+    im2.spawnYarn(owner, null);
+    const hits = [];
+    const gk = { position: new THREE.Vector3(20, 0, 0), y: 0, shielding: false, catnipBoosting: false, ...ghostOver };
+    const remotes = new Map([["R1", { _ready: true, id: "R1", kart: gk }]]);
+    im2.update(0.001, [owner], {}, remotes, (id) => hits.push(id));
+    return hits;
+  }
+  check("yarn hits a remote ghost world-space → onRemoteHit fires", bridgeHit({}).length === 1);
+  check("a hopped remote ghost dodges the yarn (no remote hit)", bridgeHit({ y: 1.5 }).length === 0);
+  check("a shielded remote ghost blocks the yarn (no remote hit)", bridgeHit({ shielding: true }).length === 0);
+  check("a catnip remote ghost blocks the yarn (no remote hit)", bridgeHit({ catnipBoosting: true }).length === 0);
+}
+
 if (failures) { console.log(`\n${failures} check(s) FAILED`); process.exit(1); }
 console.log("\nall item-box checks passed");

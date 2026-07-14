@@ -93,7 +93,36 @@ export class ItemManager {
       life: YARN_LIFE,
       passed: false, // rolled past its target (juked/hopped) — no re-lock
       roll: 0,
+      ghost: false, // authoritative ball (runs hit tests); ghosts are cosmetic
     });
+    // Return the record so the multiplayer caller replicates the exact ball.
+    return this.yarns[this.yarns.length - 1];
+  }
+
+  // Replicate a yarn ball a remote player launched. Cosmetic only: it rolls and
+  // homes for plausible visuals but never decides a hit — the shooter stays
+  // authoritative and reports the spin via sendHit (like ghost hairballs).
+  // `target` is a resolved kart object (this client's copy of who was aimed at),
+  // or null. main.js does the id→kart resolution so ItemManager stays MP-agnostic.
+  spawnYarnGhost({ t, lat, speed, life, target }) {
+    const ball = new THREE.Group();
+    const core = new THREE.Mesh(this._yarnGeo, this._yarnMat);
+    const band = new THREE.Mesh(this._yarnBandGeo, this._yarnBandMat);
+    band.rotation.x = Math.PI / 2;
+    ball.add(core, band);
+    ball.frustumCulled = false;
+    this.scene.add(ball);
+    this.yarns.push({
+      mesh: ball,
+      t, lat, speed,
+      owner: null,
+      target: target || null,
+      life: life != null ? life : YARN_LIFE,
+      passed: false,
+      roll: 0,
+      ghost: true,
+    });
+    return this.yarns[this.yarns.length - 1];
   }
 
   // Smallest time-to-impact of any live yarn bearing down on `kart` (Infinity
@@ -201,7 +230,10 @@ export class ItemManager {
 
   // ---- Frame update --------------------------------------------------------
 
-  update(dt, karts, callbacks = {}) {
+  // `remotes` (a Map of RemoteKart) + `onRemoteHit(id, dir)` are supplied in
+  // multiplayer so the SHOOTER's live (non-ghost) yarn can hit remote ghosts and
+  // report it authoritatively (like hairballs.update). Single-player passes null.
+  update(dt, karts, callbacks = {}, remotes = null, onRemoteHit = null) {
     const track = this.track;
     const L = track.length;
 
@@ -211,7 +243,10 @@ export class ItemManager {
       y.life -= dt;
       y.t = (y.t + (y.speed * dt) / L) % 1;
       if (y.target && !y.passed) {
-        const tl = y.target._proj ? y.target._proj.lateral : 0;
+        // Local karts carry a cached `_proj`; a remote-ghost target doesn't, so
+        // project its world position on demand (cheap — yarns are few).
+        const tl = y.target._proj ? y.target._proj.lateral
+          : (y.target.position ? track.project(y.target.position).lateral : 0);
         const want = Math.max(-track.halfWidth + 2, Math.min(track.halfWidth - 2, tl));
         const d = want - y.lat;
         y.lat += Math.max(-YARN_HOME_RATE * dt, Math.min(YARN_HOME_RATE * dt, d));
@@ -225,36 +260,63 @@ export class ItemManager {
       y.mesh.rotateX(y.roll);
       if (callbacks.onYarnMove) callbacks.onYarnMove(y); // dust trail hook
 
-      // Contact test against every live kart near its arc position.
+      // Contact test against every live kart near its arc position. A GHOST yarn
+      // (a remote player's, replicated for visuals) never decides hits — the
+      // shooter is authoritative — so it only moves/homes/expires.
       let dead = false;
-      for (const k of karts) {
-        if (k === y.owner || k.finished || k.spinTimer > 0) continue;
-        let gap = (k.trackT - y.t) % 1;
-        if (gap < 0) gap += 1;
-        if (gap > 0.5) gap -= 1;
-        const arc = gap * L;
-        // ASYMMETRIC window: a ball that has rolled PAST a kart's centre is
-        // spent for that kart — a symmetric window used to catch a hopping
-        // kart on the way DOWN after the ball had already passed underneath.
-        if (arc < -1.2 || arc > 2.5) continue;
-        const kl = k._proj ? k._proj.lateral : 0;
-        if (Math.abs(kl - y.lat) > 3.1) continue;
-        if (k.y > 0.9) continue; // hopped it — clean dodge (same bar as milk)
-        if (k.shielding || k.catnipBoosting) {
-          dead = true; // blocked: the ball unravels on the bubble
-          if (callbacks.onYarnBlocked) callbacks.onYarnBlocked(k, y);
+      if (!y.ghost) {
+        for (const k of karts) {
+          if (k === y.owner || k.finished || k.spinTimer > 0) continue;
+          let gap = (k.trackT - y.t) % 1;
+          if (gap < 0) gap += 1;
+          if (gap > 0.5) gap -= 1;
+          const arc = gap * L;
+          // ASYMMETRIC window: a ball that has rolled PAST a kart's centre is
+          // spent for that kart — a symmetric window used to catch a hopping
+          // kart on the way DOWN after the ball had already passed underneath.
+          if (arc < -1.2 || arc > 2.5) continue;
+          const kl = k._proj ? k._proj.lateral : 0;
+          if (Math.abs(kl - y.lat) > 3.1) continue;
+          if (k.y > 0.9) continue; // hopped it — clean dodge (same bar as milk)
+          if (k.shielding || k.catnipBoosting) {
+            dead = true; // blocked: the ball unravels on the bubble
+            if (callbacks.onYarnBlocked) callbacks.onYarnBlocked(k, y);
+            break;
+          }
+          _tan.y = 0;
+          if (_tan.lengthSq() > 0.001) _tan.normalize();
+          k.spinOut(_tan.clone());
+          if (callbacks.onYarnHit) callbacks.onYarnHit(k, y);
+          dead = true;
           break;
         }
-        _tan.y = 0;
-        if (_tan.lengthSq() > 0.001) _tan.normalize();
-        k.spinOut(_tan.clone());
-        if (callbacks.onYarnHit) callbacks.onYarnHit(k, y);
-        dead = true;
-        break;
+
+        // Multiplayer: the shooter's live ball also tests against remote ghosts,
+        // which have no track projection — so a world-space overlap, matching the
+        // local lateral window (3.1) + arc reach. On a clean hit report it
+        // authoritatively; the target spins itself when the `hit` arrives.
+        if (!dead && remotes) {
+          for (const r of remotes.values()) {
+            if (!r._ready) continue;
+            const k = r.kart;
+            if (k.y > 0.9) continue; // hopped it
+            const dx = k.position.x - y.mesh.position.x;
+            const dz = k.position.z - y.mesh.position.z;
+            if (dx * dx + dz * dz > 3.0 * 3.0) continue;
+            if (k.shielding || k.catnipBoosting) { dead = true; break; } // blocked
+            _tan.y = 0;
+            if (_tan.lengthSq() > 0.001) _tan.normalize();
+            if (onRemoteHit) onRemoteHit(r.id, _tan.clone());
+            dead = true;
+            break;
+          }
+        }
       }
 
       // Rolled past its target without connecting (juke/hop): no second lock.
-      if (!dead && y.target && !y.passed) {
+      // Only local targets carry `trackT`; a remote ghost target keeps homing
+      // (its hit is decided by the world-space bridge above).
+      if (!dead && y.target && !y.passed && y.target.trackT != null) {
         let gap = (y.target.trackT - y.t) % 1;
         if (gap < 0) gap += 1;
         if (gap > 0.5) y.passed = true;
