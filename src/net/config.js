@@ -49,15 +49,28 @@ export function resolveIceServers() {
 // The referee adjudicates hits/laps/finish over one lag-compensated clock so every
 // client agrees on them. It's OFF unless a URL is provided — the game is unchanged
 // without it. Deploy it yourself (free): see workers/referee/DEPLOY.md.
-// PHONE PATH (like the Ably key): paste your Worker's wss:// URL below and rebuild —
-// it then ships in the app and Settings → Advanced → Referee flips it on/off, so a
-// PWA/native user never touches a URL. (?ref=wss://… still works for a desktop test.)
-export const REFEREE_URL = ""; // e.g. "wss://zoomies-referee.<subdomain>.workers.dev"
+//
+// ┌─ SET UP THE REFEREE (phone path, like the Ably key) ─────────────────────────┐
+// │ 1. Run `npx wrangler deploy` in workers/referee — it prints an https:// URL.  │
+// │ 2. Replace the ENTIRE placeholder string on the next line with that URL,      │
+// │    changing https:// to wss://  →  "wss://zoomies-referee.ross.workers.dev"   │
+// │ 3. Rebuild: `npm run build:web` (+ `npm run cap:sync` for the native app).    │
+// └──────────────────────────────────────────────────────────────────────────────┘
+// Until the placeholder is replaced the referee stays OFF (Settings shows "Not set")
+// and nothing tries to connect. (?ref=wss://… still works for a desktop test.)
+export const REFEREE_URL = "wss://PASTE_YOUR_WORKER_URL_HERE.workers.dev";
+
+// Treat the untouched placeholder as "not configured" so a fresh checkout never
+// tries to reach a fake host — the referee only turns on once you paste a real URL.
+function bakedRefereeUrl() {
+  return REFEREE_URL.includes("PASTE_YOUR_WORKER_URL_HERE") ? "" : REFEREE_URL;
+}
 
 export function resolveRefereeUrl() {
-  if (typeof location === "undefined") return (REFEREE_URL || "").trim();
+  const baked = bakedRefereeUrl();
+  if (typeof location === "undefined") return (baked || "").trim();
   const p = new URLSearchParams(location.search).get("ref");
-  return (p || REFEREE_URL || "").trim();
+  return (p || baked || "").trim();
 }
 
 export function resolveRefereeRoom() {
