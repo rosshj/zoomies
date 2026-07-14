@@ -42,9 +42,11 @@ loaded until you add `&mp=1`.
 - **An optional referee** (`workers/referee/`, a Cloudflare Durable Object) can run
   alongside the P2P channel to make the contested events — hits, laps, finish order
   — agree across clients, adjudicated on one lag-compensated clock. It owns no
-  positions and is **off unless a `?ref=wss://…` URL is given**, so the game is
-  unchanged without it. Deploy at $0 on the Workers free plan: see
-  `workers/referee/DEPLOY.md`.
+  positions and is **off unless a referee URL is configured**, so the game is
+  unchanged without it. On phones you bake the URL into `config.js` (`REFEREE_URL`,
+  like the Ably key) and flip it in Settings → Advanced → Referee — no URL to type;
+  `?ref=wss://…` is a desktop test override. Deploy at $0 on the Workers free plan:
+  see `workers/referee/DEPLOY.md`.
 
 ### Files
 

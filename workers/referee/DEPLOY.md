@@ -36,25 +36,50 @@ create, no secrets to set.
 ## Pointing the game at it
 
 The client connects to the referee only when it's given the URL, as a **WebSocket**
-(`wss://`, not `https://`). Add it to a multiplayer link:
+(`wss://`, not `https://`). It reuses the address `wrangler deploy` printed, with the
+protocol swapped to `wss://`, e.g. `wss://zoomies-referee.<your-subdomain>.workers.dev`.
+
+### On phones (the real path) — bake it into config
+
+The game runs as a PWA and a native app, and **neither can be switched by a URL**
+(the installed PWA launches at a fixed page with no query string; the native app
+loads `capacitor://localhost` with no address bar). So, exactly like the Ably key,
+you set the referee address **once in config and rebuild** — then it ships inside the
+app and there's no URL to type, ever.
+
+1. Open `src/net/config.js` and set:
+   ```js
+   export const REFEREE_URL = "wss://zoomies-referee.<your-subdomain>.workers.dev";
+   ```
+2. Rebuild the app (`npm run build:web`, then `npm run cap:sync` for the native
+   builds).
+
+Now the referee is **on by default** for everyone. To turn it off or back on without
+rebuilding, use **Settings → Advanced → Referee** (a normal On/Off toggle; it reads
+“Not set” until you've configured the URL above). The toggle takes effect the next
+time you Host or Join. For consistency both players should have it on — if only one
+does, the referee simply half-applies and the game falls back to the normal
+peer-to-peer behaviour, so nothing breaks.
+
+### On desktop (quick test before you bake it in)
+
+In a browser you *can* pass it as a link parameter, which is handy for a one-off test
+without editing config:
 
 ```
 https://<your game>/?mp=1&ref=wss://zoomies-referee.<your-subdomain>.workers.dev
 ```
 
-All players in the same race must use the **same** `ref=` URL (and they'll share a
-room; add `&refroom=<name>` if you ever want isolated rooms on one deployment).
-Leave `ref=` off and the game is 100% unchanged — no connection is made.
-
-> If you'd rather bake the URL in so you don't type it every time, set a default in
-> `src/net/config.js` (`resolveRefereeUrl()`), and the game will use the referee
-> whenever `?mp=1` is on. It stays a no-op if the Worker is unreachable.
+Both players must use the **same** `ref=` URL (they share a room; add
+`&refroom=<name>` for isolated rooms on one deployment). Leave the URL out of both
+config and the link and the game is 100% unchanged — no connection is made.
 
 ## Verifying it works
 
 - `curl https://zoomies-referee.<subdomain>.workers.dev/health` → `ok`.
-- In a two-device `?mp=1&ref=wss://…` race, open the browser console: you'll see the
-  referee connection and `hitv` / `lapv` / `finishv` verdicts arriving.
+- In a two-device race (referee on via config, or `?ref=` on desktop), open the
+  browser console: you'll see the referee connection and `hitv` / `lapv` / `finishv`
+  verdicts arriving.
 - `wrangler tail` streams live logs from the deployed Worker while you play.
 
 ## Costs & limits (free plan)

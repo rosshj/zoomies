@@ -48,8 +48,10 @@ export function resolveIceServers() {
 // === Race referee (optional Cloudflare Durable Object; Stage 4) ===
 // The referee adjudicates hits/laps/finish over one lag-compensated clock so every
 // client agrees on them. It's OFF unless a URL is provided — the game is unchanged
-// without it. Deploy it yourself (free): see workers/referee/DEPLOY.md, then either
-// paste your Worker's WebSocket URL below or pass ?ref=wss://…workers.dev per race.
+// without it. Deploy it yourself (free): see workers/referee/DEPLOY.md.
+// PHONE PATH (like the Ably key): paste your Worker's wss:// URL below and rebuild —
+// it then ships in the app and Settings → Advanced → Referee flips it on/off, so a
+// PWA/native user never touches a URL. (?ref=wss://… still works for a desktop test.)
 export const REFEREE_URL = ""; // e.g. "wss://zoomies-referee.<subdomain>.workers.dev"
 
 export function resolveRefereeUrl() {

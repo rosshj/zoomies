@@ -945,10 +945,9 @@ function maybeStartReferee() {
   if (_ref || _refTried) return;
   if (!(MP.enabled && MP.net && MP.net.id)) return; // wait for our shared id
   _refTried = true;
-  const url = resolveRefereeUrl();
-  if (!url) return; // referee not configured → permanent no-op
+  if (!refereeEnabled()) return; // no server configured, or turned off in Settings
   _ref = new RefereeClient({
-    url,
+    url: resolveRefereeUrl(),
     room: resolveRefereeRoom(),
     id: MP.net.id,
     name: makeMpIdentity().name || "",
@@ -1006,6 +1005,22 @@ function rtcEnabled() {
   if (q.get("rtc") === "0") return false;   // explicit link opt-out
   if (q.has("rtc")) return true;            // ?rtc / ?rtc=1 forces on (old links still work)
   return readRtcPref() !== "off";           // unset or "on" → enabled (default)
+}
+
+// The optional referee (Stage 4b) follows the SAME shape as the P2P toggle, because
+// the phone app can't be switched by a URL: the installed PWA launches with no query
+// string and the native app loads capacitor://localhost with an empty location.search
+// (see workers/referee/DEPLOY.md). So the referee URL is BAKED into config
+// (REFEREE_URL / resolveRefereeUrl) like the Ably key, and this pref is the on/off
+// switch. Default ON whenever a URL is configured, unless explicitly turned off.
+const REFEREE_KEY = "zoomies-referee";
+function readRefereePref() {
+  try { const v = localStorage.getItem(REFEREE_KEY); return v === null ? null : (v === "1" ? "on" : "off"); }
+  catch { return null; }
+}
+function refereeEnabled() {
+  if (!resolveRefereeUrl()) return false; // no server configured → never on
+  return readRefereePref() !== "off";     // unset or "on" → enabled (default)
 }
 
 function initMultiplayer() {
@@ -2358,6 +2373,26 @@ rtcToggle?.addEventListener("click", () => {
   applyRtcUI();
 });
 applyRtcUI();
+
+// Referee toggle (Stage 4b) — same shape as the P2P toggle. When no referee URL is
+// configured it reads a disabled "Not set" so it's clear you must deploy + bake the
+// URL into config first (workers/referee/DEPLOY.md).
+const refereeToggle = document.getElementById("set-referee-toggle");
+function applyRefereeUI() {
+  if (!refereeToggle) return;
+  const hasUrl = !!resolveRefereeUrl();
+  const on = refereeEnabled();
+  refereeToggle.textContent = !hasUrl ? "Not set" : on ? "On" : "Off";
+  refereeToggle.classList.toggle("off", !on);
+  refereeToggle.disabled = !hasUrl;
+}
+refereeToggle?.addEventListener("click", () => {
+  if (!resolveRefereeUrl()) return; // nothing to enable until a server is configured
+  const on = !refereeEnabled();
+  try { localStorage.setItem(REFEREE_KEY, on ? "1" : "0"); } catch { /* ignore */ }
+  applyRefereeUI();
+});
+applyRefereeUI();
 
 // "Advanced" expander hides the debug toggles (FPS counter, Tilt debug) so the
 // settings menu stays tidy for normal players.
