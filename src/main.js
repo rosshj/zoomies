@@ -940,15 +940,20 @@ function mpDebugHud() {
   return el;
 }
 
-// Peer-to-peer opt-in. A URL param (?rtc=1) can't be set from inside an installed
-// PWA (no address bar; it launches from a fixed start_url), so a persisted flag
-// (Settings → Advanced) is how PWA players enable it. Either source counts.
+// Peer-to-peer is now the DEFAULT transport (direct hop vs Ably's cloud relay);
+// a NAT-blocked peer falls back to Ably automatically, so default-on is safe. You
+// can opt OUT (?rtc=0, or Settings → Advanced) to force the Ably relay. The pref
+// is tri-state so an explicit choice overrides the default either way.
 const RTC_KEY = "zoomies-rtc";
 function readRtcPref() {
-  try { return localStorage.getItem(RTC_KEY) === "1"; } catch { return false; }
+  try { const v = localStorage.getItem(RTC_KEY); return v === null ? null : (v === "1" ? "on" : "off"); }
+  catch { return null; }
 }
 function rtcEnabled() {
-  return new URLSearchParams(location.search).has("rtc") || readRtcPref();
+  const q = new URLSearchParams(location.search);
+  if (q.get("rtc") === "0") return false;   // explicit link opt-out
+  if (q.has("rtc")) return true;            // ?rtc / ?rtc=1 forces on (old links still work)
+  return readRtcPref() !== "off";           // unset or "on" → enabled (default)
 }
 
 function initMultiplayer() {
@@ -2291,11 +2296,9 @@ function applyRtcUI() {
   }
 }
 rtcToggle?.addEventListener("click", () => {
-  const on = !readRtcPref();
-  try {
-    if (on) localStorage.setItem(RTC_KEY, "1");
-    else localStorage.removeItem(RTC_KEY);
-  } catch { /* ignore */ }
+  // Persist an EXPLICIT choice ("1"/"0") so it overrides the default-on either way.
+  const on = !rtcEnabled();
+  try { localStorage.setItem(RTC_KEY, on ? "1" : "0"); } catch { /* ignore */ }
   applyRtcUI();
 });
 applyRtcUI();
@@ -3423,9 +3426,10 @@ function inviteURL() {
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", WORLD_SEED);
   u.searchParams.set("mp", "1");
-  // Carry the peer-to-peer flag so friends who open the link join the same P2P
-  // room (host + guests must agree on the transport to get direct connections).
-  if (rtcEnabled()) u.searchParams.set("rtc", "1");
+  // P2P is the default, so a normal link needs no flag (both ends default on).
+  // Only propagate an opt-OUT, so a host who forced the Ably relay keeps guests
+  // on the same transport.
+  if (!rtcEnabled()) u.searchParams.set("rtc", "0");
   return u.toString();
 }
 

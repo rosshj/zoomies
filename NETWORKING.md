@@ -17,10 +17,10 @@ loaded until you add `&mp=1`.
 
 ```
    your kart          the wire                    a rival's kart
-  (local, instant) ── sendState ~16Hz ─► Ably relay ─► onState ─► Hermite interp
-                                     (or WebRTC P2P               buffer (per-peer
-   RemoteKart  ◄── Hermite + velocity-blend ── + shared clock)    jitter-aware ~90-
-                                                                  280ms) + dead-reckon
+  (local, instant) ── sendState 30Hz ─► WebRTC P2P ─► onState ─► Hermite interp
+                                    (binary+FEC; Ably           buffer (per-peer
+   RemoteKart  ◄── Hermite + velocity-blend ── relay fallback)   jitter-aware ~90-
+                                                + shared clock)   280ms) + dead-reckon
 ```
 
 - **Your own kart** runs the normal local physics — zero input lag, unchanged.
@@ -46,7 +46,8 @@ loaded until you add `&mp=1`.
 | `src/net/net.js` | Transport-agnostic facade: presence, clock, send/receive (injectable timers) |
 | `src/net/loopback.js` | In-process fake server for tests/local dev (injectable latency/jitter/clock-skew/loss sim) |
 | `src/net/ably.js` | Ably realtime adapter (default cloud transport) |
-| `src/net/webrtc.js` | WebRTC peer-to-peer transport (`?rtc=1`; pose stream goes direct) |
+| `src/net/webrtc.js` | WebRTC peer-to-peer transport (DEFAULT; binary+FEC pose stream, `?rtc=0` opts out) |
+| `src/net/posecodec.js` | Binary quantized pose packet + piggyback FEC (P2P channel only; pure, unit-tested) |
 | `src/net/partysocket.js` | PartyKit client adapter (legacy) |
 | `src/net/config.js` | `ABLY_KEY` / `PARTY_HOST` settings + URL overrides |
 | `src/net/recorder.js` | Dev-only arrival recorder → exports a replayable trace (`?rec=1`) |
@@ -55,30 +56,46 @@ loaded until you add `&mp=1`.
 | `party/zoomies.js` | PartyKit server (relay + presence + clock) |
 | `partykit.json` | PartyKit project config |
 
-## Peer-to-peer mode (`?rtc=1`) — lower latency
+## Peer-to-peer (the default transport) — lower latency
 
-Add `&rtc=1` to the URL (alongside `&mp=1`) for a **peer-to-peer** transport.
-Instead of relaying every pose through Ably's cloud (~50–150 ms round trip), the
-high-frequency pose stream travels **directly between players** over WebRTC data
-channels — on the same Wi-Fi/LAN that's a ~1–5 ms hop, so remote karts feel far
-more immediate.
+WebRTC is now the **default**: the high-frequency pose stream travels **directly
+between players** over data channels — on the same Wi-Fi/LAN a ~1–5 ms hop vs
+relaying every pose through Ably's cloud (~50–150 ms round trip), so remote karts
+feel far more immediate. Opt OUT with `?rtc=0` (or Settings → Advanced) to force
+the Ably relay.
 
-What still uses Ably (all latency-tolerant): the **connection handshake**
-(signalling), **presence** (who's in the room), the **shared clock**, and the
-occasional **events** (race start, hairball shots, hits, finishes). Only the
-continuous pose stream is peer-to-peer. So you still need the Ably key set and a
-little internet **to connect** — the gameplay traffic is what goes direct.
+The direct channel is tuned for a real-time pose stream:
+- **Binary + quantized** (`src/net/posecodec.js`): a pose packs to ~17 bytes vs
+  ~150 as JSON, so the stream is cheap on bandwidth and battery.
+- **Piggyback FEC**: each packet carries the last ~3 poses, so a single dropped
+  datagram is recovered from the next — no gap.
+- **Unreliable + unordered** (`ordered:false, maxRetransmits:0`): a lost packet
+  never head-of-line-blocks later poses (the reliable-ordered mode would stall the
+  whole stream behind a retransmit). Out-of-order arrivals are dropped safely by
+  the snapshot buffer's monotonic guard.
+- **30 Hz** on the direct channel (no relay per-message limit); Ably stays 16 Hz.
 
-- The **invite link** carries `rtc=1`, so friends who open it join the same P2P
-  room. (Host and guests must agree on the transport to form direct links.)
-- It's **backward-compatible**: a peer that never opens a data channel just stays
-  on the Ably path, and a peer still connecting falls back to Ably until its P2P
-  link is live (the receiver drops the duplicate once it is).
-- Peers form a **full mesh** (fine at 2–6 players). A public STUN server is used
-  for connection setup; on a pure LAN, local candidates connect without it.
+What still uses Ably (all latency-tolerant): the **handshake** (signalling),
+**presence**, the **shared clock**, and the occasional **events** (start, shots,
+hits, finishes). So you still need the Ably key + a little internet **to connect**.
 
-`tools/net-check.mjs` (`npm run check:net`) unit-tests the pure routing decisions
-(who initiates, and the Ably-fallback de-dup). The live mesh needs real devices.
+- A normal **invite link** needs no flag (both ends default to P2P); it only
+  carries `rtc=0` if the host opted OUT, so guests match the transport.
+- **Graceful fallback**: a peer that never opens a channel (NAT-blocked) stays on
+  the Ably path, throttled to 16 Hz; a peer still connecting falls back until its
+  link is live (the receiver drops the duplicate once it is). Default-on is safe.
+- Peers form a **full mesh** (fine at 2–6 players). **ICE**: a public STUN server
+  by default; add a **TURN** relay (for symmetric-NAT peers) via `config.js` or a
+  `?turn=…&turnUser=…&turnCred=…` override.
+
+⚠️ **All peers must run the same build** — a peer on an older build speaks the old
+JSON channel format and would drop the new binary poses (a web game reloads to the
+latest deploy, so the window is brief).
+
+`tools/net-check.mjs` (`npm run check:net`) exercises the routing + binary/FEC path
+against a mock mesh (peer-id stamping, Ably-fallback shape, FEC-drop recovery), and
+`npm run check:codec` unit-tests the codec. Real SCTP delivery, TURN traversal, and
+the on-device feel need real devices.
 
 ## Turn it on — Ably (recommended, ≈3 minutes, no server)
 
