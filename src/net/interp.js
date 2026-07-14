@@ -36,17 +36,43 @@ export function sampleBuffer(buffer, rt, maxExtrapMs = 250) {
   // Before our oldest sample (just joined / stalled): hold the oldest pose.
   if (rt <= first.t) return { ...first, extrapolated: false };
 
-  // After our newest sample: dead-reckon forward, capped. `f` carries the last
-  // snapshot's flags (drift/boost/shield) so the ghost keeps its visual state.
+  // After our newest sample: dead-reckon forward, capped. Estimate the kart's
+  // TURN RATE + acceleration from the two newest snapshots and integrate along
+  // the resulting circular arc — constant-velocity dead-reckoning cut corners and
+  // flew karts off on turns, which capped how far we could safely predict. `f`
+  // carries the last snapshot's flags so the ghost keeps its visual state. (n>=2
+  // here: the single-sample case returned above.)
   if (rt >= last.t) {
     const dt = Math.min(rt - last.t, maxExtrapMs) / 1000; // seconds, capped
+    const prev = buffer[n - 2];
+    const span = (last.t - prev.t) / 1000;
+    let omega = 0; // turn rate (rad/s)
+    let accel = 0; // longitudinal accel (u/s²)
+    if (span > 1e-4) {
+      let dh = last.h - prev.h;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      omega = Math.max(-3, Math.min(3, dh / span));
+      accel = Math.max(-60, Math.min(60, (last.s - prev.s) / span));
+    }
+    const sAvg = last.s + accel * dt * 0.5; // mean speed over the step
+    let x, z;
+    if (Math.abs(omega) < 1e-3) {
+      x = last.x + Math.sin(last.h) * sAvg * dt; // ~straight: avoid /omega blowup
+      z = last.z + Math.cos(last.h) * sAvg * dt;
+    } else {
+      // ∫ (sin,cos)(h0+ωτ)·s dτ over [0,dt] — the arc a constant turn rate traces.
+      const h1 = last.h + omega * dt;
+      x = last.x + (sAvg / omega) * (Math.cos(last.h) - Math.cos(h1));
+      z = last.z + (sAvg / omega) * (Math.sin(h1) - Math.sin(last.h));
+    }
     return {
-      x: last.x + Math.sin(last.h) * last.s * dt,
+      x,
       y: last.y,
-      z: last.z + Math.cos(last.h) * last.s * dt,
-      h: last.h,
+      z,
+      h: last.h + omega * dt,
       p: last.p,
-      s: last.s,
+      s: last.s + accel * dt,
       f: last.f,
       t: rt,
       extrapolated: true,

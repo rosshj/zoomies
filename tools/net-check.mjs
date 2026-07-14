@@ -187,14 +187,21 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   const f2 = rp.sample(1060, dt);
   check("projective blending converges onto the Hermite path", f2.snapped === false && f2.x === exX2);
 
-  // Past the newest snapshot: dead-reckon from heading × speed, capped at 250ms;
-  // the resulting jump is > 6u so the smoother snaps rather than smears. The
-  // dead-reckon branch is unchanged, but now carries the last snapshot's flags.
-  const exX3 = 3 + Math.sin(0.2) * 30 * 0.25;
+  // Past the newest snapshot: dead-reckon along the CURVED arc (turn rate +
+  // accel from the two newest snapshots), capped at 250ms; the jump is > 6u so
+  // the smoother snaps. Transcribed independently from the arc math.
+  const span3 = (1100 - 1000) / 1000;
+  const omega3 = Math.max(-3, Math.min(3, (0.2 - 0) / span3)); // dh/span
+  const accel3 = Math.max(-60, Math.min(60, (30 - 30) / span3));
+  const dt3 = Math.min(1700 - 1100, 250) / 1000;
+  const sAvg3 = 30 + accel3 * dt3 * 0.5;
+  const h1_3 = 0.2 + omega3 * dt3;
+  const exX3 = 3 + (sAvg3 / omega3) * (Math.cos(0.2) - Math.cos(h1_3));
   const f3 = rp.sample(1700, dt);
-  check("dead-reckons past newest, capped at 250ms", f3.extrapolated === true && f3.rawX === exX3);
+  check("curved dead-reckon past newest, capped at 250ms", f3.extrapolated === true && f3.rawX === exX3);
   check("big correction snaps instead of smearing", f3.snapped === true && f3.x === exX3);
   check("dead-reckon carries the last snapshot's flags", f3.f === FLAG.DRIFT);
+  check("curved dead-reckon advances heading by the turn rate", Math.abs(f3.h - h1_3) < 1e-12);
 
   // Bump: impulse capped at 10 (THREE clampLength float-op order), integrated
   // for one frame, then faded — all before the 5u safety clamp.
