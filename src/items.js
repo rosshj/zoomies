@@ -147,6 +147,37 @@ export class ItemManager {
       fading: 0, // >0: evaporating (post-hit or dried up)
       spread: 0, // pour-in animation
     });
+    // Return the record so the multiplayer caller can replicate the exact puddle.
+    return this.puddles[this.puddles.length - 1];
+  }
+
+  // Replicate a milk puddle a remote player dropped. Its world x/z + radius come
+  // straight off the wire (identical on every client); orientation is re-derived
+  // locally so it lies on ramps. owner=null + grace=0 → this client trips its OWN
+  // player on it (victim-authoritative — no hit message needed).
+  spawnMilkAt({ x, z, r }) {
+    const track = this.track;
+    _pt.set(x, 0, z);
+    const proj = track.project(_pt);
+    track.getPointAt(proj.t, _pt); // road-surface height at the puddle
+    track.getTangentAt(proj.t, _tan);
+    const mesh = new THREE.Mesh(this._milkGeo, this._milkMat.clone());
+    mesh.scale.set(r, 1, r);
+    mesh.position.set(x, _pt.y + 0.09, z);
+    const pitch = Math.atan2(_tan.y, Math.hypot(_tan.x, _tan.z));
+    mesh.rotation.set(0, Math.atan2(_tan.x, _tan.z), 0);
+    mesh.rotateX(-pitch);
+    mesh.renderOrder = 2;
+    this.scene.add(mesh);
+    this.puddles.push({
+      mesh, x, z, r,
+      owner: null,
+      grace: 0,
+      life: MILK_LIFE,
+      fading: 0,
+      spread: 0,
+    });
+    return this.puddles[this.puddles.length - 1];
   }
 
   // Nearest live puddle roughly ahead of `kart` within `range` (AI avoidance).

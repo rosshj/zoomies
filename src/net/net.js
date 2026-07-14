@@ -38,7 +38,7 @@ export class Net {
     this._localNow = localNow;
     this._timers = timers;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], finish: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], milk: [], yarn: [], finish: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -110,6 +110,14 @@ export class Net {
     this.transport.send({ type: "hit", id: this.id, target, hx: dir.x, hz: dir.z });
   }
 
+  // Victim-authoritative milk: replicate a dropped puddle by its final world
+  // position + radius. Each client re-creates the puddle and trips its OWN player
+  // on it, so no hit message is needed (the spin streams via the pose channel).
+  sendMilk(x, z, r) {
+    if (!this.connected) return;
+    this.transport.send({ type: "milk", id: this.id, mx: x, mz: z, mr: r });
+  }
+
   // Announce that I crossed the finish line. `ft` is my race time (seconds since
   // the synchronized GO), directly comparable across clients for final ordering.
   // ft = elapsed race time (for display). fc = shared-clock instant of finishing,
@@ -156,6 +164,9 @@ export class Net {
         break;
       case "hit":
         this._emit("hit", { target: m.target, hx: m.hx, hz: m.hz });
+        break;
+      case "milk":
+        this._emit("milk", { owner: m.id, x: m.mx, z: m.mz, r: m.mr });
         break;
       case "finish":
         if (m.id === this.id) break;

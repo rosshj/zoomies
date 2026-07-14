@@ -10,6 +10,25 @@
 import * as THREE from "three";
 import { HairballManager, TRI_FAN } from "../src/hairball.js";
 import { initProps } from "../src/props.js";
+import { ItemManager } from "../src/items.js";
+
+// A dead-straight track along +x (z = lateral) with just the methods ItemManager
+// needs — enough to unit-test yarn/milk without the full procedural track.
+function straightTrack(LEN = 200, halfWidth = 10) {
+  return {
+    length: LEN, halfWidth,
+    project(pos) {
+      const t = (((pos.x / LEN) % 1) + 1) % 1;
+      return { t, point: new THREE.Vector3(pos.x, 0, 0), tangent: new THREE.Vector3(1, 0, 0), side: new THREE.Vector3(0, 0, 1), lateral: pos.z, groundY: 0 };
+    },
+    getPointAt(t, out) { out.set(t * LEN, 0, 0); return out; },
+    getTangentAt(t, out) { out.set(1, 0, 0); return out; },
+  };
+}
+const stubScene = { add() {}, remove() {} };
+function milkKart(x, over = {}) {
+  return { finished: false, spinTimer: 0, y: 0, catnipBoosting: false, shielding: false, heading: 0, position: new THREE.Vector3(x, 0, 0), spun: false, spinOut() { this.spun = true; this.spinTimer = 1.4; }, ...over };
+}
 
 let failures = 0;
 function check(name, cond) {
@@ -69,6 +88,38 @@ function check(name, cond) {
   const k2 = { name: "P2" };
   for (let x = -6; x < LEN + 6; x += 3) props2.update(0.05, [{ x, z: 0, kart: k2 }]);
   check("a refused pickup leaves the box floating", props2.boxTargets().length === 3);
+}
+
+// --- Milk replication (spawnMilkAt, victim-authoritative) -----------------
+{
+  const track = straightTrack();
+  const im = new ItemManager(stubScene, track);
+
+  const puddle = im.spawnMilkAt({ x: 50, z: 0, r: 3 });
+  check("spawnMilkAt creates an owner-less, grace-free puddle",
+    im.puddles.length === 1 && puddle.owner === null && puddle.grace === 0 && puddle.r === 3 && puddle.x === 50);
+
+  const p1 = milkKart(50);
+  im.update(0.016, [p1], {});
+  check("a replicated puddle trips a local player driving through it", p1.spun === true);
+
+  im.spawnMilkAt({ x: 100, z: 0, r: 3 });
+  const hopper = milkKart(100, { y: 1.5 });
+  im.update(0.016, [hopper], {});
+  check("airborne kart hops the puddle (no spin)", hopper.spun === false);
+  const catCart = milkKart(100, { catnipBoosting: true });
+  im.update(0.016, [catCart], {});
+  check("catnip plows through the puddle (no spin)", catCart.spun === false);
+
+  im.spawnMilkAt({ x: 150, z: 0, r: 3 });
+  const shielded = milkKart(150, { shielding: true });
+  im.update(0.016, [shielded], {});
+  check("shield does NOT save you from milk (floor hazard)", shielded.spun === true);
+
+  const far = milkKart(150 + 3 + 1.2 + 0.5); // just outside r+1.2
+  im.spawnMilkAt({ x: 300, z: 0, r: 3 });
+  im.update(0.016, [far], {});
+  check("a kart clear of every puddle is untouched", far.spun === false);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED`); process.exit(1); }

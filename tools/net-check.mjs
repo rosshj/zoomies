@@ -302,6 +302,9 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   }
 
   const rosterTicks = [];
+  const milkEvents = [];
+  const yarnEvents = [];
+  const hitEvents = [];
   const mp = new MpSession({
     createRemote: makeStubRemote,
     disposeRemote: (r) => r.dispose(),
@@ -310,7 +313,12 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
     amHost: () => true,
     wallNow: () => clock.now(),
     netOptions: netOpts,
-    hooks: { onRoster: () => rosterTicks.push(mp.remotes.size) },
+    hooks: {
+      onRoster: () => rosterTicks.push(mp.remotes.size),
+      onMilk: (m) => milkEvents.push(m),
+      onYarn: (y) => yarnEvents.push(y),
+      onHit: (h) => hitEvents.push(h),
+    },
   });
   mp.enabled = true;
 
@@ -339,6 +347,21 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("session broadcast my pose at ~16 Hz", otherGotState.length > 25 && otherGotState.length < 40);
   check("my broadcast carried the drift flag + progress", otherGotState[0].f === FLAG.DRIFT && otherGotState[0].pr === 0.4);
   check("session delay aggregate stays sane [90,300]", mp.interpDelay >= 90 && mp.interpDelay <= 300);
+
+  // Item routing: the rival drops milk → the session's onMilk hook fires with the
+  // exact puddle (no target filter — every client replicates it).
+  other.sendMilk(12.5, -3.5, 4.25);
+  clock.run(clock.now() + 400);
+  check("rival milk routed to onMilk with exact fields",
+    milkEvents.length === 1 && milkEvents[0].x === 12.5 && milkEvents[0].z === -3.5 && milkEvents[0].r === 4.25 && milkEvents[0].owner === other.id);
+
+  // Hit filter still works: a hit aimed at me fires onHit; one aimed elsewhere is
+  // dropped (this is the path the authoritative yarn spin reuses).
+  other.sendHit(mp.net.id, { x: 1, z: 0 });
+  other.sendHit("nobody", { x: 1, z: 0 });
+  clock.run(clock.now() + 400);
+  check("hit aimed at me fires onHit; foreign target dropped",
+    hitEvents.length === 1 && hitEvents[0].target === mp.net.id);
 
   // Collision pass: put the player right on top of the ghost and confirm the
   // session knocks the player, nudges (bumps) the ghost, and separates them.

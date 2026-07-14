@@ -110,6 +110,11 @@ export class MpSession {
         if (h.target !== net.id) return;
         this._emit("onHit", h);
       });
+      // Items replicate to EVERY client (each renders the ghost / trips its own
+      // player); no target filter here. Yarn's authoritative spin still rides the
+      // filtered `hit` above.
+      net.on("milk", (m) => this._emit("onMilk", m));
+      net.on("yarn", (y) => this._emit("onYarn", y));
       net.on("finish", (id, ft, fc) => {
         const r = this.remotes.get(id);
         if (r) {

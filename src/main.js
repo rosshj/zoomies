@@ -500,16 +500,20 @@ function grantItem(kart) {
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
   if (MP.enabled) {
-    // Multiplayer keeps the old networked-safe roster: yarn balls and milk
-    // puddles only simulate locally (no replication protocol yet), so a remote
-    // rival would never see the thing that just spun them out.
-    const wShield = 0.65 - 0.5 * f;
-    const wTri = 0.25 + 0.15 * f;
+    // Multiplayer roster: milk now replicates (dropped puddles cross the wire),
+    // so it's back in the online roll. Yarn is still local-only until its
+    // replication lands, so it stays excluded here.
+    const wShield = 0.55 - 0.45 * f;
+    const wMilk = 0.18;
+    const wTri = 0.22 + 0.15 * f;
     const r = Math.random();
     if (r < wShield) {
       kart.giveShield(15);
       if (kart === player) hud.showToast("🛡️ Shield — 15s!");
-    } else if (r < wShield + wTri) {
+    } else if (r < wShield + wMilk) {
+      kart.giveMilk();
+      if (kart === player) hud.showToast("🥛 Milk bottle — drop it behind you!");
+    } else if (r < wShield + wMilk + wTri) {
       kart.giveTriShots(3);
       if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
     } else {
@@ -886,6 +890,9 @@ const MP = new MpSession({
       const dir = new THREE.Vector3(h.hx, 0, h.hz);
       player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
     },
+    // A remote player dropped milk: replicate the puddle (victim-authoritative —
+    // our own player trips it locally via items.update, so no hit event).
+    onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r }); },
     onRemoteFinish: () => {
       // If the results screen is already up, slot the late finisher in live.
       if (state === State.FINISHED) renderResults();
@@ -4812,7 +4819,8 @@ function loop(now) {
     }
     if (input.consumeMilk() && player.milkBottles > 0 && player.spinTimer <= 0) {
       player.milkBottles = 0;
-      items.dropMilk(player);
+      const p = items.dropMilk(player);
+      if (MP.enabled && MP.net && p) MP.net.sendMilk(p.x, p.z, p.r);
       hud.showToast("🥛 Spilled!");
     }
     if (input.consumeBoost() && player.boostMeter >= 1) {
