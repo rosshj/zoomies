@@ -11,6 +11,7 @@ import { LoopbackHub } from "../src/net/loopback.js";
 import { SimClock } from "../src/net/sim/sched.js";
 import { makeRng } from "../src/rng.js";
 import { RemotePose, FLAG } from "../src/net/remotepose.js";
+import { MpSession, REMOTE_GRACE_MS, KART_COLLIDE_MIN, kartBumpPower } from "../src/net/session.js";
 
 let failures = 0;
 const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
@@ -197,6 +198,110 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("loss=1 leaves presence intact", lossy.log.includes("A+c2") && lossy.log.includes("B+c1"));
   const lossyWorst = Math.max(...lossy.nets.map((n) => Math.abs(n.now() - lossy.hub.now())));
   check("loss=1 leaves clock sync intact", lossyWorst < 40);
+}
+
+// --- MpSession orchestration over the loopback hub ---
+// Drives the REAL session extracted from main.js (headless, with stub remotes)
+// against a raw Net standing in for a second player, so the send loop, spawn/
+// state routing, park→reap grace, teardown and collision pass are all exercised
+// end to end — the coverage the two-tab manual test can't give in CI.
+{
+  const clock = new SimClock();
+  const hub = new LoopbackHub({
+    latency: 30, jitter: 0, clockSkew: 0,
+    rng: makeRng("MPSESSION"), schedule: (fn, ms) => clock.setTimeout(fn, ms), now: () => clock.now(),
+  });
+  const netOpts = { localNow: () => clock.now(), timers: clock.timers() };
+
+  // A headless stand-in for RemoteKart: records what the session drives into it.
+  const built = [];
+  function makeStubRemote(identity) {
+    const r = {
+      id: identity.id, name: identity.name, host: false,
+      group: { visible: true },
+      kart: { position: { x: 0, y: 0, z: 0 }, mass: 1, speed: 0 },
+      _ready: false, _lastPose: null, _bumps: 0, disposed: false,
+      finished: false, finishTime: 0, finishClock: 0, totalProgress: -1,
+      pushState(pose) { this._lastPose = pose; this._ready = true; this.kart.position.x = pose.x; this.kart.position.z = pose.z; },
+      bump() { this._bumps++; },
+      update() {},
+      dispose() { this.disposed = true; },
+    };
+    built.push(r);
+    return r;
+  }
+
+  const rosterTicks = [];
+  const mp = new MpSession({
+    createRemote: makeStubRemote,
+    disposeRemote: (r) => r.dispose(),
+    hasLocalPlayer: () => true,
+    getPose: () => ({ x: 5, y: 0, z: 6, h: 0, p: 0, s: 20, f: FLAG.DRIFT, pr: 0.4 }),
+    amHost: () => true,
+    wallNow: () => clock.now(),
+    netOptions: netOpts,
+    hooks: { onRoster: () => rosterTicks.push(mp.remotes.size) },
+  });
+  mp.enabled = true;
+
+  // The "other player": a raw Net that joins the same room and streams poses.
+  const other = new Net(hub.connect(), { name: "Rival", host: false }, netOpts);
+  const otherGotState = [];
+  other.on("state", (id, pose) => otherGotState.push(pose));
+  other.connect();
+
+  // Await so the transport promise resolves and the session's Net is wired +
+  // connected before we start pumping the virtual clock.
+  await mp.begin(Promise.resolve(hub.connect()), () => ({ name: "Me", host: true }));
+
+  // Drive the session's per-frame update at 60 Hz while the rival sends 16 Hz poses.
+  let tickAcc = 0, rivalAcc = 0, rstep = 0;
+  const frame = clock.setInterval(() => {
+    mp.update(1 / 60);
+    rivalAcc += 1 / 60;
+    if (rivalAcc >= 1 / 16) { rivalAcc = 0; rstep++; other.sendState({ x: rstep, y: 0, z: 0, h: 0, p: 0, s: 15, f: 0, pr: 0.3 }); }
+  }, 1000 / 60);
+  clock.run(2000);
+
+  check("session spawned the rival ghost on presence", mp.remotes.size === 1 && built.length === 1);
+  check("rival poses routed into the ghost buffer", built[0]._ready && built[0]._lastPose !== null);
+  check("roster hook fired on join", rosterTicks.length >= 1 && rosterTicks[rosterTicks.length - 1] === 1);
+  check("session broadcast my pose at ~16 Hz", otherGotState.length > 25 && otherGotState.length < 40);
+  check("my broadcast carried the drift flag + progress", otherGotState[0].f === FLAG.DRIFT && otherGotState[0].pr === 0.4);
+  check("adaptive interp delay stayed in [180,280]", mp.interpDelay >= 180 && mp.interpDelay <= 280);
+
+  // Collision pass: put the player right on top of the ghost and confirm the
+  // session knocks the player, nudges (bumps) the ghost, and separates them.
+  built[0].kart.position.x = 1; built[0].kart.position.z = 0; // ghost near origin
+  const player = { position: { x: 0, y: 0, z: 0 }, mass: 1.35, speed: 20, knock: { x: 0, z: 0 }, catnipBoosting: false };
+  mp.resolveRemoteCollisions(player);
+  check("collision knocked the player back", player.knock.x < 0);
+  check("collision separated the player from the ghost", player.position.x < 0);
+  check("collision cosmetically bumped the ghost", built[0]._bumps === 1);
+
+  // Soft despawn parks the ghost; it's revived on rejoin within grace.
+  clock.clearInterval(frame);
+  const rid = built[0].id;
+  mp.despawn(rid);
+  check("soft despawn parks the ghost (not disposed)", mp.remotes.size === 0 && mp.parked.has(rid) && !built[0].disposed);
+  mp.spawn({ id: rid, name: "Rival", host: false });
+  check("rejoin within grace revives the same ghost", mp.remotes.size === 1 && mp.parked.size === 0 && built.length === 1);
+
+  // Parked past the grace window gets reaped by update()'s sweeper.
+  mp.despawn(rid);
+  clock.run(clock.now() + REMOTE_GRACE_MS + 1000);
+  mp.update(1 / 60);
+  check("parked ghost reaped after the grace window", mp.parked.size === 0 && built[0].disposed);
+
+  // Teardown drops the connection + all remotes.
+  mp.spawn({ id: "late", name: "Late", host: false });
+  const lateGhost = built[built.length - 1];
+  mp.teardown();
+  check("teardown disposes remaining remotes + disables", !mp.enabled && mp.remotes.size === 0 && lateGhost.disposed);
+
+  // Shared collision constants match the single-player formula they replaced.
+  check("KART_COLLIDE_MIN preserved", KART_COLLIDE_MIN === 4.4);
+  check("kartBumpPower preserved", kartBumpPower(20, 10) === 10 + (20 + 10) * 0.4);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED`); process.exit(1); }

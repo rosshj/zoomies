@@ -21,12 +21,12 @@ import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
-import { Net } from "./net/net.js";
+import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
 import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
 import { createWebRTCTransport } from "./net/webrtc.js";
 import { resolveHost, resolveAblyKey } from "./net/config.js";
-import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
+import { RemoteKart, FLAG } from "./remotekart.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -772,99 +772,94 @@ function makeMpIdentity() {
   return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
-// Up to 6 players share a race (you + 5 others). The grid, headlight pool and
-// placement all scale to this; a late 7th joiner is kept out of the rendered field.
-const MAX_PLAYERS = 6;
-const MP = {
-  enabled: false, net: null, remotes: new Map(),
-  parked: new Map(), // id -> { r, since } — soft-despawned ghosts held for revival
-  sendAcc: 0, hudAcc: 0, hud: null,
-  // (adaptive interpolation delay lives in _interpDelay, below)
-  inLobby: false, startAt: 0, connState: null,
-};
-let _interpDelay = INTERP_DELAY; // adaptive: eased toward a target from the live ping
 // Scratch vectors for incoming shoot messages (spawnAt copies its args).
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const _mpShotPos = new THREE.Vector3();
 const _mpShotDir = new THREE.Vector3();
 const _mpShotFan = new THREE.Vector3();
-// Total humans currently in the room (me + rendered remotes).
-function mpPlayerCount() {
-  return 1 + MP.remotes.size;
-}
 
-// The same sorted id order assigns starting-grid slots so players don't stack up.
-function mpOrderedIds() {
-  const ids = [MP.net && MP.net.id, ...MP.remotes.keys()].filter(Boolean);
-  ids.sort();
-  return ids;
-}
-// The host is simply the player who CREATED the room (clicked Host Game) — not
-// whoever drew the lowest id. `_amHost` is authoritative for me; the same flag
-// rides in every identity so I can tag the host (👑) in the player list. No
-// lowest-id election (that was the bug), so a guest never transiently sees Start.
-// (If the host leaves, the room just can't launch — host migration is a separate
-// feature.)
-function mpHostId() {
-  if (_amHost && MP.net && MP.net.id) return MP.net.id;
-  for (const r of MP.remotes.values()) if (r.host) return r.id;
-  return null;
-}
+// The multiplayer session (src/net/session.js) owns the netcode: connection,
+// remote roster, parked ghosts, the 16 Hz send loop and the adaptive interp
+// delay. Everything game/DOM-shaped is injected here; the hooks fire at event
+// time, so they can safely reference functions and state declared later in
+// this module.
+const MP = new MpSession({
+  createRemote: (identity) => {
+    const r = new RemoteKart(identity);
+    decorateKartGroup(r.group);
+    scene.add(r.group);
+    return r;
+  },
+  disposeRemote: (r) => r.dispose(scene),
+  hasLocalPlayer: () => !!player,
+  getPose: () => {
+    let f = 0;
+    if (player.drifting) f |= FLAG.DRIFT;
+    if (player.boosting) f |= FLAG.BOOST;
+    if (player.shielding) f |= FLAG.SHIELD;
+    if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
+    return {
+      x: player.position.x,
+      y: player.groundY + player.y,
+      z: player.position.z,
+      h: player.heading,
+      p: player.slopePitch,
+      s: player.speed,
+      f,
+      pr: player.totalProgress,
+    };
+  },
+  amHost: () => _amHost,
+  hooks: {
+    // Roster changed (peer joined/left) or our own connection opened: refresh
+    // the "N friends here" count immediately, and the lobby if it's showing.
+    onRoster: () => {
+      setMpStatus("connected");
+      if (MP.inLobby) renderLobby();
+    },
+    onConnClosed: () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"),
+    onStart: (at) => beginSyncedRace(at),
+    onShoot: (s) => {
+      // spawnAt copies both vectors, so these scratch temps are safe to reuse
+      // across messages.
+      _mpShotPos.set(s.px, s.py, s.pz);
+      _mpShotDir.set(s.dx, s.dy, s.dz);
+      if (s.t) {
+        // Tri-furball: fan into three, matching the shooter's local spread.
+        for (const a of TRI_FAN) hairballs.spawnAt(_mpShotPos, _mpShotFan.copy(_mpShotDir).applyAxisAngle(UP_Y, a), s.c || 0);
+      } else {
+        hairballs.spawnAt(_mpShotPos, _mpShotDir, s.c || 0);
+      }
+    },
+    onHit: (h) => {
+      // The session already checked the hit targets me; the victim's own shield
+      // gets last say.
+      if (!player || state !== State.RACING) return;
+      if (player.shielding) return;
+      const dir = new THREE.Vector3(h.hx, 0, h.hz);
+      player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
+    },
+    onRemoteFinish: () => {
+      // If the results screen is already up, slot the late finisher in live.
+      if (state === State.FINISHED) renderResults();
+    },
+    onStatusTick: () => {
+      if (!MP.hud) return;
+      // Refresh the readout through the shared status formatter so peers/ping
+      // update while connected and the live connection state shows otherwise.
+      setMpStatus(MP.net && MP.net.connected ? "connected" : MP.connState || "connecting");
+    },
+  },
+});
+
+// Thin wrappers so the many existing call sites read as before.
+function mpPlayerCount() { return MP.playerCount(); }
+function mpOrderedIds() { return MP.orderedIds(); }
+function mpHostId() { return MP.hostId(); }
 function mpIsHost() {
   return !!(MP.enabled && _amHost);
 }
-function mpGridSlot() {
-  const i = MP.net ? mpOrderedIds().indexOf(MP.net.id) : 0;
-  return Math.max(0, i);
-}
-
-// Soft-despawn grace: a peer whose presence flaps (a mobile reconnect) is "parked"
-// hidden for this long and REVIVED on rejoin, instead of being destroyed and
-// rebuilt. The old destroy/recreate churned a fresh Kart every blip — and
-// dispose() only removes from the scene (it can't free the cat's shared materials
-// safely), so that churn leaked GPU memory until the tab crashed. Parked ghosts
-// live OUTSIDE MP.remotes, so peer counts / placement / rendering see only the
-// active field, unchanged.
-const REMOTE_GRACE_MS = 12000;
-
-function mpSpawn(identity) {
-  if (MP.remotes.has(identity.id)) return;
-  // Revive a parked ghost (peer flapped and returned) — reuse the Kart and its
-  // interpolation buffer instead of churning a new one.
-  const parked = MP.parked.get(identity.id);
-  if (parked) {
-    MP.parked.delete(identity.id);
-    parked.r.host = !!identity.host;
-    parked.r.group.visible = true;
-    MP.remotes.set(identity.id, parked.r);
-    return;
-  }
-  // Cap the rendered field at MAX_PLAYERS (you + MAX_PLAYERS-1 remotes). Beyond
-  // that the grid/headlight pool run out, so extra joiners aren't drawn into the
-  // race. (Realistically a friends' room is ≤6; a true server-side cap would need
-  // room logic Ably's client-side presence doesn't provide.)
-  if (MP.remotes.size >= MAX_PLAYERS - 1) return;
-  const r = new RemoteKart(identity);
-  r.host = !!identity.host; // remember who the room's host is (for the 👑 + Start)
-  decorateKartGroup(r.group);
-  scene.add(r.group);
-  MP.remotes.set(identity.id, r);
-}
-// `force` tears the ghost down immediately (leaving multiplayer); otherwise it's a
-// soft despawn — parked for possible revival within the grace window, then reaped
-// by the sweeper in updateMultiplayer.
-function mpDespawn(id, force = false) {
-  const r = MP.remotes.get(id) || (MP.parked.get(id) && MP.parked.get(id).r);
-  if (!r) return;
-  MP.remotes.delete(id);
-  if (force) {
-    MP.parked.delete(id);
-    r.dispose(scene);
-    return;
-  }
-  if (r.group) r.group.visible = false;
-  MP.parked.set(id, { r, since: performance.now() });
-}
+function mpGridSlot() { return MP.gridSlot(); }
 
 function mpDebugHud() {
   const el = document.createElement("div");
@@ -905,63 +900,9 @@ function initMultiplayer() {
     : ablyKey
       ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
       : createPartyTransport({ host, room: WORLD_SEED });
-  transportP
-    .then((transport) => {
-      const net = new Net(transport, makeMpIdentity());
-      MP.net = net;
-      net.on("peer", (identity) => {
-        mpSpawn(identity);
-        setMpStatus("connected"); // refresh the "N friends here" count immediately
-        if (MP.inLobby) renderLobby();
-      });
-      net.on("peerleave", (id) => {
-        mpDespawn(id);
-        setMpStatus("connected");
-        if (MP.inLobby) renderLobby();
-      });
-      // Once our own connection is acknowledged, fill in the lobby (it may have
-      // been opened before the socket finished connecting).
-      net.on("open", () => {
-        setMpStatus("connected");
-        if (MP.inLobby) renderLobby();
-      });
-      net.on("close", () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"));
-      net.on("state", (id, pose) => {
-        const r = MP.remotes.get(id);
-        if (r) r.pushState(pose);
-      });
-      net.on("start", (at) => beginSyncedRace(at));
-      net.on("shoot", (s) => {
-        // spawnAt copies both vectors, so these scratch temps are safe to reuse
-        // across messages.
-        _mpShotPos.set(s.px, s.py, s.pz);
-        _mpShotDir.set(s.dx, s.dy, s.dz);
-        if (s.t) {
-          // Tri-furball: fan into three, matching the shooter's local spread.
-          for (const a of TRI_FAN) hairballs.spawnAt(_mpShotPos, _mpShotFan.copy(_mpShotDir).applyAxisAngle(UP_Y, a), s.c || 0);
-        } else {
-          hairballs.spawnAt(_mpShotPos, _mpShotDir, s.c || 0);
-        }
-      });
-      net.on("hit", (h) => {
-        // Only the targeted client reacts; the victim's own shield gets last say.
-        if (h.target !== net.id || !player || state !== State.RACING) return;
-        if (player.shielding) return;
-        const dir = new THREE.Vector3(h.hx, 0, h.hz);
-        player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
-      });
-      net.on("finish", (id, ft, fc) => {
-        const r = MP.remotes.get(id);
-        if (r) {
-          r.finished = true;
-          r.finishTime = ft;
-          r.finishClock = fc || 0;
-        }
-        // If the results screen is already up, slot the late finisher in live.
-        if (state === State.FINISHED) renderResults();
-      });
-      net.connect();
-    })
+  // The session wires the Net handlers (routing game/DOM reactions back through
+  // the hooks defined at construction) and connects once the transport resolves.
+  MP.begin(transportP, makeMpIdentity)
     .catch((err) => {
       console.warn("[zoomies] multiplayer failed to start:", err);
       // Keep MP.enabled so the lobby/menu can SHOW the failure instead of silently
@@ -1019,60 +960,13 @@ function setMpStatus(state, reason) {
   if (state === "failed" && reason && typeof hud !== "undefined" && hud) hud.showToast?.(reason);
 }
 
-// Broadcast my pose (~18 Hz) and interpolate every ghost kart. Runs every frame
-// while connected, in any game state, so remote karts glide continuously.
+// Broadcast my pose (~16 Hz) and interpolate every ghost kart. Runs every frame
+// while connected, in any game state, so remote karts glide continuously. The
+// real work (send loop, adaptive interp delay, ghost updates, parked reaper)
+// lives in MpSession.update — headless, so the netsim harness measures the
+// exact code that ships.
 function updateMultiplayer(dt) {
-  if (!MP.enabled || !MP.net) return;
-  const net = MP.net;
-  if (net.connected && player) {
-    MP.sendAcc += dt;
-    // ~16 Hz. Interpolation (with the 200ms delay) reconstructs smooth motion from
-    // this, and the lower rate roughly halves the per-channel message load vs the
-    // old 25 Hz — easing the relay so a busy room is less likely to drop/throttle
-    // a player's updates (which froze their kart on everyone else's screen).
-    if (MP.sendAcc >= 1 / 16) {
-      MP.sendAcc = 0;
-      let f = 0;
-      if (player.drifting) f |= FLAG.DRIFT;
-      if (player.boosting) f |= FLAG.BOOST;
-      if (player.shielding) f |= FLAG.SHIELD;
-      if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
-      net.sendState({
-        x: player.position.x,
-        y: player.groundY + player.y,
-        z: player.position.z,
-        h: player.heading,
-        p: player.slopePitch,
-        s: player.speed,
-        f,
-        pr: player.totalProgress,
-      });
-    }
-  }
-  // Adapt the interpolation delay to the live connection: cover roughly one-way
-  // latency (half the round-trip) plus a jitter margin, so a laggy link buffers
-  // more (smoother, fewer dead-reckon snaps) and a snappy link buffers less (more
-  // responsive). Eased slowly so the render time never lurches.
-  const rttMs = net.clock && Number.isFinite(net.clock.rtt) ? net.clock.rtt : 0;
-  const targetDelay = Math.max(180, Math.min(280, rttMs * 0.5 + 150));
-  _interpDelay += (targetDelay - _interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
-  const rt = net.now() - _interpDelay; // render remote karts slightly in the past
-  for (const r of MP.remotes.values()) r.update(rt, dt);
-  // Reap parked ghosts whose grace has elapsed (peer really left, not a flap).
-  if (MP.parked.size) {
-    const nowMs = performance.now();
-    for (const [id, p] of MP.parked) {
-      if (nowMs - p.since > REMOTE_GRACE_MS) { p.r.dispose(scene); MP.parked.delete(id); }
-    }
-  }
-
-  MP.hudAcc += dt;
-  if (MP.hudAcc >= 0.5 && MP.hud) {
-    MP.hudAcc = 0;
-    // Refresh the readout through the shared status formatter so peers/ping update
-    // while connected and the live connection state shows otherwise.
-    setMpStatus(net.connected ? "connected" : MP.connState || "connecting");
-  }
+  MP.update(dt);
 }
 
 initMultiplayer();
@@ -3411,18 +3305,9 @@ function enterMultiplayer() {
 // Drop the room connection + remote karts (used when switching back to a solo
 // mode on the Game Mode screen). Pure teardown — the caller owns the UI state.
 function teardownMultiplayer() {
-  if (MP.net) {
-    try { MP.net.close(); } catch { /* ignore */ }
-    MP.net = null;
-  }
-  for (const id of [...MP.remotes.keys()]) mpDespawn(id, true);
-  for (const [, p] of MP.parked) p.r.dispose(scene); // drop any parked ghosts too
-  MP.parked.clear();
-  MP.enabled = false;
+  MP.teardown(); // netcode teardown: close the connection, drop remotes + parked ghosts
   _mpWantsHigh = false; // next MP session re-defaults to lean
   applyMpQuality(); // restore the pre-multiplayer graphics setting
-  MP.inLobby = false;
-  MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
   const u = new URL(location.href);
   u.searchParams.delete("mp");
@@ -4065,13 +3950,9 @@ function updateCamera(dt, snap = false) {
 // Heavier karts (the player) shove lighter ones aside and barely slow down, so
 // you can push your way through traffic. Impulses go into each kart's decaying
 // `knock` velocity for a springy bumper-car feel.
-// Shared kart-vs-kart collision constants, used by BOTH single-player and the
-// multiplayer remote-kart path so the two can never drift out of parity.
-const KART_COLLIDE_MIN = 4.4; // contact diameter
-function kartBumpPower(aSpeed, bSpeed) {
-  // Bumper impulse, scaled by how fast the pair is moving.
-  return 10 + (Math.abs(aSpeed) + Math.abs(bSpeed)) * 0.4;
-}
+// Shared kart-vs-kart collision constants (KART_COLLIDE_MIN, kartBumpPower) are
+// imported from net/session.js and used by BOTH this single-player path and the
+// multiplayer remote-kart path, so the two can never drift out of parity.
 
 function resolveCollisions() {
   for (let i = 0; i < karts.length; i++) {
@@ -4127,65 +4008,13 @@ function resolveCollisions() {
   }
 }
 
-// Multiplayer: bump against remote ghost karts. We only ever move OUR OWN player
-// out of the overlap — the ghost's pose is network-driven, so nudging it would
-// just fight interpolation and jitter. The other client resolves the mirror
-// collision against our ghost, so both sides agree without any referee.
+// Multiplayer: bump against remote ghost karts (the full resolution lives in
+// MpSession.resolveRemoteCollisions — we only ever move OUR OWN player out of
+// the overlap, since the ghost's pose is network-driven; the other client
+// resolves the mirror collision against our ghost, so both sides agree with no
+// referee).
 function resolveRemoteCollisions() {
-  if (!MP.enabled || !player) return;
-  const min = KART_COLLIDE_MIN;
-  for (const [rid, r] of MP.remotes) {
-    if (!r._ready) continue; // no real pose yet — don't collide at the origin
-    const g = r.kart;
-    const dx = g.position.x - player.position.x;
-    const dz = g.position.z - player.position.z;
-    const distSq = dx * dx + dz * dz;
-    if (distSq <= 0.0001 || distSq >= min * min) continue;
-
-    const dist = Math.sqrt(distSq);
-    const nx = dx / dist;
-    const nz = dz / dist;
-    const overlap = min - dist;
-
-    // The masses match single-player (you're 1.35, the ghost is 1.0 — same as
-    // you-vs-AI), so the shares below are EXACTLY what resolveCollisions() uses.
-    const ima = 1 / player.mass;
-    const img = 1 / g.mass;
-    const inv = ima + img;
-    const sp = ima / inv; // player's share
-    const sg = img / inv; // ghost's share
-
-    // Position: the player still takes the WHOLE separation (the ghost can't move
-    // authoritatively, and clearing the overlap in one frame keeps repeated
-    // contact from flinging the ghost). This is a position detail, not the carom.
-    player.position.x -= nx * overlap;
-    player.position.z -= nz * overlap;
-
-    // Carom: the player's knock is now the SAME mass-share bumper impulse as
-    // single-player (no amplification), so ramming a rival online feels exactly
-    // like ramming an AI. This knock moves the player's real position, which
-    // propagates over the network — the other client independently resolves the
-    // mirror contact against its ghost of us, so both sides feel a bump with no
-    // referee (they needn't match exactly).
-    const power = kartBumpPower(player.speed, g.speed);
-    player.knock.x -= nx * power * sp;
-    player.knock.z -= nz * power * sp;
-    player.speed *= 0.99; // same tiny scrub as single-player
-
-    // Cosmetic-only nudge on the ghost (instant local feedback) at the ghost's
-    // mass share — the authoritative slide arrives over the network shortly after.
-    r.bump(nx, nz, power * sg);
-
-    // Catnip ram across the network: tell the rival to spin out (their client
-    // honours their own shield). Debounced so contact doesn't spam hits.
-    if (player.catnipBoosting && MP.net) {
-      const now = performance.now();
-      if (!r._lastRam || now - r._lastRam > 1200) {
-        r._lastRam = now;
-        MP.net.sendHit(rid, { x: nx, z: nz });
-      }
-    }
-  }
+  MP.resolveRemoteCollisions(player);
 }
 
 // --- Placement ---
