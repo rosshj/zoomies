@@ -889,8 +889,11 @@ const MP = new MpSession({
       player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
     },
     // A remote player dropped milk: replicate the puddle (victim-authoritative —
-    // our own player trips it locally via items.update, so no hit event).
-    onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r }); },
+    // our own player trips it locally via items.update, so no hit event). Carry the
+    // dropper's id so if we trip on it we can let them gloat (onMilkGloat).
+    onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r, ownerId: m.owner }); },
+    // A rival spun out on MY milk (they told me): look back and laugh.
+    onMilkGloat: () => { if (player) player.gloat(); },
     // A remote player launched a yarn ball: render a cosmetic ghost that homes on
     // OUR copy of the target (our own player if we're the mark, else our ghost of
     // them). The hit stays shooter-authoritative and arrives via onHit.
@@ -5067,9 +5070,15 @@ function loop(now) {
         audio.shoot(k === player ? null : k.position);
       },
       onYarnBlocked: (k) => effects.tootBurst(k, 1, false),
-      onMilkHit: (k) => {
+      onMilkHit: (k, p) => {
         effects.tootBurst(k, 2, false);
         audio.shoot(k === player ? null : k.position);
+        // Gloat: whoever's milk this was gets to look back and laugh.
+        if (p && p.owner && p.owner !== k) {
+          p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
+        } else if (p && p.ownerId && k === player && MP.enabled && MP.net) {
+          MP.net.sendMilkGloat(p.ownerId); // a remote's milk tripped ME → tell them to gloat
+        }
       },
     },
     // Multiplayer: the shooter's live yarn hits remote ghosts and reports it

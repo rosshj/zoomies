@@ -119,6 +119,8 @@ export class MpSession {
       // filtered `hit` above.
       net.on("milk", (m) => this._emit("onMilk", m));
       net.on("yarn", (y) => this._emit("onYarn", y));
+      // A rival spun out on my milk and told me so — only the milk's owner reacts.
+      net.on("milkgloat", (target) => { if (target === net.id) this._emit("onMilkGloat"); });
       net.on("finish", (id, ft, fc) => {
         const r = this.remotes.get(id);
         if (r) {

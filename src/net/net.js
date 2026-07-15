@@ -38,7 +38,7 @@ export class Net {
     this._localNow = localNow;
     this._timers = timers;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], milk: [], yarn: [], finish: [], host: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], milk: [], yarn: [], finish: [], host: [], milkgloat: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -134,6 +134,14 @@ export class Net {
     this.transport.send({ type: "milk", id: this.id, mx: x, mz: z, mr: r });
   }
 
+  // Tell the player whose milk I just spun out on that they got me — `target` is
+  // their id, so only they react (their cat looks back and laughs). Purely
+  // cosmetic; the spin itself already streamed over the pose channel.
+  sendMilkGloat(target) {
+    if (!this.connected || !target) return;
+    this.transport.send({ type: "milkgloat", id: this.id, target });
+  }
+
   // Claim the host role for this room. Sent when a client that joined as a guest
   // (e.g. via an ?mp=1 link) promotes itself to host — the initial hello's host
   // flag can't change, so peers learn the new host from this. Ties resolve to the
@@ -195,6 +203,9 @@ export class Net {
         break;
       case "milk":
         this._emit("milk", { owner: m.id, x: m.mx, z: m.mz, r: m.mr });
+        break;
+      case "milkgloat":
+        this._emit("milkgloat", m.target);
         break;
       case "finish":
         if (m.id === this.id) break;

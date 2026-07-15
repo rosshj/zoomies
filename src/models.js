@@ -954,6 +954,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       tailX: { a: 0, v: 0 },
       headLean: { a: 0, v: 0 },
       headPitch: { a: 0, v: 0 },
+      gloatYaw: { a: 0, v: 0 }, // head cranks over the shoulder for a gloating look-back
     },
   };
   return cat;
@@ -964,7 +965,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
 // appendages lag and overshoot via simple spring-dampers so they whip around
 // corners and flatten back under acceleration. `toot` lifts the tail.
 // `celebrate` triggers the victory pose: sunglasses drop on and one paw pumps.
-export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false, allowBlink = false) {
+export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false, allowBlink = false, gloat = false) {
   if (!rig) return;
   const sp = rig.springs;
   const step = (s, target, k, d) => {
@@ -980,12 +981,21 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
   step(sp.headLean, -lat * 0.4, 65, 10);
   step(sp.headPitch, lon * 0.2, 70, 11);
 
+  // --- Gloat: crank the head back over the shoulder and giggle (e.g. your spilled
+  // milk just spun a rival out). The spring eases the look-back in AND out; the
+  // giggle is a quick nod whose amplitude follows the look-back so it fades cleanly.
+  const GLOAT_YAW = -2.15; // radians over the left shoulder
+  step(sp.gloatYaw, gloat ? GLOAT_YAW : 0, 60, 12);
+  const gloatAmt = sp.gloatYaw.a / GLOAT_YAW; // 0 (forward) .. 1 (fully looking back)
+  rig.gloatPhase = gloatAmt > 0.02 ? (rig.gloatPhase || 0) + dt * 17 : 0;
+  const giggle = Math.sin(rig.gloatPhase) * 0.3 * gloatAmt;
+
   rig.earL.rotation.set(sp.earBack.a, 0, sp.earSway.a);
   rig.earR.rotation.set(sp.earBack.a, 0, sp.earSway.a);
   rig.whiskerL.rotation.y = sp.whisker.a;
   rig.whiskerR.rotation.y = sp.whisker.a;
   rig.tail.rotation.set(sp.tailX.a, sp.tailY.a, 0);
-  rig.head.rotation.set(sp.headPitch.a, 0, sp.headLean.a);
+  rig.head.rotation.set(sp.headPitch.a + giggle, sp.gloatYaw.a, sp.headLean.a + gloatAmt * 0.25);
 
   // --- Victory celebration: shades drop on, right paw pumps the air ---
   if (celebrate) {
