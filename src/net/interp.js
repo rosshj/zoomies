@@ -36,35 +36,80 @@ export function sampleBuffer(buffer, rt, maxExtrapMs = 250) {
   // Before our oldest sample (just joined / stalled): hold the oldest pose.
   if (rt <= first.t) return { ...first, extrapolated: false };
 
-  // After our newest sample: dead-reckon forward, capped.
+  // After our newest sample: dead-reckon forward, capped. Estimate the kart's
+  // TURN RATE + acceleration from the two newest snapshots and integrate along
+  // the resulting circular arc — constant-velocity dead-reckoning cut corners and
+  // flew karts off on turns, which capped how far we could safely predict. `f`
+  // carries the last snapshot's flags so the ghost keeps its visual state. (n>=2
+  // here: the single-sample case returned above.)
   if (rt >= last.t) {
     const dt = Math.min(rt - last.t, maxExtrapMs) / 1000; // seconds, capped
+    const prev = buffer[n - 2];
+    const span = (last.t - prev.t) / 1000;
+    let omega = 0; // turn rate (rad/s)
+    let accel = 0; // longitudinal accel (u/s²)
+    if (span > 1e-4) {
+      let dh = last.h - prev.h;
+      while (dh > Math.PI) dh -= Math.PI * 2;
+      while (dh < -Math.PI) dh += Math.PI * 2;
+      omega = Math.max(-3, Math.min(3, dh / span));
+      accel = Math.max(-60, Math.min(60, (last.s - prev.s) / span));
+    }
+    const sAvg = last.s + accel * dt * 0.5; // mean speed over the step
+    let x, z;
+    if (Math.abs(omega) < 1e-3) {
+      x = last.x + Math.sin(last.h) * sAvg * dt; // ~straight: avoid /omega blowup
+      z = last.z + Math.cos(last.h) * sAvg * dt;
+    } else {
+      // ∫ (sin,cos)(h0+ωτ)·s dτ over [0,dt] — the arc a constant turn rate traces.
+      const h1 = last.h + omega * dt;
+      x = last.x + (sAvg / omega) * (Math.cos(last.h) - Math.cos(h1));
+      z = last.z + (sAvg / omega) * (Math.sin(h1) - Math.sin(last.h));
+    }
     return {
-      x: last.x + Math.sin(last.h) * last.s * dt,
+      x,
       y: last.y,
-      z: last.z + Math.cos(last.h) * last.s * dt,
-      h: last.h,
+      z,
+      h: last.h + omega * dt,
       p: last.p,
-      s: last.s,
+      s: last.s + accel * dt,
+      f: last.f,
       t: rt,
       extrapolated: true,
     };
   }
 
-  // Find the pair (a, b) with a.t <= rt <= b.t and interpolate.
+  // Find the pair (a, b) with a.t <= rt <= b.t and interpolate. Position uses
+  // CUBIC HERMITE with each snapshot's velocity as the tangent, so at 16 Hz the
+  // path curves through corners instead of cutting them in straight chords (what
+  // linear lerp did). Velocity is V = (sin h, cos h) * s — the same model the
+  // dead-reckon branch above assumes — scaled to the Hermite parameter u∈[0,1]
+  // by the span in seconds (dP/du = dP/dt * span_sec).
   for (let i = 0; i < n - 1; i++) {
     const a = buffer[i];
     const b = buffer[i + 1];
     if (rt >= a.t && rt <= b.t) {
       const span = b.t - a.t || 1;
-      const f = (rt - a.t) / span;
+      const u = (rt - a.t) / span;
+      const u2 = u * u;
+      const u3 = u2 * u;
+      const h00 = 2 * u3 - 3 * u2 + 1;
+      const h10 = u3 - 2 * u2 + u;
+      const h01 = -2 * u3 + 3 * u2;
+      const h11 = u3 - u2;
+      const spanSec = span / 1000;
+      const maX = Math.sin(a.h) * a.s * spanSec;
+      const maZ = Math.cos(a.h) * a.s * spanSec;
+      const mbX = Math.sin(b.h) * b.s * spanSec;
+      const mbZ = Math.cos(b.h) * b.s * spanSec;
       return {
-        x: lerp(a.x, b.x, f),
-        y: lerp(a.y, b.y, f),
-        z: lerp(a.z, b.z, f),
-        h: lerpAngle(a.h, b.h, f),
-        p: lerpAngle(a.p, b.p, f),
-        s: lerp(a.s, b.s, f),
+        x: h00 * a.x + h10 * maX + h01 * b.x + h11 * mbX,
+        y: lerp(a.y, b.y, u), // y has no velocity channel → linear
+        z: h00 * a.z + h10 * maZ + h01 * b.z + h11 * mbZ,
+        h: lerpAngle(a.h, b.h, u), // heading is authoritative facing (drift), not tangent
+        p: lerpAngle(a.p, b.p, u),
+        s: lerp(a.s, b.s, u),
+        f: u < 0.5 ? a.f : b.f, // nearest snapshot's flags
         t: rt,
         extrapolated: false,
       };

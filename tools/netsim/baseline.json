@@ -1,0 +1,38 @@
+{
+  "lan": {
+    "errDelayedP50": 0.0186,
+    "errDelayedP95": 0.0454,
+    "errAbsP95": 1.5236,
+    "snaps": 0,
+    "extrapShare": 0.9395,
+    "stalenessP50": 32.6562,
+    "rawAccelP95": 34.4423
+  },
+  "wifi": {
+    "errDelayedP50": 0.0587,
+    "errDelayedP95": 0.143,
+    "errAbsP95": 1.9651,
+    "snaps": 0,
+    "extrapShare": 0.9905,
+    "stalenessP50": 43.0777,
+    "rawAccelP95": 0
+  },
+  "cellular": {
+    "errDelayedP50": 0.2746,
+    "errDelayedP95": 1.2832,
+    "errAbsP95": 4.9853,
+    "snaps": 5,
+    "extrapShare": 0.9257,
+    "stalenessP50": 97.1323,
+    "rawAccelP95": 0
+  },
+  "awful": {
+    "errDelayedP50": 0.5446,
+    "errDelayedP95": 67.1777,
+    "errAbsP95": 67.4845,
+    "snaps": 15,
+    "extrapShare": 0.8685,
+    "stalenessP50": 114.0807,
+    "rawAccelP95": 0
+  }
+}

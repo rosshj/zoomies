@@ -108,11 +108,17 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1 }) {
+  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1, rng = Math.random, headless = false }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
     this.skill = skill; // AI speed multiplier (1 = full)
+    // Seeded per-race RNG for the SIM path (AI lane/shield, spinout direction), so
+    // a given seed replays identically. Defaults to Math.random for cosmetic/
+    // preview karts. `headless` skips the whole visual build + _syncMesh so a real
+    // Kart can be stepped in node (determinism tests, cheap forward-sim).
+    this._rng = rng;
+    this._headless = headless;
 
     // State
     this.position = new THREE.Vector3();
@@ -179,10 +185,10 @@ export class Kart {
     this.shootCharge = 0; // player: hold-to-charge level 0..1
     // AI: a fixed preferred lane offset (-1..1) so the field spreads across the
     // road instead of all chasing the exact same line into a corner.
-    this.laneBias = isPlayer ? 0 : (Math.random() * 2 - 1) * 0.55;
+    this.laneBias = isPlayer ? 0 : (rng() * 2 - 1) * 0.55;
     // AI shield reactions are deliberately imperfect: a per-driver chance they
     // even react to a given shot, plus a reaction delay (so fast shots slip by).
-    this.shieldSkill = isPlayer ? 0 : 0.4 + Math.random() * 0.28;
+    this.shieldSkill = isPlayer ? 0 : 0.4 + rng() * 0.28;
     this._threatPrev = false;
     this._shieldTry = false;
     this._shieldDelay = 0;
@@ -195,62 +201,60 @@ export class Kart {
     this.brake = 42;
     this.radius = 1.8; // half-width for road containment
 
-    // Visual
-    this.group = new THREE.Group();
-    // Vehicle rotation order: yaw (heading) first, then pitch and roll in the
-    // kart's LOCAL frame. With the default XYZ order the pitch is applied around
-    // the world axis, so the kart only tilts to the grade when facing ±Z — on a
-    // looping track it mostly wouldn't pitch at all.
-    this.group.rotation.order = "YXZ";
-    const { group: kart, wheels, brakeMat, flames } = createKartModel(color, { style: kartStyle, number: kartNumber });
-    this.wheels = wheels;
-    for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
-    this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
-    this.flames = flames; // boost exhaust flames; shown/flickered while boosting
-    this.group.add(kart);
-    const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor });
-    cat.scale.setScalar(0.62);
-    cat.position.set(0, 0.85, -0.35);
-    this.group.add(cat);
-    this.catRig = cat.userData.rig;
+    this.shielding = false; // STATE (read by hit-blocking), not visual — always set
 
-    // Shield bubble (held protection from hairballs) — a glowing Fresnel energy
-    // orb: bright at the rim, faint fill, with travelling shimmer bands.
-    this.shielding = false;
-    const shield = sharedShield();
-    this.shieldMesh = new THREE.Mesh(shield.geo, shield.mat);
-    this.shieldMesh.position.y = 1.2;
-    this.shieldMesh.visible = false;
-    this.group.add(this.shieldMesh);
-    // Bouncy pop-in/out: an under-damped spring on the orb's "presence" (0 hidden,
-    // ~1 shown, overshooting past 1 on the way up for a springy pop). Seeded
-    // slightly OPEN (a barely-visible dot for the first few frames, e.g. during
-    // the countdown): the orb's TSL material only compiles its render pipeline
-    // the first time the mesh is actually rendered, so without the warm-up the
-    // first shield press mid-race stalled the frame on a shader compile.
+    // Visual — skipped entirely in headless mode (no THREE meshes, no canvas
+    // textures). A headless kart runs the full physics but has no `group`.
+    if (!headless) {
+      this.group = new THREE.Group();
+      // Vehicle rotation order: yaw (heading) first, then pitch and roll in the
+      // kart's LOCAL frame. With the default XYZ order the pitch is applied around
+      // the world axis, so the kart only tilts to the grade when facing ±Z — on a
+      // looping track it mostly wouldn't pitch at all.
+      this.group.rotation.order = "YXZ";
+      const { group: kart, wheels, brakeMat, flames } = createKartModel(color, { style: kartStyle, number: kartNumber });
+      this.wheels = wheels;
+      for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
+      this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
+      this.flames = flames; // boost exhaust flames; shown/flickered while boosting
+      this.group.add(kart);
+      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor });
+      cat.scale.setScalar(0.62);
+      cat.position.set(0, 0.85, -0.35);
+      this.group.add(cat);
+      this.catRig = cat.userData.rig;
+
+      // Shield bubble (held protection from hairballs) — a glowing Fresnel energy
+      // orb: bright at the rim, faint fill, with travelling shimmer bands.
+      const shield = sharedShield();
+      this.shieldMesh = new THREE.Mesh(shield.geo, shield.mat);
+      this.shieldMesh.position.y = 1.2;
+      this.shieldMesh.visible = false;
+      this.group.add(this.shieldMesh);
+      // Soft contact shadow that stays on the ground (even mid-hop). The quad sits
+      // in a holder so it can be spun to the sun azimuth independent of the kart's
+      // heading; _syncMesh stretches it with the sun's lowness for a directional
+      // cast-shadow look without any real shadow-map cost.
+      this.shadowQuad = new THREE.Mesh(
+        new THREE.PlaneGeometry(4.8, 3.1),
+        new THREE.MeshBasicMaterial({
+          map: shadowTexture(),
+          transparent: true,
+          depthWrite: false,
+          toneMapped: false,
+        })
+      );
+      this.shadowQuad.rotation.x = -Math.PI / 2;
+      // Push the shadow toward the anti-sun side (holder +Z faces the sun) so it
+      // trails out from under the chassis instead of hiding directly beneath it.
+      // The holder's Z scale (sun lowness) stretches this offset too.
+      this.shadowQuad.position.z = -1.4;
+      this.groundShadow = new THREE.Group();
+      this.groundShadow.add(this.shadowQuad);
+      this.group.add(this.groundShadow);
+    }
+    // Bouncy pop-in/out spring on the shield orb (read in _syncMesh only).
     this._shieldS = { a: 0.02, v: 0 };
-
-    // Soft contact shadow that stays on the ground (even mid-hop). The quad sits
-    // in a holder so it can be spun to the sun azimuth independent of the kart's
-    // heading; _syncMesh stretches it with the sun's lowness for a directional
-    // cast-shadow look without any real shadow-map cost.
-    this.shadowQuad = new THREE.Mesh(
-      new THREE.PlaneGeometry(4.8, 3.1),
-      new THREE.MeshBasicMaterial({
-        map: shadowTexture(),
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      })
-    );
-    this.shadowQuad.rotation.x = -Math.PI / 2;
-    // Push the shadow toward the anti-sun side (holder +Z faces the sun) so it
-    // trails out from under the chassis instead of hiding directly beneath it.
-    // The holder's Z scale (sun lowness) stretches this offset too.
-    this.shadowQuad.position.z = -1.4;
-    this.groundShadow = new THREE.Group();
-    this.groundShadow.add(this.shadowQuad);
-    this.group.add(this.groundShadow);
 
     // Cat physics signals (cornering / acceleration), smoothed in update().
     this._prevSpeed = 0;
@@ -357,8 +361,8 @@ export class Kart {
     this.shootCooldown = Math.max(this.shootCooldown, 2.0);
     this.driftHeld = false;
     this.driftRamp = 0;
-    this.spinDir = Math.random() < 0.5 ? -1 : 1;
-    this.spinAngVel = this.spinDir * (4.5 + Math.random() * 1.5);
+    this.spinDir = this._rng() < 0.5 ? -1 : 1;
+    this.spinAngVel = this.spinDir * (4.5 + this._rng() * 1.5);
     const fwd = new THREE.Vector3(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.spinVel.copy(fwd).multiplyScalar(Math.abs(this.speed)); // real momentum
     if (impactDir) this.spinVel.addScaledVector(impactDir, 6);
@@ -636,6 +640,7 @@ export class Kart {
   }
 
   _syncMesh() {
+    if (this._headless) return; // no meshes in headless mode — pure physics only
     this.group.position.set(this.position.x, this.groundY + this.y, this.position.z);
     this.group.rotation.y = this.heading;
 

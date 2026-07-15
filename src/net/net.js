@@ -6,7 +6,7 @@
 // transport (loopback for tests, PartyKit today, WebRTC later) changes nothing
 // in gameplay code. See net/loopback.js and net/partysocket.js.
 //
-// Wire protocol (JSON messages, tiny at 6 players / ~18 Hz):
+// Wire protocol (JSON messages, tiny at 6 players / ~16 Hz):
 //   server -> client : {type:'welcome', id}        connection accepted, here's your id
 //                      {type:'pong', c, S}          clock round-trip reply (S = server now)
 //                      {type:'hello', id, name,...}  another player's identity (presence)
@@ -14,20 +14,31 @@
 //                      {type:'bye', id}              a player left
 //   client -> server : {type:'ping', c}             clock round-trip probe
 //                      {type:'hello', id, name,...}  my identity (broadcast on join)
-//                      {type:'state', id, t, x,...}  my pose (broadcast ~18 Hz)
+//                      {type:'state', id, t, x,...}  my pose (broadcast ~16 Hz)
 
 import { ClockSync } from "./clock.js";
 
 export class Net {
-  constructor(transport, identity, { localNow = () => Date.now() } = {}) {
+  // `timers` is injectable so tests can run the ping burst/re-sync loop on a
+  // virtual clock. Defaults MUST stay arrow wrappers — a bare `setTimeout`
+  // reference throws "Illegal invocation" in Chrome when called unbound.
+  constructor(transport, identity, {
+    localNow = () => Date.now(),
+    timers = {
+      setTimeout: (fn, ms) => setTimeout(fn, ms),
+      setInterval: (fn, ms) => setInterval(fn, ms),
+      clearInterval: (id) => clearInterval(id),
+    },
+  } = {}) {
     this.transport = transport;
     this.identity = identity; // { name, color, catColor }
     this.id = null;
     this.connected = false;
     this.clock = new ClockSync(localNow);
     this._localNow = localNow;
+    this._timers = timers;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], finish: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], milk: [], yarn: [], finish: [], host: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -50,6 +61,13 @@ export class Net {
     this.transport.onopen = () => {}; // real readiness comes from 'welcome'
     if (this.transport.open) this.transport.open();
     return this;
+  }
+
+  // Pose send rate (Hz). The transport advertises it (WebRTC runs 30 Hz on the
+  // direct channel; Ably/loopback/party leave it unset → 16 Hz, the relay-safe
+  // default). The session's send loop divides by this.
+  get sendRateHz() {
+    return (this.transport && this.transport.sendRateHz) || 16;
   }
 
   // Server-aligned current time (ms), shared across clients — used to stamp
@@ -99,6 +117,32 @@ export class Net {
     this.transport.send({ type: "hit", id: this.id, target, hx: dir.x, hz: dir.z });
   }
 
+  // Shooter-authoritative yarn: replicate the ball so every client renders a
+  // cosmetic ghost that homes on its local copy of `target` (a RemoteKart id, or
+  // "" for an unlocked roll). The hit itself is reported separately via sendHit,
+  // exactly like ghost hairballs.
+  sendYarn(t, lat, speed, target, life) {
+    if (!this.connected) return;
+    this.transport.send({ type: "yarn", id: this.id, yt: t, yl: lat, ys: speed, tg: target || "", lf: life });
+  }
+
+  // Victim-authoritative milk: replicate a dropped puddle by its final world
+  // position + radius. Each client re-creates the puddle and trips its OWN player
+  // on it, so no hit message is needed (the spin streams via the pose channel).
+  sendMilk(x, z, r) {
+    if (!this.connected) return;
+    this.transport.send({ type: "milk", id: this.id, mx: x, mz: z, mr: r });
+  }
+
+  // Claim the host role for this room. Sent when a client that joined as a guest
+  // (e.g. via an ?mp=1 link) promotes itself to host — the initial hello's host
+  // flag can't change, so peers learn the new host from this. Ties resolve to the
+  // lowest id (see MpSession._onHostClaim).
+  sendHostClaim() {
+    if (!this.connected) return;
+    this.transport.send({ type: "host", id: this.id });
+  }
+
   // Announce that I crossed the finish line. `ft` is my race time (seconds since
   // the synchronized GO), directly comparable across clients for final ordering.
   // ft = elapsed race time (for display). fc = shared-clock instant of finishing,
@@ -146,9 +190,19 @@ export class Net {
       case "hit":
         this._emit("hit", { target: m.target, hx: m.hx, hz: m.hz });
         break;
+      case "yarn":
+        this._emit("yarn", { owner: m.id, t: m.yt, lat: m.yl, speed: m.ys, target: m.tg || null, life: m.lf });
+        break;
+      case "milk":
+        this._emit("milk", { owner: m.id, x: m.mx, z: m.mz, r: m.mr });
+        break;
       case "finish":
         if (m.id === this.id) break;
         this._emit("finish", m.id, m.ft, m.fc);
+        break;
+      case "host":
+        if (m.id === this.id) break;
+        this._emit("host", m.id);
         break;
     }
   }
@@ -158,18 +212,18 @@ export class Net {
   }
   // A quick burst at join nails the clock down fast; then occasional re-syncs.
   _burstPings() {
-    for (let i = 0; i < 4; i++) setTimeout(() => this._ping(), i * 120);
+    for (let i = 0; i < 4; i++) this._timers.setTimeout(() => this._ping(), i * 120);
   }
   _startPing() {
     this._stopPing();
-    this._pingTimer = setInterval(() => {
+    this._pingTimer = this._timers.setInterval(() => {
       this.clock.relaxBestRtt();
       this._ping();
     }, 3000);
   }
   _stopPing() {
     if (this._pingTimer) {
-      clearInterval(this._pingTimer);
+      this._timers.clearInterval(this._pingTimer);
       this._pingTimer = null;
     }
   }

@@ -22,12 +22,14 @@ import { HUD, ordinal } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
-import { Net } from "./net/net.js";
+import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
 import { createPartyTransport } from "./net/partysocket.js";
 import { createAblyTransport } from "./net/ably.js";
 import { createWebRTCTransport } from "./net/webrtc.js";
-import { resolveHost, resolveAblyKey } from "./net/config.js";
-import { RemoteKart, FLAG, INTERP_DELAY } from "./remotekart.js";
+import { resolveHost, resolveAblyKey, resolveRefereeUrl, resolveRefereeRoom } from "./net/config.js";
+import { RemoteKart, FLAG } from "./remotekart.js";
+import { NetRecorder, recorderEnabled } from "./net/recorder.js";
+import { RefereeClient } from "./net/refereeclient.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -498,25 +500,11 @@ function grantItem(kart) {
 
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
-  if (MP.enabled) {
-    // Multiplayer keeps the old networked-safe roster: yarn balls and milk
-    // puddles only simulate locally (no replication protocol yet), so a remote
-    // rival would never see the thing that just spun them out.
-    const wShield = 0.65 - 0.5 * f;
-    const wTri = 0.25 + 0.15 * f;
-    const r = Math.random();
-    if (r < wShield) {
-      kart.giveShield(15);
-      if (kart === player) hud.showToast("🛡️ Shield — 15s!");
-    } else if (r < wShield + wTri) {
-      kart.giveTriShots(3);
-      if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
-    } else {
-      kart.giveCatnip();
-      if (kart === player) hud.showToast("🌿 Catnip boost!");
-    }
-    return true;
-  }
+  // Both yarn and milk now replicate online, so multiplayer uses the SAME roster
+  // as single-player (the old MP-only branch existed solely because those two
+  // items didn't cross the wire yet). Every kart rolls locally; remotes short-
+  // circuit at the top of this function, and the resulting spawn replicates.
+  //
   // Single-player roster. Catnip is the honest comeback item — STRICTLY never
   // rolled near the front (it out-runs everything and grants invincibility),
   // ramping up toward the back. The rest splits between milk (placed trap),
@@ -733,6 +721,10 @@ function raceRoster() {
   return [playerCfg, ...ai];
 }
 
+// Per-race seeded RNG for the SIM path (grid shuffle, AI lane/shield, spinouts),
+// so a given world seed replays identically. Re-forked each race in buildKarts.
+let _simRng = Math.random;
+
 function buildKarts() {
   // Tear down last race's karts properly: freeing the merged geometries + the
   // per-kart materials (shared ones are skipped) releases their GPU buffers
@@ -742,6 +734,7 @@ function buildKarts() {
     _disposeGroup(k.group);
   }
   karts = [];
+  _simRng = makeRng(WORLD_SEED + "|sim"); // fresh seeded stream for this race
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
   // humans-only and time trial is solo, so both are just the player's kart.
@@ -752,13 +745,13 @@ function buildKarts() {
   const slots = roster.map((_, i) => i);
   if (!MP.enabled) {
     for (let i = slots.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(_simRng() * (i + 1));
       [slots[i], slots[j]] = [slots[j], slots[i]];
     }
   }
   const diff = AI_DIFFICULTY[DIFFICULTY] || AI_DIFFICULTY.hard;
   roster.forEach((cfg, i) => {
-    const kart = new Kart(cfg);
+    const kart = new Kart({ ...cfg, rng: _simRng });
     // Scale the AI down for the chosen difficulty (hard = no change). Slower top
     // speed + weaker rubber-band, set on baseMaxSpeed so the per-frame catch-up
     // (aiActions) scales from it; the rest of the knobs live on kart.diff.
@@ -818,99 +811,183 @@ function makeMpIdentity() {
   return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
 }
 
-// Up to 6 players share a race (you + 5 others). The grid, headlight pool and
-// placement all scale to this; a late 7th joiner is kept out of the rendered field.
-const MAX_PLAYERS = 6;
-const MP = {
-  enabled: false, net: null, remotes: new Map(),
-  parked: new Map(), // id -> { r, since } — soft-despawned ghosts held for revival
-  sendAcc: 0, hudAcc: 0, hud: null,
-  // (adaptive interpolation delay lives in _interpDelay, below)
-  inLobby: false, startAt: 0, connState: null,
-};
-let _interpDelay = INTERP_DELAY; // adaptive: eased toward a target from the live ping
 // Scratch vectors for incoming shoot messages (spawnAt copies its args).
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const _mpShotPos = new THREE.Vector3();
 const _mpShotDir = new THREE.Vector3();
 const _mpShotFan = new THREE.Vector3();
-// Total humans currently in the room (me + rendered remotes).
-function mpPlayerCount() {
-  return 1 + MP.remotes.size;
+
+// The multiplayer session (src/net/session.js) owns the netcode: connection,
+// remote roster, parked ghosts, the 16 Hz send loop and the adaptive interp
+// delay. Everything game/DOM-shaped is injected here; the hooks fire at event
+// time, so they can safely reference functions and state declared later in
+// this module.
+const MP = new MpSession({
+  createRemote: (identity) => {
+    const r = new RemoteKart(identity);
+    decorateKartGroup(r.group);
+    scene.add(r.group);
+    return r;
+  },
+  disposeRemote: (r) => r.dispose(scene),
+  hasLocalPlayer: () => !!player,
+  getPose: () => {
+    let f = 0;
+    if (player.drifting) f |= FLAG.DRIFT;
+    if (player.boosting) f |= FLAG.BOOST;
+    if (player.shielding) f |= FLAG.SHIELD;
+    if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
+    return {
+      x: player.position.x,
+      y: player.groundY + player.y,
+      z: player.position.z,
+      h: player.heading,
+      p: player.slopePitch,
+      s: player.speed,
+      f,
+      pr: player.totalProgress,
+    };
+  },
+  amHost: () => _amHost,
+  hooks: {
+    // Roster changed (peer joined/left) or our own connection opened: refresh
+    // the "N friends here" count immediately, and the lobby if it's showing.
+    onRoster: () => {
+      setMpStatus("connected");
+      if (MP.inLobby) renderLobby();
+    },
+    // Lost a host tiebreak (another client claimed host with a lower id): step
+    // down so the room keeps exactly one host.
+    onHostYield: () => {
+      _amHost = false;
+      try { sessionStorage.setItem("mp-host-seed", ""); } catch { /* ignore */ }
+      if (MP.inLobby) renderLobby();
+    },
+    onConnClosed: () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"),
+    onStart: (at) => beginSyncedRace(at),
+    onShoot: (s) => {
+      // spawnAt copies both vectors, so these scratch temps are safe to reuse
+      // across messages.
+      _mpShotPos.set(s.px, s.py, s.pz);
+      _mpShotDir.set(s.dx, s.dy, s.dz);
+      if (s.t) {
+        // Tri-furball: fan into three, matching the shooter's local spread.
+        for (const a of TRI_FAN) hairballs.spawnAt(_mpShotPos, _mpShotFan.copy(_mpShotDir).applyAxisAngle(UP_Y, a), s.c || 0);
+      } else {
+        hairballs.spawnAt(_mpShotPos, _mpShotDir, s.c || 0);
+      }
+    },
+    onHit: (h) => {
+      // The session already checked the hit targets me; the victim's own shield
+      // (or catnip invincibility) gets last say.
+      if (!player || state !== State.RACING) return;
+      // When a referee is live, its lag-compensated verdict is authoritative — let
+      // it decide the spin so both screens agree, instead of applying twice.
+      if (_ref && _ref.ready) return;
+      if (player.shielding || player.catnipBoosting) return; // catnip = invincible
+      const dir = new THREE.Vector3(h.hx, 0, h.hz);
+      player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
+    },
+    // A remote player dropped milk: replicate the puddle (victim-authoritative —
+    // our own player trips it locally via items.update, so no hit event).
+    onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r }); },
+    // A remote player launched a yarn ball: render a cosmetic ghost that homes on
+    // OUR copy of the target (our own player if we're the mark, else our ghost of
+    // them). The hit stays shooter-authoritative and arrives via onHit.
+    onYarn: (y) => {
+      const tgt = y.target
+        ? (y.target === MP.net.id ? player : (MP.remotes.get(y.target)?.kart ?? null))
+        : null;
+      items.spawnYarnGhost({ t: y.t, lat: y.lat, speed: y.speed, life: y.life, target: tgt });
+    },
+    onRemoteFinish: () => {
+      // If the results screen is already up, slot the late finisher in live.
+      if (state === State.FINISHED) renderResults();
+    },
+    onStatusTick: () => {
+      if (!MP.hud) return;
+      // Refresh the readout through the shared status formatter so peers/ping
+      // update while connected and the live connection state shows otherwise.
+      setMpStatus(MP.net && MP.net.connected ? "connected" : MP.connState || "connecting");
+    },
+    // Dev-only: capture arriving poses so a real cellular session can be replayed
+    // through the netsim harness. Off unless ?rec=1 / the persisted pref is set.
+    onNet: (net) => {
+      if (!recorderEnabled()) return;
+      _netRecorder = new NetRecorder().attach(net);
+      if (MP.hud) attachRecBtn(MP.hud);
+    },
+  },
+});
+
+// The recorder + its export chip live outside the session (they're dev UI/DOM).
+let _netRecorder = null;
+function attachRecBtn(hud) {
+  if (hud.querySelector(".rec-btn")) return;
+  const btn = document.createElement("span");
+  btn.className = "rec-btn";
+  btn.textContent = " REC ⬇";
+  // The HUD is pointer-events:none so it never eats taps; re-enable just the chip.
+  btn.style.cssText = "pointer-events:auto;cursor:pointer;color:#ff9a8a";
+  btn.addEventListener("click", () => {
+    const ok = _netRecorder && _netRecorder.export();
+    btn.textContent = ok ? ` SAVED (${_netRecorder.count})` : " no data yet";
+    setTimeout(() => { btn.textContent = " REC ⬇"; }, 1500);
+  });
+  hud.appendChild(btn);
 }
 
-// The same sorted id order assigns starting-grid slots so players don't stack up.
-function mpOrderedIds() {
-  const ids = [MP.net && MP.net.id, ...MP.remotes.keys()].filter(Boolean);
-  ids.sort();
-  return ids;
+// === Optional race referee (Stage 4; Cloudflare Durable Object) ===============
+// Off unless a referee URL is configured (?ref=wss://… or config.REFEREE_URL) —
+// with none, `_ref` stays null and every guard below is skipped, so the game is
+// byte-for-byte its current self. When it IS configured it runs ALONGSIDE the P2P
+// channel: it streams a light lag-comp feed + forwards hit/finish claims, and the
+// server's verdicts become authoritative — but ONLY while the socket is actually
+// open (`_ref.ready`). A missing/unreachable Worker falls straight back to the
+// existing peer-to-peer behaviour, so it can never leave the game worse off.
+// Deploy + usage: workers/referee/DEPLOY.md.
+let _ref = null;
+let _refTried = false;
+function maybeStartReferee() {
+  if (_ref || _refTried) return;
+  if (!(MP.enabled && MP.net && MP.net.id)) return; // wait for our shared id
+  _refTried = true;
+  if (!refereeEnabled()) return; // no server configured, or turned off in Settings
+  _ref = new RefereeClient({
+    url: resolveRefereeUrl(),
+    room: resolveRefereeRoom(),
+    id: MP.net.id,
+    name: makeMpIdentity().name || "",
+    debug: new URLSearchParams(location.search).has("refdebug"), // ?refdebug=1 → console logs
+    // Authoritative verdict: I was struck. Same last-say rules as the P2P path.
+    onHit: (target, by, dir) => { if (target === MP.net.id) applyRefVictimSpin(dir); },
+    // A finish was ranked by the referee's clock — refresh results if they're up.
+    onFinish: () => { if (state === State.FINISHED) renderResults(); },
+  });
+  _ref.connect();
 }
-// The host is simply the player who CREATED the room (clicked Host Game) — not
-// whoever drew the lowest id. `_amHost` is authoritative for me; the same flag
-// rides in every identity so I can tag the host (👑) in the player list. No
-// lowest-id election (that was the bug), so a guest never transiently sees Start.
-// (If the host leaves, the room just can't launch — host migration is a separate
-// feature.)
-function mpHostId() {
-  if (_amHost && MP.net && MP.net.id) return MP.net.id;
-  for (const r of MP.remotes.values()) if (r.host) return r.id;
-  return null;
+function applyRefVictimSpin(dir) {
+  if (!player || state !== State.RACING) return;
+  if (player.shielding || player.catnipBoosting) return; // shield/catnip = invincible
+  const v = new THREE.Vector3(dir ? dir.x : 0, 0, dir ? dir.z : 0);
+  player.spinOut(v.lengthSq() > 0.0001 ? v : null);
 }
+// A lightweight pose for the referee's lag-comp buffer — it only reads SHIELD (to
+// rewind shield state to fire-time) plus position + progress.
+function refPose() {
+  let f = 0;
+  if (player.shielding) f |= FLAG.SHIELD;
+  return { t: MP.net.now(), x: player.position.x, z: player.position.z, f, pr: player.totalProgress };
+}
+
+// Thin wrappers so the many existing call sites read as before.
+function mpPlayerCount() { return MP.playerCount(); }
+function mpOrderedIds() { return MP.orderedIds(); }
+function mpHostId() { return MP.hostId(); }
 function mpIsHost() {
   return !!(MP.enabled && _amHost);
 }
-function mpGridSlot() {
-  const i = MP.net ? mpOrderedIds().indexOf(MP.net.id) : 0;
-  return Math.max(0, i);
-}
-
-// Soft-despawn grace: a peer whose presence flaps (a mobile reconnect) is "parked"
-// hidden for this long and REVIVED on rejoin, instead of being destroyed and
-// rebuilt. The old destroy/recreate churned a fresh Kart every blip — and
-// dispose() only removes from the scene (it can't free the cat's shared materials
-// safely), so that churn leaked GPU memory until the tab crashed. Parked ghosts
-// live OUTSIDE MP.remotes, so peer counts / placement / rendering see only the
-// active field, unchanged.
-const REMOTE_GRACE_MS = 12000;
-
-function mpSpawn(identity) {
-  if (MP.remotes.has(identity.id)) return;
-  // Revive a parked ghost (peer flapped and returned) — reuse the Kart and its
-  // interpolation buffer instead of churning a new one.
-  const parked = MP.parked.get(identity.id);
-  if (parked) {
-    MP.parked.delete(identity.id);
-    parked.r.host = !!identity.host;
-    parked.r.group.visible = true;
-    MP.remotes.set(identity.id, parked.r);
-    return;
-  }
-  // Cap the rendered field at MAX_PLAYERS (you + MAX_PLAYERS-1 remotes). Beyond
-  // that the grid/headlight pool run out, so extra joiners aren't drawn into the
-  // race. (Realistically a friends' room is ≤6; a true server-side cap would need
-  // room logic Ably's client-side presence doesn't provide.)
-  if (MP.remotes.size >= MAX_PLAYERS - 1) return;
-  const r = new RemoteKart(identity);
-  r.host = !!identity.host; // remember who the room's host is (for the 👑 + Start)
-  decorateKartGroup(r.group);
-  scene.add(r.group);
-  MP.remotes.set(identity.id, r);
-}
-// `force` tears the ghost down immediately (leaving multiplayer); otherwise it's a
-// soft despawn — parked for possible revival within the grace window, then reaped
-// by the sweeper in updateMultiplayer.
-function mpDespawn(id, force = false) {
-  const r = MP.remotes.get(id) || (MP.parked.get(id) && MP.parked.get(id).r);
-  if (!r) return;
-  MP.remotes.delete(id);
-  if (force) {
-    MP.parked.delete(id);
-    r.dispose(scene);
-    return;
-  }
-  if (r.group) r.group.visible = false;
-  MP.parked.set(id, { r, since: performance.now() });
-}
+function mpGridSlot() { return MP.gridSlot(); }
 
 function mpDebugHud() {
   const el = document.createElement("div");
@@ -922,15 +999,36 @@ function mpDebugHud() {
   return el;
 }
 
-// Peer-to-peer opt-in. A URL param (?rtc=1) can't be set from inside an installed
-// PWA (no address bar; it launches from a fixed start_url), so a persisted flag
-// (Settings → Advanced) is how PWA players enable it. Either source counts.
+// Peer-to-peer is now the DEFAULT transport (direct hop vs Ably's cloud relay);
+// a NAT-blocked peer falls back to Ably automatically, so default-on is safe. You
+// can opt OUT (?rtc=0, or Settings → Advanced) to force the Ably relay. The pref
+// is tri-state so an explicit choice overrides the default either way.
 const RTC_KEY = "zoomies-rtc";
 function readRtcPref() {
-  try { return localStorage.getItem(RTC_KEY) === "1"; } catch { return false; }
+  try { const v = localStorage.getItem(RTC_KEY); return v === null ? null : (v === "1" ? "on" : "off"); }
+  catch { return null; }
 }
 function rtcEnabled() {
-  return new URLSearchParams(location.search).has("rtc") || readRtcPref();
+  const q = new URLSearchParams(location.search);
+  if (q.get("rtc") === "0") return false;   // explicit link opt-out
+  if (q.has("rtc")) return true;            // ?rtc / ?rtc=1 forces on (old links still work)
+  return readRtcPref() !== "off";           // unset or "on" → enabled (default)
+}
+
+// The optional referee (Stage 4b) follows the SAME shape as the P2P toggle, because
+// the phone app can't be switched by a URL: the installed PWA launches with no query
+// string and the native app loads capacitor://localhost with an empty location.search
+// (see workers/referee/DEPLOY.md). So the referee URL is BAKED into config
+// (REFEREE_URL / resolveRefereeUrl) like the Ably key, and this pref is the on/off
+// switch. Default ON whenever a URL is configured, unless explicitly turned off.
+const REFEREE_KEY = "zoomies-referee";
+function readRefereePref() {
+  try { const v = localStorage.getItem(REFEREE_KEY); return v === null ? null : (v === "1" ? "on" : "off"); }
+  catch { return null; }
+}
+function refereeEnabled() {
+  if (!resolveRefereeUrl()) return false; // no server configured → never on
+  return readRefereePref() !== "off";     // unset or "on" → enabled (default)
 }
 
 function initMultiplayer() {
@@ -951,63 +1049,9 @@ function initMultiplayer() {
     : ablyKey
       ? createAblyTransport({ key: ablyKey, room: WORLD_SEED, onState: setMpStatus })
       : createPartyTransport({ host, room: WORLD_SEED });
-  transportP
-    .then((transport) => {
-      const net = new Net(transport, makeMpIdentity());
-      MP.net = net;
-      net.on("peer", (identity) => {
-        mpSpawn(identity);
-        setMpStatus("connected"); // refresh the "N friends here" count immediately
-        if (MP.inLobby) renderLobby();
-      });
-      net.on("peerleave", (id) => {
-        mpDespawn(id);
-        setMpStatus("connected");
-        if (MP.inLobby) renderLobby();
-      });
-      // Once our own connection is acknowledged, fill in the lobby (it may have
-      // been opened before the socket finished connecting).
-      net.on("open", () => {
-        setMpStatus("connected");
-        if (MP.inLobby) renderLobby();
-      });
-      net.on("close", () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"));
-      net.on("state", (id, pose) => {
-        const r = MP.remotes.get(id);
-        if (r) r.pushState(pose);
-      });
-      net.on("start", (at) => beginSyncedRace(at));
-      net.on("shoot", (s) => {
-        // spawnAt copies both vectors, so these scratch temps are safe to reuse
-        // across messages.
-        _mpShotPos.set(s.px, s.py, s.pz);
-        _mpShotDir.set(s.dx, s.dy, s.dz);
-        if (s.t) {
-          // Tri-furball: fan into three, matching the shooter's local spread.
-          for (const a of TRI_FAN) hairballs.spawnAt(_mpShotPos, _mpShotFan.copy(_mpShotDir).applyAxisAngle(UP_Y, a), s.c || 0);
-        } else {
-          hairballs.spawnAt(_mpShotPos, _mpShotDir, s.c || 0);
-        }
-      });
-      net.on("hit", (h) => {
-        // Only the targeted client reacts; the victim's own shield gets last say.
-        if (h.target !== net.id || !player || state !== State.RACING) return;
-        if (player.shielding || player.catnipBoosting) return; // catnip = invincible
-        const dir = new THREE.Vector3(h.hx, 0, h.hz);
-        player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
-      });
-      net.on("finish", (id, ft, fc) => {
-        const r = MP.remotes.get(id);
-        if (r) {
-          r.finished = true;
-          r.finishTime = ft;
-          r.finishClock = fc || 0;
-        }
-        // If the results screen is already up, slot the late finisher in live.
-        if (state === State.FINISHED) renderResults();
-      });
-      net.connect();
-    })
+  // The session wires the Net handlers (routing game/DOM reactions back through
+  // the hooks defined at construction) and connects once the transport resolves.
+  MP.begin(transportP, makeMpIdentity)
     .catch((err) => {
       console.warn("[zoomies] multiplayer failed to start:", err);
       // Keep MP.enabled so the lobby/menu can SHOW the failure instead of silently
@@ -1065,60 +1109,17 @@ function setMpStatus(state, reason) {
   if (state === "failed" && reason && typeof hud !== "undefined" && hud) hud.showToast?.(reason);
 }
 
-// Broadcast my pose (~18 Hz) and interpolate every ghost kart. Runs every frame
-// while connected, in any game state, so remote karts glide continuously.
+// Broadcast my pose (~16 Hz) and interpolate every ghost kart. Runs every frame
+// while connected, in any game state, so remote karts glide continuously. The
+// real work (send loop, adaptive interp delay, ghost updates, parked reaper)
+// lives in MpSession.update — headless, so the netsim harness measures the
+// exact code that ships.
 function updateMultiplayer(dt) {
-  if (!MP.enabled || !MP.net) return;
-  const net = MP.net;
-  if (net.connected && player) {
-    MP.sendAcc += dt;
-    // ~16 Hz. Interpolation (with the 200ms delay) reconstructs smooth motion from
-    // this, and the lower rate roughly halves the per-channel message load vs the
-    // old 25 Hz — easing the relay so a busy room is less likely to drop/throttle
-    // a player's updates (which froze their kart on everyone else's screen).
-    if (MP.sendAcc >= 1 / 16) {
-      MP.sendAcc = 0;
-      let f = 0;
-      if (player.drifting) f |= FLAG.DRIFT;
-      if (player.boosting) f |= FLAG.BOOST;
-      if (player.shielding) f |= FLAG.SHIELD;
-      if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
-      net.sendState({
-        x: player.position.x,
-        y: player.groundY + player.y,
-        z: player.position.z,
-        h: player.heading,
-        p: player.slopePitch,
-        s: player.speed,
-        f,
-        pr: player.totalProgress,
-      });
-    }
-  }
-  // Adapt the interpolation delay to the live connection: cover roughly one-way
-  // latency (half the round-trip) plus a jitter margin, so a laggy link buffers
-  // more (smoother, fewer dead-reckon snaps) and a snappy link buffers less (more
-  // responsive). Eased slowly so the render time never lurches.
-  const rttMs = net.clock && Number.isFinite(net.clock.rtt) ? net.clock.rtt : 0;
-  const targetDelay = Math.max(180, Math.min(280, rttMs * 0.5 + 150));
-  _interpDelay += (targetDelay - _interpDelay) * Math.min(1, dt * 0.5); // ~2s time-constant
-  const rt = net.now() - _interpDelay; // render remote karts slightly in the past
-  for (const r of MP.remotes.values()) r.update(rt, dt);
-  // Reap parked ghosts whose grace has elapsed (peer really left, not a flap).
-  if (MP.parked.size) {
-    const nowMs = performance.now();
-    for (const [id, p] of MP.parked) {
-      if (nowMs - p.since > REMOTE_GRACE_MS) { p.r.dispose(scene); MP.parked.delete(id); }
-    }
-  }
-
-  MP.hudAcc += dt;
-  if (MP.hudAcc >= 0.5 && MP.hud) {
-    MP.hudAcc = 0;
-    // Refresh the readout through the shared status formatter so peers/ping update
-    // while connected and the live connection state shows otherwise.
-    setMpStatus(net.connected ? "connected" : MP.connState || "connecting");
-  }
+  MP.update(dt);
+  // Optional referee: connect once we have our shared id, then stream a throttled
+  // lag-comp feed while racing. Both are no-ops when no referee is configured.
+  maybeStartReferee();
+  if (_ref && _ref.ready && player && state === State.RACING) _ref.sendState(refPose());
 }
 
 initMultiplayer();
@@ -2374,14 +2375,32 @@ function applyRtcUI() {
   }
 }
 rtcToggle?.addEventListener("click", () => {
-  const on = !readRtcPref();
-  try {
-    if (on) localStorage.setItem(RTC_KEY, "1");
-    else localStorage.removeItem(RTC_KEY);
-  } catch { /* ignore */ }
+  // Persist an EXPLICIT choice ("1"/"0") so it overrides the default-on either way.
+  const on = !rtcEnabled();
+  try { localStorage.setItem(RTC_KEY, on ? "1" : "0"); } catch { /* ignore */ }
   applyRtcUI();
 });
 applyRtcUI();
+
+// Referee toggle (Stage 4b) — same shape as the P2P toggle. When no referee URL is
+// configured it reads a disabled "Not set" so it's clear you must deploy + bake the
+// URL into config first (workers/referee/DEPLOY.md).
+const refereeToggle = document.getElementById("set-referee-toggle");
+function applyRefereeUI() {
+  if (!refereeToggle) return;
+  const hasUrl = !!resolveRefereeUrl();
+  const on = refereeEnabled();
+  refereeToggle.textContent = !hasUrl ? "Not set" : on ? "On" : "Off";
+  refereeToggle.classList.toggle("off", !on);
+  refereeToggle.disabled = !hasUrl;
+}
+refereeToggle?.addEventListener("click", () => {
+  if (!resolveRefereeUrl()) return; // nothing to enable until a server is configured
+  const on = !refereeEnabled();
+  try { localStorage.setItem(REFEREE_KEY, on ? "1" : "0"); } catch { /* ignore */ }
+  applyRefereeUI();
+});
+applyRefereeUI();
 
 // "Advanced" expander hides the debug toggles (FPS counter, Tilt debug) so the
 // settings menu stays tidy for normal players.
@@ -3437,7 +3456,19 @@ document.getElementById("mode-done")?.addEventListener("click", () => closeSubSc
 // The click is the user gesture beginRace needs for fullscreen + motion permission.
 function hostGame() {
   if (!MP.enabled) enterMultiplayer();
+  else if (!mpIsHost()) claimHost(); // already connected as a guest (?mp=1 link) → take host
   beginRace(); // gesture setup + (MP.enabled) enterLobby
+}
+// Promote an already-connected client to host. Needed because arriving via an
+// ?mp=1 link auto-connects you as a guest, so hostGame()'s enterMultiplayer()
+// (which crowns you) is skipped — without this, a room where everyone joined by
+// link has no host and can never start. Broadcasts the claim so peers converge.
+function claimHost() {
+  if (!MP.enabled || !MP.net) return;
+  _amHost = true;
+  try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
+  MP.announceHost();
+  if (MP.inLobby) renderLobby();
 }
 // Join by code: a friend's code IS their world seed, so reload into that world
 // with multiplayer on and auto-open the lobby. enableMotion() here grabs iOS
@@ -3478,18 +3509,10 @@ function enterMultiplayer() {
 // Drop the room connection + remote karts (used when switching back to a solo
 // mode on the Game Mode screen). Pure teardown — the caller owns the UI state.
 function teardownMultiplayer() {
-  if (MP.net) {
-    try { MP.net.close(); } catch { /* ignore */ }
-    MP.net = null;
-  }
-  for (const id of [...MP.remotes.keys()]) mpDespawn(id, true);
-  for (const [, p] of MP.parked) p.r.dispose(scene); // drop any parked ghosts too
-  MP.parked.clear();
-  MP.enabled = false;
+  MP.teardown(); // netcode teardown: close the connection, drop remotes + parked ghosts
+  if (_ref) { _ref.close(); _ref = null; _refTried = false; } // drop the referee link too
   _mpWantsHigh = false; // next MP session re-defaults to lean
   applyMpQuality(); // restore the pre-multiplayer graphics setting
-  MP.inLobby = false;
-  MP.startAt = 0;
   if (MP.hud) { MP.hud.remove(); MP.hud = null; }
   const u = new URL(location.href);
   u.searchParams.delete("mp");
@@ -3515,9 +3538,10 @@ function inviteURL() {
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", WORLD_SEED);
   u.searchParams.set("mp", "1");
-  // Carry the peer-to-peer flag so friends who open the link join the same P2P
-  // room (host + guests must agree on the transport to get direct connections).
-  if (rtcEnabled()) u.searchParams.set("rtc", "1");
+  // P2P is the default, so a normal link needs no flag (both ends default on).
+  // Only propagate an opt-OUT, so a host who forced the Ably relay keeps guests
+  // on the same transport.
+  if (!rtcEnabled()) u.searchParams.set("rtc", "0");
   return u.toString();
 }
 
@@ -3772,12 +3796,16 @@ function renderLobby() {
     }
   }
   const host = mpIsHost();
+  // No host in the room yet (everyone arrived via an ?mp=1 link)? Let anyone launch
+  // — clicking Start claims host first (see the lobby-start handler). So a room can
+  // never get stuck with nobody able to start.
+  const canStart = host || !mpHostId();
   const startBtn = document.getElementById("lobby-start");
   const waiting = document.getElementById("lobby-waiting");
   const ready = document.getElementById("lobby-ready");
-  if (startBtn) startBtn.style.display = host ? "" : "none"; // only the host launches
-  if (waiting) waiting.style.display = host ? "none" : "";   // others wait for the host
-  if (ready) ready.style.display = host ? "none" : "";       // joiner: enable tilt first
+  if (startBtn) startBtn.style.display = canStart ? "" : "none"; // host (or a hostless room) launches
+  if (waiting) waiting.style.display = canStart ? "none" : "";   // others wait for the host
+  if (ready) ready.style.display = canStart ? "none" : "";       // joiner: enable tilt first
 }
 
 // A joiner reaches the lobby via a reload, which loses the motion listener AND (on
@@ -3835,7 +3863,12 @@ const COUNTDOWN_LEAD_MS = 4000;
 const lobbyStartBtn = document.getElementById("lobby-start");
 if (lobbyStartBtn) {
   lobbyStartBtn.addEventListener("click", () => {
-    if (!MP.enabled || !MP.net || !mpIsHost()) return;
+    if (!MP.enabled || !MP.net) return;
+    // Hostless room (everyone joined via a link): claim host, then launch.
+    if (!mpIsHost()) {
+      if (mpHostId()) return; // a real host exists — this button shouldn't have shown
+      claimHost();
+    }
     const at = MP.net.now() + COUNTDOWN_LEAD_MS;
     MP.net.sendStart(at);
     beginSyncedRace(at);
@@ -4135,13 +4168,9 @@ function updateCamera(dt, snap = false) {
 // Heavier karts (the player) shove lighter ones aside and barely slow down, so
 // you can push your way through traffic. Impulses go into each kart's decaying
 // `knock` velocity for a springy bumper-car feel.
-// Shared kart-vs-kart collision constants, used by BOTH single-player and the
-// multiplayer remote-kart path so the two can never drift out of parity.
-const KART_COLLIDE_MIN = 4.4; // contact diameter
-function kartBumpPower(aSpeed, bSpeed) {
-  // Bumper impulse, scaled by how fast the pair is moving.
-  return 10 + (Math.abs(aSpeed) + Math.abs(bSpeed)) * 0.4;
-}
+// Shared kart-vs-kart collision constants (KART_COLLIDE_MIN, kartBumpPower) are
+// imported from net/session.js and used by BOTH this single-player path and the
+// multiplayer remote-kart path, so the two can never drift out of parity.
 
 function resolveCollisions() {
   for (let i = 0; i < karts.length; i++) {
@@ -4197,65 +4226,13 @@ function resolveCollisions() {
   }
 }
 
-// Multiplayer: bump against remote ghost karts. We only ever move OUR OWN player
-// out of the overlap — the ghost's pose is network-driven, so nudging it would
-// just fight interpolation and jitter. The other client resolves the mirror
-// collision against our ghost, so both sides agree without any referee.
+// Multiplayer: bump against remote ghost karts (the full resolution lives in
+// MpSession.resolveRemoteCollisions — we only ever move OUR OWN player out of
+// the overlap, since the ghost's pose is network-driven; the other client
+// resolves the mirror collision against our ghost, so both sides agree with no
+// referee).
 function resolveRemoteCollisions() {
-  if (!MP.enabled || !player) return;
-  const min = KART_COLLIDE_MIN;
-  for (const [rid, r] of MP.remotes) {
-    if (!r._ready) continue; // no real pose yet — don't collide at the origin
-    const g = r.kart;
-    const dx = g.position.x - player.position.x;
-    const dz = g.position.z - player.position.z;
-    const distSq = dx * dx + dz * dz;
-    if (distSq <= 0.0001 || distSq >= min * min) continue;
-
-    const dist = Math.sqrt(distSq);
-    const nx = dx / dist;
-    const nz = dz / dist;
-    const overlap = min - dist;
-
-    // The masses match single-player (you're 1.35, the ghost is 1.0 — same as
-    // you-vs-AI), so the shares below are EXACTLY what resolveCollisions() uses.
-    const ima = 1 / player.mass;
-    const img = 1 / g.mass;
-    const inv = ima + img;
-    const sp = ima / inv; // player's share
-    const sg = img / inv; // ghost's share
-
-    // Position: the player still takes the WHOLE separation (the ghost can't move
-    // authoritatively, and clearing the overlap in one frame keeps repeated
-    // contact from flinging the ghost). This is a position detail, not the carom.
-    player.position.x -= nx * overlap;
-    player.position.z -= nz * overlap;
-
-    // Carom: the player's knock is now the SAME mass-share bumper impulse as
-    // single-player (no amplification), so ramming a rival online feels exactly
-    // like ramming an AI. This knock moves the player's real position, which
-    // propagates over the network — the other client independently resolves the
-    // mirror contact against its ghost of us, so both sides feel a bump with no
-    // referee (they needn't match exactly).
-    const power = kartBumpPower(player.speed, g.speed);
-    player.knock.x -= nx * power * sp;
-    player.knock.z -= nz * power * sp;
-    player.speed *= 0.99; // same tiny scrub as single-player
-
-    // Cosmetic-only nudge on the ghost (instant local feedback) at the ghost's
-    // mass share — the authoritative slide arrives over the network shortly after.
-    r.bump(nx, nz, power * sg);
-
-    // Catnip ram across the network: tell the rival to spin out (their client
-    // honours their own shield). Debounced so contact doesn't spam hits.
-    if (player.catnipBoosting && MP.net) {
-      const now = performance.now();
-      if (!r._lastRam || now - r._lastRam > 1200) {
-        r._lastRam = now;
-        MP.net.sendHit(rid, { x: nx, z: nz });
-      }
-    }
-  }
+  MP.resolveRemoteCollisions(player);
 }
 
 // --- Placement ---
@@ -4320,10 +4297,28 @@ function fireYarn(kart) {
       target = other;
     }
   }
-  items.spawnYarn(kart, target);
+  // Multiplayer: rivals are remote ghosts (not in `karts`). Lock onto the nearest
+  // ghost ahead by lap progress (ghosts have no trackT) and home on the ghost the
+  // shooter sees, so the authoritative world-space hit matches the shooter's screen.
+  let tgtRemote = null;
+  if (MP.enabled) {
+    for (const r of MP.remotes.values()) {
+      if (!r._ready || r.finished) continue;
+      const rf = ((r.totalProgress % 1) + 1) % 1; // within-lap fraction
+      let gap = (rf - kart.trackT) % 1;
+      if (gap < 0) gap += 1;
+      if (gap < best) { best = gap; tgtRemote = r; target = r.kart; }
+    }
+  }
+  const y = items.spawnYarn(kart, target);
   effects.tootBurst(kart, 1.4, false); // launch kick: the ball leaves in a puff
   audio.shoot(kart === player ? null : kart.position);
   kart.shootCooldown = SHOOT_RECHARGE;
+  // Replicate the ball (exact values read back from the record) so every client
+  // renders a homing ghost; the hit rides sendHit from items.update, like hairballs.
+  if (MP.enabled && MP.net && kart === player) {
+    MP.net.sendYarn(y.t, y.lat, y.speed, tgtRemote ? tgtRemote.id : null, y.life);
+  }
   return true;
 }
 
@@ -4425,7 +4420,7 @@ function aiActions(dt) {
       if (!k._yarnPlan) {
         const skill = k.diff ? k.diff.shield : 1;
         const hopBias = k.drifting && k.driftCharge > 0.8 ? 0.75 : 0.4;
-        k._yarnPlan = Math.random() < skill * hopBias ? 1 : 2; // 1 = hop, 2 = shield
+        k._yarnPlan = _simRng() < skill * hopBias ? 1 : 2; // 1 = hop, 2 = shield
       }
       if (k._yarnPlan === 2) threat = true;
       else if (yEta < 0.34 && !k.airborne && !k.shielding) k.jump(); // clean hop
@@ -4436,8 +4431,8 @@ function aiActions(dt) {
       // Sometimes they just don't react — and a charged drift makes shielding
       // genuinely less attractive (raising it forfeits the mini-turbo).
       const keepDrift = k.drifting && k.driftCharge > 1.0 ? 0.55 : 1;
-      k._shieldTry = Math.random() < k.shieldSkill * keepDrift;
-      k._shieldDelay = 0.18 + Math.random() * 0.32; // human-ish reaction time
+      k._shieldTry = _simRng() < k.shieldSkill * keepDrift;
+      k._shieldDelay = 0.18 + _simRng() * 0.32; // human-ish reaction time
     }
     if (threat) k._shieldDelay -= dt;
     k.shielding = threat && k._shieldTry && k._shieldDelay <= 0;
@@ -4453,7 +4448,7 @@ function aiActions(dt) {
         const skill = k.diff ? k.diff.shield : 1;
         const dodge = a >= 0 ? -1 : 1; // swerve to the emptier side
         k.steerInput = Math.max(-1, Math.min(1, k.steerInput + dodge * skill * 0.55));
-        if (pa.dist < 11 && k.speed > 13 && !k.airborne && !k.shielding && Math.random() < skill * 0.06) {
+        if (pa.dist < 11 && k.speed > 13 && !k.airborne && !k.shielding && _simRng() < skill * 0.06) {
           k.jump(); // last-ditch hop (skill-gated, so easy AI eats some spills)
         }
       }
@@ -4465,7 +4460,7 @@ function aiActions(dt) {
         if (other === k || other.finished) continue;
         let gapT = (k.trackT - other.trackT) % 1;
         if (gapT < 0) gapT += 1;
-        if (gapT < 42 / track.length && Math.random() < 0.035) {
+        if (gapT < 42 / track.length && _simRng() < 0.035) {
           k.milkBottles = 0;
           items.dropMilk(k);
           break;
@@ -4958,7 +4953,8 @@ function loop(now) {
     }
     if (input.consumeMilk() && player.milkBottles > 0 && player.spinTimer <= 0) {
       player.milkBottles = 0;
-      items.dropMilk(player);
+      const p = items.dropMilk(player);
+      if (MP.enabled && MP.net && p) MP.net.sendMilk(p.x, p.z, p.r);
       hud.showToast("🥛 Spilled!");
     }
     if (input.consumeBoost() && player.boostMeter >= 1) {
@@ -5035,6 +5031,7 @@ function loop(now) {
         ? (id, dir) => {
             if (!MP.net) return;
             MP.net.sendHit(id, dir);
+            if (_ref) _ref.claimHit(id, MP.net.now(), dir); // referee adjudicates (no-op if off)
             // Instant local feedback: jolt the ghost in the hairball's direction
             // so the hit reads immediately, bridging the round-trip until the
             // victim's real spin-out streams back over the network.
@@ -5061,7 +5058,20 @@ function loop(now) {
         effects.tootBurst(k, 2, false);
         audio.shoot(k === player ? null : k.position);
       },
-    });
+    },
+    // Multiplayer: the shooter's live yarn hits remote ghosts and reports it
+    // authoritatively — same bridge as hairballs.update.
+    MP.enabled ? MP.remotes : null,
+    MP.enabled
+      ? (id, dir) => {
+          if (!MP.net) return;
+          MP.net.sendHit(id, dir);
+          if (_ref) _ref.claimHit(id, MP.net.now(), dir); // referee adjudicates (no-op if off)
+          const r = MP.remotes.get(id);
+          if (r) r.bump(dir.x, dir.z, 15); // instant local feedback, like hairballs
+        }
+      : null,
+    );
     // Sparks where a kart scraped a railing; skid marks while spinning out;
     // a charge-coloured cloud puff when a drift boost is released.
     for (const k of karts) {
@@ -5250,6 +5260,7 @@ function loop(now) {
           // same way (local elapsed time drifts apart over a long race).
           player.finishClock = MP.net.now();
           MP.net.sendFinish(player.finishTime, player.finishClock);
+          if (_ref) _ref.claimFinish(); // referee stamps the authoritative place (no-op if off)
         }
         setTimeout(showResults, 13000);
       }

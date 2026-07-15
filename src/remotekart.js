@@ -1,27 +1,21 @@
-import * as THREE from "three";
 import { Kart } from "./kart.js";
 import { disposeGroup } from "./models.js";
-import { sampleBuffer, pushSnapshot, lerpAngle } from "./net/interp.js";
+import { RemotePose, FLAG, INTERP_DELAY } from "./net/remotepose.js";
 
-// Pose flag bitmask shared by sender (main loop) and receiver (RemoteKart).
-export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8 };
-
-// How far in the past we render remote karts. On mobile/cellular one-way latency
-// plus jitter regularly exceeds 150ms, which left the buffer dry — so the ghost
-// dead-reckoned and snapped on every late packet (the "jumpy" report). 200ms keeps
-// interpolation working between real snapshots far more of the time.
-export const INTERP_DELAY = 200; // ms (starting point; main.js adapts it to the ping)
-
-// If a peer's snapshots stop arriving for this long, their kart is effectively
-// gone (a bad stall or a silent drop) — hide it rather than leave a confusing
-// frozen kart parked on the track. It reappears the instant fresh data resumes.
-const STALE_HIDE_MS = 2500;
+// The pose constants live with the pure tracking core now; re-export so the
+// sender (main loop) keeps importing them from here unchanged.
+export { FLAG, INTERP_DELAY };
 
 // A remote player's kart: a render-only puppet. It reuses the entire Kart visual
 // (chassis, cat rig, lean, contact shadow, shield bubble, spinning wheels) but
 // NEVER runs physics or AI — its pose comes straight from interpolated network
 // snapshots. That keeps it cheap and prevents it from diverging from what the
 // owning client actually sees.
+//
+// All the tracking math (snapshot buffer, render smoothing, collision bump,
+// stale detection) lives in RemotePose (src/net/remotepose.js), which is pure
+// and headless-testable; this class just applies the sampled frame to the THREE
+// puppet each render tick.
 export class RemoteKart {
   constructor(identity) {
     this.id = identity.id;
@@ -39,116 +33,73 @@ export class RemoteKart {
     });
     this.kart.isRemote = true; // ghost: power-up boxes sink but grant no local effect
     this.group = this.kart.group;
-    this.buffer = []; // sorted snapshots { t, x, y, z, h, p, s, f }
-    this._prevH = 0;
-    this._prevS = 0;
-    this._ready = false;
-    // Render-smoothing state: the displayed pose eases toward the sampled (interp/
-    // dead-reckoned) pose, so a late-packet correction is spread over a few frames
-    // instead of teleporting — kills the residual jitter. A big delta (respawn /
-    // first sample) snaps instead of smearing.
-    this._rinit = false;
-    this._rx = 0; this._rz = 0; this._ry = 0; this._rh = 0;
-    this._lastRecv = 0; // wall-clock (performance.now) of the last snapshot received
-    // Local collision "bump": a transient offset added on top of the interpolated
-    // pose so the ghost visibly springs away when you ram it, instead of sitting
-    // there like a wall. It decays back to zero, letting the authoritative network
-    // path (which reflects the other client's own knockback) take over.
-    this.bumpOff = new THREE.Vector3();
-    this.bumpVel = new THREE.Vector3();
+    this.pose = new RemotePose();
     // Race-placement fields, kept duck-type compatible with Kart so the shared
     // placement sort treats local and remote karts identically.
-    this.totalProgress = -1;
     this.finished = false;
     this.finishTime = 0;
     this.finishClock = 0; // shared-clock instant at finish (for ranking)
     this.place = 1;
   }
 
+  // Placement reads (and race-reset writes) go straight through to the tracker.
+  get totalProgress() {
+    return this.pose.totalProgress;
+  }
+  set totalProgress(v) {
+    this.pose.totalProgress = v;
+  }
+  // Collision code skips ghosts that haven't produced a real pose yet.
+  get _ready() {
+    return this.pose.ready;
+  }
+
   // A pose snapshot arrived from the network (already in shared-clock time).
   pushState(pose) {
-    this._lastRecv = performance.now();
-    pushSnapshot(this.buffer, pose);
-    // Progress isn't interpolated through the buffer — latest value wins. It only
-    // feeds placement, which doesn't need sub-frame accuracy.
-    if (typeof pose.pr === "number") this.totalProgress = pose.pr;
+    this.pose.pushState(pose);
   }
 
-  // Give the ghost a SMALL, brief bump for instant local feedback. This is just
-  // an immediacy bridge — the real slide arrives over the network as the other
-  // client's kart actually gets knocked, and that's what dominates after ~250ms.
-  // Velocity is capped so repeated/fast contacts can never accumulate into a
-  // fling off the track.
+  // Instant local feedback when the player rams this ghost (see RemotePose.bump).
   bump(nx, nz, impulse) {
-    this.bumpVel.x += nx * impulse;
-    this.bumpVel.z += nz * impulse;
-    this.bumpVel.clampLength(0, 10);
+    this.pose.bump(nx, nz, impulse);
   }
 
-  // Render the kart at `renderTime` (shared clock minus INTERP_DELAY).
-  update(renderTime, dt) {
+  // Render the kart. The pose owns its own jitter-aware delay now, so it just
+  // needs the shared-clock now + live RTT to pick its render offset.
+  update(nowShared, rttMs, dt) {
     // Hide (don't freeze) a peer whose updates have dried up; show it again the
     // moment data resumes. Uses wall-clock so it's independent of the shared clock.
-    const stale = performance.now() - this._lastRecv > STALE_HIDE_MS;
+    const stale = this.pose.stale;
     this.group.visible = !stale;
     if (stale) return;
 
-    const s = sampleBuffer(this.buffer, renderTime, 250);
-    if (!s) return; // nothing buffered yet
+    const frame = this.pose.sampleAt(nowShared, rttMs, dt);
+    if (!frame) return; // nothing buffered yet
     const k = this.kart;
 
-    // Collision bump: a short local nudge that fades quickly so it hands off to
-    // the authoritative network slide (the other client's real knockback)
-    // without double-counting or lingering past the contact.
-    this.bumpOff.addScaledVector(this.bumpVel, dt);
-    this.bumpVel.multiplyScalar(1 - Math.min(1, 3 * dt)); // fade as network catches up
-    this.bumpOff.multiplyScalar(1 - Math.min(1, 1.5 * dt)); // ease back to true path
-    this.bumpOff.clampLength(0, 5); // safety only
-
-    // Ease the rendered pose toward the sampled one (render smoothing). Snap on a
-    // big jump (first sample / respawn / spin-out reposition) so we don't smear
-    // across the map.
-    if (!this._rinit || Math.hypot(s.x - this._rx, s.z - this._rz) > 6) {
-      this._rx = s.x; this._rz = s.z; this._ry = s.y; this._rh = s.h;
-      this._rinit = true;
-    } else {
-      const a = 1 - Math.exp(-dt / 0.06); // catch up ~95% in ~3-4 frames
-      this._rx += (s.x - this._rx) * a;
-      this._rz += (s.z - this._rz) * a;
-      this._ry += (s.y - this._ry) * a;
-      this._rh = lerpAngle(this._rh, s.h, a);
-    }
-
     // Drop the puppet onto the smoothed pose, plus the transient bump offset.
-    k.position.x = this._rx + this.bumpOff.x;
-    k.position.z = this._rz + this.bumpOff.z;
-    k.groundY = this._ry; // sender already did ground-follow; y is absolute world height
+    k.position.x = frame.x + frame.bumpX;
+    k.position.z = frame.z + frame.bumpZ;
+    k.groundY = frame.y; // sender already did ground-follow; y is absolute world height
     k.y = 0; // hops are baked into the sender's y; no separate jump offset
-    k.position.y = this._ry;
-    k.heading = this._rh;
-    k.slopePitch = s.p;
-    k.speed = s.s;
+    k.position.y = frame.y;
+    k.heading = frame.h;
+    k.slopePitch = frame.p;
+    k.speed = frame.s;
 
     // Decode visual flags.
-    const f = s.f | 0;
-    k.drifting = (f & FLAG.DRIFT) !== 0;
-    k.shielding = (f & FLAG.SHIELD) !== 0;
-    k.tootTimer = f & FLAG.BOOST ? 0.1 : 0; // drives the boost wheelie + tail lift
+    k.drifting = (frame.f & FLAG.DRIFT) !== 0;
+    k.shielding = (frame.f & FLAG.SHIELD) !== 0;
+    k.tootTimer = frame.f & FLAG.BOOST ? 0.1 : 0; // drives the boost wheelie + tail lift
 
-    // Derive lean + cat-rig cornering from how fast the heading is turning, so
-    // the puppet leans into bends and the cat reacts without extra bandwidth.
-    const yawRate = dt > 0 ? lerpAngle(this._prevH, this._rh, 1) - this._prevH : 0;
-    const turn = Math.max(-1, Math.min(1, (yawRate / Math.max(dt, 0.001)) * 0.5));
-    k.steerInput = turn;
-    k.driftDir = turn >= 0 ? 1 : -1;
-    k._lat = Math.max(-1.2, Math.min(1.2, turn * 1.2));
-    k._lon = Math.max(-1, Math.min(1, (s.s - this._prevS) / Math.max(dt, 0.001) / 45));
+    // Lean + cat-rig cornering, derived by the tracker from heading/speed deltas.
+    k.steerInput = frame.steer;
+    k.driftDir = frame.driftDir;
+    k._lat = frame.lat;
+    k._lon = frame.lon;
     k._dt = dt;
-    k._wheelSpin = (k._wheelSpin || 0) + s.s * dt * 1.6;
+    k._wheelSpin = (k._wheelSpin || 0) + frame.spinDelta;
 
-    this._prevH = this._rh;
-    this._prevS = s.s;
-    this._ready = true;
     k._syncMesh();
   }
 

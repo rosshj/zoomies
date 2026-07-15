@@ -5,20 +5,37 @@
 // prove interpolation + clock-sync hold up before any real network exists.
 
 export class LoopbackHub {
-  constructor({ latency = 60, jitter = 0, clockSkew = 0 } = {}) {
+  // rng/schedule/now are injectable so a test harness can drive the hub on a
+  // virtual clock with a seeded rng and get bit-identical runs; the defaults
+  // keep the original wall-clock behavior. `loss` drops that fraction of pose
+  // deliveries (state messages ONLY — losing welcome/hello/pong would break
+  // joins and clock sync, which ride reliable channels on every real transport).
+  constructor({
+    latency = 60,
+    jitter = 0,
+    clockSkew = 0,
+    rng = Math.random,
+    schedule = (fn, ms) => setTimeout(fn, ms),
+    now = () => Date.now(),
+    loss = 0,
+  } = {}) {
     this.latency = latency; // one-way delay (ms)
     this.jitter = jitter; // +/- random (ms)
-    this.clockSkew = clockSkew; // server clock offset from Date.now (ms)
+    this.clockSkew = clockSkew; // server clock offset from now() (ms)
+    this.rng = rng;
+    this.schedule = schedule;
+    this.localNow = now;
+    this.loss = loss; // 0..1 probability a state delivery is dropped
     this.clients = new Map(); // id -> transport
     this.hellos = new Map(); // id -> last hello (identity cache)
     this._n = 0;
   }
 
   now() {
-    return Date.now() + this.clockSkew;
+    return this.localNow() + this.clockSkew;
   }
   _delay() {
-    return Math.max(0, this.latency + (this.jitter ? (Math.random() * 2 - 1) * this.jitter : 0));
+    return Math.max(0, this.latency + (this.jitter ? (this.rng() * 2 - 1) * this.jitter : 0));
   }
 
   // A new client connects; it immediately receives a 'welcome' with its id.
@@ -33,7 +50,8 @@ export class LoopbackHub {
   _toClient(id, msg) {
     const t = this.clients.get(id);
     if (!t) return;
-    setTimeout(() => t._recv(msg), this._delay());
+    if (msg.type === "state" && this.loss > 0 && this.rng() < this.loss) return;
+    this.schedule(() => t._recv(msg), this._delay());
   }
   _broadcastOthers(fromId, msg) {
     for (const id of this.clients.keys()) if (id !== fromId) this._toClient(id, msg);
