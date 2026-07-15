@@ -3919,9 +3919,14 @@ function updateFireworks(dt) {
     let winner = null;
     for (const k of karts) if (k.finished) { winner = k; break; }
     if (!winner && MP.enabled) for (const r of MP.remotes.values()) if (r.finished) { winner = r; break; }
-    if (winner) {
-      const dx = winner.position.x - track.archApex.x;
-      const dz = winner.position.z - track.archApex.z;
+    // `winner` may be the local Kart (.position) OR a RemoteKart wrapper, whose
+    // position lives at .kart.position. Reading .position off a RemoteKart is
+    // undefined → threw here every frame the moment the host finished, aborting the
+    // whole loop before render (the "2nd place freezes when the host wins" bug).
+    const wp = winner.position || (winner.kart && winner.kart.position);
+    if (wp) {
+      const dx = wp.x - track.archApex.x;
+      const dz = wp.z - track.archApex.z;
       if (dx * dx + dz * dz < 12 * 12) {
         _fireworksDone = true;
         _fwTimer = 8;
