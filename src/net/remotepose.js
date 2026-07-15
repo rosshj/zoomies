@@ -11,7 +11,7 @@
 import { sampleBuffer, pushSnapshot, lerpAngle } from "./interp.js";
 
 // Pose flag bitmask shared by sender (main loop) and receiver.
-export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8 };
+export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8, WALL: 16 };
 
 // How far in the past we render remote karts. On mobile/cellular one-way latency
 // plus jitter regularly exceeds 150ms, which left the buffer dry — so the ghost
@@ -212,11 +212,14 @@ export class RemotePose {
       const velZ = Math.cos(s.h) * s.s;
       this._rx = (this._rx + velX * dt) * decay + s.x * (1 - decay);
       this._rz = (this._rz + velZ * dt) * decay + s.z * (1 - decay);
-      // y (elevation) and heading have no velocity channel here — keep the simple
-      // exponential ease; their follow-lag is minor and not what this fixes.
-      const a = 1 - Math.exp(-dt / 0.06);
-      this._ry += (s.y - this._ry) * a;
-      this._rh = lerpAngle(this._rh, s.h, a);
+      // y (elevation) eases gently; heading eases FASTER (tau 0.03 vs 0.06) so the
+      // kart's facing tracks the interpolated heading closely instead of trailing it.
+      // The sample's heading is already smooth (buffer-interpolated), so a slow ease
+      // here just added ~60ms of facing lag on top — the kart looked like it was
+      // crabbing through corners (facing one way, sliding another). A tight ease keeps
+      // facing aligned with motion; the buffer interpolation still removes the jitter.
+      this._ry += (s.y - this._ry) * (1 - Math.exp(-dt / 0.06));
+      this._rh = lerpAngle(this._rh, s.h, 1 - Math.exp(-dt / 0.03));
     }
 
     // Derive lean + cat-rig cornering from how fast the heading is turning, so

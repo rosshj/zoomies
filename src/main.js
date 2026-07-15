@@ -939,6 +939,7 @@ const MP = new MpSession({
     if (player.boosting) f |= FLAG.BOOST;
     if (player.shielding) f |= FLAG.SHIELD;
     if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
+    if (player.wallHit) f |= FLAG.WALL; // scraping a railing → rivals see the sparks too
     return {
       x: player.position.x,
       y: player.groundY + player.y,
@@ -5233,8 +5234,15 @@ function loop(now) {
       : null,
     );
     // Sparks where a kart scraped a railing; skid marks while spinning out;
-    // a charge-coloured cloud puff when a drift boost is released.
-    for (const k of karts) {
+    // a charge-coloured cloud puff when a drift boost is released. Remote ghosts
+    // join this pass (online `karts` is just the player) so a rival's wall scrapes,
+    // drift sparks and dust show too — their flags rode in on the pose, so the same
+    // cosmetics fire without any physics. Without this a remote kart looked inert:
+    // it moved but threw no particles, so you couldn't read what it was doing.
+    const fxKarts = MP.enabled && MP.remotes.size
+      ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)]
+      : karts;
+    for (const k of fxKarts) {
       if (k.wallHit) {
         effects.wallSparks(k);
         audio.scrape(k === player ? null : k.position);
