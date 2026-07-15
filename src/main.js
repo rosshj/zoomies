@@ -192,12 +192,22 @@ const _seedParam = _qs.get("seed");
 // neither branch below, so their world resolution is byte-for-byte unchanged.
 const _sharedWorld = decodeWorld(_qs.get("w"));
 let _mpLaps = null; // host's lap count when the world came from `?w=` (overrides local)
+// A genuine join-by-code (joinGame) sets this ONE-SHOT flag so we neutralize this
+// device's own saved custom track — otherwise it hijacks the host's seed/room. It's
+// read-AND-cleared here so any OTHER reload that happens to keep `?mp&seed` in the
+// URL (most importantly "apply custom track", which does location.reload()) is NOT
+// affected. Without this, applying a custom track during an MP session reverted it
+// to the default track (the "custom track goes back to default" bug).
+let _codeJoin = false;
+if (_qs.has("mp") && _seedParam) {
+  try { _codeJoin = sessionStorage.getItem("mp-code-join") === "1"; sessionStorage.removeItem("mp-code-join"); } catch { /* ignore */ }
+}
 if (_sharedWorld) {
   trackConfig = _sharedWorld.cfg; // build EXACTLY the host's map
   if (_sharedWorld.laps >= 1 && _sharedWorld.laps <= 5) _mpLaps = _sharedWorld.laps;
-} else if (_qs.has("mp") && _seedParam && trackConfig.mode === "custom") {
-  // Joined a room by code with no shared world yet: don't let my own saved custom
-  // track hijack the host's seed/room — start neutral (classic) from the seed; the
+} else if (_codeJoin && trackConfig.mode === "custom") {
+  // Joined a room by typed code with no shared world yet: start neutral (classic)
+  // from the seed so my saved custom track can't hijack the host's room; the
   // adopt-reload pulls the host's real world once we connect.
   trackConfig = { mode: "classic" };
 }
@@ -850,6 +860,14 @@ function makeMpIdentity() {
 let _worldAdoptTried = false;
 function maybeAdoptHostWorld() {
   if (_amHost || _worldAdoptTried || !MP.enabled) return;
+  // Arrived via an invite link (`?w=`)? Then I already built the host's authoritative
+  // world at load — never reload. (The adopt-reload only exists for typed-code joins,
+  // which have no world at load.)
+  if (_sharedWorld) return;
+  // Only ever adopt (reload) from the menu/lobby — NEVER once a race is starting or
+  // underway. A late roster event (a presence blip, the host re-announcing) must not
+  // reload a client mid-countdown/mid-race and drop it out of the start.
+  if (state === State.COUNTDOWN || state === State.RACING || state === State.FINISHED) return;
   let hostWorld = null;
   for (const r of MP.remotes.values()) if (r.host && r.world) { hostWorld = r.world; break; }
   if (!hostWorld || sameWorld(hostWorld, currentWorld())) return; // no host yet, or already matching
@@ -910,6 +928,10 @@ const MP = new MpSession({
     onRoster: () => {
       setMpStatus("connected");
       maybeAdoptHostWorld(); // a code-joiner rebuilds into the host's map once it learns it
+      // If I'm the host and a race is already counting down, re-send the start so a
+      // peer that just (re)joined syncs into it instead of being stranded in the
+      // lobby. sendStart is idempotent (beginSyncedRace ignores it once counting).
+      if (_amHost && MP.net && MP.startAt && state === State.COUNTDOWN) MP.net.sendStart(MP.startAt);
       if (MP.inLobby) renderLobby();
     },
     // Lost a host tiebreak (another client claimed host with a lower id): step
@@ -3546,6 +3568,7 @@ function joinGame() {
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
   try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
   try { sessionStorage.setItem("mp-adopt-n", "0"); } catch {} // fresh join → reset the adopt-reload guard
+  try { sessionStorage.setItem("mp-code-join", "1"); } catch {} // one-shot: neutralize my saved custom track (consumed at load)
   markReload("mp-join");
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
