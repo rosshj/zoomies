@@ -553,6 +553,10 @@
           <!-- Big, obvious share code — friends type this to join. -->
           <p class="lobby-share-label">Room code · friends type this</p>
           <div id="lobby-code" class="lobby-code-big">—</div>
+          <!-- Track fingerprint: every player should see the SAME line. If two
+               phones show different tracks/codes here, they're not on the same
+               map (world sync didn't take) — the fastest way to spot a desync. -->
+          <p id="lobby-track" class="lobby-track-tag"></p>
           <div class="mp-share-row">
             <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
             <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>

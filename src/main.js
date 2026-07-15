@@ -30,7 +30,7 @@ import { resolveHost, resolveAblyKey, resolveRefereeUrl, resolveRefereeRoom } fr
 import { RemoteKart, FLAG } from "./remotekart.js";
 import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { RefereeClient } from "./net/refereeclient.js";
-import { encodeWorld, decodeWorld, sameWorld } from "./net/worldcfg.js";
+import { encodeWorld, decodeWorld, sameWorld, worldSig } from "./net/worldcfg.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -838,6 +838,20 @@ function currentWorld() {
   return { cfg: trackConfig, laps: TOTAL_LAPS, seed: WORLD_SEED };
 }
 
+// A short, human-comparable fingerprint of a world (track type + a 4-char hash of
+// the full config). Shown in the lobby under the room code so two phones can
+// eyeball whether they built the SAME map — if these differ, world sync didn't
+// take. Pure function of {cfg, laps, seed}, so identical worlds → identical tag.
+function worldFingerprint(world) {
+  if (!world || !world.cfg) return "";
+  const mode = world.cfg.mode === "custom" ? "Custom" : "Classic";
+  const sig = worldSig(world);
+  let h = 5381;
+  for (let i = 0; i < sig.length; i++) h = ((h << 5) + h + sig.charCodeAt(i)) >>> 0;
+  const laps = world.laps || TOTAL_LAPS;
+  return `${mode} · ${laps} lap${laps > 1 ? "s" : ""} · #${h.toString(36).toUpperCase().slice(-4)}`;
+}
+
 // Broadcast the player's garage selection so rivals see the cat + kart they chose
 // (display name = the cat's name), plus whether I'm the room's host. The HOST also
 // advertises its world so a joiner who arrived by typed code (no `?w=`) can adopt
@@ -845,7 +859,12 @@ function currentWorld() {
 function makeMpIdentity() {
   const look = playerLook();
   const id = { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
-  if (_amHost) id.world = currentWorld();
+  // EVERY client advertises its world (not just the current host): a guest who
+  // is later promoted to host — someone who joined via an ?mp=1 link and then hit
+  // Start — never re-sends its hello, so if the world only rode the host flag its
+  // map could never be adopted. Advertising it always means peers already hold it
+  // when the host-claim arrives, so a code-joiner adopts the right map either way.
+  id.world = currentWorld();
   return id;
 }
 
@@ -871,7 +890,11 @@ function maybeAdoptHostWorld() {
   if (!hostWorld || sameWorld(hostWorld, currentWorld())) return; // no host yet, or already matching
   let n = 0;
   try { n = parseInt(sessionStorage.getItem("mp-adopt-n") || "0", 10) || 0; } catch { /* ignore */ }
-  if (n >= 2) return; // give up rather than risk a reload loop
+  if (n >= 2) {
+    console.warn(`[world] host is on ${worldFingerprint(hostWorld)} but adopt is capped (${n}) — staying on ${worldFingerprint(currentWorld())}`);
+    return; // give up rather than risk a reload loop
+  }
+  console.log(`[world] adopting host map ${worldFingerprint(hostWorld)} (was ${worldFingerprint(currentWorld())})`);
   _worldAdoptTried = true;
   try { sessionStorage.setItem("mp-adopt-n", String(n + 1)); } catch { /* ignore */ }
   const u = new URL(location.href);
@@ -3867,6 +3890,20 @@ function renderLobby() {
   // connection finishes, so a freshly-arrived joiner sees it immediately.
   const codeEl = document.getElementById("lobby-code");
   if (codeEl) codeEl.textContent = WORLD_SEED;
+  // Track fingerprint — the map I built. If a host advertises a DIFFERENT world
+  // than mine, flag it red so a desync is obvious at a glance (the adopt-reload
+  // should then pull me onto the host's map; if it can't, the mismatch stays
+  // visible instead of silently racing on two tracks).
+  const trackEl = document.getElementById("lobby-track");
+  if (trackEl) {
+    let hostWorld = null;
+    for (const r of MP.remotes.values()) if (r.host && r.world) { hostWorld = r.world; break; }
+    const mismatch = hostWorld && !_amHost && !sameWorld(hostWorld, currentWorld());
+    trackEl.textContent = mismatch
+      ? `⚠ syncing map… (${worldFingerprint(hostWorld)})`
+      : worldFingerprint(currentWorld());
+    trackEl.classList.toggle("mismatch", !!mismatch);
+  }
   if (!MP.enabled || !MP.net) return; // the player list / count need a live connection
   const countEl = document.getElementById("lobby-count");
   if (countEl) countEl.textContent = `${Math.min(mpPlayerCount(), MAX_PLAYERS)} / ${MAX_PLAYERS}`;
