@@ -856,6 +856,13 @@ const MP = new MpSession({
       setMpStatus("connected");
       if (MP.inLobby) renderLobby();
     },
+    // Lost a host tiebreak (another client claimed host with a lower id): step
+    // down so the room keeps exactly one host.
+    onHostYield: () => {
+      _amHost = false;
+      try { sessionStorage.setItem("mp-host-seed", ""); } catch { /* ignore */ }
+      if (MP.inLobby) renderLobby();
+    },
     onConnClosed: () => setMpStatus(MP.connState === "failed" ? "failed" : "closed"),
     onStart: (at) => beginSyncedRace(at),
     onShoot: (s) => {
@@ -3449,7 +3456,19 @@ document.getElementById("mode-done")?.addEventListener("click", () => closeSubSc
 // The click is the user gesture beginRace needs for fullscreen + motion permission.
 function hostGame() {
   if (!MP.enabled) enterMultiplayer();
+  else if (!mpIsHost()) claimHost(); // already connected as a guest (?mp=1 link) → take host
   beginRace(); // gesture setup + (MP.enabled) enterLobby
+}
+// Promote an already-connected client to host. Needed because arriving via an
+// ?mp=1 link auto-connects you as a guest, so hostGame()'s enterMultiplayer()
+// (which crowns you) is skipped — without this, a room where everyone joined by
+// link has no host and can never start. Broadcasts the claim so peers converge.
+function claimHost() {
+  if (!MP.enabled || !MP.net) return;
+  _amHost = true;
+  try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
+  MP.announceHost();
+  if (MP.inLobby) renderLobby();
 }
 // Join by code: a friend's code IS their world seed, so reload into that world
 // with multiplayer on and auto-open the lobby. enableMotion() here grabs iOS
@@ -3777,12 +3796,16 @@ function renderLobby() {
     }
   }
   const host = mpIsHost();
+  // No host in the room yet (everyone arrived via an ?mp=1 link)? Let anyone launch
+  // — clicking Start claims host first (see the lobby-start handler). So a room can
+  // never get stuck with nobody able to start.
+  const canStart = host || !mpHostId();
   const startBtn = document.getElementById("lobby-start");
   const waiting = document.getElementById("lobby-waiting");
   const ready = document.getElementById("lobby-ready");
-  if (startBtn) startBtn.style.display = host ? "" : "none"; // only the host launches
-  if (waiting) waiting.style.display = host ? "none" : "";   // others wait for the host
-  if (ready) ready.style.display = host ? "none" : "";       // joiner: enable tilt first
+  if (startBtn) startBtn.style.display = canStart ? "" : "none"; // host (or a hostless room) launches
+  if (waiting) waiting.style.display = canStart ? "none" : "";   // others wait for the host
+  if (ready) ready.style.display = canStart ? "none" : "";       // joiner: enable tilt first
 }
 
 // A joiner reaches the lobby via a reload, which loses the motion listener AND (on
@@ -3840,7 +3863,12 @@ const COUNTDOWN_LEAD_MS = 4000;
 const lobbyStartBtn = document.getElementById("lobby-start");
 if (lobbyStartBtn) {
   lobbyStartBtn.addEventListener("click", () => {
-    if (!MP.enabled || !MP.net || !mpIsHost()) return;
+    if (!MP.enabled || !MP.net) return;
+    // Hostless room (everyone joined via a link): claim host, then launch.
+    if (!mpIsHost()) {
+      if (mpHostId()) return; // a real host exists — this button shouldn't have shown
+      claimHost();
+    }
     const at = MP.net.now() + COUNTDOWN_LEAD_MS;
     MP.net.sendStart(at);
     beginSyncedRace(at);

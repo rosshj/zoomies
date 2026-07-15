@@ -88,6 +88,10 @@ export class MpSession {
       this._emit("onNet", net); // hook point for dev tooling (e.g. the recorder)
       net.on("peer", (identity) => {
         this.spawn(identity);
+        // If I'm the host, a newcomer joined AFTER my hello (which may have carried
+        // host:false, e.g. I was promoted from a link-guest) — re-announce so their
+        // crown + waiting state resolve correctly.
+        if (this._amHost() && this.net) this.net.sendHostClaim();
         this._emit("onRoster"); // refresh the "N friends here" count immediately
       });
       net.on("peerleave", (id) => {
@@ -125,6 +129,7 @@ export class MpSession {
         // The hook slots a late finisher into an already-open results screen.
         this._emit("onRemoteFinish", id);
       });
+      net.on("host", (id) => this._onHostClaim(id));
       net.connect();
     });
   }
@@ -166,6 +171,28 @@ export class MpSession {
     if (this._amHost() && this.net && this.net.id) return this.net.id;
     for (const r of this.remotes.values()) if (r.host) return r.id;
     return null;
+  }
+
+  // Broadcast that I'm the host (called by main.js after a guest promotes itself —
+  // e.g. someone who joined via an ?mp=1 link and then hit Start / Host Game).
+  announceHost() {
+    if (this.net) this.net.sendHostClaim();
+  }
+
+  // A peer claimed the host role. Resolve the rare case where two clients claim at
+  // once (both were stuck guests and clicked within one RTT): the LOWEST id wins
+  // deterministically. Then refresh the lobby so the 👑 + Start/waiting update.
+  _onHostClaim(id) {
+    // I'm the host and I outrank the claimant → keep it; re-assert so THEY yield.
+    if (this._amHost() && this.net && this.net.id && id > this.net.id) {
+      this.net.sendHostClaim();
+      this._emit("onRoster");
+      return;
+    }
+    // Otherwise the claimant is the host (I'm a guest, or they outrank me).
+    for (const r of this.remotes.values()) r.host = r.id === id;
+    if (this._amHost() && this.net && this.net.id && id < this.net.id) this._emit("onHostYield");
+    this._emit("onRoster");
   }
 
   gridSlot() {

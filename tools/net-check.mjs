@@ -451,6 +451,64 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   check("kartBumpPower preserved", kartBumpPower(20, 10) === 10 + (20 + 10) * 0.4);
 }
 
+// --- Host promotion (a guest who joined via ?mp=1 can become host) ---
+// Wire round-trip: a host claim reaches the peer stamped with the claimant id,
+// and isn't echoed back to the sender.
+{
+  const clock = new SimClock();
+  const hub = new LoopbackHub({ latency: 10, jitter: 0, rng: makeRng("HOSTRT"), schedule: (fn, ms) => clock.setTimeout(fn, ms), now: () => clock.now() });
+  const netOpts = { localNow: () => clock.now(), timers: clock.timers() };
+  const a = new Net(hub.connect(), { name: "A" }, netOpts);
+  const b = new Net(hub.connect(), { name: "B" }, netOpts);
+  const bHost = [], aHost = [];
+  b.on("host", (id) => bHost.push(id));
+  a.on("host", (id) => aHost.push(id));
+  a.connect(); b.connect();
+  clock.run(clock.now() + 500); // welcome + hello settle so ids are assigned
+  a.sendHostClaim();
+  clock.run(clock.now() + 200);
+  check("host claim routed to the peer with the claimant id", bHost.length === 1 && bHost[0] === a.id);
+  check("host claim not echoed to the sender", aHost.length === 0);
+}
+
+// Election: two stuck guests both promote at once → the tiebreak converges on a
+// single host (lowest id), and both clients agree on who it is.
+{
+  const clock = new SimClock();
+  const hub = new LoopbackHub({ latency: 10, jitter: 0, rng: makeRng("HOSTELECT"), schedule: (fn, ms) => clock.setTimeout(fn, ms), now: () => clock.now() });
+  const netOpts = { localNow: () => clock.now(), timers: clock.timers() };
+  function mkSession() {
+    let amHost = false;
+    const mp = new MpSession({
+      createRemote: (identity) => ({ id: identity.id, name: identity.name, host: !!identity.host, group: { visible: true }, kart: { position: { x: 0, y: 0, z: 0 }, mass: 1, speed: 0 }, pose: { interpDelay: 200 }, totalProgress: -1, pushState() {}, bump() {}, update() {}, dispose() {} }),
+      disposeRemote: () => {},
+      hasLocalPlayer: () => true,
+      getPose: () => ({ x: 0, y: 0, z: 0, h: 0, p: 0, s: 0, f: 0, pr: 0 }),
+      amHost: () => amHost,
+      wallNow: () => clock.now(),
+      netOptions: netOpts,
+      hooks: { onHostYield: () => { amHost = false; } },
+    });
+    mp.enabled = true;
+    return { mp, promote: () => { amHost = true; mp.announceHost(); }, isHost: () => amHost };
+  }
+  const A = mkSession(), B = mkSession();
+  await A.mp.begin(Promise.resolve(hub.connect()), () => ({ name: "A", host: false }));
+  await B.mp.begin(Promise.resolve(hub.connect()), () => ({ name: "B", host: false }));
+  clock.run(clock.now() + 1000); // presence + hellos settle → each sees the other
+  check("hostless room: neither client is host", A.mp.hostId() === null && B.mp.hostId() === null);
+
+  A.promote(); B.promote(); // simultaneous claim
+  clock.run(clock.now() + 1000); // claims cross; tiebreak converges
+
+  const aId = A.mp.net.id, bId = B.mp.net.id;
+  const lowestId = aId < bId ? aId : bId; // ids are strings; lexicographic order
+  const lowWins = aId < bId ? A : B;
+  const highYields = aId < bId ? B : A;
+  check("host tiebreak → exactly one host (the lowest id keeps it)", lowWins.isHost() && !highYields.isHost());
+  check("both clients agree on the host id", A.mp.hostId() === lowestId && B.mp.hostId() === lowestId);
+}
+
 // --- Transport-gated send rate (30 Hz on the direct WebRTC channel) ---
 {
   const plain = new Net({ send() {}, close() {}, open() {} }, {});

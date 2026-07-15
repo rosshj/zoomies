@@ -38,7 +38,7 @@ export class Net {
     this._localNow = localNow;
     this._timers = timers;
     this._peers = new Set(); // ids we've already announced (server may resend hellos)
-    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], milk: [], yarn: [], finish: [], close: [] };
+    this._handlers = { open: [], peer: [], state: [], peerleave: [], start: [], shoot: [], hit: [], milk: [], yarn: [], finish: [], host: [], close: [] };
     this._pingTimer = null;
   }
 
@@ -134,6 +134,15 @@ export class Net {
     this.transport.send({ type: "milk", id: this.id, mx: x, mz: z, mr: r });
   }
 
+  // Claim the host role for this room. Sent when a client that joined as a guest
+  // (e.g. via an ?mp=1 link) promotes itself to host — the initial hello's host
+  // flag can't change, so peers learn the new host from this. Ties resolve to the
+  // lowest id (see MpSession._onHostClaim).
+  sendHostClaim() {
+    if (!this.connected) return;
+    this.transport.send({ type: "host", id: this.id });
+  }
+
   // Announce that I crossed the finish line. `ft` is my race time (seconds since
   // the synchronized GO), directly comparable across clients for final ordering.
   // ft = elapsed race time (for display). fc = shared-clock instant of finishing,
@@ -190,6 +199,10 @@ export class Net {
       case "finish":
         if (m.id === this.id) break;
         this._emit("finish", m.id, m.ft, m.fc);
+        break;
+      case "host":
+        if (m.id === this.id) break;
+        this._emit("host", m.id);
         break;
     }
   }
