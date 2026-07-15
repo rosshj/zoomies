@@ -210,6 +210,7 @@ export class MpSession {
     if (parked) {
       this.parked.delete(identity.id);
       parked.r.host = !!identity.host;
+      parked.r.world = identity.world || null; // host's world, for map adoption
       if (parked.r.group) parked.r.group.visible = true;
       this.remotes.set(identity.id, parked.r);
       return;
@@ -221,6 +222,7 @@ export class MpSession {
     if (this.remotes.size >= MAX_PLAYERS - 1) return;
     const r = this._createRemote(identity);
     r.host = !!identity.host; // remember who the room's host is (for the 👑 + Start)
+    r.world = identity.world || null; // host's world config (for map adoption by a code-joiner)
     this.remotes.set(identity.id, r);
   }
 

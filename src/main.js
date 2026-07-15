@@ -30,6 +30,7 @@ import { resolveHost, resolveAblyKey, resolveRefereeUrl, resolveRefereeRoom } fr
 import { RemoteKart, FLAG } from "./remotekart.js";
 import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { RefereeClient } from "./net/refereeclient.js";
+import { encodeWorld, decodeWorld, sameWorld } from "./net/worldcfg.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -58,7 +59,7 @@ function saveTrackConfig(c) {
     /* ignore */
   }
 }
-const trackConfig = loadTrackConfig();
+let trackConfig = loadTrackConfig(); // `let`: in multiplayer this is replaced by the host's world (below)
 
 // Garage: the player picks a cat (fur colour) and kart (body colour) before the
 // race. Named presets so it reads like a character-select; the saved selection is
@@ -181,13 +182,32 @@ function playerLook() {
   return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
 }
 
-const _seedParam = new URLSearchParams(location.search).get("seed");
+const _qs = new URLSearchParams(location.search);
+const _seedParam = _qs.get("seed");
+// Multiplayer world sync: the WHOLE map (track config + laps + seed) must come from
+// the HOST, not each device's own saved settings — otherwise two players in the same
+// room build DIFFERENT tracks (the "connected but on different maps" bug). The invite
+// link carries `?w=` (the host's encoded world), and a code-joiner adopts it via a
+// reload once connected (see maybeAdoptHostWorld). Single-player / hosting take
+// neither branch below, so their world resolution is byte-for-byte unchanged.
+const _sharedWorld = decodeWorld(_qs.get("w"));
+let _mpLaps = null; // host's lap count when the world came from `?w=` (overrides local)
+if (_sharedWorld) {
+  trackConfig = _sharedWorld.cfg; // build EXACTLY the host's map
+  if (_sharedWorld.laps >= 1 && _sharedWorld.laps <= 5) _mpLaps = _sharedWorld.laps;
+} else if (_qs.has("mp") && _seedParam && trackConfig.mode === "custom") {
+  // Joined a room by code with no shared world yet: don't let my own saved custom
+  // track hijack the host's seed/room — start neutral (classic) from the seed; the
+  // adopt-reload pulls the host's real world once we connect.
+  trackConfig = { mode: "classic" };
+}
 // Normalize the stored seed to the same casing the world stream uses: the
 // isolated plan streams (biome wedges, summit, crossover) key off cfg.seed,
 // and a hand-edited/URL-shared lowercase seed would otherwise plan against a
 // different string than the uppercased shared stream builds with.
 if (trackConfig.mode === "custom" && trackConfig.seed) trackConfig.seed = String(trackConfig.seed).toUpperCase();
 const WORLD_SEED = (
+  (_sharedWorld && _sharedWorld.seed) ||
   (trackConfig.mode === "custom" && trackConfig.seed) ||
   _seedParam ||
   randomSeed()
@@ -804,11 +824,46 @@ function decorateKartGroup(group) {
 let _amHost = false;
 try { _amHost = sessionStorage.getItem("mp-host-seed") === WORLD_SEED; } catch { /* ignore */ }
 
+// This client's authoritative world: the exact map every player in the room must
+// build. `trackConfig` is already the host's config when we joined via `?w=`.
+function currentWorld() {
+  return { cfg: trackConfig, laps: TOTAL_LAPS, seed: WORLD_SEED };
+}
+
 // Broadcast the player's garage selection so rivals see the cat + kart they chose
-// (display name = the cat's name), plus whether I'm the room's host.
+// (display name = the cat's name), plus whether I'm the room's host. The HOST also
+// advertises its world so a joiner who arrived by typed code (no `?w=`) can adopt
+// the host's exact map (maybeAdoptHostWorld).
 function makeMpIdentity() {
   const look = playerLook();
-  return { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
+  const id = { name: look.name, color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, host: _amHost };
+  if (_amHost) id.world = currentWorld();
+  return id;
+}
+
+// A joiner who arrived by typed room code (no `?w=` in the URL) may have built a
+// different map than the host. Once the host's world arrives in its hello, reload
+// into the host's EXACT world so both build the same track. Guarded so it can never
+// loop: only fires when I'm not the host and my world genuinely differs, and is
+// capped per join attempt (after a successful adopt, currentWorld() matches → no
+// further reload; the counter is the belt-and-suspenders).
+let _worldAdoptTried = false;
+function maybeAdoptHostWorld() {
+  if (_amHost || _worldAdoptTried || !MP.enabled) return;
+  let hostWorld = null;
+  for (const r of MP.remotes.values()) if (r.host && r.world) { hostWorld = r.world; break; }
+  if (!hostWorld || sameWorld(hostWorld, currentWorld())) return; // no host yet, or already matching
+  let n = 0;
+  try { n = parseInt(sessionStorage.getItem("mp-adopt-n") || "0", 10) || 0; } catch { /* ignore */ }
+  if (n >= 2) return; // give up rather than risk a reload loop
+  _worldAdoptTried = true;
+  try { sessionStorage.setItem("mp-adopt-n", String(n + 1)); } catch { /* ignore */ }
+  const u = new URL(location.href);
+  u.searchParams.set("w", encodeWorld(hostWorld));
+  if (hostWorld.seed) u.searchParams.set("seed", String(hostWorld.seed));
+  u.searchParams.set("mp", "1");
+  markReload("mp-adopt");
+  location.href = u.toString();
 }
 
 // Scratch vectors for incoming shoot messages (spawnAt copies its args).
@@ -854,6 +909,7 @@ const MP = new MpSession({
     // the "N friends here" count immediately, and the lobby if it's showing.
     onRoster: () => {
       setMpStatus("connected");
+      maybeAdoptHostWorld(); // a code-joiner rebuilds into the host's map once it learns it
       if (MP.inLobby) renderLobby();
     },
     // Lost a host tiebreak (another client claimed host with a lower id): step
@@ -1828,10 +1884,14 @@ applyQuality(quality, false); // honour the persisted choice without re-writing 
 // the Grand Prix card), replacing the old cycle-tap buttons. Laps persist like
 // difficulty does. Applied at race build (buildKarts) + per-frame in aiActions.
 const LAPS_KEY = "zoomies-laps";
-try {
-  const _l = parseInt(localStorage.getItem(LAPS_KEY), 10);
-  if (_l >= 1 && _l <= 5) TOTAL_LAPS = _l;
-} catch {}
+if (_mpLaps) {
+  TOTAL_LAPS = _mpLaps; // multiplayer: use the host's lap count, not this device's saved one
+} else {
+  try {
+    const _l = parseInt(localStorage.getItem(LAPS_KEY), 10);
+    if (_l >= 1 && _l <= 5) TOTAL_LAPS = _l;
+  } catch {}
+}
 function refreshRaceOptSegs() {
   document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
     b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
@@ -3485,10 +3545,12 @@ function joinGame() {
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
   try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
+  try { sessionStorage.setItem("mp-adopt-n", "0"); } catch {} // fresh join → reset the adopt-reload guard
   markReload("mp-join");
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
   u.searchParams.set("mp", "1");
+  u.searchParams.delete("w"); // dropping into a new room by code — no shared world yet; adopt on connect
   location.href = u.toString(); // reload into the host's world; ?mp=1 auto-opens the lobby
 }
 // Open the multiplayer lobby once the menu wiring is ready (deferred so it wins
@@ -3541,6 +3603,11 @@ function inviteURL() {
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", WORLD_SEED);
   u.searchParams.set("mp", "1");
+  // Carry the FULL world (track config + laps), so a friend who opens the link builds
+  // the exact same map — the room code alone only ever carried the seed, which left
+  // players on different tracks.
+  const w = encodeWorld(currentWorld());
+  if (w) u.searchParams.set("w", w);
   // P2P is the default, so a normal link needs no flag (both ends default on).
   // Only propagate an opt-OUT, so a host who forced the Ably relay keeps guests
   // on the same transport.
