@@ -353,6 +353,7 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   const milkEvents = [];
   const yarnEvents = [];
   const hitEvents = [];
+  const gloatEvents = [];
   const mp = new MpSession({
     createRemote: makeStubRemote,
     disposeRemote: (r) => r.dispose(),
@@ -366,6 +367,7 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
       onMilk: (m) => milkEvents.push(m),
       onYarn: (y) => yarnEvents.push(y),
       onHit: (h) => hitEvents.push(h),
+      onMilkGloat: () => gloatEvents.push(true),
     },
   });
   mp.enabled = true;
@@ -416,6 +418,14 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   clock.run(clock.now() + 400);
   check("hit aimed at me fires onHit; foreign target dropped",
     hitEvents.length === 1 && hitEvents[0].target === mp.net.id);
+
+  // Milk gloat: a rival who tripped on MY milk pings me so my cat can look back and
+  // laugh — only the puddle's owner (target === my id) reacts; a foreign target is
+  // dropped (and the sender never reacts to its own ping).
+  other.sendMilkGloat(mp.net.id);
+  other.sendMilkGloat("someone-else");
+  clock.run(clock.now() + 400);
+  check("milk gloat aimed at me fires onMilkGloat; foreign target dropped", gloatEvents.length === 1);
 
   // Collision pass: put the player right on top of the ghost and confirm the
   // session knocks the player, nudges (bumps) the ghost, and separates them.

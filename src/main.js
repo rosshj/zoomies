@@ -889,8 +889,11 @@ const MP = new MpSession({
       player.spinOut(dir.lengthSq() > 0.0001 ? dir : null);
     },
     // A remote player dropped milk: replicate the puddle (victim-authoritative —
-    // our own player trips it locally via items.update, so no hit event).
-    onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r }); },
+    // our own player trips it locally via items.update, so no hit event). Carry the
+    // dropper's id so if we trip on it we can let them gloat (onMilkGloat).
+    onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r, ownerId: m.owner }); },
+    // A rival spun out on MY milk (they told me): look back and laugh.
+    onMilkGloat: () => { if (player) player.gloat(); },
     // A remote player launched a yarn ball: render a cosmetic ghost that homes on
     // OUR copy of the target (our own player if we're the mark, else our ghost of
     // them). The hit stays shooter-authoritative and arrives via onHit.
@@ -3884,6 +3887,7 @@ let _camYPrev = NaN; // last frame's clamped camera height (vertical rate limite
 // facing test; both write before they read, so the reuse is safe.)
 const _camDesired = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
+const _camAim = new THREE.Vector3(); // aim point after pitch-stabilising against eye clamps
 let shakeMag = 0;
 // Boost pads: a short speed kick (and its rainbow trail) when a kart drives over
 // a chevron pad, with a per-kart cooldown so it fires once per pass.
@@ -4113,6 +4117,7 @@ function updateCamera(dt, snap = false) {
   const lerp = snap ? 1 : 1 - Math.pow(0.001, dt);
   camPos.lerp(_camDesired, lerp);
   camTarget.lerp(_camLook, lerp);
+  const naturalCamY = camPos.y; // eye height BEFORE the collision clamps shove it around
 
   // Keep the camera above the track surface beneath it: on a steep descent the
   // spot behind the kart is up-slope (higher ground), which could otherwise leave
@@ -4146,6 +4151,17 @@ function updateCamera(dt, snap = false) {
   }
   _camYPrev = camPos.y;
 
+  // Pitch stabiliser (fixes the tunnel-mouth "weird angle"). The clamps above move
+  // only the EYE (camPos.y) to keep it out of road/rock, but the aim (camTarget.y)
+  // tracks the kart freely — so entering/leaving a tunnel, where the ground-behind-
+  // the-portal and bore clamps shove the eye up then release, `lookAt` swung the
+  // pitch. Carry most of that eye displacement into the aim so the framing ANGLE
+  // stays steady while the eye still dodges geometry. Partial (0.7) so genuine
+  // climbs/descents keep a little natural tilt.
+  const camLift = camPos.y - naturalCamY;
+  _camAim.copy(camTarget);
+  _camAim.y += camLift * 0.7;
+
   // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
   // a rush — but only a touch, so the road stays readable and easy to drive.
   const targetFov = 62 + (player.boosting ? 7 : 0) + (player.catnipBoosting ? 4 : 0);
@@ -4161,7 +4177,7 @@ function updateCamera(dt, snap = false) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
     camera.position.y += (Math.random() - 0.5) * shakeMag;
   }
-  camera.lookAt(camTarget);
+  camera.lookAt(_camAim);
 }
 
 // --- Kart-vs-kart bumper collisions ---
@@ -5054,9 +5070,15 @@ function loop(now) {
         audio.shoot(k === player ? null : k.position);
       },
       onYarnBlocked: (k) => effects.tootBurst(k, 1, false),
-      onMilkHit: (k) => {
+      onMilkHit: (k, p) => {
         effects.tootBurst(k, 2, false);
         audio.shoot(k === player ? null : k.position);
+        // Gloat: whoever's milk this was gets to look back and laugh.
+        if (p && p.owner && p.owner !== k) {
+          p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
+        } else if (p && p.ownerId && k === player && MP.enabled && MP.net) {
+          MP.net.sendMilkGloat(p.ownerId); // a remote's milk tripped ME → tell them to gloat
+        }
       },
     },
     // Multiplayer: the shooter's live yarn hits remote ghosts and reports it

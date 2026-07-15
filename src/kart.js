@@ -159,6 +159,7 @@ export class Kart {
     this.boostTimer = 0;
     this.boostSpeed = 0;
     this.tootTimer = 0; // tail-lift/toot animation timer
+    this.gloatTimer = 0; // "look back and laugh" reaction (e.g. my milk tripped a rival)
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
     this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
@@ -353,10 +354,18 @@ export class Kart {
   // Spin out — keep the kart's momentum so it slides out realistically and
   // the spin decays, rather than whipping around in place. `impactDir` (xz)
   // adds a modest shove from the hit.
+  // Play the "look back and laugh" reaction for ~1.6s (a rival just spun out on my
+  // spilled milk). Suppressed while spinning out — you can't gloat mid-wipeout.
+  gloat() {
+    if (this.spinTimer > 0) return;
+    this.gloatTimer = 1.6;
+  }
+
   spinOut(impactDir = null) {
     if (this.spinTimer > 0) return;
     if (this.catnipBoosting) return; // catnip = invincible: nothing stops the zoom
     this.spinTimer = 1.4;
+    this.gloatTimer = 0; // a hit cuts any gloat short
     // Can't fire back for a couple of seconds after taking a hairball.
     this.shootCooldown = Math.max(this.shootCooldown, 2.0);
     this.driftHeld = false;
@@ -400,6 +409,7 @@ export class Kart {
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.boxCooldown > 0) this.boxCooldown -= dt;
     if (this.tootTimer > 0) this.tootTimer -= dt;
+    if (this.gloatTimer > 0) this.gloatTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
     this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
     // Catnip keeps the boost topped up (so `boosting` stays true) for its duration.
@@ -688,7 +698,7 @@ export class Kart {
     // lifts while tooting).
     // Blink only on the post-race victory lap (the racing rig already gives a
     // moving cat plenty of life); never mid-race.
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished);
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished, this.gloatTimer > 0);
 
     // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
     // long axis along the sun azimuth (independent of which way the kart faces),

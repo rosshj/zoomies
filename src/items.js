@@ -183,8 +183,9 @@ export class ItemManager {
   // Replicate a milk puddle a remote player dropped. Its world x/z + radius come
   // straight off the wire (identical on every client); orientation is re-derived
   // locally so it lies on ramps. owner=null + grace=0 → this client trips its OWN
-  // player on it (victim-authoritative — no hit message needed).
-  spawnMilkAt({ x, z, r }) {
+  // player on it (victim-authoritative — no hit message needed). `ownerId` is the
+  // dropper's net id, so when our player trips we can tell them (they get to gloat).
+  spawnMilkAt({ x, z, r, ownerId = null }) {
     const track = this.track;
     _pt.set(x, 0, z);
     const proj = track.project(_pt);
@@ -201,6 +202,7 @@ export class ItemManager {
     this.puddles.push({
       mesh, x, z, r,
       owner: null,
+      ownerId, // remote dropper's net id (for gloat attribution); null in single-player
       grace: 0,
       life: MILK_LIFE,
       fading: 0,
