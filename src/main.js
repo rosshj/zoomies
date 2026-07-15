@@ -888,15 +888,23 @@ function maybeAdoptHostWorld() {
   let hostWorld = null;
   for (const r of MP.remotes.values()) if (r.host && r.world) { hostWorld = r.world; break; }
   if (!hostWorld || sameWorld(hostWorld, currentWorld())) return; // no host yet, or already matching
-  let n = 0;
-  try { n = parseInt(sessionStorage.getItem("mp-adopt-n") || "0", 10) || 0; } catch { /* ignore */ }
-  if (n >= 2) {
-    console.warn(`[world] host is on ${worldFingerprint(hostWorld)} but adopt is capped (${n}) — staying on ${worldFingerprint(currentWorld())}`);
-    return; // give up rather than risk a reload loop
+  // Loop guard, keyed on WHICH world we adopt (not a blind counter). Adopting a
+  // given host world reloads us into a build that matches it, so we should never
+  // need to adopt that same world twice — if we already tried this exact one and
+  // still don't match, something's off; bail rather than reload-loop. This can
+  // never get permanently stuck the way a saturating counter could (a fresh/
+  // different host world is always still adoptable): the sig is the host's world,
+  // and after a successful adopt currentWorld() equals it so we return above.
+  const wantSig = worldSig(hostWorld);
+  let triedSig = "";
+  try { triedSig = sessionStorage.getItem("mp-adopt-sig") || ""; } catch { /* ignore */ }
+  if (triedSig === wantSig) {
+    console.warn(`[world] already tried to adopt ${worldFingerprint(hostWorld)} but still on ${worldFingerprint(currentWorld())} — not reloading again`);
+    return;
   }
   console.log(`[world] adopting host map ${worldFingerprint(hostWorld)} (was ${worldFingerprint(currentWorld())})`);
   _worldAdoptTried = true;
-  try { sessionStorage.setItem("mp-adopt-n", String(n + 1)); } catch { /* ignore */ }
+  try { sessionStorage.setItem("mp-adopt-sig", wantSig); } catch { /* ignore */ }
   const u = new URL(location.href);
   u.searchParams.set("w", encodeWorld(hostWorld));
   if (hostWorld.seed) u.searchParams.set("seed", String(hostWorld.seed));
@@ -3588,7 +3596,7 @@ function joinGame() {
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
   try { sessionStorage.setItem("mp-host-seed", ""); } catch {} // I'm a joiner (empty host-seed → my custom track yields to the host's)
-  try { sessionStorage.setItem("mp-adopt-n", "0"); } catch {} // fresh join → reset the adopt-reload guard
+  try { sessionStorage.removeItem("mp-adopt-sig"); } catch {} // fresh join → clear the adopt-reload guard so we can adopt the new host's world
   markReload("mp-join");
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
