@@ -1,8 +1,9 @@
 name: checks
 
-# Node-only netcode checks: fast, dependency-free, and the regression gate the
-# multiplayer overhaul relies on. (The Playwright/three.js smoke tests need a
-# browser and are left to run locally.)
+# Node-only netcode checks: fast, dependency-free (no `npm install`), and the
+# regression gate the multiplayer overhaul relies on. Anything that imports three.js
+# or needs a browser — the headless smoke test, offline test, and the determinism
+# check (`check:sim`, which steps a real Kart) — is left to run locally.
 on:
   push:
     branches: ["**"]
@@ -22,7 +23,5 @@ jobs:
         run: npm run check:netsim
       - name: binary pose codec
         run: npm run check:codec
-      - name: deterministic kart sim
-        run: npm run check:sim
       - name: race referee (lag-comp/hits/laps/finish)
         run: npm run check:referee
