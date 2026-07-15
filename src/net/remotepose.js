@@ -135,13 +135,21 @@ export class RemotePose {
     const target = Math.max(this.delayFloor, Math.min(this.delayCeil,
       rtt * 0.5 + this.baseMargin + this.jitterK * this._jitter));
     this.interpDelay += (target - this.interpDelay) * ease;
-    // Predict-to-present: pull the ACTUAL render delay toward present. Clean link
-    // (low jitter) → renderTarget ≈ presentMargin, so the curved extrapolator draws
-    // the kart near NOW and perceived latency collapses; jitter re-inflates it back
-    // toward the buffered delay (never exceeding it) so a bursty link keeps
-    // interpolating instead of extrapolating on noisy samples.
-    const renderTarget = Math.max(this.presentFloor,
-      Math.min(this.interpDelay, this.presentMargin + this.jitterK * this._jitter));
+    // Render at the BUFFERED interp delay — i.e. interpolate between real snapshots,
+    // in the past, rather than extrapolate toward present.
+    //
+    // This deliberately backs out the old "predict-to-present" pull. That pull eased
+    // the render offset from ~200ms down toward ~30ms over the first ~2s of a race,
+    // which is EXACTLY when players reported the remote kart going from smooth to
+    // jumpy: at ~30ms back on a real phone link, `now − renderDelay` sits PAST the
+    // newest packet, so the ghost dead-reckons every frame off a noisy 2-sample turn
+    // rate and snaps when the real packet lands — jittery position AND wrong-looking
+    // facing, degrading precisely as the offset finished collapsing. The netsim liked
+    // predict-to-present because its clean gaussian loss model doesn't punish
+    // near-present extrapolation the way a real link does. Interpolating at the full
+    // jitter-aware delay keeps the ghost between real snapshots — smooth and accurate
+    // — for a little more latency, the right trade for a hobby race.
+    const renderTarget = this.interpDelay;
     this.renderDelay += (renderTarget - this.renderDelay) * ease;
     return this.sample(nowShared - this.renderDelay, dt);
   }

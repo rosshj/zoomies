@@ -939,7 +939,7 @@ const MP = new MpSession({
     if (player.boosting) f |= FLAG.BOOST;
     if (player.shielding) f |= FLAG.SHIELD;
     if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
-    if (player.wallHit) f |= FLAG.WALL; // scraping a railing → rivals see the sparks too
+    if (player.wallHitPulse > 0) f |= FLAG.WALL; // scraping a railing → rivals see the sparks too (latch, not the 1-frame wallHit — the send runs before physics sets it)
     return {
       x: player.position.x,
       y: player.groundY + player.y,

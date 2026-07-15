@@ -59,18 +59,22 @@ function field(n) {
 
 // 60s virtual each, fixed seeds. `strict` links (clean) must never snap-correct.
 // `p50Budget` = typical-frame delayed-error ceiling (u) — how well the smoother
-// tracks its OWN render target (now scored against renderDelay), tightened after
-// the Stage 1 convergence win. `staleMax` = staleness p50 ceiling (ms): with
-// predict-to-present the shown pose is now near PRESENT, so clean links sit far
-// under the old 180ms floor (~33ms). `errAbsMax` = absolute-error ceiling (u) vs
-// truth-NOW — the Stage 5 headline: it proves the curved extrapolator draws the
-// kart where it actually is, collapsing perceived latency. Extrapolation share is
-// now HIGH by design (we render ahead of the newest snapshot), so it's printed for
-// the record but no longer a ceiling — teleports=0 + errAbs + snaps guard quality.
+// tracks its OWN render target, tightened after the Stage 1 convergence win.
+// `staleMax` = staleness p50 ceiling (ms). `errAbsMax` = absolute-error ceiling
+// (u) vs truth-NOW.
+//
+// NOTE: the old "predict-to-present" pull (Stage 5) that rendered remote karts near
+// PRESENT was reverted — on real phones it made the ghost jitter and mis-rotate as
+// the render offset collapsed over the first ~2s, because near-present it dead-
+// reckons every frame on noisy data (the netsim's clean loss model didn't reproduce
+// that). Remote karts now INTERPOLATE at the buffered jitter-aware delay — smooth
+// and accurate, in the past. So errAbs vs truth-now and staleness are HIGHER by
+// design (we render behind the newest snapshot, not ahead); the real quality guards
+// are delayed-error (fidelity to the render target), teleports=0, and snaps.
 const MATRIX = [
-  { name: "lan", seed: "LAN", players: field(2), hub: { latency: 20, jitter: 2, clockSkew: 0, loss: 0 }, clientSkews: [0, 0], strict: true, p50Budget: 0.6, staleMax: 90, errAbsMax: 2.5 },
-  { name: "wifi", seed: "WIFI", players: field(3), hub: { latency: 60, jitter: 10, clockSkew: 300, loss: 0 }, clientSkews: [0, 5000, -5000], strict: true, p50Budget: 0.6, staleMax: 90, errAbsMax: 3.0 },
-  { name: "cellular", seed: "CELL", players: field(4), hub: { latency: 140, jitter: 60, clockSkew: -1200, loss: 0.02 }, clientSkews: [0, 12000, -8000, 3000], p50Budget: 2, errAbsMax: 7.0 },
+  { name: "lan", seed: "LAN", players: field(2), hub: { latency: 20, jitter: 2, clockSkew: 0, loss: 0 }, clientSkews: [0, 0], strict: true, p50Budget: 0.6, staleMax: 115, errAbsMax: 5.5 },
+  { name: "wifi", seed: "WIFI", players: field(3), hub: { latency: 60, jitter: 10, clockSkew: 300, loss: 0 }, clientSkews: [0, 5000, -5000], strict: true, p50Budget: 0.6, staleMax: 150, errAbsMax: 6.5 },
+  { name: "cellular", seed: "CELL", players: field(4), hub: { latency: 140, jitter: 60, clockSkew: -1200, loss: 0.02 }, clientSkews: [0, 12000, -8000, 3000], p50Budget: 2, errAbsMax: 13 },
   { name: "awful", seed: "AWFUL", players: field(6), hub: { latency: 250, jitter: 120, clockSkew: 5000, loss: 0.05 }, clientSkews: [0, 40000, -40000, 15000, -22000, 8000], p50Budget: 4, errAbsMax: 80 },
 ];
 
