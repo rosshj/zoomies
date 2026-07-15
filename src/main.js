@@ -192,23 +192,21 @@ const _seedParam = _qs.get("seed");
 // neither branch below, so their world resolution is byte-for-byte unchanged.
 const _sharedWorld = decodeWorld(_qs.get("w"));
 let _mpLaps = null; // host's lap count when the world came from `?w=` (overrides local)
-// A genuine join-by-code (joinGame) sets this ONE-SHOT flag so we neutralize this
-// device's own saved custom track — otherwise it hijacks the host's seed/room. It's
-// read-AND-cleared here so any OTHER reload that happens to keep `?mp&seed` in the
-// URL (most importantly "apply custom track", which does location.reload()) is NOT
-// affected. Without this, applying a custom track during an MP session reverted it
-// to the default track (the "custom track goes back to default" bug).
-let _codeJoin = false;
-if (_qs.has("mp") && _seedParam) {
-  try { _codeJoin = sessionStorage.getItem("mp-code-join") === "1"; sessionStorage.removeItem("mp-code-join"); } catch { /* ignore */ }
-}
+// Am I acting as the room HOST? enterMultiplayer stores its seed here; joinGame
+// clears it to "". This is the right host/joiner distinguisher for the guard below:
+// a JOINER's saved custom track must not hijack the host's seed/room, but a HOST
+// keeps their own custom map — and it must NOT be wrongly reverted when "apply custom
+// track" (or a plain refresh) reloads with `?mp&seed` still in the URL. (That over-
+// broad revert was the "custom track goes back to default" bug.)
+let _mpHostSeed = "";
+try { _mpHostSeed = sessionStorage.getItem("mp-host-seed") || ""; } catch { /* ignore */ }
 if (_sharedWorld) {
   trackConfig = _sharedWorld.cfg; // build EXACTLY the host's map
   if (_sharedWorld.laps >= 1 && _sharedWorld.laps <= 5) _mpLaps = _sharedWorld.laps;
-} else if (_codeJoin && trackConfig.mode === "custom") {
-  // Joined a room by typed code with no shared world yet: start neutral (classic)
-  // from the seed so my saved custom track can't hijack the host's room; the
-  // adopt-reload pulls the host's real world once we connect.
+} else if (_qs.has("mp") && _seedParam && trackConfig.mode === "custom" && !_mpHostSeed) {
+  // A JOINER (not the host) with a saved custom track: start neutral (classic) from
+  // the seed so it can't hijack the host's room; the adopt-reload pulls the host's
+  // real world once we connect.
   trackConfig = { mode: "classic" };
 }
 // Normalize the stored seed to the same casing the world stream uses: the
@@ -3566,9 +3564,8 @@ function joinGame() {
   try { input.enableMotion(); } catch {}
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
-  try { sessionStorage.setItem("mp-host-seed", ""); } catch {}
+  try { sessionStorage.setItem("mp-host-seed", ""); } catch {} // I'm a joiner (empty host-seed → my custom track yields to the host's)
   try { sessionStorage.setItem("mp-adopt-n", "0"); } catch {} // fresh join → reset the adopt-reload guard
-  try { sessionStorage.setItem("mp-code-join", "1"); } catch {} // one-shot: neutralize my saved custom track (consumed at load)
   markReload("mp-join");
   const u = new URL(location.href);
   u.searchParams.set("seed", code);
@@ -4009,11 +4006,12 @@ function updateFireworks(dt) {
     let winner = null;
     for (const k of karts) if (k.finished) { winner = k; break; }
     if (!winner && MP.enabled) for (const r of MP.remotes.values()) if (r.finished) { winner = r; break; }
-    // `winner` may be the local Kart (.position) OR a RemoteKart wrapper, whose
-    // position lives at .kart.position. Reading .position off a RemoteKart is
-    // undefined → threw here every frame the moment the host finished, aborting the
-    // whole loop before render (the "2nd place freezes when the host wins" bug).
-    const wp = winner.position || (winner.kart && winner.kart.position);
+    // `winner` is null until someone crosses the line (i.e. the whole race), and
+    // may be the local Kart (.position) OR a RemoteKart wrapper (position at
+    // .kart.position). Guard for BOTH: the null case (no finisher yet) OR reading
+    // .position off a RemoteKart threw here every frame — the null case froze EVERY
+    // race at the green light; the RemoteKart case froze 2nd place when the host won.
+    const wp = winner && (winner.position || (winner.kart && winner.kart.position));
     if (wp) {
       const dx = wp.x - track.archApex.x;
       const dz = wp.z - track.archApex.z;
