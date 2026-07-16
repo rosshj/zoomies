@@ -1644,6 +1644,20 @@ kbd {
   background: linear-gradient(0deg, #5a6a4a, #7a8a6a);
 }
 
+/* Drafting: the meter is charging faster — pulse a cyan rim + brighten the fill so
+   the slipstream speedup is legible on the HUD. */
+#btn-boost.drafting {
+  border-color: rgba(160, 232, 255, 0.95);
+  animation: boost-draft 0.6s ease-in-out infinite;
+}
+#btn-boost.drafting #boost-fill {
+  background: linear-gradient(0deg, #4fc3f7, #b3e5fc);
+}
+@keyframes boost-draft {
+  0%, 100% { box-shadow: 0 0 6px 1px rgba(120, 220, 255, 0.45); }
+  50% { box-shadow: 0 0 14px 4px rgba(120, 220, 255, 0.85); }
+}
+
 #btn-milk {
   right: 178px;
   bottom: 30px;

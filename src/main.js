@@ -671,6 +671,7 @@ const milkBtn = document.getElementById("btn-milk");
 const yarnWarnEl = document.getElementById("yarn-warn");
 let _boostPctLast = -1;
 let _boostDisLast = null;
+let _draftLast = null;
 let _shootDisLast = null;
 let _yarnArmedLast = null;
 let _milkOnLast = null;
@@ -689,6 +690,13 @@ function updateBoostUI() {
     _boostDisLast = dis;
     boostBtn.classList.toggle("disabled", dis); // only fire when full
   }
+  // Glow the meter while a draft is charging it faster, so the speedup is legible
+  // on the HUD, not just out on the track.
+  const drafting = !!player && player.slipstream > 0.15 && m < 1;
+  if (drafting !== _draftLast) {
+    _draftLast = drafting;
+    boostBtn.classList.toggle("drafting", drafting);
+  }
   // Milk bottle button only exists while a bottle is held; the shoot button
   // shows the yarn while one is armed (it takes over the next shot).
   const yarnArmed = !!player && player.yarnShots > 0;
@@ -706,6 +714,44 @@ function updateBoostUI() {
   if (shootBtn && sd !== _shootDisLast) {
     _shootDisLast = sd;
     shootBtn.classList.toggle("disabled", sd);
+  }
+}
+
+// --- Slipstreaming (drafting) ---
+// Tuck into the wake just behind another kart and your toot-boost meter charges
+// faster (each kart's `slipstream` 0..1 is consumed in Kart.update). Pure position
+// math over the live field, so it covers the player, the AI, and — with zero new
+// netcode — remote ghosts (their pose already streams in; we detect their draft
+// locally to drive the wind fx). Strength ramps with how close + how centred you
+// are in the wake. Only a trailing kart has a wake to sit in, so it's a natural
+// catch-up mechanic; popping the boost pulls you out — "draft, then pass".
+const DRAFT_MIN = 3.0;    // u: nearer than this you're basically touching — no draft (don't reward ramming)
+const DRAFT_MAX = 9.5;    // u: how far back the wake still helps
+const DRAFT_LANE = 2.3;   // u: half-width of the wake at the leader; fans out with distance (a cone)
+const DRAFT_ALIGN = 0.5;  // min cos(heading delta): must travel roughly the same way (~60°)
+const DRAFT_MINSPEED = 8; // u/s: both karts must actually be moving
+function updateSlipstream(field) {
+  for (const k of field) { k.slipstream = 0; k._drafted = 0; }
+  for (const k of field) {
+    if (k.finished || k.spinTimer > 0 || Math.abs(k.speed) < DRAFT_MINSPEED) continue;
+    let best = 0, bestT = null;
+    for (const t of field) {
+      if (t === k || Math.abs(t.speed) < DRAFT_MINSPEED) continue;
+      const tfx = Math.sin(t.heading), tfz = Math.cos(t.heading);
+      // Same direction of travel? (guards head-on / crossing strands on loop maps)
+      if (Math.sin(k.heading) * tfx + Math.cos(k.heading) * tfz < DRAFT_ALIGN) continue;
+      const dx = k.position.x - t.position.x, dz = k.position.z - t.position.z;
+      const behind = -(dx * tfx + dz * tfz); // + = I'm behind the leader, in its wake
+      if (behind < DRAFT_MIN || behind > DRAFT_MAX) continue;
+      const lateral = Math.abs(dx * tfz - dz * tfx); // sideways offset from the leader's line
+      const lane = DRAFT_LANE + behind * 0.12;       // wake widens behind
+      if (lateral > lane) continue;
+      const distF = 0.35 + 0.65 * ((DRAFT_MAX - behind) / (DRAFT_MAX - DRAFT_MIN)); // closer = stronger
+      const s = distF * (1 - lateral / lane);        // centred = stronger
+      if (s > best) { best = s; bestT = t; }
+    }
+    k.slipstream = best;
+    if (bestT) bestT._drafted = Math.max(bestT._drafted, best); // for the leader's wake fx
   }
 }
 
@@ -5169,8 +5215,16 @@ function loop(now) {
     // only when one's nearly on their line, trailing karts detour further for a
     // catch-up item (see driveAI).
     const boxTargets = props ? props.boxTargets() : null;
-    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, boxTargets);
+    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, boxTargets, karts);
     aiActions(dt);
+
+    // Slipstreaming: score each kart's draft over the live field (incl. remote
+    // ghosts online) so a tuck behind a rival charges the toot boost faster. Runs
+    // before physics so Kart.update reads this frame's kart.slipstream.
+    const draftField = MP.enabled && MP.remotes.size
+      ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)]
+      : karts;
+    updateSlipstream(draftField);
 
     // Step physics
     for (const k of karts) k.update(dt, track);
@@ -5248,6 +5302,11 @@ function loop(now) {
         audio.scrape(k === player ? null : k.position);
         k.wallHit = false;
       }
+      // Slipstream: wind streaks on a kart drafting in a wake, a faint wake off a
+      // kart being drafted. Both scale with strength (set in updateSlipstream) and
+      // work for the player, AI, and remote ghosts alike.
+      if (k.slipstream > 0.05) effects.slipstreamWind(k, k.slipstream);
+      if (k._drafted > 0.05) effects.slipstreamWake(k, k._drafted);
       if (k.spinTimer > 0) effects.skid(k);
       // Drift sparks + skid marks for the rest of the field too (the player is
       // handled above), so the whole pack throws sparks through the corners —

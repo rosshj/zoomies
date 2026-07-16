@@ -73,6 +73,14 @@ function makeShieldMaterial() {
 // Boost meter recharge rate (full in ~16s) — identical for the player and AI.
 export const BOOST_RECHARGE = 1 / 16;
 
+// Slipstreaming: while tucked in a rival's wake (kart.slipstream, 0..1, set each
+// frame by the draft pass in main.js), the toot-boost meter charges faster — up to
+// (1 + SLIPSTREAM_MULT)× the base rate at a perfect draft (fills in ~3s vs 16), and
+// ~3× for a typical tuck, so short drafts still bank a meaningful chunk. A pure
+// catch-up mechanic: only a trailing kart has a wake to sit in, and popping the
+// boost pulls you out of it — the natural "draft then pass".
+export const SLIPSTREAM_MULT = 4.5;
+
 // A drift must be held at least this long (seconds) to earn a mini-turbo. Below
 // it the drift just ends with no boost — so brief flicks, and the short re-grabs
 // the AI makes when its curvature reading wiggles at a corner exit or S-bend
@@ -162,6 +170,7 @@ export class Kart {
     this.tootTimer = 0; // tail-lift/toot animation timer
     this.gloatTimer = 0; // "look back and laugh" reaction (e.g. my milk tripped a rival)
     this.boostMeter = 0; // toot-boost charge, 0..1 (starts empty, recharges)
+    this.slipstream = 0; // 0..1 draft strength this frame (set by main.js); speeds boost charge + drives the wind fx
     this.boostPuff = -1; // pending drift-release cloud charge (>=0 = emit one)
     this.catnipTimer = 0; // catnip power-up: hands-free continuous boost (green) for 7s
     this.shieldTimer = 0; // item-box shield: hands-free protection (no button held)
@@ -413,7 +422,8 @@ export class Kart {
     if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.gloatTimer > 0) this.gloatTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
-    this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * dt);
+    // Base recharge, sped up while drafting (slipstream 0 → 1× … 1 → 4×).
+    this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * (1 + this.slipstream * SLIPSTREAM_MULT) * dt);
     // Catnip keeps the boost topped up (so `boosting` stays true) for its duration.
     // 1.75x: STRICTLY the fastest thing in the game (toot 1.6x, max drift-release
     // 1.5x) — it's the honest comeback item, so it must actually out-run everyone.
@@ -759,7 +769,7 @@ export class Kart {
   }
 
   // --- AI driver ---
-  driveAI(track, dt = 0.016, catnipTargets = null) {
+  driveAI(track, dt = 0.016, catnipTargets = null, rivals = null) {
     const speed = Math.abs(this.speed);
     const L = track.length;
     const wrap = (t) => ((t % 1) + 1) % 1;
@@ -814,6 +824,35 @@ export class Kart {
         const pull = Math.min(0.92, (range - bestD) / range * 0.7 + 0.2 + behind * 0.08);
         target.x += (best.x - target.x) * pull;
         target.z += (best.z - target.z) * pull;
+      }
+    }
+
+    // Slipstream seeking: if a rival is just ahead on roughly our line and our
+    // toot boost isn't charged yet, tuck in behind it — the wake fills the meter
+    // ~4× faster. Once it's nearly charged we stop tucking and take our own line,
+    // and the toot fires (see the boost logic in main), pulling us out to pass.
+    // Skipped on sharp corners (never sacrifice the bend) and dialled down on
+    // easier difficulties (reuse the same aggression knob catnip-chasing uses).
+    if (rivals && this.boostMeter < 0.85 && speed > 12 && this.spinTimer <= 0 && sharp < 0.55) {
+      const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
+      let bestT = null, bestAhead = 16;
+      for (const t of rivals) {
+        if (t === this || t.finished || Math.abs(t.speed) < 8) continue;
+        const dx = t.position.x - this.position.x, dz = t.position.z - this.position.z;
+        const ahead = dx * fwx + dz * fwz; // + = rival is in front of me
+        if (ahead < 3 || ahead > bestAhead) continue;
+        if (Math.sin(t.heading) * fwx + Math.cos(t.heading) * fwz < 0.5) continue; // same way
+        if (Math.abs(dx * fwz - dz * fwx) > track.halfWidth) continue; // roughly on our corridor
+        bestAhead = ahead; bestT = t;
+      }
+      if (bestT) {
+        // Aim for the sweet spot just behind the rival, in its wake.
+        const gap = 5;
+        const ax = bestT.position.x - Math.sin(bestT.heading) * gap;
+        const az = bestT.position.z - Math.cos(bestT.heading) * gap;
+        const pull = 0.5 * (this.diff ? this.diff.catnip : 1);
+        target.x += (ax - target.x) * pull;
+        target.z += (az - target.z) * pull;
       }
     }
 
