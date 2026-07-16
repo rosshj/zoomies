@@ -1658,6 +1658,20 @@ kbd {
   50% { box-shadow: 0 0 14px 4px rgba(120, 220, 255, 0.85); }
 }
 
+/* Overcharged: drafted past full — a gold pulse + gold fill so the beefier toot
+   reads on the HUD (echoes the drift charge's gold tier). */
+#btn-boost.overcharged {
+  border-color: rgba(255, 213, 79, 0.95);
+  animation: boost-over 0.5s ease-in-out infinite;
+}
+#btn-boost.overcharged #boost-fill {
+  background: linear-gradient(0deg, #ffb300, #ffe082);
+}
+@keyframes boost-over {
+  0%, 100% { box-shadow: 0 0 8px 2px rgba(255, 193, 7, 0.55); }
+  50% { box-shadow: 0 0 18px 6px rgba(255, 193, 7, 0.95); }
+}
+
 #btn-milk {
   right: 178px;
   bottom: 30px;

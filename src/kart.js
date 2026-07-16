@@ -81,6 +81,15 @@ export const BOOST_RECHARGE = 1 / 16;
 // boost pulls you out of it — the natural "draft then pass".
 export const SLIPSTREAM_MULT = 4.5;
 
+// Overcharge: drafting can push the toot meter PAST full, up to BOOST_OVERCHARGE,
+// for a proportionally stronger toot — so holding a clean draft when you're already
+// charged isn't wasted (it becomes a hold-or-fire decision). Only slipstream fills
+// past 1.0 (the base recharge still caps there), and the overcharge bleeds back to
+// full at BOOST_OVERCHARGE_DECAY once you leave the wake — a "use it while you're
+// tucked" bonus, never a stockpile. Kept modest so it's a nudge, not a knockout.
+export const BOOST_OVERCHARGE = 1.2;        // max meter (120%)
+export const BOOST_OVERCHARGE_DECAY = 0.15; // per second, bleeds 1.2 → 1.0 in ~1.3s out of the draft
+
 // A drift must be held at least this long (seconds) to earn a mini-turbo. Below
 // it the drift just ends with no boost — so brief flicks, and the short re-grabs
 // the AI makes when its curvature reading wiggles at a corner exit or S-bend
@@ -305,10 +314,14 @@ export class Kart {
     if (toot) this.tootTimer = Math.max(this.tootTimer, duration);
   }
 
-  // The toot boost button (limited uses are tracked by the caller).
-  tootBoost() {
+  // The toot boost button (the meter is tracked by the caller). `charge` is the
+  // meter level at fire time (1.0 normally, up to BOOST_OVERCHARGE when drafted past
+  // full): overcharge makes the toot a bit stronger AND longer, so a held draft pays
+  // off as a meatier slingshot.
+  tootBoost(charge = 1) {
     if (this.spinTimer > 0 || this.finished) return false;
-    this.applyBoost(1.6, 1.5, true);
+    const over = Math.max(0, charge - 1); // 0..0.2
+    this.applyBoost(1.6 + over * 0.6, 1.5 + over * 1.2, true);
     return true;
   }
 
@@ -422,8 +435,17 @@ export class Kart {
     if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.gloatTimer > 0) this.gloatTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
-    // Base recharge, sped up while drafting (slipstream 0 → 1× … 1 → 4×).
-    this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * (1 + this.slipstream * SLIPSTREAM_MULT) * dt);
+    // Toot meter: base recharge (sped up while drafting) fills to full; drafting
+    // alone can then push it into overcharge (up to BOOST_OVERCHARGE) for a stronger
+    // toot, and that overcharge bleeds back to 1.0 once you leave the wake.
+    const _slip = this.slipstream;
+    if (this.boostMeter < 1) {
+      this.boostMeter = Math.min(1, this.boostMeter + BOOST_RECHARGE * (1 + _slip * SLIPSTREAM_MULT) * dt);
+    } else if (_slip > 0.05) {
+      this.boostMeter = Math.min(BOOST_OVERCHARGE, this.boostMeter + BOOST_RECHARGE * _slip * SLIPSTREAM_MULT * dt);
+    } else if (this.boostMeter > 1) {
+      this.boostMeter = Math.max(1, this.boostMeter - BOOST_OVERCHARGE_DECAY * dt);
+    }
     // Catnip keeps the boost topped up (so `boosting` stays true) for its duration.
     // 1.75x: STRICTLY the fastest thing in the game (toot 1.6x, max drift-release
     // 1.5x) — it's the honest comeback item, so it must actually out-run everyone.

@@ -672,6 +672,7 @@ const yarnWarnEl = document.getElementById("yarn-warn");
 let _boostPctLast = -1;
 let _boostDisLast = null;
 let _draftLast = null;
+let _overLast = null;
 let _shootDisLast = null;
 let _yarnArmedLast = null;
 let _milkOnLast = null;
@@ -680,7 +681,7 @@ function updateBoostUI() {
   const m = player ? player.boostMeter : 0;
   // Change-gated DOM writes: this runs every racing frame and the values move in
   // whole-percent steps at most.
-  const pct = Math.round(m * 100);
+  const pct = Math.round(Math.min(1, m) * 100); // bar fills to full; overcharge shows as a glow, not a taller bar
   if (pct !== _boostPctLast) {
     _boostPctLast = pct;
     boostFill.style.height = `${pct}%`;
@@ -690,8 +691,15 @@ function updateBoostUI() {
     _boostDisLast = dis;
     boostBtn.classList.toggle("disabled", dis); // only fire when full
   }
+  // Overcharged (drafted past full): a gold pulse so the beefier toot is legible.
+  const over = m > 1.02;
+  if (over !== _overLast) {
+    _overLast = over;
+    boostBtn.classList.toggle("overcharged", over);
+  }
   // Glow the meter while a draft is charging it faster, so the speedup is legible
-  // on the HUD, not just out on the track.
+  // on the HUD, not just out on the track. (Suppressed once overcharged — that has
+  // its own, stronger cue.)
   const drafting = !!player && player.slipstream > 0.15 && m < 1;
   if (drafting !== _draftLast) {
     _draftLast = drafting;
@@ -4671,9 +4679,10 @@ function aiActions(dt) {
 
     // --- Toot boost when full, on a straightish stretch (not mid-shield). ---
     if (k.boostMeter >= 1 && !threat && Math.abs(k.steerInput) < 0.45 && k.speed > 8 && !k.boosting) {
-      if (k.tootBoost()) {
+      const _over = k.boostMeter > 1.02;
+      if (k.tootBoost(k.boostMeter)) {
         k.boostMeter = 0;
-        effects.tootBurst(k);
+        effects.tootBurst(k, _over ? 3.5 : 2);
         audio.toot(k.position);
       }
     }
@@ -5159,9 +5168,10 @@ function loop(now) {
       hud.showToast("🥛 Spilled!");
     }
     if (input.consumeBoost() && player.boostMeter >= 1) {
-      if (player.tootBoost()) {
+      const _over = player.boostMeter > 1.02; // fired with overcharge → beefier burst
+      if (player.tootBoost(player.boostMeter)) {
         player.boostMeter = 0; // fully deplete on use
-        effects.tootBurst(player);
+        effects.tootBurst(player, _over ? 3.5 : 2);
         audio.toot();
       }
     }
