@@ -91,6 +91,10 @@ export class RemoteKart {
     k.drifting = (frame.f & FLAG.DRIFT) !== 0;
     k.shielding = (frame.f & FLAG.SHIELD) !== 0;
     k.wallHit = (frame.f & FLAG.WALL) !== 0; // main-loop effects pass turns this into sparks
+    // Laser flag → drive the ghost's laser state directly (the puppet never runs
+    // Kart.update, so assign rather than decay). The main-loop laser pass then
+    // draws its beam and — if WE are in its cone — zaps our own kart locally.
+    k.laserTimer = (frame.f & FLAG.LASER) !== 0 ? 0.15 : 0;
 
     k.tootTimer = frame.f & FLAG.BOOST ? 0.1 : 0; // drives the boost wheelie + tail lift
 

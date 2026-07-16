@@ -11,7 +11,7 @@
 import { sampleBuffer, pushSnapshot, lerpAngle } from "./interp.js";
 
 // Pose flag bitmask shared by sender (main loop) and receiver.
-export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8, WALL: 16 };
+export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8, WALL: 16, LASER: 32 };
 
 // How far in the past we render remote karts. On mobile/cellular one-way latency
 // plus jitter regularly exceeds 150ms, which left the buffer dry — so the ghost

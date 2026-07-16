@@ -186,6 +186,12 @@ export class Kart {
     this.triShots = 0; // item-box tri-furball: this many upcoming shots fire a wide 3-way fan
     this.yarnShots = 0; // item-box yarn ball: next shot rolls a homing yarn instead of a furball
     this.milkBottles = 0; // item-box spilled milk: bottles ready to drop behind
+    this.lives = 0; // item-box Nine Lives: banked hearts (0-3); next spinOut → wobble instead
+    this.wobbleTimer = 0; // s remaining of the life-saved shimmy (decaying heading wiggle)
+    this.lifePulse = false; // one-shot: a life just fired (main loop shows the feedback, clears it)
+    this.laserTimer = 0; // item-box laser pointer: seconds of active front laser
+    this.zapTimer = 0; // s remaining of being lasered (steering jitters; see update)
+    this._zapPhase = 0; // wobble oscillator phase (deterministic — no RNG)
     this.boxCooldown = 0; // brief lockout after grabbing a power-up box (no vacuuming)
     this.driftRamp = 0; // sustained-drift speed bonus (0..0.05 of top speed)
 
@@ -373,6 +379,21 @@ export class Kart {
     if (this.finished) return;
     this.milkBottles = 1;
   }
+  // Item-box Nine Lives: bank a life (up to 3 heart pips). The next spinOut is
+  // downgraded to a brief wobble — you keep most of your speed and control.
+  // Purely damage-mitigation: no boost, no offense.
+  giveLife() {
+    if (this.finished) return;
+    this.lives = Math.min(3, (this.lives || 0) + 1);
+  }
+  // Item-box laser pointer: a front-mounted laser for a few seconds. While active
+  // (see the laser pass in main.js) it locks the kart just ahead and gives their
+  // cat the zoomies-jitters — wobbly steering they must fight (or shield away,
+  // trading top speed for stability). Instant-on like catnip: no extra button.
+  giveLaser() {
+    if (this.finished) return;
+    this.laserTimer = 6;
+  }
 
   // Spin out — keep the kart's momentum so it slides out realistically and
   // the spin decays, rather than whipping around in place. `impactDir` (xz)
@@ -387,6 +408,17 @@ export class Kart {
   spinOut(impactDir = null) {
     if (this.spinTimer > 0) return;
     if (this.catnipBoosting) return; // catnip = invincible: nothing stops the zoom
+    // Nine Lives: a banked heart downgrades the wipeout to a brief flip-and-wobble —
+    // keep most of your speed and control ("always lands on its feet"). Consumes one
+    // life. NOTE: returns before the spin RNG draws below — safe for determinism
+    // because lives only ever come from item boxes (never granted in the headless sim).
+    if (this.lives > 0) {
+      this.lives--;
+      this.wobbleTimer = 0.8;
+      this.gloatTimer = 0; // still no gloating through a hit, even a survived one
+      this.lifePulse = true; // main loop pops the heart + toast + sound
+      return;
+    }
     this.spinTimer = 1.4;
     this.gloatTimer = 0; // a hit cuts any gloat short
     // Can't fire back for a couple of seconds after taking a hairball.
@@ -476,6 +508,28 @@ export class Kart {
       this._syncMesh();
       return;
     }
+
+    // Nine-Lives wobble: a survived hit shakes the kart for a beat — a decaying
+    // heading shimmy and a light speed scrub — but you keep driving (that's the
+    // save). Deterministic (no RNG): a pure sine of the remaining timer.
+    if (this.wobbleTimer > 0) {
+      this.wobbleTimer -= dt;
+      const a = Math.max(0, this.wobbleTimer) / 0.8; // 1 → 0 over the wobble
+      this.heading += Math.sin(this.wobbleTimer * 24) * 3.5 * a * dt;
+      this.speed *= 1 - Math.min(1, 0.35 * dt);
+    }
+    // Laser zap: a rival's beam has our cat fixated on the dot — steering jitters
+    // and sways. You can fight it and keep your speed, or raise the shield to block
+    // it (shield application is gated in the laser pass) at the shield's top-speed
+    // cost — the receiver's trade. Deterministic oscillator, no RNG.
+    if (this.zapTimer > 0) {
+      this.zapTimer -= dt;
+      if (!this.shielding) {
+        this._zapPhase += dt * 18;
+        this.heading += Math.sin(this._zapPhase) * 2.2 * dt;
+      }
+    }
+    if (this.laserTimer > 0) this.laserTimer -= dt;
 
     // --- Longitudinal ---
     const boosting = this.boostTimer > 0;
