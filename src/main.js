@@ -1597,9 +1597,15 @@ function renderFrame() {
   composer.render();
   _seg.render += performance.now() - _t;
   if (player && state !== State.MENU) {
+    // The minimap is a tiny overview — ~20fps is plenty, and it holds its last draw
+    // on the 2D canvas between refreshes, so throttling it sheds per-frame CPU with
+    // no visible change.
     _t = performance.now();
-    drawMinimap();
-    _seg.minimap += performance.now() - _t;
+    if (_t - _lastMiniDraw >= 50) {
+      _lastMiniDraw = _t;
+      drawMinimap();
+      _seg.minimap += performance.now() - _t;
+    }
   }
   // First real frame is on screen — fade out the boot loading screen to reveal it.
   if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
@@ -5012,6 +5018,12 @@ let prevPlayerSpin = 0;
 // (e.g. a 120Hz desktop) with ?uncap=1.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
 const FRAME_MIN_MS = 15;
+// Idle-render savings (see the loop): draw the paused scene once (not 60×/s), run
+// the ambient menu drift at ~30fps, and refresh the minimap at ~20fps. All hold
+// their last frame on the canvas between draws, so there's no visible change.
+let _pauseDrawn = false;
+let _lastMenuDraw = 0;
+let _lastMiniDraw = 0;
 
 function loop(now) {
   requestAnimationFrame(loop);
@@ -5039,7 +5051,8 @@ function loop(now) {
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
-  {
+  if (state !== State.PAUSED) {
+    _pauseDrawn = false; // any live frame → the next pause redraws its frozen shot once
     const _t = performance.now();
     world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
     if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
@@ -5047,7 +5060,10 @@ function loop(now) {
   }
 
   if (state === State.PAUSED) {
-    renderFrame(); // hold the frozen frame behind the overlay
+    // Paused = a frozen scene, so draw it ONCE (the canvas keeps showing that frame)
+    // then idle — re-rendering an unchanging image 60×/s behind the pause menu (or a
+    // backgrounded app) is pure wasted GPU/battery. Ambient sim is skipped above too.
+    if (!_pauseDrawn) { renderFrame(); _pauseDrawn = true; }
     return;
   }
 
@@ -5125,8 +5141,14 @@ function loop(now) {
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
-    updateMenuCamera(now / 1000); // advance tour timing/phase
-    renderMenuBackground(now / 1000); // single render, or dual-render cross-dissolve
+    updateMenuCamera(now / 1000); // advance tour timing/phase (cheap; keeps the drift smooth)
+    // The menu is a slow ambient drift — render it at ~30fps (halves the idle GPU/
+    // battery you spend sitting in menus) but keep the brief shot cross-fade at full
+    // rate so transitions stay smooth. The canvas holds the last frame between draws.
+    if (_menuPhase === "fading" || now - _lastMenuDraw >= 32) {
+      _lastMenuDraw = now;
+      renderMenuBackground(now / 1000); // single render, or dual-render cross-dissolve
+    }
     return;
   }
 
