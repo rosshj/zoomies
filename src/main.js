@@ -4069,6 +4069,7 @@ if (lobbyStartBtn) {
 const camTarget = new THREE.Vector3();
 const camPos = new THREE.Vector3();
 let _camYPrev = NaN; // last frame's clamped camera height (vertical rate limiter)
+let _camPitch = NaN; // last frame's smoothed look pitch (rad) — see the pitch rate limiter
 // Scratch vectors for updateCamera — reused every frame so the camera path
 // allocates nothing per frame. (_camFwd is shared with updateAtmosphere's
 // facing test; both write before they read, so the reuse is safe.)
@@ -4370,6 +4371,27 @@ function updateCamera(dt, snap = false) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
     camera.position.y += (Math.random() - 0.5) * shakeMag;
   }
+
+  // Pitch rate limiter — the general fix for the "weird camera angle" on sharp
+  // hill crests and fast tunnel exits. The camLift stabiliser above only cancels
+  // CLAMP-induced eye lift; it can't tame the pitch swing from the natural geometry
+  // (cresting a hill flips the look from up-slope to down-slope) or the residual
+  // from the vertical rate limiter — and at speed those swings land in a frame or
+  // two. So cap how fast the vertical framing ANGLE itself may change: ease toward
+  // the target pitch, but never faster than a fixed rad/s, then rebuild the aim at
+  // that smoothed pitch (keeping its horizontal/yaw direction). Computed from the
+  // pre-shake eye so screen shake never feeds the smoother.
+  const _dx = _camAim.x - camPos.x, _dy = _camAim.y - camPos.y, _dz = _camAim.z - camPos.z;
+  const _horiz = Math.hypot(_dx, _dz) || 1e-3;
+  const _tgtPitch = Math.atan2(_dy, _horiz);
+  if (snap || !Number.isFinite(_camPitch)) {
+    _camPitch = _tgtPitch;
+  } else {
+    const _eased = (_tgtPitch - _camPitch) * (1 - Math.pow(0.02, dt)); // smooth follow on gentle terrain
+    const _cap = 1.6 * dt; // rad/s ceiling — bounds the violent one-frame swings
+    _camPitch += Math.max(-_cap, Math.min(_cap, _eased));
+  }
+  _camAim.y = camPos.y + _horiz * Math.tan(_camPitch);
   camera.lookAt(_camAim);
 }
 
