@@ -25,6 +25,7 @@ export class Input {
     this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
     this._keyboardSteering = false;
+    this._keyboardThrottle = false; // gas/brake key held → so release can return to neutral
 
     // Maps viewport (clientX, clientY) into the rotated stage's local space.
     // Set by main once the stage layout is known; identity by default.
@@ -358,8 +359,14 @@ export class Input {
       this._steerTarget = 0;
     }
 
-    if (k.ArrowUp || k.KeyW) this.throttle = 1;
-    else if (k.ArrowDown || k.KeyS) this.throttle = -1;
+    // Gas/brake: hold sets full throttle; RELEASE must return to neutral (foot off
+    // the pedal) so the kart coasts + engine-brakes to a stop. Without the release
+    // branch, throttle latched at ±1 forever after the first tap (the desktop
+    // "keeps going after you let go" bug). Guarded by a flag so it only zeroes the
+    // frame the key comes up — never fighting the touch slider's own throttle.
+    if (k.ArrowUp || k.KeyW) { this.throttle = 1; this._keyboardThrottle = true; }
+    else if (k.ArrowDown || k.KeyS) { this.throttle = -1; this._keyboardThrottle = true; }
+    else if (this._keyboardThrottle) { this.throttle = 0; this._keyboardThrottle = false; }
 
     // Smooth steering toward target (snappy, so it doesn't feel laggy/stiff).
     const rate = Math.min(1, dt * 16);

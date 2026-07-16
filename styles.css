@@ -1435,6 +1435,15 @@ kbd {
   pointer-events: none;
 }
 
+/* Victory lap: gently fade the racing controls + readouts out so the camera
+   orbit and fireworks play unobstructed. The FINISH toast (and the invisible
+   hit-flash layer) are kept. Cleared when the results screen or next race starts. */
+#hud.victory-hidden > *:not(#toast):not(#flash) {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.9s ease;
+}
+
 #info {
   position: absolute;
   top: max(8px, var(--safe-top, 0px));
