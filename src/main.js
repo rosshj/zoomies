@@ -1807,14 +1807,27 @@ input.setStageMapper(stageToLocal);
 // frame rate — it renders at full retina and only scales back if a device can't
 // keep up, so we get the high-quality look without risking stutter.
 let gpuParticles = null; // GPU ambient motes — created async once the renderer is ready
-const QUALITY_KEY = "zoomies-quality";
-let quality = "high";
-try { if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low"; } catch {}
+// Three graphics tiers (best device for each in parens):
+//   low    — reduced effects + lower resolution + 60fps      (older phones)
+//   medium — full effects + resolution + 60fps cap            (newer phones)  ← default
+//   high   — full effects + UNCAPPED frame rate (up to 120)   (laptops/desktops)
+// medium and high look IDENTICAL; high only unlocks the frame rate (the 60fps cap
+// keeps phones cool — see the loop). low is the only tier that dials the visuals back.
+const QUALITY_KEY = "zoomies-quality";        // legacy low/high pref — read once to migrate
+const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | medium | high
+let quality = "medium"; // full graphics + 60fps: cool AND smooth, the safe default everywhere
+try {
+  const v2 = localStorage.getItem(QUALITY_KEY_V2);
+  if (v2 === "low" || v2 === "medium" || v2 === "high") quality = v2;
+  // Migrate an old explicit "Low"; a legacy "high" maps to medium (same look, still
+  // capped) so no phone silently jumps to battery-hungry 120fps — you opt into that.
+  else if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low";
+} catch {}
 let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
 function baseDpr() {
   // Low caps the device-pixel-ratio harder — resolution is the biggest lever on
   // both fill cost and render-target memory (which is what tips weak GPUs over).
-  return Math.min(window.devicePixelRatio, quality === "high" ? 2 : 1.25);
+  return Math.min(window.devicePixelRatio, quality === "low" ? 1.25 : 2); // medium+high = full res
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -1871,7 +1884,7 @@ let _drsCooldown = 0;
 const _watchdogOn = !new URLSearchParams(location.search).has("nowd");
 let _wdAccum = 0;
 function perfWatchdog(dt) {
-  if (!_watchdogOn || quality !== "high") return; // already on Low → nothing more to shed
+  if (!_watchdogOn || quality === "low") return; // already at the leanest tier — nothing more to shed
   // Only when DRS has already bottomed out AND frames are still long (~30 fps).
   // 40ms (25 fps) never fired in practice: real dips hover in the 25-45 fps
   // band — heavy sunset scenes and a thermally throttling phone both land
@@ -1880,10 +1893,11 @@ function perfWatchdog(dt) {
     _wdAccum += dt;
     if (_wdAccum >= 5) {
       _wdAccum = 0;
-      // Session-only (no persist): a capable phone that's merely hot shouldn't
-      // be locked to Low forever — next launch starts fresh on the saved tier.
-      applyQuality("low", false);
-      hud.showToast?.("Graphics lowered for a smoother race");
+      // Step DOWN one tier (session-only, no persist — next launch starts fresh on
+      // the saved tier): high → medium first caps the frame rate (halves the frame
+      // count) before medium → low sheds the effects.
+      applyQuality(quality === "high" ? "medium" : "low", false);
+      hud.showToast?.(quality === "low" ? "Graphics lowered for a smoother race" : "Frame rate capped for a smoother race");
     }
   } else {
     _wdAccum = Math.max(0, _wdAccum - dt * 0.6); // recover slowly from brief spikes
@@ -1963,25 +1977,31 @@ const qualityHighBtn = document.getElementById("set-quality-high");
 //   • god-ray render target stops updating,
 //   • GPU ambient motes hidden (skips their compute), grass hidden,
 //   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
+const qualityMedBtn = document.getElementById("set-quality-medium");
 function applyQuality(q, persist = true) {
   quality = q;
-  const high = q === "high";
-  if (persist) { try { localStorage.setItem(QUALITY_KEY, q); } catch {} }
-  bloomPass.enabled = true; // marquee glow on both tiers
-  postProcessing.outputNode = high ? _highOutput : _lowOutput;
+  const fullFx = q !== "low"; // medium + high get the full effect stack; only low dials it back
+  if (persist) { try { localStorage.setItem(QUALITY_KEY_V2, q); } catch {} }
+  bloomPass.enabled = true; // marquee glow on every tier
+  postProcessing.outputNode = fullFx ? _highOutput : _lowOutput;
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
-  _shaftTex.autoUpdate = high; // don't re-render the god-ray target when it's unused
-  if (world.grass) world.grass.visible = high;
-  if (gpuParticles) gpuParticles.setVisible(high);
+  _shaftTex.autoUpdate = fullFx; // don't re-render the god-ray target when it's unused
+  if (world.grass) world.grass.visible = fullFx;
+  if (gpuParticles) gpuParticles.setVisible(fullFx);
   renderScale = 1; // reset DRS on a manual quality change
   _drsRung = 0; // keep the rung index in sync (updateDRS owns both)
-  qualityLowBtn?.classList.toggle("is-active", !high);
-  qualityHighBtn?.classList.toggle("is-active", high);
-  layoutStage(); // applies the resolution
+  qualityLowBtn?.classList.toggle("is-active", q === "low");
+  qualityMedBtn?.classList.toggle("is-active", q === "medium");
+  qualityHighBtn?.classList.toggle("is-active", q === "high");
+  layoutStage(); // applies the resolution (frame-rate cap is read live in the loop)
 }
 qualityLowBtn?.addEventListener("click", () => { _mpWantsHigh = false; applyQuality("low"); });
-qualityHighBtn?.addEventListener("click", () => {
+qualityMedBtn?.addEventListener("click", () => {
   if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; } // opt out of MP's forced-Low this session
+  applyQuality("medium");
+});
+qualityHighBtn?.addEventListener("click", () => {
+  if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; }
   applyQuality("high");
 });
 applyQuality(quality, false); // honour the persisted choice without re-writing it
@@ -2648,7 +2668,7 @@ function updateFpsCounter(dt) {
   // pixel scaling can't help (vertex/CPU-bound — or the phone is thermally
   // throttling, which looks exactly like this after minutes of sustained load).
   const rs = renderScale.toFixed(2).replace(/0$/, "");
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality === "high" ? "H" : "L"}`;
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality[0].toUpperCase()}`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
@@ -2819,7 +2839,7 @@ function logPerfSummary(rawMs) {
   const dc = renderer?.info?.render?.drawCalls ?? 0;
   const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
   console.log(
-    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality === "high" ? "H" : "L"} · ${backend}`
+    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`
   );
   _perfFrames.length = 0;
   _perfElapsed = 0;
@@ -2948,14 +2968,18 @@ let _mpForcedLow = false;
 let _mpWantsHigh = false;
 function applyMpQuality() {
   const wantLow = MP.enabled && !_mpWantsHigh;
-  if (wantLow && quality === "high") {
+  if (wantLow && quality !== "low") {
     _mpForcedLow = true;
     applyQuality("low", false);
     hud.showToast?.("Graphics set to Low for smoother multiplayer");
   } else if (!wantLow && _mpForcedLow) {
     _mpForcedLow = false;
-    let saved = "high";
-    try { if (localStorage.getItem(QUALITY_KEY) === "low") saved = "low"; } catch {}
+    let saved = "medium";
+    try {
+      const v2 = localStorage.getItem(QUALITY_KEY_V2);
+      if (v2 === "low" || v2 === "medium" || v2 === "high") saved = v2;
+      else if (localStorage.getItem(QUALITY_KEY) === "low") saved = "low";
+    } catch {}
     applyQuality(saved, false);
   }
 }
@@ -4986,14 +5010,15 @@ let prevPlayerSpin = 0;
 // same effects) — only the extra frames are dropped. Threshold sits below the
 // 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. Opt out
 // (e.g. a 120Hz desktop) with ?uncap=1.
-const _fpsUncapped = new URLSearchParams(location.search).has("uncap");
+const _uncapParam = new URLSearchParams(location.search).has("uncap");
 const FRAME_MIN_MS = 15;
 
 function loop(now) {
   requestAnimationFrame(loop);
-  // Cap: if too little time has passed since the last RENDERED frame, skip this
-  // rAF tick (leaving `last` untouched so dt still spans to the real last frame).
-  if (!_fpsUncapped && now - last < FRAME_MIN_MS) return;
+  // Cap: unless the High graphics tier (or ?uncap=1) opts into uncapped ~120fps,
+  // skip this rAF tick when too little time has passed since the last RENDERED
+  // frame (leaving `last` untouched so dt still spans to the real last frame).
+  if (quality !== "high" && !_uncapParam && now - last < FRAME_MIN_MS) return;
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
@@ -5591,7 +5616,7 @@ rendererReady
       // A touch more opaque so the (now fewer) specks actually catch the light.
       opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
       size: night ? 0.52 : 0.42,
-    }).then((p) => { gpuParticles = p; if (p && quality !== "high") p.setVisible(false); });
+    }).then((p) => { gpuParticles = p; if (p && quality === "low") p.setVisible(false); });
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => {
