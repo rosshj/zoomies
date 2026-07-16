@@ -569,6 +569,7 @@ function grantItem(kart) {
   }
   return true;
 }
+window.__zoomies.grantItem = grantItem; // debug hook (headless probes verify the roll distribution)
 
 // Kart headlights (night/dusk only): REAL shadowless spotlights aimed forward and
 // down, so they actually illuminate the road and any props ahead — the lit pool a
