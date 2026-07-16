@@ -358,6 +358,44 @@ export class EffectsManager {
     }
   }
 
+  // Slipstream wind — rushing speed-lines past a kart tucked in a rival's wake; the
+  // "it's working" cue for the faster boost charge. Rate/brightness/length scale
+  // with the draft strength (0..1). Streaks stream BACKWARD relative to the kart
+  // (spark particles stretch along their velocity) so they read as wind whipping by.
+  slipstreamWind(kart, strength) {
+    if (Math.random() > 0.4 + strength * 0.5) return;
+    const fwx = Math.sin(kart.heading), fwz = Math.cos(kart.heading);
+    const rx = Math.cos(kart.heading), rz = -Math.sin(kart.heading); // kart's right
+    const sp = 26 + Math.abs(kart.speed) * 0.6;
+    const n = strength > 0.6 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      const side = (Math.random() < 0.5 ? -1 : 1) * (0.7 + Math.random() * 1.2);
+      const fore = 1.2 + Math.random() * 1.6;
+      _pos.copy(kart.position);
+      _pos.x += rx * side + fwx * fore;
+      _pos.z += rz * side + fwz * fore;
+      _pos.y += kart.y + 0.6 + Math.random() * 0.7;
+      _vel.set(-fwx * sp, (Math.random() - 0.5) * 2, -fwz * sp);
+      _col.setHex(0xdff1ff);
+      this._spawn(_pos, _col, {
+        additive: true, spark: true, size: 0.5 + strength * 0.45,
+        life: 0.18, v: _vel, opacity: 0.22 + strength * 0.4, damp: 0.5,
+      });
+    }
+  }
+
+  // A faint wake trailing a kart that's BEING drafted, so the sweet spot behind it
+  // is visible to aim for. Subtle by design — it shouldn't compete with drift/boost.
+  slipstreamWake(kart, strength) {
+    if (Math.random() > 0.28 * strength) return;
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _pos.copy(kart.position).addScaledVector(_fwd, -2.6);
+    _pos.y += kart.y + 0.6;
+    _vel.set(-_fwd.x * 3, 0.3, -_fwd.z * 3);
+    _col.setHex(0xcfe6ff);
+    this._spawn(_pos, _col, { additive: true, size: 1.1, life: 0.4, grow: 1.6, v: _vel, opacity: 0.12 });
+  }
+
   // Dust kicked off the track surface — soft, ground-coloured puffs that splay out
   // low behind the rear wheels and settle. Heavier while skidding/drifting, a faint
   // veil while just driving. Routed through the existing smoke field (no new draw
