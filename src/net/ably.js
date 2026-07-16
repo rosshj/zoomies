@@ -61,11 +61,17 @@ class AblyTransport {
         this._client.time().then((S) => this._emit({ type: 'pong', c, S })).catch(() => {});
         break;
       }
-      case 'hello':
+      case 'hello': {
         // clientId was set to selfId at construction, so member.clientId == our id.
-        this._channel.presence.enter({ name: obj.name, color: obj.color, catColor: obj.catColor, catPattern: obj.catPattern, kartStyle: obj.kartStyle, kartNumber: obj.kartNumber })
-          .catch(() => {});
+        // Enter with the WHOLE identity (everything except the routing fields), so
+        // resyncPresence hands a late joiner the full hello. Enumerating fields here
+        // silently dropped `host` and `world` — which meant a code-joiner never
+        // received the host's map and always built its own (the "connected but on
+        // different maps" bug). Spreading keeps every identity field in sync.
+        const { type, id, ...data } = obj;
+        this._channel.presence.enter(data).catch(() => {});
         break;
+      }
       default:
         // state / start / hit / finish … all relayed as channel messages.
         this._channel.publish(obj.type, obj).catch(() => {});

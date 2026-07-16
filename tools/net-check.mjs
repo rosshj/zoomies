@@ -12,6 +12,7 @@ import { SimClock } from "../src/net/sim/sched.js";
 import { makeRng } from "../src/rng.js";
 import { RemotePose, FLAG } from "../src/net/remotepose.js";
 import { MpSession, REMOTE_GRACE_MS, KART_COLLIDE_MIN, kartBumpPower } from "../src/net/session.js";
+import { sameWorld } from "../src/net/worldcfg.js";
 
 let failures = 0;
 const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
@@ -517,6 +518,25 @@ check("peer P2P-live → drop the Ably duplicate", acceptAblyState({ ready: true
   const highYields = aId < bId ? B : A;
   check("host tiebreak → exactly one host (the lowest id keeps it)", lowWins.isHost() && !highYields.isHost());
   check("both clients agree on the host id", A.mp.hostId() === lowestId && B.mp.hostId() === lowestId);
+}
+
+// --- World sync: the host advertises its full map in the hello, so a code-joiner
+// (who only had the seed) can adopt it and build the same track. ---
+{
+  const clock = new SimClock();
+  const hub = new LoopbackHub({ latency: 10, jitter: 0, rng: makeRng("WORLD"), schedule: (fn, ms) => clock.setTimeout(fn, ms), now: () => clock.now() });
+  const netOpts = { localNow: () => clock.now(), timers: clock.timers() };
+  const world = { cfg: { mode: "custom", seed: "AB12", size: 0.6, biomes: ["desert"] }, laps: 5, seed: "AB12" };
+  const host = new Net(hub.connect(), { name: "Host", host: true, world }, netOpts);
+  const joiner = new Net(hub.connect(), { name: "Joiner", host: false }, netOpts);
+  const joinerSaw = [], hostSaw = [];
+  joiner.on("peer", (p) => joinerSaw.push(p));
+  host.on("peer", (p) => hostSaw.push(p));
+  host.connect(); joiner.connect();
+  clock.run(clock.now() + 800);
+  const hostPeer = joinerSaw.find((p) => p.host);
+  check("host's world reaches the joiner's peer event intact", !!hostPeer && sameWorld(hostPeer.world, world));
+  check("a non-host peer advertises no world (null)", hostSaw.length >= 1 && hostSaw.every((p) => p.world === null));
 }
 
 // --- Transport-gated send rate (30 Hz on the direct WebRTC channel) ---

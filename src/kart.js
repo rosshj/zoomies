@@ -148,6 +148,7 @@ export class Kart {
     // Wall scrape (for spark effects)
     this.wallHit = false;
     this.wallHitDir = new THREE.Vector3();
+    this.wallHitPulse = 0; // s remaining; a scrape latch the MP pose send reads (see update)
 
     // Drift (hold jump while turning to slide + charge a mini-turbo)
     this.drifting = false;
@@ -408,6 +409,7 @@ export class Kart {
 
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
     if (this.boxCooldown > 0) this.boxCooldown -= dt;
+    if (this.wallHitPulse > 0) this.wallHitPulse -= dt; // MP wall-scrape latch (see the scrape site)
     if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.gloatTimer > 0) this.gloatTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
@@ -589,6 +591,12 @@ export class Kart {
       if (Math.abs(this.speed) > 6) {
         this.wallHit = true;
         this.wallHitDir.copy(proj.side).multiplyScalar(Math.sign(proj.lateral));
+        // A short latch so multiplayer can broadcast the scrape. `wallHit` itself is a
+        // one-frame transient set here (physics) and cleared in the effects pass; the
+        // pose send runs BEFORE physics in the frame, so it would always miss it. This
+        // timer stays up for ~0.12s so getPose reliably tags FLAG.WALL and a rival
+        // sees the sparks. (Local sparks still use wallHit; this is send-only.)
+        this.wallHitPulse = 0.12;
       }
     }
 

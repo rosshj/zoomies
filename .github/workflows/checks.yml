@@ -25,3 +25,5 @@ jobs:
         run: npm run check:codec
       - name: race referee (lag-comp/hits/laps/finish)
         run: npm run check:referee
+      - name: multiplayer world-config codec
+        run: npm run check:worldcfg

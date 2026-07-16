@@ -11,7 +11,7 @@
 import { sampleBuffer, pushSnapshot, lerpAngle } from "./interp.js";
 
 // Pose flag bitmask shared by sender (main loop) and receiver.
-export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8 };
+export const FLAG = { DRIFT: 1, BOOST: 2, SHIELD: 4, AIRBORNE: 8, WALL: 16 };
 
 // How far in the past we render remote karts. On mobile/cellular one-way latency
 // plus jitter regularly exceeds 150ms, which left the buffer dry — so the ghost
@@ -135,13 +135,21 @@ export class RemotePose {
     const target = Math.max(this.delayFloor, Math.min(this.delayCeil,
       rtt * 0.5 + this.baseMargin + this.jitterK * this._jitter));
     this.interpDelay += (target - this.interpDelay) * ease;
-    // Predict-to-present: pull the ACTUAL render delay toward present. Clean link
-    // (low jitter) → renderTarget ≈ presentMargin, so the curved extrapolator draws
-    // the kart near NOW and perceived latency collapses; jitter re-inflates it back
-    // toward the buffered delay (never exceeding it) so a bursty link keeps
-    // interpolating instead of extrapolating on noisy samples.
-    const renderTarget = Math.max(this.presentFloor,
-      Math.min(this.interpDelay, this.presentMargin + this.jitterK * this._jitter));
+    // Render at the BUFFERED interp delay — i.e. interpolate between real snapshots,
+    // in the past, rather than extrapolate toward present.
+    //
+    // This deliberately backs out the old "predict-to-present" pull. That pull eased
+    // the render offset from ~200ms down toward ~30ms over the first ~2s of a race,
+    // which is EXACTLY when players reported the remote kart going from smooth to
+    // jumpy: at ~30ms back on a real phone link, `now − renderDelay` sits PAST the
+    // newest packet, so the ghost dead-reckons every frame off a noisy 2-sample turn
+    // rate and snaps when the real packet lands — jittery position AND wrong-looking
+    // facing, degrading precisely as the offset finished collapsing. The netsim liked
+    // predict-to-present because its clean gaussian loss model doesn't punish
+    // near-present extrapolation the way a real link does. Interpolating at the full
+    // jitter-aware delay keeps the ghost between real snapshots — smooth and accurate
+    // — for a little more latency, the right trade for a hobby race.
+    const renderTarget = this.interpDelay;
     this.renderDelay += (renderTarget - this.renderDelay) * ease;
     return this.sample(nowShared - this.renderDelay, dt);
   }
@@ -212,11 +220,14 @@ export class RemotePose {
       const velZ = Math.cos(s.h) * s.s;
       this._rx = (this._rx + velX * dt) * decay + s.x * (1 - decay);
       this._rz = (this._rz + velZ * dt) * decay + s.z * (1 - decay);
-      // y (elevation) and heading have no velocity channel here — keep the simple
-      // exponential ease; their follow-lag is minor and not what this fixes.
-      const a = 1 - Math.exp(-dt / 0.06);
-      this._ry += (s.y - this._ry) * a;
-      this._rh = lerpAngle(this._rh, s.h, a);
+      // y (elevation) eases gently; heading eases FASTER (tau 0.03 vs 0.06) so the
+      // kart's facing tracks the interpolated heading closely instead of trailing it.
+      // The sample's heading is already smooth (buffer-interpolated), so a slow ease
+      // here just added ~60ms of facing lag on top — the kart looked like it was
+      // crabbing through corners (facing one way, sliding another). A tight ease keeps
+      // facing aligned with motion; the buffer interpolation still removes the jitter.
+      this._ry += (s.y - this._ry) * (1 - Math.exp(-dt / 0.06));
+      this._rh = lerpAngle(this._rh, s.h, 1 - Math.exp(-dt / 0.03));
     }
 
     // Derive lean + cat-rig cornering from how fast the heading is turning, so

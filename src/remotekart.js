@@ -90,6 +90,8 @@ export class RemoteKart {
     // Decode visual flags.
     k.drifting = (frame.f & FLAG.DRIFT) !== 0;
     k.shielding = (frame.f & FLAG.SHIELD) !== 0;
+    k.wallHit = (frame.f & FLAG.WALL) !== 0; // main-loop effects pass turns this into sparks
+
     k.tootTimer = frame.f & FLAG.BOOST ? 0.1 : 0; // drives the boost wheelie + tail lift
 
     // Lean + cat-rig cornering, derived by the tracker from heading/speed deltas.
