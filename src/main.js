@@ -734,8 +734,8 @@ function updateBoostUI() {
 // are in the wake. Only a trailing kart has a wake to sit in, so it's a natural
 // catch-up mechanic; popping the boost pulls you out — "draft, then pass".
 const DRAFT_MIN = 3.0;    // u: nearer than this you're basically touching — no draft (don't reward ramming)
-const DRAFT_MAX = 9.5;    // u: how far back the wake still helps
-const DRAFT_LANE = 2.3;   // u: half-width of the wake at the leader; fans out with distance (a cone)
+const DRAFT_MAX = 13;     // u: how far back the wake still helps (widened — the draft was too fiddly to catch)
+const DRAFT_LANE = 3.4;   // u: half-width of the wake at the leader; fans out with distance (a cone)
 const DRAFT_ALIGN = 0.5;  // min cos(heading delta): must travel roughly the same way (~60°)
 const DRAFT_MINSPEED = 8; // u/s: both karts must actually be moving
 function updateSlipstream(field) {
@@ -3875,7 +3875,9 @@ function prepareRace() {
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("lobby").classList.add("hidden");
-  document.getElementById("hud").classList.remove("hidden");
+  const _hudEl = document.getElementById("hud");
+  _hudEl.classList.remove("hidden");
+  _hudEl.classList.remove("victory-hidden"); // fresh race → controls back
 
   // This world's time of day (midday/sunset/night), fixed per seed and already
   // applied at load. Precipitation is separate — dictated by the biome you drive
@@ -4791,7 +4793,9 @@ function fieldSnapshot() {
 function showResults() {
   state = State.FINISHED;
   renderResults();
-  document.getElementById("hud").classList.remove("hidden");
+  const _hudEl = document.getElementById("hud");
+  _hudEl.classList.remove("hidden");
+  _hudEl.classList.remove("victory-hidden"); // results overlay takes over from the faded victory HUD
   document.getElementById("results").classList.remove("hidden");
 }
 
@@ -4974,8 +4978,22 @@ let last = performance.now();
 let prevPlayerLap = -1;
 let prevPlayerSpin = 0;
 
+// Frame-rate cap: render at ~60fps even on 120Hz ProMotion phones. Rendering at
+// 120fps roughly DOUBLES GPU/CPU power draw — and worse, the dynamic-resolution
+// scaler saw the resulting ~8ms frames as spare headroom and cranked resolution
+// UP, pegging the GPU. That's the "phone runs hot / battery dies fast" report.
+// 60fps is smooth for a kart racer and graphically identical (same resolution,
+// same effects) — only the extra frames are dropped. Threshold sits below the
+// 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. Opt out
+// (e.g. a 120Hz desktop) with ?uncap=1.
+const _fpsUncapped = new URLSearchParams(location.search).has("uncap");
+const FRAME_MIN_MS = 15;
+
 function loop(now) {
   requestAnimationFrame(loop);
+  // Cap: if too little time has passed since the last RENDERED frame, skip this
+  // rAF tick (leaving `last` untouched so dt still spans to the real last frame).
+  if (!_fpsUncapped && now - last < FRAME_MIN_MS) return;
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
@@ -5504,6 +5522,10 @@ function loop(now) {
     if (player.finished) {
       audio.finish();
       audio.setSkid(false);
+      // Fade the racing HUD out for the victory lap so the camera orbit + fireworks
+      // read as a celebration, not a paused race (the "FINISH!" toast stays — see
+      // the .victory-hidden rule). Restored when results show / the next race starts.
+      document.getElementById("hud").classList.add("victory-hidden");
       if (timeTrial) {
         const lapTime = player.finishTime - (ttLapStart >= 0 ? ttLapStart : 0);
         _ttResult = recordTimeTrial(lapTime);

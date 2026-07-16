@@ -88,7 +88,7 @@ export const SLIPSTREAM_MULT = 4.5;
 // full at BOOST_OVERCHARGE_DECAY once you leave the wake — a "use it while you're
 // tucked" bonus, never a stockpile. Kept modest so it's a nudge, not a knockout.
 export const BOOST_OVERCHARGE = 1.2;        // max meter (120%)
-export const BOOST_OVERCHARGE_DECAY = 0.15; // per second, bleeds 1.2 → 1.0 in ~1.3s out of the draft
+export const BOOST_OVERCHARGE_DECAY = 0.08; // per second, bleeds 1.2 → 1.0 in ~2.5s out of the draft (held longer so the overcharge is usable)
 
 // A drift must be held at least this long (seconds) to earn a mini-turbo. Below
 // it the drift just ends with no boost — so brief flicks, and the short re-grabs
