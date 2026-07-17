@@ -93,7 +93,10 @@ function build(scene, track, opts) {
   // grabbed it sinks into an ordinary crate and, after a short beat, a roadside
   // crate rises to take its place — so the count holds without anything spawning
   // out of thin air.
-  const boxCount = size >= 0.55 ? 5 : 3;
+  // 5 boxes ≈ a roll every ~40% of a lap for a 6-kart field — items stay in hands
+  // without tipping into item spam (was 3/5, which left mid-pack players dry for
+  // laps at a time; the 3s per-kart pickup cooldown still stops vacuuming).
+  const boxCount = size >= 0.55 ? 7 : 5;
   const HOVER = 1.5;           // how high a power-up box floats above its rest spot
   const RISE_TIME = 0.5;       // seconds to rise into / sink out of a floating box
   const PROMOTE_DELAY = 3;     // beat after a pickup before a replacement rises

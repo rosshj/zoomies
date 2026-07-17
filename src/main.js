@@ -528,46 +528,77 @@ function grantItem(kart) {
 
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
-  // Both yarn and milk now replicate online, so multiplayer uses the SAME roster
-  // as single-player (the old MP-only branch existed solely because those two
-  // items didn't cross the wire yet). Every kart rolls locally; remotes short-
+  // Position-shaped roll: each item lands where it's USEFUL. The leader defends
+  // (shield + milk trap — yarn/tri/laser need a target ahead, which they don't
+  // have); the mid-pack gets the targeted-offense knife fight (laser + yarn); the
+  // back gets rescue (catnip + hearts). Every kart rolls locally; remotes short-
   // circuit at the top of this function, and the resulting spawn replicates.
-  //
-  // Single-player roster. Catnip is the honest comeback item — STRICTLY never
-  // rolled near the front (it out-runs everything and grants invincibility),
-  // ramping up toward the back. The rest splits between milk (placed trap),
-  // yarn (pressure with counterplay) and the tri-furball fan.
-  const wCat = f < 0.3 ? 0 : 0.45 * ((f - 0.3) / 0.7);
-  const rest = 1 - wCat;
-  // Weights within `rest` sum to exactly 1, so the leader (wCat=0) can never fall
-  // through to catnip. Lives + laser inherit the same position-weighted pipeline:
-  // a trailing kart simply rolls MORE boxes' worth of everything.
-  const wMilk = rest * 0.24;
-  const wYarn = rest * 0.24;
-  const wTri = rest * 0.2;
-  const wLife = rest * 0.16;
-  const wLaser = rest * 0.16;
+  const w = rollWeights(f);
   const r = Math.random();
-  if (r < wMilk) {
-    kart.giveMilk();
-    if (kart === player) hud.showToast("🥛 Milk bottle — drop it behind you!");
-  } else if (r < wMilk + wYarn) {
-    kart.giveYarn();
-    if (kart === player) hud.showToast("🧶 Yarn ball — next shot homes!");
-  } else if (r < wMilk + wYarn + wTri) {
-    kart.giveTriShots(3);
-    if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
-  } else if (r < wMilk + wYarn + wTri + wLife) {
-    kart.giveLife();
-    if (kart === player) hud.showToast("😻 Extra life — your next wipeout is forgiven!");
-  } else if (r < wMilk + wYarn + wTri + wLife + wLaser) {
-    kart.giveLaser();
-    if (kart === player) hud.showToast("🔴 Laser pointer — zap the kart ahead!");
-  } else {
-    kart.giveCatnip();
-    if (kart === player) hud.showToast("🌿 Catnip boost!");
+  let acc = 0, pick = ITEM_ROLL.length - 1;
+  for (let i = 0; i < ITEM_ROLL.length; i++) { acc += w[i]; if (r < acc) { pick = i; break; } }
+  switch (ITEM_ROLL[pick].name) {
+    case "shield":
+      kart.giveShield(15);
+      if (kart === player) hud.showToast("🛡️ Shield — 15s of protection!");
+      break;
+    case "milk":
+      kart.giveMilk();
+      if (kart === player) hud.showToast("🥛 Milk bottle — drop it behind you!");
+      break;
+    case "yarn":
+      kart.giveYarn();
+      if (kart === player) hud.showToast("🧶 Yarn ball — next shot homes!");
+      break;
+    case "tri":
+      kart.giveTriShots(3);
+      if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
+      break;
+    case "life":
+      kart.giveLife();
+      if (kart === player) hud.showToast("😻 Extra life — your next wipeout is forgiven!");
+      break;
+    case "laser":
+      kart.giveLaser();
+      if (kart === player) hud.showToast("🔴 Laser pointer — zap the kart ahead!");
+      break;
+    default:
+      kart.giveCatnip();
+      if (kart === player) hud.showToast("🌿 Catnip boost!");
+      break;
   }
   return true;
+}
+
+// Per-item roll weights anchored at FRONT (f=0), MID (f=0.5) and BACK (f=1),
+// interpolated linearly between anchors — each anchor column sums to 1, so any
+// interpolated row does too. Design: the leader DEFENDS (shield/milk), the
+// mid-pack BRAWLS (laser/yarn strongest where a target is always just ahead),
+// the back gets RESCUED (catnip half their rolls, hearts steady).
+const ITEM_ROLL = [
+  { name: "shield", w: [0.30, 0.06, 0.00] },
+  { name: "milk",   w: [0.34, 0.17, 0.06] },
+  { name: "yarn",   w: [0.06, 0.19, 0.10] },
+  { name: "tri",    w: [0.08, 0.15, 0.10] },
+  { name: "life",   w: [0.16, 0.16, 0.15] },
+  { name: "laser",  w: [0.06, 0.21, 0.09] },
+  { name: "catnip", w: [0.00, 0.06, 0.50] },
+];
+function rollWeights(f) {
+  const a = f < 0.5 ? 0 : 1;
+  const t = f < 0.5 ? f / 0.5 : (f - 0.5) / 0.5;
+  const w = ITEM_ROLL.map((it) => it.w[a] + (it.w[a + 1] - it.w[a]) * t);
+  // Catnip stays STRICTLY off near the front (it out-runs everything and grants
+  // invincibility) — zero it inside the front band and renormalize the rest.
+  if (f < 0.3) {
+    const cat = w[w.length - 1];
+    if (cat > 0) {
+      w[w.length - 1] = 0;
+      const s = 1 / (1 - cat);
+      for (let i = 0; i < w.length - 1; i++) w[i] *= s;
+    }
+  }
+  return w;
 }
 window.__zoomies.grantItem = grantItem; // debug hook (headless probes verify the roll distribution)
 

@@ -66,20 +66,20 @@ function check(name, cond) {
   });
   check("props built", !!props);
   const before = props.boxTargets().length;
-  check("3 floating boxes on a small track", before === 3);
+  check("5 floating boxes on a small track", before === 5);
 
   // Drive through one box (at its own position) so we don't bulldoze the whole
   // field — it grants to the driver and stops floating (it tumbles off as a spent
-  // crate), dropping the pool to 2.
+  // crate), dropping the pool to 4.
   const kart = { name: "P1" };
   const target = props.boxTargets()[0];
   for (let s = -6; s <= 6; s += 3) props.update(0.05, [{ x: target.x + s, z: target.z, kart }]);
   check("driving through a box grants it to the driver", picks.length === 1 && picks[0] === "P1");
-  check("the used box stops floating", props.boxTargets().length === 2);
+  check("the used box stops floating", props.boxTargets().length === 4);
 
-  // Idle ~15s: a roadside crate should rise to refill the pool back to 3.
+  // Idle ~15s: a roadside crate should rise to refill the pool back to 5.
   for (let t = 0; t < 300; t++) props.update(0.05, []);
-  check("pool refills to 3 from a rising ground crate", props.boxTargets().length === 3);
+  check("pool refills to 5 from a rising ground crate", props.boxTargets().length === 5);
 
   // A kart on cooldown (onItem returns false) must NOT consume the box.
   const props2 = await initProps({ add() {}, remove() {} }, track, {
@@ -87,7 +87,7 @@ function check(name, cond) {
   });
   const k2 = { name: "P2" };
   for (let x = -6; x < LEN + 6; x += 3) props2.update(0.05, [{ x, z: 0, kart: k2 }]);
-  check("a refused pickup leaves the box floating", props2.boxTargets().length === 3);
+  check("a refused pickup leaves the box floating", props2.boxTargets().length === 5);
 }
 
 // --- Milk replication (spawnMilkAt, victim-authoritative) -----------------
