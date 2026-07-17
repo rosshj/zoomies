@@ -83,6 +83,8 @@ export const CATALOG = [
   { id: "kart.6", price: 300 },
   { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
+  { id: "kart.9", price: 350 },      // Wheelie — the moto
+  { id: "kart.10", price: 450 },     // Vanilla — the open-top minivan
   // The custom creators are features you earn.
   { id: "custom.cat", price: 600 },
   { id: "custom.kart", price: 600 },

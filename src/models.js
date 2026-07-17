@@ -1065,14 +1065,19 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   //   roadster  — short nose, ducktail lip spoiler, classic rounded tail
   //   buggy     — stubby nose, no wing, fat tyres + a roll hoop
   //   speedster — longest needle nose, low slicks, twin swept rocket tail-fins
+  //   moto      — a narrow café-racer with a tank, forks, and training wheels
+  //   van       — an open-top minivan (roof cut away so the cat pokes out)
   const STYLES = [
     { nose: 1.7, noseZ: 2.0, tipZ: 2.95, wing: "big", tire: 1.0, hoop: false },
     { nose: 1.25, noseZ: 1.85, tipZ: 2.6, wing: "lip", tire: 1.06, hoop: false },
     { nose: 1.0, noseZ: 1.75, tipZ: 2.45, wing: "none", tire: 1.2, hoop: true },
     { nose: 1.95, noseZ: 2.15, tipZ: 3.2, wing: "fin", tire: 0.94, hoop: false },
+    { body: "moto", wing: "none", tire: 1.12, hoop: false },
+    { body: "van", nose: 1.05, noseZ: 1.9, tipZ: 2.55, hlZ: 2.72, wing: "none", tire: 1.05, hoop: false },
   ];
   const st = STYLES[opts.style ?? 0] || STYLES[0];
   const styleIdx = STYLES.indexOf(st);
+  const bodyKind = st.body || "kart";
   const kartNumber = opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
   // userData.paint). Accent is a darker shade of the same hue; the stripe is a
@@ -1116,66 +1121,145 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // headlight bulbs, tail lights, flames, underglow) stay separate below.
   const shell = [];
   const add = (mesh) => { shell.push(mesh); return mesh; };
-  // Floor pan: the wide, low monocoque the whole car is built on.
-  const pan = add(new THREE.Mesh(rbox(2.55, 0.42, 4.7, 0.3), paint));
-  pan.position.y = 0.56;
-  // Lower accent skirt (two-tone) — slightly wider + darker, hugging the ground.
-  const skirt = add(new THREE.Mesh(rbox(2.66, 0.3, 4.3, 0.22), accent));
-  skirt.position.y = 0.36;
-  // Cockpit spine: the raised centre body that the seat sinks into.
-  const spine = add(new THREE.Mesh(rbox(1.6, 0.78, 3.1, 0.34), paint));
-  spine.position.set(0, 0.92, -0.25);
-  // Nose: a single tapering wedge flowing off the front of the pan + soft tip.
-  // Length/reach vary by style (long GP snout vs stubby buggy).
-  const nose = add(new THREE.Mesh(rbox(1.7, 0.46, st.nose, 0.3), paint));
-  nose.position.set(0, 0.62, st.noseZ);
-  const noseTip = add(new THREE.Mesh(rbox(1.16, 0.42, 1.2, 0.42), paint));
-  noseTip.position.set(0, 0.58, st.tipZ);
-  // Nose flash (accent) over the snout.
-  const flash = add(new THREE.Mesh(rbox(0.95, 0.2, 1.5, 0.12), accent));
-  flash.position.set(0, 0.84, st.noseZ + 0.6);
-  // Side fairings — flush to the floor sides, same paint: bodywork, not pods. A
-  // numbered roundel sits on each side (a plane decal facing outward).
+  // Numbered roundel decals (a plane pair facing outward). Position varies by
+  // body: kart fairings, van sliding doors, moto tank flanks.
   const numMat = sharedMat(`knum|${kartNumber}`, () =>
     new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
   const roundels = [];
-  for (const sx of [-1, 1]) {
-    const fairing = add(new THREE.Mesh(rbox(0.62, 0.5, 2.7, 0.26), paint));
-    fairing.position.set(sx * 1.2, 0.64, 0.0);
-    const roundel = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.62), numMat);
-    roundel.position.set(sx * 1.53, 0.8, 0.1);
-    roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
-    roundels.push(roundel);
+  const addRoundels = (x, y, z, size = 0.62) => {
+    for (const sx of [-1, 1]) {
+      const roundel = new THREE.Mesh(new THREE.PlaneGeometry(size, size), numMat);
+      roundel.position.set(sx * x, y, z);
+      roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
+      roundels.push(roundel);
+    }
+  };
+
+  if (bodyKind === "moto") {
+    // --- Café-racer: a narrow spine frame, fuel tank, saddle and chrome forks.
+    // Cats famously balance fine, but the training wheels make it read as a toy
+    // (and excuse the kart physics). Saddle sits exactly where the kart seat
+    // does, so the cat drops straight on. ---
+    const frame = add(new THREE.Mesh(rbox(0.52, 0.42, 3.2, 0.18), paint));
+    frame.position.set(0, 0.78, -0.1);
+    const tank = add(new THREE.Mesh(rbox(0.78, 0.6, 1.25, 0.3), paint));
+    tank.position.set(0, 1.08, 0.5);
+    const tankTop = add(new THREE.Mesh(rbox(0.5, 0.14, 0.9, 0.06), accent));
+    tankTop.position.set(0, 1.38, 0.5);
+    const tankStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.95), stripe));
+    tankStripe.rotation.x = -Math.PI / 2;
+    tankStripe.position.set(0, 1.451, 0.5);
+    const saddle = add(new THREE.Mesh(rbox(0.95, 0.32, 1.6, 0.15), dark));
+    saddle.position.set(0, 1.06, -0.55);
+    const sissy = add(new THREE.Mesh(rbox(0.85, 0.85, 0.22, 0.1), dark));
+    sissy.position.set(0, 1.28, -1.3);
+    // Fenders hugging each wheel.
+    const rearFender = add(new THREE.Mesh(rbox(0.62, 0.2, 1.35, 0.1), accent));
+    rearFender.position.set(0, 1.56, -1.6);
+    const frontFender = add(new THREE.Mesh(rbox(0.56, 0.18, 1.15, 0.09), accent));
+    frontFender.position.set(0, 1.36, 1.55);
+    // Chrome forks raking down to the front axle, and handlebars with grips.
+    for (const sx of [-1, 1]) {
+      const fork = add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 1.3, 10), chrome));
+      fork.position.set(sx * 0.3, 1.1, 1.32);
+      fork.rotation.x = 0.42;
+    }
+    const bar = add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.15, 10), chrome));
+    bar.rotation.z = Math.PI / 2;
+    bar.position.set(0, 1.66, 1.02);
+    for (const sx of [-1, 1]) {
+      const grip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.26, 10), dark));
+      grip.rotation.z = Math.PI / 2;
+      grip.position.set(sx * 0.52, 1.66, 1.02);
+    }
+    // Outrigger arms for the training wheels (the casters themselves spin in
+    // the wheels section below; the arms stay rigid in the shell).
+    for (const sx of [-1, 1]) {
+      const arm = add(new THREE.Mesh(rbox(0.8, 0.12, 0.16, 0.05), accent));
+      arm.position.set(sx * 0.5, 0.52, -1.35);
+      arm.rotation.z = sx * -0.24; // slope down toward the caster hub
+    }
+    addRoundels(0.41, 1.08, 0.5, 0.5); // on the tank flanks
+  } else {
+    // --- Kart / van moulded shell ---
+    // Floor pan: the wide, low monocoque the whole car is built on.
+    const pan = add(new THREE.Mesh(rbox(2.55, 0.42, 4.7, 0.3), paint));
+    pan.position.y = 0.56;
+    // Lower accent skirt (two-tone) — slightly wider + darker, hugging the ground.
+    const skirt = add(new THREE.Mesh(rbox(2.66, 0.3, 4.3, 0.22), accent));
+    skirt.position.y = 0.36;
+    // Cockpit spine: the raised centre body that the seat sinks into. (The van's
+    // cabin walls stand in for it — a spine inside the cabin reads as cargo.)
+    if (bodyKind !== "van") {
+      const spine = add(new THREE.Mesh(rbox(1.6, 0.78, 3.1, 0.34), paint));
+      spine.position.set(0, 0.92, -0.25);
+    }
+    // Nose: a single tapering wedge flowing off the front of the pan + soft tip.
+    // Length/reach vary by style (long GP snout vs stubby buggy vs van hood).
+    const nose = add(new THREE.Mesh(rbox(1.7, 0.46, st.nose, 0.3), paint));
+    nose.position.set(0, 0.62, st.noseZ);
+    const noseTip = add(new THREE.Mesh(rbox(1.16, 0.42, 1.2, 0.42), paint));
+    noseTip.position.set(0, 0.58, st.tipZ);
+    // Nose flash (accent) over the snout.
+    const flash = add(new THREE.Mesh(rbox(0.95, 0.2, 1.5, 0.12), accent));
+    flash.position.set(0, 0.84, st.noseZ + 0.6);
+    if (bodyKind === "van") {
+      // Open-top minivan: tall slab sides + a tailgate, with the roof cut away
+      // so the cat rides head-out. Roundels sit on the sliding doors.
+      for (const sx of [-1, 1]) {
+        const wall = add(new THREE.Mesh(rbox(0.26, 1.1, 3.4, 0.12), paint));
+        wall.position.set(sx * 1.18, 1.25, -0.35);
+        const doorLine = add(new THREE.Mesh(rbox(0.06, 0.72, 1.1, 0.03), accent));
+        doorLine.position.set(sx * 1.32, 1.12, -0.85);
+      }
+      const tailgate = add(new THREE.Mesh(rbox(2.4, 1.0, 0.3, 0.12), paint));
+      tailgate.position.set(0, 1.28, -2.1);
+      // Windshield frame raked over the hood (no pane — it's a toy).
+      const shield = add(new THREE.Mesh(rbox(2.2, 0.8, 0.14, 0.06), accent));
+      shield.position.set(0, 1.42, 1.28);
+      shield.rotation.x = -0.42;
+      addRoundels(1.36, 1.3, -0.85);
+    } else {
+      // Side fairings — flush to the floor sides, same paint: bodywork, not pods.
+      for (const sx of [-1, 1]) {
+        const fairing = add(new THREE.Mesh(rbox(0.62, 0.5, 2.7, 0.26), paint));
+        fairing.position.set(sx * 1.2, 0.64, 0.0);
+      }
+      addRoundels(1.53, 0.8, 0.1);
+    }
+    // Painted racing stripe — flat decals lying flush on the nose flash panel and
+    // the rear deck (zero thickness, a hair proud), so it reads as paint on the
+    // bodywork rather than a raised block bolted on top.
+    const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 1.5), stripe));
+    noseStripe.rotation.x = -Math.PI / 2;
+    noseStripe.position.set(0, 0.951, st.noseZ + 0.6); // flush on the nose flash
+    if (bodyKind !== "van") {
+      const deckStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.95), stripe));
+      deckStripe.rotation.x = -Math.PI / 2;
+      deckStripe.position.set(0, 1.122, -1.95); // flush on the rear deck
+    }
+
+    // Seat well (where the cat sits) — sunk into the spine / cabin.
+    const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
+    seat.position.set(0, 1.06, -0.5);
+    const seatBack = add(new THREE.Mesh(rbox(1.4, 0.9, 0.4, 0.18), dark));
+    seatBack.position.set(0, 1.3, -1.2);
+
+    // Steering wheel (black) with a small chrome hub.
+    const wheel = add(new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), dark));
+    wheel.position.set(0, 1.4, 0.55);
+    wheel.rotation.x = Math.PI / 2.6;
+    const wheelHub = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), chrome));
+    wheelHub.position.set(0, 1.4, 0.55);
+    wheelHub.rotation.x = Math.PI / 2.6;
+
+    // Rear deck behind the cockpit, housing the tail lights + a single wing pylon.
+    const deck = add(new THREE.Mesh(rbox(1.7, 0.5, 1.0, 0.26), paint));
+    deck.position.set(0, 0.86, -1.95);
   }
   // Both roundels share one material — merge them into one mesh (one draw).
-  group.add(mergeMeshes(roundels, { geoKey: "kroundel" }));
-  // Painted racing stripe — flat decals lying flush on the nose flash panel and
-  // the rear deck (zero thickness, a hair proud), so it reads as paint on the
-  // bodywork rather than a raised block bolted on top.
-  const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 1.5), stripe));
-  noseStripe.rotation.x = -Math.PI / 2;
-  noseStripe.position.set(0, 0.951, st.noseZ + 0.6); // flush on the nose flash
-  const deckStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.95), stripe));
-  deckStripe.rotation.x = -Math.PI / 2;
-  deckStripe.position.set(0, 1.122, -1.95); // flush on the rear deck
-
-  // Seat well (where the cat sits) — sunk into the spine.
-  const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
-  seat.position.set(0, 1.06, -0.5);
-  const seatBack = add(new THREE.Mesh(rbox(1.4, 0.9, 0.4, 0.18), dark));
-  seatBack.position.set(0, 1.3, -1.2);
-
-  // Steering wheel (black) with a small chrome hub.
-  const wheel = add(new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), dark));
-  wheel.position.set(0, 1.4, 0.55);
-  wheel.rotation.x = Math.PI / 2.6;
-  const wheelHub = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), chrome));
-  wheelHub.position.set(0, 1.4, 0.55);
-  wheelHub.rotation.x = Math.PI / 2.6;
-
-  // Rear deck behind the cockpit, housing the tail lights + a single wing pylon.
-  const deck = add(new THREE.Mesh(rbox(1.7, 0.5, 1.0, 0.26), paint));
-  deck.position.set(0, 0.86, -1.95);
+  // Positions are style-dependent, so the merge cache keys on the style.
+  group.add(mergeMeshes(roundels, { geoKey: `kroundel|${styleIdx}` }));
 
   // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
   if (st.wing === "big") {
@@ -1219,13 +1303,16 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     brace.position.set(0, 1.0, -1.55);
     brace.rotation.x = 0.6;
   }
-  for (const sx of [-0.42, 0.42]) {
+  // Twin exhaust tips — tucked in tight and shorter on the moto's tail.
+  const exX = bodyKind === "moto" ? 0.26 : 0.42;
+  const exZ = bodyKind === "moto" ? -2.05 : -2.62;
+  for (const sx of [-exX, exX]) {
     const pipe = add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.6, 12), chrome));
     pipe.rotation.x = Math.PI / 2; // axis along Z, poking out the back
-    pipe.position.set(sx, 0.58, -2.62);
+    pipe.position.set(sx, 0.58, exZ);
     const pipeTip = add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.1, 0.12, 12), dark));
     pipeTip.rotation.x = Math.PI / 2;
-    pipeTip.position.set(sx, 0.58, -2.92);
+    pipeTip.position.set(sx, 0.58, exZ - 0.3);
   }
 
   // Bake the whole rigid shell into one mesh (≈5 draw calls — one per material).
@@ -1238,14 +1325,21 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const shellMesh = mergeMeshes(shell, { castShadow: false, geoKey: `kshell|${styleIdx}` });
   group.add(shellMesh);
 
-  // Headlights, set into the nose — one merged mesh for the pair (one draw).
+  // Headlights — a pair set into the nose (kart/van) or one big moto lamp on
+  // the handlebar stem. Positions are style-dependent → style-keyed merge.
   const hlParts = [];
-  for (const sx of [-1, 1]) {
-    const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), glass);
-    light.position.set(sx * 0.46, 0.66, 2.92);
+  if (bodyKind === "moto") {
+    const light = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), glass);
+    light.position.set(0, 1.42, 1.42);
     hlParts.push(light);
+  } else {
+    for (const sx of [-1, 1]) {
+      const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), glass);
+      light.position.set(sx * 0.46, 0.66, st.hlZ ?? 2.92);
+      hlParts.push(light);
+    }
   }
-  group.add(mergeMeshes(hlParts, { geoKey: "khl" }));
+  group.add(mergeMeshes(hlParts, { geoKey: `khl|${styleIdx}` }));
   // The forward beam that lights the road is NOT parented here (it would tilt with
   // the kart and clip the tarmac during drifts) — it's a ground-projected pool
   // managed per-frame in the main loop (see headlights in main.js).
@@ -1256,12 +1350,18 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     color: 0x6e0d0d, emissive: 0xff2a1e, emissiveIntensity: 0.25, roughness: 0.5,
   });
   const tlParts = [];
-  for (const sx of [-1, 1]) {
-    const tl = new THREE.Mesh(rbox(0.4, 0.26, 0.16, 0.06), brakeMat);
-    tl.position.set(sx * 0.62, 0.86, -2.46);
+  if (bodyKind === "moto") {
+    const tl = new THREE.Mesh(rbox(0.34, 0.22, 0.14, 0.05), brakeMat);
+    tl.position.set(0, 1.54, -2.3); // on the rear fender's tail
     tlParts.push(tl);
+  } else {
+    for (const sx of [-1, 1]) {
+      const tl = new THREE.Mesh(rbox(0.4, 0.26, 0.16, 0.06), brakeMat);
+      tl.position.set(sx * 0.62, 0.86, -2.46);
+      tlParts.push(tl);
+    }
   }
-  group.add(mergeMeshes(tlParts, { geoKey: "ktl" })); // one draw for the pair
+  group.add(mergeMeshes(tlParts, { geoKey: `ktl|${styleIdx}` }));
 
   // --- Wheels: matte tyres with a contact tread band, a spoked body-coloured
   // rim + chrome hub cap, and a brake caliper at the rim. Fronts a touch smaller
@@ -1308,18 +1408,44 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}` }));
     return w;
   }
-  const wheelDefs = [
-    [1.32, 1.55, 0.55],
-    [-1.32, 1.55, 0.55],
-    [1.42, -1.6, 0.66],
-    [-1.42, -1.6, 0.66],
-  ];
-  for (const [x, z, baseR] of wheelDefs) {
-    const radius = baseR * st.tire;
-    const w = buildWheel(radius, Math.sign(x));
-    w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
-    group.add(w);
-    wheels.push(w);
+  if (bodyKind === "moto") {
+    // Two centre-line wheels + training-wheel casters. The wheels array keeps
+    // the 4-slot contract every consumer assumes (indices 0-1 steer, all roll):
+    // [front, front-dummy(empty), rear, caster-pair] — so the front steers, the
+    // empty dummy absorbs the second "front axle" slot, and the caster group
+    // rolls with everything else (both casters share one axle line).
+    const frontR = 0.55 * st.tire, rearR = 0.62 * st.tire, casterR = 0.3;
+    const front = buildWheel(frontR, 1);
+    front.position.set(0, frontR, 1.55);
+    const dummy = new THREE.Group();
+    dummy.position.copy(front.position);
+    const rear = buildWheel(rearR, 1);
+    rear.position.set(0, rearR, -1.6);
+    const casters = new THREE.Group();
+    casters.position.set(0, casterR, -1.35);
+    const casterParts = [];
+    for (const sx of [-0.85, 0.85]) {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(casterR, casterR, 0.22, 14), tire);
+      c.rotation.z = Math.PI / 2;
+      c.position.x = sx;
+      casterParts.push(c);
+    }
+    casters.add(mergeMeshes(casterParts, { castShadow: false, geoKey: "kcasters" }));
+    for (const w of [front, dummy, rear, casters]) { group.add(w); wheels.push(w); }
+  } else {
+    const wheelDefs = [
+      [1.32, 1.55, 0.55],
+      [-1.32, 1.55, 0.55],
+      [1.42, -1.6, 0.66],
+      [-1.42, -1.6, 0.66],
+    ];
+    for (const [x, z, baseR] of wheelDefs) {
+      const radius = baseR * st.tire;
+      const w = buildWheel(radius, Math.sign(x));
+      w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
+      group.add(w);
+      wheels.push(w);
+    }
   }
 
   // Boost flames out the back — hidden until boosting (the kart shows/flickers
@@ -1333,7 +1459,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     color: 0xfff2c0, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
   });
   const flameParts = [];
-  for (const sx of [-0.7, 0.7]) {
+  const flameX = bodyKind === "moto" ? 0.26 : 0.7; // moto flames hug the tail pipes
+  for (const sx of [-flameX, flameX]) {
     const outer = new THREE.Mesh(new THREE.ConeGeometry(0.3, 1.5, 8), flameOuter);
     outer.rotation.x = -Math.PI / 2; // taper trailing backward (-Z)
     outer.position.set(sx, 0.55, -2.7);
@@ -1345,7 +1472,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   }
   // One merged mesh (2 draws — outer + core groups) instead of 4 cones; the
   // group still flickers via its scale. The kart recolours via userData mats.
-  flames.add(mergeMeshes(flameParts, { geoKey: "kflames" }));
+  flames.add(mergeMeshes(flameParts, { geoKey: `kflames|${flameX}` }));
   flames.userData.outerMat = flameOuter;
   flames.userData.coreMat = flameCore;
   group.add(flames);

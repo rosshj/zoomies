@@ -2289,30 +2289,41 @@ button.secondary.small,
 }
 .earn-row.earn-ach { color: #ffd54f; font-weight: 700; }
 .earn-row.earn-you { color: var(--accent); font-weight: 800; }
-/* Freshly earned badge → a pulsing CLAIM button (the post-race dopamine tap). */
-.earn-row.earn-claim {
-  width: 100%;
+/* Badge-claim interstitial (results → menu): big tappable cards, big pops. */
+.claim-main { width: min(440px, 100%); text-align: center; }
+.claim-sub { font-size: 12px; color: rgba(255, 255, 255, 0.65); margin: 2px 0 12px; }
+#claim-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.claim-card {
+  display: flex;
   align-items: center;
+  gap: 12px;
+  width: 100%;
   font: inherit;
   color: #ffd54f;
   text-align: left;
-  border: 1px solid rgba(255, 213, 79, 0.55);
+  border: 1px solid rgba(255, 213, 79, 0.6);
   background: rgba(255, 213, 79, 0.1);
-  border-radius: 9px;
-  padding: 6px 8px;
-  margin-top: 3px;
+  border-radius: 14px;
+  padding: 12px 14px;
   cursor: pointer;
   position: relative;
   animation: claim-glow 1.6s ease-in-out infinite;
 }
-.earn-row.earn-claim.claimed {
+.claim-card:active { transform: scale(0.97); }
+.claim-card.claimed {
   animation: none;
   cursor: default;
   color: #81c784;
   border-color: rgba(129, 199, 132, 0.55);
   background: rgba(129, 199, 132, 0.1);
+  transform: none;
 }
-.earn-claim-cta { font-weight: 800; white-space: nowrap; }
+.claim-medal { font-size: 26px; }
+.claim-card.claimed .claim-medal { animation: prize-pop 0.5s ease; }
+.claim-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.claim-name { font-size: 14px; font-weight: 800; }
+.claim-desc { font-size: 11px; color: rgba(255, 255, 255, 0.6); }
+.claim-cta { font-weight: 800; white-space: nowrap; }
 @keyframes claim-glow {
   0%, 100% { box-shadow: 0 0 0 rgba(255, 213, 79, 0); }
   50% { box-shadow: 0 0 12px rgba(255, 213, 79, 0.45); }

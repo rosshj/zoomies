@@ -30,14 +30,14 @@ const out = await page.evaluate(() => {
   const ok = z.debugFinish();
   const earnings = document.getElementById("results-earnings");
   const rows = earnings ? earnings.querySelectorAll(".earn-row").length : 0;
-  const claims = earnings ? earnings.querySelectorAll(".earn-claim").length : 0;
+  const teased = earnings ? earnings.querySelectorAll(".earn-ach").length : 0;
   const total = earnings ? [...earnings.querySelectorAll(".earn-total span")].map((e) => e.textContent).join(" ") : "";
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem("zoomies-profile-v1")); } catch {}
   return {
     finished: ok,
     earningsVisible: earnings && !earnings.classList.contains("hidden"),
-    rows, claims, total,
+    rows, teased, total,
     preClaimTreats: saved ? saved.treats : -1,
     pending: saved ? saved.pendingClaims : [],
     savedRaces: saved ? saved.stats.races : -1,
@@ -45,8 +45,16 @@ const out = await page.evaluate(() => {
     starterUnlocks: saved ? saved.unlocked.length : 0,
   };
 });
-// The badge is earned but UNPAID until the CLAIM tap — tap it and re-read.
-await page.click("#results-earnings .earn-claim", { force: true }).catch(() => {});
+// Leaving the results must detour through the claim interstitial: cards up,
+// Continue hidden until every badge is tapped.
+await page.click("#results-menu-btn", { force: true });
+await page.waitForTimeout(300);
+const inter = await page.evaluate(() => ({
+  shown: !document.getElementById("claim-screen")?.classList.contains("hidden"),
+  cards: document.querySelectorAll("#claim-list .claim-card").length,
+  continueHidden: document.getElementById("claim-continue")?.classList.contains("hidden"),
+}));
+for (const b of await page.$$("#claim-list .claim-card:not(.claimed)")) await b.click({ force: true }).catch(() => {});
 await page.waitForTimeout(300);
 const after = await page.evaluate(() => {
   let saved = null;
@@ -55,12 +63,16 @@ const after = await page.evaluate(() => {
     chip: document.getElementById("treats-balance")?.textContent,
     savedTreats: saved ? saved.treats : -1,
     pendingLeft: saved ? saved.pendingClaims.length : -1,
-    sparkled: !!document.querySelector("#results-earnings .earn-claim.claimed"),
+    sparkled: !!document.querySelector("#claim-list .claim-card.claimed"),
+    continueVisible: !document.getElementById("claim-continue")?.classList.contains("hidden"),
   };
 });
-// Claim the rest, then buy a prize from the Cat-alog: tile tap → confirm → owned.
-for (const b of await page.$$("#results-earnings .earn-claim:not(.claimed)")) await b.click({ force: true }).catch(() => {});
-await page.waitForTimeout(200);
+await page.click("#claim-continue", { force: true }).catch(() => {});
+await page.waitForTimeout(400);
+const landed = await page.evaluate(() => ({
+  claimGone: document.getElementById("claim-screen")?.classList.contains("hidden"),
+  menuVisible: !document.getElementById("menu")?.classList.contains("hidden"),
+}));
 const buy = await page.evaluate(async () => {
   document.getElementById("open-catalog")?.click();
   const tile = document.querySelector("#catalog-prizes .prize-tile.buyable");
@@ -80,13 +92,15 @@ const buy = await page.evaluate(async () => {
     unlockedGrew: saved.unlocked.length > before.unlocked.length,
   };
 });
-console.log(JSON.stringify({ ...out, ...after, buy }, null, 1));
+console.log(JSON.stringify({ ...out, inter, ...after, landed, buy }, null, 1));
 console.log("errors:", JSON.stringify(errors));
-const pass = out.finished && out.earningsVisible && out.rows >= 2 && out.claims >= 1 &&
+const pass = out.finished && out.earningsVisible && out.rows >= 2 && out.teased >= 1 &&
   out.preClaimTreats > 0 && out.pending.includes("first-race") &&
   out.savedRaces === 1 && out.achievements.includes("first-race") &&
-  after.savedTreats > out.preClaimTreats && after.pendingLeft === out.pending.length - 1 && after.sparkled &&
+  inter.shown && inter.cards === out.pending.length && inter.continueHidden &&
+  after.savedTreats > out.preClaimTreats && after.pendingLeft === 0 && after.sparkled && after.continueVisible &&
   Number(after.chip) === after.savedTreats &&
+  landed.claimGone && landed.menuVisible &&
   buy.step === "bought" && buy.owned && buy.sparkles && buy.spent > 0 && buy.unlockedGrew &&
   errors.length === 0;
 console.log(pass ? "PROGRESSION PROBE: PASS" : "PROGRESSION PROBE: FAIL");

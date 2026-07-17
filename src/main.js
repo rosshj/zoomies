@@ -83,7 +83,7 @@ import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } fr
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
-const KART_STYLE_COUNT = 4; // GP / roadster / buggy / finned (see createKartModel STYLES)
+const KART_STYLE_COUNT = 6; // GP / roadster / buggy / finned / moto / minivan (see createKartModel STYLES)
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -2583,7 +2583,10 @@ document.addEventListener("visibilitychange", () => {
 });
 // Every menu can get back to the main screen: lobby and results both offer it.
 document.getElementById("lobby-back")?.addEventListener("click", toMenu);
-document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
+// Badges block the exit: leaving the results for the menu detours through the
+// claim interstitial whenever any badge is still unclaimed (it no-ops straight
+// to the menu when there's nothing to claim).
+document.getElementById("results-menu-btn")?.addEventListener("click", () => showClaimScreen(toMenu));
 
 // --- Settings screen (graphics + sound), opened from the menu and pause ---
 const settingsOverlay = document.getElementById("settings");
@@ -3458,7 +3461,7 @@ function buildGaragePreview() {
 // offer. Custom picks aren't limited to these — they just seed quick choices.
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned"];
+const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan"];
 const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
 const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
 const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
@@ -4154,6 +4157,41 @@ function beginPrizeBuy(tile, id, name, price) {
   no.addEventListener("click", (ev) => { ev.stopPropagation(); c.remove(); });
   c.append(txt, yes, no);
   tile.appendChild(c);
+}
+
+// The badge-claim interstitial: shown on the way from results to the menu when
+// badges are waiting. Every card must be tapped (each pays with a sparkle
+// burst) before Continue appears — claiming IS the moment, so it can't be
+// scrolled past. With nothing pending it goes straight through to onDone.
+function showClaimScreen(onDone) {
+  const pending = ACHIEVEMENTS.filter((a) => profile.pendingClaims.includes(a.id));
+  if (!pending.length) { onDone(); return; }
+  const scr = document.getElementById("claim-screen");
+  const list = document.getElementById("claim-list");
+  const cont = document.getElementById("claim-continue");
+  if (!scr || !list || !cont) { onDone(); return; }
+  list.innerHTML = "";
+  cont.classList.add("hidden");
+  for (const a of pending) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "claim-card";
+    card.innerHTML = `<span class="claim-medal">🏅</span><span class="claim-text"><span class="claim-name">${a.name}</span><span class="claim-desc">${a.desc}</span></span><span class="claim-cta">TAP! +${a.pay}</span>`;
+    card.addEventListener("click", () => {
+      const paid = claimAchievement(profile, a.id);
+      if (!paid) return;
+      saveProfile();
+      refreshTreatsChip();
+      sparkleBurst(card, 14);
+      card.classList.add("claimed");
+      card.disabled = true;
+      card.querySelector(".claim-cta").textContent = `+${paid.pay} 🐟`;
+      if (!profile.pendingClaims.length) cont.classList.remove("hidden");
+    });
+    list.appendChild(card);
+  }
+  cont.onclick = () => { scr.classList.add("hidden"); onDone(); };
+  scr.classList.remove("hidden");
 }
 function prizeTile(id, name, colorHex, how, owned) {
   const d = document.createElement("div");
@@ -5522,7 +5560,9 @@ function renderRaceEarnings(settled) {
   const { payout, fresh, cup } = settled;
   for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
   box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));
-  for (const a of fresh) box.appendChild(claimRow(a));
+  // Badges are teased here but CLAIMED on the interstitial between results and
+  // the menu (showClaimScreen) — that tap is the reward moment.
+  for (const a of fresh) box.appendChild(earnRow(`🏅 ${a.name} — ${a.desc}`, "badge!", "earn-ach"));
   if (cup) {
     const head = document.createElement("div");
     head.className = "earn-cup-head";
@@ -5545,31 +5585,6 @@ function renderRaceEarnings(settled) {
       }
     }
   }
-}
-// A freshly earned badge renders as a pulsing CLAIM button — the tap pays the
-// treats (claimAchievement) with a sparkle burst. Unclaimed badges stay in
-// profile.pendingClaims and can be claimed later from the Cat-alog.
-function claimRow(a) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "earn-row earn-ach earn-claim";
-  const l = document.createElement("span");
-  l.textContent = `🏅 ${a.name} — ${a.desc}`;
-  const cta = document.createElement("span");
-  cta.className = "earn-claim-cta";
-  cta.textContent = `CLAIM +${a.pay}`;
-  btn.append(l, cta);
-  btn.addEventListener("click", () => {
-    const paid = claimAchievement(profile, a.id);
-    if (!paid) return;
-    saveProfile();
-    refreshTreatsChip();
-    sparkleBurst(btn, 12);
-    btn.classList.add("claimed");
-    btn.disabled = true;
-    cta.textContent = `+${paid.pay} 🐟`;
-  });
-  return btn;
 }
 function earnRow(label, amt, cls = "") {
   const li = document.createElement("div");

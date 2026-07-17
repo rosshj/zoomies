@@ -31,8 +31,8 @@ const CAT_FUR = {
   tabby: 0xf0a830, spotted: 0xc8966a, solid: 0x8c9298, tuxedo: 0x2a2a2a,
   snowshoe: 0xf3dcb6, mitted: 0x9aa2a8, point: 0xe8e2d6, calico: 0xfbfbfb, tortie: 0x6b4a2f,
 };
-const KART_STYLES = ["GP", "Roadster", "Buggy", "Finned"];
-const KART_COLORS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835];
+const KART_STYLES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan"];
+const KART_COLORS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835, 0xff7043, 0xf5efdd];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // A cat with its live rig: idle sway + blinking, exactly what updateCatRig

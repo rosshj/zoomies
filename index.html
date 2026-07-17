@@ -637,6 +637,19 @@
     </div>
   </div>
 
+  <!-- ===== Badge claim interstitial ===== -->
+  <!-- Shown between the results screen and the main menu whenever badges are
+       waiting: every badge must be tapped (sparkles!) before Continue appears.
+       It's the reward moment, not a chore — big cards, big pops. -->
+  <div id="claim-screen" class="overlay hidden">
+    <div class="menu-card claim-main">
+      <h1>🏅 New badges!</h1>
+      <p class="claim-sub">Tap each one to claim your treats</p>
+      <div id="claim-list"></div>
+      <button id="claim-continue" class="hidden">🏠 Continue</button>
+    </div>
+  </div>
+
   <!-- ===== Track generator ===== -->
   <div id="track-panel" class="overlay hidden">
     <div class="menu-card track-main">

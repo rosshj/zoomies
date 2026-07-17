@@ -30,6 +30,8 @@ export const KART_PRESETS = [
   { name: "Teal", color: 0x00897b, style: 0, number: 8 },
   { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
   { name: "Nova", color: 0xec407a, style: 3, number: 6 },
+  { name: "Wheelie", color: 0xff7043, style: 4, number: 10 }, // café-racer moto (training wheels included)
+  { name: "Vanilla", color: 0xf5efdd, style: 5, number: 11 }, // open-top minivan — the roof's cut out so the cat fits
 ];
 
 // What the creators open with (also the look the Cat-alog uses to advertise them).
