@@ -1,3 +1,9 @@
+// In-browser probe for the item-roll distribution: boots a real race, forces a
+// kart's place to 1st / 3rd / 6th, drives grantItem 300× each via the __zoomies
+// debug hook, and prints the observed percentages next to the design table in
+// main.js (ITEM_ROLL). Also asserts the floating-box pool size. Needs the local
+// Playwright chromium (like headless-check); not part of CI.
+// Run: node tools/roll-probe.mjs
 import { chromium } from "playwright-core";
 import http from "node:http"; import fs from "node:fs"; import path from "node:path";
 const ROOT = "/home/user/zoomies", PORT = 8092;
