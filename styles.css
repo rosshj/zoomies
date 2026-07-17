@@ -745,6 +745,10 @@ body {
 .map-frame-btn:active {
   transform: scale(0.99);
 }
+/* Cup Series: the map is a series preview, not an editor button. */
+.map-frame-btn.map-no-edit { cursor: default; }
+.map-frame-btn.map-no-edit:active { transform: none; }
+.map-frame-btn.map-no-edit .map-edit-hint { display: none; }
 .map-label {
   position: absolute;
   left: 10px;
@@ -2389,6 +2393,13 @@ button.secondary.small,
 }
 .prize-tile.owned { border-color: rgba(129, 199, 132, 0.55); background: rgba(129, 199, 132, 0.08); }
 .prize-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); }
+.prize-shot {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.06);
+}
 .prize-name { font-size: 11px; font-weight: 700; }
 .prize-how { font-size: 10px; color: #ffd54f; }
 .prize-tile.owned .prize-how { color: #81c784; }

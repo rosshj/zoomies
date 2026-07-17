@@ -105,6 +105,34 @@
       cursor: pointer;
     }
     #look-btn.on { border-color: #ffd54f; color: #ffd54f; }
+    /* Background-colour picker, next to the game-look toggle. */
+    #bg-btn {
+      position: absolute;
+      right: 132px;
+      top: 10px;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(10, 14, 25, 0.72);
+      color: #eef1f8;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #bg-color {
+      width: 26px;
+      height: 20px;
+      padding: 0;
+      border: 0;
+      background: none;
+      cursor: pointer;
+    }
+    /* ?plain=1 — chrome-less mode for screenshot tours: just the asset. */
+    body.plain #side, body.plain #side-toggle, body.plain #look-btn,
+    body.plain #bg-btn, body.plain #info, body.plain #anim-bar { display: none !important; }
     /* Animation transport (play/pause + scrubber), centred above the info bar. */
     #anim-bar {
       position: absolute;
@@ -171,6 +199,8 @@
     <!-- Raw studio materials vs the game's cel shading (the exact toon
          conversion main.js applies at boot — see src/toon.js). -->
     <button id="look-btn" title="Toggle the game's cel shading">🎮 Game look</button>
+    <!-- Studio background colour (also tints the ground disc to match). -->
+    <label id="bg-btn" title="Background colour">🎨 Backdrop <input id="bg-color" type="color" value="#1a2338" /></label>
     <!-- Animation transport: shown only for assets that move in-game.
          Play/pause + a scrubber over one loop of the asset's animation. -->
     <div id="anim-bar" class="hidden">

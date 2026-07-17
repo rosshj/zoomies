@@ -65,28 +65,25 @@ for (const a of CAT_ACCESSORIES) {
     build: () => animatedCat(0xf0a830, { pattern: "solid", accessory: a }),
   });
 }
-KART_STYLES.forEach((n, i) =>
-  entries.push({
-    group: "Karts",
-    name: `Kart — ${n}`,
-    build: () => {
-      const { group, wheels } = createKartModel(KART_COLORS[i], { style: i, number: i + 1 });
-      return {
-        object: group,
-        // Rolling wheels + the front axle sweeping through its steering range
-        // (the same transforms Kart.update applies from live inputs).
-        animate: (t) => {
-          for (let j = 0; j < wheels.length; j++) {
-            const w = wheels[j];
-            w.rotation.order = "YXZ";
-            w.rotation.y = j < 2 ? Math.sin(t * 0.9) * 0.4 : 0;
-            w.rotation.x = t * 6;
-          }
-        },
-        duration: Math.PI * 2 / 0.9, // one full steering sweep
-      };
+// A kart with rolling wheels + the front axle sweeping through its steering
+// range (the same transforms Kart.update applies from live inputs).
+function animatedKart(color, opts) {
+  const { group, wheels } = createKartModel(color, opts);
+  return {
+    object: group,
+    animate: (t) => {
+      for (let j = 0; j < wheels.length; j++) {
+        const w = wheels[j];
+        w.rotation.order = "YXZ";
+        w.rotation.y = j < 2 ? Math.sin(t * 0.9) * 0.4 : 0;
+        w.rotation.x = t * 6;
+      }
     },
-  })
+    duration: Math.PI * 2 / 0.9, // one full steering sweep
+  };
+}
+KART_STYLES.forEach((n, i) =>
+  entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(KART_COLORS[i], { style: i, number: i + 1 }) })
 );
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
@@ -110,6 +107,10 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a2338);
 const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 4000);
 
+// ?plain=1 — hide all UI chrome (sidebar, buttons, info) so screenshot tours
+// capture nothing but the asset.
+if (params.has("plain")) document.body.classList.add("plain");
+
 scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x54493a, 1.1));
 const key = new THREE.DirectionalLight(0xfff2dd, 2.4);
 key.position.set(6, 10, 7);
@@ -124,6 +125,19 @@ const ground = new THREE.Mesh(
 );
 ground.position.y = -0.01; // just below the asset's base so coplanar bottoms don't z-fight
 scene.add(ground);
+
+// Studio background colour: repaints the sky AND tints the ground disc a
+// slightly darker shade of the same colour so the asset sits on a matching
+// floor (great for catalog shots on a contrasting backdrop). Reachable from
+// the 🎨 picker, a ?bg=RRGGBB param, and window.__viewer.setBackground().
+const bgInput = document.getElementById("bg-color");
+function setBackground(css) {
+  scene.background.set(css);
+  ground.material.color.copy(scene.background).multiplyScalar(0.8);
+  if (bgInput) bgInput.value = "#" + scene.background.getHexString();
+}
+bgInput?.addEventListener("input", () => setBackground(bgInput.value));
+if (params.get("bg")) setBackground("#" + params.get("bg").replace(/^#/, ""));
 
 function resize() {
   const w = main.clientWidth, h = main.clientHeight;
@@ -202,15 +216,16 @@ function restoreRawMaterials(root) {
     if (o.userData._rawMat) o.material = o.userData._rawMat;
   });
 }
-lookBtn.addEventListener("click", () => {
-  gameLook = !gameLook;
+function setGameLook(on) {
+  gameLook = !!on;
   lookBtn.classList.toggle("on", gameLook);
   // A warm midday-ish sun tint for the rim/backlight/paint-glint terms (the
   // game feeds these from the live mood each frame).
   uSunColNode.value.set(gameLook ? 0xffe6b0 : 0x000000);
   if (gameLook) uSunColNode.value.multiplyScalar(0.6);
   applyLook();
-});
+}
+lookBtn.addEventListener("click", () => setGameLook(!gameLook));
 
 // ---------------------------------------------------------------------------
 // Asset selection: build fresh, sit it on the ground plane, frame the camera
@@ -245,6 +260,20 @@ animScrub.addEventListener("pointerdown", () => { scrubbing = true; });
 window.addEventListener("pointerup", () => { scrubbing = false; });
 
 function show(entry) {
+  let res;
+  try {
+    res = entry.build();
+  } catch (err) {
+    console.error("[viewer] build failed:", entry.name, err);
+    infoEl.textContent = `${entry.name} — failed to build: ${err.message}`;
+    return;
+  }
+  present(entry.name, res);
+}
+// Swap the stage to an already-built result ({object, animate, duration} or a
+// bare Object3D): dispose the old asset, sit the new one on the floor, frame
+// the camera on its bounding sphere. Also the entry point for showPreset().
+function present(name, res) {
   if (current) {
     scene.remove(current);
     restoreRawMaterials(current); // dispose what the builder created, not the toon twins
@@ -253,17 +282,9 @@ function show(entry) {
     if (!current.userData.keepResources) disposeGroup(current); // shared (cached) materials are skipped
     current = null;
   }
-  let obj;
-  try {
-    const res = entry.build();
-    obj = res.isObject3D ? res : res.object;
-    curAnim = res.isObject3D ? null : res.animate ?? null;
-    animDur = (!res.isObject3D && res.duration) || Math.PI * 2;
-  } catch (err) {
-    console.error("[viewer] build failed:", entry.name, err);
-    infoEl.textContent = `${entry.name} — failed to build: ${err.message}`;
-    return;
-  }
+  const obj = res.isObject3D ? res : res.object;
+  curAnim = res.isObject3D ? null : res.animate ?? null;
+  animDur = (!res.isObject3D && res.duration) || Math.PI * 2;
   animT = 0;
   animPlaying = true;
   refreshAnimPlayBtn();
@@ -297,7 +318,7 @@ function show(entry) {
     tris += Math.round((verts / 3) * (o.isInstancedMesh ? o.count : 1));
   });
   const fmt = (v) => (Math.round(v * 10) / 10).toString();
-  infoEl.textContent = `${entry.name} · ${meshes} mesh${meshes === 1 ? "" : "es"} · ${tris.toLocaleString()} tris · ${fmt(size.x)}×${fmt(size.y)}×${fmt(size.z)}`;
+  infoEl.textContent = `${name} · ${meshes} mesh${meshes === 1 ? "" : "es"} · ${tris.toLocaleString()} tris · ${fmt(size.x)}×${fmt(size.y)}×${fmt(size.z)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,5 +393,17 @@ renderer.setAnimationLoop((now) => {
   renderer.render(scene, camera);
 });
 
-window.__viewer = { orbit, camera, scene }; // debug hook (headless screenshot tours aim the camera)
+// Debug hook — headless screenshot tours (tools/catalog-shots.mjs) drive the
+// stage through this: show an arbitrary garage preset, recolour the backdrop,
+// switch on the game's cel shading, and freeze the animation at a chosen pose.
+window.__viewer = {
+  orbit, camera, scene,
+  setBackground, setGameLook,
+  // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
+  showPreset(spec) {
+    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { pattern: spec.pattern, accessory: spec.accessory }));
+    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number }));
+  },
+  freeze(t = 0) { animPlaying = false; animT = t; curAnim?.(t); refreshAnimPlayBtn(); },
+};
 console.log(`[zoomies] asset viewer: ${entries.length} assets · ${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"}`);

@@ -75,41 +75,15 @@ let trackConfig = loadTrackConfig(); // `let`: in multiplayer this is replaced b
 // socks + tail-tip), mitted (small white socks/bib), solid (plain coat), point
 // (darker ears/muzzle/paws/tail). createCat falls back to deriving a pattern
 // from the colour when none is given (recoloured AI / multiplayer cats).
-// Nine distinct breeds, each a different markings template (not just a recolour
-// of the same one): see createCat for how each pattern is drawn.
-const CAT_PRESETS = [
-  { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby
-  { name: "Smokey", fur: 0x8c9298, pattern: "solid" }, // plush solid grey (Russian Blue)
-  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black & white tuxedo
-  { name: "Snow", fur: 0xfbfbfb, pattern: "snowshoe" }, // white + seal mask/points
-  { name: "Whiskey", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
-  { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
-  { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
-  { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
-  { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby" }, // cool silver mackerel tabby
-  { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell (ginger + black, no white)
-];
-// Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
-// 3=finned speedster), and a racing number stamped on the side roundels.
-const KART_PRESETS = [
-  { name: "Ember", color: 0xe53935, style: 0, number: 5 },
-  { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7 },
-  { name: "Clover", color: 0x43a047, style: 2, number: 3 },
-  { name: "Tangerine", color: 0xfb8c00, style: 0, number: 9 },
-  { name: "Grape", color: 0x8e24aa, style: 1, number: 4 },
-  { name: "Sunbeam", color: 0xfdd835, style: 2, number: 1 },
-  { name: "Teal", color: 0x00897b, style: 0, number: 8 },
-  { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
-  { name: "Nova", color: 0xec407a, style: 3, number: 6 },
-];
+// Garage presets live in src/presets.js (pure data) so the catalog-screenshot
+// tool can import them without booting the game.
+import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } from "./presets.js";
 // A "Custom" slot sits one past the last preset in each stepper; landing on it
 // reveals the creator (colour / pattern / accessory / name) and the look is read
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
 const KART_STYLE_COUNT = 4; // GP / roadster / buggy / finned (see createKartModel STYLES)
-const DEFAULT_CUSTOM_CAT = { name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap", accessoryColor: null };
-const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0 };
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -3359,7 +3333,11 @@ function refreshMenuMap() {
   const sub = document.getElementById("track-summary");
   if (sub) sub.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
-document.getElementById("menu-map-btn")?.addEventListener("click", openTrackPanel);
+// Cup Series maps are fixed recipes — the map is a preview there, not an editor
+// entry point (the button's Edit affordance is hidden via .map-no-edit too).
+document.getElementById("menu-map-btn")?.addEventListener("click", () => {
+  if (raceMode !== "cup") openTrackPanel();
+});
 refreshMenuMap();
 document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
 document.getElementById("track-classic")?.addEventListener("click", () => {
@@ -4085,6 +4063,8 @@ renderCupOptions();
 function refreshMenuMapCycle() {
   const cupDef = raceMode === "cup" ? cupById(_cupChoice) : null;
   if (_mapCycleTimer) { clearInterval(_mapCycleTimer); _mapCycleTimer = null; }
+  // Cup previews aren't editable — drop the Edit affordance while cycling.
+  document.getElementById("menu-map-btn")?.classList.toggle("map-no-edit", !!cupDef);
   const canvas = document.getElementById("menu-map");
   if (!cupDef || !canvas) {
     if (canvas) canvas.style.opacity = "1";
@@ -4117,16 +4097,26 @@ const catalogEl = document.getElementById("catalog");
 function prizeTile(id, name, colorHex, how, owned) {
   const d = document.createElement("div");
   d.className = "prize-tile" + (owned ? " owned" : "");
-  const sw = document.createElement("span");
-  sw.className = "prize-swatch";
-  sw.style.background = colorHex;
+  // Real render of the prize (tools/catalog-shots.mjs). If a shot is missing,
+  // fall back to the old colour swatch so the tile never shows a broken image.
+  const im = document.createElement("img");
+  im.className = "prize-shot";
+  im.alt = name;
+  im.loading = "lazy";
+  im.src = `assets/catalog/${id.replace(".", "-")}.jpg`;
+  im.addEventListener("error", () => {
+    const sw = document.createElement("span");
+    sw.className = "prize-swatch";
+    sw.style.background = colorHex;
+    im.replaceWith(sw);
+  });
   const nm = document.createElement("span");
   nm.className = "prize-name";
   nm.textContent = name;
   const st = document.createElement("span");
   st.className = "prize-how";
   st.textContent = owned ? "✓ yours" : how;
-  d.append(sw, nm, st);
+  d.append(im, nm, st);
   return d;
 }
 function prizeHow(id) {
