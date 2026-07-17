@@ -34,6 +34,7 @@ export function defaultProfile() {
     unlocked: [...STARTER_UNLOCKS],
     trophies: {}, // cupId -> best difficulty won ("easy" | "medium" | "hard")
     achievements: [], // earned achievement ids
+    pendingClaims: [], // earned badges whose treats wait for the player's CLAIM tap
     stats: defaultStats(),
     dailyPaid: "", // last YYYY-MM-DD the daily bonus was paid
   };
@@ -51,6 +52,10 @@ export function migrateProfile(raw) {
   for (const id of STARTER_UNLOCKS) if (!p.unlocked.includes(id)) p.unlocked.push(id);
   p.trophies = p.trophies && typeof p.trophies === "object" ? { ...p.trophies } : {};
   p.achievements = Array.isArray(p.achievements) ? [...new Set(p.achievements.filter((x) => typeof x === "string"))] : [];
+  // Pending claims must reference earned achievements (drop anything orphaned).
+  p.pendingClaims = Array.isArray(p.pendingClaims)
+    ? [...new Set(p.pendingClaims.filter((x) => typeof x === "string" && p.achievements.includes(x)))]
+    : [];
   const s = p.stats && typeof p.stats === "object" ? p.stats : {};
   p.stats = { ...defaultStats() };
   for (const k of Object.keys(p.stats)) if (Number.isFinite(s[k]) && s[k] >= 0) p.stats[k] = s[k];
@@ -161,6 +166,10 @@ export const ACHIEVEMENTS = [
   { id: "cup-sweep", name: "Cat-egory Champion", desc: "Win all four cups", pay: 400, test: (s, p) => CUPS.every((c) => p.trophies[c.id]) },
 ];
 
+// Mark newly earned badges. The treats are NOT paid here — each badge waits in
+// profile.pendingClaims for the player's CLAIM tap (claimAchievement), so the
+// reward is a moment, not a line item. Pending claims survive reloads and are
+// also claimable from the Cat-alog badge list.
 export function checkAchievements(profile) {
   const fresh = [];
   for (const a of ACHIEVEMENTS) {
@@ -169,12 +178,24 @@ export function checkAchievements(profile) {
     try { hit = !!a.test(profile.stats, profile); } catch { hit = false; }
     if (hit) {
       profile.achievements.push(a.id);
-      profile.treats += a.pay;
-      profile.stats.treatsEarned += a.pay;
+      profile.pendingClaims.push(a.id);
       fresh.push(a);
     }
   }
   return fresh;
+}
+
+// The CLAIM tap: pays the badge's treats exactly once. Returns the achievement
+// paid, or null if it wasn't pending (already claimed / never earned).
+export function claimAchievement(profile, id) {
+  const i = profile.pendingClaims.indexOf(id);
+  if (i < 0) return null;
+  const a = ACHIEVEMENTS.find((x) => x.id === id);
+  if (!a) return null;
+  profile.pendingClaims.splice(i, 1);
+  profile.treats += a.pay;
+  profile.stats.treatsEarned += a.pay;
+  return a;
 }
 
 // ---------------------------------------------------------------------------

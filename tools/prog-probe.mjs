@@ -30,23 +30,64 @@ const out = await page.evaluate(() => {
   const ok = z.debugFinish();
   const earnings = document.getElementById("results-earnings");
   const rows = earnings ? earnings.querySelectorAll(".earn-row").length : 0;
+  const claims = earnings ? earnings.querySelectorAll(".earn-claim").length : 0;
   const total = earnings ? [...earnings.querySelectorAll(".earn-total span")].map((e) => e.textContent).join(" ") : "";
-  const chip = document.getElementById("treats-balance")?.textContent;
   let saved = null;
   try { saved = JSON.parse(localStorage.getItem("zoomies-profile-v1")); } catch {}
   return {
     finished: ok,
     earningsVisible: earnings && !earnings.classList.contains("hidden"),
-    rows, total, chip,
-    savedTreats: saved ? saved.treats : -1,
+    rows, claims, total,
+    preClaimTreats: saved ? saved.treats : -1,
+    pending: saved ? saved.pendingClaims : [],
     savedRaces: saved ? saved.stats.races : -1,
     achievements: saved ? saved.achievements : [],
     starterUnlocks: saved ? saved.unlocked.length : 0,
   };
 });
-console.log(JSON.stringify(out, null, 1));
+// The badge is earned but UNPAID until the CLAIM tap — tap it and re-read.
+await page.click("#results-earnings .earn-claim", { force: true }).catch(() => {});
+await page.waitForTimeout(300);
+const after = await page.evaluate(() => {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("zoomies-profile-v1")); } catch {}
+  return {
+    chip: document.getElementById("treats-balance")?.textContent,
+    savedTreats: saved ? saved.treats : -1,
+    pendingLeft: saved ? saved.pendingClaims.length : -1,
+    sparkled: !!document.querySelector("#results-earnings .earn-claim.claimed"),
+  };
+});
+// Claim the rest, then buy a prize from the Cat-alog: tile tap → confirm → owned.
+for (const b of await page.$$("#results-earnings .earn-claim:not(.claimed)")) await b.click({ force: true }).catch(() => {});
+await page.waitForTimeout(200);
+const buy = await page.evaluate(async () => {
+  document.getElementById("open-catalog")?.click();
+  const tile = document.querySelector("#catalog-prizes .prize-tile.buyable");
+  if (!tile) return { step: "no-buyable-tile" };
+  const before = JSON.parse(localStorage.getItem("zoomies-profile-v1"));
+  tile.click(); // arm the in-tile confirm
+  const yes = tile.querySelector(".pc-yes");
+  if (!yes) return { step: "no-confirm", treats: before.treats };
+  yes.click();
+  await new Promise((r) => setTimeout(r, 150));
+  const saved = JSON.parse(localStorage.getItem("zoomies-profile-v1"));
+  return {
+    step: "bought",
+    owned: tile.classList.contains("owned"),
+    sparkles: tile.querySelectorAll(".sparkle").length > 0,
+    spent: before.treats - saved.treats,
+    unlockedGrew: saved.unlocked.length > before.unlocked.length,
+  };
+});
+console.log(JSON.stringify({ ...out, ...after, buy }, null, 1));
 console.log("errors:", JSON.stringify(errors));
-const pass = out.finished && out.earningsVisible && out.rows >= 2 && out.savedTreats > 0 &&
-  out.savedRaces === 1 && out.achievements.includes("first-race") && Number(out.chip) === out.savedTreats && errors.length === 0;
+const pass = out.finished && out.earningsVisible && out.rows >= 2 && out.claims >= 1 &&
+  out.preClaimTreats > 0 && out.pending.includes("first-race") &&
+  out.savedRaces === 1 && out.achievements.includes("first-race") &&
+  after.savedTreats > out.preClaimTreats && after.pendingLeft === out.pending.length - 1 && after.sparkled &&
+  Number(after.chip) === after.savedTreats &&
+  buy.step === "bought" && buy.owned && buy.sparkles && buy.spent > 0 && buy.unlockedGrew &&
+  errors.length === 0;
 console.log(pass ? "PROGRESSION PROBE: PASS" : "PROGRESSION PROBE: FAIL");
 await browser.close(); server.close(); process.exit(pass ? 0 : 1);

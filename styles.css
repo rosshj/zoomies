@@ -2289,6 +2289,50 @@ button.secondary.small,
 }
 .earn-row.earn-ach { color: #ffd54f; font-weight: 700; }
 .earn-row.earn-you { color: var(--accent); font-weight: 800; }
+/* Freshly earned badge → a pulsing CLAIM button (the post-race dopamine tap). */
+.earn-row.earn-claim {
+  width: 100%;
+  align-items: center;
+  font: inherit;
+  color: #ffd54f;
+  text-align: left;
+  border: 1px solid rgba(255, 213, 79, 0.55);
+  background: rgba(255, 213, 79, 0.1);
+  border-radius: 9px;
+  padding: 6px 8px;
+  margin-top: 3px;
+  cursor: pointer;
+  position: relative;
+  animation: claim-glow 1.6s ease-in-out infinite;
+}
+.earn-row.earn-claim.claimed {
+  animation: none;
+  cursor: default;
+  color: #81c784;
+  border-color: rgba(129, 199, 132, 0.55);
+  background: rgba(129, 199, 132, 0.1);
+}
+.earn-claim-cta { font-weight: 800; white-space: nowrap; }
+@keyframes claim-glow {
+  0%, 100% { box-shadow: 0 0 0 rgba(255, 213, 79, 0); }
+  50% { box-shadow: 0 0 12px rgba(255, 213, 79, 0.45); }
+}
+/* ✨ burst for claims + purchases (spawned by sparkleBurst in main.js). */
+.sparkle {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  font-size: 14px;
+  pointer-events: none;
+  z-index: 6;
+  transform: translate(-50%, -50%);
+  animation: sparkle-fly 0.75s ease-out forwards;
+}
+@keyframes sparkle-fly {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--sx)), calc(-50% + var(--sy))) scale(1.2); }
+}
 .earn-cup-head {
   margin-top: 8px;
   padding: 2px 6px;
@@ -2355,6 +2399,19 @@ button.secondary.small,
 .ach-name { font-size: 12px; font-weight: 700; }
 .ach-desc { font-size: 10px; color: rgba(255, 255, 255, 0.6); }
 .ach-pay { font-size: 11px; color: var(--accent); font-weight: 700; }
+.ach-claim {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  color: #201a06;
+  background: #ffd54f;
+  border: 0;
+  border-radius: 8px;
+  padding: 5px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  animation: claim-glow 1.6s ease-in-out infinite;
+}
 .catalog-stats { font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-bottom: 10px; }
 
 /* Garage lock note + buy button */
@@ -2392,6 +2449,47 @@ button.secondary.small,
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 .prize-tile.owned { border-color: rgba(129, 199, 132, 0.55); background: rgba(129, 199, 132, 0.08); }
+/* Buyable tiles are the Cat-alog's till: tap → in-tile confirm → sparkle. */
+.prize-tile { position: relative; }
+.prize-tile.buyable { cursor: pointer; }
+.prize-tile.buyable:active { transform: scale(0.97); }
+.prize-confirm {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 12px;
+  background: rgba(10, 14, 25, 0.9);
+}
+.pc-text { font-size: 11px; font-weight: 700; text-align: center; }
+.prize-confirm button {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  border: 0;
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+.pc-yes { background: #43a047; color: #fff; }
+.pc-no { background: rgba(255, 255, 255, 0.18); color: #fff; }
+.prize-tile.shake { animation: prize-shake 0.4s; }
+@keyframes prize-shake {
+  0%, 100% { transform: none; }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
+}
+.prize-tile.just-bought { animation: prize-pop 0.5s ease; }
+@keyframes prize-pop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
 .prize-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); }
 .prize-shot {
   width: 100%;

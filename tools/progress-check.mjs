@@ -5,7 +5,7 @@
 import {
   PROFILE_VERSION, defaultProfile, migrateProfile,
   CATALOG, STARTER_UNLOCKS, isUnlocked, buyUnlock, catalogEntry,
-  racePayout, ACHIEVEMENTS, checkAchievements,
+  racePayout, ACHIEVEMENTS, checkAchievements, claimAchievement,
   CUPS, cupPoints, cupStandings, awardCup, cupById,
   dailySeedFor, encodeProfileToken, decodeProfileToken,
 } from "../src/progress.js";
@@ -23,6 +23,9 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("migration heals junk (treats floor, starter restored, stats kept)",
     junk.treats === 0 && STARTER_UNLOCKS.every((id) => junk.unlocked.includes(id)) && junk.stats.races === 7 && junk.achievements.length === 1);
   check("migration coerces the version", junk.v === PROFILE_VERSION);
+
+  const claims = migrateProfile({ achievements: ["first-race"], pendingClaims: ["first-race", "never-earned", 7] });
+  check("migration keeps valid pending claims, drops orphans", claims.pendingClaims.length === 1 && claims.pendingClaims[0] === "first-race");
 
   const future = migrateProfile({ treats: 10, unlocked: [...STARTER_UNLOCKS, "hat.99"], futureField: { a: 1 } });
   check("unknown unlock ids + future fields survive a round trip", future.unlocked.includes("hat.99") && future.futureField && future.futureField.a === 1);
@@ -64,9 +67,13 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   const p = defaultProfile();
   p.stats.races = 1;
   let fresh = checkAchievements(p);
-  check("first race earns Out of the Cat Door (+50)", fresh.length === 1 && fresh[0].id === "first-race" && p.treats === 50);
+  check("first race earns Out of the Cat Door (pending, unpaid)",
+    fresh.length === 1 && fresh[0].id === "first-race" && p.treats === 0 && p.pendingClaims.includes("first-race"));
+  const claimed = claimAchievement(p, "first-race");
+  check("claiming the badge pays its treats", claimed && claimed.pay === 50 && p.treats === 50 && p.pendingClaims.length === 0);
+  check("a badge can't be claimed twice", claimAchievement(p, "first-race") === null && p.treats === 50);
   fresh = checkAchievements(p);
-  check("achievements pay only once", fresh.length === 0 && p.treats === 50);
+  check("achievements fire only once", fresh.length === 0 && p.treats === 50);
   p.stats.wins = 1; p.stats.winsHard = 1; p.stats.winsNight = 1;
   fresh = checkAchievements(p);
   check("stacked thresholds all fire in one pass", fresh.length === 3);

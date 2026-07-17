@@ -32,7 +32,7 @@ import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { RefereeClient } from "./net/refereeclient.js";
 import { encodeWorld, decodeWorld, sameWorld, worldSig } from "./net/worldcfg.js";
 import {
-  migrateProfile, isUnlocked, buyUnlock, catalogEntry, racePayout, checkAchievements,
+  migrateProfile, isUnlocked, buyUnlock, catalogEntry, racePayout, checkAchievements, claimAchievement,
   ACHIEVEMENTS, CUPS, cupById, cupPoints, cupStandings, awardCup, dailySeedFor,
   encodeProfileToken, decodeProfileToken,
 } from "./progress.js";
@@ -4094,6 +4094,67 @@ function refreshMenuMapCycle() {
 // Cat-alog: the Prizes page (everything you can win + how) is the main view;
 // the second tab holds the trophy shelf, achievements and career stats.
 const catalogEl = document.getElementById("catalog");
+
+// ✨ burst — the little dopamine pop for claiming a badge or buying a prize:
+// sparkle glyphs fly out from the element's centre and fade (direction via
+// inline CSS vars, see .sparkle / @keyframes sparkle-fly).
+function sparkleBurst(el, n = 10) {
+  if (getComputedStyle(el).position === "static") el.style.position = "relative";
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement("span");
+    s.className = "sparkle";
+    s.textContent = ["✨", "⭐", "🌟"][i % 3];
+    const ang = (i / n) * Math.PI * 2 + Math.random() * 0.6;
+    const dist = 30 + Math.random() * 30;
+    s.style.setProperty("--sx", `${Math.round(Math.cos(ang) * dist)}px`);
+    s.style.setProperty("--sy", `${Math.round(Math.sin(ang) * dist - 10)}px`);
+    s.style.animationDelay = `${(Math.random() * 0.12).toFixed(2)}s`;
+    el.appendChild(s);
+    setTimeout(() => s.remove(), 950);
+  }
+}
+
+// First tap on a locked, priced prize → an in-tile confirm ("Get X for 🐟N?");
+// Yes → buy, sparkle, tile flips to owned. Can't afford → a shake + how much is
+// missing. The garage's Buy button still works; this is the Cat-alog's own till.
+function beginPrizeBuy(tile, id, name, price) {
+  if (isUnlocked(profile, id) || tile.querySelector(".prize-confirm")) return;
+  const c = document.createElement("div");
+  c.className = "prize-confirm";
+  if (profile.treats < price) {
+    c.innerHTML = `<span class="pc-text">Need 🐟 ${price - profile.treats} more</span>`;
+    tile.appendChild(c);
+    tile.classList.add("shake");
+    setTimeout(() => { c.remove(); tile.classList.remove("shake"); }, 1400);
+    return;
+  }
+  const txt = document.createElement("span");
+  txt.className = "pc-text";
+  txt.textContent = `Get ${name} for 🐟 ${price}?`;
+  const yes = document.createElement("button");
+  yes.className = "pc-yes";
+  yes.textContent = "✓ Yes!";
+  yes.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (!buyUnlock(profile, id)) { c.remove(); return; }
+    saveProfile();
+    refreshTreatsChip();
+    c.remove();
+    sparkleBurst(tile, 12);
+    tile.classList.add("owned", "just-bought");
+    tile.classList.remove("buyable");
+    const how = tile.querySelector(".prize-how");
+    if (how) how.textContent = "✓ yours";
+    const bal = document.getElementById("catalog-treats");
+    if (bal) bal.textContent = `🐟 ${profile.treats}`;
+  });
+  const no = document.createElement("button");
+  no.className = "pc-no";
+  no.textContent = "✕";
+  no.addEventListener("click", (ev) => { ev.stopPropagation(); c.remove(); });
+  c.append(txt, yes, no);
+  tile.appendChild(c);
+}
 function prizeTile(id, name, colorHex, how, owned) {
   const d = document.createElement("div");
   d.className = "prize-tile" + (owned ? " owned" : "");
@@ -4117,6 +4178,11 @@ function prizeTile(id, name, colorHex, how, owned) {
   st.className = "prize-how";
   st.textContent = owned ? "✓ yours" : how;
   d.append(im, nm, st);
+  const e = catalogEntry(id);
+  if (!owned && e && typeof e.price === "number" && e.price > 0) {
+    d.classList.add("buyable");
+    d.addEventListener("click", () => beginPrizeBuy(d, id, name, e.price));
+  }
   return d;
 }
 function prizeHow(id) {
@@ -4184,9 +4250,28 @@ function renderCatalog() {
     list.innerHTML = "";
     for (const a of ACHIEVEMENTS) {
       const got = profile.achievements.includes(a.id);
+      const pend = profile.pendingClaims.includes(a.id);
       const d = document.createElement("div");
       d.className = "ach-row" + (got ? " got" : "");
-      d.innerHTML = `<span class="ach-mark">${got ? "🏅" : "⬜"}</span><span class="ach-text"><span class="ach-name">${a.name}</span><span class="ach-desc">${a.desc}</span></span><span class="ach-pay">🐟 ${a.pay}</span>`;
+      d.innerHTML = `<span class="ach-mark">${got ? "🏅" : "⬜"}</span><span class="ach-text"><span class="ach-name">${a.name}</span><span class="ach-desc">${a.desc}</span></span><span class="ach-pay">${pend ? "" : `🐟 ${a.pay}`}</span>`;
+      // A badge earned but never claimed (e.g. the player skipped the results
+      // screen) keeps its CLAIM button here, so the treats are never lost.
+      if (pend) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ach-claim";
+        b.textContent = `CLAIM +${a.pay}`;
+        b.addEventListener("click", () => {
+          if (!claimAchievement(profile, a.id)) return;
+          saveProfile();
+          refreshTreatsChip();
+          sparkleBurst(d, 10);
+          b.replaceWith(Object.assign(document.createElement("span"), { className: "ach-pay", textContent: `+${a.pay} 🐟` }));
+          const bal = document.getElementById("catalog-treats");
+          if (bal) bal.textContent = `🐟 ${profile.treats}`;
+        });
+        d.appendChild(b);
+      }
       list.appendChild(d);
     }
   }
@@ -5437,7 +5522,7 @@ function renderRaceEarnings(settled) {
   const { payout, fresh, cup } = settled;
   for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
   box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));
-  for (const a of fresh) box.appendChild(earnRow(`🏅 ${a.name} — ${a.desc}`, `+${a.pay}`, "earn-ach"));
+  for (const a of fresh) box.appendChild(claimRow(a));
   if (cup) {
     const head = document.createElement("div");
     head.className = "earn-cup-head";
@@ -5460,6 +5545,31 @@ function renderRaceEarnings(settled) {
       }
     }
   }
+}
+// A freshly earned badge renders as a pulsing CLAIM button — the tap pays the
+// treats (claimAchievement) with a sparkle burst. Unclaimed badges stay in
+// profile.pendingClaims and can be claimed later from the Cat-alog.
+function claimRow(a) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "earn-row earn-ach earn-claim";
+  const l = document.createElement("span");
+  l.textContent = `🏅 ${a.name} — ${a.desc}`;
+  const cta = document.createElement("span");
+  cta.className = "earn-claim-cta";
+  cta.textContent = `CLAIM +${a.pay}`;
+  btn.append(l, cta);
+  btn.addEventListener("click", () => {
+    const paid = claimAchievement(profile, a.id);
+    if (!paid) return;
+    saveProfile();
+    refreshTreatsChip();
+    sparkleBurst(btn, 12);
+    btn.classList.add("claimed");
+    btn.disabled = true;
+    cta.textContent = `+${paid.pay} 🐟`;
+  });
+  return btn;
 }
 function earnRow(label, amt, cls = "") {
   const li = document.createElement("div");
@@ -6281,7 +6391,9 @@ function loop(now) {
           MP.net.sendFinish(player.finishTime, player.finishClock);
           if (_ref) _ref.claimFinish(); // referee stamps the authoritative place (no-op if off)
         }
-        setTimeout(showResults, 13000);
+        // The HUD fades for the victory lap now, so a long empty orbit drags —
+        // one flying pass (~6.5s) is celebration enough before the results.
+        setTimeout(showResults, 6500);
       }
       state = State.FINISHED; // freeze player input; kart auto-pilots its victory lap
     }
