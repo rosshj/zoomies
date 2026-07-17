@@ -70,14 +70,14 @@ export const CATALOG = [
   { id: "cat.0", price: 0 }, { id: "cat.1", price: 0 }, { id: "cat.2", price: 0 },
   { id: "cat.3", price: 150 }, { id: "cat.4", price: 200 }, { id: "cat.5", price: 250 },
   { id: "cat.6", price: 300 }, { id: "cat.7", price: 400 },
-  { id: "cat.8", cup: "tuna" },      // Pepper — Tuna Cup exclusive
-  { id: "cat.9", cup: "zoomies" },   // Cocoa — Zoomies Cup exclusive
+  { id: "cat.8", cup: "sandypaws" }, // Pepper — Sandy Paws Cup exclusive
+  { id: "cat.9", cup: "zoomies" },   // Cocoa — Midnight Zoomies Cup exclusive
   // Karts.
   { id: "kart.0", price: 0 }, { id: "kart.1", price: 0 }, { id: "kart.2", price: 0 },
   { id: "kart.3", price: 150 }, { id: "kart.4", price: 200 }, { id: "kart.5", price: 250 },
   { id: "kart.6", price: 300 },
-  { id: "kart.7", cup: "whiskers" }, // Comet — Whiskers Cup exclusive
-  { id: "kart.8", cup: "catnip" },   // Nova — Catnip Cup exclusive
+  { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
+  { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
   // The custom creators are features you earn.
   { id: "custom.cat", price: 600 },
   { id: "custom.kart", price: 600 },
@@ -192,30 +192,33 @@ export function cupPoints(place) { return CUP_POINTS[place - 1] ?? 1; }
 // saved track settings. The cfg shape matches the track creator's.
 const R = (seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay) =>
   ({ seed, cfg: { mode: "custom", seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay } });
+// Every cup owns a THEME — its races stay inside one family of biomes, so the
+// series reads as a place (lush greens, arid dunes, snowy peaks, city nights)
+// and the name tells you where you're going.
 export const CUPS = [
-  { id: "whiskers", name: "Whiskers Cup", emoji: "🥛", desc: "Three sunny sprints to get your paws wet",
+  { id: "meadows", name: "Catnip Meadows Cup", emoji: "🌿", desc: "Lush and laid-back — rolling greens, cherry blossoms, and a jungle romp",
     winTreats: 200, unlockId: "kart.7", races: [
-      R("WSK1", 0.4, 0.35, 0.3, 0.3, 0.3, ["meadow", "blossom"], "midday"),
-      R("WSK2", 0.45, 0.45, 0.35, 0.4, 0.35, ["forest", "meadow"], "midday"),
-      R("WSK3", 0.5, 0.5, 0.45, 0.45, 0.4, ["autumn", "forest"], "sunset"),
+      R("MDW1", 0.4, 0.35, 0.3, 0.3, 0.3, ["meadow", "blossom"], "midday"),
+      R("MDW2", 0.45, 0.45, 0.35, 0.4, 0.35, ["forest", "meadow"], "midday"),
+      R("MDW3", 0.5, 0.5, 0.4, 0.45, 0.4, ["jungle", "blossom"], "sunset"),
     ] },
-  { id: "tuna", name: "Tuna Cup", emoji: "🐟", desc: "Coastal circuits with real bite",
+  { id: "sandypaws", name: "Sandy Paws Cup", emoji: "🏜️", desc: "Hot laps around the world's biggest litter box — dunes, savanna, red mesa",
     winTreats: 250, unlockId: "cat.8", races: [
-      R("TUN1", 0.5, 0.5, 0.4, 0.4, 0.45, ["beach", "meadow"], "midday"),
-      R("TUN2", 0.55, 0.6, 0.45, 0.5, 0.5, ["beach", "city"], "sunset"),
-      R("TUN3", 0.6, 0.55, 0.5, 0.55, 0.55, ["savanna", "beach"], "midday"),
+      R("SND1", 0.5, 0.5, 0.4, 0.4, 0.45, ["desert", "savanna"], "midday"),
+      R("SND2", 0.55, 0.6, 0.45, 0.5, 0.5, ["savanna", "mesa"], "sunset"),
+      R("SND3", 0.6, 0.55, 0.5, 0.55, 0.55, ["mesa", "desert"], "midday"),
     ] },
-  { id: "catnip", name: "Catnip Cup", emoji: "🌿", desc: "Twisty, trippy, terribly fast",
+  { id: "meowtain", name: "Meowtain Cup", emoji: "🏔️", desc: "Steep climbs and snowy switchbacks, way up where the big cats prowl",
     winTreats: 300, unlockId: "kart.8", races: [
-      R("CNP1", 0.55, 0.75, 0.5, 0.55, 0.7, ["blossom", "meadow"], "sunset"),
-      R("CNP2", 0.6, 0.8, 0.6, 0.6, 0.75, ["alpine", "tundra"], "midday"),
-      R("CNP3", 0.6, 0.85, 0.65, 0.65, 0.8, ["forest", "blossom"], "night"),
+      R("MTN1", 0.55, 0.6, 0.65, 0.7, 0.55, ["forest", "alpine"], "midday"),
+      R("MTN2", 0.6, 0.65, 0.75, 0.8, 0.6, ["alpine", "tundra"], "sunset"),
+      R("MTN3", 0.6, 0.7, 0.85, 0.85, 0.65, ["tundra", "alpine"], "night"),
     ] },
-  { id: "zoomies", name: "Zoomies Cup", emoji: "⚡", desc: "The championship. Four races. No mercy",
+  { id: "zoomies", name: "Midnight Zoomies Cup", emoji: "⚡", desc: "The 3am championship — four races after dark. No mercy",
     winTreats: 400, unlockId: "cat.9", races: [
-      R("ZOM1", 0.6, 0.6, 0.55, 0.55, 0.55, ["desert", "savanna"], "midday"),
-      R("ZOM2", 0.65, 0.7, 0.6, 0.65, 0.65, ["autumn", "alpine"], "sunset"),
-      R("ZOM3", 0.65, 0.75, 0.7, 0.7, 0.7, ["tundra", "alpine"], "midday"),
+      R("ZOM1", 0.6, 0.6, 0.55, 0.55, 0.55, ["beach", "city"], "sunset"),
+      R("ZOM2", 0.65, 0.7, 0.6, 0.65, 0.65, ["autumn", "forest"], "night"),
+      R("ZOM3", 0.65, 0.75, 0.7, 0.7, 0.7, ["mesa", "savanna"], "night"),
       R("ZOM4", 0.7, 0.8, 0.65, 0.7, 0.75, ["city", "desert"], "night"),
     ] },
 ];

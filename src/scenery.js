@@ -41,8 +41,13 @@ const BIOMES = [
   { name: "alpine", weather: "snow", ground: 0x6f7e74, ground2: 0x586a62, foliage: [0.4, 0.42, 0.22], style: "pine", treeShape: "pine", sx: 0.7, sy: 1.55, treeDensity: 0.85, grassTint: 0xbcccb0, grassDensity: 0.45, barrier: { a: 0xe53935, b: 0xfafafa } },
   { name: "autumn", weather: "none", ground: 0x7a6a32, ground2: 0x6b5326, foliage: [0.07, 0.7, 0.45], style: "cone", treeShape: "round", sx: 1.05, sy: 1.0, treeDensity: 0.9, grassTint: 0xd9c070, grassDensity: 0.65, barrier: { a: 0xc8642a, b: 0xf0e0c0 } },
   { name: "desert", weather: "none", ground: 0xcaa56b, ground2: 0xb98e50, foliage: [0.28, 0.45, 0.4], style: "cactus", treeShape: "cactus", sx: 1.0, sy: 1.0, treeDensity: 0.3, grassTint: 0xd9c98a, grassDensity: 0.12, barrier: { a: 0xc2a86a, b: 0x9c5a3a } },
+  // Red-rock mesa country: rust sandstone ground, sparse cacti, canyon-friendly.
+  { name: "mesa", weather: "none", ground: 0xc0714a, ground2: 0xa25836, foliage: [0.26, 0.42, 0.38], style: "cactus", treeShape: "cactus", sx: 1.0, sy: 1.1, treeDensity: 0.22, grassTint: 0xd8a878, grassDensity: 0.1, barrier: { a: 0xd8956a, b: 0x7a4028 } },
   // Cherry-blossom spring: fresh green ground under candy-pink canopies.
   { name: "blossom", weather: "none", ground: 0x6fae4a, ground2: 0x5a9440, foliage: [0.92, 0.6, 0.82], style: "cone", treeShape: "blossom", sx: 1.05, sy: 1.05, treeDensity: 0.8, grassTint: 0xd6f0a8, grassDensity: 0.95, barrier: { a: 0xffd9e6, b: 0xff9fc0 } },
+  // Steamy rainforest: deep wet greens, dense arching palms, drumming rain.
+  // style "pine" opts it into the dense-woods pass; the palms make it a jungle.
+  { name: "jungle", weather: "rain", ground: 0x2f7a34, ground2: 0x255f28, foliage: [0.36, 0.62, 0.3], style: "pine", treeShape: "palm", sx: 1.15, sy: 1.25, treeDensity: 1.0, grassTint: 0x8cd080, grassDensity: 1.0, barrier: { a: 0x2e7d32, b: 0xffc107 } },
   // Dry golden savanna: tawny earth, sparse wide acacia trees, pale grass.
   { name: "savanna", weather: "none", ground: 0xb89a4e, ground2: 0xa07f3a, foliage: [0.13, 0.45, 0.4], style: "cone", treeShape: "acacia", sx: 1.25, sy: 0.85, treeDensity: 0.35, grassTint: 0xd8c070, grassDensity: 0.5, barrier: { a: 0xc9a86a, b: 0x8a6a3a } },
   // Frosted tundra: pale sage ground, short blue-green pines, light snow.
@@ -243,6 +248,8 @@ const ROAD_STYLES = {
   alpine: { tint: [1.35, 1.42, 1.55], kind: "snow" },
   autumn: { tint: [1.1, 1.0, 0.85], kind: "autumn" },
   desert: { tint: [1.7, 1.45, 1.02], kind: "sand" },
+  mesa: { tint: [1.55, 1.12, 0.88], kind: "sand" },
+  jungle: { tint: [0.8, 0.92, 0.84], kind: "damp" },
   blossom: { tint: [1.04, 0.97, 1.02], kind: "asphalt" },
   savanna: { tint: [1.45, 1.28, 0.95], kind: "sand" },
   tundra: { tint: [1.25, 1.32, 1.4], kind: "snow" },
@@ -2612,8 +2619,8 @@ function buildForests(scene, track, heightAt) {
   for (let i = 0; i < N; i += 2) {
     const p = track._pts[i];
     const here = biomeAt(p.x, p.z);
-    if (here.style !== "pine") continue; // forest + alpine get dense woods
-    const reps = here.name === "forest" ? 6 : 3;
+    if (here.style !== "pine") continue; // forest + alpine + jungle get dense woods
+    const reps = here.name === "forest" || here.name === "jungle" ? 6 : 3;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     for (let r = 0; r < reps; r++) {
       const dir = rand() < 0.5 ? 1 : -1;

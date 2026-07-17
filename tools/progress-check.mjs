@@ -85,19 +85,29 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
     CUPS.every((c) => c.races.every((r) => r.seed && r.cfg && r.cfg.mode === "custom" && r.cfg.seed === r.seed && Array.isArray(r.cfg.biomes) && r.cfg.biomes.length >= 1 && r.cfg.timeOfDay)));
   check("cup race seeds unique across all cups",
     (() => { const all = CUPS.flatMap((c) => c.races.map((r) => r.seed)); return new Set(all).size === all.length; })());
+  // Must match the BIOMES roster in src/scenery.js (which imports THREE, so it
+  // can't be imported here) — catches a typo'd biome name in a cup recipe.
+  const KNOWN_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "mesa", "blossom", "jungle", "savanna", "tundra", "city", "beach"];
+  check("every cup race biome is a real biome name",
+    CUPS.every((c) => c.races.every((r) => r.cfg.biomes.every((b) => KNOWN_BIOMES.includes(b)))));
+  const THEMES = { meadows: ["meadow", "blossom", "forest", "jungle"], sandypaws: ["desert", "savanna", "mesa"], meowtain: ["forest", "alpine", "tundra"] };
+  check("themed cups stay inside their biome family",
+    Object.entries(THEMES).every(([id, fam]) => CUPS.find((c) => c.id === id).races.every((r) => r.cfg.biomes.every((b) => fam.includes(b)))));
+  check("the midnight finale races mostly after dark",
+    CUPS.find((c) => c.id === "zoomies").races.filter((r) => r.cfg.timeOfDay === "night").length >= 3);
   check("points ladder: 1st 10 … 6th 3, 7th+ 1", cupPoints(1) === 10 && cupPoints(6) === 3 && cupPoints(9) === 1);
   const standings = cupStandings({ You: 24, Mittens: 24, Whiskers: 8 });
   check("standings sort by points, name-tiebreak stable", standings[0].name === "Mittens" && standings[1].name === "You" && standings[2].name === "Whiskers");
 
   const p = defaultProfile();
-  const won = awardCup(p, "whiskers", cupStandings({ You: 28, Mittens: 20 }), "You", "medium");
-  check("first cup win pays treats + trophy + exclusive", won && won.firstWin && p.treats === 200 && p.trophies.whiskers === "medium" && p.unlocked.includes("kart.7"));
-  const again = awardCup(p, "whiskers", cupStandings({ You: 28, Mittens: 20 }), "You", "hard");
-  check("re-win upgrades the trophy but doesn't re-pay", again && !again.firstWin && again.upgraded && p.trophies.whiskers === "hard" && p.treats === 200);
-  const down = awardCup(p, "whiskers", cupStandings({ You: 28, Mittens: 20 }), "You", "easy");
-  check("easier re-win never downgrades the trophy", down && !down.upgraded && p.trophies.whiskers === "hard");
-  const lost = awardCup(p, "tuna", cupStandings({ Mittens: 30, You: 20 }), "You", "hard");
-  check("losing the cup awards nothing", lost === null && !p.trophies.tuna);
+  const won = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "medium");
+  check("first cup win pays treats + trophy + exclusive", won && won.firstWin && p.treats === 200 && p.trophies.meadows === "medium" && p.unlocked.includes("kart.7"));
+  const again = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard");
+  check("re-win upgrades the trophy but doesn't re-pay", again && !again.firstWin && again.upgraded && p.trophies.meadows === "hard" && p.treats === 200);
+  const down = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "easy");
+  check("easier re-win never downgrades the trophy", down && !down.upgraded && p.trophies.meadows === "hard");
+  const lost = awardCup(p, "sandypaws", cupStandings({ Mittens: 30, You: 20 }), "You", "hard");
+  check("losing the cup awards nothing", lost === null && !p.trophies.sandypaws);
 }
 
 // --- Daily seed ---

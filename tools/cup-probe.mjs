@@ -38,7 +38,7 @@ const out = await page.evaluate(() => ({
 }));
 console.log(JSON.stringify(out, null, 1));
 console.log("errors:", JSON.stringify(errors));
-const pass = out.menuVisible && out.hudHidden && /RACE 1 OF 3/i.test(out.startLabel || "") &&
-  /Whiskers Cup/.test(out.mapLabel || "") && /Cup Series/.test(out.modeSummary || "") && errors.length === 0;
+const pass = out.menuVisible && out.hudHidden && new RegExp(`RACE 1 OF ${cup.races.length}`, "i").test(out.startLabel || "") &&
+  (out.mapLabel || "").includes(cup.name) && /Cup Series/.test(out.modeSummary || "") && errors.length === 0;
 console.log(pass ? "CUP PROBE: PASS" : "CUP PROBE: FAIL");
 await browser.close(); server.close(); process.exit(pass ? 0 : 1);

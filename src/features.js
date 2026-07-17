@@ -56,15 +56,15 @@ const KIND_SPECS = [
   // clearR: the tube shell reaches halfWidth+2.6 out and 15 up — taller than a
   // crossover deck's clearance — so no other pass of the lap may come near the
   // arc at all, or the arch pokes up through the road running above it.
-  { kind: "tunnel", biomes: ["alpine", "desert", "tundra"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
+  { kind: "tunnel", biomes: ["alpine", "desert", "tundra", "mesa"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
   { kind: "dam", biomes: ["alpine", "forest"], halfFrac: 0.024, flatW: 3.2, curvW: 170, clearR: 72 },
   { kind: "overpass", biomes: ["city"], halfFrac: 0.038, flatW: 2.6, curvW: 120 },
-  { kind: "canyon", biomes: ["desert", "alpine", "tundra"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
-  { kind: "shelf", biomes: ["alpine", "desert", "savanna"], halfFrac: 0.042, flatW: 0.8, curvW: 70 },
-  { kind: "giant", biomes: ["forest"], halfFrac: 0.045, flatW: 0.3, curvW: 20 },
-  { kind: "bridge", biomes: ["meadow", "autumn", "blossom", "savanna", "tundra", "beach", "forest"], halfFrac: 0.032, flatW: 3.0, curvW: 150, clearR: 0 },
+  { kind: "canyon", biomes: ["desert", "alpine", "tundra", "mesa"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
+  { kind: "shelf", biomes: ["alpine", "desert", "savanna", "mesa"], halfFrac: 0.042, flatW: 0.8, curvW: 70 },
+  { kind: "giant", biomes: ["forest", "jungle"], halfFrac: 0.045, flatW: 0.3, curvW: 20 },
+  { kind: "bridge", biomes: ["meadow", "autumn", "blossom", "savanna", "tundra", "beach", "forest", "jungle"], halfFrac: 0.032, flatW: 3.0, curvW: 150, clearR: 0 },
   // Treatments (dressing only — no terrain change beyond what's above).
-  { kind: "arches", biomes: ["desert"], halfFrac: 0.028, flatW: 0.5, curvW: 60 },
+  { kind: "arches", biomes: ["desert", "mesa"], halfFrac: 0.028, flatW: 0.5, curvW: 60 },
   { kind: "windfarm", biomes: ["savanna", "tundra", "meadow"], halfFrac: 0.038, flatW: 0.4, curvW: 30 },
   { kind: "flowers", biomes: ["meadow", "blossom"], halfFrac: 0.04, flatW: 0.4, curvW: 20 },
   { kind: "billboards", biomes: ["city"], halfFrac: 0.024, flatW: 0.8, curvW: 60 },
