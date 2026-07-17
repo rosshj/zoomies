@@ -79,8 +79,12 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
 
 // --- Cups ---
 {
-  check("four cups, unique ids, 3-4 seeded races each",
-    CUPS.length === 4 && new Set(CUPS.map((c) => c.id)).size === 4 && CUPS.every((c) => c.seeds.length >= 3 && c.seeds.length <= 4));
+  check("four cups, unique ids, 3-4 generated races each",
+    CUPS.length === 4 && new Set(CUPS.map((c) => c.id)).size === 4 && CUPS.every((c) => c.races.length >= 3 && c.races.length <= 4));
+  check("every cup race is a full generated world (custom cfg + seed + biomes + time)",
+    CUPS.every((c) => c.races.every((r) => r.seed && r.cfg && r.cfg.mode === "custom" && r.cfg.seed === r.seed && Array.isArray(r.cfg.biomes) && r.cfg.biomes.length >= 1 && r.cfg.timeOfDay)));
+  check("cup race seeds unique across all cups",
+    (() => { const all = CUPS.flatMap((c) => c.races.map((r) => r.seed)); return new Set(all).size === all.length; })());
   check("points ladder: 1st 10 … 6th 3, 7th+ 1", cupPoints(1) === 10 && cupPoints(6) === 3 && cupPoints(9) === 1);
   const standings = cupStandings({ You: 24, Mittens: 24, Whiskers: 8 });
   check("standings sort by points, name-tiebreak stable", standings[0].name === "Mittens" && standings[1].name === "You" && standings[2].name === "Whiskers");

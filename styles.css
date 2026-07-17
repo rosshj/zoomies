@@ -2265,8 +2265,6 @@ button.secondary.small,
 #results-earnings {
   margin: 8px auto 0;
   max-width: 340px;
-  max-height: 30vh;
-  overflow-y: auto;
   font-size: 12px;
   text-align: left;
 }
@@ -2324,7 +2322,9 @@ button.secondary.small,
 .cup-state { font-size: 11px; color: #ffd54f; }
 
 /* Cat-alog */
-.catalog-main { max-height: 86vh; overflow-y: auto; }
+/* No inner scroll: the overlay is the single scroll container (same as Settings),
+   so the modal sizes to its content with ONE scrollbar. */
+.catalog-main { width: min(560px, 100%); }
 .catalog-treats { font-size: 22px; font-weight: 800; color: var(--accent); margin: 2px 0 8px; }
 .catalog-trophies { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
 .shelf-cup {
@@ -2358,3 +2358,37 @@ button.secondary.small,
 .garage-buy { background: linear-gradient(180deg, #ffd54f, #ffb300); color: #201500; font-weight: 800; }
 .garage-buy:disabled { filter: grayscale(0.7); opacity: 0.6; }
 .garage-buy.hidden { display: none; }
+
+
+/* Menu map cross-fade for the Cup Series cycle. */
+#menu-map { transition: opacity 0.42s ease; }
+
+/* Cup option picked state (inside the Game Mode panel). */
+.cup-card.is-picked {
+  border-color: var(--accent);
+  background: rgba(255, 179, 0, 0.1);
+}
+.cup-card.is-picked .mode-radio { border-color: var(--accent); box-shadow: inset 0 0 0 4px var(--accent); }
+
+/* Cat-alog tabs + Prizes page */
+.catalog-tabs { margin: 0 auto 10px; }
+.prize-head {
+  font-size: 10px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55); text-align: left; margin: 10px 0 6px;
+}
+.prize-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.prize-tile {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 8px 6px; border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.prize-tile.owned { border-color: rgba(129, 199, 132, 0.55); background: rgba(129, 199, 132, 0.08); }
+.prize-swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.5); }
+.prize-name { font-size: 11px; font-weight: 700; }
+.prize-how { font-size: 10px; color: #ffd54f; }
+.prize-tile.owned .prize-how { color: #81c784; }

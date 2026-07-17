@@ -186,15 +186,38 @@ export function checkAchievements(profile) {
 export const CUP_POINTS = [10, 8, 6, 5, 4, 3]; // 7th+ scores 1
 export function cupPoints(place) { return CUP_POINTS[place - 1] ?? 1; }
 
+// Each cup race is a FULL generated world (mode custom + knobs + biomes + time of
+// day), so the series has genuinely distinct track layouts — previewable on the
+// menu map — and every player races identical cup tracks regardless of their own
+// saved track settings. The cfg shape matches the track creator's.
+const R = (seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay) =>
+  ({ seed, cfg: { mode: "custom", seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay } });
 export const CUPS = [
   { id: "whiskers", name: "Whiskers Cup", emoji: "🥛", desc: "Three sunny sprints to get your paws wet",
-    seeds: ["WSK1", "WSK2", "WSK3"], winTreats: 200, unlockId: "kart.7" },
+    winTreats: 200, unlockId: "kart.7", races: [
+      R("WSK1", 0.4, 0.35, 0.3, 0.3, 0.3, ["meadow", "blossom"], "midday"),
+      R("WSK2", 0.45, 0.45, 0.35, 0.4, 0.35, ["forest", "meadow"], "midday"),
+      R("WSK3", 0.5, 0.5, 0.45, 0.45, 0.4, ["autumn", "forest"], "sunset"),
+    ] },
   { id: "tuna", name: "Tuna Cup", emoji: "🐟", desc: "Coastal circuits with real bite",
-    seeds: ["TUN1", "TUN2", "TUN3"], winTreats: 250, unlockId: "cat.8" },
+    winTreats: 250, unlockId: "cat.8", races: [
+      R("TUN1", 0.5, 0.5, 0.4, 0.4, 0.45, ["beach", "meadow"], "midday"),
+      R("TUN2", 0.55, 0.6, 0.45, 0.5, 0.5, ["beach", "city"], "sunset"),
+      R("TUN3", 0.6, 0.55, 0.5, 0.55, 0.55, ["savanna", "beach"], "midday"),
+    ] },
   { id: "catnip", name: "Catnip Cup", emoji: "🌿", desc: "Twisty, trippy, terribly fast",
-    seeds: ["CNP1", "CNP2", "CNP3"], winTreats: 300, unlockId: "kart.8" },
+    winTreats: 300, unlockId: "kart.8", races: [
+      R("CNP1", 0.55, 0.75, 0.5, 0.55, 0.7, ["blossom", "meadow"], "sunset"),
+      R("CNP2", 0.6, 0.8, 0.6, 0.6, 0.75, ["alpine", "tundra"], "midday"),
+      R("CNP3", 0.6, 0.85, 0.65, 0.65, 0.8, ["forest", "blossom"], "night"),
+    ] },
   { id: "zoomies", name: "Zoomies Cup", emoji: "⚡", desc: "The championship. Four races. No mercy",
-    seeds: ["ZOM1", "ZOM2", "ZOM3", "ZOM4"], winTreats: 400, unlockId: "cat.9" },
+    winTreats: 400, unlockId: "cat.9", races: [
+      R("ZOM1", 0.6, 0.6, 0.55, 0.55, 0.55, ["desert", "savanna"], "midday"),
+      R("ZOM2", 0.65, 0.7, 0.6, 0.65, 0.65, ["autumn", "alpine"], "sunset"),
+      R("ZOM3", 0.65, 0.75, 0.7, 0.7, 0.7, ["tundra", "alpine"], "midday"),
+      R("ZOM4", 0.7, 0.8, 0.65, 0.7, 0.75, ["city", "desert"], "night"),
+    ] },
 ];
 const _cupById = new Map(CUPS.map((c) => [c.id, c]));
 export function cupById(id) { return _cupById.get(id) || null; }

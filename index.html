@@ -319,7 +319,6 @@
           </button>
         </nav>
         <div class="menu-footer menu-progress-row">
-          <button id="open-cups" class="secondary small">🏆 Cups</button>
           <button id="open-daily" class="secondary small">📅 Daily</button>
           <button id="open-catalog" class="secondary small">🐟 <span id="treats-balance">0</span> · Cat&#8209;alog</button>
         </div>
@@ -346,8 +345,8 @@
           <button class="mode-pick">
             <span class="mode-ico">🏁</span>
             <span class="mode-text">
-              <span class="mode-name">Grand Prix</span>
-              <span class="mode-desc">Race five rivals to the finish</span>
+              <span class="mode-name">Single Race</span>
+              <span class="mode-desc">One race against five rivals</span>
             </span>
             <span class="mode-radio" aria-hidden="true"></span>
           </button>
@@ -370,6 +369,19 @@
                 <button class="seg-btn" data-diff="hard">Hard</button>
               </div>
             </div>
+          </div>
+        </div>
+        <div id="mode-cup" class="mode-card">
+          <button class="mode-pick">
+            <span class="mode-ico">🏆</span>
+            <span class="mode-text">
+              <span class="mode-name">Cup Series</span>
+              <span class="mode-desc">3-4 races, points, trophies — win exclusives</span>
+            </span>
+            <span class="mode-radio" aria-hidden="true"></span>
+          </button>
+          <div class="mode-opts">
+            <div id="cup-list" class="cup-list"></div>
           </div>
         </div>
         <div id="mode-tt" class="mode-card">
@@ -502,24 +514,23 @@
     </div>
   </div>
 
-  <!-- ===== Cups: pick a tournament (3-4 seeded races, points, trophies) ===== -->
-  <div id="cup-panel" class="overlay hidden">
-    <div class="menu-card cup-main">
-      <h1>🏆 Cups</h1>
-      <p class="tagline">Win the series for treats, a trophy — and exclusives you can't buy</p>
-      <div id="cup-list" class="cup-list"></div>
-      <button id="cup-back" class="secondary">← Back</button>
-    </div>
-  </div>
-
   <!-- ===== Cat-alog: treats, trophy shelf, achievements, career stats ===== -->
   <div id="catalog" class="overlay hidden">
     <div class="menu-card catalog-main">
       <h1>📖 Cat-alog</h1>
       <p id="catalog-treats" class="catalog-treats">🐟 0</p>
-      <div id="catalog-trophies" class="catalog-trophies"></div>
-      <div id="catalog-achievements" class="catalog-achievements"></div>
-      <p id="catalog-stats" class="catalog-stats"></p>
+      <div class="seg-toggle catalog-tabs">
+        <button id="catalog-tab-prizes" class="seg-btn is-active">🎁 Prizes</button>
+        <button id="catalog-tab-ach" class="seg-btn">🏅 Treats &amp; Badges</button>
+      </div>
+      <!-- Prizes: EVERYTHING you can win — cats, karts, creators — with how to
+           get each one. The main page (kids love knowing what they can win). -->
+      <div id="catalog-prizes" class="catalog-prizes"></div>
+      <div id="catalog-page-ach" class="hidden">
+        <div id="catalog-trophies" class="catalog-trophies"></div>
+        <div id="catalog-achievements" class="catalog-achievements"></div>
+        <p id="catalog-stats" class="catalog-stats"></p>
+      </div>
       <button id="catalog-back" class="secondary">← Back</button>
     </div>
   </div>

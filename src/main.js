@@ -275,6 +275,10 @@ function todayStr() {
 }
 const _dailyActive = _qs.has("daily") && _seedParam === dailySeedFor(todayStr());
 
+// Menu-map cup cycling state (declared early — applyModeUI touches these at boot).
+let _mapCycleTimer = null;
+let _mapCycleIdx = 0;
+
 // Per-race moment counters (reset in prepareRace, folded into the profile's
 // career stats when the race pays out). null outside a race so hooks can guard.
 let _raceStats = null;
@@ -3850,32 +3854,51 @@ const MODE_INFO = {
   gp: { cta: "🏁 START RACE" },
   tt: { cta: "⏱ START TIME TRIAL" },
   mp: { cta: "🎮 HOST GAME" },
+  cup: { cta: "🏆 START CUP" },
 };
+// Which cup the Cup Series mode races (persisted; mid-cup boots override it).
+const CUP_CHOICE_KEY = "zoomies-cup-choice";
+let _cupChoice = CUPS[0].id;
+try { const c = localStorage.getItem(CUP_CHOICE_KEY); if (cupById(c)) _cupChoice = c; } catch { /* ignore */ }
+if (_cupState && _activeCup) _cupChoice = _activeCup.id;
 // Multiplayer needs a configured relay key; without one the mode isn't offered.
 const mpAvailable = !!resolveAblyKey();
 let raceMode = "gp";
 try {
   const m = localStorage.getItem(MODE_KEY);
-  if (m === "gp" || m === "tt") raceMode = m; // "mp" never persists (needs a live room)
+  if (m === "gp" || m === "tt" || m === "cup") raceMode = m; // "mp" never persists (needs a live room)
 } catch {}
+// A cup reload chain always lands in Cup Series mode; a daily link races single.
+if (_cupState && _activeCup) raceMode = "cup";
+else if (_dailyActive) raceMode = "gp";
 
 // The Game Mode tile echoes the chosen mode plus its options at a glance.
 function refreshModeSummary() {
   const el = document.getElementById("mode-summary");
   if (!el) return;
+  const cupDef = cupById(_cupChoice);
   el.textContent =
     raceMode === "tt" ? "Time Trial · One lap vs the clock"
     : raceMode === "mp" ? "Multiplayer · Host or join friends"
-    : `Grand Prix · ${TOTAL_LAPS} lap${TOTAL_LAPS > 1 ? "s" : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`;
+    : raceMode === "cup" ? `Cup Series · ${cupDef ? cupDef.name : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`
+    : `Single Race · ${TOTAL_LAPS} lap${TOTAL_LAPS > 1 ? "s" : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`;
 }
 function applyModeUI() {
-  if (startBtn) startBtn.textContent = MODE_INFO[raceMode].cta;
+  if (startBtn) {
+    // Mid-cup the START button continues the series ("▶ RACE 2 OF 3"); a fresh cup
+    // starts it; a daily link starts the daily. All via a real tap, so iOS motion
+    // permission is granted for every race.
+    if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+    else if (_dailyActive) startBtn.textContent = "📅 START DAILY";
+    else startBtn.textContent = MODE_INFO[raceMode].cta;
+  }
   const mp = raceMode === "mp";
   document.getElementById("mp-join")?.classList.toggle("hidden", !mp);
   document.getElementById("mp-menu-status")?.classList.toggle("hidden", !mp);
-  for (const m of ["gp", "tt", "mp"])
+  for (const m of ["gp", "tt", "mp", "cup"])
     document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
   refreshModeSummary();
+  refreshMenuMapCycle();
 }
 function setRaceMode(mode) {
   if (mode === "mp" && !mpAvailable) return;
@@ -3888,12 +3911,15 @@ function setRaceMode(mode) {
 startBtn?.addEventListener("click", () => {
   if (raceMode === "tt") startTimeTrial();
   else if (raceMode === "mp") hostGame();
-  else startRace();
+  else if (raceMode === "cup") {
+    if (_cupState && _activeCup) beginRace(); // continue the series (this tap grants tilt)
+    else startCup(_cupChoice);
+  } else startRace();
 });
 
 // Game Mode screen: one card per mode; the selected card expands its options.
 const modePanel = document.getElementById("mode-panel");
-for (const m of ["gp", "tt", "mp"])
+for (const m of ["gp", "tt", "mp", "cup"])
   document.getElementById("mode-" + m)?.addEventListener("click", () => setRaceMode(m));
 document.getElementById("open-mode")?.addEventListener("click", () => openSubScreen(modePanel));
 document.getElementById("mode-done")?.addEventListener("click", () => closeSubScreen(modePanel));
@@ -3988,31 +4014,39 @@ function refreshTreatsChip() {
 
 // Start a cup: seed the run state and reload into race 1 (each cup race is a
 // different seed, and the world is built from the seed at load).
+function cupRaceURL(cup, raceIndex) {
+  const race = cup.races[raceIndex];
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", race.seed);
+  u.searchParams.set("cup", cup.id);
+  // The full generated world rides the same token the multiplayer invite uses, so
+  // the boot path builds EXACTLY this track whatever the player's saved settings.
+  const w = encodeWorld({ cfg: race.cfg, laps: 3, seed: race.seed });
+  if (w) u.searchParams.set("w", w);
+  return u.toString();
+}
 function startCup(id) {
   const cup = cupById(id);
   if (!cup) return;
   audio.unlock();
+  try { input.enableMotion(); } catch { /* ignore */ } // grab iOS tilt permission inside the tap, like joinGame
   try { sessionStorage.setItem(CUP_KEY, JSON.stringify({ id, race: 0, points: {}, diff: DIFFICULTY })); } catch { /* ignore */ }
   markReload("cup-start");
-  const u = new URL(location.origin + location.pathname);
-  u.searchParams.set("seed", cup.seeds[0]);
-  u.searchParams.set("cup", id);
-  location.href = u.toString();
+  location.href = cupRaceURL(cup, 0);
 }
 document.getElementById("results-next-btn")?.addEventListener("click", () => {
   if (!_cupState || !_activeCup) return;
   _cupState.race++;
   try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
+  try { input.enableMotion(); } catch { /* ignore */ } // tap = motion permission survives the reload
   markReload("cup-next");
-  const u = new URL(location.origin + location.pathname);
-  u.searchParams.set("seed", _activeCup.seeds[_cupState.race]);
-  u.searchParams.set("cup", _activeCup.id);
-  location.href = u.toString();
+  location.href = cupRaceURL(_activeCup, _cupState.race);
 });
 
 // Daily challenge: reload into today's shared seed with the daily flag.
 document.getElementById("open-daily")?.addEventListener("click", () => {
   audio.unlock();
+  try { input.enableMotion(); } catch { /* ignore */ }
   markReload("daily-start");
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", dailySeedFor(todayStr()));
@@ -4020,31 +4054,127 @@ document.getElementById("open-daily")?.addEventListener("click", () => {
   location.href = u.toString();
 });
 
-// Cup select panel: one card per cup showing the trophy shelf state.
-const cupPanel = document.getElementById("cup-panel");
-function renderCupPanel() {
+// Cup Series options (inside the Game Mode panel): pick which cup START runs.
+function renderCupOptions() {
   const list = document.getElementById("cup-list");
   if (!list) return;
   list.innerHTML = "";
   for (const cup of CUPS) {
     const won = profile.trophies[cup.id];
     const b = document.createElement("button");
-    b.className = "cup-card";
+    b.className = "cup-card" + (cup.id === _cupChoice ? " is-picked" : "");
     const trophy = won ? `🏆 won on ${won}` : cup.unlockId ? `🎁 prize: ${unlockName(cup.unlockId)}` : "";
-    b.innerHTML = `<span class="cup-emoji">${cup.emoji}</span><span class="cup-text"><span class="cup-name">${cup.name}</span><span class="cup-desc">${cup.desc} · ${cup.seeds.length} races</span><span class="cup-state">${trophy}</span></span><span class="tile-chevron">›</span>`;
-    b.addEventListener("click", () => startCup(cup.id));
+    b.innerHTML = `<span class="cup-emoji">${cup.emoji}</span><span class="cup-text"><span class="cup-name">${cup.name}</span><span class="cup-desc">${cup.desc} · ${cup.races.length} races</span><span class="cup-state">${trophy}</span></span><span class="mode-radio" aria-hidden="true"></span>`;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation(); // don't re-trigger the card's mode-select
+      _cupChoice = cup.id;
+      try { localStorage.setItem(CUP_CHOICE_KEY, cup.id); } catch { /* ignore */ }
+      clearCupRun(); // picking a (new) cup abandons any half-run series
+      renderCupOptions();
+      applyModeUI();
+    });
     list.appendChild(b);
   }
 }
-document.getElementById("open-cups")?.addEventListener("click", () => {
-  renderCupPanel();
-  openSubScreen(cupPanel);
-});
-document.getElementById("cup-back")?.addEventListener("click", () => closeSubScreen(cupPanel));
+renderCupOptions();
 
-// Cat-alog: treats, trophy shelf, achievements, lifetime stats.
+// --- Menu map: cycle the Cup Series' tracks with a cross-fade -----------------
+// In Cup Series mode the menu map pages through the chosen cup's generated
+// layouts (fade out → repaint → fade in), so the whole series is visible before
+// you start. Any other mode shows the live world map as before.
+function refreshMenuMapCycle() {
+  const cupDef = raceMode === "cup" ? cupById(_cupChoice) : null;
+  if (_mapCycleTimer) { clearInterval(_mapCycleTimer); _mapCycleTimer = null; }
+  const canvas = document.getElementById("menu-map");
+  if (!cupDef || !canvas) {
+    if (canvas) canvas.style.opacity = "1";
+    refreshMenuMap(); // restore the live-world map
+    return;
+  }
+  _mapCycleIdx = _cupState && _activeCup && _activeCup.id === cupDef.id ? _cupState.race : 0;
+  const label = document.getElementById("menu-map-label");
+  const paint = () => {
+    const race = cupDef.races[_mapCycleIdx % cupDef.races.length];
+    paintTrackMap(canvas, previewLoopPoints(race.cfg));
+    if (label) label.textContent = `${cupDef.emoji} ${cupDef.name} · Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`;
+  };
+  paint();
+  canvas.style.opacity = "1";
+  _mapCycleTimer = setInterval(() => {
+    if (state !== State.MENU || _garageOpen) return; // idle while racing / in the garage
+    canvas.style.opacity = "0";
+    setTimeout(() => {
+      _mapCycleIdx = (_mapCycleIdx + 1) % cupDef.races.length;
+      paint();
+      canvas.style.opacity = "1";
+    }, 420); // matches the CSS opacity transition
+  }, 3200);
+}
+
+// Cat-alog: the Prizes page (everything you can win + how) is the main view;
+// the second tab holds the trophy shelf, achievements and career stats.
 const catalogEl = document.getElementById("catalog");
+function prizeTile(id, name, colorHex, how, owned) {
+  const d = document.createElement("div");
+  d.className = "prize-tile" + (owned ? " owned" : "");
+  const sw = document.createElement("span");
+  sw.className = "prize-swatch";
+  sw.style.background = colorHex;
+  const nm = document.createElement("span");
+  nm.className = "prize-name";
+  nm.textContent = name;
+  const st = document.createElement("span");
+  st.className = "prize-how";
+  st.textContent = owned ? "✓ yours" : how;
+  d.append(sw, nm, st);
+  return d;
+}
+function prizeHow(id) {
+  const e = catalogEntry(id);
+  if (!e) return "";
+  if (typeof e.price === "number" && e.price > 0) return `🐟 ${e.price}`;
+  if (e.cup) { const c = cupById(e.cup); return `🏆 win the ${c ? c.name : e.cup}`; }
+  return "free";
+}
+function renderPrizes() {
+  const box = document.getElementById("catalog-prizes");
+  if (!box) return;
+  box.innerHTML = "";
+  const head = (t) => { const h = document.createElement("div"); h.className = "prize-head"; h.textContent = t; box.appendChild(h); };
+  head("🐱 Cats");
+  const catGrid = document.createElement("div");
+  catGrid.className = "prize-grid";
+  CAT_PRESETS.forEach((c, i) => {
+    const id = `cat.${i}`;
+    catGrid.appendChild(prizeTile(id, c.name, _hex6(c.fur), prizeHow(id), isUnlocked(profile, id)));
+  });
+  box.appendChild(catGrid);
+  head("🏎 Karts");
+  const kartGrid = document.createElement("div");
+  kartGrid.className = "prize-grid";
+  KART_PRESETS.forEach((k, i) => {
+    const id = `kart.${i}`;
+    kartGrid.appendChild(prizeTile(id, k.name, _hex6(k.color), prizeHow(id), isUnlocked(profile, id)));
+  });
+  box.appendChild(kartGrid);
+  head("✨ Creators");
+  const cGrid = document.createElement("div");
+  cGrid.className = "prize-grid";
+  cGrid.appendChild(prizeTile("custom.cat", "Custom Cat", "#f0a830", prizeHow("custom.cat"), isUnlocked(profile, "custom.cat")));
+  cGrid.appendChild(prizeTile("custom.kart", "Custom Kart", "#e53935", prizeHow("custom.kart"), isUnlocked(profile, "custom.kart")));
+  box.appendChild(cGrid);
+}
+function setCatalogTab(prizes) {
+  document.getElementById("catalog-prizes")?.classList.toggle("hidden", !prizes);
+  document.getElementById("catalog-page-ach")?.classList.toggle("hidden", prizes);
+  document.getElementById("catalog-tab-prizes")?.classList.toggle("is-active", prizes);
+  document.getElementById("catalog-tab-ach")?.classList.toggle("is-active", !prizes);
+}
+document.getElementById("catalog-tab-prizes")?.addEventListener("click", () => setCatalogTab(true));
+document.getElementById("catalog-tab-ach")?.addEventListener("click", () => setCatalogTab(false));
 function renderCatalog() {
+  renderPrizes();
+  setCatalogTab(true); // Prizes is the main page
   refreshTreatsChip();
   const bal = document.getElementById("catalog-treats");
   if (bal) bal.textContent = `🐟 ${profile.treats}`;
@@ -4156,17 +4286,6 @@ installDevApi();
 applyDevUI();
 refreshTreatsChip();
 
-// A cup/daily reload chain drops straight into the race (the player already
-// gestured when they launched the run; audio unlocks on their first touch).
-if ((_cupState && _activeCup) || _dailyActive) {
-  raceMode = "gp";
-  setTimeout(() => {
-    if (state !== State.MENU) return;
-    if (_cupState && _activeCup) hud.showToast(`${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1}/${_activeCup.seeds.length}`);
-    else hud.showToast("📅 Daily Challenge!");
-    beginRace();
-  }, 120);
-}
 
 // A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
 // independent of whatever junk is on location.href right now.
@@ -5297,7 +5416,7 @@ function settleRaceRewards() {
       const name = k === player ? "You" : k.name;
       _cupState.points[name] = (_cupState.points[name] || 0) + cupPoints(k.place);
     }
-    const last = _cupState.race >= _activeCup.seeds.length - 1;
+    const last = _cupState.race >= _activeCup.races.length - 1;
     const standings = cupStandings(_cupState.points);
     cup = { last, standings, cupDef: _activeCup, raceIndex: _cupState.race };
     if (last) {
@@ -5336,9 +5455,9 @@ function renderRaceEarnings(settled) {
     box.appendChild(head);
     cup.standings.forEach((r, i) => box.appendChild(earnRow(`${i + 1}. ${r.name}`, `${r.pts} pts`, r.name === "You" ? "earn-you" : "")));
     if (!cup.last) {
-      document.getElementById("results-title").textContent = `${cup.cupDef.emoji} Race ${cup.raceIndex + 1}/${cup.cupDef.seeds.length} · ${cup.cupDef.name}`;
+      document.getElementById("results-title").textContent = `${cup.cupDef.emoji} Race ${cup.raceIndex + 1}/${cup.cupDef.races.length} · ${cup.cupDef.name}`;
       if (nextBtn) {
-        nextBtn.textContent = `▶ Race ${cup.raceIndex + 2} of ${cup.cupDef.seeds.length}`;
+        nextBtn.textContent = `▶ Race ${cup.raceIndex + 2} of ${cup.cupDef.races.length}`;
         nextBtn.classList.remove("hidden");
       }
     } else {
