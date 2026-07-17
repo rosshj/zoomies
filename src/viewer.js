@@ -41,7 +41,9 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 // scrub time (scrubbing backwards holds the pose — the rig can't run in
 // reverse, and a held frame is still useful for inspection).
 function animatedCat(fur, opts) {
-  const cat = createCat(fur, opts);
+  // Portrait pose: standalone cats sit like a cat sits (front legs down, hind
+  // feet out) rather than gripping an invisible steering wheel.
+  const cat = createCat(fur, { pose: "sit", ...opts });
   const rig = cat.userData.rig;
   let last = 0;
   return {

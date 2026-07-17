@@ -575,6 +575,15 @@ function catConstGeo() {
 // group's userData.rig holds pivots (ears, whiskers, tail, head) that
 // updateCatRig() animates with cornering physics.
 //
+// Per-pose front-leg placement (see the arms block below). All values are in
+// shoulder-pivot local space; the pivot sits at (±0.5, 1.05, 0.45), the ground
+// under a seated cat is at y ≈ -0.29 in cat space.
+const ARM_POSES = {
+  kart: { armR: 0.17, armRot: -1.0, armPos: [0, 0, 0.15], pawPos: [0, 0.15, 0.52], pawScale: [1, 0.82, 1.05], beanY: 0.1, beanZ: 0.7 },
+  moto: { armR: 0.17, armRot: -1.42, armPos: [0, 0.12, 0.24], pawPos: [0, 0.3, 0.68], pawScale: [1, 0.95, 0.9], beanY: 0.26, beanZ: 0.86 },
+  sit: { armR: 0.19, armRot: -0.2, armPos: [0, -0.55, 0.26], pawPos: [0, -1.1, 0.36], pawScale: [1.05, 0.8, 1.3], beanY: -1.12, beanZ: 0.62 },
+};
+
 // The rigid clusters (body, head, each arm, each ear, glasses) are baked into a
 // single mesh apiece so a cat is ~a dozen draw calls, not ~40; the animated
 // pivots (head / ears / whiskers / arms / tail / glasses) stay separate so the
@@ -661,33 +670,49 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.14 : 1.04, hasBib ? 0.62 : 0.54);
   catStatic.push(chest);
 
-  // Front paws on the wheel. Each arm hangs off a shoulder pivot so it can be
-  // raised for a victory fist-pump; at rest (pivot identity) the pose is
-  // unchanged from before. Mitten/tuxedo cats get white "socks".
+  // Front paws — posed for the scenario (opts.pose):
+  //   kart — reaching forward onto the steering wheel (the racing default)
+  //   moto — arms up and out to the handlebars
+  //   sit  — front legs planted straight down, the classic cat sit (used for
+  //          Cat-alog portraits / the asset viewer, plus visible hind feet below)
+  // The pose is baked into the MESH inside each shoulder pivot: the rig zeroes
+  // pivot rotations every frame (and the victory pump sets them absolutely), so
+  // the pivot itself must stay identity at rest in every pose.
+  const pose = ARM_POSES[opts.pose] ? opts.pose : "kart";
+  const ap = ARM_POSES[pose];
   const arms = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.5, 1.05, 0.45);
     cat.add(pivot);
     const parts = [];
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.6, 4, 10), pawMat);
-    arm.position.set(0, 0, 0.15);
-    arm.rotation.x = -1.0;
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(ap.armR, 0.6, 4, 10), pawMat);
+    arm.position.set(...ap.armPos);
+    arm.rotation.x = ap.armRot;
     parts.push(arm);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
-    paw.position.set(0, 0.15, 0.52);
-    paw.scale.set(1, 0.82, 1.05);
+    paw.position.set(...ap.pawPos);
+    paw.scale.set(...ap.pawScale);
     parts.push(paw);
-    // Toe-bean detail: three little dark pads on the front of each paw.
+    // Toe-bean detail: three little pads on the front of each paw.
     for (const tx of [-0.07, 0, 0.07]) {
       const bean = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pink);
-      bean.position.set(tx, 0.1, 0.7);
+      bean.position.set(tx, ap.beanY, ap.beanZ);
       parts.push(bean);
     }
     // one mesh per arm; the pivot still pumps it. Geometry is identical for every
-    // cat (colours live in the materials) — shared via the merge cache.
-    pivot.add(mergeMeshes(parts, { geoKey: "carm" }));
+    // cat of a pose (colours live in the materials) — shared via the merge cache.
+    pivot.add(mergeMeshes(parts, { geoKey: `carm|${pose}` }));
     arms[sx < 0 ? "L" : "R"] = pivot;
+  }
+  if (pose === "sit") {
+    // Hind feet peeking out beside the front legs, flat on the ground.
+    for (const sx of [-1, 1]) {
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), pawMat);
+      foot.position.set(sx * 0.68, -0.18, 0.62);
+      foot.scale.set(1.1, 0.55, 1.5);
+      catStatic.push(foot);
+    }
   }
 
   // --- Head (animated for lean/pitch) — a touch bigger for a cuter ratio ---
@@ -1006,7 +1031,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // two materials into one and changes the merged group layout.
   const accKey = `${accId}:${accCol}`;
   head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}` }));
-  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}` }));
+  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}|${pose}` }));
 
   cat.userData.tail = tailPivot;
   cat.userData.rig = {

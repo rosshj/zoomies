@@ -67,10 +67,12 @@ for (const shot of shots) {
     v.showPreset(spec);
     v.freeze(0); // straight wheels / neutral idle pose
     // Tight three-quarter framing: pull in from the browse-friendly default
-    // (0.88 keeps a whisker of headroom — 0.8 clipped the tallest ears).
+    // (0.88 keeps a whisker of headroom — 0.8 clipped the tallest ears). The
+    // sitting cats run taller (legs to the floor), so they get a slightly
+    // wider, more level view that keeps paws and hind feet in frame.
     v.orbit.theta = 0.75;
-    v.orbit.phi = 1.13;
-    v.orbit.radius *= 0.88;
+    v.orbit.phi = spec.kind === "cat" ? 1.22 : 1.13;
+    v.orbit.radius *= spec.kind === "cat" ? 0.97 : 0.88;
   }, shot);
   await page.waitForTimeout(350); // let a few frames render at the new framing
   await page.screenshot({ path: path.join(OUT, shot.file), type: "jpeg", quality: 88 });
