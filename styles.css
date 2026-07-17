@@ -2450,8 +2450,8 @@ button.secondary.small,
 }
 .prize-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(3, 1fr); /* big tiles — 3 per row, kid-browsable */
+  gap: 10px;
 }
 .prize-tile {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -2509,6 +2509,6 @@ button.secondary.small,
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.06);
 }
-.prize-name { font-size: 11px; font-weight: 700; }
-.prize-how { font-size: 10px; color: #ffd54f; }
+.prize-name { font-size: 14px; font-weight: 800; }
+.prize-how { font-size: 12px; color: #ffd54f; text-align: center; }
 .prize-tile.owned .prize-how { color: #81c784; }

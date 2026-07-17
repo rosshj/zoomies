@@ -145,7 +145,7 @@ function underglowTexture() {
 // The catalogue the custom-cat creator offers, and each breed's signature
 // accessory (the default when opts.accessory isn't given). Real cat coat
 // patterns, plus the accessory each preset breed wears.
-export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie"];
+export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie", "bengal", "cow", "smoke"];
 export const CAT_ACCESSORIES = ["none", "cap", "headphones", "beanie", "flower", "fedora", "sunglasses", "bandana", "collar", "bow"];
 // Human-facing labels (ids stay stable for saved garages / breed defaults).
 export const ACCESSORY_LABELS = {
@@ -171,6 +171,7 @@ export const ACCESSORY_COLORS = {
 const PATTERN_ACCESSORY = {
   spotted: "cap", solid: "headphones", snowshoe: "beanie", point: "flower",
   mitted: "fedora", tuxedo: "sunglasses", tabby: "bandana", calico: "collar", tortie: "bow",
+  bengal: "none", cow: "collar", smoke: "fedora", // rosettes speak for themselves; moo gets a bell; noir cat
 };
 
 // Cat colour/pattern templates. Each cat is more than a recolour: a base fur, a
@@ -308,6 +309,73 @@ function makeSpotTexture(furColor, spotColor) {
   for (const [x, y, r] of spots) {
     ctx.beginPath();
     ctx.ellipse(x * S, y * S, r * S, r * S * 1.2, 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const t = _finishTex(c);
+  return _cacheTex(key, t);
+}
+
+// Painted bengal coat: broken-ring rosettes (an outline with a gap and a small
+// centre fleck) scattered like the spot coat — the wild-cat version of spots.
+function makeRosetteTexture(furColor, spotColor) {
+  const key = `ros|${furColor.getHexString()}|${spotColor.getHexString()}`;
+  if (_coatTexCache.has(key)) return _coatTexCache.get(key);
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + furColor.getHexString();
+  ctx.fillRect(0, 0, S, S);
+  ctx.strokeStyle = "#" + spotColor.getHexString();
+  ctx.fillStyle = "#" + spotColor.getHexString();
+  // [x, y, r, gapStart] fractions of S — each rosette is an arc ring with a bite
+  // taken out (gapStart varies) + a small offset fleck inside.
+  const rosettes = [
+    [0.16, 0.18, 0.055, 0.4], [0.44, 0.12, 0.045, 2.2], [0.72, 0.2, 0.06, 4.0],
+    [0.12, 0.46, 0.05, 1.4], [0.4, 0.42, 0.06, 3.2], [0.68, 0.5, 0.05, 5.2],
+    [0.9, 0.42, 0.045, 0.8], [0.24, 0.72, 0.055, 2.6], [0.52, 0.74, 0.05, 4.6],
+    [0.8, 0.78, 0.06, 1.0], [0.36, 0.92, 0.045, 3.6], [0.64, 0.9, 0.05, 0.2],
+  ];
+  ctx.lineWidth = S * 0.02;
+  for (const [x, y, r, gap] of rosettes) {
+    ctx.beginPath();
+    ctx.arc(x * S, y * S, r * S, gap, gap + Math.PI * 1.55); // ring with a gap
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(x * S + r * S * 0.2, y * S - r * S * 0.15, r * S * 0.32, r * S * 0.38, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const t = _finishTex(c);
+  return _cacheTex(key, t);
+}
+
+// Painted cow coat: a handful of BIG soft black patches on a white base — the
+// classic moo-cat. Like a calico with one colour and more countryside.
+function makeCowTexture(baseColor) {
+  const key = `cow|${baseColor.getHexString()}`;
+  if (_coatTexCache.has(key)) return _coatTexCache.get(key);
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#" + baseColor.getHexString(); // milk-white base
+  ctx.fillRect(0, 0, S, S);
+  ctx.fillStyle = "#2b2b2e";
+  // Fewer, bigger patches than a calico — [x, y, rx, ry, rot] fractions of S.
+  const patches = [
+    [0.24, 0.18, 0.2, 0.16, 0.3], [0.78, 0.3, 0.17, 0.22, -0.4],
+    [0.42, 0.56, 0.22, 0.17, 0.15], [0.1, 0.78, 0.16, 0.18, 0.5],
+    [0.78, 0.84, 0.2, 0.15, -0.2],
+  ];
+  for (const [x, y, rx, ry, rot] of patches) {
+    ctx.beginPath();
+    ctx.ellipse(x * S, y * S, rx * S, ry * S, rot, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // A couple of little island spots for the hand-painted feel.
+  for (const [x, y, r] of [[0.6, 0.28, 0.04], [0.3, 0.4, 0.034], [0.6, 0.86, 0.036]]) {
+    ctx.beginPath();
+    ctx.ellipse(x * S, y * S, r * S, r * S * 1.15, 0.3, 0, Math.PI * 2);
     ctx.fill();
   }
   const t = _finishTex(c);
@@ -519,15 +587,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const isSpotted = pat === "spotted";
   const isCalico = pat === "calico";
   const isTortie = pat === "tortie";
-  const isTextured = isTabby || isSpotted || isCalico || isTortie; // coat carries a painted pattern
+  const isBengal = pat === "bengal";
+  const isCow = pat === "cow";
+  const isTextured = isTabby || isSpotted || isCalico || isTortie || isBengal || isCow; // coat carries a painted pattern
   const isTuxedo = pat === "tuxedo";
   const isMitted = pat === "mitted";
   const isSolid = pat === "solid";
+  const isSmoke = pat === "smoke";             // dark coat, pale silver chest — structural only
   const isPoint = pat === "point";
   const isSnow = pat === "snowshoe";
   const hasMask = isPoint || isSnow;           // dark face mask + colour points
   const hasBib = isTuxedo || isMitted;         // big white chest
-  const whitePaws = isTuxedo || isMitted || isSnow || isCalico; // calicos have white socks
+  const whitePaws = isTuxedo || isMitted || isSnow || isCalico || isCow; // calicos + cow cats have white socks
   const colorExtremity = isPoint || isSnow;    // ears/mask/tail take the point colour
 
   // Colour-dependent materials come from the shared cache: two cats with the same
@@ -556,6 +627,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe);
     if (isCalico) return makeCalicoTexture(pal.fur);     // tricolour ginger/black patches
     if (isTortie) return makeTortieTexture(pal.fur);     // mottled ginger/black, no white
+    if (isBengal) return makeRosetteTexture(pal.fur, pal.stripe); // broken-ring rosettes
+    if (isCow) return makeCowTexture(pal.fur);           // big black patches on white
     return null;
   }
   const coatKey = `${pat}|${furHex}|${pal.stripe.getHexString()}`;
@@ -578,7 +651,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
 
   // Chest + belly fluff. Tuxedo/mitten cats get a big white bib; solid coats keep
   // the body colour (no bib); others get a soft pale chest.
-  const chestMat = (isSolid || isTortie) ? fur : white;
+  // Smoke cats show the pale silver undercoat at the chest; solid/tortie keep
+  // the body colour; everyone else gets the soft white chest.
+  const chestMat = isSmoke
+    ? sharedMat("csmoke", () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.92 }))
+    : (isSolid || isTortie) ? fur : white;
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), chestMat);
   chest.position.set(0, 0.78, 0.57);
   chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.14 : 1.04, hasBib ? 0.62 : 0.54);

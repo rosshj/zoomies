@@ -3588,6 +3588,9 @@ function syncGarageLocks() {
     buyBtn.classList.add("hidden");
     const cup = cupById(entry.cup);
     note.textContent = `🏆 ${unlockName(lockedId)} is the ${cup ? cup.name : entry.cup} prize — win the cup to unlock it.`;
+  } else if (entry && entry.diff) {
+    buyBtn.classList.add("hidden");
+    note.textContent = `🎖 ${unlockName(lockedId)} unlocks by winning any cup on ${entry.diff === "hard" ? "Hard" : "Medium or harder"}.`;
   } else {
     buyBtn.classList.add("hidden");
     note.textContent = "Locked.";
@@ -4228,6 +4231,7 @@ function prizeHow(id) {
   if (!e) return "";
   if (typeof e.price === "number" && e.price > 0) return `🐟 ${e.price}`;
   if (e.cup) { const c = cupById(e.cup); return `🏆 win the ${c ? c.name : e.cup}`; }
+  if (e.diff) return e.diff === "hard" ? "🎖 win any cup on Hard" : "🎖 win any cup on Medium+";
   return "free";
 }
 function renderPrizes() {
@@ -5581,6 +5585,7 @@ function renderRaceEarnings(settled) {
       if (cup.award) {
         if (cup.award.treats > 0) box.appendChild(earnRow(`🏆 ${cup.cupDef.name} won`, `+${cup.award.treats}`, "earn-ach"));
         if (cup.award.unlockId) box.appendChild(earnRow(`🎁 Exclusive unlocked: ${unlockName(cup.award.unlockId)}`, "NEW", "earn-ach"));
+        for (const id of cup.award.extraUnlocks || []) box.appendChild(earnRow(`🎖 ${AI_DIFFICULTY[DIFFICULTY].label} prize unlocked: ${unlockName(id)}`, "NEW", "earn-ach"));
         if (!cup.award.firstWin && cup.award.upgraded) box.appendChild(earnRow(`🏆 Trophy upgraded to ${cup.award.difficulty}`, "", "earn-ach"));
       }
     }

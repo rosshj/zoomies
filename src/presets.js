@@ -16,6 +16,10 @@ export const CAT_PRESETS = [
   { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
   { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby" }, // cool silver mackerel tabby
   { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell (ginger + black, no white)
+  { name: "Ziggy", fur: 0xd9a34a, pattern: "bengal" }, // golden bengal, broken-ring rosettes
+  { name: "Moo", fur: 0xf6f3ea, pattern: "cow" }, // milk-white with big black patches (and a bell collar)
+  { name: "Misty", fur: 0x565e6e, pattern: "smoke" }, // blue-grey smoke, silver chest
+  { name: "Biscuit", fur: 0xe3c692, pattern: "tabby" }, // warm golden mackerel tabby
 ];
 
 // Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /

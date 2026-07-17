@@ -77,6 +77,10 @@ export const CATALOG = [
   { id: "cat.6", price: 300 }, { id: "cat.7", price: 400 },
   { id: "cat.8", cup: "sandypaws" }, // Pepper — Sandy Paws Cup exclusive
   { id: "cat.9", cup: "zoomies" },   // Cocoa — Midnight Zoomies Cup exclusive
+  { id: "cat.10", price: 350 },      // Ziggy — golden bengal (rosettes)
+  { id: "cat.11", price: 500 },      // Moo — the cow cat
+  { id: "cat.12", diff: "medium" },  // Misty — win any cup on Medium or harder
+  { id: "cat.13", diff: "hard" },    // Biscuit — win any cup on Hard
   // Karts.
   { id: "kart.0", price: 0 }, { id: "kart.1", price: 0 }, { id: "kart.2", price: 0 },
   { id: "kart.3", price: 150 }, { id: "kart.4", price: 200 }, { id: "kart.5", price: 250 },
@@ -278,7 +282,18 @@ export function awardCup(profile, cupId, standings, playerName, difficulty) {
       unlockId = cup.unlockId;
     }
   }
-  return { firstWin, upgraded, treats, unlockId, difficulty };
+  // Difficulty-gated prizes: catalog entries with `diff` unlock for winning ANY
+  // cup at that difficulty or harder. Checked on every win (not just the first),
+  // so re-winning an old cup on a harder setting still pays out the prize.
+  const extraUnlocks = [];
+  for (const e of CATALOG) {
+    if (!e.diff || profile.unlocked.includes(e.id)) continue;
+    if ((DIFF_RANK[difficulty] ?? 0) >= (DIFF_RANK[e.diff] ?? 99)) {
+      profile.unlocked.push(e.id);
+      extraUnlocks.push(e.id);
+    }
+  }
+  return { firstWin, upgraded, treats, unlockId, extraUnlocks, difficulty };
 }
 
 // ---------------------------------------------------------------------------

@@ -43,8 +43,10 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("can't buy twice", !buyUnlock(p, "cat.3") && p.treats === 50);
   p.treats = 9999;
   check("cup exclusives can't be bought", !buyUnlock(p, "cat.9") && !isUnlocked(p, "cat.9"));
+  check("difficulty prizes can't be bought", !buyUnlock(p, "cat.13") && !isUnlocked(p, "cat.13"));
   const cupExclusives = CATALOG.filter((c) => c.cup);
   check("every cup exclusive maps to a real cup", cupExclusives.length === 4 && cupExclusives.every((c) => cupById(c.cup)));
+  check("difficulty prizes exist for medium and hard", CATALOG.some((c) => c.diff === "medium") && CATALOG.some((c) => c.diff === "hard"));
 }
 
 // --- Payout ---
@@ -109,8 +111,13 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   const p = defaultProfile();
   const won = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "medium");
   check("first cup win pays treats + trophy + exclusive", won && won.firstWin && p.treats === 200 && p.trophies.meadows === "medium" && p.unlocked.includes("kart.7"));
+  check("medium win grants the Medium+ prize but not the Hard one",
+    won.extraUnlocks.includes("cat.12") && p.unlocked.includes("cat.12") && !p.unlocked.includes("cat.13"));
   const again = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard");
   check("re-win upgrades the trophy but doesn't re-pay", again && !again.firstWin && again.upgraded && p.trophies.meadows === "hard" && p.treats === 200);
+  check("a hard re-win still unlocks the Hard prize (once)",
+    again.extraUnlocks.includes("cat.13") && p.unlocked.includes("cat.13") &&
+    (awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard").extraUnlocks.length === 0));
   const down = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "easy");
   check("easier re-win never downgrades the trophy", down && !down.upgraded && p.trophies.meadows === "hard");
   const lost = awardCup(p, "sandypaws", cupStandings({ Mittens: 30, You: 20 }), "You", "hard");
