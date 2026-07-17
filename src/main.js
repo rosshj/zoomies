@@ -31,6 +31,11 @@ import { RemoteKart, FLAG } from "./remotekart.js";
 import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { RefereeClient } from "./net/refereeclient.js";
 import { encodeWorld, decodeWorld, sameWorld, worldSig } from "./net/worldcfg.js";
+import {
+  migrateProfile, isUnlocked, buyUnlock, catalogEntry, racePayout, checkAchievements,
+  ACHIEVEMENTS, CUPS, cupById, cupPoints, cupStandings, awardCup, dailySeedFor,
+  encodeProfileToken, decodeProfileToken,
+} from "./progress.js";
 import { audio } from "./audio.js";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
@@ -222,6 +227,58 @@ const WORLD_SEED = (
 ).toUpperCase();
 setSeed(WORLD_SEED);
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
+
+// --- Player progression (treats / unlocks / cups / daily) -------------------
+// The pure economy lives in src/progress.js; this block owns storage + the boot
+// state for cup/daily runs. See docs/gameplay-backlog.md for the design.
+const PROFILE_KEY = "zoomies-profile-v1";
+function loadProfile() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(PROFILE_KEY)); } catch { /* ignore */ }
+  return migrateProfile(raw);
+}
+function saveProfile() {
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch { /* ignore */ }
+}
+const profile = loadProfile();
+// Grandfather: never confiscate. Whatever the player already had selected when
+// progression shipped stays theirs — auto-unlock the saved garage picks.
+{
+  const ids = [];
+  ids.push(garageConfig.cat === CUSTOM_CAT_IDX ? "custom.cat" : `cat.${garageConfig.cat}`);
+  ids.push(garageConfig.kart === CUSTOM_KART_IDX ? "custom.kart" : `kart.${garageConfig.kart}`);
+  let changed = false;
+  for (const id of ids) if (!profile.unlocked.includes(id)) { profile.unlocked.push(id); changed = true; }
+  if (changed) saveProfile();
+}
+
+// Dev mode: ?dev=1 (or the 7-tap on the Settings title) turns on a Developer card
+// in Settings + a console API. Persisted until explicitly disabled there.
+const DEV_KEY = "zoomies-dev";
+let devMode = false;
+try { devMode = _qs.has("dev") || localStorage.getItem(DEV_KEY) === "1"; } catch { /* ignore */ }
+try { if (devMode) localStorage.setItem(DEV_KEY, "1"); } catch { /* ignore */ }
+
+// Cup run state (a cup is a reload chain — each race is a different seed, and the
+// world is built from the seed at load). Active only while the URL's ?cup= matches.
+const CUP_KEY = "zoomies-cup-v1";
+let _cupState = null;
+try { _cupState = JSON.parse(sessionStorage.getItem(CUP_KEY)); } catch { /* ignore */ }
+const _cupParam = _qs.get("cup");
+if (!_cupState || !_cupParam || _cupState.id !== _cupParam || !cupById(_cupState.id)) _cupState = null;
+const _activeCup = _cupState ? cupById(_cupState.id) : null;
+
+// Daily challenge: today's shared seed (local date — "the day" as the player sees it).
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const _dailyActive = _qs.has("daily") && _seedParam === dailySeedFor(todayStr());
+
+// Per-race moment counters (reset in prepareRace, folded into the profile's
+// career stats when the race pays out). null outside a race so hooks can guard.
+let _raceStats = null;
+let _racePaid = false; // the payout runs once per race, on the first showResults
 
 // Why did this boot happen? Every intentional in-app reload (track apply,
 // backend switch, multiplayer join, crash recovery) tags its cause in
@@ -522,6 +579,7 @@ function grantItem(kart) {
   if (kart.isRemote) return true;
   if (kart.boxCooldown > 0) return false; // still cooling down — leave the box
   kart.boxCooldown = BOX_COOLDOWN;
+  if (kart === player && _raceStats) _raceStats.boxes++;
 
   const n = Math.max(2, _fieldCount);
   const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
@@ -856,6 +914,7 @@ function updateLasers(field) {
       const wasZapped = t.zapTimer > 0;
       t.zapTimer = Math.max(t.zapTimer, 0.4); // lingers briefly after the beam breaks
       if (t === player && !wasZapped) hud.showToast("🔴 Laser! Shake it or shield!");
+      if (k === player && !wasZapped && _raceStats) _raceStats.zaps++; // my dot landed
     }
     // Beam visual: a thin additive red bar from the shooter's nose to the target.
     let beam = _laserBeams.get(k);
@@ -1170,7 +1229,7 @@ const MP = new MpSession({
     // dropper's id so if we trip on it we can let them gloat (onMilkGloat).
     onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r, ownerId: m.owner }); },
     // A rival spun out on MY milk (they told me): look back and laugh.
-    onMilkGloat: () => { if (player) player.gloat(); },
+    onMilkGloat: () => { if (player) player.gloat(); if (_raceStats) _raceStats.milkTrips++; },
     // A remote player launched a yarn ball: render a cosmetic ghost that homes on
     // OUR copy of the target (our own player if we're the mark, else our ghost of
     // them). The hit stays shooter-authoritative and arrives via onHit.
@@ -2507,6 +2566,17 @@ function toMenu() {
   state = State.MENU;
   hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
+  // Leaving to the menu abandons an in-progress cup / daily run: clear the run
+  // state and strip its URL params so START begins an ordinary race.
+  clearCupRun();
+  try {
+    const u = new URL(location.href);
+    if (u.searchParams.has("cup") || u.searchParams.has("daily")) {
+      u.searchParams.delete("cup");
+      u.searchParams.delete("daily");
+      history.replaceState(null, "", u);
+    }
+  } catch { /* ignore */ }
 }
 // Resume a parked race: drop back into it exactly where it was (paused), so the
 // player can read the scene before unpausing.
@@ -3494,6 +3564,50 @@ function syncCreators() {
     _markSelectedSwatch("kart-color-grid", k.color);
   }
 }
+// Unlock id for the draft's current pick on one side of the garage.
+function draftItemId(which) {
+  const idx = _garageDraft[which];
+  if (which === "cat") return idx === CUSTOM_CAT_IDX ? "custom.cat" : `cat.${idx}`;
+  return idx === CUSTOM_KART_IDX ? "custom.kart" : `kart.${idx}`;
+}
+// Reflect lock state: 🔒 on locked names, and a Buy/prize row when the current
+// pick isn't owned. Browsing locked items is allowed (window shopping — the
+// preview shows them); only Done is gated.
+function syncGarageLocks() {
+  const buyBtn = document.getElementById("garage-buy");
+  const note = document.getElementById("garage-lock-note");
+  let lockedId = null;
+  for (const which of ["cat", "kart"]) {
+    const id = draftItemId(which);
+    const el = document.getElementById(which + "-name");
+    const owned = isUnlocked(profile, id);
+    if (el && !owned) el.textContent = "🔒 " + el.textContent;
+    if (!owned && !lockedId) lockedId = id;
+  }
+  if (!buyBtn || !note) return;
+  if (!lockedId) {
+    buyBtn.classList.add("hidden");
+    note.textContent = "";
+    return;
+  }
+  const entry = catalogEntry(lockedId);
+  if (entry && typeof entry.price === "number") {
+    buyBtn.classList.remove("hidden");
+    buyBtn.textContent = `🐟 Buy ${unlockName(lockedId)} · ${entry.price}`;
+    buyBtn.disabled = profile.treats < entry.price;
+    note.textContent = profile.treats < entry.price
+      ? `You have 🐟 ${profile.treats} — earn ${entry.price - profile.treats} more by racing.`
+      : `You have 🐟 ${profile.treats}.`;
+    buyBtn.dataset.unlock = lockedId;
+  } else if (entry && entry.cup) {
+    buyBtn.classList.add("hidden");
+    const cup = cupById(entry.cup);
+    note.textContent = `🏆 ${unlockName(lockedId)} is the ${cup ? cup.name : entry.cup} prize — win the cup to unlock it.`;
+  } else {
+    buyBtn.classList.add("hidden");
+    note.textContent = "Locked.";
+  }
+}
 function syncGarageUI() {
   const cat = catSpec(_garageDraft);
   const kart = kartSpec(_garageDraft);
@@ -3502,6 +3616,7 @@ function syncGarageUI() {
   document.getElementById("cat-swatch").style.background = _hex6(cat.fur);
   document.getElementById("kart-swatch").style.background = _hex6(kart.color);
   syncCreators();
+  syncGarageLocks();
 }
 // The main menu's Racer tile: current cat + kart by name, with their colours as
 // two little swatch dots, so the choice reads without opening the garage.
@@ -3648,7 +3763,24 @@ document.getElementById("kart-randomize")?.addEventListener("click", () => editC
   color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
+document.getElementById("garage-buy")?.addEventListener("click", (e) => {
+  const id = e.currentTarget.dataset.unlock;
+  if (!id) return;
+  if (buyUnlock(profile, id)) {
+    saveProfile();
+    refreshTreatsChip();
+    audio.uiClick?.();
+  }
+  syncGarageUI();
+});
 document.getElementById("garage-apply")?.addEventListener("click", () => {
+  // Done is the gate: locked picks can be browsed/previewed but not kept.
+  const lockedSide = ["cat", "kart"].find((w) => !isUnlocked(profile, draftItemId(w)));
+  if (lockedSide) {
+    const note = document.getElementById("garage-lock-note");
+    if (note) note.textContent = `🔒 ${unlockName(draftItemId(lockedSide))} is locked — buy it or win it first.`;
+    return;
+  }
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
@@ -3848,6 +3980,194 @@ if (mpAvailable) {
 applyModeUI();
 refreshRaceOptSegs();
 
+// --- Progression UI wiring (treats chip, cups, daily, Cat-alog, backup, dev) ---
+function refreshTreatsChip() {
+  const el = document.getElementById("treats-balance");
+  if (el) el.textContent = String(profile.treats);
+}
+
+// Start a cup: seed the run state and reload into race 1 (each cup race is a
+// different seed, and the world is built from the seed at load).
+function startCup(id) {
+  const cup = cupById(id);
+  if (!cup) return;
+  audio.unlock();
+  try { sessionStorage.setItem(CUP_KEY, JSON.stringify({ id, race: 0, points: {}, diff: DIFFICULTY })); } catch { /* ignore */ }
+  markReload("cup-start");
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", cup.seeds[0]);
+  u.searchParams.set("cup", id);
+  location.href = u.toString();
+}
+document.getElementById("results-next-btn")?.addEventListener("click", () => {
+  if (!_cupState || !_activeCup) return;
+  _cupState.race++;
+  try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
+  markReload("cup-next");
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", _activeCup.seeds[_cupState.race]);
+  u.searchParams.set("cup", _activeCup.id);
+  location.href = u.toString();
+});
+
+// Daily challenge: reload into today's shared seed with the daily flag.
+document.getElementById("open-daily")?.addEventListener("click", () => {
+  audio.unlock();
+  markReload("daily-start");
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", dailySeedFor(todayStr()));
+  u.searchParams.set("daily", "1");
+  location.href = u.toString();
+});
+
+// Cup select panel: one card per cup showing the trophy shelf state.
+const cupPanel = document.getElementById("cup-panel");
+function renderCupPanel() {
+  const list = document.getElementById("cup-list");
+  if (!list) return;
+  list.innerHTML = "";
+  for (const cup of CUPS) {
+    const won = profile.trophies[cup.id];
+    const b = document.createElement("button");
+    b.className = "cup-card";
+    const trophy = won ? `🏆 won on ${won}` : cup.unlockId ? `🎁 prize: ${unlockName(cup.unlockId)}` : "";
+    b.innerHTML = `<span class="cup-emoji">${cup.emoji}</span><span class="cup-text"><span class="cup-name">${cup.name}</span><span class="cup-desc">${cup.desc} · ${cup.seeds.length} races</span><span class="cup-state">${trophy}</span></span><span class="tile-chevron">›</span>`;
+    b.addEventListener("click", () => startCup(cup.id));
+    list.appendChild(b);
+  }
+}
+document.getElementById("open-cups")?.addEventListener("click", () => {
+  renderCupPanel();
+  openSubScreen(cupPanel);
+});
+document.getElementById("cup-back")?.addEventListener("click", () => closeSubScreen(cupPanel));
+
+// Cat-alog: treats, trophy shelf, achievements, lifetime stats.
+const catalogEl = document.getElementById("catalog");
+function renderCatalog() {
+  refreshTreatsChip();
+  const bal = document.getElementById("catalog-treats");
+  if (bal) bal.textContent = `🐟 ${profile.treats}`;
+  const shelf = document.getElementById("catalog-trophies");
+  if (shelf) {
+    shelf.innerHTML = "";
+    for (const cup of CUPS) {
+      const won = profile.trophies[cup.id];
+      const d = document.createElement("div");
+      d.className = "shelf-cup" + (won ? " won" : "");
+      d.innerHTML = `<span class="shelf-emoji">${won ? "🏆" : cup.emoji}</span><span class="shelf-name">${cup.name}</span><span class="shelf-diff">${won ? won : "not won"}</span>`;
+      shelf.appendChild(d);
+    }
+  }
+  const list = document.getElementById("catalog-achievements");
+  if (list) {
+    list.innerHTML = "";
+    for (const a of ACHIEVEMENTS) {
+      const got = profile.achievements.includes(a.id);
+      const d = document.createElement("div");
+      d.className = "ach-row" + (got ? " got" : "");
+      d.innerHTML = `<span class="ach-mark">${got ? "🏅" : "⬜"}</span><span class="ach-text"><span class="ach-name">${a.name}</span><span class="ach-desc">${a.desc}</span></span><span class="ach-pay">🐟 ${a.pay}</span>`;
+      list.appendChild(d);
+    }
+  }
+  const st = document.getElementById("catalog-stats");
+  if (st) {
+    const s = profile.stats;
+    st.textContent = `${s.races} races · ${s.wins} wins · ${s.boxes} boxes · ${s.treatsEarned} treats earned`;
+  }
+}
+document.getElementById("open-catalog")?.addEventListener("click", () => {
+  renderCatalog();
+  openSubScreen(catalogEl);
+});
+document.getElementById("catalog-back")?.addEventListener("click", () => closeSubScreen(catalogEl));
+
+// Backup: the whole profile as a copy-paste code (Settings → Progress).
+document.getElementById("backup-copy")?.addEventListener("click", async () => {
+  const tok = encodeProfileToken(profile);
+  let copied = false;
+  try { await navigator.clipboard.writeText(tok); copied = true; } catch { /* ignore */ }
+  if (!copied) window.prompt("Copy your backup code:", tok);
+  const note = document.getElementById("backup-note");
+  if (note) note.textContent = copied ? "Backup code copied to the clipboard ✓" : "Copy the code from the box above.";
+});
+document.getElementById("backup-restore")?.addEventListener("click", () => {
+  const tok = window.prompt("Paste your backup code (ZP1.…):", "");
+  if (!tok) return;
+  const restored = decodeProfileToken(tok);
+  const note = document.getElementById("backup-note");
+  if (!restored) { if (note) note.textContent = "That code didn't parse — check it and try again."; return; }
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(restored)); } catch { /* ignore */ }
+  if (note) note.textContent = "Profile restored — reloading…";
+  markReload("profile-restore");
+  setTimeout(() => location.reload(), 400);
+});
+
+// Developer mode: hidden until ?dev=1 or 7 taps on the Settings title.
+function applyDevUI() {
+  document.getElementById("dev-card")?.classList.toggle("hidden", !devMode);
+}
+let _devTaps = 0;
+document.querySelector("#settings h1")?.addEventListener("click", () => {
+  if (devMode) return;
+  if (++_devTaps >= 7) {
+    devMode = true;
+    try { localStorage.setItem(DEV_KEY, "1"); } catch { /* ignore */ }
+    installDevApi();
+    applyDevUI();
+  }
+});
+document.getElementById("dev-treats")?.addEventListener("click", () => {
+  profile.treats += 1000;
+  saveProfile();
+  refreshTreatsChip();
+});
+document.getElementById("dev-unlock")?.addEventListener("click", () => {
+  for (const a of ACHIEVEMENTS) if (!profile.achievements.includes(a.id)) profile.achievements.push(a.id);
+  for (const e of ["cat.3","cat.4","cat.5","cat.6","cat.7","cat.8","cat.9","kart.3","kart.4","kart.5","kart.6","kart.7","kart.8","custom.cat","custom.kart"]) {
+    if (!profile.unlocked.includes(e)) profile.unlocked.push(e);
+  }
+  for (const cup of CUPS) if (!profile.trophies[cup.id]) profile.trophies[cup.id] = "hard";
+  saveProfile();
+  refreshTreatsChip();
+});
+document.getElementById("dev-reset")?.addEventListener("click", () => {
+  if (!window.confirm("Reset ALL progression (treats, unlocks, trophies, achievements)?")) return;
+  try { localStorage.removeItem(PROFILE_KEY); } catch { /* ignore */ }
+  markReload("profile-reset");
+  location.reload();
+});
+document.getElementById("dev-off")?.addEventListener("click", () => {
+  devMode = false;
+  try { localStorage.removeItem(DEV_KEY); } catch { /* ignore */ }
+  applyDevUI();
+});
+// Console API for the same powers (guarded by dev mode).
+function installDevApi() {
+  if (!devMode || !window.__zoomies) return;
+  window.__zoomies.dev = {
+    grantTreats(n = 1000) { profile.treats += Math.max(0, n | 0); saveProfile(); refreshTreatsChip(); return profile.treats; },
+    unlockAll() { document.getElementById("dev-unlock")?.click(); return profile.unlocked.length; },
+    profile() { return profile; },
+    exportToken() { return encodeProfileToken(profile); },
+  };
+}
+installDevApi();
+applyDevUI();
+refreshTreatsChip();
+
+// A cup/daily reload chain drops straight into the race (the player already
+// gestured when they launched the run; audio unlocks on their first touch).
+if ((_cupState && _activeCup) || _dailyActive) {
+  raceMode = "gp";
+  setTimeout(() => {
+    if (state !== State.MENU) return;
+    if (_cupState && _activeCup) hud.showToast(`${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1}/${_activeCup.seeds.length}`);
+    else hud.showToast("📅 Daily Challenge!");
+    beginRace();
+  }, 120);
+}
+
 // A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
 // independent of whatever junk is on location.href right now.
 function inviteURL() {
@@ -4016,6 +4336,10 @@ let _racePrepPending = false;
 // both from the local START click and from a network-triggered synchronized start.
 function prepareRace() {
   _raceParked = false; // starting fresh; nothing parked to resume
+  _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, zaps: 0, heartSaves: 0, boxes: 0 };
+  _racePaid = false;
+  document.getElementById("results-earnings")?.classList.add("hidden");
+  document.getElementById("results-next-btn")?.classList.add("hidden");
   refreshResumeBtn();
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
@@ -4935,9 +5259,133 @@ function fieldSnapshot() {
   return _fieldSnap;
 }
 
+// --- Race rewards settlement ------------------------------------------------
+// Runs ONCE per race, on the first showResults: folds the per-race moment
+// counters into the career stats, pays treats, scores the cup, and fires any
+// newly earned achievements. Returns everything the earnings panel renders.
+function settleRaceRewards() {
+  if (_racePaid || timeTrial || !player || !player.finished || !_raceStats) return null;
+  _racePaid = true;
+  updatePlacement();
+  const s = profile.stats;
+  s.races++;
+  const won = player.place === 1;
+  if (won) s.wins++;
+  if (won && DIFFICULTY === "hard") s.winsHard++;
+  if (won && TIME_OF_DAY === "night") s.winsNight++;
+  if (trackConfig.mode === "custom") s.racesCustom++;
+  s.driftBoosts += _raceStats.driftBoosts;
+  s.slipSeconds += Math.round(_raceStats.slipSeconds);
+  s.milkTrips += _raceStats.milkTrips;
+  s.zaps += _raceStats.zaps;
+  s.heartSaves += _raceStats.heartSaves;
+  s.boxes += _raceStats.boxes;
+  const daily = _dailyActive && profile.dailyPaid !== todayStr();
+  if (daily) { profile.dailyPaid = todayStr(); s.dailies++; }
+  const payout = racePayout({
+    place: player.place, field: raceField().length, laps: TOTAL_LAPS,
+    difficulty: DIFFICULTY, daily, stats: _raceStats,
+  });
+  profile.treats += payout.total;
+  s.treatsEarned += payout.total;
+  // Cup scoring: every kart banks points by placement; the final race settles it.
+  let cup = null;
+  // `scored` guards a restarted cup race from banking its points twice.
+  if (_cupState && _activeCup && !MP.enabled && _cupState.scored !== _cupState.race) {
+    _cupState.scored = _cupState.race;
+    for (const k of raceField()) {
+      const name = k === player ? "You" : k.name;
+      _cupState.points[name] = (_cupState.points[name] || 0) + cupPoints(k.place);
+    }
+    const last = _cupState.race >= _activeCup.seeds.length - 1;
+    const standings = cupStandings(_cupState.points);
+    cup = { last, standings, cupDef: _activeCup, raceIndex: _cupState.race };
+    if (last) {
+      cup.award = awardCup(profile, _activeCup.id, standings, "You", DIFFICULTY);
+      clearCupRun();
+    } else {
+      try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
+    }
+  }
+  const fresh = checkAchievements(profile);
+  saveProfile();
+  refreshTreatsChip();
+  return { payout, fresh, cup };
+}
+function clearCupRun() {
+  try { sessionStorage.removeItem(CUP_KEY); } catch { /* ignore */ }
+}
+
+// The earnings panel under the standings: itemized treats, achievement banners,
+// and — in a cup — the running points table + the Next Race button.
+function renderRaceEarnings(settled) {
+  const box = document.getElementById("results-earnings");
+  const nextBtn = document.getElementById("results-next-btn");
+  if (!box) return;
+  if (!settled) { return; } // MP re-renders keep the panel from the first settle
+  box.innerHTML = "";
+  box.classList.remove("hidden");
+  const { payout, fresh, cup } = settled;
+  for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
+  box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));
+  for (const a of fresh) box.appendChild(earnRow(`🏅 ${a.name} — ${a.desc}`, `+${a.pay}`, "earn-ach"));
+  if (cup) {
+    const head = document.createElement("div");
+    head.className = "earn-cup-head";
+    head.textContent = `${cup.cupDef.emoji} ${cup.cupDef.name} standings`;
+    box.appendChild(head);
+    cup.standings.forEach((r, i) => box.appendChild(earnRow(`${i + 1}. ${r.name}`, `${r.pts} pts`, r.name === "You" ? "earn-you" : "")));
+    if (!cup.last) {
+      document.getElementById("results-title").textContent = `${cup.cupDef.emoji} Race ${cup.raceIndex + 1}/${cup.cupDef.seeds.length} · ${cup.cupDef.name}`;
+      if (nextBtn) {
+        nextBtn.textContent = `▶ Race ${cup.raceIndex + 2} of ${cup.cupDef.seeds.length}`;
+        nextBtn.classList.remove("hidden");
+      }
+    } else {
+      const youWon = cup.standings[0] && cup.standings[0].name === "You";
+      document.getElementById("results-title").textContent = youWon ? `🏆 ${cup.cupDef.name} Champion!` : `${cup.cupDef.emoji} ${cup.cupDef.name} — ${ordinal(1 + cup.standings.findIndex((r) => r.name === "You"))}`;
+      if (cup.award) {
+        if (cup.award.treats > 0) box.appendChild(earnRow(`🏆 ${cup.cupDef.name} won`, `+${cup.award.treats}`, "earn-ach"));
+        if (cup.award.unlockId) box.appendChild(earnRow(`🎁 Exclusive unlocked: ${unlockName(cup.award.unlockId)}`, "NEW", "earn-ach"));
+        if (!cup.award.firstWin && cup.award.upgraded) box.appendChild(earnRow(`🏆 Trophy upgraded to ${cup.award.difficulty}`, "", "earn-ach"));
+      }
+    }
+  }
+}
+function earnRow(label, amt, cls = "") {
+  const li = document.createElement("div");
+  li.className = "earn-row" + (cls ? " " + cls : "");
+  const l = document.createElement("span");
+  l.textContent = label;
+  const a = document.createElement("span");
+  a.textContent = amt;
+  li.append(l, a);
+  return li;
+}
+// Human name for an unlock id ("cat.8" -> "Pepper", "custom.kart" -> the creator).
+function unlockName(id) {
+  if (id === "custom.cat") return "Custom Cat creator";
+  if (id === "custom.kart") return "Custom Kart creator";
+  const m = id.match(/^(cat|kart)\.(\d+)$/);
+  if (!m) return id;
+  const arr = m[1] === "cat" ? CAT_PRESETS : KART_PRESETS;
+  return arr[+m[2]] ? arr[+m[2]].name : id;
+}
+
+// Debug hook: finish the race NOW (headless probes verify the settle → earnings
+// flow without driving three real laps). Client-side only, like every hook here.
+window.__zoomies.debugFinish = () => {
+  if (!player || player.finished) return false;
+  player.finished = true;
+  player.finishTime = raceTime;
+  showResults();
+  return true;
+};
+
 function showResults() {
   state = State.FINISHED;
   renderResults();
+  renderRaceEarnings(settleRaceRewards());
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // results overlay takes over from the faded victory HUD
@@ -5440,6 +5888,7 @@ function loop(now) {
     // Laser pointers: lock + zap + beam visuals over the same live field. Runs
     // before physics so Kart.update reads this frame's zapTimer.
     updateLasers(draftField);
+    if (_raceStats && player && player.slipstream > 0.3) _raceStats.slipSeconds += dt;
 
     // Step physics
     for (const k of karts) k.update(dt, track);
@@ -5484,6 +5933,7 @@ function loop(now) {
         // Gloat: whoever's milk this was gets to look back and laugh.
         if (p && p.owner && p.owner !== k) {
           p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
+          if (p.owner === player && _raceStats) _raceStats.milkTrips++;
         } else if (p && p.ownerId && k === player && MP.enabled && MP.net) {
           MP.net.sendMilkGloat(p.ownerId); // a remote's milk tripped ME → tell them to gloat
         }
@@ -5527,7 +5977,7 @@ function loop(now) {
         k.lifePulse = false;
         effects.tootBurst(k, 1, false);
         audio.boost(k === player ? null : k.position);
-        if (k === player) hud.showToast("😻 Saved by a life!");
+        if (k === player) { hud.showToast("😻 Saved by a life!"); if (_raceStats) _raceStats.heartSaves++; }
       }
       // Being lasered: red sparkles on the zapped kart (skip while shielded — the
       // bubble is visibly eating the beam instead).
@@ -5557,6 +6007,7 @@ function loop(now) {
       if (k.boostPuff >= 0) {
         effects.tootBurst(k, k.boostPuff);
         audio.boost(k === player ? null : k.position);
+        if (k === player && _raceStats) _raceStats.driftBoosts++;
         k.boostPuff = -1;
       }
     }

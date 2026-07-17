@@ -1,0 +1,278 @@
+// Player progression — treats (currency), unlocks, achievements, tournament cups,
+// the daily seed, and the backup token. PURE and dependency-free so the whole
+// economy unit-tests in node (tools/progress-check.mjs); main.js owns storage,
+// DOM, and race-stat collection and calls into here.
+//
+// Design rules (docs/gameplay-backlog.md has the discussion):
+// - Never gate power: everything here is cosmetic / content, equal in every race.
+// - Unlocks are string IDs in a versioned profile; new content ships locked by
+//   default, unknown IDs are tolerated, fields are only ever added with defaults —
+//   so a saved profile survives every future feature.
+// - Three lanes: treats buy the catalog; cup trophies award exclusives that money
+//   can't buy; (a future paid lane would sit beside these, never above them).
+
+export const PROFILE_VERSION = 1;
+
+// ---------------------------------------------------------------------------
+// Profile
+// ---------------------------------------------------------------------------
+
+// Stats are CUMULATIVE career counters — achievements are thresholds over these,
+// which is far more robust than per-race predicates.
+export function defaultStats() {
+  return {
+    races: 0, wins: 0, winsHard: 0, winsNight: 0, racesCustom: 0,
+    driftBoosts: 0, slipSeconds: 0, milkTrips: 0, zaps: 0, heartSaves: 0,
+    boxes: 0, dailies: 0, treatsEarned: 0,
+  };
+}
+
+export function defaultProfile() {
+  return {
+    v: PROFILE_VERSION,
+    treats: 0,
+    unlocked: [...STARTER_UNLOCKS],
+    trophies: {}, // cupId -> best difficulty won ("easy" | "medium" | "hard")
+    achievements: [], // earned achievement ids
+    stats: defaultStats(),
+    dailyPaid: "", // last YYYY-MM-DD the daily bonus was paid
+  };
+}
+
+// Coerce anything (missing, old, hand-edited) into a valid current profile.
+// Additive-only philosophy: keep unknown top-level fields so a profile written by
+// a NEWER build survives a round-trip through this one.
+export function migrateProfile(raw) {
+  const p = raw && typeof raw === "object" ? { ...raw } : {};
+  const d = defaultProfile();
+  p.v = PROFILE_VERSION;
+  p.treats = Number.isFinite(p.treats) && p.treats >= 0 ? Math.floor(p.treats) : d.treats;
+  p.unlocked = Array.isArray(p.unlocked) ? [...new Set(p.unlocked.filter((x) => typeof x === "string"))] : [...d.unlocked];
+  for (const id of STARTER_UNLOCKS) if (!p.unlocked.includes(id)) p.unlocked.push(id);
+  p.trophies = p.trophies && typeof p.trophies === "object" ? { ...p.trophies } : {};
+  p.achievements = Array.isArray(p.achievements) ? [...new Set(p.achievements.filter((x) => typeof x === "string"))] : [];
+  const s = p.stats && typeof p.stats === "object" ? p.stats : {};
+  p.stats = { ...defaultStats() };
+  for (const k of Object.keys(p.stats)) if (Number.isFinite(s[k]) && s[k] >= 0) p.stats[k] = s[k];
+  p.dailyPaid = typeof p.dailyPaid === "string" ? p.dailyPaid : "";
+  return p;
+}
+
+// ---------------------------------------------------------------------------
+// Unlock catalog — string IDs against the garage presets in main.js.
+// price: treats cost. cup: exclusive, only awarded by winning that cup.
+// ---------------------------------------------------------------------------
+
+export const STARTER_UNLOCKS = ["cat.0", "cat.1", "cat.2", "kart.0", "kart.1", "kart.2"];
+
+export const CATALOG = [
+  // Cats (indices into CAT_PRESETS). First three are the free starter set.
+  { id: "cat.0", price: 0 }, { id: "cat.1", price: 0 }, { id: "cat.2", price: 0 },
+  { id: "cat.3", price: 150 }, { id: "cat.4", price: 200 }, { id: "cat.5", price: 250 },
+  { id: "cat.6", price: 300 }, { id: "cat.7", price: 400 },
+  { id: "cat.8", cup: "tuna" },      // Pepper — Tuna Cup exclusive
+  { id: "cat.9", cup: "zoomies" },   // Cocoa — Zoomies Cup exclusive
+  // Karts.
+  { id: "kart.0", price: 0 }, { id: "kart.1", price: 0 }, { id: "kart.2", price: 0 },
+  { id: "kart.3", price: 150 }, { id: "kart.4", price: 200 }, { id: "kart.5", price: 250 },
+  { id: "kart.6", price: 300 },
+  { id: "kart.7", cup: "whiskers" }, // Comet — Whiskers Cup exclusive
+  { id: "kart.8", cup: "catnip" },   // Nova — Catnip Cup exclusive
+  // The custom creators are features you earn.
+  { id: "custom.cat", price: 600 },
+  { id: "custom.kart", price: 600 },
+];
+const _catalogById = new Map(CATALOG.map((c) => [c.id, c]));
+
+export function catalogEntry(id) { return _catalogById.get(id) || null; }
+export function isUnlocked(profile, id) {
+  const e = _catalogById.get(id);
+  if (!e) return true; // unknown ids never brick a save (forward compatibility)
+  return profile.unlocked.includes(id);
+}
+// Spend treats on a purchasable entry. Returns true and mutates the profile on
+// success; false (no mutation) if locked-by-cup, unknown, already owned, or broke.
+export function buyUnlock(profile, id) {
+  const e = _catalogById.get(id);
+  if (!e || typeof e.price !== "number" || e.price < 0) return false;
+  if (profile.unlocked.includes(id)) return false;
+  if (profile.treats < e.price) return false;
+  profile.treats -= e.price;
+  profile.unlocked.push(id);
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Race payout — treats earned for a finished race, itemized for the results
+// screen. `stats` is the per-race moment counters collected by main.js.
+// ---------------------------------------------------------------------------
+
+export const DIFF_MULT = { easy: 0.6, medium: 0.8, hard: 1.0 };
+
+export function racePayout({ place, field, laps, difficulty, daily = false, stats = {} }) {
+  const lines = [];
+  const mult = DIFF_MULT[difficulty] ?? 1.0;
+  const lapScale = Math.max(1, laps || 3) / 3;
+  // Placement: 6th of 6 earns 15, 1st earns 50 (before the win bonus).
+  const base = Math.round((15 + Math.max(0, (field || 6) - (place || 6)) * 7) * mult * lapScale);
+  lines.push({ label: `${ordinalish(place)} place`, amt: base });
+  if (place === 1) lines.push({ label: "Winner bonus", amt: Math.round(20 * mult) });
+  // Moments (capped so farming a single mechanic doesn't out-earn racing).
+  const drift = Math.min(20, Math.round((stats.driftBoosts || 0) * 2));
+  if (drift > 0) lines.push({ label: "Drift boosts", amt: drift });
+  const slip = Math.min(15, Math.round(stats.slipSeconds || 0));
+  if (slip > 0) lines.push({ label: "Slipstreaming", amt: slip });
+  const milk = Math.min(25, (stats.milkTrips || 0) * 5);
+  if (milk > 0) lines.push({ label: "Milk mischief", amt: milk });
+  const zap = Math.min(10, (stats.zaps || 0) * 2);
+  if (zap > 0) lines.push({ label: "Laser zaps", amt: zap });
+  const saves = Math.min(9, (stats.heartSaves || 0) * 3);
+  if (saves > 0) lines.push({ label: "Nine lives", amt: saves });
+  if (daily) lines.push({ label: "Daily challenge", amt: 100 });
+  const total = lines.reduce((s, l) => s + l.amt, 0);
+  return { total, lines };
+}
+
+function ordinalish(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Achievements — thresholds over the cumulative profile stats. checkAchievements
+// marks + pays newly earned ones and returns them for the toast/ceremony.
+// ---------------------------------------------------------------------------
+
+export const ACHIEVEMENTS = [
+  { id: "first-race", name: "Out of the Cat Door", desc: "Finish your first race", pay: 50, test: (s, p) => s.races >= 1 },
+  { id: "first-win", name: "Top Cat", desc: "Win a race", pay: 100, test: (s) => s.wins >= 1 },
+  { id: "hard-win", name: "Apex Predator", desc: "Win against Hard rivals", pay: 150, test: (s) => s.winsHard >= 1 },
+  { id: "night-win", name: "Night Prowler", desc: "Win a race at night", pay: 100, test: (s) => s.winsNight >= 1 },
+  { id: "veteran", name: "Road Cat", desc: "Finish 25 races", pay: 200, test: (s) => s.races >= 25 },
+  { id: "drift-50", name: "Sideways Cat", desc: "Earn 50 drift boosts", pay: 100, test: (s) => s.driftBoosts >= 50 },
+  { id: "slip-120", name: "Draft Dodger", desc: "Slipstream for 2 minutes total", pay: 100, test: (s) => s.slipSeconds >= 120 },
+  { id: "milk-10", name: "Cry Over Spilled Milk", desc: "Trip 10 rivals with milk", pay: 100, test: (s) => s.milkTrips >= 10 },
+  { id: "zap-25", name: "Red Dot Menace", desc: "Zap rivals 25 times", pay: 100, test: (s) => s.zaps >= 25 },
+  { id: "lives-5", name: "Lands on Its Feet", desc: "Get saved by 5 hearts", pay: 100, test: (s) => s.heartSaves >= 5 },
+  { id: "boxes-50", name: "Box Enthusiast", desc: "Open 50 power-up boxes", pay: 75, test: (s) => s.boxes >= 50 },
+  { id: "daily-5", name: "Regular", desc: "Finish 5 daily challenges", pay: 150, test: (s) => s.dailies >= 5 },
+  { id: "custom-race", name: "Trailblazer", desc: "Race a track you generated", pay: 50, test: (s) => s.racesCustom >= 1 },
+  { id: "cup-first", name: "Silverware", desc: "Win any cup", pay: 150, test: (s, p) => Object.keys(p.trophies).length >= 1 },
+  { id: "cup-sweep", name: "Cat-egory Champion", desc: "Win all four cups", pay: 400, test: (s, p) => CUPS.every((c) => p.trophies[c.id]) },
+];
+
+export function checkAchievements(profile) {
+  const fresh = [];
+  for (const a of ACHIEVEMENTS) {
+    if (profile.achievements.includes(a.id)) continue;
+    let hit = false;
+    try { hit = !!a.test(profile.stats, profile); } catch { hit = false; }
+    if (hit) {
+      profile.achievements.push(a.id);
+      profile.treats += a.pay;
+      profile.stats.treatsEarned += a.pay;
+      fresh.push(a);
+    }
+  }
+  return fresh;
+}
+
+// ---------------------------------------------------------------------------
+// Tournament cups — a cup is a named series of seeded races; classic kart-racer
+// points per race; win the cup for treats, a trophy (best difficulty is kept)
+// and, on some cups, an exclusive unlock money can't buy.
+// ---------------------------------------------------------------------------
+
+export const CUP_POINTS = [10, 8, 6, 5, 4, 3]; // 7th+ scores 1
+export function cupPoints(place) { return CUP_POINTS[place - 1] ?? 1; }
+
+export const CUPS = [
+  { id: "whiskers", name: "Whiskers Cup", emoji: "🥛", desc: "Three sunny sprints to get your paws wet",
+    seeds: ["WSK1", "WSK2", "WSK3"], winTreats: 200, unlockId: "kart.7" },
+  { id: "tuna", name: "Tuna Cup", emoji: "🐟", desc: "Coastal circuits with real bite",
+    seeds: ["TUN1", "TUN2", "TUN3"], winTreats: 250, unlockId: "cat.8" },
+  { id: "catnip", name: "Catnip Cup", emoji: "🌿", desc: "Twisty, trippy, terribly fast",
+    seeds: ["CNP1", "CNP2", "CNP3"], winTreats: 300, unlockId: "kart.8" },
+  { id: "zoomies", name: "Zoomies Cup", emoji: "⚡", desc: "The championship. Four races. No mercy",
+    seeds: ["ZOM1", "ZOM2", "ZOM3", "ZOM4"], winTreats: 400, unlockId: "cat.9" },
+];
+const _cupById = new Map(CUPS.map((c) => [c.id, c]));
+export function cupById(id) { return _cupById.get(id) || null; }
+
+// Standings: points map (name -> pts) sorted descending, ties broken by name so
+// every client renders the same order.
+export function cupStandings(points) {
+  return Object.entries(points)
+    .map(([name, pts]) => ({ name, pts }))
+    .sort((a, b) => b.pts - a.pts || a.name.localeCompare(b.name));
+}
+
+// Did the player win the cup, and is the new trophy an upgrade? Trophy records
+// the best DIFFICULTY the cup was won at (hard > medium > easy).
+const DIFF_RANK = { easy: 0, medium: 1, hard: 2 };
+export function awardCup(profile, cupId, standings, playerName, difficulty) {
+  const winner = standings[0];
+  if (!winner || winner.name !== playerName) return null;
+  const cup = _cupById.get(cupId);
+  if (!cup) return null;
+  const prev = profile.trophies[cupId];
+  const upgraded = prev === undefined || (DIFF_RANK[difficulty] ?? 0) > (DIFF_RANK[prev] ?? 0);
+  if (upgraded) profile.trophies[cupId] = difficulty;
+  const firstWin = prev === undefined;
+  let treats = 0, unlockId = null;
+  if (firstWin) {
+    treats = cup.winTreats;
+    profile.treats += treats;
+    profile.stats.treatsEarned += treats;
+    if (cup.unlockId && !profile.unlocked.includes(cup.unlockId)) {
+      profile.unlocked.push(cup.unlockId);
+      unlockId = cup.unlockId;
+    }
+  }
+  return { firstWin, upgraded, treats, unlockId, difficulty };
+}
+
+// ---------------------------------------------------------------------------
+// Daily challenge — everyone races the same generated seed each day.
+// ---------------------------------------------------------------------------
+
+export function dailySeedFor(dateStr) {
+  // djb2 over the YYYY-MM-DD string -> 4 chars of A-Z0-9 (the room-code alphabet).
+  let h = 5381;
+  for (let i = 0; i < dateStr.length; i++) h = ((h << 5) + h + dateStr.charCodeAt(i)) >>> 0;
+  const AB = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L look-alikes
+  let s = "";
+  for (let i = 0; i < 4; i++) { s += AB[h % AB.length]; h = Math.floor(h / AB.length) ^ (h << 7); h = h >>> 0; }
+  return s;
+}
+
+// ---------------------------------------------------------------------------
+// Backup token — the whole profile as a compact copy-paste code (same base64url
+// idea as the multiplayer world token, but unicode-safe for custom names).
+// ---------------------------------------------------------------------------
+
+export function encodeProfileToken(profile) {
+  try {
+    const json = JSON.stringify(profile);
+    const bytes = typeof TextEncoder !== "undefined" ? new TextEncoder().encode(json) : Buffer.from(json, "utf8");
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return "ZP1." + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  } catch { return ""; }
+}
+
+export function decodeProfileToken(token) {
+  if (typeof token !== "string") return null;
+  const m = token.trim().match(/^ZP1\.([A-Za-z0-9_-]+)$/);
+  if (!m) return null;
+  try {
+    let b64 = m[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const json = typeof TextDecoder !== "undefined" ? new TextDecoder().decode(bytes) : Buffer.from(bytes).toString("utf8");
+    const raw = JSON.parse(json);
+    return raw && typeof raw === "object" ? migrateProfile(raw) : null;
+  } catch { return null; }
+}

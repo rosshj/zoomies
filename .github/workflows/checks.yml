@@ -27,3 +27,5 @@ jobs:
         run: npm run check:referee
       - name: multiplayer world-config codec
         run: npm run check:worldcfg
+      - name: progression economy (treats/unlocks/cups)
+        run: npm run check:progress

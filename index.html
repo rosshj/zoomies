@@ -318,6 +318,11 @@
             <span class="tile-chevron">›</span>
           </button>
         </nav>
+        <div class="menu-footer menu-progress-row">
+          <button id="open-cups" class="secondary small">🏆 Cups</button>
+          <button id="open-daily" class="secondary small">📅 Daily</button>
+          <button id="open-catalog" class="secondary small">🐟 <span id="treats-balance">0</span> · Cat&#8209;alog</button>
+        </div>
         <div class="menu-footer">
           <button id="howto-btn" class="secondary small">❓ How to Play</button>
           <button id="open-settings" class="secondary small">⚙ Settings</button>
@@ -488,10 +493,34 @@
           </div>
         </div>
       </div>
+      <p id="garage-lock-note" class="garage-lock-note"></p>
       <div class="garage-actions">
+        <button id="garage-buy" class="garage-buy hidden">🐟 Buy</button>
         <button id="garage-apply">✓ Done</button>
         <button id="garage-back" class="secondary">← Back</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== Cups: pick a tournament (3-4 seeded races, points, trophies) ===== -->
+  <div id="cup-panel" class="overlay hidden">
+    <div class="menu-card cup-main">
+      <h1>🏆 Cups</h1>
+      <p class="tagline">Win the series for treats, a trophy — and exclusives you can't buy</p>
+      <div id="cup-list" class="cup-list"></div>
+      <button id="cup-back" class="secondary">← Back</button>
+    </div>
+  </div>
+
+  <!-- ===== Cat-alog: treats, trophy shelf, achievements, career stats ===== -->
+  <div id="catalog" class="overlay hidden">
+    <div class="menu-card catalog-main">
+      <h1>📖 Cat-alog</h1>
+      <p id="catalog-treats" class="catalog-treats">🐟 0</p>
+      <div id="catalog-trophies" class="catalog-trophies"></div>
+      <div id="catalog-achievements" class="catalog-achievements"></div>
+      <p id="catalog-stats" class="catalog-stats"></p>
+      <button id="catalog-back" class="secondary">← Back</button>
     </div>
   </div>
 
@@ -589,6 +618,9 @@
     <div class="menu-card results-main">
       <h1 id="results-title">🏁 Finish!</h1>
       <ol id="results-list"></ol>
+      <!-- Treats earned + achievement banners + cup standings (progression). -->
+      <div id="results-earnings" class="hidden"></div>
+      <button id="results-next-btn" class="hidden">▶ Next Race</button>
       <button id="restart-btn">🔁 RACE AGAIN</button>
       <button id="results-menu-btn" class="secondary small">🏠 Main Menu</button>
     </div>
@@ -725,6 +757,24 @@
             <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
           </div>
           <p class="setting-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
+        </section>
+        <section class="settings-card">
+          <h2 class="settings-section">💾 Progress</h2>
+          <div class="setting-row">
+            <span class="setting-label">Backup</span>
+            <div class="mp-share-row">
+              <button id="backup-copy" class="secondary small">📋 Copy code</button>
+              <button id="backup-restore" class="secondary small">↩ Restore</button>
+            </div>
+          </div>
+          <p id="backup-note" class="setting-note">Your treats, unlocks and trophies as a copy-paste code — restore it after a reinstall or on another device.</p>
+          <div id="dev-card" class="hidden">
+            <h2 class="settings-section">🛠 Developer</h2>
+            <div class="setting-row"><span class="setting-label">Treats</span><button id="dev-treats" class="secondary small">+1000 🐟</button></div>
+            <div class="setting-row"><span class="setting-label">Unlocks</span><button id="dev-unlock" class="secondary small">Unlock everything</button></div>
+            <div class="setting-row"><span class="setting-label">Profile</span><button id="dev-reset" class="secondary small">Reset progression</button></div>
+            <div class="setting-row"><span class="setting-label">Dev mode</span><button id="dev-off" class="secondary small">Turn off</button></div>
+          </div>
         </section>
         <!-- Advanced / debug toggles, hidden behind an expander to keep the menu tidy. -->
         <section class="settings-card">

@@ -2259,3 +2259,102 @@ button.secondary.small,
   margin: 0 0 -4px;
   text-align: left;
 }
+
+/* ===== Progression (treats / cups / Cat-alog / garage locks) ===== */
+/* Race earnings under the standings: tight ledger rows, gold total, badge rows. */
+#results-earnings {
+  margin: 8px auto 0;
+  max-width: 340px;
+  max-height: 30vh;
+  overflow-y: auto;
+  font-size: 12px;
+  text-align: left;
+}
+#results-earnings.hidden { display: none; }
+.earn-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 6px;
+  color: rgba(255, 255, 255, 0.82);
+}
+.earn-row.earn-total {
+  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  margin-top: 3px;
+  padding-top: 5px;
+  font-weight: 800;
+  color: var(--accent);
+}
+.earn-row.earn-ach { color: #ffd54f; font-weight: 700; }
+.earn-row.earn-you { color: var(--accent); font-weight: 800; }
+.earn-cup-head {
+  margin-top: 8px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+#results-next-btn { margin-top: 10px; }
+#results-next-btn.hidden { display: none; }
+
+/* Menu progression row mirrors the footer buttons. */
+.menu-progress-row { margin-bottom: 2px; }
+
+/* Cup select cards: same family as the mode cards. */
+.cup-list { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; }
+.cup-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  padding: 10px 14px;
+  color: inherit;
+}
+.cup-card:active { background: rgba(255, 255, 255, 0.12); }
+.cup-emoji { font-size: 26px; }
+.cup-text { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+.cup-name { font-weight: 800; }
+.cup-desc { font-size: 11px; color: rgba(255, 255, 255, 0.6); }
+.cup-state { font-size: 11px; color: #ffd54f; }
+
+/* Cat-alog */
+.catalog-main { max-height: 86vh; overflow-y: auto; }
+.catalog-treats { font-size: 22px; font-weight: 800; color: var(--accent); margin: 2px 0 8px; }
+.catalog-trophies { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; flex-wrap: wrap; }
+.shelf-cup {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 8px 10px; border-radius: 12px; min-width: 76px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  opacity: 0.65;
+}
+.shelf-cup.won { opacity: 1; border-color: rgba(255, 213, 79, 0.6); background: rgba(255, 213, 79, 0.08); }
+.shelf-emoji { font-size: 22px; }
+.shelf-name { font-size: 10px; font-weight: 700; }
+.shelf-diff { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255, 255, 255, 0.55); }
+.catalog-achievements { display: flex; flex-direction: column; gap: 4px; text-align: left; margin: 6px 0 10px; }
+.ach-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 5px 8px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  opacity: 0.6;
+}
+.ach-row.got { opacity: 1; background: rgba(255, 213, 79, 0.08); }
+.ach-mark { font-size: 16px; }
+.ach-text { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.ach-name { font-size: 12px; font-weight: 700; }
+.ach-desc { font-size: 10px; color: rgba(255, 255, 255, 0.6); }
+.ach-pay { font-size: 11px; color: var(--accent); font-weight: 700; }
+.catalog-stats { font-size: 11px; color: rgba(255, 255, 255, 0.6); margin-bottom: 10px; }
+
+/* Garage lock note + buy button */
+.garage-lock-note { min-height: 14px; font-size: 11px; color: #ffd54f; margin: 2px 0 4px; }
+.garage-buy { background: linear-gradient(180deg, #ffd54f, #ffb300); color: #201500; font-weight: 800; }
+.garage-buy:disabled { filter: grayscale(0.7); opacity: 0.6; }
+.garage-buy.hidden { display: none; }
