@@ -713,12 +713,14 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const chestMat = isSmoke
     ? sharedMat("csmoke", () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.92 }))
     : (isSolid || isTortie) ? fur : white;
-  // A clean ROUND tummy patch: equal width/height and pushed proud of the
-  // belly, so the visible cap silhouettes as a circle. (The old tall ellipsoid
-  // grazed the faceted body and its intersection read as a jagged bow tie.)
+  // A PAINTED-ON round chest patch: a shallow cap high on the chest, only
+  // ~0.1 proud of the torso (the old deep bulge at belly height shaded like
+  // a pair of lobes once the front legs carved through it). The squashed
+  // sphere's equator sits BURIED inside the body (rim z 0.78 < torso 0.9),
+  // so the visible boundary is a clean circle, never a grazing jagged edge.
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 26, 20), chestMat);
-  chest.position.set(0, 0.8, hasBib ? 0.6 : 0.64);
-  chest.scale.set(hasBib ? 0.92 : 0.75, hasBib ? 0.92 : 0.75, 0.5);
+  chest.position.set(0, hasBib ? 1.18 : 1.28, 0.78);
+  chest.scale.set(hasBib ? 0.78 : 0.62, hasBib ? 0.78 : 0.62, 0.35);
   catStatic.push(chest);
 
   // Front paws — posed for the scenario (opts.pose):
