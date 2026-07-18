@@ -620,8 +620,11 @@ const ARM_POSES = {
   // (paw bottoms at the floor) and reach a touch forward, clear of the hind feet.
   // armLen stretches the leg capsule UP so its top buries deep inside the
   // chest (the default 0.6 ends right at the body surface, showing the cap's
-  // rounding and an intersection seam); the paw end stays put.
-  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
+  // rounding and an intersection seam); the paw end stays put. armLean tips
+  // the TOP toward the body midline — the chest bulges most at x0, so an
+  // inward-leaning top tucks fully under the surface instead of standing
+  // proud of the flatter surface out at shoulder x.
+  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.22, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
   // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
   // the sides, hind feet planted under the body (built in the stand block below).
   stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
@@ -737,6 +740,13 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const arm = new THREE.Mesh(new THREE.CapsuleGeometry(ap.armR, ap.armLen ?? 0.6, 4, 10), pawMat);
     arm.position.set(...ap.armPos);
     arm.rotation.x = ap.armRot;
+    if (ap.armLean) {
+      // Tip the top toward the midline, sliding the mesh outward so the paw
+      // end stays planted where it was.
+      arm.rotation.z = sx * ap.armLean;
+      const half = (ap.armLen ?? 0.6) / 2 + ap.armR;
+      arm.position.x -= sx * Math.sin(ap.armLean) * half;
+    }
     parts.push(arm);
     const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
     paw.position.set(...ap.pawPos);
@@ -753,7 +763,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     }
     // one mesh per arm; the pivot still pumps it. Geometry is identical for every
     // cat of a pose (colours live in the materials) — shared via the merge cache.
-    pivot.add(mergeMeshes(parts, { geoKey: `carm|${pose}` }));
+    // A leaning arm is mirrored left/right, so those poses cache per side.
+    pivot.add(mergeMeshes(parts, { geoKey: `carm|${pose}|${ap.armLean ? (sx < 0 ? "L" : "R") : "c"}` }));
     arms[sx < 0 ? "L" : "R"] = pivot;
   }
   if (pose === "sit") {
