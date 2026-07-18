@@ -1432,12 +1432,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       cowl.rotation.x = RAKE;
       // Decals lie a hair proud of the panel, exactly parallel to its face —
       // painted on, not floating (the face normal is (0, cos RAKE, sin RAKE)).
+      // The roundel sits mid-panel, BELOW where the steering column lands, so
+      // the post never crosses the number; the stripe runs beneath it.
       const cowlNum = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), numMat);
-      cowlNum.position.set(0, 1.03, 0.73);
+      cowlNum.position.set(0, 0.935, 0.98);
       cowlNum.rotation.x = -(Math.PI / 2 - RAKE);
       roundels.push(cowlNum);
-      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.7), stripe));
-      noseStripe.position.set(0, 0.74, 1.44);
+      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.55), stripe));
+      noseStripe.position.set(0, 0.715, 1.51);
       noseStripe.rotation.x = -(Math.PI / 2 - RAKE);
       // Little accent winglets flanking the panel (the reference's red fins).
       for (const sx of [-1, 1]) {
