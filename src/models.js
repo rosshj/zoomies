@@ -681,7 +681,7 @@ const ARM_POSES = {
   // back end buries deep into the leg — its radius nearly matches the leg's,
   // so the ankle reads as ONE form bending forward (with two toe bumps at
   // the tip) instead of two primitives slapped together.
-  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.12, armPos: [0, -0.41, 0.27], pawPos: [0, -1.145, 0.5], pawLog: true, beans: false },
+  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.12, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.46], pawLog: true, beans: false },
   // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
   // the sides, hind feet planted under the body (built in the stand block below).
   stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
@@ -806,14 +806,13 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     }
     parts.push(arm);
     if (ap.pawLog) {
-      // Seamless ankle: ONE forward-pointing rounded capsule (radius ~ the
-      // leg's) whose back cap is swallowed by the leg's lower end — a touch
-      // wider and squashed so the tip reads as a paw, with no separate toe
-      // pieces to break the silhouette.
-      const paw = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.18, 6, 12), pawMat);
+      // Paw per the Figma refs: from the FRONT a near-round ball barely
+      // wider than the leg, centred under it; from the SIDE a long flat
+      // ellipse running forward, with the leg's lower end buried in its
+      // back half so the two silhouettes union into one form.
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 12), pawMat);
       paw.position.set(...ap.pawPos);
-      paw.rotation.x = Math.PI / 2;
-      paw.scale.set(1.15, 0.9, 1);
+      paw.scale.set(0.9, 0.75, 1.45);
       parts.push(paw);
     } else {
       const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
