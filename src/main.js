@@ -37,6 +37,10 @@ import {
   encodeProfileToken, decodeProfileToken,
 } from "./progress.js";
 import { audio } from "./audio.js";
+// Menu UI cues — fourteen tiny Web-Audio-synthesized interaction sounds
+// (vendored, MIT). bind() delegates the data-cuelume-* attributes; uiCue()
+// fires outcome moments; enablement follows the SFX setting.
+import { bind as bindUiCues, play as uiCue, setEnabled as setUiCuesEnabled } from "cuelume";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
 // (the basis for multiplayer: everyone in a lobby builds from the same seed).
@@ -1177,6 +1181,7 @@ const MP = new MpSession({
     // Roster changed (peer joined/left) or our own connection opened: refresh
     // the "N friends here" count immediately, and the lobby if it's showing.
     onRoster: () => {
+      if (MP.inLobby) uiCue("ready"); // connection opened / a friend arrived
       setMpStatus("connected");
       maybeAdoptHostWorld(); // a code-joiner rebuilds into the host's map once it learns it
       // If I'm the host and a race is already counting down, re-send the start so a
@@ -2645,6 +2650,7 @@ function openSubScreen(el) {
     }
   }
   el.classList.remove("hidden");
+  uiCue("bloom"); // reveal
 }
 function closeSubScreen(el) {
   el.classList.add("hidden");
@@ -2652,7 +2658,24 @@ function closeSubScreen(el) {
     _overlayReturn.classList.remove("hidden");
     _overlayReturn = null;
   }
+  uiCue("droplet"); // dismiss
 }
+
+// Annotate the static menu DOM for cuelume: every overlay button gets the
+// tactile press/release pair + a desktop hover tick; segmented buttons get the
+// mechanical toggle instead. Dynamic elements (prize tiles, claim cards) speak
+// through imperative outcome cues, so they need no attributes.
+function wireMenuCues() {
+  for (const el of document.querySelectorAll(".overlay button")) {
+    if (el.classList.contains("seg-btn")) { el.dataset.cuelumeToggle = ""; continue; }
+    el.dataset.cuelumePress = "";
+    el.dataset.cuelumeRelease = "";
+    el.dataset.cuelumeHover = "tick";
+  }
+  bindUiCues();
+  setUiCuesEnabled(audio.sfxOn);
+}
+wireMenuCues();
 
 function openSettings() {
   audio.unlock(); // the opening tap is a valid gesture to start audio
@@ -3787,6 +3810,7 @@ document.getElementById("garage-apply")?.addEventListener("click", () => {
   if (lockedSide) {
     const note = document.getElementById("garage-lock-note");
     if (note) note.textContent = `🔒 ${unlockName(draftItemId(lockedSide))} is locked — buy it or win it first.`;
+    uiCue("error");
     return;
   }
   garageConfig.cat = _garageDraft.cat;
@@ -3808,6 +3832,7 @@ musicToggle?.addEventListener("click", () => {
 sfxToggle?.addEventListener("click", () => {
   audio.unlock();
   audio.setSfxOn(!audio.sfxOn);
+  setUiCuesEnabled(audio.sfxOn); // menu cues follow the SFX setting
   refreshAudioUI();
 });
 musicVol?.addEventListener("input", () => {
@@ -3951,9 +3976,10 @@ function claimHost() {
 // motion permission inside the gesture so it survives the reload.
 function joinGame() {
   const code = (mpCodeInput?.value || "").trim().toUpperCase();
-  if (!/^[A-Z0-9]{2,6}$/.test(code)) { mpCodeInput?.focus(); return; }
+  if (!/^[A-Z0-9]{2,6}$/.test(code)) { mpCodeInput?.focus(); uiCue("error"); return; }
   if (code === WORLD_SEED && MP.enabled) { beginRace(); return; } // already in this room
   audio.unlock();
+  uiCue("loading"); // joining the room (the reload lands in the lobby)
   try { input.enableMotion(); } catch {}
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
@@ -3977,6 +4003,7 @@ function enterMultiplayer() {
   _amHost = true; // I'm creating this room → I'm the host (survives a refresh below)
   try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
   audio.unlock();
+  uiCue("loading"); // connecting… (resolved by the onRoster "ready" cue)
   const u = new URL(location.href);
   u.searchParams.set("mp", "1");
   u.searchParams.set("seed", WORLD_SEED);
@@ -4151,6 +4178,7 @@ function beginPrizeBuy(tile, id, name, price) {
     c.innerHTML = `<span class="pc-text">Need 🐟 ${price - profile.treats} more</span>`;
     tile.appendChild(c);
     tile.classList.add("shake");
+    uiCue("error");
     setTimeout(() => { c.remove(); tile.classList.remove("shake"); }, 1400);
     return;
   }
@@ -4167,6 +4195,7 @@ function beginPrizeBuy(tile, id, name, price) {
     refreshTreatsChip();
     c.remove();
     sparkleBurst(tile, 12);
+    uiCue("success");
     tile.classList.add("owned", "just-bought");
     tile.classList.remove("buyable");
     const how = tile.querySelector(".prize-how");
@@ -4206,6 +4235,7 @@ function showClaimScreen(onDone) {
       saveProfile();
       refreshTreatsChip();
       sparkleBurst(card, 14);
+      uiCue("success");
       card.classList.add("claimed");
       card.disabled = true;
       card.querySelector(".claim-cta").textContent = `+${paid.pay} 🐟`;
@@ -4215,6 +4245,7 @@ function showClaimScreen(onDone) {
   }
   cont.onclick = () => { scr.classList.add("hidden"); onDone(); };
   scr.classList.remove("hidden");
+  uiCue("chime"); // gentle "you've got badges" attention
 }
 function prizeTile(id, name, colorHex, how, owned) {
   const d = document.createElement("div");
@@ -5617,6 +5648,7 @@ function renderRaceEarnings(settled) {
         if (cup.award.unlockId) box.appendChild(earnRow(`🎁 Exclusive unlocked: ${unlockName(cup.award.unlockId)}`, "NEW", "earn-ach"));
         for (const id of cup.award.extraUnlocks || []) box.appendChild(earnRow(`🎖 ${AI_DIFFICULTY[DIFFICULTY].label} prize unlocked: ${unlockName(id)}`, "NEW", "earn-ach"));
         if (!cup.award.firstWin && cup.award.upgraded) box.appendChild(earnRow(`🏆 Trophy upgraded to ${cup.award.difficulty}`, "", "earn-ach"));
+        if (cup.award.unlockId || (cup.award.extraUnlocks || []).length) uiCue("sparkle"); // a prize was revealed
       }
     }
   }

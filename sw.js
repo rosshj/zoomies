@@ -40,6 +40,10 @@ const SHELL = [
   "./vendor/three/three.webgpu.min.js",
   "./vendor/three/three.core.min.js",
   "./vendor/three/three.tsl.min.js",
+  "./vendor/cuelume/index.js",
+  "./vendor/cuelume/audio/engine.js",
+  "./vendor/cuelume/interactions/bind.js",
+  "./vendor/cuelume/sounds/recipes.js",
   "./src/main.js",
 ];
 
