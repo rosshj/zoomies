@@ -1006,11 +1006,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       sharedMat(`cloth|${accCol}|${rx}x${ry}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol, rx, ry) }));
     const bandMat = clothMatOf(9, 1.4);    // a row of motifs wrapping the thin band
     const clothMat = clothMatOf(2.4, 2.4); // drape / knot / tails
-    // The band is tilted (rotation.x 0.26) so its BACK arc rides UP toward the nape
-    // (where it's tied) instead of flaring down onto the upper back; the front dips
-    // to the throat, as a real neckerchief sits.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.18, 32, 1, true), bandMat);
-    band.position.set(0, 1.64, 0.05); band.rotation.x = 0.26; acc.add(band);
+    // The band rides HIGH and snug on the neck just under the head (radius 0.84
+    // clears the torso across its span), with only a slight dip toward the
+    // throat — the old wide low band drooped over the shoulders and arms.
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.84, 0.16, 32, 1, true), bandMat);
+    band.position.set(0, 1.84, 0.02); band.rotation.x = 0.08; acc.add(band);
     // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
     // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
     // instead of the chest bulging through a flat plane. Top edge tucks behind the
@@ -1026,31 +1026,31 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fgeo.setIndex([0, 2, 1, 0, 3, 2, 2, 3, 1]);
     fgeo.computeVertexNormals();
     const flap = new THREE.Mesh(fgeo, clothMat);
-    flap.position.set(0, 1.42, 0.82); acc.add(flap);
+    flap.position.set(0, 1.72, 0.8); acc.add(flap); // top edge tucked under the raised band
     // The tie at the nape: a knot with two pointed tails, as when a bandana is
     // knotted at the back of the neck. Pushed well behind the neck (z ~ -0.95) so
     // it sits PROUD of the torso's back (which reaches ~z-0.85 here) instead of
     // being buried inside it.
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), clothMat);
-    knot.position.set(0, 1.86, -0.95); knot.scale.set(1.5, 1.2, 1.0); acc.add(knot);
+    knot.position.set(0, 1.9, -0.86); knot.scale.set(1.5, 1.2, 1.0); acc.add(knot);
     for (const sx of [-1, 1]) {
       const tail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.52, 4), clothMat);
-      tail.position.set(sx * 0.2, 1.6, -0.96);
+      tail.position.set(sx * 0.2, 1.66, -0.88);
       tail.rotation.z = sx * -2.5; // apex swings down-and-out to the side
       tail.rotation.y = sx * 0.3;
       tail.scale.set(1, 1, 0.55);  // flatten like cloth
       acc.add(tail);
     }  } else if (accId === "collar") {
-    // collar: a flat fabric band (a thin open cylinder wall — a strip, not a
-    // rounded tube) around the neck, with a little gold bell at the throat. Radius
-    // 0.92 sits just proud of the ~0.87 torso so the whole band clears it. Tilted
-    // (rotation.x 0.26) so the BACK of the band rides up near the head rather than
-    // drooping down the back; the throat side dips low where the bell hangs.
+    // collar: a snug flat fabric band (a thin open cylinder wall) riding HIGH
+    // on the neck just under the head, nearly level, with a little gold bell at
+    // the throat. Radius 0.84 at y 1.86 clears the torso's bulge (the capsule is
+    // ~0.83 across the band's lower edge) without the old loose drape that hung
+    // down over the shoulders and arms.
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.55, side: THREE.DoubleSide });
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 0.92, 0.17, 32, 1, true), m);
-    collar.position.set(0, 1.64, 0.05); collar.rotation.x = 0.26; acc.add(collar);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.84, 0.13, 32, 1, true), m);
+    collar.position.set(0, 1.86, 0.02); collar.rotation.x = 0.06; acc.add(collar);
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
-    bell.position.set(0, 1.2, 0.86); acc.add(bell);
+    bell.position.set(0, 1.73, 0.86); acc.add(bell);
     const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8), accMat(0xe0b53a, 0.4, 0.35));
     nub.position.set(0, 1.3, 0.87); acc.add(nub);  } else if (accId === "bow") {
     // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
@@ -1461,6 +1461,38 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
           podBack.position.set(sx * 0.32, 0.64, snout + 0.38);
           podBack.scale.set(1, 1, 0.55);
         }
+      } else if (st.wing === "lip") {
+        // Roadster: smaller classic chrome lamps up on little stalks, set wide
+        // on the nose — vintage cowl lights.
+        for (const sx of [-1, 1]) {
+          const stalk = add(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.16, 8), chrome));
+          stalk.position.set(sx * 0.34, 0.58, snout + 0.16);
+          const cup = add(new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.13, 14), chrome));
+          cup.rotation.x = Math.PI / 2;
+          cup.position.set(sx * 0.34, 0.68, snout + 0.2);
+          const cupBack = add(new THREE.Mesh(new THREE.SphereGeometry(0.11, 12, 10), chrome));
+          cupBack.position.set(sx * 0.34, 0.68, snout + 0.14);
+          cupBack.scale.set(1, 1, 0.55);
+        }
+      } else if (st.wing === "fin") {
+        // Speedster: streamlined chrome TEARDROP nacelles laid low on the
+        // nose, tapering back — jet-age fairings with flat faces.
+        for (const sx of [-1, 1]) {
+          const drop = add(new THREE.Mesh(new THREE.SphereGeometry(0.105, 14, 12), chrome));
+          drop.position.set(sx * 0.3, 0.6, snout + 0.14);
+          drop.scale.set(1, 1, 1.9);
+        }
+      } else {
+        // GP: compact twin racing lamps in BODY-PAINT nacelles, half-sunk into
+        // the stub tip and pointing dead ahead.
+        for (const sx of [-1, 1]) {
+          const nac = add(new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.15, 14), paint));
+          nac.rotation.x = Math.PI / 2;
+          nac.position.set(sx * 0.26, 0.58, snout + 0.28);
+          const nacBack = add(new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 10), paint));
+          nacBack.position.set(sx * 0.26, 0.58, snout + 0.21);
+          nacBack.scale.set(1, 1, 0.55);
+        }
       }
       // Steering post drops STRAIGHT DOWN from the hub into the panel — well
       // clear of the number roundel further down the slope.
@@ -1653,11 +1685,19 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       hlParts.push(lens);
     }
   } else {
-    // Kart lights sit on the short nose stub's tip.
+    // Road karts: flat lens discs filling each style's stand-up lamp face
+    // (housings built in the shell — stalked cups, teardrops, or nacelles).
+    const sn = st.snout ?? 1.55;
+    const lamp = st.wing === "lip"
+      ? { x: 0.34, y: 0.68, z: sn + 0.27, r: 0.09 }   // roadster stalk cups
+      : st.wing === "fin"
+        ? { x: 0.3, y: 0.6, z: sn + 0.33, r: 0.085 }  // speedster teardrop tips
+        : { x: 0.26, y: 0.58, z: sn + 0.36, r: 0.085 }; // GP nacelles
     for (const sx of [-1, 1]) {
-      const light = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), glass);
-      light.position.set(sx * 0.26, 0.5, (st.snout ?? 1.55) + 0.3);
-      hlParts.push(light);
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(lamp.r, lamp.r, 0.035, 16), glass);
+      lens.rotation.x = Math.PI / 2;
+      lens.position.set(sx * lamp.x, lamp.y, lamp.z);
+      hlParts.push(lens);
     }
   }
   group.add(mergeMeshes(hlParts, { geoKey: `khl|${styleIdx}` }));
