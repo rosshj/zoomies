@@ -607,7 +607,10 @@ function catConstGeo() {
 // shoulder-pivot local space; the pivot sits at (±0.5, 1.05, 0.45), the ground
 // under a seated cat is at y ≈ -0.29 in cat space.
 const ARM_POSES = {
-  kart: { armR: 0.17, armRot: -1.0, armPos: [0, 0, 0.15], pawPos: [0, 0.15, 0.52], pawScale: [1, 0.82, 1.05], beanY: 0.1, beanZ: 0.7 },
+  // Driving: arms reach FORWARD-DOWN so the paws land on the wheel rim (the old
+  // pose held the paws above shoulder height, hovering behind the wheel), with
+  // the beans on the paw's far face — against the wheel, not floating mid-arm.
+  kart: { armR: 0.17, armRot: -1.35, armPos: [0, -0.02, 0.4], pawPos: [0, -0.04, 0.86], pawScale: [1, 0.85, 1.1], beanY: -0.06, beanZ: 1.05 },
   moto: { armR: 0.17, armRot: -1.42, armPos: [0, 0.12, 0.24], pawPos: [0, 0.3, 0.68], pawScale: [1, 0.95, 0.9], beanY: 0.26, beanZ: 0.86 },
   // Sitting: no beans — a sitting cat shows the TOPS of its front paws (beans
   // on the paw front read as claws).
