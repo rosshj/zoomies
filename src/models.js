@@ -315,8 +315,11 @@ function makeSpotTexture(furColor, spotColor) {
   return _cacheTex(key, t);
 }
 
-// Painted bengal coat: broken-ring rosettes (an outline with a gap and a small
-// centre fleck) scattered like the spot coat — the wild-cat version of spots.
+// Painted bengal coat, modelled on real rosette types (paw-print / donut /
+// clustered): each rosette is a RUST-filled core wrapped in a chunky BROKEN
+// outline of dark blobs — two-tone like a real bengal, where the inside of a
+// rosette runs warmer than the base coat — with small solid spots scattered
+// between. Deterministic jitter (a sin hash) keeps it hand-painted, not grid.
 function makeRosetteTexture(furColor, spotColor) {
   const key = `ros|${furColor.getHexString()}|${spotColor.getHexString()}`;
   if (_coatTexCache.has(key)) return _coatTexCache.get(key);
@@ -326,23 +329,48 @@ function makeRosetteTexture(furColor, spotColor) {
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#" + furColor.getHexString();
   ctx.fillRect(0, 0, S, S);
-  ctx.strokeStyle = "#" + spotColor.getHexString();
-  ctx.fillStyle = "#" + spotColor.getHexString();
-  // [x, y, r, gapStart] fractions of S — each rosette is an arc ring with a bite
-  // taken out (gapStart varies) + a small offset fleck inside.
+  const rust = furColor.clone().lerp(new THREE.Color(0x7a3d16), 0.5);
+  const rustHex = "#" + rust.getHexString();
+  const darkHex = "#" + spotColor.getHexString();
+  const jit = (a, b) => { const v = Math.sin(a * 12.9898 + b * 78.233) * 43758.5453; return v - Math.floor(v); };
+  // [x, y, r] fractions of S — rosette centres.
   const rosettes = [
-    [0.16, 0.18, 0.055, 0.4], [0.44, 0.12, 0.045, 2.2], [0.72, 0.2, 0.06, 4.0],
-    [0.12, 0.46, 0.05, 1.4], [0.4, 0.42, 0.06, 3.2], [0.68, 0.5, 0.05, 5.2],
-    [0.9, 0.42, 0.045, 0.8], [0.24, 0.72, 0.055, 2.6], [0.52, 0.74, 0.05, 4.6],
-    [0.8, 0.78, 0.06, 1.0], [0.36, 0.92, 0.045, 3.6], [0.64, 0.9, 0.05, 0.2],
+    [0.16, 0.16, 0.062], [0.46, 0.1, 0.05], [0.74, 0.2, 0.066],
+    [0.1, 0.44, 0.054], [0.4, 0.4, 0.07], [0.7, 0.52, 0.056],
+    [0.94, 0.44, 0.05], [0.22, 0.7, 0.062], [0.52, 0.72, 0.054],
+    [0.82, 0.8, 0.066], [0.34, 0.94, 0.05], [0.64, 0.92, 0.056],
   ];
-  ctx.lineWidth = S * 0.02;
-  for (const [x, y, r, gap] of rosettes) {
+  rosettes.forEach(([x, y, r], i) => {
+    // Rust core — the warm heart of the rosette.
+    ctx.fillStyle = rustHex;
     ctx.beginPath();
-    ctx.arc(x * S, y * S, r * S, gap, gap + Math.PI * 1.55); // ring with a gap
-    ctx.stroke();
+    ctx.ellipse(x * S, y * S, r * S * 0.8, r * S * 0.68, jit(i, 0) * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+    // Broken outline: 4-6 chunky dark blobs around the rim, one gap left open
+    // (paw-print / donut rosetting). Blobs elongate along the rim tangent.
+    const n = 4 + (i % 3);
+    const skip = i % n;
+    ctx.fillStyle = darkHex;
+    for (let k = 0; k < n; k++) {
+      if (k === skip) continue; // the break in the ring
+      const ang = (k / n) * Math.PI * 2 + jit(i, k) * 0.7;
+      const bx = x * S + Math.cos(ang) * r * S * 0.92;
+      const by = y * S + Math.sin(ang) * r * S * 0.8;
+      ctx.beginPath();
+      ctx.ellipse(bx, by, r * S * (0.4 + jit(i, k + 9) * 0.14), r * S * 0.26, ang + Math.PI / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+  // Small solid spots peppered between the rosettes (the spotted-belly look).
+  ctx.fillStyle = darkHex;
+  const spots = [
+    [0.3, 0.26, 0.016], [0.6, 0.32, 0.02], [0.86, 0.62, 0.017], [0.06, 0.62, 0.02],
+    [0.36, 0.58, 0.016], [0.62, 0.6, 0.014], [0.12, 0.86, 0.02], [0.5, 0.86, 0.016],
+    [0.92, 0.12, 0.018], [0.04, 0.28, 0.015], [0.7, 0.06, 0.016], [0.96, 0.94, 0.02],
+  ];
+  for (const [x, y, r] of spots) {
     ctx.beginPath();
-    ctx.ellipse(x * S + r * S * 0.2, y * S - r * S * 0.15, r * S * 0.32, r * S * 0.38, 0.3, 0, Math.PI * 2);
+    ctx.ellipse(x * S, y * S, r * S, r * S * 1.25, 0.4, 0, Math.PI * 2);
     ctx.fill();
   }
   const t = _finishTex(c);
@@ -641,7 +669,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     if (isSpotted) return makeSpotTexture(pal.fur, pal.stripe);
     if (isCalico) return makeCalicoTexture(pal.fur);     // tricolour ginger/black patches
     if (isTortie) return makeTortieTexture(pal.fur);     // mottled ginger/black, no white
-    if (isBengal) return makeRosetteTexture(pal.fur, pal.stripe); // broken-ring rosettes
+    if (isBengal) return forTail
+      ? makeStripeTexture(pal.fur, pal.stripe, 6, "v")   // bengals wear a RINGED tail
+      : makeRosetteTexture(pal.fur, pal.stripe);         // two-tone rosettes on the body
     if (isCow) return makeCowTexture(pal.fur);           // big black patches on white
     return null;
   }
@@ -670,9 +700,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const chestMat = isSmoke
     ? sharedMat("csmoke", () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.92 }))
     : (isSolid || isTortie) ? fur : white;
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 16), chestMat);
-  chest.position.set(0, 0.78, 0.57);
-  chest.scale.set(hasBib ? 0.98 : 0.86, hasBib ? 1.14 : 1.04, hasBib ? 0.62 : 0.54);
+  // A clean ROUND tummy patch: equal width/height and pushed proud of the
+  // belly, so the visible cap silhouettes as a circle. (The old tall ellipsoid
+  // grazed the faceted body and its intersection read as a jagged bow tie.)
+  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 26, 20), chestMat);
+  chest.position.set(0, 0.8, hasBib ? 0.6 : 0.64);
+  chest.scale.set(hasBib ? 1.0 : 0.84, hasBib ? 1.0 : 0.84, 0.5);
   catStatic.push(chest);
 
   // Front paws — posed for the scenario (opts.pose):
