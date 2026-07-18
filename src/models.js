@@ -581,7 +581,9 @@ function catConstGeo() {
 const ARM_POSES = {
   kart: { armR: 0.17, armRot: -1.0, armPos: [0, 0, 0.15], pawPos: [0, 0.15, 0.52], pawScale: [1, 0.82, 1.05], beanY: 0.1, beanZ: 0.7 },
   moto: { armR: 0.17, armRot: -1.42, armPos: [0, 0.12, 0.24], pawPos: [0, 0.3, 0.68], pawScale: [1, 0.95, 0.9], beanY: 0.26, beanZ: 0.86 },
-  sit: { armR: 0.19, armRot: -0.2, armPos: [0, -0.55, 0.26], pawPos: [0, -1.1, 0.36], pawScale: [1.05, 0.8, 1.3], beanY: -1.12, beanZ: 0.62 },
+  // Sitting: no beans — a sitting cat shows the TOPS of its front paws (beans
+  // on the paw front read as claws).
+  sit: { armR: 0.19, armRot: -0.2, armPos: [0, -0.55, 0.26], pawPos: [0, -1.1, 0.36], pawScale: [1.05, 0.8, 1.3], beans: false },
 };
 
 // The rigid clusters (body, head, each arm, each ear, glasses) are baked into a
@@ -694,11 +696,14 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     paw.position.set(...ap.pawPos);
     paw.scale.set(...ap.pawScale);
     parts.push(paw);
-    // Toe-bean detail: three little pads on the front of each paw.
-    for (const tx of [-0.07, 0, 0.07]) {
-      const bean = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pink);
-      bean.position.set(tx, ap.beanY, ap.beanZ);
-      parts.push(bean);
+    // Toe-bean detail: three little pads on the front of each paw (poses with
+    // grounded paws skip them — see ARM_POSES.sit).
+    if (ap.beans !== false) {
+      for (const tx of [-0.07, 0, 0.07]) {
+        const bean = new THREE.Mesh(new THREE.SphereGeometry(0.032, 6, 6), pink);
+        bean.position.set(tx, ap.beanY, ap.beanZ);
+        parts.push(bean);
+      }
     }
     // one mesh per arm; the pivot still pumps it. Geometry is identical for every
     // cat of a pose (colours live in the materials) — shared via the merge cache.
@@ -706,10 +711,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     arms[sx < 0 ? "L" : "R"] = pivot;
   }
   if (pose === "sit") {
-    // Hind feet peeking out beside the front legs, flat on the ground.
+    // Haunches: big thigh mounds against the body's lower sides, so the hind
+    // feet emerge from under something instead of floating beside the body.
+    for (const sx of [-1, 1]) {
+      const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.46, 14, 12), coat);
+      haunch.position.set(sx * 0.6, 0.12, 0.12);
+      haunch.scale.set(0.95, 0.85, 1.05);
+      catStatic.push(haunch);
+    }
+    // Hind feet tucked under the haunches, flat on the ground.
     for (const sx of [-1, 1]) {
       const foot = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), pawMat);
-      foot.position.set(sx * 0.68, -0.18, 0.62);
+      foot.position.set(sx * 0.58, -0.2, 0.6);
       foot.scale.set(1.1, 0.55, 1.5);
       catStatic.push(foot);
     }
@@ -797,7 +810,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   headStatic.push(muzzle);
   const nose = new THREE.Mesh(new THREE.ConeGeometry(0.11, 0.11, 6), pink);
   nose.rotation.x = Math.PI;
-  nose.position.set(0, -0.08, 0.94);
+  // Nestled INTO the muzzle surface (rear half embedded) — at the old (−0.08,
+  // 0.94) it sat past the muzzle's upper edge and visibly floated off the face.
+  nose.position.set(0, -0.13, 0.87);
   headStatic.push(nose);
   // The "ω" smile — both strokes baked into one LineSegments (4 points → 2 segs).
   head.add(new THREE.LineSegments(catConstGeo().mouth, _cMouth));
