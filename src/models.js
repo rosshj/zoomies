@@ -624,7 +624,7 @@ const ARM_POSES = {
   // the TOP toward the body midline — the chest bulges most at x0, so an
   // inward-leaning top tucks fully under the surface instead of standing
   // proud of the flatter surface out at shoulder x.
-  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.22, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
+  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.12, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
   // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
   // the sides, hind feet planted under the body (built in the stand block below).
   stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
@@ -718,7 +718,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // grazed the faceted body and its intersection read as a jagged bow tie.)
   const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 26, 20), chestMat);
   chest.position.set(0, 0.8, hasBib ? 0.6 : 0.64);
-  chest.scale.set(hasBib ? 1.0 : 0.84, hasBib ? 1.0 : 0.84, 0.5);
+  chest.scale.set(hasBib ? 0.92 : 0.75, hasBib ? 0.92 : 0.75, 0.5);
   catStatic.push(chest);
 
   // Front paws — posed for the scenario (opts.pose):
