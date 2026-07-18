@@ -806,19 +806,15 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     }
     parts.push(arm);
     if (ap.pawLog) {
-      // Seamless ankle: a forward-pointing rounded capsule (radius ~ the
-      // leg's) whose back cap is swallowed by the leg's lower end, plus two
-      // toe bumps at the tip with a soft groove between them.
-      const paw = new THREE.Mesh(new THREE.CapsuleGeometry(0.165, 0.2, 6, 12), pawMat);
+      // Seamless ankle: ONE forward-pointing rounded capsule (radius ~ the
+      // leg's) whose back cap is swallowed by the leg's lower end — a touch
+      // wider and squashed so the tip reads as a paw, with no separate toe
+      // pieces to break the silhouette.
+      const paw = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.18, 6, 12), pawMat);
       paw.position.set(...ap.pawPos);
       paw.rotation.x = Math.PI / 2;
+      paw.scale.set(1.15, 0.9, 1);
       parts.push(paw);
-      for (const tx of [-0.085, 0.085]) {
-        const toe = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), pawMat);
-        toe.position.set(tx, ap.pawPos[1] - 0.045, ap.pawPos[2] + 0.24);
-        toe.scale.set(1, 0.9, 1.15);
-        parts.push(toe);
-      }
     } else {
       const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
       paw.position.set(...ap.pawPos);
