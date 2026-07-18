@@ -1354,16 +1354,19 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     // pose reaches for). A chunky centre cap + two spokes IN the wheel's
     // plane, so the assembly reads as one clean part.
     const WHEEL_TILT = Math.PI / 2.6;
+    // The hub disc and spokes must have their AXES along the wheel's normal —
+    // that's the torus tilt minus 90° (same tilt left them standing sideways).
+    const IN_PLANE = WHEEL_TILT - Math.PI / 2;
     const wheel = add(new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), dark));
     wheel.position.set(0, 1.4, 0.55);
     wheel.rotation.x = WHEEL_TILT;
     const wheelHub = add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.09, 12), chrome));
     wheelHub.position.set(0, 1.4, 0.55);
-    wheelHub.rotation.x = WHEEL_TILT;
+    wheelHub.rotation.x = IN_PLANE;
     for (const sx of [-1, 1]) {
       const spoke = add(new THREE.Mesh(rbox(0.3, 0.05, 0.07, 0.02), dark));
       spoke.position.set(sx * 0.17, 1.4, 0.55);
-      spoke.rotation.x = WHEEL_TILT; // lies in the wheel's plane
+      spoke.rotation.x = IN_PLANE; // flat against the wheel's face
     }
     // Seat where the cat sits — same height in every body so the cat always fits.
     const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
@@ -1446,11 +1449,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
         winglet.position.set(sx * 0.64, 0.6, 1.25);
       }
-      // Steering column runs PERPENDICULAR to the wheel's face, from the cowl
-      // up to the hub (it used to skewer the rim at a crooked angle).
-      const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.75, 10), dark));
-      column.position.set(0, 1.07, 0.675);
-      column.rotation.x = -(Math.PI / 2 - Math.PI / 2.6); // wheel tilt minus 90°
+      // Steering post drops STRAIGHT DOWN from the hub into the panel — well
+      // clear of the number roundel further down the slope.
+      const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.55, 10), dark));
+      column.position.set(0, 1.18, 0.55);
       // Wrap-around bumpers, front and rear (dark, low, at rail height). The
       // front one is wide and close, guarding the front wheels like the real thing.
       const bumperF = add(new THREE.Mesh(rbox(2.3, 0.2, 0.3, 0.14), dark));
@@ -1482,7 +1484,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         // Off-road roll cage in body paint, TRIANGULAR in profile like the
         // real thing: long tubes rake all the way down to the nose, and the
         // short roof only covers the driver — not a box.
-        const tube = (len) => new THREE.CylinderGeometry(0.07, 0.07, len, 8);
+        // Smooth round tubes (high segment count, like the whip aerial).
+        const tube = (len) => new THREE.CylinderGeometry(0.08, 0.08, len, 14);
         for (const sx of [-1, 1]) {
           // Long front diagonals: nose (y 0.55, z 1.5) → roof front (y 2.72, z -0.62).
           const diag = add(new THREE.Mesh(tube(3.05), paint));
@@ -1503,6 +1506,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
           cross.rotation.z = Math.PI / 2;
           cross.position.set(0, cy, cz);
         }
+        // Little canvas roof stretched over the frame (the inspo's sun shade).
+        const roof = add(new THREE.Mesh(rbox(1.78, 0.09, 1.34, 0.04), dark));
+        roof.position.set(0, 2.8, -1.21);
       }
     }
   }
@@ -1530,10 +1536,12 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     // …plus a tall CURVED whip aerial off the rear corner flying a triangular
     // body-coloured pennant. The pennant hangs on its own pivot (returned as
     // `flag`) so the kart can flap it live each frame.
+    // Rooted just behind the seat — ahead of the lip spoiler, so the arc never
+    // passes through it.
     const whip = new THREE.QuadraticBezierCurve3(
-      new THREE.Vector3(0.82, 0.5, -2.25),
-      new THREE.Vector3(0.82, 1.65, -2.3),
-      new THREE.Vector3(0.82, 2.15, -2.72)
+      new THREE.Vector3(0.82, 0.55, -1.88),
+      new THREE.Vector3(0.82, 1.72, -1.95),
+      new THREE.Vector3(0.82, 2.2, -2.38)
     );
     const pole = add(new THREE.Mesh(new THREE.TubeGeometry(whip, 10, 0.035, 6), chrome));
     // Triangle pennant, thin-extruded so both faces render with the shared
@@ -1566,14 +1574,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
 
   // --- Greebles: chrome roll hoop (buggy) + twin exhaust tips (all) ---
   if (st.hoop) {
-    // Roll hoop BEHIND the seat (it used to arc straight through the
-    // seatback), and big enough to clear the seat's top.
+    // Roll hoop BEHIND the seat, with straight legs running all the way down
+    // to the chassis pan — a grounded hoop, not a floating arch.
     const hoop = add(new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.09, 10, 20, Math.PI), chrome));
     hoop.position.set(0, 1.3, -1.62);
-    // little diagonal brace behind it
-    const brace = add(new THREE.Mesh(rbox(0.12, 0.12, 0.9, 0.05), chrome));
-    brace.position.set(0, 1.1, -1.95);
-    brace.rotation.x = 0.6;
+    for (const sx of [-1, 1]) {
+      const leg = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.95, 10), chrome));
+      leg.position.set(sx * 0.82, 0.87, -1.62);
+    }
   }
   // Twin exhaust tips — tucked in tight and shorter on the moto's tail.
   const exX = bodyKind === "moto" ? 0.26 : 0.42;
