@@ -586,9 +586,9 @@ function catConstGeo() {
     return _sharedGeo(new THREE.BufferGeometry().setFromPoints(pts));
   };
   _catConstGeo = {
-    tail: _sharedGeo(new THREE.TubeGeometry(tailCurve, 28, 0.2, 10)),
+    tail: _sharedGeo(new THREE.TubeGeometry(tailCurve, 28, 0.15, 10)),
     tailTipPos: tailCurve.getPoint(1),
-    tailTip: _sharedGeo(new THREE.SphereGeometry(0.2, 12, 12)),
+    tailTip: _sharedGeo(new THREE.SphereGeometry(0.15, 12, 12)),
     eyelid: _sharedGeo(new THREE.SphereGeometry(0.26, 14, 10)),
     mouth: _sharedGeo(new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(-0.12, -0.26, 0.86),
@@ -618,7 +618,10 @@ const ARM_POSES = {
   // Sitting: no beans — a sitting cat shows the TOPS of its front paws (beans
   // on the paw front read as claws). Legs run all the way DOWN to the ground
   // (paw bottoms at the floor) and reach a touch forward, clear of the hind feet.
-  sit: { armR: 0.19, armRot: -0.18, armPos: [0, -0.58, 0.3], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
+  // armLen stretches the leg capsule UP so its top buries deep inside the
+  // chest (the default 0.6 ends right at the body surface, showing the cap's
+  // rounding and an intersection seam); the paw end stays put.
+  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
   // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
   // the sides, hind feet planted under the body (built in the stand block below).
   stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
@@ -731,7 +734,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     pivot.position.set(sx * 0.5, 1.05, 0.45);
     cat.add(pivot);
     const parts = [];
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(ap.armR, 0.6, 4, 10), pawMat);
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(ap.armR, ap.armLen ?? 0.6, 4, 10), pawMat);
     arm.position.set(...ap.armPos);
     arm.rotation.x = ap.armRot;
     parts.push(arm);
@@ -1015,8 +1018,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // narrows 0.87→0.77 across its span) — snug against the body yet proud of
     // it everywhere, and kept below the animated head (a straight ring higher
     // up cuts into the skull when the head leans). Slight dip toward the throat.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.92, 0.2, 32, 1, true), bandMat);
-    band.position.set(0, 1.76, 0.02); band.rotation.x = 0.08; acc.add(band);
+    // Tilted like a worn kerchief: high on the nape, dipping down the throat
+    // (same fit rules as the collar below — rim grazes the torso at both ends).
+    // (Ring smaller + shifted forward for the same egg-section fit reasons as
+    // the collar below.)
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.9, 0.2, 32, 1, true), bandMat);
+    band.position.set(0, 1.73, 0.08); band.rotation.x = 0.24; acc.add(band);
     // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
     // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
     // instead of the chest bulging through a flat plane. Top edge tucks behind the
@@ -1024,7 +1031,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     //   TL ── TR      (top edge, at the band, z 0)
     //     \ MC /       (centre bulged forward, +z, riding over the chest)
     //       BP         (point, forward a little)
-    const fp = [-0.54, 0, 0,  0.54, 0, 0,  0, -0.30, 0.22,  0, -0.60, 0.16];
+    // Top corners pull BACK (-z) so they wrap around the chest's curve and
+    // never peek past the flank silhouette from rear three-quarter views.
+    const fp = [-0.5, 0, -0.1,  0.5, 0, -0.1,  0, -0.30, 0.22,  0, -0.60, 0.16];
     const fuv = [0, 1,  1, 1,  0.5, 0.5,  0.5, 0];
     const fgeo = new THREE.BufferGeometry();
     fgeo.setAttribute("position", new THREE.Float32BufferAttribute(fp, 3));
@@ -1032,18 +1041,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fgeo.setIndex([0, 2, 1, 0, 3, 2, 2, 3, 1]);
     fgeo.computeVertexNormals();
     const flap = new THREE.Mesh(fgeo, clothMat);
-    flap.position.set(0, 1.72, 0.8); acc.add(flap); // top edge tucked under the raised band
+    flap.position.set(0, 1.56, 0.82); acc.add(flap); // top edge tucked behind the band's lowered front
     // The tie at the nape: a knot with two pointed tails, as when a bandana is
     // knotted at the back of the neck. Pushed well behind the neck (z ~ -0.95) so
     // it sits PROUD of the torso's back (which reaches ~z-0.85 here) instead of
     // being buried inside it.
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), clothMat);
-    knot.position.set(0, 1.9, -0.86); knot.scale.set(1.5, 1.2, 1.0); acc.add(knot);
+    knot.position.set(0, 2.02, -0.7); knot.scale.set(1.5, 1.2, 1.0); acc.add(knot);
     for (const sx of [-1, 1]) {
+      // Pushed to z -0.84 so the down-swung tips lie ON the flank instead of
+      // poking through it (the torso back reaches ~z -0.80 at their height).
       const tail = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.52, 4), clothMat);
-      tail.position.set(sx * 0.2, 1.66, -0.88);
-      tail.rotation.z = sx * -2.5; // apex swings down-and-out to the side
-      tail.rotation.y = sx * 0.3;
+      tail.position.set(sx * 0.18, 1.8, -0.86);
+      tail.rotation.z = sx * -2.85; // apex hangs down, slightly out — tips stay ON the back, not through the flank
+      tail.rotation.y = sx * 0.15;
       tail.scale.set(1, 1, 0.55);  // flatten like cloth
       acc.add(tail);
     }  } else if (accId === "collar") {
@@ -1054,10 +1065,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // when the head leans. The gold bell hangs off the band's front lower
     // edge, tucked under the chin and clear of the muzzle.
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.55, side: THREE.DoubleSide });
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.92, 0.22, 32, 1, true), m);
-    collar.position.set(0, 1.75, 0.02); collar.rotation.x = 0.06; acc.add(collar);
+    // Tilted like a worn collar: high up the back of the neck (top edge ~y2.0
+    // at the nape), dipping down the front so the throat sits well below the
+    // chin. The cone radii are sized so the tilted rim grazes the torso at
+    // both extremes (front bottom edge ~z0.90 against the chest bulge).
+    // The tilted plane cuts an egg-shaped body section — wide at the low
+    // front, narrow at the high nape — so the ring is SMALLER than a level
+    // band and shifted forward (z 0.08) to stay 0.02-0.06 proud at all four
+    // rim extremes instead of floating off the nape / knifing into the chest.
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.9, 0.22, 32, 1, true), m);
+    collar.position.set(0, 1.72, 0.08); collar.rotation.x = 0.22; acc.add(collar);
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
-    bell.position.set(0, 1.6, 0.95); acc.add(bell);  } else if (accId === "bow") {
+    bell.position.set(0, 1.3, 0.97); acc.add(bell);  } else if (accId === "bow") {
     // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
     // on the upper chest in the body frame (a real bow tie, not a hair bow).
     const m = accMat(accCol);
