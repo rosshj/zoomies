@@ -185,8 +185,8 @@ export const ACCESSORY_COLORS = {
   chef:       [0xf0f0f0, 0xe23b3b, 0x2f6fd6, 0xf5c518, 0x1a1a1a, 0xff5fa2, 0x37b24d, 0xa259ff, 0x8a8f98], // kitchen whites
   wizard:     [0x4b3a8f, 0x2f4a6b, 0x1a1a1a, 0x6b2f3a, 0x24614a, 0xa259ff, 0xe23b3b, 0xf5c518, 0x8a8f98], // mystic robes
   viking:     [0x8a8f98, 0x6b4a2f, 0x1a1a1a, 0xcaa472, 0x2f4a6b, 0xe23b3b, 0x37b24d, 0xf5c518, 0xf0f0f0], // norse metals
-  scarf:      [0xe23b3b, 0x3f7fd6, 0x37b24d, 0xf5c518, 0xa259ff, 0xff8c1a, 0x18b6a6, 0xff5fa2, 0x1a1a1a], // knit colours
-  charm:      [0xd23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xa259ff, 0x18b6a6, 0xff8c1a], // collar colours
+  scarf:      [0x9aa2a8, 0xe23b3b, 0x3f7fd6, 0x37b24d, 0xf5c518, 0xa259ff, 0xff8c1a, 0x18b6a6, 0xff5fa2], // knit colours (soft grey default)
+  charm:      [0x7fb3d9, 0xd23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xa259ff, 0x18b6a6], // collar colours (light blue default)
 };
 const PATTERN_ACCESSORY = {
   spotted: "cap", solid: "headphones", snowshoe: "beanie", point: "flower",
@@ -1370,9 +1370,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       }
     });
     const hat = new THREE.Mesh(geo, m);
-    hat.position.set(0, -0.1, 0.02); hat.scale.set(1, 1, 0.94); acc.add(hat);
+    hat.position.set(0, -0.04, 0.02); hat.scale.set(1, 1, 0.94); acc.add(hat); // low enough to sit, high enough that the scalp stays inside
     const hatband = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.53, 0.1, 18), accMat(accColDark()));
-    hatband.position.set(0, 0.58, 0.02); hatband.scale.set(1, 1, 0.94); acc.add(hatband);  } else if (accId === "aviator") {
+    hatband.position.set(0, 0.64, 0.02); hatband.scale.set(1, 1, 0.94); acc.add(hatband);  } else if (accId === "aviator") {
     // leather flight cap — ONE lathed surface whose skirt hangs LONG at the
     // sides (the ear flaps) and lifts clear of the face and nape: the flaps
     // are part of the cap's own surface, molded, never clipping the head.
@@ -1381,10 +1381,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // flaps hang OUTSIDE the cheeks instead of vanishing into them.
     const profile = [[0.8, -0.28], [0.83, 0.0], [0.78, 0.28], [0.66, 0.52], [0.46, 0.7], [0.22, 0.8], [0, 0.82]];
     const geo = latheDeform(profile, 36, (v, theta) => {
-      if (v.y < 0.28) {
-        // skirt zone: raise the front and back, leave the sides hanging as flaps
-        const side = Math.pow(Math.abs(Math.sin(theta)), 1.6);
-        v.y += (0.28 - v.y) * (1 - side) * 0.95;
+      if (v.y < 0.36) {
+        // skirt zone: scoop the front high over the eyes and the back off the
+        // nape; only a narrow arc at each side keeps hanging as the flaps
+        const side = Math.pow(Math.abs(Math.sin(theta)), 2.4);
+        v.y += (0.36 - v.y) * (1 - side);
       }
     });
     const cap = new THREE.Mesh(geo, m);
@@ -1400,45 +1401,46 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     }
     const bridge = new THREE.Mesh(rbox(0.14, 0.05, 0.05, 0.02), gm);
     bridge.position.set(0, 0.6, 0.65); bridge.rotation.x = -0.52; acc.add(bridge);  } else if (accId === "helmet") {
-    // kart racing helmet — ONE lathed shell: a low rounded dome hugging the
-    // scalp (flared lip at the rim), a slim white stripe arcing nose-to-nape,
-    // and a small upturned peak at the brow.
-    const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.35, side: THREE.DoubleSide });
-    const profile = [[0.72, 0.24], [0.75, 0.32], [0.72, 0.48], [0.6, 0.66], [0.4, 0.79], [0.2, 0.85], [0, 0.87]];
+    // kart racing helmet — ONE lathed shell sized to the skull (rim at the
+    // brow, front clear of the eye bulge), a slim stripe tucked into the
+    // crown, a small peak, and a chin strap that's a FULL thin ring — its top
+    // half hides inside the shell so only the under-jaw arc shows (half-rings
+    // left their cut ends poking out of the rim).
+    const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.5, side: THREE.DoubleSide });
+    const profile = [[0.68, 0.26], [0.71, 0.34], [0.68, 0.5], [0.56, 0.68], [0.38, 0.8], [0.18, 0.86], [0, 0.88]];
     const shell = new THREE.Mesh(latheDeform(profile, 36), m);
-    shell.position.set(0, 0.14, 0.03); shell.scale.set(1.1, 0.98, 1.04); acc.add(shell); // raised: rim sits at the brow, not over the eyes
-    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.045, 8, 24, Math.PI), accMat(0xf0f0f0, 0.4));
+    shell.position.set(0, 0.12, 0.0); shell.scale.set(1.18, 0.95, 1.12); acc.add(shell);
+    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.04, 8, 24, Math.PI), accMat(0xf0f0f0, 0.4));
     stripe.rotation.y = -Math.PI / 2; // arc runs nose-to-nape over the dome
-    stripe.position.set(0, 0.26, 0.03); stripe.scale.set(1, 0.88, 1.0); acc.add(stripe); // ends tuck INSIDE the shell rim
+    stripe.position.set(0, 0.14, 0.0); stripe.scale.set(1, 0.9, 1.1); acc.add(stripe);
     const peak = new THREE.Mesh(rbox(0.56, 0.05, 0.3, 0.04), accMat(0x1a1f26, 0.3, 0.3));
-    peak.position.set(0, 0.52, 0.76); peak.rotation.x = -0.28; acc.add(peak);
-    // chin strap: a half-ring hanging from the helmet sides under the jaw
-    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.035, 6, 22, Math.PI), accMat(0x3a3f46, 0.5));
-    strap.rotation.z = Math.PI; // bottom half of the ring
-    strap.position.set(0, 0.2, 0.32); strap.scale.set(1.18, 1.0, 1); acc.add(strap);  } else if (accId === "chef") {
-    // toque — the original band-plus-cloud proportions, scaled up a touch
-    // (the first pass looked right, just small)
-    const m = accMat(accCol, 0.85);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.53, 0.53, 0.3, 18), m);
-    band.position.set(0, 0.62, 0.02); acc.add(band); // slimmer + higher so it rides between the ears
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.52, 14, 12), m);
-    puff.position.set(0, 1.0, 0.02); puff.scale.set(1, 0.75, 1); acc.add(puff);
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + 0.5;
-      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), m);
-      lobe.position.set(Math.sin(a) * 0.35, 1.06, Math.cos(a) * 0.35 + 0.02); acc.add(lobe);
-    }  } else if (accId === "wizard") {
+    peak.position.set(0, 0.5, 0.74); peak.rotation.x = -0.25; acc.add(peak);
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.028, 6, 24), accMat(0x3a3f46, 0.5));
+    strap.position.set(0, 0.2, 0.32); strap.scale.set(1.12, 1.0, 1); acc.add(strap);  } else if (accId === "chef") {
+    // toque — ONE lathed shape: straight band flowing into a puffy ballooned
+    // top, with vertical PLEATS (a gentle cos-5θ scallop) carved into the
+    // puff's own surface — a molded chef's hat, not a ball on a tube.
+    const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.85, side: THREE.DoubleSide });
+    const profile = [[0.53, 0.45], [0.55, 0.62], [0.54, 0.74], [0.63, 0.84], [0.67, 1.0], [0.6, 1.16], [0.44, 1.28], [0.22, 1.34], [0, 1.36]];
+    const geo = latheDeform(profile, 40, (v, theta) => {
+      if (v.y > 0.78) {
+        // pleat the puff; fade the scallop in above the band
+        const k = Math.min(1, (v.y - 0.78) / 0.15) * 0.045;
+        const s = 1 + k * Math.cos(5 * theta);
+        v.x *= s; v.z *= s;
+      }
+    });
+    const hat = new THREE.Mesh(geo, m);
+    hat.position.set(0, 0.14, 0.02); acc.add(hat);  } else if (accId === "wizard") {
     // tall pointed hat, perched a bit higher so its brim rides the crown of
     // the head clear of the ears and scalp
     const m = accMat(accCol, 0.75);
     const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.78, 0.06, 20), m);
     brim.position.set(0, 0.6, 0.02); acc.add(brim);
+    // The cone's slight back-tilt would open a gap over the front brim, so it
+    // sits a touch lower with a gentler lean — same look, sealed junction.
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.15, 16), m);
-    cone.position.set(0, 1.15, 0); cone.rotation.x = -0.06; acc.add(cone);
-    // hat band covers the cone/brim junction (the tilt otherwise opens a gap
-    // at the front)
-    const wband = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.5, 0.14, 16), accMat(accColDark()));
-    wband.position.set(0, 0.67, 0.01); acc.add(wband);
+    cone.position.set(0, 1.14, -0.01); cone.rotation.x = -0.07; acc.add(cone);
     // stars sit half-embedded ON the cone's own surface (its radius tapers
     // from 0.5 at the base y0.575 to 0 at the tip y1.725)
     const star1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), accMat(0xf5c518, 0.4, 0.4));

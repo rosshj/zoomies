@@ -58,7 +58,7 @@ const ACC_SHOTS = [
   ["party", 0xe23b3b, "head"], ["crown", 0xf5c518, "head"], ["pirate", 0x1a1a1a, "head"],
   ["tophat", 0x1a1a1a, "head"], ["cowboy", 0xa9743a, "head"], ["aviator", 0x6b4a2f, "head"],
   ["helmet", 0xe23b3b, "head"], ["chef", 0xf0f0f0, "head"], ["wizard", 0x4b3a8f, "head"],
-  ["viking", 0x8a8f98, "head"], ["scarf", 0xe23b3b, "neck"], ["charm", 0xd23b3b, "neck"],
+  ["viking", 0x8a8f98, "head"], ["scarf", 0x9aa2a8, "neck"], ["charm", 0x7fb3d9, "neck"],
 ];
 for (const [id, hex, zoom] of ACC_SHOTS)
   shots.push({ file: `acc-${id}.jpg`, bg: contrastBg(hex), zoom, spec: { kind: "cat", name: id, fur: 0x8c9298, pattern: "solid", accessory: id } });
