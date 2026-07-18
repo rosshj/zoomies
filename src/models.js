@@ -1213,6 +1213,7 @@ const _kDark = _shared(new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughne
 const _kTire = _shared(new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 1.0, metalness: 0.0 }));
 const _kTread = _shared(new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 1.0, metalness: 0.0 }));
 const _kChrome = _shared(new THREE.MeshStandardMaterial({ color: 0xd2dadf, metalness: 0.9, roughness: 0.22 }));
+const _kRim = _shared(new THREE.MeshStandardMaterial({ color: 0xc9cfd6, metalness: 0.45, roughness: 0.42 }));
 const _kCaliper = _shared(new THREE.MeshStandardMaterial({ color: 0xcf3a2e, metalness: 0.3, roughness: 0.4 }));
 
 // Builds a chunky go-kart as ONE cohesive moulded shell (floor pan → cockpit
@@ -1271,12 +1272,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     m.userData.paint = true;
     return m;
   });
-  // Shared constant materials (matte rubber + tread, chrome, dark trim, caliper).
+  // Shared constant materials (matte rubber, chrome, dark trim).
   const dark = _kDark;
   const tire = _kTire;
-  const tread = _kTread;
   const chrome = _kChrome;
-  const rimMat = paintMat("rim", () => new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.85), roughness: 0.35, metalness: 0.3 }));
   // Headlights glow much brighter at night (bloom picks them up). The intensity is
   // baked at creation from the current light level, so the level is in the key.
   const glass = sharedMat(`kglass|${_lightLevel}`, () => new THREE.MeshStandardMaterial({
@@ -1400,13 +1399,15 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       // stripe, low side pods, and an engine block behind the seat. The old
       // slab-sided body read as a toy car, not a kart. ---
       // Flat floor pan riding just off the tarmac (dark — chassis, not paint).
-      const pan = add(new THREE.Mesh(rbox(2.1, 0.22, 4.0, 0.11), dark));
-      pan.position.set(0, 0.4, 0.15);
+      // Runs all the way back under the engine so the rear bumper and exhaust
+      // tips attach to the frame instead of floating behind it.
+      const pan = add(new THREE.Mesh(rbox(2.1, 0.22, 4.6, 0.11), dark));
+      pan.position.set(0, 0.4, -0.1);
       // Exposed tube side-rails: the go-kart frame look.
       for (const sx of [-1, 1]) {
-        const rail = add(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 3.4, 10), dark));
+        const rail = add(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4.2, 10), dark));
         rail.rotation.x = Math.PI / 2;
-        rail.position.set(sx * 1.02, 0.34, 0.15);
+        rail.position.set(sx * 1.02, 0.34, -0.15);
       }
       // SHORT nose, real-kart shape: a low under-stub barely past the front
       // wheels, and ONE continuous raked panel running from the stub up to the
@@ -1444,13 +1445,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       bumperF.position.set(0, 0.4, snout + 0.5);
       const bumperR = add(new THREE.Mesh(rbox(1.85, 0.2, 0.26, 0.12), dark));
       bumperR.position.set(0, 0.42, -2.35);
-      // Low side pods between the wheels — ONE clean shape each, with the
-      // roundel flush on the flat outer face so the number reads as painted on.
+      // Low side pods between the wheels — ONE clean shape each, shortened so
+      // they stay out of the tyres' space, with a nearly FLAT outer face
+      // (small corner radius) so the flush roundel conforms like paint.
       for (const sx of [-1, 1]) {
-        const pod = add(new THREE.Mesh(rbox(0.52, 0.5, 2.3, 0.16), paint));
-        pod.position.set(sx * 1.18, 0.5, -0.1);
+        const pod = add(new THREE.Mesh(rbox(0.46, 0.5, 1.62, 0.07), paint));
+        pod.position.set(sx * 1.12, 0.5, -0.12);
       }
-      addRoundels(1.45, 0.5, -0.1, 0.44);
+      addRoundels(1.36, 0.5, -0.12, 0.4);
       // Bare bucket seat: tall back + side bolsters (nothing to sink into now).
       const seatBack = add(new THREE.Mesh(rbox(1.35, 1.05, 0.34, 0.16), dark));
       seatBack.position.set(0, 1.38, -1.26);
@@ -1481,35 +1483,38 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       plate.position.set(sx * 1.32, 1.55, -2.32);
     }
   } else if (st.wing === "lip") {
-    // Ducktail lip spoiler perched on the rear bumper.
+    // Ducktail lip spoiler perched on the rear bumper…
     const lip = add(new THREE.Mesh(rbox(2.0, 0.12, 0.5, 0.06), paint));
     lip.position.set(0, 0.72, -2.32);
     lip.rotation.x = -0.18;
+    // …plus a body-coloured racing flag flying off the rear corner.
+    const pole = add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.35, 8), chrome));
+    pole.position.set(0.82, 1.15, -2.25);
+    const flag = add(new THREE.Mesh(rbox(0.05, 0.36, 0.64, 0.02), paint));
+    flag.position.set(0.82, 1.6, -2.6); // trailing backward off the pole top
+    flag.rotation.y = 0.14; // a little flutter
   } else if (st.wing === "fin") {
     // Twin swept rocket tail-fins flanking the rear deck (body paint, accent edge),
     // plus a small central spine fin — a jet-age speedster look.
+    // Two clean raked fins, nothing else (the accent edge caps and the centre
+    // spine fin cluttered the tail into a jumble of plates).
     for (const sx of [-1, 1]) {
-      const fin = add(new THREE.Mesh(rbox(0.16, 0.98, 1.05, 0.06), paint));
-      fin.position.set(sx * 0.72, 1.06, -2.18);
+      const fin = add(new THREE.Mesh(rbox(0.14, 0.95, 1.1, 0.07), paint));
+      fin.position.set(sx * 0.72, 1.02, -2.15);
       fin.rotation.x = -0.34; // rake the fin back
       fin.rotation.z = sx * 0.12; // splay outward a touch
-      const edge = add(new THREE.Mesh(rbox(0.1, 0.16, 1.05, 0.04), accent));
-      edge.position.set(sx * 0.72, 1.54, -2.18);
-      edge.rotation.x = -0.34;
-      edge.rotation.z = sx * 0.12;
     }
-    const spineFin = add(new THREE.Mesh(rbox(0.12, 0.62, 0.86, 0.05), accent));
-    spineFin.position.set(0, 0.92, -2.24);
-    spineFin.rotation.x = -0.32;
   }
 
   // --- Greebles: chrome roll hoop (buggy) + twin exhaust tips (all) ---
   if (st.hoop) {
-    const hoop = add(new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.08, 10, 20, Math.PI), chrome));
-    hoop.position.set(0, 1.22, -1.15); // legs reach the low chassis pan
+    // Roll hoop BEHIND the seat (it used to arc straight through the
+    // seatback), and big enough to clear the seat's top.
+    const hoop = add(new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.09, 10, 20, Math.PI), chrome));
+    hoop.position.set(0, 1.3, -1.62);
     // little diagonal brace behind it
     const brace = add(new THREE.Mesh(rbox(0.12, 0.12, 0.9, 0.05), chrome));
-    brace.position.set(0, 1.0, -1.55);
+    brace.position.set(0, 1.1, -1.95);
     brace.rotation.x = 0.6;
   }
   // Twin exhaust tips — tucked in tight and shorter on the moto's tail.
@@ -1590,42 +1595,31 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // rim + chrome hub cap, and a brake caliper at the rim. Fronts a touch smaller
   // than the rears; tyre size scales with the body style. Each wheel's parts are
   // baked into ONE mesh (≈5 draw calls) inside a Group the kart still spins/steers. ---
-  const caliperMat = _kCaliper;
   const wheels = [];
   // `side` is the sign of the wheel's x position so the spokes / hub cap sit on
   // the OUTER face (the visible one) on both sides of the kart.
   function buildWheel(radius, side) {
+    // Real go-kart wheel: a smooth slick tyre, a wide flat SILVER RING rim,
+    // and a deep dark centre bore — no toy spokes. Four lug dots on the ring
+    // keep the spin readable while the kart rolls.
     const w = new THREE.Group();
     const parts = [];
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 22), tire);
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 24), tire);
     t.rotation.z = Math.PI / 2;
     parts.push(t);
-    // A slightly proud, slightly wider tread band around the centre.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(radius * 1.02, radius * 1.02, 0.34, 22), tread);
-    band.rotation.z = Math.PI / 2;
-    parts.push(band);
-    // Hub + 5 spokes on the outer face.
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.26, radius * 0.26, 0.54, 12), rimMat);
-    hub.rotation.z = Math.PI / 2;
-    parts.push(hub);
-    // 5 spokes spaced around the axle. The old per-spoke pivot Group orbited the
-    // spoke's y-offset about the X axle; bake that orbit straight into each spoke's
-    // own transform so they all merge into the single wheel mesh.
-    for (let i = 0; i < 5; i++) {
-      const ang = (i / 5) * Math.PI * 2;
-      const spoke = new THREE.Mesh(rbox(0.1, radius * 0.66, 0.1, 0.03), rimMat);
-      spoke.rotation.x = ang;
-      spoke.position.set(side * 0.24, Math.cos(ang) * radius * 0.36, Math.sin(ang) * radius * 0.36);
-      parts.push(spoke);
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.56, radius * 0.56, 0.53, 20), _kRim);
+    ring.rotation.z = Math.PI / 2;
+    parts.push(ring);
+    const bore = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, 0.55, 16), dark);
+    bore.rotation.z = Math.PI / 2;
+    parts.push(bore);
+    for (let i = 0; i < 4; i++) {
+      const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
+      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.57, 8), dark);
+      lug.rotation.z = Math.PI / 2;
+      lug.position.set(0, Math.cos(ang) * radius * 0.44, Math.sin(ang) * radius * 0.44);
+      parts.push(lug);
     }
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(radius * 0.24, 12, 12), chrome);
-    cap.position.x = side * 0.26;
-    cap.scale.set(0.5, 1, 1);
-    parts.push(cap);
-    // Brake caliper clamped on the inner-upper rim.
-    const caliper = new THREE.Mesh(rbox(0.16, 0.24, 0.18, 0.04), caliperMat);
-    caliper.position.set(-side * 0.12, radius * 0.62, 0.02);
-    parts.push(caliper);
     // Wheel geometry depends only on (radius, side): every kart of a style
     // shares the same four wheel geometries instead of merging 24 of them.
     w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}` }));
@@ -1656,11 +1650,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     casters.add(mergeMeshes(casterParts, { castShadow: false, geoKey: "kcasters" }));
     for (const w of [front, dummy, rear, casters]) { group.add(w); wheels.push(w); }
   } else {
+    // A touch smaller than before so the tyres and side pods keep out of each
+    // other's space (the pods are shorter now too).
     const wheelDefs = [
-      [1.32, 1.55, 0.55],
-      [-1.32, 1.55, 0.55],
-      [1.42, -1.6, 0.66],
-      [-1.42, -1.6, 0.66],
+      [1.32, 1.55, 0.52],
+      [-1.32, 1.55, 0.52],
+      [1.42, -1.6, 0.62],
+      [-1.42, -1.6, 0.62],
     ];
     for (const [x, z, baseR] of wheelDefs) {
       const radius = baseR * st.tire;
