@@ -34,8 +34,8 @@ export const KART_PRESETS = [
   { name: "Teal", color: 0x00897b, style: 0, number: 8 },
   { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
   { name: "Nova", color: 0xec407a, style: 3, number: 6 },
-  { name: "Wheelie", color: 0xff7043, style: 4, number: 10 }, // café-racer moto (training wheels included)
-  { name: "Vanilla", color: 0xf5efdd, style: 5, number: 11 }, // open-top minivan — the roof's cut out so the cat fits
+  // (Wheelie the moto and Vanilla the minivan are parked for now — their model
+  // styles 4 and 5 still exist in createKartModel and will return later.)
   { name: "Prowler", color: 0x3949ab, style: 6, number: 12 }, // off-road buggy with a full roll cage
 ];
 

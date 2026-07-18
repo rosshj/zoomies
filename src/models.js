@@ -1450,14 +1450,12 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         winglet.position.set(sx * 0.64, 0.6, 1.25);
       }
       if (st.hoop || st.cage) {
-        // Off-roaders wear round pod headlights up on chrome stalks (classic
-        // dune-buggy bullets). The glowing lenses join the headlight merge below.
+        // Off-roaders wear round bullet headlights perched ON the front
+        // bumper. The glowing lenses join the headlight merge below.
         for (const sx of [-1, 1]) {
-          const stem = add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.28, 8), chrome));
-          stem.position.set(sx * 0.3, 0.74, snout - 0.2);
-          const pod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.2, 14), chrome));
+          const pod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.22, 14), chrome));
           pod.rotation.x = Math.PI / 2;
-          pod.position.set(sx * 0.3, 0.92, snout - 0.18);
+          pod.position.set(sx * 0.32, 0.62, snout + 0.48);
         }
       }
       // Steering post drops STRAIGHT DOWN from the hub into the panel — well
@@ -1516,6 +1514,21 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
           const cross = add(new THREE.Mesh(tube(1.68), paint));
           cross.rotation.z = Math.PI / 2;
           cross.position.set(0, cy, cz);
+        }
+        // Weld balls round off every tube junction — bare cylinder ends meeting
+        // at angles left open seams at the joins.
+        const JOINTS = [
+          [0.82, 2.72, -0.64], // diagonal top / rail front / front crossbar
+          [0.82, 2.73, -1.78], // rear hoop top / rail rear / rear crossbar
+          [0.82, 1.63, 0.44],  // mid-brace into the diagonals
+          [0.82, 0.55, 1.5],   // diagonal feet on the nose
+          [0.82, 0.5, -1.68],  // rear hoop feet on the pan
+        ];
+        for (const [jx, jy, jz] of JOINTS) {
+          for (const sx of [-1, 1]) {
+            const ball = add(new THREE.Mesh(new THREE.SphereGeometry(0.095, 12, 10), paint));
+            ball.position.set(sx * jx, jy, jz);
+          }
         }
       }
     }
@@ -1627,10 +1640,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       hlParts.push(light);
     }
   } else if (st.hoop || st.cage) {
-    // Lenses for the pod headlights on stalks (housings built in the shell).
+    // Lenses for the bumper-mounted bullet pods (housings built in the shell).
     for (const sx of [-1, 1]) {
       const lens = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 12), glass);
-      lens.position.set(sx * 0.3, 0.92, (st.snout ?? 1.55) - 0.05);
+      lens.position.set(sx * 0.32, 0.62, (st.snout ?? 1.55) + 0.62);
       lens.scale.set(1, 1, 0.7); // shallow dome poking out of the housing
       hlParts.push(lens);
     }

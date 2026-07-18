@@ -84,6 +84,9 @@ import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } fr
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
 const KART_STYLE_COUNT = 7; // GP / roadster / buggy / finned / moto / minivan / cage (see createKartModel STYLES)
+// Styles the custom creator currently offers — moto (4) and minivan (5) are
+// parked for now (the model code stays; they'll come back later).
+const CREATOR_KART_STYLES = [0, 1, 2, 3, 6];
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -101,10 +104,12 @@ function sanitizeCustomCat(c) {
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
+  let style = _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
+  if (!CREATOR_KART_STYLES.includes(style)) style = DEFAULT_CUSTOM_KART.style; // parked styles fall back
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
-    style: _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style),
+    style,
     number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
   };
 }
@@ -3742,13 +3747,18 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
 
 // Custom-kart creator controls.
 _buildSwatchGrid("kart-color-grid", KART_COLOR_SWATCHES, (c) => editCustomKart({ color: c }));
-document.getElementById("kart-style-prev")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + KART_STYLE_COUNT - 1) % KART_STYLE_COUNT }));
-document.getElementById("kart-style-next")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + 1) % KART_STYLE_COUNT }));
+// The stepper walks CREATOR_KART_STYLES (parked styles are skipped).
+const _stepKartStyle = (dir) => {
+  const cur = Math.max(0, CREATOR_KART_STYLES.indexOf(_garageDraft.customKart.style));
+  editCustomKart({ style: CREATOR_KART_STYLES[(cur + dir + CREATOR_KART_STYLES.length) % CREATOR_KART_STYLES.length] });
+};
+document.getElementById("kart-style-prev")?.addEventListener("click", () => _stepKartStyle(-1));
+document.getElementById("kart-style-next")?.addEventListener("click", () => _stepKartStyle(1));
 document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
 document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
 document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
-  color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
+  color: _pick(KART_COLOR_SWATCHES), style: _pick(CREATOR_KART_STYLES), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
 document.getElementById("garage-buy")?.addEventListener("click", (e) => {
