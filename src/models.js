@@ -613,8 +613,9 @@ const ARM_POSES = {
   kart: { armR: 0.17, armRot: -1.35, armPos: [0, -0.02, 0.4], pawPos: [0, -0.04, 0.86], pawScale: [1, 0.85, 1.1], beanY: -0.06, beanZ: 1.05 },
   moto: { armR: 0.17, armRot: -1.42, armPos: [0, 0.12, 0.24], pawPos: [0, 0.3, 0.68], pawScale: [1, 0.95, 0.9], beanY: 0.26, beanZ: 0.86 },
   // Sitting: no beans — a sitting cat shows the TOPS of its front paws (beans
-  // on the paw front read as claws).
-  sit: { armR: 0.19, armRot: -0.2, armPos: [0, -0.55, 0.26], pawPos: [0, -1.1, 0.36], pawScale: [1.05, 0.8, 1.3], beans: false },
+  // on the paw front read as claws). Legs run all the way DOWN to the ground
+  // (paw bottoms at the floor) and reach a touch forward, clear of the hind feet.
+  sit: { armR: 0.19, armRot: -0.18, armPos: [0, -0.58, 0.3], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
   // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
   // the sides, hind feet planted under the body (built in the stand block below).
   stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
@@ -758,11 +759,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       haunch.scale.set(0.95, 0.85, 1.05);
       catStatic.push(haunch);
     }
-    // Hind feet tucked under the haunches, flat on the ground.
+    // Hind feet tucked under the haunches — set WIDE and further back so they
+    // flank the front legs instead of crowding under the front paws.
     for (const sx of [-1, 1]) {
       const foot = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), pawMat);
-      foot.position.set(sx * 0.58, -0.2, 0.6);
-      foot.scale.set(1.1, 0.55, 1.5);
+      foot.position.set(sx * 0.66, -0.16, 0.42);
+      foot.scale.set(1.05, 0.55, 1.45);
       catStatic.push(foot);
     }
   } else if (pose === "stand") {
