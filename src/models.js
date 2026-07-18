@@ -1234,11 +1234,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   //   speedster — longest needle nose, low slicks, twin swept rocket tail-fins
   //   moto      — a narrow café-racer with a tank, forks, and training wheels
   //   van       — an open-top minivan (roof cut away so the cat pokes out)
+  // Kart styles use `snout` — how far the short lower nose reaches (real karts
+  // barely out-reach their front wheels); the van keeps its long-hood fields.
   const STYLES = [
-    { nose: 1.7, noseZ: 2.0, tipZ: 2.95, wing: "big", tire: 1.0, hoop: false },
-    { nose: 1.25, noseZ: 1.85, tipZ: 2.6, wing: "lip", tire: 1.06, hoop: false },
-    { nose: 1.0, noseZ: 1.75, tipZ: 2.45, wing: "none", tire: 1.2, hoop: true },
-    { nose: 1.95, noseZ: 2.15, tipZ: 3.2, wing: "fin", tire: 0.94, hoop: false },
+    { snout: 1.55, wing: "big", tire: 1.0, hoop: false },
+    { snout: 1.45, wing: "lip", tire: 1.06, hoop: false },
+    { snout: 1.3, wing: "none", tire: 1.2, hoop: true },
+    { snout: 1.8, wing: "fin", tire: 0.94, hoop: false },
     { body: "moto", wing: "none", tire: 1.12, hoop: false },
     { body: "van", nose: 1.05, noseZ: 1.9, tipZ: 2.55, hlZ: 2.72, wing: "none", tire: 1.05, hoop: false },
   ];
@@ -1406,21 +1408,34 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         rail.rotation.x = Math.PI / 2;
         rail.position.set(sx * 1.02, 0.34, 0.15);
       }
-      // Narrow tapering nose cone in body paint (style sets its length).
-      const nose = add(new THREE.Mesh(rbox(0.95, 0.4, st.nose + 0.5, 0.2), paint));
-      nose.position.set(0, 0.56, st.noseZ);
-      const noseTip = add(new THREE.Mesh(rbox(0.62, 0.34, 0.9, 0.26), paint));
-      noseTip.position.set(0, 0.52, st.tipZ);
-      // Cowl rising from the nose to the wheel, with the column beneath it.
-      const cowl = add(new THREE.Mesh(rbox(0.85, 0.62, 0.7, 0.2), paint));
-      cowl.position.set(0, 0.84, 0.74);
-      cowl.rotation.x = 0.3;
+      // SHORT nose, real-kart shape: a low stub barely past the front wheels,
+      // and a raked cowl sweeping up from it to the steering wheel — with the
+      // number roundel painted on the cowl's face, like the reference kart.
+      const snout = st.snout ?? 1.55;
+      const stub = add(new THREE.Mesh(rbox(0.95, 0.3, 1.5, 0.15), paint));
+      stub.position.set(0, 0.46, snout - 0.55);
+      const stubTip = add(new THREE.Mesh(rbox(0.7, 0.26, 0.5, 0.13), paint));
+      stubTip.position.set(0, 0.44, snout + 0.12);
+      const cowl = add(new THREE.Mesh(rbox(0.88, 0.3, 1.6, 0.15), paint));
+      cowl.position.set(0, 0.82, 0.85);
+      cowl.rotation.x = -0.42; // sweeps up toward the wheel
+      // Number roundel lying on the cowl's raked face.
+      const cowlNum = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.52), numMat);
+      cowlNum.position.set(0, 0.99, 0.93);
+      cowlNum.rotation.x = -(Math.PI / 2 - 0.42); // flush on the raked panel
+      roundels.push(cowlNum);
+      // Little accent winglets flanking the cowl (the reference's red fins).
+      for (const sx of [-1, 1]) {
+        const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
+        winglet.position.set(sx * 0.64, 0.66, 1.2);
+      }
       const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8, 8), dark));
       column.position.set(0, 1.08, 0.68);
       column.rotation.x = 0.5;
-      // Wrap-around bumpers, front and rear (dark, low, at rail height).
-      const bumperF = add(new THREE.Mesh(rbox(1.85, 0.2, 0.28, 0.13), dark));
-      bumperF.position.set(0, 0.4, st.tipZ + 0.5); // tucked against the nose tip
+      // Wrap-around bumpers, front and rear (dark, low, at rail height). The
+      // front one is wide and close, guarding the front wheels like the real thing.
+      const bumperF = add(new THREE.Mesh(rbox(2.3, 0.2, 0.3, 0.14), dark));
+      bumperF.position.set(0, 0.4, snout + 0.5);
       const bumperR = add(new THREE.Mesh(rbox(1.85, 0.2, 0.26, 0.12), dark));
       bumperR.position.set(0, 0.42, -2.35);
       // Low side pods between the wheels, accent-capped, wearing the roundels.
@@ -1431,10 +1446,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         podCap.position.set(sx * 1.18, 0.66, -0.1);
       }
       addRoundels(1.46, 0.5, -0.1, 0.5);
-      // Racing stripe down the nose cone.
-      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.34, st.nose + 0.3), stripe));
+      // Racing stripe down the low nose stub.
+      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.32, 1.4), stripe));
       noseStripe.rotation.x = -Math.PI / 2;
-      noseStripe.position.set(0, 0.765, st.noseZ);
+      noseStripe.position.set(0, 0.611, snout - 0.55);
       // Bare bucket seat: tall back + side bolsters (nothing to sink into now).
       const seatBack = add(new THREE.Mesh(rbox(1.35, 1.05, 0.34, 0.16), dark));
       seatBack.position.set(0, 1.38, -1.26);
@@ -1532,10 +1547,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       hlParts.push(light);
     }
   } else {
-    // Kart lights ride the narrow nose cone, just behind its tip.
+    // Kart lights sit on the short nose stub's tip.
     for (const sx of [-1, 1]) {
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 12), glass);
-      light.position.set(sx * 0.28, 0.54, st.tipZ + 0.38);
+      light.position.set(sx * 0.26, 0.5, (st.snout ?? 1.55) + 0.3);
       hlParts.push(light);
     }
   }
