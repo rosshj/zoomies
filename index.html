@@ -327,10 +327,20 @@
             </span>
             <span class="tile-chevron">›</span>
           </button>
+          <!-- The reward loop, first-class: live status shows waiting badge
+               claims, an affordable prize, or the next cup prize to chase. -->
+          <button id="open-catalog" class="menu-tile">
+            <span class="tile-ico">🐟</span>
+            <span class="tile-text">
+              <span class="tile-title">Cat&#8209;alog · <span id="treats-balance">0</span> 🐟</span>
+              <span class="tile-sub" id="catalog-summary">Prizes · badges · trophies</span>
+            </span>
+            <span id="catalog-tile-alert" class="tile-alert hidden">!</span>
+            <span class="tile-chevron">›</span>
+          </button>
         </nav>
         <div class="menu-footer menu-progress-row">
           <button id="open-daily" class="secondary small">📅 Daily</button>
-          <button id="open-catalog" class="secondary small">🐟 <span id="treats-balance">0</span> · Cat&#8209;alog</button>
         </div>
         <div class="menu-footer">
           <button id="howto-btn" class="secondary small">❓ How to Play</button>

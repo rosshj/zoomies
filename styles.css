@@ -1032,6 +1032,20 @@ body {
   line-height: 1;
   color: rgba(255, 255, 255, 0.38);
 }
+/* "Something's waiting for you" bubble on the Cat-alog tile. */
+.tile-alert {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #ffcf33;
+  color: #211a02;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+  box-shadow: 0 0 8px rgba(255, 207, 51, 0.6);
+}
 
 /* Quiet utility row under the tiles (help / settings / install). */
 .menu-footer {

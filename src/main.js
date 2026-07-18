@@ -4105,6 +4105,36 @@ function refreshTreatsChip() {
   if (el) el.textContent = String(profile.treats);
   const c = document.getElementById("chrome-treats-n");
   if (c) c.textContent = String(profile.treats);
+  refreshCatalogTile();
+}
+// The Cat-alog tile advertises the reward loop, most exciting thing first:
+// badges waiting to be claimed, then a prize the player can already afford,
+// then the next cup exclusive still to be won.
+function refreshCatalogTile() {
+  const sub = document.getElementById("catalog-summary");
+  const alertDot = document.getElementById("catalog-tile-alert");
+  if (!sub) return;
+  let text = "Prizes · badges · trophies";
+  let hot = false;
+  if (profile.pendingClaims.length) {
+    text = profile.pendingClaims.length === 1
+      ? "🏅 A badge is waiting — claim it!"
+      : `🏅 ${profile.pendingClaims.length} badges waiting — claim them!`;
+    hot = true;
+  } else {
+    const affordable = CATALOG
+      .filter((e) => typeof e.price === "number" && e.price > 0 && e.price <= profile.treats && !isUnlocked(profile, e.id))
+      .sort((a, b) => a.price - b.price)[0];
+    if (affordable) {
+      text = `✨ You can afford ${unlockName(affordable.id)}!`;
+      hot = true;
+    } else {
+      const nextCup = CUPS.find((cup) => !profile.trophies[cup.id] && cup.unlockId);
+      if (nextCup) text = `🏆 Win the ${nextCup.name}: ${unlockName(nextCup.unlockId)}`;
+    }
+  }
+  sub.textContent = text;
+  alertDot?.classList.toggle("hidden", !hot);
 }
 
 // Start a cup: seed the run state and reload into race 1 (each cup race is a
