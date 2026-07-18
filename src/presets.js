@@ -4,22 +4,24 @@
 // asset viewer to produce the Cat-alog's prize thumbnails.
 
 // Nine distinct breeds, each a different markings template (not just a recolour
-// of the same one): see createCat for how each pattern is drawn.
+// of the same one): see createCat for how each pattern is drawn. An `accessory`
+// overrides the pattern's default so every named cat wears something DISTINCT
+// (three tabbies would otherwise all show up in the same bandana).
 export const CAT_PRESETS = [
-  { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby
-  { name: "Smokey", fur: 0x8c9298, pattern: "solid" }, // plush solid grey (Russian Blue)
-  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black & white tuxedo
-  { name: "Snow", fur: 0xfbfbfb, pattern: "snowshoe" }, // white + seal mask/points
-  { name: "Whiskey", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
-  { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
-  { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
-  { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
-  { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby" }, // cool silver mackerel tabby
-  { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell (ginger + black, no white)
-  { name: "Ziggy", fur: 0xd9a34a, pattern: "bengal" }, // golden bengal, broken-ring rosettes
-  { name: "Moo", fur: 0xf6f3ea, pattern: "cow" }, // milk-white with big black patches (and a bell collar)
-  { name: "Misty", fur: 0x565e6e, pattern: "smoke" }, // blue-grey smoke, silver chest
-  { name: "Biscuit", fur: 0xe3c692, pattern: "tabby" }, // warm golden mackerel tabby
+  { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby · cap
+  { name: "Smokey", fur: 0x8c9298, pattern: "solid" }, // plush solid grey (Russian Blue) · headphones
+  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black & white tuxedo · sunglasses
+  { name: "Snow", fur: 0xfbfbfb, pattern: "snowshoe" }, // white + seal mask/points · beanie
+  { name: "Whiskey", fur: 0xc8966a, pattern: "tabby", accessory: "cowboy" }, // brown tabby, hat to match the name
+  { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks · fedora
+  { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese · flower
+  { name: "Patches", fur: 0xf5ead6, pattern: "calico", accessory: "party" }, // tricolour calico, always celebrating
+  { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby", accessory: "helmet" }, // silver tabby, full race trim
+  { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell · bow tie
+  { name: "Ziggy", fur: 0xd9a34a, pattern: "bengal", accessory: "aviator" }, // golden bengal daredevil
+  { name: "Moo", fur: 0xf6f3ea, pattern: "cow" }, // milk-white with big black patches · bell collar
+  { name: "Misty", fur: 0x565e6e, pattern: "smoke", accessory: "wizard" }, // blue-grey smoke, suitably mysterious
+  { name: "Biscuit", fur: 0xe3c692, pattern: "tabby", accessory: "chef" }, // warm golden tabby, fresh from the oven
 ];
 
 // Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /

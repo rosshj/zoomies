@@ -684,6 +684,19 @@ function taperedTube(pts, r0, r1, segs = 14, radial = 10) {
       const a = i * (radial + 1) + j, b2 = a + radial + 1;
       idx.push(a, b2, a + 1, a + 1, b2, b2 + 1);
     }
+  // End caps (fans to the curve's endpoints) so the sweep reads SOLID from
+  // every angle — an open tube shows its hollow mouth. Pair the mesh with a
+  // DoubleSide material so cap winding never matters.
+  const c0 = curve.getPoint(0), c1 = curve.getPoint(1);
+  const bi = pos.length / 3;
+  pos.push(c0.x, c0.y, c0.z); uv.push(0.5, 0);
+  const ti = pos.length / 3;
+  pos.push(c1.x, c1.y, c1.z); uv.push(0.5, 1);
+  for (let j = 0; j < radial; j++) {
+    idx.push(bi, j + 1, j);
+    const t0 = segs * (radial + 1) + j;
+    idx.push(ti, t0, t0 + 1);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
@@ -1202,8 +1215,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // (same fit rules as the collar below — rim grazes the torso at both ends).
     // (Ring smaller + shifted forward for the same egg-section fit reasons as
     // the collar below.)
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.9, 0.2, 32, 1, true), bandMat);
-    band.position.set(0, 1.68, 0.08); band.rotation.x = 0.3; acc.add(band); // steeper tilt: the front-top edge stays below the cheeks
+    // Steeper tilt keeps the top edge below the cheeks; the WIDER bottom rim
+    // (0.94, shifted to z0.10) keeps the low edge proud of the chest and
+    // shoulders instead of dipping under the torso surface.
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.94, 0.2, 32, 1, true), bandMat);
+    band.position.set(0, 1.68, 0.1); band.rotation.x = 0.3; acc.add(band);
     // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
     // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
     // instead of the chest bulging through a flat plane. Top edge tucks behind the
@@ -1284,8 +1300,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       // triangle wave: 0 at valleys, 1 at each of the six tips
       const tri = 1 - Math.abs(((i / S) * POINTS * 2) % 2 - 1);
       const rb = 0.36, rt = 0.38 + tri * 0.02;
-      pos.push(Math.sin(a) * rb, 0.76, Math.cos(a) * rb + 0.08);
-      pos.push(Math.sin(a) * rt, 0.92 + tri * 0.24, Math.cos(a) * rt + 0.08);
+      // base y0.64: the skull's horizontal radius is ~0.37 there, so the band
+      // bottom meets the scalp instead of hovering above it
+      pos.push(Math.sin(a) * rb, 0.64, Math.cos(a) * rb + 0.08);
+      pos.push(Math.sin(a) * rt, 0.8 + tri * 0.24, Math.cos(a) * rt + 0.08);
       uvArr.push(i / S, 0, i / S, 1);
     }
     for (let i = 0; i < S; i++) {
@@ -1301,7 +1319,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.35, metalness: 0.7, side: THREE.DoubleSide }));
     acc.add(crown);
     const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), accMat(0xe23b3b, 0.25, 0.3));
-    jewel.position.set(0, 0.84, 0.46); acc.add(jewel);  } else if (accId === "pirate") {
+    jewel.position.set(0, 0.72, 0.45); acc.add(jewel);  } else if (accId === "pirate") {
     // tricorn — ONE lathed surface: dome + brim in a single profile, then the
     // brim is folded UP-AND-INWARD in three places (cos 3θ lobes), exactly how
     // a real tricorn is a round hat with its brim pinned up three times.
@@ -1310,10 +1328,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const geo = latheDeform(profile, 40, (v, theta, r) => {
       if (r <= 0.62) return; // dome untouched; only the brim folds
       const k = (r - 0.62) / 0.33;                       // 0 at brim root → 1 at edge
-      const fold = Math.pow(Math.max(0, Math.cos(3 * theta)), 1.4); // three lobes (front + two rear)
-      v.y += 0.5 * fold * k;
-      const pull = 1 - 0.45 * fold * k;                  // folded edge curls in toward the dome
-      v.x *= pull; v.z = (v.z - 0) * pull;
+      // BROAD folds (low exponent) at the back and front-sides, so the brim's
+      // corner points land at the FRONT and rear quarters like a real tricorn
+      const fold = Math.pow(Math.max(0, -Math.cos(3 * theta)), 0.8);
+      v.y += 0.42 * fold * k;
+      const pull = 1 - 0.35 * fold * k;                  // folded edge curls in toward the dome
+      v.x *= pull; v.z *= pull;
     });
     const hat = new THREE.Mesh(geo, m);
     hat.position.set(0, 0.1, 0.02); acc.add(hat);
@@ -1350,23 +1370,25 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       }
     });
     const hat = new THREE.Mesh(geo, m);
-    hat.position.set(0, 0.02, 0.02); hat.scale.set(1, 1, 0.94); acc.add(hat);
+    hat.position.set(0, -0.1, 0.02); hat.scale.set(1, 1, 0.94); acc.add(hat);
     const hatband = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.53, 0.1, 18), accMat(accColDark()));
-    hatband.position.set(0, 0.7, 0.02); hatband.scale.set(1, 1, 0.94); acc.add(hatband);  } else if (accId === "aviator") {
+    hatband.position.set(0, 0.58, 0.02); hatband.scale.set(1, 1, 0.94); acc.add(hatband);  } else if (accId === "aviator") {
     // leather flight cap — ONE lathed surface whose skirt hangs LONG at the
     // sides (the ear flaps) and lifts clear of the face and nape: the flaps
     // are part of the cap's own surface, molded, never clipping the head.
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.7, side: THREE.DoubleSide });
-    const profile = [[0.68, -0.15], [0.72, 0.1], [0.7, 0.32], [0.6, 0.55], [0.42, 0.72], [0.2, 0.8], [0, 0.82]];
+    // Wider than the skull (~0.81 half-width) all the way down, so the side
+    // flaps hang OUTSIDE the cheeks instead of vanishing into them.
+    const profile = [[0.8, -0.28], [0.83, 0.0], [0.78, 0.28], [0.66, 0.52], [0.46, 0.7], [0.22, 0.8], [0, 0.82]];
     const geo = latheDeform(profile, 36, (v, theta) => {
-      if (v.y < 0.32) {
+      if (v.y < 0.28) {
         // skirt zone: raise the front and back, leave the sides hanging as flaps
         const side = Math.pow(Math.abs(Math.sin(theta)), 1.6);
-        v.y += (0.32 - v.y) * (1 - side) * 0.95;
+        v.y += (0.28 - v.y) * (1 - side) * 0.95;
       }
     });
     const cap = new THREE.Mesh(geo, m);
-    cap.position.set(0, 0, 0.02); cap.scale.set(1.06, 1, 1.02); acc.add(cap);
+    cap.position.set(0, 0, 0.02); cap.scale.set(1.02, 1, 0.98); acc.add(cap);
     // Goggles rest ON the cap's surface (centres pushed out along the dome's
     // normal, tilted to lie against the slope) so they never sink into it.
     const gm = accMat(0x8a8f98, 0.4, 0.6);
@@ -1384,23 +1406,27 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.35, side: THREE.DoubleSide });
     const profile = [[0.72, 0.24], [0.75, 0.32], [0.72, 0.48], [0.6, 0.66], [0.4, 0.79], [0.2, 0.85], [0, 0.87]];
     const shell = new THREE.Mesh(latheDeform(profile, 36), m);
-    shell.position.set(0, 0, 0.03); shell.scale.set(1.1, 0.98, 1.04); acc.add(shell);
+    shell.position.set(0, 0.14, 0.03); shell.scale.set(1.1, 0.98, 1.04); acc.add(shell); // raised: rim sits at the brow, not over the eyes
     const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.76, 0.045, 8, 24, Math.PI), accMat(0xf0f0f0, 0.4));
     stripe.rotation.y = -Math.PI / 2; // arc runs nose-to-nape over the dome
-    stripe.position.set(0, 0.12, 0.03); stripe.scale.set(1, 0.98, 1.05); acc.add(stripe);
+    stripe.position.set(0, 0.26, 0.03); stripe.scale.set(1, 0.88, 1.0); acc.add(stripe); // ends tuck INSIDE the shell rim
     const peak = new THREE.Mesh(rbox(0.56, 0.05, 0.3, 0.04), accMat(0x1a1f26, 0.3, 0.3));
-    peak.position.set(0, 0.42, 0.78); peak.rotation.x = -0.28; acc.add(peak);  } else if (accId === "chef") {
+    peak.position.set(0, 0.52, 0.76); peak.rotation.x = -0.28; acc.add(peak);
+    // chin strap: a half-ring hanging from the helmet sides under the jaw
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.58, 0.035, 6, 22, Math.PI), accMat(0x3a3f46, 0.5));
+    strap.rotation.z = Math.PI; // bottom half of the ring
+    strap.position.set(0, 0.2, 0.32); strap.scale.set(1.18, 1.0, 1); acc.add(strap);  } else if (accId === "chef") {
     // toque — the original band-plus-cloud proportions, scaled up a touch
     // (the first pass looked right, just small)
     const m = accMat(accCol, 0.85);
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.3, 18), m);
-    band.position.set(0, 0.56, 0.02); acc.add(band);
-    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.55, 14, 12), m);
-    puff.position.set(0, 0.95, 0.02); puff.scale.set(1, 0.75, 1); acc.add(puff);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.53, 0.53, 0.3, 18), m);
+    band.position.set(0, 0.62, 0.02); acc.add(band); // slimmer + higher so it rides between the ears
+    const puff = new THREE.Mesh(new THREE.SphereGeometry(0.52, 14, 12), m);
+    puff.position.set(0, 1.0, 0.02); puff.scale.set(1, 0.75, 1); acc.add(puff);
     for (let i = 0; i < 4; i++) {
       const a = (i / 4) * Math.PI * 2 + 0.5;
-      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.26, 10, 10), m);
-      lobe.position.set(Math.sin(a) * 0.37, 1.0, Math.cos(a) * 0.37 + 0.02); acc.add(lobe);
+      const lobe = new THREE.Mesh(new THREE.SphereGeometry(0.24, 10, 10), m);
+      lobe.position.set(Math.sin(a) * 0.35, 1.06, Math.cos(a) * 0.35 + 0.02); acc.add(lobe);
     }  } else if (accId === "wizard") {
     // tall pointed hat, perched a bit higher so its brim rides the crown of
     // the head clear of the ears and scalp
@@ -1413,10 +1439,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // at the front)
     const wband = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.5, 0.14, 16), accMat(accColDark()));
     wband.position.set(0, 0.67, 0.01); acc.add(wband);
+    // stars sit half-embedded ON the cone's own surface (its radius tapers
+    // from 0.5 at the base y0.575 to 0 at the tip y1.725)
     const star1 = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), accMat(0xf5c518, 0.4, 0.4));
-    star1.position.set(0.2, 0.98, 0.38); acc.add(star1);
+    star1.position.set(0.15, 0.98, 0.29); acc.add(star1);
     const star2 = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 8), accMat(0xf5c518, 0.4, 0.4));
-    star2.position.set(-0.15, 1.33, 0.24); acc.add(star2);  } else if (accId === "viking") {
+    star2.position.set(-0.1, 1.3, 0.15); acc.add(star2);  } else if (accId === "viking") {
     // metal dome + rim band + two out-swept horns with ball tips. The dome is
     // WIDER than the skull (x-radius ~0.81) so it caps the head instead of
     // sinking inside it.
@@ -1427,7 +1455,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     rim.position.set(0, 0.42, 0.02); rim.rotation.x = Math.PI / 2; rim.scale.set(1.02, 0.97, 1); acc.add(rim);
     // BIG horns, each ONE smooth tapered tube swept along a curve — out from
     // the helmet, then sweeping up with the tip curling slightly inward.
-    const hornMat = accMat(0xf0ead6, 0.6);
+    const hornMat = new THREE.MeshStandardMaterial({ color: 0xf0ead6, roughness: 0.6, side: THREE.DoubleSide });
     for (const sx of [-1, 1]) {
       const horn = new THREE.Mesh(taperedTube([
         new THREE.Vector3(sx * 0.6, 0.5, 0.02),
@@ -1440,8 +1468,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // knit scarf: the collar's tilted cone band, taller, with a striped tail
     // draped down the chest (body frame, same fit rules as the collar).
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.85, side: THREE.DoubleSide });
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.9, 0.26, 32, 1, true), m);
-    band.position.set(0, 1.66, 0.08); band.rotation.x = 0.28; acc.add(band); // steeper tilt keeps the top edge below the cheeks
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.94, 0.26, 32, 1, true), m);
+    band.position.set(0, 1.66, 0.1); band.rotation.x = 0.28; acc.add(band); // steep tilt + wide low rim: clear of cheeks above, chest below
     // The hanging end DRAPES down the chest: a cloth ribbon whose every vertex
     // lies on the torso's own surface (+0.035), so it follows the body curve
     // out of the loop like real fabric — nothing bolted on. The white tip is

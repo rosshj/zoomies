@@ -158,7 +158,8 @@ function catSpec(cfg) {
     return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
   }
   const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
-  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: undefined, accessoryColor: undefined };
+  // Preset cats may override their pattern's default accessory (presets.js).
+  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
 }
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {

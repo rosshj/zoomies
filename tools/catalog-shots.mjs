@@ -43,7 +43,7 @@ function contrastBg(hex) {
 
 // --- The shot list: every catalog id → a viewer preset spec + its backdrop.
 const shots = [];
-CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), spec: { kind: "cat", name: c.name, fur: c.fur, pattern: c.pattern } }));
+CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), spec: { kind: "cat", name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory } }));
 KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastBg(k.color), spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number } }));
 // The creator tiles advertise "make your own", so they get a look no preset
 // has (the actual creator still opens on the presets.js defaults).
