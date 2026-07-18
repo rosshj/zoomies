@@ -1477,22 +1477,23 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
           cupBack.scale.set(1, 1, 0.55);
         }
       } else if (st.wing === "fin") {
-        // Speedster: streamlined chrome TEARDROP nacelles laid low on the
-        // nose, tapering back — jet-age fairings with flat faces.
+        // Speedster: streamlined chrome TEARDROP nacelles riding ON the nose
+        // (bottoms just kissing the stub's top face), tapering back — jet-age
+        // fairings with flat faces.
         for (const sx of [-1, 1]) {
           const drop = add(new THREE.Mesh(new THREE.SphereGeometry(0.105, 14, 12), chrome));
-          drop.position.set(sx * 0.3, 0.6, snout + 0.14);
+          drop.position.set(sx * 0.3, 0.665, snout + 0.14);
           drop.scale.set(1, 1, 1.9);
         }
       } else {
-        // GP: compact twin racing lamps in BODY-PAINT nacelles, half-sunk into
-        // the stub tip and pointing dead ahead.
+        // GP: compact twin racing lamps in BODY-PAINT nacelles perched on the
+        // stub tip (bottoms grazing its top face) and pointing dead ahead.
         for (const sx of [-1, 1]) {
           const nac = add(new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.15, 14), paint));
           nac.rotation.x = Math.PI / 2;
-          nac.position.set(sx * 0.26, 0.58, snout + 0.28);
+          nac.position.set(sx * 0.26, 0.655, snout + 0.28);
           const nacBack = add(new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 10), paint));
-          nacBack.position.set(sx * 0.26, 0.58, snout + 0.21);
+          nacBack.position.set(sx * 0.26, 0.655, snout + 0.21);
           nacBack.scale.set(1, 1, 0.55);
         }
       }
@@ -1693,8 +1694,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const lamp = st.wing === "lip"
       ? { x: 0.34, y: 0.68, z: sn + 0.27, r: 0.09 }   // roadster stalk cups
       : st.wing === "fin"
-        ? { x: 0.3, y: 0.6, z: sn + 0.33, r: 0.085 }  // speedster teardrop tips
-        : { x: 0.26, y: 0.58, z: sn + 0.36, r: 0.085 }; // GP nacelles
+        ? { x: 0.3, y: 0.665, z: sn + 0.33, r: 0.085 }  // speedster teardrop tips
+        : { x: 0.26, y: 0.655, z: sn + 0.36, r: 0.085 }; // GP nacelles
     for (const sx of [-1, 1]) {
       const lens = new THREE.Mesh(new THREE.CylinderGeometry(lamp.r, lamp.r, 0.035, 16), glass);
       lens.rotation.x = Math.PI / 2;
