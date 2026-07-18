@@ -1449,6 +1449,17 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
         winglet.position.set(sx * 0.64, 0.6, 1.25);
       }
+      if (st.hoop || st.cage) {
+        // Off-roaders wear round pod headlights up on chrome stalks (classic
+        // dune-buggy bullets). The glowing lenses join the headlight merge below.
+        for (const sx of [-1, 1]) {
+          const stem = add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.28, 8), chrome));
+          stem.position.set(sx * 0.3, 0.74, snout - 0.2);
+          const pod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.2, 14), chrome));
+          pod.rotation.x = Math.PI / 2;
+          pod.position.set(sx * 0.3, 0.92, snout - 0.18);
+        }
+      }
       // Steering post drops STRAIGHT DOWN from the hub into the panel — well
       // clear of the number roundel further down the slope.
       const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.55, 10), dark));
@@ -1614,6 +1625,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       const light = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), glass);
       light.position.set(sx * 0.46, 0.66, st.hlZ ?? 2.92);
       hlParts.push(light);
+    }
+  } else if (st.hoop || st.cage) {
+    // Lenses for the pod headlights on stalks (housings built in the shell).
+    for (const sx of [-1, 1]) {
+      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 12), glass);
+      lens.position.set(sx * 0.3, 0.92, (st.snout ?? 1.55) - 0.05);
+      lens.scale.set(1, 1, 0.7); // shallow dome poking out of the housing
+      hlParts.push(lens);
     }
   } else {
     // Kart lights sit on the short nose stub's tip.
