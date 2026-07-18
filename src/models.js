@@ -569,11 +569,14 @@ const _sharedGeo = (g) => { g.userData.shared = true; return g; };
 let _catConstGeo = null;
 function catConstGeo() {
   if (_catConstGeo) return _catConstGeo;
+  // The upper arc stays ~0.1 clear of the neckband's back wall (radius 0.92
+  // around the torso, spanning world y 1.64-1.93) so collars/bandanas never
+  // slice through the raised tail — the tip curls over ABOVE the band instead.
   const tailCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0, 0, 0),
     new THREE.Vector3(0.05, 0.4, -0.5),
-    new THREE.Vector3(0.35, 1.0, -0.45),
-    new THREE.Vector3(0.7, 1.45, -0.02),
+    new THREE.Vector3(0.38, 1.0, -0.55),
+    new THREE.Vector3(0.68, 1.52, -0.15),
   ]);
   const whisker = (sx) => {
     const pts = [];
@@ -1008,11 +1011,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       sharedMat(`cloth|${accCol}|${rx}x${ry}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.86, side: THREE.DoubleSide, map: makeBandanaTexture(accCol, rx, ry) }));
     const bandMat = clothMatOf(9, 1.4);    // a row of motifs wrapping the thin band
     const clothMat = clothMatOf(2.4, 2.4); // drape / knot / tails
-    // The band rides HIGH and snug on the neck just under the head (radius 0.84
-    // clears the torso across its span), with only a slight dip toward the
-    // throat — the old wide low band drooped over the shoulders and arms.
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.84, 0.16, 32, 1, true), bandMat);
-    band.position.set(0, 1.84, 0.02); band.rotation.x = 0.08; acc.add(band);
+    // The band is a short CONE following the torso's neck slope (capsule
+    // narrows 0.87→0.77 across its span) — snug against the body yet proud of
+    // it everywhere, and kept below the animated head (a straight ring higher
+    // up cuts into the skull when the head leans). Slight dip toward the throat.
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.92, 0.2, 32, 1, true), bandMat);
+    band.position.set(0, 1.76, 0.02); band.rotation.x = 0.08; acc.add(band);
     // Kerchief: a wide, short inverted triangle. NOT a flat sheet — it bulges
     // FORWARD in the middle (a gentle fold) so it drapes OVER the rounded chest
     // instead of the chest bulging through a flat plane. Top edge tucks behind the
@@ -1043,18 +1047,17 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       tail.scale.set(1, 1, 0.55);  // flatten like cloth
       acc.add(tail);
     }  } else if (accId === "collar") {
-    // collar: a snug flat fabric band (a thin open cylinder wall) riding HIGH
-    // on the neck just under the head, nearly level, with a little gold bell at
-    // the throat. Radius 0.84 at y 1.86 clears the torso's bulge (the capsule is
-    // ~0.83 across the band's lower edge) without the old loose drape that hung
-    // down over the shoulders and arms.
+    // collar: a snug fabric band shaped as a short CONE that follows the
+    // torso's neck slope (the capsule narrows 0.87→0.77 across the band's
+    // span), so it hugs the body while staying proud of it everywhere. It sits
+    // below the animated head — a straight ring any higher cuts into the skull
+    // when the head leans. The gold bell hangs off the band's front lower
+    // edge, tucked under the chin and clear of the muzzle.
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.55, side: THREE.DoubleSide });
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.84, 0.13, 32, 1, true), m);
-    collar.position.set(0, 1.86, 0.02); collar.rotation.x = 0.06; acc.add(collar);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.84, 0.92, 0.22, 32, 1, true), m);
+    collar.position.set(0, 1.75, 0.02); collar.rotation.x = 0.06; acc.add(collar);
     const bell = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 12), accMat(0xffd24d, 0.4, 0.35));
-    bell.position.set(0, 1.73, 0.86); acc.add(bell);
-    const nub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 8), accMat(0xe0b53a, 0.4, 0.35));
-    nub.position.set(0, 1.3, 0.87); acc.add(nub);  } else if (accId === "bow") {
+    bell.position.set(0, 1.6, 0.95); acc.add(bell);  } else if (accId === "bow") {
     // a bow tie at the throat — two pinched loops meeting at a centre knot, sitting
     // on the upper chest in the body frame (a real bow tie, not a hair bow).
     const m = accMat(accCol);
@@ -1145,7 +1148,9 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
   step(sp.earSway, -lat * 0.85, 70, 9);
   step(sp.earBack, Math.max(0, lon) * 0.7 + Math.abs(lat) * 0.5, 75, 12);
   step(sp.whisker, -lat * 0.9, 55, 8);
-  step(sp.tailY, -lat * 1.9, 42, 6);
+  // Capped so a hard steer doesn't wrap the tail around the torso and through
+  // the collar/bandana band at neck height.
+  step(sp.tailY, -lat * 1.3, 42, 6);
   step(sp.tailX, toot ? -1.5 : -Math.max(0, lon) * 0.5, 55, 9);
   step(sp.headLean, -lat * 0.4, 65, 10);
   step(sp.headPitch, lon * 0.2, 70, 11);
