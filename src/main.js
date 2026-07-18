@@ -2640,7 +2640,10 @@ function refreshAudioUI() {
 // back. That keeps only one card over the live 3D world.
 let _overlayReturn = null;
 function openSubScreen(el) {
-  _overlayReturn = null;
+  // Note: when neither the menu nor the pause screen is visible (e.g. the
+  // settings gear opened over the garage), KEEP the stored return target —
+  // clearing it would strand the player on an empty backdrop once the
+  // underlying screen closes.
   for (const id of ["menu", "pause-overlay"]) {
     const o = document.getElementById(id);
     if (o && !o.classList.contains("hidden")) {
@@ -2676,6 +2679,64 @@ function wireMenuCues() {
   setUiCuesEnabled(audio.sfxOn);
 }
 wireMenuCues();
+
+// --- Persistent menu chrome: 🐟 balance + ⚙ gear over every sub-screen. ---
+// Visible whenever a menu sub-screen is up (the hub keeps its own buttons for
+// now); hidden during racing and the results/claim flow. A MutationObserver
+// watches the screens' class flips, so no open/close path needs to know about
+// the chrome.
+const CHROME_SCREENS = ["mode-panel", "garage", "catalog", "track-panel", "settings", "howto", "install-help", "lobby"];
+const menuChrome = document.getElementById("menu-chrome");
+function refreshMenuChrome() {
+  if (!menuChrome) return;
+  const anyOpen = CHROME_SCREENS.some((id) => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains("hidden");
+  });
+  menuChrome.classList.toggle("hidden", !anyOpen);
+  const n = document.getElementById("chrome-treats-n");
+  if (n) n.textContent = String(profile.treats);
+}
+{
+  const mo = new MutationObserver(refreshMenuChrome);
+  for (const id of CHROME_SCREENS) {
+    const el = document.getElementById(id);
+    if (el) mo.observe(el, { attributes: true, attributeFilter: ["class"] });
+  }
+}
+document.getElementById("chrome-gear")?.addEventListener("click", () => {
+  if (!settingsOverlay.classList.contains("hidden")) return; // already showing
+  openSettings();
+});
+document.getElementById("chrome-treats")?.addEventListener("click", () => {
+  const cat = document.getElementById("catalog");
+  if (!cat || !cat.classList.contains("hidden")) return; // already showing
+  // In the lobby the chip is display-only (jumping screens mid-connection
+  // would abandon the room).
+  const lobby = document.getElementById("lobby");
+  if (lobby && !lobby.classList.contains("hidden")) return;
+  renderCatalog();
+  openSubScreen(cat);
+});
+
+// Esc closes the topmost menu sub-screen through its own non-destructive exit
+// (the same button a tap would use), one screen per press. Ordered by stacking:
+// settings/help float over catalog, which floats over the config panels.
+const ESC_EXITS = [
+  ["settings", "settings-back"], ["howto", "howto-back"], ["install-help", "install-help-back"],
+  ["catalog", "catalog-back"], ["track-panel", "track-back"], ["garage", "garage-back"],
+  ["mode-panel", "mode-done"],
+];
+function escCloseTopScreen() {
+  for (const [scr, btn] of ESC_EXITS) {
+    const el = document.getElementById(scr);
+    if (el && !el.classList.contains("hidden")) {
+      document.getElementById(btn)?.click();
+      return true;
+    }
+  }
+  return false;
+}
 
 function openSettings() {
   audio.unlock(); // the opening tap is a valid gesture to start audio
@@ -3866,6 +3927,7 @@ window.addEventListener("keydown", (e) => {
     if (state === State.RACING) pauseGame();
     else if (state === State.PAUSED) resumeGame();
     else if (state === State.FLYVIEW) exitFlyView();
+    else if (e.code === "Escape") escCloseTopScreen();
   }
 });
 
@@ -4041,6 +4103,8 @@ refreshRaceOptSegs();
 function refreshTreatsChip() {
   const el = document.getElementById("treats-balance");
   if (el) el.textContent = String(profile.treats);
+  const c = document.getElementById("chrome-treats-n");
+  if (c) c.textContent = String(profile.treats);
 }
 
 // Start a cup: seed the run state and reload into race 1 (each cup race is a
