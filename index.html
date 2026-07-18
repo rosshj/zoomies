@@ -289,20 +289,14 @@
         <!-- The one primary action. Its label + behaviour follow the chosen
              game mode: start a race, start a time trial, or host a room. -->
         <button id="start-btn">🏁 START RACE</button>
-        <!-- Joining a friend is an entry action (not a setting), so it stays
-             one tap from the front — shown only while Multiplayer is the mode. -->
-        <div id="mp-join" class="mp-join-row hidden">
-          <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
-                 autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
-          <button id="mp-join-btn" class="secondary small">Join</button>
-        </div>
-        <p id="mp-menu-status" class="lobby-status hidden"></p>
-        <!-- Race setup at a glance: current choice on each row, tap to change. -->
+        <!-- Race setup at a glance: current choice on each row, tap to change.
+             (Join-by-code lives in Play → Multiplayer; the track picker lives
+             inside Play's Single Race / Time Trial cards.) -->
         <nav class="menu-tiles" aria-label="Race setup">
           <button id="open-mode" class="menu-tile">
             <span class="tile-ico">🏁</span>
             <span class="tile-text">
-              <span class="tile-title">Game Mode</span>
+              <span class="tile-title">Play</span>
               <span class="tile-sub" id="mode-summary">Grand Prix · 3 laps · Hard</span>
             </span>
             <span class="tile-chevron">›</span>
@@ -316,14 +310,6 @@
             <span class="tile-swatches">
               <span class="tile-swatch" id="racer-swatch-cat"></span>
               <span class="tile-swatch" id="racer-swatch-kart"></span>
-            </span>
-            <span class="tile-chevron">›</span>
-          </button>
-          <button id="open-track" class="menu-tile">
-            <span class="tile-ico">🏞</span>
-            <span class="tile-text">
-              <span class="tile-title">Track</span>
-              <span class="tile-sub" id="track-summary">Classic circuit · Midday</span>
             </span>
             <span class="tile-chevron">›</span>
           </button>
@@ -358,7 +344,7 @@
        options (laps + difficulty for Grand Prix), so only relevant knobs show. -->
   <div id="mode-panel" class="overlay hidden">
     <div class="menu-card mode-main">
-      <h1>Game Mode</h1>
+      <h1>🏁 Play</h1>
       <p class="tagline">Pick how you want to race</p>
       <div class="mode-cards">
         <div id="mode-gp" class="mode-card">
@@ -389,6 +375,12 @@
                 <button class="seg-btn" data-diff="hard">Hard</button>
               </div>
             </div>
+            <!-- The world picker lives INSIDE the modes it applies to (cups and
+                 the daily bring their own tracks, so they don't show it). -->
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Track</span>
+              <button id="gp-track-btn" class="mode-track-btn"><span id="gp-track-sub">Classic circuit · Midday</span><span class="mode-track-chev">›</span></button>
+            </div>
           </div>
         </div>
         <div id="mode-cup" class="mode-card">
@@ -413,6 +405,12 @@
             </span>
             <span class="mode-radio" aria-hidden="true"></span>
           </button>
+          <div class="mode-opts">
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Track</span>
+              <button id="tt-track-btn" class="mode-track-btn"><span id="tt-track-sub">Classic circuit · Midday</span><span class="mode-track-chev">›</span></button>
+            </div>
+          </div>
         </div>
         <div id="mode-mp" class="mode-card hidden">
           <button class="mode-pick">
@@ -423,6 +421,16 @@
             </span>
             <span class="mode-radio" aria-hidden="true"></span>
           </button>
+          <div class="mode-opts">
+            <!-- Join-by-code lives with the mode it belongs to (it used to sit
+                 loose on the hub). START on the hub hosts a room. -->
+            <div id="mp-join" class="mp-join-row hidden">
+              <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
+                autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
+              <button id="mp-join-btn" class="secondary small">Join</button>
+            </div>
+            <p id="mp-menu-status" class="lobby-status hidden"></p>
+          </div>
         </div>
       </div>
       <button id="mode-done">✓ Done</button>

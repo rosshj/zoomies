@@ -1032,6 +1032,32 @@ body {
   line-height: 1;
   color: rgba(255, 255, 255, 0.38);
 }
+/* Track row inside the Play panel's mode cards — a mini tile that opens the
+   world picker for the modes it applies to. */
+.mode-track-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: normal;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: none;
+}
+.mode-track-btn:active {
+  transform: translateY(1px);
+}
+.mode-track-chev {
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.38);
+}
+
 /* "Something's waiting for you" bubble on the Cat-alog tile. */
 .tile-alert {
   flex: 0 0 auto;

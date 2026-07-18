@@ -3418,6 +3418,10 @@ trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
   });
 });
 document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
+// The world picker opens from inside Play's Single Race / Time Trial cards
+// (it stacks over the Play panel; its Back returns there).
+document.getElementById("gp-track-btn")?.addEventListener("click", openTrackPanel);
+document.getElementById("tt-track-btn")?.addEventListener("click", openTrackPanel);
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
 // shortcut into the track editor. The Track tile echoes the same name plus the
@@ -3432,8 +3436,13 @@ function refreshMenuMap() {
     : "Classic circuit";
   const label = document.getElementById("menu-map-label");
   if (label) label.textContent = name;
-  const sub = document.getElementById("track-summary");
-  if (sub) sub.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
+  // The track summary now lives on the Play panel's per-mode Track rows
+  // (Single Race + Time Trial — the modes the world picker applies to).
+  const summary = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
+  for (const id of ["track-summary", "gp-track-sub", "tt-track-sub"]) {
+    const sub = document.getElementById(id);
+    if (sub) sub.textContent = summary;
+  }
 }
 // Cup Series maps are fixed recipes — the map is a preview there, not an editor
 // entry point (the button's Edit affordance is hidden via .map-no-edit too).
