@@ -32,7 +32,7 @@ import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { RefereeClient } from "./net/refereeclient.js";
 import { encodeWorld, decodeWorld, sameWorld, worldSig } from "./net/worldcfg.js";
 import {
-  migrateProfile, isUnlocked, buyUnlock, catalogEntry, racePayout, checkAchievements, claimAchievement,
+  migrateProfile, isUnlocked, buyUnlock, catalogEntry, CATALOG, racePayout, checkAchievements, claimAchievement,
   ACHIEVEMENTS, CUPS, cupById, cupPoints, cupStandings, awardCup, dailySeedFor,
   encodeProfileToken, decodeProfileToken,
 } from "./progress.js";
@@ -91,13 +91,22 @@ const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
 const _clampName = (v, dflt) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 14) : dflt);
+// Prize accessories (the acc.* Cat-alog entries) must be owned to wear; the ten
+// launch accessories have no catalog entry, so isUnlocked passes them through.
+// try/catch: sanitize can run before the profile binding initializes.
+function _accOwned(a) {
+  try { return isUnlocked(profile, "acc." + a); } catch { return true; }
+}
+function unlockedAccessories() {
+  return CAT_ACCESSORIES.filter(_accOwned);
+}
 function sanitizeCustomCat(c) {
   c = c && typeof c === "object" ? c : {};
   return {
     name: _clampName(c.name, DEFAULT_CUSTOM_CAT.name),
     fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
     pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
-    accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
+    accessory: CAT_ACCESSORIES.includes(c.accessory) && _accOwned(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
     // null means "use the accessory's natural default colour"; otherwise a valid hex int.
     accessoryColor: _clampColor(c.accessoryColor, null),
   };
@@ -3733,11 +3742,11 @@ document.getElementById("kart-src-custom")?.addEventListener("click", () => setG
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
 document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
 document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
-document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
-document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
+document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", unlockedAccessories(), -1));
+document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", unlockedAccessories(), 1));
 document.getElementById("cat-custom-name")?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("cat-randomize")?.addEventListener("click", () => {
-  const accessory = _pick(CAT_ACCESSORIES);
+  const accessory = _pick(unlockedAccessories());
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
     fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
@@ -4265,6 +4274,16 @@ function renderPrizes() {
     kartGrid.appendChild(prizeTile(id, k.name, _hex6(k.color), prizeHow(id), isUnlocked(profile, id)));
   });
   box.appendChild(kartGrid);
+  head("🎩 Accessories · worn by your Custom Cat");
+  const accGrid = document.createElement("div");
+  accGrid.className = "prize-grid";
+  for (const e of CATALOG) {
+    if (!e.id.startsWith("acc.")) continue;
+    const a = e.id.slice(4);
+    const hex = _hex6(ACCESSORY_COLORS[a]?.[0] ?? 0xffffff);
+    accGrid.appendChild(prizeTile(e.id, ACCESSORY_LABELS[a] || a, hex, prizeHow(e.id), isUnlocked(profile, e.id)));
+  }
+  box.appendChild(accGrid);
   head("✨ Creators");
   const cGrid = document.createElement("div");
   cGrid.className = "prize-grid";
@@ -5615,6 +5634,8 @@ function earnRow(label, amt, cls = "") {
 function unlockName(id) {
   if (id === "custom.cat") return "Custom Cat creator";
   if (id === "custom.kart") return "Custom Kart creator";
+  const am = id.match(/^acc\.(\w+)$/);
+  if (am) return ACCESSORY_LABELS[am[1]] || am[1];
   const m = id.match(/^(cat|kart)\.(\d+)$/);
   if (!m) return id;
   const arr = m[1] === "cat" ? CAT_PRESETS : KART_PRESETS;

@@ -45,8 +45,13 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("cup exclusives can't be bought", !buyUnlock(p, "cat.9") && !isUnlocked(p, "cat.9"));
   check("difficulty prizes can't be bought", !buyUnlock(p, "cat.13") && !isUnlocked(p, "cat.13"));
   const cupExclusives = CATALOG.filter((c) => c.cup);
-  check("every cup exclusive maps to a real cup", cupExclusives.length === 4 && cupExclusives.every((c) => cupById(c.cup)));
+  check("every cup exclusive maps to a real cup", cupExclusives.length === 8 && cupExclusives.every((c) => cupById(c.cup)));
+  check("every cup has exactly one accessory prize", CUPS.every((cup) => cupExclusives.filter((c) => c.cup === cup.id && c.id.startsWith("acc.")).length === 1));
   check("difficulty prizes exist for medium and hard", CATALOG.some((c) => c.diff === "medium") && CATALOG.some((c) => c.diff === "hard"));
+  const q = defaultProfile();
+  q.treats = 150;
+  check("accessory prizes are buyable", buyUnlock(q, "acc.party") && q.treats === 0 && isUnlocked(q, "acc.party"));
+  check("cup-exclusive accessories can't be bought", !buyUnlock(q, "acc.cowboy") && !isUnlocked(q, "acc.cowboy"));
 }
 
 // --- Payout ---
@@ -113,6 +118,10 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("first cup win pays treats + trophy + exclusive", won && won.firstWin && p.treats === 200 && p.trophies.meadows === "medium" && p.unlocked.includes("kart.7"));
   check("medium win grants the Medium+ prize but not the Hard one",
     won.extraUnlocks.includes("cat.12") && p.unlocked.includes("cat.12") && !p.unlocked.includes("cat.13"));
+  check("the cup's accessory prize rides along on the first win",
+    won.extraUnlocks.includes("acc.helmet") && p.unlocked.includes("acc.helmet"));
+  check("medium win also grants the Medium+ accessory but not the crown",
+    won.extraUnlocks.includes("acc.aviator") && !p.unlocked.includes("acc.crown"));
   const again = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard");
   check("re-win upgrades the trophy but doesn't re-pay", again && !again.firstWin && again.upgraded && p.trophies.meadows === "hard" && p.treats === 200);
   check("a hard re-win still unlocks the Hard prize (once)",

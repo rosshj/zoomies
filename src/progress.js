@@ -88,6 +88,20 @@ export const CATALOG = [
   { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
   { id: "kart.9", price: 550 },      // Prowler — the caged off-road buggy
+  // Accessories — prize headwear/neckwear for the Custom Cat creator (the ten
+  // launch accessories stay free). acc.<id> matches CAT_ACCESSORIES in models.js.
+  { id: "acc.party", price: 150 },
+  { id: "acc.chef", price: 200 },
+  { id: "acc.scarf", price: 250 },
+  { id: "acc.tophat", price: 300 },
+  { id: "acc.wizard", price: 350 },
+  { id: "acc.charm", price: 400 },
+  { id: "acc.helmet", cup: "meadows" },   // Racing Helmet — Catnip Meadows prize
+  { id: "acc.cowboy", cup: "sandypaws" }, // Cowboy Hat — Sandy Paws prize
+  { id: "acc.viking", cup: "meowtain" },  // Viking Helmet — Meowtain prize
+  { id: "acc.pirate", cup: "zoomies" },   // Pirate Hat — Midnight Zoomies prize
+  { id: "acc.aviator", diff: "medium" },  // Aviator Cap — win any cup on Medium+
+  { id: "acc.crown", diff: "hard" },      // Crown — win any cup on Hard
   // The custom creators are features you earn.
   { id: "custom.cat", price: 600 },
   { id: "custom.kart", price: 600 },
@@ -281,10 +295,21 @@ export function awardCup(profile, cupId, standings, playerName, difficulty) {
       unlockId = cup.unlockId;
     }
   }
+  // A cup can have MORE catalog exclusives beyond its headline unlockId (e.g.
+  // its accessory prize) — they ride along on the first win, reported via
+  // extraUnlocks so the results screen lists every prize.
+  const extraUnlocks = [];
+  if (firstWin) {
+    for (const e of CATALOG) {
+      if (e.cup === cupId && e.id !== cup.unlockId && !profile.unlocked.includes(e.id)) {
+        profile.unlocked.push(e.id);
+        extraUnlocks.push(e.id);
+      }
+    }
+  }
   // Difficulty-gated prizes: catalog entries with `diff` unlock for winning ANY
   // cup at that difficulty or harder. Checked on every win (not just the first),
   // so re-winning an old cup on a harder setting still pays out the prize.
-  const extraUnlocks = [];
   for (const e of CATALOG) {
     if (!e.diff || profile.unlocked.includes(e.id)) continue;
     if ((DIFF_RANK[difficulty] ?? 0) >= (DIFF_RANK[e.diff] ?? 99)) {

@@ -49,6 +49,19 @@ KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastB
 // has (the actual creator still opens on the presets.js defaults).
 shots.push({ file: "custom-cat.jpg", bg: contrastBg(0xa259ff), spec: { kind: "cat", name: "Custom Cat", fur: 0xa259ff, pattern: "spotted", accessory: "headphones" } });
 shots.push({ file: "custom-kart.jpg", bg: contrastBg(0xa259ff), spec: { kind: "kart", name: "Custom Kart", color: 0xa259ff, style: 3, number: 0 } });
+// Prize accessories (the acc.* Cat-alog entries), each worn by a plain grey cat
+// so the accessory is the star. The hex is the accessory's natural default
+// colour (ACCESSORY_COLORS[id][0] — mirrored here because models.js pulls in
+// THREE, which this node script avoids importing). Headwear shots frame the
+// head; neckwear keeps more of the chest in view.
+const ACC_SHOTS = [
+  ["party", 0xe23b3b, "head"], ["crown", 0xf5c518, "head"], ["pirate", 0x1a1a1a, "head"],
+  ["tophat", 0x1a1a1a, "head"], ["cowboy", 0xa9743a, "head"], ["aviator", 0x6b4a2f, "head"],
+  ["helmet", 0xe23b3b, "head"], ["chef", 0xf0f0f0, "head"], ["wizard", 0x4b3a8f, "head"],
+  ["viking", 0x8a8f98, "head"], ["scarf", 0xe23b3b, "neck"], ["charm", 0xd23b3b, "neck"],
+];
+for (const [id, hex, zoom] of ACC_SHOTS)
+  shots.push({ file: `acc-${id}.jpg`, bg: contrastBg(hex), zoom, spec: { kind: "cat", name: id, fur: 0x8c9298, pattern: "solid", accessory: id } });
 
 fs.mkdirSync(OUT, { recursive: true });
 const browser = await chromium.launch({ executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"] });
@@ -61,7 +74,7 @@ await page.waitForFunction(() => window.__viewer && window.__viewer.showPreset, 
 await page.evaluate(() => window.__viewer.setGameLook(true)); // ship the in-game look
 
 for (const shot of shots) {
-  await page.evaluate(({ spec, bg }) => {
+  await page.evaluate(({ spec, bg, zoom }) => {
     const v = window.__viewer;
     v.setBackground(bg);
     v.showPreset(spec);
@@ -70,9 +83,17 @@ for (const shot of shots) {
     // (0.88 keeps a whisker of headroom — 0.8 clipped the tallest ears). The
     // sitting cats run taller (legs to the floor), so they get a slightly
     // wider, more level view that keeps paws and hind feet in frame.
+    // Accessory tiles bias toward where the accessory sits: "head" pulls in
+    // high on the hat, "neck" keeps the chest in view.
     v.orbit.theta = 0.75;
-    v.orbit.phi = spec.kind === "cat" ? 1.22 : 1.13;
-    v.orbit.radius *= spec.kind === "cat" ? 0.97 : 0.88;
+    if (zoom === "head") {
+      v.orbit.phi = 1.08; v.orbit.radius *= 0.72; v.orbit.target.y += 0.55;
+    } else if (zoom === "neck") {
+      v.orbit.phi = 1.15; v.orbit.radius *= 0.82; v.orbit.target.y += 0.3;
+    } else {
+      v.orbit.phi = spec.kind === "cat" ? 1.22 : 1.13;
+      v.orbit.radius *= spec.kind === "cat" ? 0.97 : 0.88;
+    }
   }, shot);
   await page.waitForTimeout(350); // let a few frames render at the new framing
   await page.screenshot({ path: path.join(OUT, shot.file), type: "jpeg", quality: 88 });
