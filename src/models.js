@@ -1408,29 +1408,35 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         rail.rotation.x = Math.PI / 2;
         rail.position.set(sx * 1.02, 0.34, 0.15);
       }
-      // SHORT nose, real-kart shape: a low stub barely past the front wheels,
-      // and a raked cowl sweeping up from it to the steering wheel — with the
-      // number roundel painted on the cowl's face, like the reference kart.
+      // SHORT nose, real-kart shape: a low under-stub barely past the front
+      // wheels, and ONE continuous raked panel running from the stub up to the
+      // wheel — low at the front, high at the driver — with the number roundel
+      // and the racing stripe lying FLUSH on its face like paint.
       const snout = st.snout ?? 1.55;
-      const stub = add(new THREE.Mesh(rbox(0.95, 0.3, 1.5, 0.15), paint));
-      stub.position.set(0, 0.46, snout - 0.55);
-      const stubTip = add(new THREE.Mesh(rbox(0.7, 0.26, 0.5, 0.13), paint));
-      stubTip.position.set(0, 0.44, snout + 0.12);
-      const cowl = add(new THREE.Mesh(rbox(0.88, 0.3, 1.6, 0.15), paint));
-      cowl.position.set(0, 0.82, 0.85);
-      cowl.rotation.x = -0.42; // sweeps up toward the wheel
-      // Number roundel lying on the cowl's raked face.
-      const cowlNum = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.52), numMat);
-      cowlNum.position.set(0, 0.99, 0.93);
-      cowlNum.rotation.x = -(Math.PI / 2 - 0.42); // flush on the raked panel
+      const RAKE = 0.39; // the panel's climb toward the wheel
+      const stub = add(new THREE.Mesh(rbox(0.95, 0.26, 1.9, 0.13), paint));
+      stub.position.set(0, 0.44, snout - 0.45);
+      const cowl = add(new THREE.Mesh(rbox(0.88, 0.24, 1.55, 0.12), paint));
+      cowl.position.set(0, 0.78, 1.0);
+      // +RAKE = front end dips into the stub, rear rises to the wheel, and the
+      // panel's face tilts up-FORWARD so the number reads from the front.
+      cowl.rotation.x = RAKE;
+      // Decals lie a hair proud of the panel, exactly parallel to its face —
+      // painted on, not floating (the face normal is (0, cos RAKE, sin RAKE)).
+      const cowlNum = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), numMat);
+      cowlNum.position.set(0, 1.03, 0.73);
+      cowlNum.rotation.x = -(Math.PI / 2 - RAKE);
       roundels.push(cowlNum);
-      // Little accent winglets flanking the cowl (the reference's red fins).
+      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.7), stripe));
+      noseStripe.position.set(0, 0.74, 1.44);
+      noseStripe.rotation.x = -(Math.PI / 2 - RAKE);
+      // Little accent winglets flanking the panel (the reference's red fins).
       for (const sx of [-1, 1]) {
         const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
-        winglet.position.set(sx * 0.64, 0.66, 1.2);
+        winglet.position.set(sx * 0.64, 0.6, 1.25);
       }
-      const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.8, 8), dark));
-      column.position.set(0, 1.08, 0.68);
+      const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8), dark));
+      column.position.set(0, 1.18, 0.58);
       column.rotation.x = 0.5;
       // Wrap-around bumpers, front and rear (dark, low, at rail height). The
       // front one is wide and close, guarding the front wheels like the real thing.
@@ -1438,18 +1444,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       bumperF.position.set(0, 0.4, snout + 0.5);
       const bumperR = add(new THREE.Mesh(rbox(1.85, 0.2, 0.26, 0.12), dark));
       bumperR.position.set(0, 0.42, -2.35);
-      // Low side pods between the wheels, accent-capped, wearing the roundels.
+      // Low side pods between the wheels — ONE clean shape each, with the
+      // roundel flush on the flat outer face so the number reads as painted on.
       for (const sx of [-1, 1]) {
-        const pod = add(new THREE.Mesh(rbox(0.52, 0.34, 2.3, 0.12), paint));
-        pod.position.set(sx * 1.18, 0.46, -0.1);
-        const podCap = add(new THREE.Mesh(rbox(0.52, 0.1, 2.3, 0.05), accent));
-        podCap.position.set(sx * 1.18, 0.66, -0.1);
+        const pod = add(new THREE.Mesh(rbox(0.52, 0.5, 2.3, 0.16), paint));
+        pod.position.set(sx * 1.18, 0.5, -0.1);
       }
-      addRoundels(1.46, 0.5, -0.1, 0.5);
-      // Racing stripe down the low nose stub.
-      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.32, 1.4), stripe));
-      noseStripe.rotation.x = -Math.PI / 2;
-      noseStripe.position.set(0, 0.611, snout - 0.55);
+      addRoundels(1.45, 0.5, -0.1, 0.44);
       // Bare bucket seat: tall back + side bolsters (nothing to sink into now).
       const seatBack = add(new THREE.Mesh(rbox(1.35, 1.05, 0.34, 0.16), dark));
       seatBack.position.set(0, 1.38, -1.26);
