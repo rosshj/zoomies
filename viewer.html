@@ -130,8 +130,44 @@
       background: none;
       cursor: pointer;
     }
+    /* Pose bar (cats only): sit / stand / drive + the ride-kart stepper. */
+    #pose-bar {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 54px; /* below the Backdrop / Game-look row */
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 10px;
+      background: rgba(10, 14, 25, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+    }
+    .pose-btn {
+      padding: 6px 10px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: #dfe5f2;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .pose-btn.on { border-color: #ffd54f; color: #ffd54f; }
+    #pose-kart { display: flex; align-items: center; gap: 4px; margin-left: 6px; font-size: 12px; }
+    #pose-kart button {
+      background: none;
+      border: 0;
+      color: #ffd54f;
+      font-size: 16px;
+      width: 22px;
+      cursor: pointer;
+      padding: 0;
+    }
+    #pose-kart-name { min-width: 74px; text-align: center; color: #eef1f8; }
     /* ?plain=1 — chrome-less mode for screenshot tours: just the asset. */
-    body.plain #side, body.plain #side-toggle, body.plain #look-btn,
+    body.plain #side, body.plain #side-toggle, body.plain #look-btn, body.plain #pose-bar,
     body.plain #bg-btn, body.plain #info, body.plain #anim-bar { display: none !important; }
     /* Animation transport (play/pause + scrubber), centred above the info bar. */
     #anim-bar {
@@ -201,6 +237,19 @@
     <button id="look-btn" title="Toggle the game's cel shading">🎮 Game look</button>
     <!-- Studio background colour (also tints the ground disc to match). -->
     <label id="bg-btn" title="Background colour">🎨 Backdrop <input id="bg-color" type="color" value="#1a2338" /></label>
+    <!-- Pose bar: shown while a CAT is selected — flip between the sitting
+         portrait, standing, and driving (seated in any garage kart, with a
+         stepper to swap which kart it rides). -->
+    <div id="pose-bar" class="hidden">
+      <button data-pose="sit" class="pose-btn on">🐱 Sit</button>
+      <button data-pose="stand" class="pose-btn">🧍 Stand</button>
+      <button data-pose="drive" class="pose-btn">🏎 Drive</button>
+      <span id="pose-kart" class="hidden">
+        <button id="pose-kart-prev" aria-label="Previous kart">‹</button>
+        <span id="pose-kart-name">Ember</span>
+        <button id="pose-kart-next" aria-label="Next kart">›</button>
+      </span>
+    </div>
     <!-- Animation transport: shown only for assets that move in-game.
          Play/pause + a scrubber over one loop of the asset's animation. -->
     <div id="anim-bar" class="hidden">

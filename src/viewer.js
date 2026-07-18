@@ -21,6 +21,7 @@ import {
 import { assetCatalog } from "./scenery.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
+import { KART_PRESETS } from "./presets.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -57,15 +58,53 @@ function animatedCat(fur, opts) {
   };
 }
 
+// The pose bar's state: how a selected CAT is presented — the sitting portrait,
+// standing, or driving (seated in any garage kart, chosen with the stepper).
+let poseMode = "sit";
+let rideKartIdx = 0;
+
+// Build the currently selected cat in the current pose. "drive" composes the
+// cat into a real garage kart exactly like kart.js does in a race (same scale,
+// seat offset, and handlebar pose on the moto), with rolling wheels + live rig.
+function buildCatAsset(fur, opts) {
+  if (poseMode !== "drive") return animatedCat(fur, { ...opts, pose: poseMode });
+  const preset = KART_PRESETS[rideKartIdx] || KART_PRESETS[0];
+  const moto = preset.style === 4;
+  const { group: kart, wheels } = createKartModel(preset.color, { style: preset.style, number: preset.number });
+  const cat = createCat(fur, { ...opts, pose: moto ? "moto" : "kart" });
+  cat.scale.setScalar(0.62);
+  cat.position.set(0, moto ? 0.95 : 0.85, moto ? -0.5 : -0.35);
+  const combo = new THREE.Group();
+  combo.add(kart, cat);
+  const rig = cat.userData.rig;
+  let last = 0;
+  return {
+    object: combo,
+    animate: (t) => {
+      const dt = Math.max(0, Math.min(0.05, t - last));
+      last = t;
+      if (dt > 0) updateCatRig(rig, dt, 0, 0, false, false, true);
+      for (let j = 0; j < wheels.length; j++) {
+        const w = wheels[j];
+        w.rotation.order = "YXZ";
+        w.rotation.y = j < 2 ? Math.sin(t * 0.9) * 0.4 : 0;
+        w.rotation.x = t * 6;
+      }
+    },
+    duration: Math.PI * 2 / 0.9,
+  };
+}
+
 const entries = [];
 for (const p of CAT_PATTERNS)
-  entries.push({ group: "Cats", name: `Cat — ${cap(p)}`, build: () => animatedCat(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
+  entries.push({ group: "Cats", kind: "cat", name: `Cat — ${cap(p)}`, build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {
   if (a === "none") continue;
   entries.push({
     group: "Cat accessories",
+    kind: "cat",
     name: ACCESSORY_LABELS[a] || cap(a),
-    build: () => animatedCat(0xf0a830, { pattern: "solid", accessory: a }),
+    build: () => buildCatAsset(0xf0a830, { pattern: "solid", accessory: a }),
   });
 }
 // A kart with rolling wheels + the front axle sweeping through its steering
@@ -262,6 +301,7 @@ animScrub.addEventListener("input", () => {
 animScrub.addEventListener("pointerdown", () => { scrubbing = true; });
 window.addEventListener("pointerup", () => { scrubbing = false; });
 
+let currentEntry = null;
 function show(entry) {
   let res;
   try {
@@ -271,8 +311,37 @@ function show(entry) {
     infoEl.textContent = `${entry.name} — failed to build: ${err.message}`;
     return;
   }
-  present(entry.name, res);
+  currentEntry = entry;
+  syncPoseBar();
+  const label = entry.kind === "cat" && poseMode === "drive"
+    ? `${entry.name} · riding ${KART_PRESETS[rideKartIdx]?.name}`
+    : entry.name;
+  present(label, res);
 }
+
+// --- Pose bar: visible while a cat is selected; Drive adds the kart stepper. ---
+const poseBar = document.getElementById("pose-bar");
+const poseKartWrap = document.getElementById("pose-kart");
+const poseKartName = document.getElementById("pose-kart-name");
+function syncPoseBar() {
+  const isCat = !!(currentEntry && currentEntry.kind === "cat");
+  poseBar?.classList.toggle("hidden", !isCat);
+  poseKartWrap?.classList.toggle("hidden", poseMode !== "drive");
+  if (poseKartName) poseKartName.textContent = KART_PRESETS[rideKartIdx]?.name || "";
+  poseBar?.querySelectorAll(".pose-btn").forEach((b) => b.classList.toggle("on", b.dataset.pose === poseMode));
+}
+poseBar?.querySelectorAll(".pose-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    poseMode = b.dataset.pose;
+    if (currentEntry?.kind === "cat") show(currentEntry); else syncPoseBar();
+  })
+);
+const stepRideKart = (d) => {
+  rideKartIdx = (rideKartIdx + d + KART_PRESETS.length) % KART_PRESETS.length;
+  if (poseMode === "drive" && currentEntry?.kind === "cat") show(currentEntry); else syncPoseBar();
+};
+document.getElementById("pose-kart-prev")?.addEventListener("click", () => stepRideKart(-1));
+document.getElementById("pose-kart-next")?.addEventListener("click", () => stepRideKart(1));
 // Swap the stage to an already-built result ({object, animate, duration} or a
 // bare Object3D): dispose the old asset, sit the new one on the floor, frame
 // the camera on its bounding sphere. Also the entry point for showPreset().

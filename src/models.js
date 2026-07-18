@@ -584,6 +584,9 @@ const ARM_POSES = {
   // Sitting: no beans — a sitting cat shows the TOPS of its front paws (beans
   // on the paw front read as claws).
   sit: { armR: 0.19, armRot: -0.2, armPos: [0, -0.55, 0.26], pawPos: [0, -1.1, 0.36], pawScale: [1.05, 0.8, 1.3], beans: false },
+  // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
+  // the sides, hind feet planted under the body (built in the stand block below).
+  stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
 };
 
 // The rigid clusters (body, head, each arm, each ear, glasses) are baked into a
@@ -726,6 +729,14 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       foot.scale.set(1.1, 0.55, 1.5);
       catStatic.push(foot);
     }
+  } else if (pose === "stand") {
+    // Standing: hind feet planted directly under the body.
+    for (const sx of [-1, 1]) {
+      const foot = new THREE.Mesh(new THREE.SphereGeometry(0.24, 12, 10), pawMat);
+      foot.position.set(sx * 0.34, -0.24, 0.5);
+      foot.scale.set(1.05, 0.5, 1.6);
+      catStatic.push(foot);
+    }
   }
 
   // --- Head (animated for lean/pitch) — a touch bigger for a cuter ratio ---
@@ -757,18 +768,21 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   }
 
   // Ears on pivots so they can flick/lag. Point cats darken at the ear tips.
-  const earGeo = new THREE.ConeGeometry(0.35, 0.66, 6);
+  // The cone gets extra shank and sits LOWER than it looks: its flat base is
+  // buried well inside the skull, so the tilted base edge can't peek out of the
+  // curving scalp as a seam (it did, at the base rear).
+  const earGeo = new THREE.ConeGeometry(0.35, 0.8, 6);
   const innerGeo = new THREE.ConeGeometry(0.19, 0.4, 6);
   const ears = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.46, 0.52, -0.02);
+    pivot.position.set(sx * 0.45, 0.5, -0.02);
     head.add(pivot);
     const ear = new THREE.Mesh(earGeo, extremity);
-    ear.position.y = 0.3;
+    ear.position.y = 0.22;
     ear.rotation.z = sx * -0.22;
     const inner = new THREE.Mesh(innerGeo, pink);
-    inner.position.set(0, 0.27, 0.07);
+    inner.position.set(0, 0.21, 0.07);
     inner.rotation.z = sx * -0.22;
     pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}` })); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
