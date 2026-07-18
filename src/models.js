@@ -1141,12 +1141,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     }  } else if (accId === "beanie") {
     // bobble beanie
     const m = accMat(accCol);
-    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.66, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
-    cap.position.set(0, 0.36, 0); cap.scale.set(1, 0.92, 1); acc.add(cap);
-    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.1, 8, 18), accMat(0xffffff));
-    cuff.position.set(0, 0.4, 0); cuff.rotation.x = Math.PI / 2; acc.add(cuff);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(0.72, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), m);
+    cap.position.set(0, 0.34, 0); cap.scale.set(1, 0.9, 1); acc.add(cap);
+    const cuff = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.1, 8, 18), accMat(0xffffff));
+    cuff.position.set(0, 0.38, 0); cuff.rotation.x = Math.PI / 2; acc.add(cuff);
     const pom = new THREE.Mesh(new THREE.SphereGeometry(0.14, 10, 10), accMat(0xffffff));
-    pom.position.set(0, 0.96, 0); acc.add(pom);  } else if (accId === "flower") {
+    pom.position.set(0, 1.0, 0); acc.add(pom);  } else if (accId === "flower") {
     // flower tucked forward of one ear — laid on a tangent plane to the skull so
     // the whole bloom sits flat ON the surface (never dipping into head or ear).
     const fn = new THREE.Vector3(0.6, 0.72, 0.36).normalize();   // outward direction
@@ -1381,11 +1381,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // flaps hang OUTSIDE the cheeks instead of vanishing into them.
     const profile = [[0.8, -0.28], [0.83, 0.0], [0.78, 0.28], [0.66, 0.52], [0.46, 0.7], [0.22, 0.8], [0, 0.82]];
     const geo = latheDeform(profile, 36, (v, theta) => {
-      if (v.y < 0.36) {
+      if (v.y < 0.44) {
         // skirt zone: scoop the front high over the eyes and the back off the
         // nape; only a narrow arc at each side keeps hanging as the flaps
-        const side = Math.pow(Math.abs(Math.sin(theta)), 2.4);
-        v.y += (0.36 - v.y) * (1 - side);
+        const side = Math.pow(Math.abs(Math.sin(theta)), 3);
+        v.y += (0.44 - v.y) * (1 - side);
       }
     });
     const cap = new THREE.Mesh(geo, m);
@@ -1410,18 +1410,30 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const profile = [[0.68, 0.26], [0.71, 0.34], [0.68, 0.5], [0.56, 0.68], [0.38, 0.8], [0.18, 0.86], [0, 0.88]];
     const shell = new THREE.Mesh(latheDeform(profile, 36), m);
     shell.position.set(0, 0.12, 0.0); shell.scale.set(1.18, 0.95, 1.12); acc.add(shell);
-    const stripe = new THREE.Mesh(new THREE.TorusGeometry(0.66, 0.04, 8, 24, Math.PI), accMat(0xf0f0f0, 0.4));
-    stripe.rotation.y = -Math.PI / 2; // arc runs nose-to-nape over the dome
-    stripe.position.set(0, 0.14, 0.0); stripe.scale.set(1, 0.9, 1.1); acc.add(stripe);
+    // PAINTED-ON stripe: two thin partial-lathe strips of the shell's own
+    // profile (+0.015), one at the front azimuth and one at the back, meeting
+    // at the apex — a nose-to-nape line lying flush on the shell surface.
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.5, side: THREE.DoubleSide });
+    const sp = profile.map(([r, y]) => new THREE.Vector2(r + 0.015, y));
+    for (const phi0 of [-0.09, Math.PI - 0.09]) {
+      const sg = new THREE.LatheGeometry(sp, 8, phi0, 0.18);
+      sg.computeVertexNormals();
+      const strip = new THREE.Mesh(sg, stripeMat);
+      strip.position.set(0, 0.12, 0.0); strip.scale.set(1.18, 0.95, 1.12);
+      acc.add(strip);
+    }
     const peak = new THREE.Mesh(rbox(0.56, 0.05, 0.3, 0.04), accMat(0x1a1f26, 0.3, 0.3));
     peak.position.set(0, 0.5, 0.74); peak.rotation.x = -0.25; acc.add(peak);
-    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.028, 6, 24), accMat(0x3a3f46, 0.5));
-    strap.position.set(0, 0.2, 0.32); strap.scale.set(1.12, 1.0, 1); acc.add(strap);  } else if (accId === "chef") {
+    // Chin strap TILTED about x so its lower arc swings forward UNDER the
+    // jaw (and its upper arc leans back inside the shell) instead of a
+    // vertical ring slicing across the face.
+    const strap = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.028, 6, 24), accMat(0x3a3f46, 0.5));
+    strap.position.set(0, 0.24, 0.3); strap.rotation.x = -0.5; strap.scale.set(1.1, 1.0, 1); acc.add(strap);  } else if (accId === "chef") {
     // toque — ONE lathed shape: straight band flowing into a puffy ballooned
     // top, with vertical PLEATS (a gentle cos-5θ scallop) carved into the
     // puff's own surface — a molded chef's hat, not a ball on a tube.
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.85, side: THREE.DoubleSide });
-    const profile = [[0.53, 0.45], [0.55, 0.62], [0.54, 0.74], [0.63, 0.84], [0.67, 1.0], [0.6, 1.16], [0.44, 1.28], [0.22, 1.34], [0, 1.36]];
+    const profile = [[0.48, 0.45], [0.5, 0.62], [0.51, 0.74], [0.62, 0.84], [0.67, 1.0], [0.6, 1.16], [0.44, 1.28], [0.22, 1.34], [0, 1.36]]; // slim band, full puff — the band stays clear of the ears
     const geo = latheDeform(profile, 40, (v, theta) => {
       if (v.y > 0.78) {
         // pleat the puff; fade the scallop in above the band
