@@ -1450,12 +1450,16 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         winglet.position.set(sx * 0.64, 0.6, 1.25);
       }
       if (st.hoop || st.cage) {
-        // Off-roaders wear round bullet headlights perched ON the front
-        // bumper. The glowing lenses join the headlight merge below.
+        // Off-roaders wear classic chrome BUCKET headlights on the front
+        // bumper: a short wide housing with a domed back and a big FLAT lens
+        // face (the lenses join the headlight merge below).
         for (const sx of [-1, 1]) {
-          const pod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.22, 14), chrome));
+          const pod = add(new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.16, 16), chrome));
           pod.rotation.x = Math.PI / 2;
-          pod.position.set(sx * 0.32, 0.62, snout + 0.48);
+          pod.position.set(sx * 0.32, 0.64, snout + 0.46);
+          const podBack = add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 12), chrome));
+          podBack.position.set(sx * 0.32, 0.64, snout + 0.38);
+          podBack.scale.set(1, 1, 0.55);
         }
       }
       // Steering post drops STRAIGHT DOWN from the hub into the panel — well
@@ -1640,11 +1644,12 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       hlParts.push(light);
     }
   } else if (st.hoop || st.cage) {
-    // Lenses for the bumper-mounted bullet pods (housings built in the shell).
+    // FLAT lens discs filling the bucket faces (housings built in the shell) —
+    // the thin chrome rim of the housing stays visible around each one.
     for (const sx of [-1, 1]) {
-      const lens = new THREE.Mesh(new THREE.SphereGeometry(0.105, 12, 12), glass);
-      lens.position.set(sx * 0.32, 0.62, (st.snout ?? 1.55) + 0.62);
-      lens.scale.set(1, 1, 0.7); // shallow dome poking out of the housing
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.125, 0.125, 0.035, 16), glass);
+      lens.rotation.x = Math.PI / 2;
+      lens.position.set(sx * 0.32, 0.64, (st.snout ?? 1.55) + 0.545);
       hlParts.push(lens);
     }
   } else {
