@@ -566,6 +566,59 @@ const _cShade = _shared(new THREE.MeshStandardMaterial({ color: 0x0a0a0a, roughn
 // Constant cat geometries — identical for every cat, so build each ONCE and let
 // all drivers reference it (flagged shared so disposeGroup leaves them alone).
 const _sharedGeo = (g) => { g.userData.shared = true; return g; };
+
+// Chest-patch decal: a disc bent onto the torso so every vertex sits on the
+// body capsule's own cross-section radius (+0.018 so it draws on top). Reads
+// as a painted coat marking — no bulge to shade as a lump or to clip the
+// neckwear/legs. Two sizes: the big tuxedo/mitted bib and the regular patch.
+const _chestDecalGeo = {};
+function chestDecalGeo(big) {
+  const key = big ? "b" : "s";
+  if (_chestDecalGeo[key]) return _chestDecalGeo[key];
+  // The bib is wide enough (±0.62 rad) that the front legs emerge INSIDE its
+  // span — on a dark tuxedo coat any gap between bib edge and white leg
+  // reads as a black sliver slicing the bib.
+  const { A, H, yc } = big ? { A: 0.62, H: 0.5, yc: 1.14 } : { A: 0.4, H: 0.36, yc: 1.28 };
+  // A multi-ring polar grid, NOT CircleGeometry — that's a fan from the
+  // centre whose long flat radial triangles sag below the curved body
+  // mid-span once bent, letting the coat poke through as wedges.
+  const S = 28, R = 6;
+  const disc = [[0, 0]];
+  for (let j = 1; j <= R; j++)
+    for (let k = 0; k < S; k++) {
+      const a = (k / S) * Math.PI * 2, rho = j / R;
+      disc.push([rho * Math.cos(a), rho * Math.sin(a)]);
+    }
+  const idx = [];
+  for (let k = 0; k < S; k++) idx.push(0, 1 + k, 1 + ((k + 1) % S));
+  for (let j = 1; j < R; j++) {
+    const a0 = 1 + (j - 1) * S, b0 = 1 + j * S;
+    for (let k = 0; k < S; k++) {
+      const k2 = (k + 1) % S;
+      idx.push(a0 + k, b0 + k, b0 + k2, a0 + k, b0 + k2, a0 + k2);
+    }
+  }
+  const pos = new Float32Array(disc.length * 3);
+  const uv = new Float32Array(disc.length * 2);
+  disc.forEach(([px, py], i) => {
+    const y = yc + py * H;
+    const dy = Math.max(0, y - 1.39); // torso cylinder ends at y1.39, hemisphere above
+    const r = Math.sqrt(Math.max(0.01, 0.81 - dy * dy)) + 0.018;
+    const phi = px * A;
+    pos[i * 3] = r * Math.sin(phi);
+    pos[i * 3 + 1] = y;
+    pos[i * 3 + 2] = r * Math.cos(phi);
+    uv[i * 2] = (px + 1) / 2;
+    uv[i * 2 + 1] = (py + 1) / 2;
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return (_chestDecalGeo[key] = _sharedGeo(g));
+}
+
 let _catConstGeo = null;
 function catConstGeo() {
   if (_catConstGeo) return _catConstGeo;
@@ -624,7 +677,11 @@ const ARM_POSES = {
   // the TOP toward the body midline — the chest bulges most at x0, so an
   // inward-leaning top tucks fully under the surface instead of standing
   // proud of the flatter surface out at shoulder x.
-  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.12, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.42], pawScale: [1.05, 0.8, 1.3], beans: false },
+  // pawLog swaps the ball paw for a forward-pointing rounded capsule whose
+  // back end buries deep into the leg — its radius nearly matches the leg's,
+  // so the ankle reads as ONE form bending forward (with two toe bumps at
+  // the tip) instead of two primitives slapped together.
+  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.12, armPos: [0, -0.41, 0.27], pawPos: [0, -1.145, 0.5], pawLog: true, beans: false },
   // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
   // the sides, hind feet planted under the body (built in the stand block below).
   stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
@@ -713,14 +770,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const chestMat = isSmoke
     ? sharedMat("csmoke", () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.92 }))
     : (isSolid || isTortie) ? fur : white;
-  // A PAINTED-ON round chest patch: a shallow cap high on the chest, only
-  // ~0.1 proud of the torso (the old deep bulge at belly height shaded like
-  // a pair of lobes once the front legs carved through it). The squashed
-  // sphere's equator sits BURIED inside the body (rim z 0.78 < torso 0.9),
-  // so the visible boundary is a clean circle, never a grazing jagged edge.
-  const chest = new THREE.Mesh(new THREE.SphereGeometry(0.62, 26, 20), chestMat);
-  chest.position.set(0, hasBib ? 1.18 : 1.28, 0.78);
-  chest.scale.set(hasBib ? 0.78 : 0.62, hasBib ? 0.78 : 0.62, 0.35);
+  // A PAINTED-ON round chest patch: a thin decal shell that CONFORMS to the
+  // torso (every vertex sits on the body's own cross-section radius + 0.018),
+  // so it reads as a coat marking — flat like paint, and nothing for the
+  // bandana flap or the front legs to collide with. (Every proud-ball
+  // version before it shaded as a 3D lump and clipped the neckwear.)
+  const chest = new THREE.Mesh(chestDecalGeo(hasBib), chestMat);
   catStatic.push(chest);
 
   // Front paws — posed for the scenario (opts.pose):
@@ -750,10 +805,26 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       arm.position.x -= sx * Math.sin(ap.armLean) * half;
     }
     parts.push(arm);
-    const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
-    paw.position.set(...ap.pawPos);
-    paw.scale.set(...ap.pawScale);
-    parts.push(paw);
+    if (ap.pawLog) {
+      // Seamless ankle: a forward-pointing rounded capsule (radius ~ the
+      // leg's) whose back cap is swallowed by the leg's lower end, plus two
+      // toe bumps at the tip with a soft groove between them.
+      const paw = new THREE.Mesh(new THREE.CapsuleGeometry(0.165, 0.2, 6, 12), pawMat);
+      paw.position.set(...ap.pawPos);
+      paw.rotation.x = Math.PI / 2;
+      parts.push(paw);
+      for (const tx of [-0.085, 0.085]) {
+        const toe = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), pawMat);
+        toe.position.set(tx, ap.pawPos[1] - 0.045, ap.pawPos[2] + 0.24);
+        toe.scale.set(1, 0.9, 1.15);
+        parts.push(toe);
+      }
+    } else {
+      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
+      paw.position.set(...ap.pawPos);
+      paw.scale.set(...ap.pawScale);
+      parts.push(paw);
+    }
     // Toe-bean detail: three little pads on the front of each paw (poses with
     // grounded paws skip them — see ARM_POSES.sit).
     if (ap.beans !== false) {
