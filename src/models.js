@@ -1479,24 +1479,29 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       const intake = add(new THREE.Mesh(rbox(0.42, 0.32, 0.46, 0.1), accent));
       intake.position.set(-0.45, 1.05, -1.85);
       if (st.cage) {
-        // Full off-road roll cage in body paint: four uprights up to a flat
-        // roof frame, tall enough to clear the driver's ears.
+        // Off-road roll cage in body paint, TRIANGULAR in profile like the
+        // real thing: long tubes rake all the way down to the nose, and the
+        // short roof only covers the driver — not a box.
         const tube = (len) => new THREE.CylinderGeometry(0.07, 0.07, len, 8);
         for (const sx of [-1, 1]) {
-          const front = add(new THREE.Mesh(tube(2.3), paint));
-          front.position.set(sx * 0.82, 1.62, 0.42);
-          front.rotation.x = -0.14; // top leans back
-          const rear = add(new THREE.Mesh(tube(2.3), paint));
-          rear.position.set(sx * 0.82, 1.6, -1.6);
-          rear.rotation.x = 0.1; // top leans forward
-          const rail = add(new THREE.Mesh(tube(1.9), paint));
+          // Long front diagonals: nose (y 0.55, z 1.5) → roof front (y 2.72, z -0.62).
+          const diag = add(new THREE.Mesh(tube(3.05), paint));
+          diag.position.set(sx * 0.82, 1.63, 0.44);
+          diag.rotation.x = -0.775;
+          // Near-vertical hoops behind the seat.
+          const rear = add(new THREE.Mesh(tube(2.25), paint));
+          rear.position.set(sx * 0.82, 1.61, -1.74);
+          rear.rotation.x = -0.055; // a whisper of backward lean
+          // Short roof rails over the seat only.
+          const rail = add(new THREE.Mesh(tube(1.2), paint));
           rail.rotation.x = Math.PI / 2;
-          rail.position.set(sx * 0.82, 2.76, -0.6);
+          rail.position.set(sx * 0.82, 2.73, -1.21);
         }
-        for (const cz of [0.28, -1.48]) {
+        // Roof crossbars + a mid-brace tying the diagonals together.
+        for (const [cy, cz] of [[2.73, -0.66], [2.73, -1.76], [1.63, 0.44]]) {
           const cross = add(new THREE.Mesh(tube(1.68), paint));
           cross.rotation.z = Math.PI / 2;
-          cross.position.set(0, 2.76, cz);
+          cross.position.set(0, cy, cz);
         }
       }
     }
