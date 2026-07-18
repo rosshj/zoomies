@@ -33,8 +33,8 @@ const CAT_FUR = {
   snowshoe: 0xf3dcb6, mitted: 0x9aa2a8, point: 0xe8e2d6, calico: 0xfbfbfb, tortie: 0x6b4a2f,
   bengal: 0xd9a34a, cow: 0xf6f3ea, smoke: 0x565e6e,
 };
-const KART_STYLES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan"];
-const KART_COLORS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835, 0xff7043, 0xf5efdd];
+const KART_STYLES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan", "Cage"];
+const KART_COLORS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835, 0xff7043, 0xf5efdd, 0x3949ab];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // A cat with its live rig: idle sway + blinking, exactly what updateCatRig
@@ -70,7 +70,7 @@ function buildCatAsset(fur, opts) {
   if (poseMode !== "drive") return animatedCat(fur, { ...opts, pose: poseMode });
   const preset = KART_PRESETS[rideKartIdx] || KART_PRESETS[0];
   const moto = preset.style === 4;
-  const { group: kart, wheels } = createKartModel(preset.color, { style: preset.style, number: preset.number });
+  const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number });
   const cat = createCat(fur, { ...opts, pose: moto ? "moto" : "kart" });
   cat.scale.setScalar(0.62);
   cat.position.set(0, moto ? 0.95 : 0.85, moto ? -0.5 : -0.35);
@@ -90,6 +90,7 @@ function buildCatAsset(fur, opts) {
         w.rotation.y = j < 2 ? Math.sin(t * 0.9) * 0.4 : 0;
         w.rotation.x = t * 6;
       }
+      if (flag) flag.rotation.y = Math.sin(t * 6) * 0.26; // pennant flap
     },
     duration: Math.PI * 2 / 0.9,
   };
@@ -110,7 +111,7 @@ for (const a of CAT_ACCESSORIES) {
 // A kart with rolling wheels + the front axle sweeping through its steering
 // range (the same transforms Kart.update applies from live inputs).
 function animatedKart(color, opts) {
-  const { group, wheels } = createKartModel(color, opts);
+  const { group, wheels, flag } = createKartModel(color, opts);
   return {
     object: group,
     animate: (t) => {
@@ -120,6 +121,7 @@ function animatedKart(color, opts) {
         w.rotation.y = j < 2 ? Math.sin(t * 0.9) * 0.4 : 0;
         w.rotation.x = t * 6;
       }
+      if (flag) flag.rotation.y = Math.sin(t * 6) * 0.26; // pennant flap
     },
     duration: Math.PI * 2 / 0.9, // one full steering sweep
   };

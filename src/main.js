@@ -83,7 +83,7 @@ import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } fr
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
-const KART_STYLE_COUNT = 6; // GP / roadster / buggy / finned / moto / minivan (see createKartModel STYLES)
+const KART_STYLE_COUNT = 7; // GP / roadster / buggy / finned / moto / minivan / cage (see createKartModel STYLES)
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -3461,7 +3461,7 @@ function buildGaragePreview() {
 // offer. Custom picks aren't limited to these — they just seed quick choices.
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan"];
+const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan", "Cage"];
 const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
 const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
 const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");

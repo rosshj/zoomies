@@ -238,11 +238,12 @@ export class Kart {
       // the world axis, so the kart only tilts to the grade when facing ±Z — on a
       // looping track it mostly wouldn't pitch at all.
       this.group.rotation.order = "YXZ";
-      const { group: kart, wheels, brakeMat, flames } = createKartModel(color, { style: kartStyle, number: kartNumber });
+      const { group: kart, wheels, brakeMat, flames, flag } = createKartModel(color, { style: kartStyle, number: kartNumber });
       this.wheels = wheels;
       for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
       this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
       this.flames = flames; // boost exhaust flames; shown/flickered while boosting
+      this.flag = flag; // roadster pennant pivot (flapped in update); null elsewhere
       this.group.add(kart);
       // The cat's paw pose matches the ride: handlebars on the moto (style 4),
       // steering wheel everywhere else. The moto's saddle sits a touch higher
@@ -841,6 +842,12 @@ export class Kart {
       const w = this.wheels[i];
       w.rotation.y = i < 2 ? steerAng : 0; // front axle steers
       w.rotation.x = this._wheelSpin || 0; // roll
+    }
+    // The roadster's pennant flaps — faster with speed, always at least a
+    // flutter. Runs here in _syncMesh so remote karts' pennants flap too.
+    if (this.flag) {
+      this._flagT = (this._flagT || 0) + (this._dt || 0.016) * (5 + Math.abs(this.speed || 0) * 0.18);
+      this.flag.rotation.y = Math.sin(this._flagT) * 0.26;
     }
 
     // Suspension squash: compress vertically + bulge a touch on touchdown.

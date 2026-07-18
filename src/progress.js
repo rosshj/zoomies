@@ -89,6 +89,7 @@ export const CATALOG = [
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
   { id: "kart.9", price: 350 },      // Wheelie — the moto
   { id: "kart.10", price: 450 },     // Vanilla — the open-top minivan
+  { id: "kart.11", price: 550 },     // Prowler — the caged off-road buggy
   // The custom creators are features you earn.
   { id: "custom.cat", price: 600 },
   { id: "custom.kart", price: 600 },

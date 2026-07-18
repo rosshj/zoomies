@@ -1244,6 +1244,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     { snout: 1.8, wing: "fin", tire: 0.94, hoop: false },
     { body: "moto", wing: "none", tire: 1.12, hoop: false },
     { body: "van", nose: 1.05, noseZ: 1.9, tipZ: 2.55, hlZ: 2.72, wing: "none", tire: 1.05, hoop: false },
+    { snout: 1.35, wing: "none", tire: 1.3, hoop: false, cage: true }, // off-road cage buggy
   ];
   const st = STYLES[opts.style ?? 0] || STYLES[0];
   const styleIdx = STYLES.indexOf(st);
@@ -1349,14 +1350,21 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     }
     addRoundels(0.41, 1.08, 0.5, 0.5); // on the tank flanks
   } else {
-    // Steering wheel + chrome hub — shared by van and karts (same spot the
-    // cat's driving pose reaches for).
+    // Steering wheel — shared by van and karts (same spot the cat's driving
+    // pose reaches for). A chunky centre cap + two spokes IN the wheel's
+    // plane, so the assembly reads as one clean part.
+    const WHEEL_TILT = Math.PI / 2.6;
     const wheel = add(new THREE.Mesh(new THREE.TorusGeometry(0.35, 0.07, 10, 18), dark));
     wheel.position.set(0, 1.4, 0.55);
-    wheel.rotation.x = Math.PI / 2.6;
-    const wheelHub = add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.05, 12), chrome));
+    wheel.rotation.x = WHEEL_TILT;
+    const wheelHub = add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.09, 12), chrome));
     wheelHub.position.set(0, 1.4, 0.55);
-    wheelHub.rotation.x = Math.PI / 2.6;
+    wheelHub.rotation.x = WHEEL_TILT;
+    for (const sx of [-1, 1]) {
+      const spoke = add(new THREE.Mesh(rbox(0.3, 0.05, 0.07, 0.02), dark));
+      spoke.position.set(sx * 0.17, 1.4, 0.55);
+      spoke.rotation.x = WHEEL_TILT; // lies in the wheel's plane
+    }
     // Seat where the cat sits — same height in every body so the cat always fits.
     const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
     seat.position.set(0, 1.06, -0.5);
@@ -1436,9 +1444,11 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
         winglet.position.set(sx * 0.64, 0.6, 1.25);
       }
-      const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.7, 8), dark));
-      column.position.set(0, 1.18, 0.58);
-      column.rotation.x = 0.5;
+      // Steering column runs PERPENDICULAR to the wheel's face, from the cowl
+      // up to the hub (it used to skewer the rim at a crooked angle).
+      const column = add(new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.75, 10), dark));
+      column.position.set(0, 1.07, 0.675);
+      column.rotation.x = -(Math.PI / 2 - Math.PI / 2.6); // wheel tilt minus 90°
       // Wrap-around bumpers, front and rear (dark, low, at rail height). The
       // front one is wide and close, guarding the front wheels like the real thing.
       const bumperF = add(new THREE.Mesh(rbox(2.3, 0.2, 0.3, 0.14), dark));
@@ -1448,8 +1458,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       // Low side pods between the wheels — ONE clean shape each, shortened so
       // they stay out of the tyres' space, with a nearly FLAT outer face
       // (small corner radius) so the flush roundel conforms like paint.
+      const podLen = st.tire >= 1.2 ? 1.25 : 1.62; // fat-tyre styles need shorter pods
       for (const sx of [-1, 1]) {
-        const pod = add(new THREE.Mesh(rbox(0.46, 0.5, 1.62, 0.07), paint));
+        const pod = add(new THREE.Mesh(rbox(0.46, 0.5, podLen, 0.07), paint));
         pod.position.set(sx * 1.12, 0.5, -0.12);
       }
       addRoundels(1.36, 0.5, -0.12, 0.4);
@@ -1465,6 +1476,27 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       engine.position.set(-0.45, 0.72, -1.85);
       const intake = add(new THREE.Mesh(rbox(0.42, 0.32, 0.46, 0.1), accent));
       intake.position.set(-0.45, 1.05, -1.85);
+      if (st.cage) {
+        // Full off-road roll cage in body paint: four uprights up to a flat
+        // roof frame, tall enough to clear the driver's ears.
+        const tube = (len) => new THREE.CylinderGeometry(0.07, 0.07, len, 8);
+        for (const sx of [-1, 1]) {
+          const front = add(new THREE.Mesh(tube(2.3), paint));
+          front.position.set(sx * 0.82, 1.62, 0.42);
+          front.rotation.x = -0.14; // top leans back
+          const rear = add(new THREE.Mesh(tube(2.3), paint));
+          rear.position.set(sx * 0.82, 1.6, -1.6);
+          rear.rotation.x = 0.1; // top leans forward
+          const rail = add(new THREE.Mesh(tube(1.9), paint));
+          rail.rotation.x = Math.PI / 2;
+          rail.position.set(sx * 0.82, 2.76, -0.6);
+        }
+        for (const cz of [0.28, -1.48]) {
+          const cross = add(new THREE.Mesh(tube(1.68), paint));
+          cross.rotation.z = Math.PI / 2;
+          cross.position.set(0, 2.76, cz);
+        }
+      }
     }
   }
   // Both roundels share one material — merge them into one mesh (one draw).
@@ -1472,6 +1504,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   group.add(mergeMeshes(roundels, { geoKey: `kroundel|${styleIdx}` }));
 
   // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
+  let flagPivot = null; // the roadster's pennant pivot (returned for live flapping)
   if (st.wing === "big") {
     // Pylon runs all the way down to the floor pan (no rear deck any more).
     const pylon = add(new THREE.Mesh(rbox(0.34, 1.1, 0.34, 0.1), dark));
@@ -1487,12 +1520,30 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const lip = add(new THREE.Mesh(rbox(2.0, 0.12, 0.5, 0.06), paint));
     lip.position.set(0, 0.72, -2.32);
     lip.rotation.x = -0.18;
-    // …plus a body-coloured racing flag flying off the rear corner.
-    const pole = add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 1.35, 8), chrome));
-    pole.position.set(0.82, 1.15, -2.25);
-    const flag = add(new THREE.Mesh(rbox(0.05, 0.36, 0.64, 0.02), paint));
-    flag.position.set(0.82, 1.6, -2.6); // trailing backward off the pole top
-    flag.rotation.y = 0.14; // a little flutter
+    // …plus a tall CURVED whip aerial off the rear corner flying a triangular
+    // body-coloured pennant. The pennant hangs on its own pivot (returned as
+    // `flag`) so the kart can flap it live each frame.
+    const whip = new THREE.QuadraticBezierCurve3(
+      new THREE.Vector3(0.82, 0.5, -2.25),
+      new THREE.Vector3(0.82, 1.65, -2.3),
+      new THREE.Vector3(0.82, 2.15, -2.72)
+    );
+    const pole = add(new THREE.Mesh(new THREE.TubeGeometry(whip, 10, 0.035, 6), chrome));
+    // Triangle pennant, thin-extruded so both faces render with the shared
+    // paint material. Shape-x runs along the trailing direction; the mesh is
+    // yawed so it streams backward off the pole tip.
+    const penShape = new THREE.Shape();
+    penShape.moveTo(0, 0);
+    penShape.lineTo(0.85, -0.17);
+    penShape.lineTo(0, -0.36);
+    penShape.closePath();
+    const penGeo = new THREE.ExtrudeGeometry(penShape, { depth: 0.035, bevelEnabled: false, curveSegments: 2 });
+    const pennant = new THREE.Mesh(penGeo, paint);
+    pennant.rotation.y = Math.PI / 2; // shape +x → world -z (trailing)
+    flagPivot = new THREE.Group();
+    flagPivot.position.copy(whip.getPoint(1)); // hinged at the pole tip
+    flagPivot.add(pennant);
+    group.add(flagPivot);
   } else if (st.wing === "fin") {
     // Twin swept rocket tail-fins flanking the rear deck (body paint, accent edge),
     // plus a small central spine fin — a jet-age speedster look.
@@ -1713,5 +1764,5 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     group.add(under);
   }
 
-  return { group, wheels, brakeMat, flames };
+  return { group, wheels, brakeMat, flames, flag: flagPivot };
 }
