@@ -1506,9 +1506,6 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
           cross.rotation.z = Math.PI / 2;
           cross.position.set(0, cy, cz);
         }
-        // Little canvas roof stretched over the frame (the inspo's sun shade).
-        const roof = add(new THREE.Mesh(rbox(1.78, 0.09, 1.34, 0.04), dark));
-        roof.position.set(0, 2.8, -1.21);
       }
     }
   }
