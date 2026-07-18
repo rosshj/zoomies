@@ -33,8 +33,15 @@ const CAT_FUR = {
   snowshoe: 0xf3dcb6, mitted: 0x9aa2a8, point: 0xe8e2d6, calico: 0xfbfbfb, tortie: 0x6b4a2f,
   bengal: 0xd9a34a, cow: 0xf6f3ea, smoke: 0x565e6e,
 };
-const KART_STYLES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan", "Cage"];
-const KART_COLORS = [0xe53935, 0x1e88e5, 0x43a047, 0xfdd835, 0xff7043, 0xf5efdd, 0x3949ab];
+// (name, model style, showcase colour) — styles 4 (Moto) and 5 (Minivan) are
+// parked for now, so they're left out of the list here just like the garage.
+const KART_STYLES = [
+  ["GP", 0, 0xe53935],
+  ["Roadster", 1, 0x1e88e5],
+  ["Buggy", 2, 0x43a047],
+  ["Finned", 3, 0xfdd835],
+  ["Cage", 6, 0x3949ab],
+];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
 // A cat with its live rig: idle sway + blinking, exactly what updateCatRig
@@ -126,8 +133,8 @@ function animatedKart(color, opts) {
     duration: Math.PI * 2 / 0.9, // one full steering sweep
   };
 }
-KART_STYLES.forEach((n, i) =>
-  entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(KART_COLORS[i], { style: i, number: i + 1 }) })
+KART_STYLES.forEach(([n, style, color]) =>
+  entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(color, { style, number: style + 1 }) })
 );
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
