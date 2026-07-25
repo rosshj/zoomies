@@ -251,17 +251,17 @@
     </div>
   </div>
 
-  <!-- ===== Start menu ===== -->
-  <!-- Progressive-disclosure layout: the main screen shows only the primary
-       action plus a short "your race at a glance" list. Each tile shows the
-       CURRENT choice (mode, racer, track) and drills into its own focused
-       screen to change it — nothing is edited on this screen itself. -->
-  <div id="menu" class="overlay">
-    <div class="menu-card menu-main">
-      <!-- Branding + track map on one side, controls on the other, so the menu
-           stays short enough for the landscape stage (which is wide, not tall). -->
-      <div class="menu-col menu-col-brand">
-        <h1><!-- the app-icon cat face (same shapes as the loading screen / gen-icons.mjs) -->
+  <!-- ===== Menu flow ===== -->
+  <!-- One straight road to the grid: Title → Mode → (Track | Cup | Friends) →
+       Racer → Start line → GO. One question per screen, Back always top-left,
+       screens slide horizontally (forward = in from the right). The live 3D
+       world (menu cinematic / racer showroom) renders behind everything. -->
+  <div id="menu" data-step="title">
+
+    <!-- Title: the hero. One primary action; extras live off the race path. -->
+    <section id="flow-title" class="flow-screen is-active">
+      <div class="title-wrap">
+        <h1 class="title-logo"><!-- the app-icon cat face (same shapes as the loading screen / gen-icons.mjs) -->
           <svg class="menu-cat" viewBox="0.17 0.07 0.66 0.82" aria-hidden="true">
             <polygon points="0.27,0.42 0.33,0.10 0.47,0.32" fill="#f4a93a"/>
             <polygon points="0.73,0.42 0.67,0.10 0.53,0.32" fill="#f4a93a"/>
@@ -275,173 +275,140 @@
             <ellipse cx="0.6" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
             <polygon points="0.47,0.62 0.53,0.62 0.5,0.67" fill="#ff6f9b"/>
           </svg><span>ZOOMIES GP</span></h1>
-        <p class="tagline">Cat Kart Racing</p>
-        <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
-          <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
-          <span id="menu-map-label" class="map-label">Classic circuit</span>
-          <span class="map-edit-hint">Edit ›</span>
-        </button>
-      </div>
-      <div class="menu-col menu-col-actions">
+        <p class="title-tag">🏁 Cat Kart Racing 🏁</p>
         <!-- Shown only when a race is parked in the background (opened the menu
              mid-race); jumps back into it instead of losing your progress. -->
-        <button id="resume-race-btn" class="hidden">▶ RESUME RACE</button>
-        <!-- The one primary action. Its label + behaviour follow the chosen
-             game mode: start a race, start a time trial, or host a room. -->
-        <button id="start-btn">🏁 START RACE</button>
-        <!-- Race setup at a glance: current choice on each row, tap to change.
-             (Join-by-code lives in Play → Multiplayer; the track picker lives
-             inside Play's Single Race / Time Trial cards.) -->
-        <nav class="menu-tiles" aria-label="Race setup">
-          <button id="open-mode" class="menu-tile">
-            <span class="tile-ico">🏁</span>
-            <span class="tile-text">
-              <span class="tile-title">Play</span>
-              <span class="tile-sub" id="mode-summary">Grand Prix · 3 laps · Hard</span>
-            </span>
-            <span class="tile-chevron">›</span>
-          </button>
-          <button id="open-garage" class="menu-tile">
-            <span class="tile-ico">🐱</span>
-            <span class="tile-text">
-              <span class="tile-title">Racer</span>
-              <span class="tile-sub" id="racer-summary">Marmalade · Ember</span>
-            </span>
-            <span class="tile-swatches">
-              <span class="tile-swatch" id="racer-swatch-cat"></span>
-              <span class="tile-swatch" id="racer-swatch-kart"></span>
-            </span>
-            <span class="tile-chevron">›</span>
-          </button>
-          <!-- The reward loop, first-class: live status shows waiting badge
-               claims, an affordable prize, or the next cup prize to chase. -->
-          <button id="open-catalog" class="menu-tile">
-            <span class="tile-ico">🐟</span>
-            <span class="tile-text">
-              <span class="tile-title">Cat&#8209;alog · <span id="treats-balance">0</span> 🐟</span>
-              <span class="tile-sub" id="catalog-summary">Prizes · badges · trophies</span>
-            </span>
-            <span id="catalog-tile-alert" class="tile-alert hidden">!</span>
-            <span class="tile-chevron">›</span>
-          </button>
-        </nav>
-        <div class="menu-footer menu-progress-row">
-          <button id="open-daily" class="secondary small">📅 Daily</button>
-        </div>
-        <div class="menu-footer">
-          <button id="howto-btn" class="secondary small">❓ How to Play</button>
-          <button id="open-settings" class="secondary small">⚙ Settings</button>
+        <button id="resume-race-btn" class="btn-cream title-resume hidden">▶ Resume race</button>
+        <!-- The one way forward. A mid-cup or daily boot relabels it and jumps
+             straight to the start line; otherwise it opens the mode picker. -->
+        <button id="start-btn" class="btn-gold title-play">▶&nbsp;&nbsp;Play</button>
+        <div class="title-extras">
+          <button id="open-catalog" class="btn-cream extra-btn">📖 Cat&#8209;alog<span id="catalog-tile-alert" class="tile-alert hidden">!</span></button>
+          <button id="howto-btn" class="btn-cream extra-btn">❓ How to Play</button>
+          <button id="open-daily" class="btn-cream extra-btn">📅 Daily</button>
+          <button id="open-settings" class="btn-cream extra-btn">⚙️ Settings</button>
           <!-- Shown only when not already installed (JS); does the native install
                prompt where supported, or opens the iOS instructions overlay. -->
-          <button id="install-btn" class="secondary small hidden">📲 Install</button>
+          <button id="install-btn" class="btn-cream extra-btn hidden">📲 Install</button>
         </div>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <!-- ===== Game mode (sub-menu) ===== -->
-  <!-- One card per mode; the selected card expands to reveal just that mode's
-       options (laps + difficulty for Grand Prix), so only relevant knobs show. -->
-  <div id="mode-panel" class="overlay hidden">
-    <div class="menu-card mode-main">
-      <h1>🏁 Play</h1>
-      <p class="tagline">Pick how you want to race</p>
-      <div class="mode-cards">
-        <div id="mode-gp" class="mode-card">
-          <button class="mode-pick">
-            <span class="mode-ico">🏁</span>
-            <span class="mode-text">
-              <span class="mode-name">Single Race</span>
-              <span class="mode-desc">One race against five rivals</span>
-            </span>
-            <span class="mode-radio" aria-hidden="true"></span>
-          </button>
-          <div class="mode-opts">
-            <div class="mode-opt-row">
-              <span class="mode-opt-label">Laps</span>
-              <div class="seg-toggle laps-seg" id="laps-seg">
-                <button class="seg-btn" data-laps="1">1</button>
-                <button class="seg-btn" data-laps="2">2</button>
-                <button class="seg-btn" data-laps="3">3</button>
-                <button class="seg-btn" data-laps="4">4</button>
-                <button class="seg-btn" data-laps="5">5</button>
-              </div>
-            </div>
-            <div class="mode-opt-row">
-              <span class="mode-opt-label">Rivals</span>
-              <div class="seg-toggle" id="diff-seg">
-                <button class="seg-btn" data-diff="easy">Easy</button>
-                <button class="seg-btn" data-diff="medium">Medium</button>
-                <button class="seg-btn" data-diff="hard">Hard</button>
-              </div>
-            </div>
-            <!-- The world picker lives INSIDE the modes it applies to (cups and
-                 the daily bring their own tracks, so they don't show it). -->
-            <div class="mode-opt-row">
-              <span class="mode-opt-label">Track</span>
-              <button id="gp-track-btn" class="mode-track-btn"><span id="gp-track-sub">Classic circuit · Midday</span><span class="mode-track-chev">›</span></button>
-            </div>
-          </div>
+    <!-- Mode: four big tap-cards. One tap chooses AND advances. -->
+    <section id="flow-mode" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">Step 1 of 3</div>
+          <h2 class="flow-h">How do you want to race?</h2>
         </div>
-        <div id="mode-cup" class="mode-card">
-          <button class="mode-pick">
-            <span class="mode-ico">🏆</span>
-            <span class="mode-text">
-              <span class="mode-name">Cup Series</span>
-              <span class="mode-desc">3-4 races, points, trophies — win exclusives</span>
-            </span>
-            <span class="mode-radio" aria-hidden="true"></span>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body">
+        <div class="mode-grid">
+          <button id="mode-gp" class="tap-card mode-tap">
+            <span class="tap-chip" style="background:#ff5d5d">🏁</span>
+            <span class="tap-text"><span class="tap-title">Single Race</span><span class="tap-sub">One race, five rivals — quickest way to the track</span></span>
+            <span class="tap-chev">›</span>
           </button>
-          <div class="mode-opts">
-            <div id="cup-list" class="cup-list"></div>
-          </div>
+          <button id="mode-cup" class="tap-card mode-tap">
+            <span class="tap-chip" style="background:#ffc24b">🏆</span>
+            <span class="tap-text"><span class="tap-title">Cup Series</span><span class="tap-sub">Races, points, trophies — win exclusive prizes</span></span>
+            <span class="tap-chev">›</span>
+          </button>
+          <button id="mode-tt" class="tap-card mode-tap">
+            <span class="tap-chip" style="background:#4cc9f0">⏱</span>
+            <span class="tap-text"><span class="tap-title">Time Trial</span><span class="tap-sub">One flying lap against the clock — beat your PB</span></span>
+            <span class="tap-chev">›</span>
+          </button>
+          <button id="mode-mp" class="tap-card mode-tap hidden">
+            <span class="tap-chip" style="background:#a4e022">🎮</span>
+            <span class="tap-text"><span class="tap-title">With Friends</span><span class="tap-sub">Make a room, share the code — race your pals</span></span>
+            <span class="tap-chev">›</span>
+          </button>
         </div>
-        <div id="mode-tt" class="mode-card">
-          <button class="mode-pick">
-            <span class="mode-ico">⏱</span>
-            <span class="mode-text">
-              <span class="mode-name">Time Trial</span>
-              <span class="mode-desc">One flying lap against the clock — beat your PB</span>
-            </span>
-            <span class="mode-radio" aria-hidden="true"></span>
-          </button>
-          <div class="mode-opts">
-            <div class="mode-opt-row">
-              <span class="mode-opt-label">Track</span>
-              <button id="tt-track-btn" class="mode-track-btn"><span id="tt-track-sub">Classic circuit · Midday</span><span class="mode-track-chev">›</span></button>
-            </div>
-          </div>
+      </div>
+    </section>
+
+    <!-- Track: visual map cards (painted from the real generator), plus the
+         track maker. Picking a card advances; a new recipe rebuilds the world. -->
+    <section id="flow-track" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">Step 2 of 3</div>
+          <h2 class="flow-h">Pick a track</h2>
         </div>
-        <div id="mode-mp" class="mode-card hidden">
-          <button class="mode-pick">
-            <span class="mode-ico">🎮</span>
-            <span class="mode-text">
-              <span class="mode-name">Multiplayer</span>
-              <span class="mode-desc">Host a room and share the code, or join a friend</span>
-            </span>
-            <span class="mode-radio" aria-hidden="true"></span>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body">
+        <div id="track-grid" class="track-grid"></div>
+      </div>
+    </section>
+
+    <!-- Cup: one card per series, showing the prize. Picking advances. -->
+    <section id="flow-cup" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">Step 2 of 3</div>
+          <h2 class="flow-h">Pick a cup</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body">
+        <div id="cup-list" class="cup-grid"></div>
+      </div>
+    </section>
+
+    <!-- Friends: host (→ racer → lobby) or join by code (reloads into the
+         friend's world and lands in their lobby). -->
+    <section id="flow-friends" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">With friends</div>
+          <h2 class="flow-h">Race together</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body">
+        <div class="friends-grid">
+          <button id="mp-host-btn" class="tap-card friends-card">
+            <span class="tap-chip" style="background:#a4e022">🏠</span>
+            <span class="tap-text"><span class="tap-title">Host a room</span><span class="tap-sub">Make a room and share the code — you bring the track</span></span>
+            <span class="tap-chev">›</span>
           </button>
-          <div class="mode-opts">
-            <!-- Join-by-code lives with the mode it belongs to (it used to sit
-                 loose on the hub). START on the hub hosts a room. -->
-            <div id="mp-join" class="mp-join-row hidden">
-              <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
-                autocomplete="off" spellcheck="false" maxlength="4" placeholder="Enter room code" />
-              <button id="mp-join-btn" class="secondary small">Join</button>
-            </div>
-            <p id="mp-menu-status" class="lobby-status hidden"></p>
+          <div class="tap-card friends-card is-static">
+            <span class="tap-chip" style="background:#4cc9f0">🔑</span>
+            <span class="tap-text">
+              <span class="tap-title">Join a friend</span>
+              <span id="mp-join" class="mp-join-row">
+                <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
+                  autocomplete="off" spellcheck="false" maxlength="4" placeholder="Room code" />
+                <button id="mp-join-btn" class="btn-gold join-go">Join</button>
+              </span>
+              <span id="mp-menu-status" class="join-status hidden"></span>
+            </span>
           </div>
         </div>
       </div>
-      <button id="mode-done">✓ Done</button>
-    </div>
-  </div>
+    </section>
 
-  <!-- ===== Garage: pick your cat + kart (live 3D preview renders behind) ===== -->
-  <div id="garage" class="overlay hidden">
-    <div id="garage-panel" class="menu-card">
-      <div class="garage-title"><span class="garage-ico">🐱</span><h1>Pick your racer</h1></div>
-      <div class="garage-pickers">
+    <!-- Racer: the showroom. The live 3D cat-in-kart orbits in the open left
+         half; the controls dock right. (Was the garage overlay.) -->
+    <section id="flow-racer" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow" id="racer-eyebrow">Step 3 of 3</div>
+          <h2 class="flow-h">Pick your racer</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body racer-body">
+        <div class="racer-showroom"><!-- live 3D preview renders behind --></div>
+        <div id="garage-panel" class="sticker-deep racer-card">
         <div class="garage-pick">
           <!-- Presets vs Custom is an explicit toggle (like the track's
                Classic/Generated) instead of a hidden extra stepper slot. -->
@@ -532,16 +499,109 @@
             <button id="kart-randomize" class="secondary small creator-rand">🎲 Surprise me</button>
           </div>
         </div>
+          <p id="garage-lock-note" class="garage-lock-note"></p>
+          <div class="racer-actions">
+            <button id="garage-buy" class="btn-cream racer-buy hidden">🐟 Buy</button>
+            <button id="garage-apply" class="btn-gold racer-next">Next&nbsp;&nbsp;→</button>
+          </div>
+        </div>
       </div>
-      <p id="garage-lock-note" class="garage-lock-note"></p>
-      <div class="garage-actions">
-        <button id="garage-buy" class="garage-buy hidden">🐟 Buy</button>
-        <button id="garage-apply">✓ Done</button>
-        <button id="garage-back" class="secondary">← Back</button>
-      </div>
-    </div>
-  </div>
+    </section>
 
+    <!-- Start line: the ONLY full summary — the map, your racer, plain-language
+         options, one giant GO. -->
+    <section id="flow-startline" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">Ready to race</div>
+          <h2 class="flow-h">Start line</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body startline-body">
+        <div class="start-board">
+          <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
+            <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
+            <span id="menu-map-label" class="map-label">Classic circuit</span>
+            <span class="map-edit-hint">Edit ›</span>
+          </button>
+        </div>
+        <div class="start-side">
+          <div class="sticker-deep start-racer">
+            <span class="tile-swatches">
+              <span class="tile-swatch" id="racer-swatch-cat"></span>
+              <span class="tile-swatch" id="racer-swatch-kart"></span>
+            </span>
+            <span class="start-racer-text">
+              <span class="start-racer-label">Your racer</span>
+              <span id="racer-summary">Marmalade · Ember</span>
+            </span>
+            <button id="startline-edit" class="btn-cream small-pill">Edit</button>
+          </div>
+          <div class="sticker-deep start-opts">
+            <div class="mode-opt-row" id="laps-row">
+              <span class="mode-opt-label">Laps</span>
+              <div class="seg-toggle laps-seg" id="laps-seg">
+                <button class="seg-btn" data-laps="1">1</button>
+                <button class="seg-btn" data-laps="2">2</button>
+                <button class="seg-btn" data-laps="3">3</button>
+                <button class="seg-btn" data-laps="4">4</button>
+                <button class="seg-btn" data-laps="5">5</button>
+              </div>
+            </div>
+            <div class="mode-opt-row" id="diff-row">
+              <span class="mode-opt-label">Rivals</span>
+              <div class="seg-toggle" id="diff-seg">
+                <button class="seg-btn" data-diff="easy">Easy</button>
+                <button class="seg-btn" data-diff="medium">Medium</button>
+                <button class="seg-btn" data-diff="hard">Hard</button>
+              </div>
+            </div>
+            <p id="start-note" class="start-note hidden"></p>
+          </div>
+          <button id="go-btn" class="btn-gold go-btn">🏁&nbsp; START RACE</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Lobby: room code + who's here, floating over the world tour. -->
+    <section id="flow-lobby" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Leave the room">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow" id="lobby-status">Connecting…</div>
+          <h2 class="flow-h">Lobby</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body lobby-flow-body">
+        <div class="lobby-left">
+          <div class="sticker lobby-code-card">
+            <p class="lobby-share-label">Room code — friends type this</p>
+            <div id="lobby-code" class="lobby-code-big">—</div>
+            <!-- Track fingerprint: every player should see the SAME line. If two
+                 phones show different tracks/codes here, they're not on the same
+                 map (world sync didn't take) — the fastest way to spot a desync. -->
+            <p id="lobby-track" class="lobby-track-tag"></p>
+            <div class="mp-share-row">
+              <button id="lobby-share" class="btn-cream small-pill hidden">📤 Share invite</button>
+              <button id="lobby-copy" class="btn-cream small-pill">📋 Copy invite link</button>
+            </div>
+          </div>
+          <button id="lobby-start" class="btn-gold go-btn">🏁&nbsp; START RACE</button>
+          <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
+               host launches (the join reload drops fullscreen). -->
+          <button id="lobby-ready" class="btn-cream hidden">🎮 Enable tilt controls</button>
+          <p id="lobby-waiting" class="lobby-waiting">Waiting for the host to start…</p>
+        </div>
+        <div class="sticker-deep lobby-players-card">
+          <p class="lobby-players-label">Players · <span id="lobby-count">1 / 6</span></p>
+          <ol id="lobby-players"></ol>
+        </div>
+      </div>
+    </section>
+  </div>
 
   <!-- ===== Add-to-Home-Screen instructions / install gate ===== -->
   <div id="install-help" class="overlay hidden">
@@ -590,43 +650,6 @@
       </div>
       <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
       <button id="howto-back" class="secondary">← Back</button>
-    </div>
-  </div>
-
-  <!-- ===== Multiplayer lobby ===== -->
-  <!-- Two columns for the short landscape stage: the room code + sharing on one
-       side, who's here on the other, with the single primary action beneath. -->
-  <div id="lobby" class="overlay hidden">
-    <div class="menu-card lobby-main">
-      <h1>🏁 Lobby</h1>
-      <p id="lobby-status" class="lobby-status">Connecting…</p>
-      <div class="lobby-body">
-        <div class="lobby-col">
-          <!-- Big, obvious share code — friends type this to join. -->
-          <p class="lobby-share-label">Room code · friends type this</p>
-          <div id="lobby-code" class="lobby-code-big">—</div>
-          <!-- Track fingerprint: every player should see the SAME line. If two
-               phones show different tracks/codes here, they're not on the same
-               map (world sync didn't take) — the fastest way to spot a desync. -->
-          <p id="lobby-track" class="lobby-track-tag"></p>
-          <div class="mp-share-row">
-            <button id="lobby-share" class="secondary small hidden">📤 Share invite</button>
-            <button id="lobby-copy" class="secondary small">📋 Copy invite link</button>
-          </div>
-        </div>
-        <div class="lobby-col">
-          <p class="lobby-players-label">Players · <span id="lobby-count">1 / 6</span></p>
-          <ol id="lobby-players"></ol>
-        </div>
-      </div>
-      <div class="lobby-actions">
-        <button id="lobby-start">🏁 START RACE</button>
-        <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
-             host launches (the join reload drops fullscreen). -->
-        <button id="lobby-ready" class="secondary small hidden">🎮 Enable tilt controls</button>
-        <p id="lobby-waiting" class="hint">Waiting for the host to start…</p>
-        <button id="lobby-back" class="secondary small">← Main Menu</button>
-      </div>
     </div>
   </div>
 

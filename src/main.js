@@ -2201,7 +2201,6 @@ function refreshRaceOptSegs() {
     b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
   document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
-  refreshModeSummary(); // the main-menu tile echoes laps + difficulty
 }
 document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
@@ -2553,9 +2552,9 @@ function toMenu() {
   _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished && !MP.enabled;
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
-  document.getElementById("lobby").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("menu").classList.remove("hidden");
+  flowGo("title", -1, true); // land on the flow's front door, no slide
   audio.stopEngine();
   audio.setSkid(false);
   audio.playMusic("bg");
@@ -2601,8 +2600,7 @@ document.getElementById("resume-race-btn")?.addEventListener("click", resumePark
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === State.RACING) pauseGame();
 });
-// Every menu can get back to the main screen: lobby and results both offer it.
-document.getElementById("lobby-back")?.addEventListener("click", toMenu);
+// (The lobby's Back arrow goes through the flow's shared back handling.)
 // Badges block the exit: leaving the results for the menu detours through the
 // claim interstitial whenever any badge is still unclaimed (it no-ops straight
 // to the menu when there's nothing to claim).
@@ -2668,13 +2666,14 @@ function closeSubScreen(el) {
 // tactile press/release pair + a desktop hover tick; segmented buttons get the
 // mechanical toggle instead. Dynamic elements (prize tiles, claim cards) speak
 // through imperative outcome cues, so they need no attributes.
+function cueifyButton(el) {
+  if (el.classList.contains("seg-btn")) { el.dataset.cuelumeToggle = ""; return; }
+  el.dataset.cuelumePress = "";
+  el.dataset.cuelumeRelease = "";
+  el.dataset.cuelumeHover = "tick";
+}
 function wireMenuCues() {
-  for (const el of document.querySelectorAll(".overlay button")) {
-    if (el.classList.contains("seg-btn")) { el.dataset.cuelumeToggle = ""; continue; }
-    el.dataset.cuelumePress = "";
-    el.dataset.cuelumeRelease = "";
-    el.dataset.cuelumeHover = "tick";
-  }
+  for (const el of document.querySelectorAll(".overlay button, #menu button")) cueifyButton(el);
   bindUiCues();
   setUiCuesEnabled(audio.sfxOn);
 }
@@ -2685,23 +2684,27 @@ wireMenuCues();
 // now); hidden during racing and the results/claim flow. A MutationObserver
 // watches the screens' class flips, so no open/close path needs to know about
 // the chrome.
-const CHROME_SCREENS = ["mode-panel", "garage", "catalog", "track-panel", "settings", "howto", "install-help", "lobby"];
+const CHROME_SCREENS = ["catalog", "track-panel", "settings", "howto", "install-help"];
 const menuChrome = document.getElementById("menu-chrome");
 function refreshMenuChrome() {
   if (!menuChrome) return;
-  const anyOpen = CHROME_SCREENS.some((id) => {
+  const sheetOpen = CHROME_SCREENS.some((id) => {
     const el = document.getElementById(id);
     return el && !el.classList.contains("hidden");
   });
-  menuChrome.classList.toggle("hidden", !anyOpen);
+  // Also ride over every flow step past the title (the title keeps its own
+  // extras row), so prices always have a visible balance mid-flow.
+  const menuEl = document.getElementById("menu");
+  const flowOpen = menuEl && !menuEl.classList.contains("hidden") && menuEl.dataset.step !== "title";
+  menuChrome.classList.toggle("hidden", !(sheetOpen || flowOpen));
   const n = document.getElementById("chrome-treats-n");
   if (n) n.textContent = String(profile.treats);
 }
 {
   const mo = new MutationObserver(refreshMenuChrome);
-  for (const id of CHROME_SCREENS) {
+  for (const id of CHROME_SCREENS.concat("menu")) {
     const el = document.getElementById(id);
-    if (el) mo.observe(el, { attributes: true, attributeFilter: ["class"] });
+    if (el) mo.observe(el, { attributes: true, attributeFilter: ["class", "data-step"] });
   }
 }
 document.getElementById("chrome-gear")?.addEventListener("click", () => {
@@ -2713,8 +2716,7 @@ document.getElementById("chrome-treats")?.addEventListener("click", () => {
   if (!cat || !cat.classList.contains("hidden")) return; // already showing
   // In the lobby the chip is display-only (jumping screens mid-connection
   // would abandon the room).
-  const lobby = document.getElementById("lobby");
-  if (lobby && !lobby.classList.contains("hidden")) return;
+  if (MP.inLobby) return;
   renderCatalog();
   openSubScreen(cat);
 });
@@ -2724,8 +2726,7 @@ document.getElementById("chrome-treats")?.addEventListener("click", () => {
 // settings/help float over catalog, which floats over the config panels.
 const ESC_EXITS = [
   ["settings", "settings-back"], ["howto", "howto-back"], ["install-help", "install-help-back"],
-  ["catalog", "catalog-back"], ["track-panel", "track-back"], ["garage", "garage-back"],
-  ["mode-panel", "mode-done"],
+  ["catalog", "catalog-back"], ["track-panel", "track-back"],
 ];
 function escCloseTopScreen() {
   for (const [scr, btn] of ESC_EXITS) {
@@ -3417,11 +3418,8 @@ trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
     syncTrackPanel();
   });
 });
-document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
-// The world picker opens from inside Play's Single Race / Time Trial cards
-// (it stacks over the Play panel; its Back returns there).
-document.getElementById("gp-track-btn")?.addEventListener("click", openTrackPanel);
-document.getElementById("tt-track-btn")?.addEventListener("click", openTrackPanel);
+// The track maker opens as a sheet from the Track step's "Make your own" card
+// and from the start line's map Edit affordance.
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
 // shortcut into the track editor. The Track tile echoes the same name plus the
@@ -3435,14 +3433,7 @@ function refreshMenuMap() {
     ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
     : "Classic circuit";
   const label = document.getElementById("menu-map-label");
-  if (label) label.textContent = name;
-  // The track summary now lives on the Play panel's per-mode Track rows
-  // (Single Race + Time Trial — the modes the world picker applies to).
-  const summary = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
-  for (const id of ["track-summary", "gp-track-sub", "tt-track-sub"]) {
-    const sub = document.getElementById(id);
-    if (sub) sub.textContent = summary;
-  }
+  if (label) label.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
 // Cup Series maps are fixed recipes — the map is a preview there, not an editor
 // entry point (the button's Edit affordance is hidden via .map-no-edit too).
@@ -3519,15 +3510,18 @@ trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
 document.getElementById("track-apply")?.addEventListener("click", () => {
   if (_trackDraft.mode === "custom" && !_trackDraft.seed) _trackDraft.seed = randomSeed();
   saveTrackConfig(_trackDraft);
+  // Resume the flow where the reload interrupts it: applying from the start
+  // line's Edit lands back on the start line; applying from the Track step
+  // moves on to the racer (the step a track pick would have advanced to).
+  saveFlowResume(flowStep === "startline" ? "startline" : "racer");
   markReload("track-apply");
   location.reload(); // rebuild the world from the new recipe
 });
 
-// --- Garage: pick your cat + kart, with a live 3D preview ------------------
+// --- Racer step: pick your cat + kart, with a live 3D preview --------------
 // The selection just rides in garageConfig; the player kart reads it at race start
-// (raceRoster/buildKarts) so no reload is needed. While the garage is open the menu
-// loop renders an orbiting preview kart instead of the cinematic (see the loop).
-const garageEl = document.getElementById("garage");
+// (raceRoster/buildKarts) so no reload is needed. While the Racer step is up the
+// menu loop renders an orbiting preview kart instead of the cinematic (see the loop).
 let _garageDraft = null; // { cat, kart } in-progress; committed to garageConfig on Done
 let _garageOpen = false;
 let _garagePreview = null; // the preview kart's group in the scene
@@ -3747,12 +3741,10 @@ function openGaragePanel() {
   _menuPhase = "hold";
   _menuShotT = 0;
   _garageOpen = true;
-  openSubScreen(garageEl);
 }
 function closeGarage() {
   _garageOpen = false;
   _clearGaragePreview();
-  closeSubScreen(garageEl);
 }
 // The stepper browses PRESETS only; Custom is its own mode on the toggle above
 // it (an explicit affordance, not a hidden extra slot at the end of the cycle).
@@ -3800,29 +3792,28 @@ function stepCustom(which, list, dir) {
   }
 }
 // Slowly orbit the camera around the parked preview kart. The control card is
-// docked to the left half of the (landscape) screen, so frame the kart in the
-// open RIGHT half: orbit a touch further back (smaller kart) and pan the aim to
-// the left, which slides the kart rightward on screen.
+// docked to the RIGHT half of the (landscape) screen, so frame the kart in the
+// open LEFT half: orbit a touch further back (smaller kart) and pan the aim to
+// the right, which slides the kart leftward on screen.
 const _garageRight = new THREE.Vector3();
 function renderGarage(timeSec, dt = 0.016) {
   if (!_garagePreview) return;
   _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
   const p = _garagePreview.position;
   const ang = timeSec * 0.5;
-  const r = 9.6; // well back so the whole kart reads small and never clips
+  const r = 11.2; // well back so the whole kart reads small and never clips
   camera.position.set(p.x + Math.sin(ang) * r, p.y + 3.1, p.z + Math.cos(ang) * r);
   if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
   _garageLook.set(p.x, p.y + 1.25, p.z);
   camera.lookAt(_garageLook);
-  // Pan the aim left along the camera's screen-right axis so the kart sits in
-  // the open right half (the card covers the left). Re-aim after the shift.
+  // Pan the aim right along the camera's screen-right axis so the kart sits in
+  // the open left half (the card covers the right). Re-aim after the shift.
   _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-  _garageLook.addScaledVector(_garageRight, -3.6);
+  _garageLook.addScaledVector(_garageRight, 3.4);
   camera.lookAt(_garageLook);
   renderFrame();
 }
 
-document.getElementById("open-garage")?.addEventListener("click", openGaragePanel);
 document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage("cat", -1));
 document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
 document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
@@ -3875,7 +3866,7 @@ document.getElementById("garage-buy")?.addEventListener("click", (e) => {
   syncGarageUI();
 });
 document.getElementById("garage-apply")?.addEventListener("click", () => {
-  // Done is the gate: locked picks can be browsed/previewed but not kept.
+  // Next is the gate: locked picks can be browsed/previewed but not kept.
   const lockedSide = ["cat", "kart"].find((w) => !isUnlocked(profile, draftItemId(w)));
   if (lockedSide) {
     const note = document.getElementById("garage-lock-note");
@@ -3889,9 +3880,11 @@ document.getElementById("garage-apply")?.addEventListener("click", () => {
   garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
-  closeGarage();
+  // Onward: friends-hosting goes to the lobby (this tap is the fullscreen +
+  // motion gesture); every solo mode reviews the race on the start line.
+  if (raceMode === "mp") hostGame();
+  else flowGo("startline");
 });
-document.getElementById("garage-back")?.addEventListener("click", closeGarage);
 refreshRacerSummary();
 
 musicToggle?.addEventListener("click", () => {
@@ -3936,26 +3929,20 @@ window.addEventListener("keydown", (e) => {
     if (state === State.RACING) pauseGame();
     else if (state === State.PAUSED) resumeGame();
     else if (state === State.FLYVIEW) exitFlyView();
-    else if (e.code === "Escape") escCloseTopScreen();
+    // Esc walks back out: topmost sheet first, then one flow step.
+    else if (e.code === "Escape" && !escCloseTopScreen()) flowBack();
   }
 });
 
-// --- Menu wiring ---
-// One primary START button whose label + action follow the game mode chosen on
-// the Game Mode screen: Grand Prix starts a race, Time Trial a solo run, and
-// Multiplayer hosts a room (joining by code sits right under the button).
-// "Race again" repeats whichever mode you were just in.
+// --- Menu flow -----------------------------------------------------------
+// One linear road to the grid: title → mode → (track | cup | friends) →
+// racer → startline → lobby. Screens slide directionally (forward = in from
+// the right); each step's enter/leave hook owns its content + 3D backdrop.
 document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
 
 const startBtn = document.getElementById("start-btn");
 const mpCodeInput = document.getElementById("mp-code");
 const MODE_KEY = "zoomies-mode-v1";
-const MODE_INFO = {
-  gp: { cta: "🏁 START RACE" },
-  tt: { cta: "⏱ START TIME TRIAL" },
-  mp: { cta: "🎮 HOST GAME" },
-  cup: { cta: "🏆 START CUP" },
-};
 // Which cup the Cup Series mode races (persisted; mid-cup boots override it).
 const CUP_CHOICE_KEY = "zoomies-cup-choice";
 let _cupChoice = CUPS[0].id;
@@ -3972,33 +3959,82 @@ try {
 if (_cupState && _activeCup) raceMode = "cup";
 else if (_dailyActive) raceMode = "gp";
 
-// The Game Mode tile echoes the chosen mode plus its options at a glance.
-function refreshModeSummary() {
-  const el = document.getElementById("mode-summary");
-  if (!el) return;
-  const cupDef = cupById(_cupChoice);
-  el.textContent =
-    raceMode === "tt" ? "Time Trial · One lap vs the clock"
-    : raceMode === "mp" ? "Multiplayer · Host or join friends"
-    : raceMode === "cup" ? `Cup Series · ${cupDef ? cupDef.name : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`
-    : `Single Race · ${TOTAL_LAPS} lap${TOTAL_LAPS > 1 ? "s" : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`;
+// --- Flow controller ---
+const menuFlowEl = document.getElementById("menu");
+let flowStep = "title";
+// A track pick / maker apply rebuilds the world via a reload — remember where
+// the flow was so the boot lands back mid-flow instead of on the title.
+const FLOW_RESUME_KEY = "zoomies-flow-resume";
+function saveFlowResume(step) {
+  try { sessionStorage.setItem(FLOW_RESUME_KEY, step); } catch { /* ignore */ }
 }
-function applyModeUI() {
-  if (startBtn) {
-    // Mid-cup the START button continues the series ("▶ RACE 2 OF 3"); a fresh cup
-    // starts it; a daily link starts the daily. All via a real tap, so iOS motion
-    // permission is granted for every race.
-    if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
-    else if (_dailyActive) startBtn.textContent = "📅 START DAILY";
-    else startBtn.textContent = MODE_INFO[raceMode].cta;
+function flowGo(step, dir = 1, instant = false) {
+  const next = document.getElementById("flow-" + step);
+  if (!next) return;
+  const cur = document.getElementById("flow-" + flowStep);
+  const changing = flowStep !== step;
+  // Leave hooks: the racer step owns the 3D showroom preview.
+  if (changing && flowStep === "racer") closeGarage();
+  // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
+  if (step === "title") refreshTitlePlay();
+  else if (step === "mode") refreshModeCards();
+  else if (step === "track") renderTrackCards();
+  else if (step === "cup") renderCupOptions();
+  else if (step === "racer") openGaragePanel();
+  else if (step === "startline") refreshStartline();
+  if (changing) {
+    if (instant) menuFlowEl.classList.add("flow-instant");
+    if (cur) {
+      cur.classList.remove("is-active");
+      cur.style.setProperty("--fx", dir > 0 ? "-55%" : "55%"); // exit opposite the entry side
+    }
+    next.style.setProperty("--fx", dir > 0 ? "55%" : "-55%");
+    void next.offsetWidth; // commit the start position before activating
+    next.classList.add("is-active");
+    if (instant) requestAnimationFrame(() => requestAnimationFrame(() => menuFlowEl.classList.remove("flow-instant")));
+    flowStep = step;
+    menuFlowEl.dataset.step = step;
   }
-  const mp = raceMode === "mp";
-  document.getElementById("mp-join")?.classList.toggle("hidden", !mp);
-  document.getElementById("mp-menu-status")?.classList.toggle("hidden", !mp);
-  for (const m of ["gp", "tt", "mp", "cup"])
-    document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
-  refreshModeSummary();
-  refreshMenuMapCycle();
+  refreshMenuChrome();
+}
+// Back is always the same edge: one step toward the title. The racer's back
+// depends on how you got there; leaving the lobby leaves the room flow.
+function flowBack() {
+  if (state !== State.MENU || menuFlowEl.classList.contains("hidden")) return false;
+  if (flowStep === "lobby") { toMenu(); return true; }
+  const back = {
+    mode: "title",
+    track: "mode",
+    cup: "mode",
+    friends: "mode",
+    racer: raceMode === "mp" ? "friends" : raceMode === "cup" ? "cup" : "track",
+    startline: "racer",
+  }[flowStep];
+  if (!back) return false;
+  flowGo(back, -1);
+  return true;
+}
+menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", flowBack));
+
+// Title: the one way forward. A mid-cup or daily boot jumps straight to the
+// start line (the series/daily brings its own track + racer context).
+function refreshTitlePlay() {
+  if (!startBtn) return;
+  if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+  else if (_dailyActive) startBtn.textContent = "📅 START DAILY";
+  else startBtn.textContent = "▶  Play";
+}
+startBtn?.addEventListener("click", () => {
+  audio.unlock(); // the opening tap doubles as the audio unlock
+  if ((raceMode === "cup" && _cupState && _activeCup) || _dailyActive) { flowGo("startline"); return; }
+  flowGo("mode");
+});
+
+// Kept as the shared "mode/options changed" refresher (setRaceMode + the
+// multiplayer connect path call it).
+function applyModeUI() {
+  refreshTitlePlay();
+  if (flowStep === "startline") refreshStartline();
 }
 function setRaceMode(mode) {
   if (mode === "mp" && !mpAvailable) return;
@@ -4008,21 +4044,130 @@ function setRaceMode(mode) {
   if (mode !== "mp") try { localStorage.setItem(MODE_KEY, mode); } catch {}
   applyModeUI();
 }
-startBtn?.addEventListener("click", () => {
+
+// Mode: one tap chooses AND advances.
+function refreshModeCards() {
+  for (const m of ["gp", "tt", "mp", "cup"])
+    document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
+}
+document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
+document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
+document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
+document.getElementById("mode-mp")?.addEventListener("click", () => flowGo("friends"));
+// Friends: hosting picks the mode here; joining reloads into the friend's room.
+document.getElementById("mp-host-btn")?.addEventListener("click", () => { setRaceMode("mp"); flowGo("racer"); });
+
+// --- Track step: featured recipes painted from the real generator ----------
+// Fixed seeds/knobs so the cards are stable, nameable places. Picking a card
+// that isn't already built saves the recipe and reloads (the world is built
+// from the config at boot), resuming the flow at the Racer step.
+const FEATURED_TRACKS = [
+  { name: "Buttercup Run", sub: "🌳 Meadow · Midday", cfg: { mode: "custom", seed: "MEOW", size: 0.45, curviness: 0.5, twist: 0.42, hilliness: 0.35, hills: 0.5, biomes: ["meadow", "forest"], timeOfDay: "midday" } },
+  { name: "Whisker Canyon", sub: "⛰️ Desert · Sunset", cfg: { mode: "custom", seed: "DUNE", size: 0.55, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["desert", "mesa"], timeOfDay: "sunset" } },
+  { name: "Neon Alley", sub: "🏙 City · Night", cfg: { mode: "custom", seed: "NEON", size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ["city"], timeOfDay: "night" } },
+  { name: "Tuna Cove", sub: "🏖 Beach · Midday", cfg: { mode: "custom", seed: "TUNA", size: 0.5, curviness: 0.5, twist: 0.45, hilliness: 0.35, hills: 0.45, biomes: ["beach", "jungle"], timeOfDay: "midday" } },
+  { name: "Snowcap Sprint", sub: "🏔 Alpine · Sunset", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
+];
+const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
+function trackCardCurrent(cfg) {
+  if (cfg.mode !== "custom") return trackConfig.mode !== "custom";
+  return trackConfig.mode === "custom"
+    && _TRACK_CFG_KEYS.every((k) => trackConfig[k] === cfg[k])
+    && String(trackConfig.biomes || []) === String(cfg.biomes || []);
+}
+function renderTrackCards() {
+  const grid = document.getElementById("track-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+  const addCard = (name, sub, cfg, current) => {
+    const b = document.createElement("button");
+    b.className = "tap-card track-tap" + (current ? " is-selected" : "");
+    const shot = document.createElement("span");
+    shot.className = "track-shot";
+    const canvas = document.createElement("canvas");
+    canvas.width = 300;
+    canvas.height = 188;
+    shot.appendChild(canvas);
+    const nm = document.createElement("span");
+    nm.className = "track-name";
+    nm.textContent = name;
+    const sb = document.createElement("span");
+    sb.className = "track-sub";
+    sb.textContent = sub;
+    b.append(shot, nm, sb);
+    cueifyButton(b);
+    b.addEventListener("click", () => chooseTrackCard(cfg));
+    grid.appendChild(b);
+    try { paintTrackMap(canvas, previewLoopPoints(cfg)); } catch { /* a bad recipe just leaves a blank shot */ }
+  };
+  addCard("Classic Circuit", "🏁 The original loop", { mode: "classic" }, trackConfig.mode !== "custom");
+  for (const t of FEATURED_TRACKS) addCard(t.name, t.sub, t.cfg, trackCardCurrent(t.cfg));
+  // The player's own recipe, when the live world isn't one of the cards above.
+  if (trackConfig.mode === "custom" && !FEATURED_TRACKS.some((t) => trackCardCurrent(t.cfg))) {
+    addCard(trackTitle(track.features, WORLD_SEED), `🛠 My track · ${TOD_LABELS[trackConfig.timeOfDay] || "Midday"}`, { ...trackConfig }, true);
+  }
+  const mk = document.createElement("button");
+  mk.className = "tap-card track-maker-card";
+  mk.innerHTML = `<span class="tap-chip" style="background:#ff9ecb">🛠️</span><span class="tap-title">Make your own track</span><span class="tap-chev">›</span>`;
+  cueifyButton(mk);
+  mk.addEventListener("click", openTrackPanel);
+  grid.appendChild(mk);
+}
+function chooseTrackCard(cfg) {
+  if (trackCardCurrent(cfg)) { flowGo("racer"); return; } // already built → onward
+  saveTrackConfig({ ...trackConfig, ...cfg });
+  saveFlowResume("racer");
+  uiCue("loading");
+  markReload("track-pick");
+  // Drop any explicit world params (a daily/cup/join link) so the saved recipe
+  // drives the rebuild instead of the URL's seed.
+  const u = new URL(location.href);
+  for (const p of ["seed", "w", "daily", "cup"]) u.searchParams.delete(p);
+  location.href = u.toString();
+}
+
+// --- Start line: the only full summary — map, racer, options, one giant GO --
+const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP" };
+function refreshStartline() {
+  refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
+  refreshRacerSummary();
+  refreshRaceOptSegs();
+  const goBtn = document.getElementById("go-btn");
+  const note = document.getElementById("start-note");
+  const cupDef = cupById(_cupChoice);
+  const midCup = raceMode === "cup" && _cupState && _activeCup;
+  document.getElementById("laps-row")?.classList.toggle("hidden", raceMode !== "gp");
+  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || (raceMode === "cup" && !midCup)));
+  if (note) {
+    let txt = "";
+    if (_dailyActive) txt = "📅 Today's challenge — everyone races the same track. Daily bonus when you finish!";
+    else if (midCup) txt = `${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1} of ${_activeCup.races.length}. Points carry across the series.`;
+    else if (raceMode === "cup" && cupDef) {
+      txt = `${cupDef.emoji} ${cupDef.name} — ${cupDef.races.length} races, points and trophies.`;
+      if (cupDef.unlockId && !profile.trophies[cupDef.id]) txt += ` 🎁 First win: ${unlockName(cupDef.unlockId)}.`;
+    } else if (raceMode === "tt") {
+      const pb = loadTimeTrial()[0];
+      txt = pb ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
+        : "⏱ One flying lap against the clock — set your first PB!";
+    }
+    note.textContent = txt;
+    note.classList.toggle("hidden", !txt);
+  }
+  if (goBtn) {
+    if (midCup) goBtn.textContent = `▶  RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+    else if (_dailyActive) goBtn.textContent = "📅  START DAILY";
+    else goBtn.textContent = GO_LABELS[raceMode] || GO_LABELS.gp;
+  }
+}
+document.getElementById("startline-edit")?.addEventListener("click", () => flowGo("racer", -1));
+// GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.
+document.getElementById("go-btn")?.addEventListener("click", () => {
   if (raceMode === "tt") startTimeTrial();
-  else if (raceMode === "mp") hostGame();
   else if (raceMode === "cup") {
     if (_cupState && _activeCup) beginRace(); // continue the series (this tap grants tilt)
     else startCup(_cupChoice);
   } else startRace();
 });
-
-// Game Mode screen: one card per mode; the selected card expands its options.
-const modePanel = document.getElementById("mode-panel");
-for (const m of ["gp", "tt", "mp", "cup"])
-  document.getElementById("mode-" + m)?.addEventListener("click", () => setRaceMode(m));
-document.getElementById("open-mode")?.addEventListener("click", () => openSubScreen(modePanel));
-document.getElementById("mode-done")?.addEventListener("click", () => closeSubScreen(modePanel));
 
 // Host: connect to my own room (= my world seed) and go straight into the lobby.
 // The click is the user gesture beginRace needs for fullscreen + motion permission.
@@ -4107,6 +4252,20 @@ if (mpAvailable) {
 }
 applyModeUI();
 refreshRaceOptSegs();
+// Boot restore: a track pick / maker apply reloaded mid-flow — land back on the
+// remembered step (the ?mp=1 lobby path wins; it clears through autoOpenLobby).
+{
+  let _resume = null;
+  try {
+    _resume = sessionStorage.getItem(FLOW_RESUME_KEY);
+    sessionStorage.removeItem(FLOW_RESUME_KEY);
+  } catch { /* ignore */ }
+  if (_resume && !new URLSearchParams(location.search).has("mp") && document.getElementById("flow-" + _resume)) {
+    // Deferred: the racer step's enter hook touches state (menu cinematic,
+    // preview build) that initialises later in this module.
+    setTimeout(() => flowGo(_resume, 1, true), 60);
+  }
+}
 
 // --- Progression UI wiring (treats chip, cups, daily, Cat-alog, backup, dev) ---
 function refreshTreatsChip() {
@@ -4116,34 +4275,14 @@ function refreshTreatsChip() {
   if (c) c.textContent = String(profile.treats);
   refreshCatalogTile();
 }
-// The Cat-alog tile advertises the reward loop, most exciting thing first:
-// badges waiting to be claimed, then a prize the player can already afford,
-// then the next cup exclusive still to be won.
+// The Cat-alog button's alert dot advertises the reward loop: badges waiting
+// to be claimed, or a prize the player can already afford.
 function refreshCatalogTile() {
-  const sub = document.getElementById("catalog-summary");
   const alertDot = document.getElementById("catalog-tile-alert");
-  if (!sub) return;
-  let text = "Prizes · badges · trophies";
-  let hot = false;
-  if (profile.pendingClaims.length) {
-    text = profile.pendingClaims.length === 1
-      ? "🏅 A badge is waiting — claim it!"
-      : `🏅 ${profile.pendingClaims.length} badges waiting — claim them!`;
-    hot = true;
-  } else {
-    const affordable = CATALOG
-      .filter((e) => typeof e.price === "number" && e.price > 0 && e.price <= profile.treats && !isUnlocked(profile, e.id))
-      .sort((a, b) => a.price - b.price)[0];
-    if (affordable) {
-      text = `✨ You can afford ${unlockName(affordable.id)}!`;
-      hot = true;
-    } else {
-      const nextCup = CUPS.find((cup) => !profile.trophies[cup.id] && cup.unlockId);
-      if (nextCup) text = `🏆 Win the ${nextCup.name}: ${unlockName(nextCup.unlockId)}`;
-    }
-  }
-  sub.textContent = text;
-  alertDot?.classList.toggle("hidden", !hot);
+  if (!alertDot) return;
+  const hot = profile.pendingClaims.length > 0
+    || CATALOG.some((e) => typeof e.price === "number" && e.price > 0 && e.price <= profile.treats && !isUnlocked(profile, e.id));
+  alertDot.classList.toggle("hidden", !hot);
 }
 
 // Start a cup: seed the run state and reload into race 1 (each cup race is a
@@ -4188,27 +4327,33 @@ document.getElementById("open-daily")?.addEventListener("click", () => {
   location.href = u.toString();
 });
 
-// Cup Series options (inside the Game Mode panel): pick which cup START runs.
+// Cup step: one tap-card per series, showing the prize. Picking advances.
+const CUP_CHIP_COLORS = ["#ffc24b", "#4cc9f0", "#ff5d5d", "#a4e022"];
 function renderCupOptions() {
   const list = document.getElementById("cup-list");
   if (!list) return;
-  list.innerHTML = "";
-  for (const cup of CUPS) {
+  list.replaceChildren();
+  CUPS.forEach((cup, i) => {
     const won = profile.trophies[cup.id];
     const b = document.createElement("button");
-    b.className = "cup-card" + (cup.id === _cupChoice ? " is-picked" : "");
-    const trophy = won ? `🏆 won on ${won}` : cup.unlockId ? `🎁 prize: ${unlockName(cup.unlockId)}` : "";
-    b.innerHTML = `<span class="cup-emoji">${cup.emoji}</span><span class="cup-text"><span class="cup-name">${cup.name}</span><span class="cup-desc">${cup.desc} · ${cup.races.length} races</span><span class="cup-state">${trophy}</span></span><span class="mode-radio" aria-hidden="true"></span>`;
-    b.addEventListener("click", (e) => {
-      e.stopPropagation(); // don't re-trigger the card's mode-select
+    b.className = "tap-card cup-tap" + (cup.id === _cupChoice ? " is-selected" : "");
+    const prize = won
+      ? `<span class="cup-pill won">🏆 Won on ${won}</span>`
+      : cup.unlockId ? `<span class="cup-pill prize">🎁 Win ${unlockName(cup.unlockId)}</span>` : "";
+    b.innerHTML =
+      `<span class="tap-chip" style="background:${CUP_CHIP_COLORS[i % CUP_CHIP_COLORS.length]}">${cup.emoji}</span>`
+      + `<span class="tap-text"><span class="tap-title">${cup.name}</span><span class="tap-sub">${cup.desc}</span></span>`
+      + `<span class="tap-chev">›</span>`
+      + `<span class="cup-meta"><span class="cup-pill">🏁 ${cup.races.length} races</span>${prize}</span>`;
+    cueifyButton(b);
+    b.addEventListener("click", () => {
       _cupChoice = cup.id;
       try { localStorage.setItem(CUP_CHOICE_KEY, cup.id); } catch { /* ignore */ }
       clearCupRun(); // picking a (new) cup abandons any half-run series
-      renderCupOptions();
-      applyModeUI();
+      flowGo("racer");
     });
     list.appendChild(b);
-  }
+  });
 }
 renderCupOptions();
 
@@ -4237,7 +4382,7 @@ function refreshMenuMapCycle() {
   paint();
   canvas.style.opacity = "1";
   _mapCycleTimer = setInterval(() => {
-    if (state !== State.MENU || _garageOpen) return; // idle while racing / in the garage
+    if (state !== State.MENU || _garageOpen || flowStep !== "startline") return; // idle unless the board is up
     canvas.style.opacity = "0";
     setTimeout(() => {
       _mapCycleIdx = (_mapCycleIdx + 1) % cupDef.races.length;
@@ -4743,7 +4888,6 @@ function prepareRace() {
   refreshResumeBtn();
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
-  document.getElementById("lobby").classList.add("hidden");
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // fresh race → controls back
@@ -4888,9 +5032,9 @@ function armGuestTiltOnGesture() {
 
 function enterLobby() {
   MP.inLobby = true;
-  document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
-  document.getElementById("lobby").classList.remove("hidden");
+  document.getElementById("menu").classList.remove("hidden");
+  flowGo("lobby"); // slides in over the world tour
   renderLobby();
   if (!mpIsHost()) armGuestTiltOnGesture(); // joiner: first touch enables tilt steering
 }
