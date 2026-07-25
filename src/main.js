@@ -2874,8 +2874,8 @@ advToggle?.addEventListener("click", () => {
   // The revealed rows + Back button can fall below the fold on a short landscape
   // screen — scroll the settings overlay down so they're not stranded off-screen.
   if (open) {
-    const ov = document.getElementById("settings");
-    setTimeout(() => { if (ov) ov.scrollTo({ top: ov.scrollHeight, behavior: "smooth" }); }, 60);
+    const body = document.querySelector("#settings .flow-body");
+    setTimeout(() => { if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" }); }, 60);
   }
 });
 
@@ -3529,33 +3529,52 @@ let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
 const _garageLook = new THREE.Vector3();
 
-// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
-// materials, skipping the shared colour-keyed/constant ones other karts use.)
-function _clearGaragePreview() {
-  if (!_garagePreview) return;
-  scene.remove(_garagePreview);
-  _disposeGroup(_garagePreview);
-  _garagePreview = null;
-  _garagePreviewKart = null;
+// The last-built preview kart is CACHED (not disposed) so re-entering the
+// showroom is instant; a boot-idle prewarm builds + pipeline-compiles the saved
+// racer so even the FIRST entry doesn't hitch. Changing the draft evicts.
+const _previewCache = { key: null, kart: null };
+function _previewKey(draft) {
+  const cat = catSpec(draft);
+  const kart = kartSpec(draft);
+  return [cat.fur, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
 }
-// Rebuild the preview kart from the current draft (cheap enough for a click, not a
-// per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
-function buildGaragePreview() {
-  _clearGaragePreview();
-  const cat = catSpec(_garageDraft);
-  const kart = kartSpec(_garageDraft);
+function _buildPreviewKart(draft) {
+  const cat = catSpec(draft);
+  const kart = kartSpec(draft);
   const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
-  pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
   });
   toonify(pk.group);
+  // (compileAsync was tried here on r185 and REGRESSED: whole-scene pipeline
+  // batches stalled the next render 2-6s on device. See startRace note.)
+  return pk;
+}
+// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
+// materials, skipping the shared colour-keyed/constant ones other karts use.)
+function _clearGaragePreview() {
+  if (!_garagePreview) return;
+  scene.remove(_garagePreview); // stays parked in _previewCache for next time
+  _garagePreview = null;
+  _garagePreviewKart = null;
+}
+// Show the draft's kart: pulled straight from the cache when it matches, else
+// built fresh (a click-time cost, same as the old garage steppers).
+function buildGaragePreview() {
+  const key = _previewKey(_garageDraft);
+  if (_garagePreview && _previewCache.key === key) return; // already showing it
+  _clearGaragePreview();
+  if (_previewCache.key !== key) {
+    if (_previewCache.kart) _disposeGroup(_previewCache.kart.group); // evict the stale build
+    _previewCache.kart = _buildPreviewKart(_garageDraft);
+    _previewCache.key = key;
+  }
+  const pk = _previewCache.kart;
+  pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   scene.add(pk.group);
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
-  // (compileAsync was tried here on r185 and REGRESSED: whole-scene pipeline
-  // batches stalled the next render 2-6s on device. See startRace note.)
 }
 
 // --- Custom creator -------------------------------------------------------
@@ -3734,7 +3753,10 @@ function openGaragePanel() {
   _garagePrevPreset.cat = _garageDraft.cat < CUSTOM_CAT_IDX ? _garageDraft.cat : 0;
   _garagePrevPreset.kart = _garageDraft.kart < CUSTOM_KART_IDX ? _garageDraft.kart : 0;
   syncGarageUI();
-  buildGaragePreview();
+  // Instant when the cached kart matches (the prewarmed/common case); a cold
+  // build waits for the slide to land so the transition never stutters.
+  if (_previewCache.key === _previewKey(_garageDraft)) buildGaragePreview();
+  else setTimeout(() => { if (_garageOpen) buildGaragePreview(); }, 470);
   // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
   // would otherwise hang over the live preview as a doubled "ghost" of the level.
   if (menuXfade) menuXfade.style.opacity = 0;
@@ -4266,6 +4288,24 @@ refreshRaceOptSegs();
     setTimeout(() => flowGo(_resume, 1, true), 60);
   }
 }
+// Prewarm the showroom: build the saved cat-in-kart during title idle and draw
+// it far underground for two culling-off frames (compiles its pipelines), then
+// park it in the cache — entering "Pick your racer" is seamless instead of a
+// visible hitch on the first visit.
+setTimeout(() => {
+  if (state !== State.MENU || _garageOpen || _previewCache.kart) return;
+  try {
+    const draft = { cat: garageConfig.cat, kart: garageConfig.kart, customCat: { ...garageConfig.customCat }, customKart: { ...garageConfig.customKart } };
+    const pk = _buildPreviewKart(draft);
+    _previewCache.kart = pk;
+    _previewCache.key = _previewKey(draft);
+    const slot = track.gridSlot(0);
+    pk.group.position.set(slot.position.x, slot.position.y - 80, slot.position.z);
+    scene.add(pk.group);
+    beginWarmAll(2); // culling-off frames so the buried kart actually draws
+    setTimeout(() => { if (pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group); }, 800);
+  } catch { /* prewarm is best-effort */ }
+}, 2500);
 
 // --- Progression UI wiring (treats chip, cups, daily, Cat-alog, backup, dev) ---
 function refreshTreatsChip() {

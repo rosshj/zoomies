@@ -604,10 +604,17 @@
   </div>
 
   <!-- ===== Add-to-Home-Screen instructions / install gate ===== -->
-  <div id="install-help" class="overlay hidden">
-    <div class="menu-card">
-      <h1>📲 Add to Home Screen</h1>
-      <p class="tagline">Play fullscreen, no browser bars</p>
+  <div id="install-help" class="overlay sheet hidden">
+    <header class="flow-head">
+      <button id="install-help-back" class="flow-back" aria-label="Got it">←</button>
+      <div class="flow-head-text">
+        <div class="flow-eyebrow">Play fullscreen, no browser bars</div>
+        <h2 class="flow-h">📲 Add to Home Screen</h2>
+      </div>
+      <div class="flow-head-right"></div>
+    </header>
+    <div class="flow-body">
+    <div class="sheet-inner install-main">
       <p id="install-gate-note" class="install-gate-note hidden">
         Zoomies&nbsp;GP runs as an app — add it to your Home Screen to play.
       </p>
@@ -628,17 +635,24 @@
         <li>Scroll down and tap <strong>Add to Home Screen</strong></li>
         <li>Open <strong>Zoomies GP</strong> from your Home Screen</li>
       </ol>
-      <button id="install-help-back" class="secondary">← Got it</button>
+    </div>
     </div>
   </div>
 
   <!-- ===== How to play (sub-menu) ===== -->
   <!-- One icon card per control, in a two-column grid that fits the short
        landscape stage — scannable at a glance instead of a wall of bullets. -->
-  <div id="howto" class="overlay hidden">
-    <div class="menu-card howto-main">
-      <h1>How to Play</h1>
-      <p class="tagline">Thirty seconds to speed</p>
+  <div id="howto" class="overlay sheet hidden">
+    <header class="flow-head">
+      <button id="howto-back" class="flow-back" aria-label="Back">←</button>
+      <div class="flow-head-text">
+        <div class="flow-eyebrow">Thirty seconds to speed</div>
+        <h2 class="flow-h">❓ How to Play</h2>
+      </div>
+      <div class="flow-head-right"></div>
+    </header>
+    <div class="flow-body">
+    <div class="sheet-inner howto-main">
       <div class="how-grid">
         <div class="how-item"><span class="how-ico">📱</span><span class="how-txt"><strong>Tilt</strong> your phone to steer</span></div>
         <div class="how-item"><span class="how-ico">🕹️</span><span class="how-txt"><strong>Left slider</strong> — up gas, down brake</span></div>
@@ -649,7 +663,7 @@
         <div class="how-item how-win"><span class="how-ico">🏁</span><span class="how-txt">First to finish <strong>all laps</strong> wins!</span></div>
       </div>
       <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
-      <button id="howto-back" class="secondary">← Back</button>
+    </div>
     </div>
   </div>
 
@@ -682,19 +696,18 @@
   </div>
 
   <!-- ===== Track generator ===== -->
-  <div id="track-panel" class="overlay hidden">
-    <div class="menu-card track-main">
-      <!-- Full-width header: title + subtitle on the left, mode toggle on the
-           right. Below it, map and controls share two columns so the panel stays
-           short enough for the landscape stage. -->
+  <div id="track-panel" class="overlay sheet hidden">
+    <header class="flow-head">
+      <button id="track-back" class="flow-back" aria-label="Back">←</button>
+      <div class="flow-head-text">
+        <div class="flow-eyebrow">Design and customize</div>
+        <h2 class="flow-h">🛠️ Track Maker</h2>
+      </div>
+      <div class="flow-head-right"></div>
+    </header>
+    <div class="flow-body">
+    <div class="sheet-inner track-main">
       <div class="track-header">
-        <div class="track-title">
-          <span class="track-ico">🏞</span>
-          <div class="track-title-text">
-            <h1>Track</h1>
-            <p class="track-sub">Design and customize your track</p>
-          </div>
-        </div>
         <div class="seg-toggle" id="track-mode">
           <button id="track-classic" class="seg-btn">Classic</button>
           <button id="track-custom" class="seg-btn">Generated</button>
@@ -768,18 +781,28 @@
           </div>
           <div class="track-actions">
             <button id="track-apply">✓ Play this map</button>
-            <button id="track-back" class="secondary">← Back</button>
           </div>
         </div>
       </div>
     </div>
+    </div>
   </div>
 
   <!-- ===== Cat-alog: treats, trophy shelf, achievements, career stats ===== -->
-  <div id="catalog" class="overlay hidden">
-    <div class="menu-card catalog-main">
-      <h1>📖 Cat-alog</h1>
-      <p id="catalog-treats" class="catalog-treats">🐟 0</p>
+  <div id="catalog" class="overlay sheet hidden">
+    <header class="flow-head">
+      <button id="catalog-back" class="flow-back" aria-label="Back">←</button>
+      <div class="flow-head-text">
+        <div class="flow-eyebrow">Prizes · badges · trophies</div>
+        <h2 class="flow-h">📖 Cat-alog</h2>
+      </div>
+      <div class="flow-head-right"></div>
+    </header>
+    <div class="flow-body">
+    <div class="sheet-inner catalog-main">
+      <!-- Balance lives in the persistent chrome chip (top-right); this inline
+           copy stays for the JS that writes it but is hidden. -->
+      <p id="catalog-treats" class="catalog-treats hidden">🐟 0</p>
       <div class="seg-toggle catalog-tabs">
         <button id="catalog-tab-prizes" class="seg-btn is-active">🎁 Prizes</button>
         <button id="catalog-tab-ach" class="seg-btn">🏅 Badges</button>
@@ -792,17 +815,24 @@
         <div id="catalog-achievements" class="catalog-achievements"></div>
         <p id="catalog-stats" class="catalog-stats"></p>
       </div>
-      <button id="catalog-back" class="secondary">← Back</button>
+    </div>
     </div>
   </div>
 
   <!-- ===== Settings (graphics + sound) ===== -->
   <!-- Grouped into cards (Audio / Display / Advanced) so each concern reads as
        its own bucket — same visual family as the Game Mode cards. -->
-  <div id="settings" class="overlay hidden">
-    <div class="menu-card settings-main">
-      <h1>⚙ Settings</h1>
-      <p class="tagline">Sound, graphics &amp; extras</p>
+  <div id="settings" class="overlay sheet hidden">
+    <header class="flow-head">
+      <button id="settings-back" class="flow-back" aria-label="Back">←</button>
+      <div class="flow-head-text">
+        <div class="flow-eyebrow">Sound, graphics &amp; extras</div>
+        <h2 class="flow-h">⚙️ Settings</h2>
+      </div>
+      <div class="flow-head-right"></div>
+    </header>
+    <div class="flow-body">
+    <div class="sheet-inner settings-main">
       <div class="settings-list">
         <section class="settings-card">
           <h2 class="settings-section">🔊 Audio</h2>
@@ -884,7 +914,7 @@
           </div>
         </section>
       </div>
-      <button id="settings-back" class="secondary">← Back</button>
+    </div>
     </div>
   </div>
 
