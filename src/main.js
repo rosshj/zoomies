@@ -90,7 +90,7 @@ const CUSTOM_KART_IDX = KART_PRESETS.length;
 const KART_STYLE_COUNT = 7; // GP / roadster / buggy / finned / moto / minivan / cage (see createKartModel STYLES)
 // Styles the custom creator currently offers — moto (4) and minivan (5) are
 // parked for now (the model code stays; they'll come back later).
-const CREATOR_KART_STYLES = [0, 1, 2, 3, 4, 5, 6]; // every body the builder knows
+const CREATOR_KART_STYLES = [0, 1, 2, 3, 6]; // GP, Roadster, Buggy, Finned, Cage (Moto/Minivan stay scenery)
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -110,7 +110,8 @@ function sanitizeCustomCat(c) {
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
-  const style = _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
+  let style = _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
+  if (!CREATOR_KART_STYLES.includes(style)) style = DEFAULT_CUSTOM_KART.style; // scenery-only styles fall back
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
