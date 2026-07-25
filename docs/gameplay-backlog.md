@@ -21,6 +21,11 @@ catch-up tools already in the game: position-weighted item rolls, slipstream
 
 ## ✅ Shipped: Laser + Nine Lives (PR #48) — design record
 
+> **Laser removed (July 2026):** in play it was never obvious when you were
+> using it — the beam + steering-jitter read too subtly. Pulled from the item
+> roll and the code; the design record below stays for a possible rebuild with
+> clearer feedback (a real dot on the victim, sound, screen shake).
+
 ### Laser item (offense with a receiver's choice)
 - **Delivery:** a laser mounted on the FRONT of the kart, active for a few seconds
   after you use it. Short-range **front lock** onto the kart directly ahead — you

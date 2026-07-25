@@ -22,7 +22,7 @@ export const PROFILE_VERSION = 1;
 export function defaultStats() {
   return {
     races: 0, wins: 0, winsHard: 0, winsNight: 0, racesCustom: 0,
-    driftBoosts: 0, slipSeconds: 0, milkTrips: 0, zaps: 0, heartSaves: 0,
+    driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0,
     boxes: 0, dailies: 0, treatsEarned: 0,
   };
 }
@@ -136,8 +136,6 @@ export function racePayout({ place, field, laps, difficulty, daily = false, stat
   if (slip > 0) lines.push({ label: "Slipstreaming", amt: slip });
   const milk = Math.min(25, (stats.milkTrips || 0) * 5);
   if (milk > 0) lines.push({ label: "Milk mischief", amt: milk });
-  const zap = Math.min(10, (stats.zaps || 0) * 2);
-  if (zap > 0) lines.push({ label: "Laser zaps", amt: zap });
   const saves = Math.min(9, (stats.heartSaves || 0) * 3);
   if (saves > 0) lines.push({ label: "Nine lives", amt: saves });
   if (daily) lines.push({ label: "Daily challenge", amt: 100 });
@@ -164,7 +162,6 @@ export const ACHIEVEMENTS = [
   { id: "drift-50", name: "Sideways Cat", desc: "Earn 50 drift boosts", pay: 100, test: (s) => s.driftBoosts >= 50 },
   { id: "slip-120", name: "Draft Dodger", desc: "Slipstream for 2 minutes total", pay: 100, test: (s) => s.slipSeconds >= 120 },
   { id: "milk-10", name: "Cry Over Spilled Milk", desc: "Trip 10 rivals with milk", pay: 100, test: (s) => s.milkTrips >= 10 },
-  { id: "zap-25", name: "Red Dot Menace", desc: "Zap rivals 25 times", pay: 100, test: (s) => s.zaps >= 25 },
   { id: "lives-5", name: "Lands on Its Feet", desc: "Get saved by 5 hearts", pay: 100, test: (s) => s.heartSaves >= 5 },
   { id: "boxes-50", name: "Box Enthusiast", desc: "Open 50 power-up boxes", pay: 75, test: (s) => s.boxes >= 50 },
   { id: "daily-5", name: "Regular", desc: "Finish 5 daily challenges", pay: 150, test: (s) => s.dailies >= 5 },

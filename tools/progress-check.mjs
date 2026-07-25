@@ -52,15 +52,15 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
 
 // --- Payout ---
 {
-  const win = racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: { driftBoosts: 5, slipSeconds: 8, milkTrips: 2, zaps: 3, heartSaves: 1 } });
+  const win = racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: { driftBoosts: 5, slipSeconds: 8, milkTrips: 2, heartSaves: 1 } });
   check("hard win pays the placement base + winner bonus", win.lines[0].amt === 50 && win.lines[1].label === "Winner bonus");
-  check("moments itemize (drift, slip, milk, zap, lives)", win.lines.length === 7 && win.total === 50 + 20 + 10 + 8 + 10 + 6 + 3);
+  check("moments itemize (drift, slip, milk, lives)", win.lines.length === 6 && win.total === 50 + 20 + 10 + 8 + 10 + 3);
   const last = racePayout({ place: 6, field: 6, laps: 3, difficulty: "hard", stats: {} });
   check("last place still pays something", last.total === 15);
   const easy = racePayout({ place: 1, field: 6, laps: 3, difficulty: "easy", stats: {} });
   check("easy pays less than hard", easy.total < win.total && easy.lines[0].amt === 30);
-  const capped = racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: { driftBoosts: 999, slipSeconds: 999, milkTrips: 99, zaps: 99, heartSaves: 99 } });
-  check("moment caps hold (no farming)", capped.total === 50 + 20 + 20 + 15 + 25 + 10 + 9);
+  const capped = racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: { driftBoosts: 999, slipSeconds: 999, milkTrips: 99, heartSaves: 99 } });
+  check("moment caps hold (no farming)", capped.total === 50 + 20 + 20 + 15 + 25 + 9);
   const daily = racePayout({ place: 3, field: 6, laps: 3, difficulty: "medium", daily: true, stats: {} });
   check("daily bonus rides the payout", daily.lines.some((l) => l.label === "Daily challenge" && l.amt === 100));
 }

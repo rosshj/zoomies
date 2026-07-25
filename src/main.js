@@ -576,8 +576,8 @@ function grantItem(kart) {
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
   // Position-shaped roll: each item lands where it's USEFUL. The leader defends
-  // (shield + milk trap — yarn/tri/laser need a target ahead, which they don't
-  // have); the mid-pack gets the targeted-offense knife fight (laser + yarn); the
+  // (shield + milk trap — yarn/tri need a target ahead, which they don't
+  // have); the mid-pack gets the targeted-offense knife fight (yarn + tri); the
   // back gets rescue (catnip + hearts). Every kart rolls locally; remotes short-
   // circuit at the top of this function, and the resulting spawn replicates.
   const w = rollWeights(f);
@@ -605,10 +605,6 @@ function grantItem(kart) {
       kart.giveLife();
       if (kart === player) hud.showToast("😻 Extra life — your next wipeout is forgiven!");
       break;
-    case "laser":
-      kart.giveLaser();
-      if (kart === player) hud.showToast("🔴 Laser pointer — zap the kart ahead!");
-      break;
     default:
       kart.giveCatnip();
       if (kart === player) hud.showToast("🌿 Catnip boost!");
@@ -620,15 +616,14 @@ function grantItem(kart) {
 // Per-item roll weights anchored at FRONT (f=0), MID (f=0.5) and BACK (f=1),
 // interpolated linearly between anchors — each anchor column sums to 1, so any
 // interpolated row does too. Design: the leader DEFENDS (shield/milk), the
-// mid-pack BRAWLS (laser/yarn strongest where a target is always just ahead),
+// mid-pack BRAWLS (yarn/tri strongest where a target is always just ahead),
 // the back gets RESCUED (catnip half their rolls, hearts steady).
 const ITEM_ROLL = [
   { name: "shield", w: [0.30, 0.06, 0.00] },
   { name: "milk",   w: [0.34, 0.17, 0.06] },
-  { name: "yarn",   w: [0.06, 0.19, 0.10] },
-  { name: "tri",    w: [0.08, 0.15, 0.10] },
+  { name: "yarn",   w: [0.09, 0.30, 0.15] },
+  { name: "tri",    w: [0.11, 0.25, 0.14] },
   { name: "life",   w: [0.16, 0.16, 0.15] },
-  { name: "laser",  w: [0.06, 0.21, 0.09] },
   { name: "catnip", w: [0.00, 0.06, 0.50] },
 ];
 function rollWeights(f) {
@@ -854,76 +849,6 @@ function updateSlipstream(field) {
   }
 }
 
-// --- Laser pointer (item) ---
-// A front-mounted laser, instant-on for a few seconds when rolled (like catnip —
-// no extra button). While active it locks the kart just AHEAD in a short, narrow
-// cone and "zaps" it: the victim's cat fixates on the dot and their steering
-// jitters (kart.zapTimer — fightable), unless they raise the shield (which blocks
-// the zap at the cost of the shield's top-speed penalty — the receiver's trade).
-//
-// Multiplayer costs NOTHING new on the wire: the laser state rides the existing
-// pose FLAG bits, and every client derives the rest locally — a remote's beam is
-// drawn from its flagged pose, and "am I being zapped" is computed victim-side
-// from the same lock test. Small cross-client disagreements are cosmetic-only.
-const LASER_RANGE = 22;  // u: max lock distance (short — you must close in to zap)
-const LASER_NEAR = 1.5;  // u: closer than this is bumper contact, not a beam
-const _laserBeams = new Map(); // emitter kart -> beam mesh (lazily created)
-const _laserMat = new THREE.MeshBasicMaterial({
-  color: 0xff2a2a, transparent: true, opacity: 0.85,
-  blending: THREE.AdditiveBlending, depthWrite: false,
-});
-function laserTargetOf(shooter, field) {
-  const fwx = Math.sin(shooter.heading), fwz = Math.cos(shooter.heading);
-  let best = null, bestAhead = LASER_RANGE;
-  for (const t of field) {
-    if (t === shooter || t.finished) continue;
-    const dx = t.position.x - shooter.position.x, dz = t.position.z - shooter.position.z;
-    const ahead = dx * fwx + dz * fwz;
-    if (ahead < LASER_NEAR || ahead > bestAhead) continue;
-    if (Math.abs((t.position.y || 0) - (shooter.position.y || 0)) > 7) continue; // same strand
-    if (Math.abs(dx * fwz - dz * fwx) > 2.6 + ahead * 0.14) continue; // narrow cone
-    bestAhead = ahead; best = t;
-  }
-  return best;
-}
-function updateLasers(field) {
-  // Hide every beam first; active emitters re-show theirs below. Prune beams whose
-  // kart left the scene (a disposed multiplayer ghost).
-  for (const [k, beam] of _laserBeams) {
-    beam.visible = false;
-    if (k.group && !k.group.parent) { scene.remove(beam); beam.geometry.dispose(); _laserBeams.delete(k); }
-  }
-  for (const k of field) {
-    if (!(k.laserTimer > 0) || k.finished || k.spinTimer > 0) continue;
-    const t = laserTargetOf(k, field);
-    if (!t) continue;
-    // Zap: only apply physics to LOCAL karts (player + AI). A remote ghost's owner
-    // computes its own zap from OUR flagged pose on their client.
-    if (!t.isRemote && !t.shielding) {
-      const wasZapped = t.zapTimer > 0;
-      t.zapTimer = Math.max(t.zapTimer, 0.4); // lingers briefly after the beam breaks
-      if (t === player && !wasZapped) hud.showToast("🔴 Laser! Shake it or shield!");
-      if (k === player && !wasZapped && _raceStats) _raceStats.zaps++; // my dot landed
-    }
-    // Beam visual: a thin additive red bar from the shooter's nose to the target.
-    let beam = _laserBeams.get(k);
-    if (!beam) {
-      beam = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1), _laserMat);
-      beam.renderOrder = 5;
-      _laserBeams.set(k, beam);
-      scene.add(beam);
-    }
-    const sy = k.position.y + (k.y || 0) + 1.1, ty = t.position.y + (t.y || 0) + 1.0;
-    _laserFrom.set(k.position.x + Math.sin(k.heading) * 2.2, sy, k.position.z + Math.cos(k.heading) * 2.2);
-    _laserTo.set(t.position.x, ty, t.position.z);
-    beam.position.copy(_laserFrom).add(_laserTo).multiplyScalar(0.5);
-    beam.lookAt(_laserTo);
-    beam.scale.set(1, 1, Math.max(0.1, _laserFrom.distanceTo(_laserTo)));
-    beam.visible = true;
-  }
-}
-const _laserFrom = new THREE.Vector3();
-const _laserTo = new THREE.Vector3();
 
 // --- Karts: 1 player + 5 AI rivals ---
 const ROSTER = [
@@ -1156,7 +1081,6 @@ const MP = new MpSession({
     if (player.shielding) f |= FLAG.SHIELD;
     if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
     if (player.wallHitPulse > 0) f |= FLAG.WALL; // scraping a railing → rivals see the sparks too
-    if (player.laserTimer > 0) f |= FLAG.LASER; // firing the laser → rivals draw my beam + zap themselves (latch, not the 1-frame wallHit — the send runs before physics sets it)
     return {
       x: player.position.x,
       y: player.groundY + player.y,
@@ -4908,7 +4832,7 @@ let _racePrepPending = false;
 // both from the local START click and from a network-triggered synchronized start.
 function prepareRace() {
   _raceParked = false; // starting fresh; nothing parked to resume
-  _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, zaps: 0, heartSaves: 0, boxes: 0 };
+  _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0, boxes: 0 };
   _racePaid = false;
   document.getElementById("results-earnings")?.classList.add("hidden");
   document.getElementById("results-next-btn")?.classList.add("hidden");
@@ -5848,7 +5772,6 @@ function settleRaceRewards() {
   s.driftBoosts += _raceStats.driftBoosts;
   s.slipSeconds += Math.round(_raceStats.slipSeconds);
   s.milkTrips += _raceStats.milkTrips;
-  s.zaps += _raceStats.zaps;
   s.heartSaves += _raceStats.heartSaves;
   s.boxes += _raceStats.boxes;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
@@ -6462,9 +6385,6 @@ function loop(now) {
       ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)]
       : karts;
     updateSlipstream(draftField);
-    // Laser pointers: lock + zap + beam visuals over the same live field. Runs
-    // before physics so Kart.update reads this frame's zapTimer.
-    updateLasers(draftField);
     if (_raceStats && player && player.slipstream > 0.3) _raceStats.slipSeconds += dt;
 
     // Step physics
@@ -6556,9 +6476,6 @@ function loop(now) {
         audio.boost(k === player ? null : k.position);
         if (k === player) { hud.showToast("😻 Saved by a life!"); if (_raceStats) _raceStats.heartSaves++; }
       }
-      // Being lasered: red sparkles on the zapped kart (skip while shielded — the
-      // bubble is visibly eating the beam instead).
-      if (k.zapTimer > 0 && !k.shielding) effects.laserZapSparks(k);
       if (k.spinTimer > 0) effects.skid(k);
       // Drift sparks + skid marks for the rest of the field too (the player is
       // handled above), so the whole pack throws sparks through the corners —
@@ -6682,7 +6599,7 @@ function loop(now) {
     _hudOpts.speedKmh = Math.abs(player.speed) * 3.0;
     _hudOpts.time = timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
     hud.update(_hudOpts);
-    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles, player.lives, player.laserTimer);
+    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles, player.lives);
     // Incoming-yarn ping: only lights inside the ~1s reaction window — early
     // enough to defend on a read, late enough that pre-arming a shield costs.
     const _yEta = items.yarnEta(player);
@@ -6729,9 +6646,6 @@ function loop(now) {
       // read as a celebration, not a paused race (the "FINISH!" toast stays — see
       // the .victory-hidden rule). Restored when results show / the next race starts.
       document.getElementById("hud").classList.add("victory-hidden");
-      // Douse any live laser beams — the laser pass doesn't run during the victory
-      // lap, so a beam would otherwise freeze mid-air.
-      for (const [, b] of _laserBeams) b.visible = false;
       if (timeTrial) {
         const lapTime = player.finishTime - (ttLapStart >= 0 ? ttLapStart : 0);
         _ttResult = recordTimeTrial(lapTime);
