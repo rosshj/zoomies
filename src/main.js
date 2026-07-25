@@ -87,10 +87,7 @@ import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } fr
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
-const KART_STYLE_COUNT = 7; // GP / roadster / buggy / finned / moto / minivan / cage (see createKartModel STYLES)
-// Styles the custom creator currently offers — moto (4) and minivan (5) are
-// parked for now (the model code stays; they'll come back later).
-const CREATOR_KART_STYLES = [0, 1, 2, 3, 6]; // GP, Roadster, Buggy, Finned, Cage (Moto/Minivan stay scenery)
+const KART_STYLE_COUNT = 5; // GP / roadster / buggy / finned / cage (see createKartModel STYLES)
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -110,8 +107,10 @@ function sanitizeCustomCat(c) {
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
-  let style = _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
-  if (!CREATOR_KART_STYLES.includes(style)) style = DEFAULT_CUSTOM_KART.style; // scenery-only styles fall back
+  // Legacy migration: the Cage was style 6 before the moto/minivan models were
+  // removed and the table compacted — map old saves onto its new slot.
+  const raw = k && k.style === 6 ? 4 : k.style;
+  const style = _clampInt(raw, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
@@ -3582,7 +3581,7 @@ function buildGaragePreview() {
 // offer. Custom picks aren't limited to these — they just seed quick choices.
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Moto", "Minivan", "Cage"];
+const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Cage"];
 const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
 const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
 const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
@@ -3863,10 +3862,8 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
 
 // Custom-kart creator controls.
 _buildSwatchGrid("kart-color-grid", KART_COLOR_SWATCHES, (c) => editCustomKart({ color: c }));
-// The stepper walks CREATOR_KART_STYLES (parked styles are skipped).
 const _stepKartStyle = (dir) => {
-  const cur = Math.max(0, CREATOR_KART_STYLES.indexOf(_garageDraft.customKart.style));
-  editCustomKart({ style: CREATOR_KART_STYLES[(cur + dir + CREATOR_KART_STYLES.length) % CREATOR_KART_STYLES.length] });
+  editCustomKart({ style: (_garageDraft.customKart.style + dir + KART_STYLE_COUNT) % KART_STYLE_COUNT });
 };
 document.getElementById("kart-style-prev")?.addEventListener("click", () => _stepKartStyle(-1));
 document.getElementById("kart-style-next")?.addEventListener("click", () => _stepKartStyle(1));
@@ -3874,7 +3871,7 @@ document.getElementById("kart-num-prev")?.addEventListener("click", () => editCu
 document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
 document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
-  color: _pick(KART_COLOR_SWATCHES), style: _pick(CREATOR_KART_STYLES), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
+  color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
 document.getElementById("garage-buy")?.addEventListener("click", (e) => {

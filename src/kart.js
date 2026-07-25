@@ -245,13 +245,9 @@ export class Kart {
       this.flames = flames; // boost exhaust flames; shown/flickered while boosting
       this.flag = flag; // roadster pennant pivot (flapped in update); null elsewhere
       this.group.add(kart);
-      // The cat's paw pose matches the ride: handlebars on the moto (style 4),
-      // steering wheel everywhere else. The moto's saddle sits a touch higher
-      // and further back than the kart seat, so the cat shifts with it.
-      const moto = kartStyle === 4;
-      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: moto ? "moto" : "kart" });
+      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart" });
       cat.scale.setScalar(0.62);
-      cat.position.set(0, moto ? 0.95 : 0.85, moto ? -0.5 : -0.35);
+      cat.position.set(0, 0.85, -0.35);
       this.group.add(cat);
       this.catRig = cat.userData.rig;
 

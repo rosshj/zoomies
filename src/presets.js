@@ -25,7 +25,7 @@ export const CAT_PRESETS = [
 ];
 
 // Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
-// 3=finned speedster), and a racing number stamped on the side roundels.
+// 3=finned speedster / 4=cage buggy), and a racing number on the side roundels.
 export const KART_PRESETS = [
   { name: "Ember", color: 0xe53935, style: 0, number: 5 },
   { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7 },
@@ -36,9 +36,7 @@ export const KART_PRESETS = [
   { name: "Teal", color: 0x00897b, style: 0, number: 8 },
   { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
   { name: "Nova", color: 0xec407a, style: 3, number: 6 },
-  // (Wheelie the moto and Vanilla the minivan are parked for now — their model
-  // styles 4 and 5 still exist in createKartModel and will return later.)
-  { name: "Prowler", color: 0x3949ab, style: 6, number: 12 }, // off-road buggy with a full roll cage
+  { name: "Prowler", color: 0x3949ab, style: 4, number: 12 }, // off-road buggy with a full roll cage
 ];
 
 // What the creators open with (also the look the Cat-alog uses to advertise them).

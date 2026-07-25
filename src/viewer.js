@@ -33,14 +33,13 @@ const CAT_FUR = {
   snowshoe: 0xf3dcb6, mitted: 0x9aa2a8, point: 0xe8e2d6, calico: 0xfbfbfb, tortie: 0x6b4a2f,
   bengal: 0xd9a34a, cow: 0xf6f3ea, smoke: 0x565e6e,
 };
-// (name, model style, showcase colour) — styles 4 (Moto) and 5 (Minivan) are
-// parked for now, so they're left out of the list here just like the garage.
+// (name, model style, showcase colour)
 const KART_STYLES = [
   ["GP", 0, 0xe53935],
   ["Roadster", 1, 0x1e88e5],
   ["Buggy", 2, 0x43a047],
   ["Finned", 3, 0xfdd835],
-  ["Cage", 6, 0x3949ab],
+  ["Cage", 4, 0x3949ab],
 ];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -71,16 +70,15 @@ let poseMode = "sit";
 let rideKartIdx = 0;
 
 // Build the currently selected cat in the current pose. "drive" composes the
-// cat into a real garage kart exactly like kart.js does in a race (same scale,
-// seat offset, and handlebar pose on the moto), with rolling wheels + live rig.
+// cat into a real garage kart exactly like kart.js does in a race (same scale
+// and seat offset), with rolling wheels + live rig.
 function buildCatAsset(fur, opts) {
   if (poseMode !== "drive") return animatedCat(fur, { ...opts, pose: poseMode });
   const preset = KART_PRESETS[rideKartIdx] || KART_PRESETS[0];
-  const moto = preset.style === 4;
   const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number });
-  const cat = createCat(fur, { ...opts, pose: moto ? "moto" : "kart" });
+  const cat = createCat(fur, { ...opts, pose: "kart" });
   cat.scale.setScalar(0.62);
-  cat.position.set(0, moto ? 0.95 : 0.85, moto ? -0.5 : -0.35);
+  cat.position.set(0, 0.85, -0.35);
   const combo = new THREE.Group();
   combo.add(kart, cat);
   const rig = cat.userData.rig;
