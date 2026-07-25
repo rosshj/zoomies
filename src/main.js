@@ -90,35 +90,27 @@ const CUSTOM_KART_IDX = KART_PRESETS.length;
 const KART_STYLE_COUNT = 7; // GP / roadster / buggy / finned / moto / minivan / cage (see createKartModel STYLES)
 // Styles the custom creator currently offers — moto (4) and minivan (5) are
 // parked for now (the model code stays; they'll come back later).
-const CREATOR_KART_STYLES = [0, 1, 2, 3, 6];
+const CREATOR_KART_STYLES = [0, 1, 2, 3, 4, 5, 6]; // every body the builder knows
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
 const _clampName = (v, dflt) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 14) : dflt);
-// Prize accessories (the acc.* Cat-alog entries) must be owned to wear; the ten
-// launch accessories have no catalog entry, so isUnlocked passes them through.
-// try/catch: sanitize can run before the profile binding initializes.
-function _accOwned(a) {
-  try { return isUnlocked(profile, "acc." + a); } catch { return true; }
-}
-function unlockedAccessories() {
-  return CAT_ACCESSORIES.filter(_accOwned);
-}
+// Every accessory is wearable in the creator — the wardrobe is part of what
+// the Custom Cat creator purchase buys, not a second layer of unlocks.
 function sanitizeCustomCat(c) {
   c = c && typeof c === "object" ? c : {};
   return {
     name: _clampName(c.name, DEFAULT_CUSTOM_CAT.name),
     fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
     pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
-    accessory: CAT_ACCESSORIES.includes(c.accessory) && _accOwned(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
+    accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
     // null means "use the accessory's natural default colour"; otherwise a valid hex int.
     accessoryColor: _clampColor(c.accessoryColor, null),
   };
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
-  let style = _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
-  if (!CREATOR_KART_STYLES.includes(style)) style = DEFAULT_CUSTOM_KART.style; // parked styles fall back
+  const style = _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
@@ -3856,11 +3848,11 @@ document.getElementById("kart-src-custom")?.addEventListener("click", () => setG
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
 document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
 document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
-document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", unlockedAccessories(), -1));
-document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", unlockedAccessories(), 1));
+document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
+document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
 document.getElementById("cat-custom-name")?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("cat-randomize")?.addEventListener("click", () => {
-  const accessory = _pick(unlockedAccessories());
+  const accessory = _pick(CAT_ACCESSORIES);
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
     fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
@@ -4601,16 +4593,6 @@ function renderPrizes() {
     kartGrid.appendChild(prizeTile(id, k.name, _hex6(k.color), prizeHow(id), isUnlocked(profile, id)));
   });
   box.appendChild(kartGrid);
-  head("🎩 Accessories · worn by your Custom Cat");
-  const accGrid = document.createElement("div");
-  accGrid.className = "prize-grid";
-  for (const e of CATALOG) {
-    if (!e.id.startsWith("acc.")) continue;
-    const a = e.id.slice(4);
-    const hex = _hex6(ACCESSORY_COLORS[a]?.[0] ?? 0xffffff);
-    accGrid.appendChild(prizeTile(e.id, ACCESSORY_LABELS[a] || a, hex, prizeHow(e.id), isUnlocked(profile, e.id)));
-  }
-  box.appendChild(accGrid);
   head("✨ Creators");
   const cGrid = document.createElement("div");
   cGrid.className = "prize-grid";

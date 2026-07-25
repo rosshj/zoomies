@@ -88,20 +88,8 @@ export const CATALOG = [
   { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
   { id: "kart.9", price: 550 },      // Prowler — the caged off-road buggy
-  // Accessories — prize headwear/neckwear for the Custom Cat creator (the ten
-  // launch accessories stay free). acc.<id> matches CAT_ACCESSORIES in models.js.
-  { id: "acc.party", price: 150 },
-  { id: "acc.chef", price: 200 },
-  { id: "acc.scarf", price: 250 },
-  { id: "acc.tophat", price: 300 },
-  { id: "acc.wizard", price: 350 },
-  { id: "acc.charm", price: 400 },
-  { id: "acc.helmet", cup: "meadows" },   // Racing Helmet — Catnip Meadows prize
-  { id: "acc.cowboy", cup: "sandypaws" }, // Cowboy Hat — Sandy Paws prize
-  { id: "acc.viking", cup: "meowtain" },  // Viking Helmet — Meowtain prize
-  { id: "acc.pirate", cup: "zoomies" },   // Pirate Hat — Midnight Zoomies prize
-  { id: "acc.aviator", diff: "medium" },  // Aviator Cap — win any cup on Medium+
-  { id: "acc.crown", diff: "hard" },      // Crown — win any cup on Hard
+  // (Accessories carry no catalog entries: the whole wardrobe comes with the
+  // Custom Cat creator. Old profiles may still hold acc.* ids — harmless.)
   // The custom creators are features you earn.
   { id: "custom.cat", price: 600 },
   { id: "custom.kart", price: 600 },
