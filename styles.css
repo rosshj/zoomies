@@ -2897,3 +2897,46 @@ button.small { white-space: nowrap; }
   background: linear-gradient(180deg, rgba(45, 32, 84, 0.92), rgba(31, 21, 62, 0.92));
   box-shadow: 0 4px 0 rgba(16, 7, 34, 0.9);
 }
+
+/* Sheet headers: an empty spacer balances the top-right ✕ so the heading stays
+   centred (sheets close from the corner, like a drawer — flow steps keep ←). */
+.flow-head-spacer {
+  min-width: 46px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+.flow-close { font-size: 17px; }
+
+/* Cat-alog balance chip rides the sheet header's left slot. */
+.catalog-treats {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--f-ink);
+  background: linear-gradient(180deg, var(--f-cream), var(--f-cream-2));
+  border: 2px solid var(--f-ink);
+  border-radius: var(--pill);
+  box-shadow: 0 3px 0 var(--f-ink);
+  padding: 7px 14px;
+  white-space: nowrap;
+}
+
+/* Racer card actions stack vertically — a long Buy label must never shove
+   Next out of the card. */
+.racer-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+.racer-buy { width: 100%; }
+
+/* Track maker: the controls dock in their own deep card (like the racer's) so
+   sliders and chips never float raw over the bright world. */
+.track-col-ctrl {
+  border: 2px solid var(--f-ink);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(45, 32, 84, 0.92), rgba(31, 21, 62, 0.92));
+  box-shadow: 0 5px 0 rgba(16, 7, 34, 0.9);
+  padding: 12px 14px;
+}

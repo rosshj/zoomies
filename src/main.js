@@ -2638,6 +2638,12 @@ function refreshAudioUI() {
 // back. That keeps only one card over the live 3D world.
 let _overlayReturn = null;
 function openSubScreen(el) {
+  // One sheet at a time: opening a new one dismisses whichever is up (e.g.
+  // the chrome gear tapped while the Cat-alog is open) instead of stacking.
+  for (const id of CHROME_SCREENS) {
+    const o = document.getElementById(id);
+    if (o && o !== el && !o.classList.contains("hidden")) o.classList.add("hidden");
+  }
   // Note: when neither the menu nor the pause screen is visible (e.g. the
   // settings gear opened over the garage), KEEP the stored return target —
   // clearing it would strand the player on an empty backdrop once the
@@ -2692,11 +2698,12 @@ function refreshMenuChrome() {
     const el = document.getElementById(id);
     return el && !el.classList.contains("hidden");
   });
-  // Also ride over every flow step past the title (the title keeps its own
-  // extras row), so prices always have a visible balance mid-flow.
+  // Ride over every flow step past the title (the title keeps its own extras
+  // row) — but stand down while a sheet is up: its header owns the top bar
+  // (just the ✕, plus the Cat-alog's own balance chip).
   const menuEl = document.getElementById("menu");
   const flowOpen = menuEl && !menuEl.classList.contains("hidden") && menuEl.dataset.step !== "title";
-  menuChrome.classList.toggle("hidden", !(sheetOpen || flowOpen));
+  menuChrome.classList.toggle("hidden", sheetOpen || !flowOpen);
   const n = document.getElementById("chrome-treats-n");
   if (n) n.textContent = String(profile.treats);
 }
