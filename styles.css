@@ -179,28 +179,33 @@ body {
     max(14px, var(--safe-left, 0px));
   pointer-events: none;
 }
+/* Same size + press language as the flow's round Back button (46px). */
 #menu-chrome button {
   pointer-events: auto;
   margin: 0;
-  padding: 6px 14px;
-  min-height: 38px;
-  font-size: 14px;
+  padding: 6px 16px;
+  min-height: 46px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.02em;
   color: var(--f-ink, #2b1a4e);
   background: linear-gradient(180deg, #fff6e5, #ffeccc);
   border: 2px solid var(--f-ink, #2b1a4e);
   border-radius: 999px;
-  box-shadow: 0 3px 0 var(--f-ink, #2b1a4e);
+  box-shadow: 0 4px 0 var(--f-ink, #2b1a4e);
   transition: transform 0.08s ease, box-shadow 0.08s ease;
 }
 #menu-chrome button:active {
-  transform: translateY(2px);
+  transform: translateY(3px);
   box-shadow: 0 1px 0 var(--f-ink, #2b1a4e);
 }
 #chrome-gear {
-  font-size: 16px;
-  padding: 6px 11px;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
 }
 
 /* Menu screens ease in: each card rises + fades over ~0.2s whenever its
@@ -2097,9 +2102,15 @@ button.secondary.small,
 }
 .prize-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* big tiles — 3 per row, kid-browsable */
-  gap: 10px;
+  /* Same tile size as the pick-your-cat step — the Cat-alog and the racer
+     grids read as one system. Karts use .prize-grid-wide (3-up, like the
+     pick-your-kart step). */
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: clamp(8px, 1.6vh, 12px);
 }
+/* In square grids a wide tile (the Custom Kart creator) spans two cells so its
+   3:2 shot keeps a sensible size. */
+.prize-grid:not(.prize-grid-wide) .prize-tile.wide { grid-column: span 2; }
 /* Same sticker DNA as the pick-your-cat/kart tiles, so the Cat-alog and the
    racer steps read as one system. Nothing is dimmed — locked prizes show in
    full glory with just the price/how line saying "not yet yours". */
