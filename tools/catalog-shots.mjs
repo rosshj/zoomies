@@ -44,11 +44,13 @@ function contrastBg(hex) {
 // --- The shot list: every catalog id → a viewer preset spec + its backdrop.
 // Cat portraits cycle a few camera angles so the grid reads like a photo wall
 // — the classic ¾, a low straight-on "selfie", the mirrored ¾, and a low ¾.
+// ty aims BELOW the cat's centre so it sits high in frame (aiming above the
+// centre pushed the subject to the bottom of the tile).
 const CAT_ANGLES = [
-  { theta: 0.75, phi: 1.22, r: 0.97, ty: 0 },     // classic ¾
-  { theta: 0.06, phi: 1.34, r: 0.9, ty: 0.15 },   // low straight-on selfie
-  { theta: -0.65, phi: 1.26, r: 0.94, ty: 0.05 }, // mirrored ¾
-  { theta: 0.42, phi: 1.38, r: 0.92, ty: 0.1 },   // low ¾
+  { theta: 0.75, phi: 1.22, r: 0.97, ty: -0.22 },  // classic ¾
+  { theta: 0.06, phi: 1.34, r: 0.9, ty: -0.05 },   // low straight-on selfie
+  { theta: -0.65, phi: 1.26, r: 0.94, ty: -0.18 }, // mirrored ¾
+  { theta: 0.42, phi: 1.38, r: 0.92, ty: -0.12 },  // low ¾
 ];
 const shots = [];
 CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), angle: CAT_ANGLES[i % CAT_ANGLES.length], spec: { kind: "cat", name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory } }));
@@ -108,9 +110,11 @@ for (const shot of shots) {
       v.orbit.radius *= angle.r;
       v.orbit.target.y += angle.ty;
     } else {
-      // Karts: level ¾, pulled a touch tighter on the wide canvas.
+      // Karts: level ¾, pulled a touch tighter on the wide canvas, aimed a
+      // touch low so the kart rides high in the tile.
       v.orbit.phi = 1.13;
       v.orbit.radius *= 0.82;
+      v.orbit.target.y -= 0.32;
     }
   }, shot);
   await page.waitForTimeout(350); // let a few frames render at the new framing

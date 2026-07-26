@@ -2484,6 +2484,7 @@ button.secondary.small,
   margin: 0 auto;
   min-height: 100%;
   align-content: center;
+  align-content: safe center;
 }
 .friends-grid {
   display: grid;
@@ -2493,6 +2494,7 @@ button.secondary.small,
   margin: 0 auto;
   min-height: 100%;
   align-content: center;
+  align-content: safe center;
   align-items: stretch;
 }
 .mode-tap { min-height: clamp(64px, 13vh, 92px); }
@@ -2571,6 +2573,7 @@ button.secondary.small,
   margin: 0 auto;
   min-height: 100%;
   align-content: center;
+  align-content: safe center;
 }
 .track-tap {
   flex-direction: column;
@@ -2638,7 +2641,9 @@ button.secondary.small,
   margin: 0 auto;
   width: 100%;
   align-content: center;
+  align-content: safe center;
   align-items: center;
+  align-items: safe center;
   min-height: 100%;
 }
 .start-board { width: 100%; }
@@ -2707,7 +2712,9 @@ button.secondary.small,
   margin: 0 auto;
   width: 100%;
   align-content: center;
+  align-content: safe center;
   align-items: center;
+  align-items: safe center;
   min-height: 100%;
 }
 .lobby-left {
@@ -2902,6 +2909,7 @@ button.small { white-space: nowrap; }
   margin: 0 auto;
   min-height: 100%;
   align-content: center;
+  align-content: safe center;
 }
 .racer-tap {
   flex-direction: column;
