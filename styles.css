@@ -2100,15 +2100,21 @@ button.secondary.small,
   grid-template-columns: repeat(3, 1fr); /* big tiles — 3 per row, kid-browsable */
   gap: 10px;
 }
+/* Same sticker DNA as the pick-your-cat/kart tiles, so the Cat-alog and the
+   racer steps read as one system. Nothing is dimmed — locked prizes show in
+   full glory with just the price/how line saying "not yet yours". */
 .prize-tile {
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
-  padding: 8px 6px; border-radius: 12px;
-  /* Solid deep fill: the Cat-alog now floats over the live world, so the
-     tiles need their own backing to stay legible. */
-  background: linear-gradient(180deg, rgba(45, 32, 84, 0.92), rgba(31, 21, 62, 0.92));
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 7px 7px 8px; border-radius: 16px;
+  background: linear-gradient(180deg, var(--f-cream), var(--f-cream-2));
+  border: 2px solid var(--f-ink);
+  box-shadow: 0 4px 0 var(--f-ink), 0 10px 18px -8px rgba(14, 6, 30, 0.45);
+  color: var(--f-ink);
 }
-.prize-tile.owned { border-color: rgba(129, 199, 132, 0.55); background: linear-gradient(180deg, rgba(48, 66, 46, 0.92), rgba(33, 48, 34, 0.92)); }
+.prize-tile.owned { border-color: var(--f-ink); }
+/* Karts (and the custom kart) ride wide 3:2 tiles like the kart step. */
+.prize-tile.wide .prize-shot { aspect-ratio: 3 / 2; }
+.prize-grid-wide { grid-template-columns: repeat(3, 1fr); }
 /* Buyable tiles are the Cat-alog's till: tap → in-tile confirm → sparkle. */
 .prize-tile { position: relative; }
 .prize-tile.buyable { cursor: pointer; }
@@ -2123,8 +2129,9 @@ button.secondary.small,
   justify-content: center;
   gap: 6px;
   padding: 6px;
-  border-radius: 12px;
-  background: rgba(10, 14, 25, 0.9);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 246, 229, 0.97), rgba(255, 236, 204, 0.97));
+  color: var(--f-ink);
 }
 .pc-text { font-size: 11px; font-weight: 700; text-align: center; }
 .prize-confirm button {
@@ -2155,12 +2162,13 @@ button.secondary.small,
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  border: 2px solid var(--f-ink);
+  background: #223052;
 }
 .prize-name { font-size: 14px; font-weight: 800; }
-.prize-how { font-size: 12px; color: #ffd54f; text-align: center; }
-.prize-tile.owned .prize-how { color: #81c784; }
+.prize-how { font-size: 12px; font-weight: 700; color: var(--f-ink-soft); text-align: center; }
+.prize-tile.owned .prize-how { color: #3f9a2f; }
 
 /* ============================================================================
    Menu flow — the "sticker" design language
@@ -2919,7 +2927,6 @@ button.small { white-space: nowrap; }
   height: 100%;
   object-fit: cover;
 }
-.racer-tap.locked .racer-shot img { filter: grayscale(0.8) brightness(0.75); }
 .racer-lock {
   position: absolute;
   right: 5px;
@@ -2927,6 +2934,8 @@ button.small { white-space: nowrap; }
   font-size: 17px;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
 }
+#kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 880px; }
+#kart-grid .racer-shot { aspect-ratio: 3 / 2; }
 .racer-tap.shake { animation: racer-shake 0.4s ease; }
 @keyframes racer-shake {
   25% { transform: translateX(-5px); }

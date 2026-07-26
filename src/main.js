@@ -4499,7 +4499,8 @@ function showClaimScreen(onDone) {
 }
 function prizeTile(id, name, colorHex, how, owned) {
   const d = document.createElement("div");
-  d.className = "prize-tile" + (owned ? " owned" : "");
+  d.className = "prize-tile" + (owned ? " owned" : "")
+    + (id.startsWith("kart.") || id === "custom.kart" ? " wide" : "");
   // Real render of the prize (tools/catalog-shots.mjs). If a shot is missing,
   // fall back to the old colour swatch so the tile never shows a broken image.
   const im = document.createElement("img");
@@ -4550,7 +4551,7 @@ function renderPrizes() {
   box.appendChild(catGrid);
   head("🏎 Karts");
   const kartGrid = document.createElement("div");
-  kartGrid.className = "prize-grid";
+  kartGrid.className = "prize-grid prize-grid-wide";
   KART_PRESETS.forEach((k, i) => {
     const id = `kart.${i}`;
     kartGrid.appendChild(prizeTile(id, k.name, _hex6(k.color), prizeHow(id), isUnlocked(profile, id)));

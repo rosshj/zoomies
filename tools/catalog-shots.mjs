@@ -42,13 +42,23 @@ function contrastBg(hex) {
 }
 
 // --- The shot list: every catalog id → a viewer preset spec + its backdrop.
+// Cat portraits cycle a few camera angles so the grid reads like a photo wall
+// — the classic ¾, a low straight-on "selfie", the mirrored ¾, and a low ¾.
+const CAT_ANGLES = [
+  { theta: 0.75, phi: 1.22, r: 0.97, ty: 0 },     // classic ¾
+  { theta: 0.06, phi: 1.34, r: 0.9, ty: 0.15 },   // low straight-on selfie
+  { theta: -0.65, phi: 1.26, r: 0.94, ty: 0.05 }, // mirrored ¾
+  { theta: 0.42, phi: 1.38, r: 0.92, ty: 0.1 },   // low ¾
+];
 const shots = [];
-CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), spec: { kind: "cat", name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory } }));
-KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastBg(k.color), spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number } }));
+CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), angle: CAT_ANGLES[i % CAT_ANGLES.length], spec: { kind: "cat", name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory } }));
+// Karts shoot WIDE (3:2) — they're wide subjects, and the pick-your-kart grid
+// + Cat-alog show them on wide tiles.
+KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastBg(k.color), wide: true, spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number } }));
 // The creator tiles advertise "make your own", so they get a look no preset
 // has (the actual creator still opens on the presets.js defaults).
-shots.push({ file: "custom-cat.jpg", bg: contrastBg(0xa259ff), spec: { kind: "cat", name: "Custom Cat", fur: 0xa259ff, pattern: "spotted", accessory: "headphones" } });
-shots.push({ file: "custom-kart.jpg", bg: contrastBg(0xa259ff), spec: { kind: "kart", name: "Custom Kart", color: 0xa259ff, style: 3, number: 0 } });
+shots.push({ file: "custom-cat.jpg", bg: contrastBg(0xa259ff), angle: CAT_ANGLES[1], spec: { kind: "cat", name: "Custom Cat", fur: 0xa259ff, pattern: "spotted", accessory: "headphones" } });
+shots.push({ file: "custom-kart.jpg", bg: contrastBg(0xa259ff), wide: true, spec: { kind: "kart", name: "Custom Kart", color: 0xa259ff, style: 3, number: 0 } });
 // Prize accessories (the acc.* Cat-alog entries), each worn by a plain grey cat
 // so the accessory is the star. The hex is the accessory's natural default
 // colour (ACCESSORY_COLORS[id][0] — mirrored here because models.js pulls in
@@ -74,7 +84,9 @@ await page.waitForFunction(() => window.__viewer && window.__viewer.showPreset, 
 await page.evaluate(() => window.__viewer.setGameLook(true)); // ship the in-game look
 
 for (const shot of shots) {
-  await page.evaluate(({ spec, bg, zoom }) => {
+  // Karts render on a wide 3:2 canvas; everything else stays square.
+  await page.setViewportSize(shot.wide ? { width: 480, height: 320 } : { width: SIZE, height: SIZE });
+  await page.evaluate(({ spec, bg, zoom, angle }) => {
     const v = window.__viewer;
     v.setBackground(bg);
     v.showPreset(spec);
@@ -90,9 +102,15 @@ for (const shot of shots) {
       v.orbit.phi = 1.08; v.orbit.radius *= 0.72; v.orbit.target.y += 0.55;
     } else if (zoom === "neck") {
       v.orbit.phi = 1.15; v.orbit.radius *= 0.82; v.orbit.target.y += 0.3;
+    } else if (angle) {
+      v.orbit.theta = angle.theta;
+      v.orbit.phi = angle.phi;
+      v.orbit.radius *= angle.r;
+      v.orbit.target.y += angle.ty;
     } else {
-      v.orbit.phi = spec.kind === "cat" ? 1.22 : 1.13;
-      v.orbit.radius *= spec.kind === "cat" ? 0.97 : 0.88;
+      // Karts: level ¾, pulled a touch tighter on the wide canvas.
+      v.orbit.phi = 1.13;
+      v.orbit.radius *= 0.82;
     }
   }, shot);
   await page.waitForTimeout(350); // let a few frames render at the new framing
