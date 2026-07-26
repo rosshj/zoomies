@@ -45,10 +45,10 @@ const page = await ctx.newPage();
 const base = `http://127.0.0.1:${PORT}/index.html?webgl=1`;
 
 // 1) First online load — registers + installs the SW.
-await page.goto(base, { waitUntil: "load" });
+await page.goto(base, { waitUntil: "load", timeout: 150000 }); // SwiftShader first-load can be slow
 await page.evaluate(() => navigator.serviceWorker.ready);
 // 2) Reload so the SW controls this page and runtime-caches every asset it fetches.
-await page.reload({ waitUntil: "load" });
+await page.reload({ waitUntil: "load", timeout: 150000 });
 await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
 await page.waitForTimeout(8000); // let all module + asset fetches populate the cache
 
@@ -69,7 +69,7 @@ page2.on("console", (m) => { logs.push(m.text()); if (m.type() === "error") erro
 page2.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 let gotoErr = null;
 try {
-  await page2.goto(base, { waitUntil: "load", timeout: 30000 });
+  await page2.goto(base, { waitUntil: "load", timeout: 150000 });
 } catch (e) {
   gotoErr = String(e);
 }

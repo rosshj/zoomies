@@ -1,5 +1,16 @@
 # Zoomies GP — gameplay backlog
 
+## ✅ Shipped: progression v1 (see src/progress.js)
+Treats (🐟) earned per race (placement + moments, capped) · garage unlocks with a
+starter set (grandfathered saves) · 15 achievements over career stats · 4 solo cups
+(points series over fixed seeds; trophies record best difficulty; first win pays
+treats + a cup-exclusive unlock money can't buy) · daily challenge seed (+100 once
+a day) · Cat-alog screen (treats, trophy shelf, achievements, stats) · backup codes
+(ZP1. token, Settings → Progress) · dev mode (?dev=1 or 7 taps on the Settings
+title: grant treats, unlock all, reset; __zoomies.dev in the console).
+Future lanes from the design chat: cloud sync + paid cosmetics (needs receipts /
+server-side entitlements), weekly featured cup, reward-box ceremony, MP cups.
+
 Design decisions from the "fun but fair" brainstorm. Guiding principles: reward
 skill/expression, always give counterplay, no RNG "gotchas", and keep catch-up
 *helping the back* without punishing the leader or rubber-banding. Existing
@@ -8,7 +19,12 @@ catch-up tools already in the game: position-weighted item rolls, slipstream
 
 ---
 
-## ✅ Greenlit — build next
+## ✅ Shipped: Laser + Nine Lives (PR #48) — design record
+
+> **Laser removed (July 2026):** in play it was never obvious when you were
+> using it — the beam + steering-jitter read too subtly. Pulled from the item
+> roll and the code; the design record below stays for a possible rebuild with
+> clearer feedback (a real dot on the victim, sound, screen shake).
 
 ### Laser item (offense with a receiver's choice)
 - **Delivery:** a laser mounted on the FRONT of the kart, active for a few seconds

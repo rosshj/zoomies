@@ -189,9 +189,6 @@ export class Kart {
     this.lives = 0; // item-box Nine Lives: banked hearts (0-3); next spinOut → wobble instead
     this.wobbleTimer = 0; // s remaining of the life-saved shimmy (decaying heading wiggle)
     this.lifePulse = false; // one-shot: a life just fired (main loop shows the feedback, clears it)
-    this.laserTimer = 0; // item-box laser pointer: seconds of active front laser
-    this.zapTimer = 0; // s remaining of being lasered (steering jitters; see update)
-    this._zapPhase = 0; // wobble oscillator phase (deterministic — no RNG)
     this.boxCooldown = 0; // brief lockout after grabbing a power-up box (no vacuuming)
     this.driftRamp = 0; // sustained-drift speed bonus (0..0.05 of top speed)
 
@@ -238,13 +235,14 @@ export class Kart {
       // the world axis, so the kart only tilts to the grade when facing ±Z — on a
       // looping track it mostly wouldn't pitch at all.
       this.group.rotation.order = "YXZ";
-      const { group: kart, wheels, brakeMat, flames } = createKartModel(color, { style: kartStyle, number: kartNumber });
+      const { group: kart, wheels, brakeMat, flames, flag } = createKartModel(color, { style: kartStyle, number: kartNumber });
       this.wheels = wheels;
       for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
       this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
       this.flames = flames; // boost exhaust flames; shown/flickered while boosting
+      this.flag = flag; // roadster pennant pivot (flapped in update); null elsewhere
       this.group.add(kart);
-      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor });
+      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart" });
       cat.scale.setScalar(0.62);
       cat.position.set(0, 0.85, -0.35);
       this.group.add(cat);
@@ -386,14 +384,6 @@ export class Kart {
     if (this.finished) return;
     this.lives = Math.min(3, (this.lives || 0) + 1);
   }
-  // Item-box laser pointer: a front-mounted laser for a few seconds. While active
-  // (see the laser pass in main.js) it locks the kart just ahead and gives their
-  // cat the zoomies-jitters — wobbly steering they must fight (or shield away,
-  // trading top speed for stability). Instant-on like catnip: no extra button.
-  giveLaser() {
-    if (this.finished) return;
-    this.laserTimer = 6;
-  }
 
   // Spin out — keep the kart's momentum so it slides out realistically and
   // the spin decays, rather than whipping around in place. `impactDir` (xz)
@@ -518,18 +508,6 @@ export class Kart {
       this.heading += Math.sin(this.wobbleTimer * 24) * 3.5 * a * dt;
       this.speed *= 1 - Math.min(1, 0.35 * dt);
     }
-    // Laser zap: a rival's beam has our cat fixated on the dot — steering jitters
-    // and sways. You can fight it and keep your speed, or raise the shield to block
-    // it (shield application is gated in the laser pass) at the shield's top-speed
-    // cost — the receiver's trade. Deterministic oscillator, no RNG.
-    if (this.zapTimer > 0) {
-      this.zapTimer -= dt;
-      if (!this.shielding) {
-        this._zapPhase += dt * 18;
-        this.heading += Math.sin(this._zapPhase) * 2.2 * dt;
-      }
-    }
-    if (this.laserTimer > 0) this.laserTimer -= dt;
 
     // --- Longitudinal ---
     const boosting = this.boostTimer > 0;
@@ -837,6 +815,12 @@ export class Kart {
       const w = this.wheels[i];
       w.rotation.y = i < 2 ? steerAng : 0; // front axle steers
       w.rotation.x = this._wheelSpin || 0; // roll
+    }
+    // The roadster's pennant flaps — faster with speed, always at least a
+    // flutter. Runs here in _syncMesh so remote karts' pennants flap too.
+    if (this.flag) {
+      this._flagT = (this._flagT || 0) + (this._dt || 0.016) * (5 + Math.abs(this.speed || 0) * 0.18);
+      this.flag.rotation.y = Math.sin(this._flagT) * 0.26;
     }
 
     // Suspension squash: compress vertically + bulge a touch on touchdown.

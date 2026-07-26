@@ -31,7 +31,16 @@ import { RemoteKart, FLAG } from "./remotekart.js";
 import { NetRecorder, recorderEnabled } from "./net/recorder.js";
 import { RefereeClient } from "./net/refereeclient.js";
 import { encodeWorld, decodeWorld, sameWorld, worldSig } from "./net/worldcfg.js";
+import {
+  migrateProfile, isUnlocked, buyUnlock, catalogEntry, CATALOG, racePayout, checkAchievements, claimAchievement,
+  ACHIEVEMENTS, CUPS, cupById, cupPoints, cupStandings, awardCup, dailySeedFor,
+  encodeProfileToken, decodeProfileToken,
+} from "./progress.js";
 import { audio } from "./audio.js";
+// Menu UI cues — fourteen tiny Web-Audio-synthesized interaction sounds
+// (vendored, MIT). bind() delegates the data-cuelume-* attributes; uiCue()
+// fires outcome moments; enablement follows the SFX setting.
+import { bind as bindUiCues, play as uiCue, setEnabled as setUiCuesEnabled } from "cuelume";
 
 // World seed. A `?seed=CODE` in the URL reproduces an exact track + landscape
 // (the basis for multiplayer: everyone in a lobby builds from the same seed).
@@ -70,45 +79,21 @@ let trackConfig = loadTrackConfig(); // `let`: in multiplayer this is replaced b
 // socks + tail-tip), mitted (small white socks/bib), solid (plain coat), point
 // (darker ears/muzzle/paws/tail). createCat falls back to deriving a pattern
 // from the colour when none is given (recoloured AI / multiplayer cats).
-// Nine distinct breeds, each a different markings template (not just a recolour
-// of the same one): see createCat for how each pattern is drawn.
-const CAT_PRESETS = [
-  { name: "Marmalade", fur: 0xf0a830, pattern: "spotted" }, // ginger spotted tabby
-  { name: "Smokey", fur: 0x8c9298, pattern: "solid" }, // plush solid grey (Russian Blue)
-  { name: "Shadow", fur: 0x2a2a2a, pattern: "tuxedo" }, // black & white tuxedo
-  { name: "Snow", fur: 0xfbfbfb, pattern: "snowshoe" }, // white + seal mask/points
-  { name: "Whiskey", fur: 0xc8966a, pattern: "tabby" }, // classic brown mackerel tabby
-  { name: "Nelson", fur: 0x4a3328, pattern: "mitted" }, // brown, white chest + socks
-  { name: "Pickle", fur: 0xf3dcb6, pattern: "point" }, // seal-point Siamese
-  { name: "Patches", fur: 0xf5ead6, pattern: "calico" }, // tricolour calico (cream + ginger + black), collar & bell
-  { name: "Pepper", fur: 0x9aa2a8, pattern: "tabby" }, // cool silver mackerel tabby
-  { name: "Cocoa", fur: 0x5a3b2a, pattern: "tortie" }, // mottled tortoiseshell (ginger + black, no white)
-];
-// Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
-// 3=finned speedster), and a racing number stamped on the side roundels.
-const KART_PRESETS = [
-  { name: "Ember", color: 0xe53935, style: 0, number: 5 },
-  { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7 },
-  { name: "Clover", color: 0x43a047, style: 2, number: 3 },
-  { name: "Tangerine", color: 0xfb8c00, style: 0, number: 9 },
-  { name: "Grape", color: 0x8e24aa, style: 1, number: 4 },
-  { name: "Sunbeam", color: 0xfdd835, style: 2, number: 1 },
-  { name: "Teal", color: 0x00897b, style: 0, number: 8 },
-  { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
-  { name: "Nova", color: 0xec407a, style: 3, number: 6 },
-];
+// Garage presets live in src/presets.js (pure data) so the catalog-screenshot
+// tool can import them without booting the game.
+import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } from "./presets.js";
 // A "Custom" slot sits one past the last preset in each stepper; landing on it
 // reveals the creator (colour / pattern / accessory / name) and the look is read
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
-const KART_STYLE_COUNT = 4; // GP / roadster / buggy / finned (see createKartModel STYLES)
-const DEFAULT_CUSTOM_CAT = { name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap", accessoryColor: null };
-const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0 };
+const KART_STYLE_COUNT = 5; // GP / roadster / buggy / finned / cage (see createKartModel STYLES)
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
 const _clampName = (v, dflt) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 14) : dflt);
+// Every accessory is wearable in the creator — the wardrobe is part of what
+// the Custom Cat creator purchase buys, not a second layer of unlocks.
 function sanitizeCustomCat(c) {
   c = c && typeof c === "object" ? c : {};
   return {
@@ -122,10 +107,14 @@ function sanitizeCustomCat(c) {
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
+  // Legacy migration: the Cage was style 6 before the moto/minivan models were
+  // removed and the table compacted — map old saves onto its new slot.
+  const raw = k && k.style === 6 ? 4 : k.style;
+  const style = _clampInt(raw, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
-    style: _clampInt(k.style, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style),
+    style,
     number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
   };
 }
@@ -165,7 +154,8 @@ function catSpec(cfg) {
     return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
   }
   const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
-  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: undefined, accessoryColor: undefined };
+  // Preset cats may override their pattern's default accessory (presets.js).
+  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
 }
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {
@@ -222,6 +212,62 @@ const WORLD_SEED = (
 ).toUpperCase();
 setSeed(WORLD_SEED);
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
+
+// --- Player progression (treats / unlocks / cups / daily) -------------------
+// The pure economy lives in src/progress.js; this block owns storage + the boot
+// state for cup/daily runs. See docs/gameplay-backlog.md for the design.
+const PROFILE_KEY = "zoomies-profile-v1";
+function loadProfile() {
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(PROFILE_KEY)); } catch { /* ignore */ }
+  return migrateProfile(raw);
+}
+function saveProfile() {
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch { /* ignore */ }
+}
+const profile = loadProfile();
+// Grandfather: never confiscate. Whatever the player already had selected when
+// progression shipped stays theirs — auto-unlock the saved garage picks.
+{
+  const ids = [];
+  ids.push(garageConfig.cat === CUSTOM_CAT_IDX ? "custom.cat" : `cat.${garageConfig.cat}`);
+  ids.push(garageConfig.kart === CUSTOM_KART_IDX ? "custom.kart" : `kart.${garageConfig.kart}`);
+  let changed = false;
+  for (const id of ids) if (!profile.unlocked.includes(id)) { profile.unlocked.push(id); changed = true; }
+  if (changed) saveProfile();
+}
+
+// Dev mode: ?dev=1 (or the 7-tap on the Settings title) turns on a Developer card
+// in Settings + a console API. Persisted until explicitly disabled there.
+const DEV_KEY = "zoomies-dev";
+let devMode = false;
+try { devMode = _qs.has("dev") || localStorage.getItem(DEV_KEY) === "1"; } catch { /* ignore */ }
+try { if (devMode) localStorage.setItem(DEV_KEY, "1"); } catch { /* ignore */ }
+
+// Cup run state (a cup is a reload chain — each race is a different seed, and the
+// world is built from the seed at load). Active only while the URL's ?cup= matches.
+const CUP_KEY = "zoomies-cup-v1";
+let _cupState = null;
+try { _cupState = JSON.parse(sessionStorage.getItem(CUP_KEY)); } catch { /* ignore */ }
+const _cupParam = _qs.get("cup");
+if (!_cupState || !_cupParam || _cupState.id !== _cupParam || !cupById(_cupState.id)) _cupState = null;
+const _activeCup = _cupState ? cupById(_cupState.id) : null;
+
+// Daily challenge: today's shared seed (local date — "the day" as the player sees it).
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const _dailyActive = _qs.has("daily") && _seedParam === dailySeedFor(todayStr());
+
+// Menu-map cup cycling state (declared early — applyModeUI touches these at boot).
+let _mapCycleTimer = null;
+let _mapCycleIdx = 0;
+
+// Per-race moment counters (reset in prepareRace, folded into the profile's
+// career stats when the race pays out). null outside a race so hooks can guard.
+let _raceStats = null;
+let _racePaid = false; // the payout runs once per race, on the first showResults
 
 // Why did this boot happen? Every intentional in-app reload (track apply,
 // backend switch, multiplayer join, crash recovery) tags its cause in
@@ -522,6 +568,7 @@ function grantItem(kart) {
   if (kart.isRemote) return true;
   if (kart.boxCooldown > 0) return false; // still cooling down — leave the box
   kart.boxCooldown = BOX_COOLDOWN;
+  if (kart === player && _raceStats) _raceStats.boxes++;
 
   const n = Math.max(2, _fieldCount);
   const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
@@ -529,8 +576,8 @@ function grantItem(kart) {
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
   audio.boost(kart === player ? null : kart.position);
   // Position-shaped roll: each item lands where it's USEFUL. The leader defends
-  // (shield + milk trap — yarn/tri/laser need a target ahead, which they don't
-  // have); the mid-pack gets the targeted-offense knife fight (laser + yarn); the
+  // (shield + milk trap — yarn/tri need a target ahead, which they don't
+  // have); the mid-pack gets the targeted-offense knife fight (yarn + tri); the
   // back gets rescue (catnip + hearts). Every kart rolls locally; remotes short-
   // circuit at the top of this function, and the resulting spawn replicates.
   const w = rollWeights(f);
@@ -558,10 +605,6 @@ function grantItem(kart) {
       kart.giveLife();
       if (kart === player) hud.showToast("😻 Extra life — your next wipeout is forgiven!");
       break;
-    case "laser":
-      kart.giveLaser();
-      if (kart === player) hud.showToast("🔴 Laser pointer — zap the kart ahead!");
-      break;
     default:
       kart.giveCatnip();
       if (kart === player) hud.showToast("🌿 Catnip boost!");
@@ -573,15 +616,14 @@ function grantItem(kart) {
 // Per-item roll weights anchored at FRONT (f=0), MID (f=0.5) and BACK (f=1),
 // interpolated linearly between anchors — each anchor column sums to 1, so any
 // interpolated row does too. Design: the leader DEFENDS (shield/milk), the
-// mid-pack BRAWLS (laser/yarn strongest where a target is always just ahead),
+// mid-pack BRAWLS (yarn/tri strongest where a target is always just ahead),
 // the back gets RESCUED (catnip half their rolls, hearts steady).
 const ITEM_ROLL = [
   { name: "shield", w: [0.30, 0.06, 0.00] },
   { name: "milk",   w: [0.34, 0.17, 0.06] },
-  { name: "yarn",   w: [0.06, 0.19, 0.10] },
-  { name: "tri",    w: [0.08, 0.15, 0.10] },
+  { name: "yarn",   w: [0.09, 0.30, 0.15] },
+  { name: "tri",    w: [0.11, 0.25, 0.14] },
   { name: "life",   w: [0.16, 0.16, 0.15] },
-  { name: "laser",  w: [0.06, 0.21, 0.09] },
   { name: "catnip", w: [0.00, 0.06, 0.50] },
 ];
 function rollWeights(f) {
@@ -807,75 +849,6 @@ function updateSlipstream(field) {
   }
 }
 
-// --- Laser pointer (item) ---
-// A front-mounted laser, instant-on for a few seconds when rolled (like catnip —
-// no extra button). While active it locks the kart just AHEAD in a short, narrow
-// cone and "zaps" it: the victim's cat fixates on the dot and their steering
-// jitters (kart.zapTimer — fightable), unless they raise the shield (which blocks
-// the zap at the cost of the shield's top-speed penalty — the receiver's trade).
-//
-// Multiplayer costs NOTHING new on the wire: the laser state rides the existing
-// pose FLAG bits, and every client derives the rest locally — a remote's beam is
-// drawn from its flagged pose, and "am I being zapped" is computed victim-side
-// from the same lock test. Small cross-client disagreements are cosmetic-only.
-const LASER_RANGE = 22;  // u: max lock distance (short — you must close in to zap)
-const LASER_NEAR = 1.5;  // u: closer than this is bumper contact, not a beam
-const _laserBeams = new Map(); // emitter kart -> beam mesh (lazily created)
-const _laserMat = new THREE.MeshBasicMaterial({
-  color: 0xff2a2a, transparent: true, opacity: 0.85,
-  blending: THREE.AdditiveBlending, depthWrite: false,
-});
-function laserTargetOf(shooter, field) {
-  const fwx = Math.sin(shooter.heading), fwz = Math.cos(shooter.heading);
-  let best = null, bestAhead = LASER_RANGE;
-  for (const t of field) {
-    if (t === shooter || t.finished) continue;
-    const dx = t.position.x - shooter.position.x, dz = t.position.z - shooter.position.z;
-    const ahead = dx * fwx + dz * fwz;
-    if (ahead < LASER_NEAR || ahead > bestAhead) continue;
-    if (Math.abs((t.position.y || 0) - (shooter.position.y || 0)) > 7) continue; // same strand
-    if (Math.abs(dx * fwz - dz * fwx) > 2.6 + ahead * 0.14) continue; // narrow cone
-    bestAhead = ahead; best = t;
-  }
-  return best;
-}
-function updateLasers(field) {
-  // Hide every beam first; active emitters re-show theirs below. Prune beams whose
-  // kart left the scene (a disposed multiplayer ghost).
-  for (const [k, beam] of _laserBeams) {
-    beam.visible = false;
-    if (k.group && !k.group.parent) { scene.remove(beam); beam.geometry.dispose(); _laserBeams.delete(k); }
-  }
-  for (const k of field) {
-    if (!(k.laserTimer > 0) || k.finished || k.spinTimer > 0) continue;
-    const t = laserTargetOf(k, field);
-    if (!t) continue;
-    // Zap: only apply physics to LOCAL karts (player + AI). A remote ghost's owner
-    // computes its own zap from OUR flagged pose on their client.
-    if (!t.isRemote && !t.shielding) {
-      const wasZapped = t.zapTimer > 0;
-      t.zapTimer = Math.max(t.zapTimer, 0.4); // lingers briefly after the beam breaks
-      if (t === player && !wasZapped) hud.showToast("🔴 Laser! Shake it or shield!");
-    }
-    // Beam visual: a thin additive red bar from the shooter's nose to the target.
-    let beam = _laserBeams.get(k);
-    if (!beam) {
-      beam = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.1, 1), _laserMat);
-      beam.renderOrder = 5;
-      _laserBeams.set(k, beam);
-      scene.add(beam);
-    }
-    const sy = k.position.y + (k.y || 0) + 1.1, ty = t.position.y + (t.y || 0) + 1.0;
-    _laserFrom.set(k.position.x + Math.sin(k.heading) * 2.2, sy, k.position.z + Math.cos(k.heading) * 2.2);
-    _laserTo.set(t.position.x, ty, t.position.z);
-    beam.position.copy(_laserFrom).add(_laserTo).multiplyScalar(0.5);
-    beam.lookAt(_laserTo);
-    beam.scale.set(1, 1, Math.max(0.1, _laserFrom.distanceTo(_laserTo)));
-    beam.visible = true;
-  }
-}
-const _laserFrom = new THREE.Vector3();
-const _laserTo = new THREE.Vector3();
 
 // --- Karts: 1 player + 5 AI rivals ---
 const ROSTER = [
@@ -899,13 +872,13 @@ function _pickUnused(palette, used) {
 // The per-race roster: the player (slot 0) wears the garage selection; the AI keep
 // their names/skills but get nudged off the player's kart + cat colours so the
 // player stands out. Multiplayer / time-trial fields are the player alone.
-function raceRoster() {
-  const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
-  if (MP.enabled || timeTrial) return [playerCfg];
+// The AI lineup for a given player look (deterministic: same look → same
+// rivals). Shared by the race build AND the start-line grid tableau, so the
+// cats you see waiting on the grid are exactly the cats you race.
+function aiRoster(look) {
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
-  const ai = ROSTER.slice(1).map((cfg, i) => {
+  return ROSTER.slice(1).map((cfg, i) => {
     let { color, catColor } = cfg;
     if (usedKart.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), usedKart);
     usedKart.add(color);
@@ -914,7 +887,12 @@ function raceRoster() {
     // Spread body styles + give each rival its own number so the field varies.
     return { ...cfg, color, catColor, kartStyle: i % 3, kartNumber: 11 + i * 6 };
   });
-  return [playerCfg, ...ai];
+}
+function raceRoster() {
+  const look = playerLook();
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  if (MP.enabled || timeTrial) return [playerCfg];
+  return [playerCfg, ...aiRoster(look)];
 }
 
 // Per-race seeded RNG for the SIM path (grid shuffle, AI lane/shield, spinouts),
@@ -1108,7 +1086,6 @@ const MP = new MpSession({
     if (player.shielding) f |= FLAG.SHIELD;
     if (player.airborne || player.y > 0.01) f |= FLAG.AIRBORNE;
     if (player.wallHitPulse > 0) f |= FLAG.WALL; // scraping a railing → rivals see the sparks too
-    if (player.laserTimer > 0) f |= FLAG.LASER; // firing the laser → rivals draw my beam + zap themselves (latch, not the 1-frame wallHit — the send runs before physics sets it)
     return {
       x: player.position.x,
       y: player.groundY + player.y,
@@ -1125,6 +1102,7 @@ const MP = new MpSession({
     // Roster changed (peer joined/left) or our own connection opened: refresh
     // the "N friends here" count immediately, and the lobby if it's showing.
     onRoster: () => {
+      if (MP.inLobby) uiCue("ready"); // connection opened / a friend arrived
       setMpStatus("connected");
       maybeAdoptHostWorld(); // a code-joiner rebuilds into the host's map once it learns it
       // If I'm the host and a race is already counting down, re-send the start so a
@@ -1170,7 +1148,7 @@ const MP = new MpSession({
     // dropper's id so if we trip on it we can let them gloat (onMilkGloat).
     onMilk: (m) => { items.spawnMilkAt({ x: m.x, z: m.z, r: m.r, ownerId: m.owner }); },
     // A rival spun out on MY milk (they told me): look back and laugh.
-    onMilkGloat: () => { if (player) player.gloat(); },
+    onMilkGloat: () => { if (player) player.gloat(); if (_raceStats) _raceStats.milkTrips++; },
     // A remote player launched a yarn ball: render a cosmetic ghost that homes on
     // OUR copy of the target (our own player if we're the mark, else our ghost of
     // them). The hit stays shooter-authoritative and arrives via onHit.
@@ -2144,19 +2122,20 @@ function refreshRaceOptSegs() {
     b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
   document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
     b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
-  refreshModeSummary(); // the main-menu tile echoes laps + difficulty
 }
 document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     TOTAL_LAPS = Number(b.dataset.laps);
     try { localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS)); } catch {}
     refreshRaceOptSegs();
+    refreshStakes();
   }));
 document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     DIFFICULTY = b.dataset.diff;
     try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
     refreshRaceOptSegs();
+    refreshStakes();
   }));
 
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
@@ -2496,9 +2475,9 @@ function toMenu() {
   _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished && !MP.enabled;
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
-  document.getElementById("lobby").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
   document.getElementById("menu").classList.remove("hidden");
+  flowGo("title", -1, true); // land on the flow's front door, no slide
   audio.stopEngine();
   audio.setSkid(false);
   audio.playMusic("bg");
@@ -2507,6 +2486,17 @@ function toMenu() {
   state = State.MENU;
   hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
+  // Leaving to the menu abandons an in-progress cup / daily run: clear the run
+  // state and strip its URL params so START begins an ordinary race.
+  clearCupRun();
+  try {
+    const u = new URL(location.href);
+    if (u.searchParams.has("cup") || u.searchParams.has("daily")) {
+      u.searchParams.delete("cup");
+      u.searchParams.delete("daily");
+      history.replaceState(null, "", u);
+    }
+  } catch { /* ignore */ }
 }
 // Resume a parked race: drop back into it exactly where it was (paused), so the
 // player can read the scene before unpausing.
@@ -2533,9 +2523,11 @@ document.getElementById("resume-race-btn")?.addEventListener("click", resumePark
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === State.RACING) pauseGame();
 });
-// Every menu can get back to the main screen: lobby and results both offer it.
-document.getElementById("lobby-back")?.addEventListener("click", toMenu);
-document.getElementById("results-menu-btn")?.addEventListener("click", toMenu);
+// (The lobby's Back arrow goes through the flow's shared back handling.)
+// Badges block the exit: leaving the results for the menu detours through the
+// claim interstitial whenever any badge is still unclaimed (it no-ops straight
+// to the menu when there's nothing to claim).
+document.getElementById("results-menu-btn")?.addEventListener("click", () => showClaimScreen(toMenu));
 
 // --- Settings screen (graphics + sound), opened from the menu and pause ---
 const settingsOverlay = document.getElementById("settings");
@@ -2569,7 +2561,16 @@ function refreshAudioUI() {
 // back. That keeps only one card over the live 3D world.
 let _overlayReturn = null;
 function openSubScreen(el) {
-  _overlayReturn = null;
+  // One sheet at a time: opening a new one dismisses whichever is up (e.g.
+  // the chrome gear tapped while the Cat-alog is open) instead of stacking.
+  for (const id of CHROME_SCREENS) {
+    const o = document.getElementById(id);
+    if (o && o !== el && !o.classList.contains("hidden")) o.classList.add("hidden");
+  }
+  // Note: when neither the menu nor the pause screen is visible (e.g. the
+  // settings gear opened over the garage), KEEP the stored return target —
+  // clearing it would strand the player on an empty backdrop once the
+  // underlying screen closes.
   for (const id of ["menu", "pause-overlay"]) {
     const o = document.getElementById(id);
     if (o && !o.classList.contains("hidden")) {
@@ -2579,6 +2580,7 @@ function openSubScreen(el) {
     }
   }
   el.classList.remove("hidden");
+  uiCue("bloom"); // reveal
 }
 function closeSubScreen(el) {
   el.classList.add("hidden");
@@ -2586,6 +2588,85 @@ function closeSubScreen(el) {
     _overlayReturn.classList.remove("hidden");
     _overlayReturn = null;
   }
+  uiCue("droplet"); // dismiss
+}
+
+// Annotate the static menu DOM for cuelume: every overlay button gets the
+// tactile press/release pair + a desktop hover tick; segmented buttons get the
+// mechanical toggle instead. Dynamic elements (prize tiles, claim cards) speak
+// through imperative outcome cues, so they need no attributes.
+function cueifyButton(el) {
+  if (el.classList.contains("seg-btn")) { el.dataset.cuelumeToggle = ""; return; }
+  el.dataset.cuelumePress = "";
+  el.dataset.cuelumeRelease = "";
+  el.dataset.cuelumeHover = "tick";
+}
+function wireMenuCues() {
+  for (const el of document.querySelectorAll(".overlay button, #menu button")) cueifyButton(el);
+  bindUiCues();
+  setUiCuesEnabled(audio.sfxOn);
+}
+wireMenuCues();
+
+// --- Persistent menu chrome: 🐟 balance + ⚙ gear over every sub-screen. ---
+// Visible whenever a menu sub-screen is up (the hub keeps its own buttons for
+// now); hidden during racing and the results/claim flow. A MutationObserver
+// watches the screens' class flips, so no open/close path needs to know about
+// the chrome.
+const CHROME_SCREENS = ["catalog", "track-panel", "settings", "howto", "install-help"];
+const menuChrome = document.getElementById("menu-chrome");
+function refreshMenuChrome() {
+  if (!menuChrome) return;
+  const sheetOpen = CHROME_SCREENS.some((id) => {
+    const el = document.getElementById(id);
+    return el && !el.classList.contains("hidden");
+  });
+  // Ride over every flow step past the title (the title keeps its own extras
+  // row) — but stand down while a sheet is up: its header owns the top bar
+  // (just the ✕, plus the Cat-alog's own balance chip).
+  const menuEl = document.getElementById("menu");
+  const flowOpen = menuEl && !menuEl.classList.contains("hidden") && menuEl.dataset.step !== "title";
+  menuChrome.classList.toggle("hidden", sheetOpen || !flowOpen);
+  const n = document.getElementById("chrome-treats-n");
+  if (n) n.textContent = String(profile.treats);
+}
+{
+  const mo = new MutationObserver(refreshMenuChrome);
+  for (const id of CHROME_SCREENS.concat("menu")) {
+    const el = document.getElementById(id);
+    if (el) mo.observe(el, { attributes: true, attributeFilter: ["class", "data-step"] });
+  }
+}
+document.getElementById("chrome-gear")?.addEventListener("click", () => {
+  if (!settingsOverlay.classList.contains("hidden")) return; // already showing
+  openSettings();
+});
+document.getElementById("chrome-treats")?.addEventListener("click", () => {
+  const cat = document.getElementById("catalog");
+  if (!cat || !cat.classList.contains("hidden")) return; // already showing
+  // In the lobby the chip is display-only (jumping screens mid-connection
+  // would abandon the room).
+  if (MP.inLobby) return;
+  renderCatalog();
+  openSubScreen(cat);
+});
+
+// Esc closes the topmost menu sub-screen through its own non-destructive exit
+// (the same button a tap would use), one screen per press. Ordered by stacking:
+// settings/help float over catalog, which floats over the config panels.
+const ESC_EXITS = [
+  ["settings", "settings-back"], ["howto", "howto-back"], ["install-help", "install-help-back"],
+  ["catalog", "catalog-back"], ["track-panel", "track-back"],
+];
+function escCloseTopScreen() {
+  for (const [scr, btn] of ESC_EXITS) {
+    const el = document.getElementById(scr);
+    if (el && !el.classList.contains("hidden")) {
+      document.getElementById(btn)?.click();
+      return true;
+    }
+  }
+  return false;
 }
 
 function openSettings() {
@@ -2723,8 +2804,8 @@ advToggle?.addEventListener("click", () => {
   // The revealed rows + Back button can fall below the fold on a short landscape
   // screen — scroll the settings overlay down so they're not stranded off-screen.
   if (open) {
-    const ov = document.getElementById("settings");
-    setTimeout(() => { if (ov) ov.scrollTo({ top: ov.scrollHeight, behavior: "smooth" }); }, 60);
+    const body = document.querySelector("#settings .flow-body");
+    setTimeout(() => { if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" }); }, 60);
   }
 });
 
@@ -3159,7 +3240,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "blossom", "savanna", "tundra", "city", "beach"];
+const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "mesa", "blossom", "jungle", "savanna", "tundra", "city", "beach"];
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
@@ -3173,13 +3254,6 @@ function maxBiomesForSize(size) {
 let _trackDraft = null;
 function syncTrackPanel() {
   if (!_trackDraft) return;
-  const custom = _trackDraft.mode === "custom";
-  document.getElementById("track-classic")?.classList.toggle("is-active", !custom);
-  document.getElementById("track-custom")?.classList.toggle("is-active", custom);
-  const knobs = document.getElementById("track-knobs");
-  if (knobs) knobs.style.display = custom ? "" : "none";
-  const reroll = document.getElementById("track-new"); // lives in the map box now
-  if (reroll) reroll.style.display = custom ? "" : "none";
   const set = (id, v) => {
     const pct = Math.round(v * 100);
     const el = document.getElementById(id);
@@ -3211,6 +3285,19 @@ function syncTrackPanel() {
   trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", chip.dataset.tod === tod);
   });
+  const near = (a, b) => Math.abs(a - b) < 0.011;
+  const styleId = Object.keys(TRACK_STYLES).find((k) => {
+    const s = TRACK_STYLES[k];
+    return near(s.curviness, _trackDraft.curviness ?? 0.5) && near(s.twist, _trackDraft.twist ?? 0.5)
+      && near(s.hilliness, _trackDraft.hilliness ?? 0.5) && near(s.hills, _trackDraft.hills ?? 0.5);
+  });
+  trackPanel?.querySelectorAll("#track-style .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", chip.dataset.style === styleId);
+  });
+  const sizeId = Object.keys(TRACK_SIZES).find((k) => near(TRACK_SIZES[k], _trackDraft.size ?? 0.5));
+  trackPanel?.querySelectorAll("#track-sizeseg .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", chip.dataset.size === sizeId);
+  });
   trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", _trackDraft.features.includes(chip.dataset.feat));
   });
@@ -3230,9 +3317,19 @@ function scheduleTrackPreview() {
   });
 }
 const ALL_FEATS = [...FEATURE_CHIP_KINDS, "extras"];
+// Style + Size presets: human words over the raw generator knobs (the knobs
+// themselves live behind Fine-tune). Style × Size is the expressive front —
+// Wild + Small is a tight brawl, Chill + Large a Sunday drive.
+const TRACK_STYLES = {
+  chill: { curviness: 0.3, twist: 0.25, hilliness: 0.2, hills: 0.3 },
+  classic: { curviness: 0.5, twist: 0.5, hilliness: 0.5, hills: 0.5 },
+  wild: { curviness: 0.75, twist: 0.85, hilliness: 0.75, hills: 0.75 },
+};
+const TRACK_SIZES = { small: 0.3, medium: 0.55, large: 0.85 };
 function openTrackPanel() {
+  // The maker is custom-only — Classic Circuit is a card on the Track step.
   _trackDraft = {
-    mode: trackConfig.mode || "classic",
+    mode: "custom",
     size: trackConfig.size ?? 0.5,
     curviness: trackConfig.curviness ?? 0.5,
     hilliness: trackConfig.hilliness ?? 0.5,
@@ -3250,6 +3347,39 @@ function openTrackPanel() {
   syncTrackPanel();
   openSubScreen(trackPanel);
 }
+// Style / Size chips write the underlying knobs; Fine-tune reveals them raw.
+trackPanel?.querySelectorAll("#track-style .biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    Object.assign(_trackDraft, TRACK_STYLES[chip.dataset.style]);
+    syncTrackPanel();
+  });
+});
+trackPanel?.querySelectorAll("#track-sizeseg .biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    _trackDraft.size = TRACK_SIZES[chip.dataset.size];
+    syncTrackPanel(); // re-applies the size-driven biome cap too
+  });
+});
+{
+  const advT = document.getElementById("track-adv-toggle");
+  const fine = document.getElementById("track-finetune");
+  advT?.addEventListener("click", () => {
+    const open = fine.classList.toggle("hidden") === false;
+    advT.textContent = open ? "Fine-tune ▾" : "Fine-tune ▸";
+    advT.setAttribute("aria-expanded", String(open));
+  });
+}
+// One-tap whole-map roll: place, style, size, time and a fresh loop.
+document.getElementById("track-surprise")?.addEventListener("click", () => {
+  Object.assign(_trackDraft, TRACK_STYLES[_pick(Object.keys(TRACK_STYLES))]);
+  _trackDraft.size = TRACK_SIZES[_pick(Object.keys(TRACK_SIZES))];
+  const cap = maxBiomesForSize(_trackDraft.size);
+  const pool = [...ALL_BIOMES].sort(() => Math.random() - 0.5);
+  _trackDraft.biomes = pool.slice(0, 1 + Math.floor(Math.random() * cap));
+  _trackDraft.timeOfDay = _pick(["midday", "sunset", "night"]);
+  _trackDraft.seed = randomSeed();
+  syncTrackPanel();
+});
 // Time-of-day picker (single-select: midday / sunset / night / random).
 document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -3267,7 +3397,8 @@ trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
     syncTrackPanel();
   });
 });
-document.getElementById("open-track")?.addEventListener("click", openTrackPanel);
+// The track maker opens as a sheet from the Track step's "Make your own" card
+// and from the start line's map Edit affordance.
 
 // Main-menu map: a thumbnail of the track you're about to race, doubling as a
 // shortcut into the track editor. The Track tile echoes the same name plus the
@@ -3281,49 +3412,37 @@ function refreshMenuMap() {
     ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
     : "Classic circuit";
   const label = document.getElementById("menu-map-label");
-  if (label) label.textContent = name;
-  const sub = document.getElementById("track-summary");
-  if (sub) sub.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
+  if (label) label.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
-document.getElementById("menu-map-btn")?.addEventListener("click", openTrackPanel);
+// Cup Series maps are fixed recipes — the map is a preview there, not an editor
+// entry point (the button's Edit affordance is hidden via .map-no-edit too).
+document.getElementById("menu-map-btn")?.addEventListener("click", () => {
+  if (raceMode !== "cup") openTrackPanel();
+});
 refreshMenuMap();
 document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
-document.getElementById("track-classic")?.addEventListener("click", () => {
-  _trackDraft.mode = "classic";
-  syncTrackPanel();
-});
-document.getElementById("track-custom")?.addEventListener("click", () => {
-  _trackDraft.mode = "custom";
-  syncTrackPanel();
-});
-const setTrackVal = (id, v) => {
-  const val = document.getElementById(id + "-val");
-  if (val) val.textContent = v;
-};
+// The shape sliders re-sync the whole panel (not just their label) so the
+// Style chips light up when the knobs land on a preset and clear when they
+// drift off one.
 document.getElementById("track-curvy")?.addEventListener("input", (e) => {
   _trackDraft.curviness = e.target.value / 100;
-  setTrackVal("track-curvy", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-twist")?.addEventListener("input", (e) => {
   _trackDraft.twist = e.target.value / 100;
-  setTrackVal("track-twist", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-hilly")?.addEventListener("input", (e) => {
   _trackDraft.hilliness = e.target.value / 100;
-  setTrackVal("track-hilly", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-hills")?.addEventListener("input", (e) => {
   _trackDraft.hills = e.target.value / 100;
-  setTrackVal("track-hills", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
-  setTrackVal("track-size", e.target.value);
-  // Re-apply the biome cap and refresh the hint/locked chips as the map resizes.
+  // Re-applies the biome cap and refreshes the hint/locked chips as the map resizes.
   syncTrackPanel();
 });
 document.getElementById("track-new")?.addEventListener("click", (e) => {
@@ -3354,17 +3473,20 @@ trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
   });
 });
 document.getElementById("track-apply")?.addEventListener("click", () => {
-  if (_trackDraft.mode === "custom" && !_trackDraft.seed) _trackDraft.seed = randomSeed();
+  if (!_trackDraft.seed) _trackDraft.seed = randomSeed();
   saveTrackConfig(_trackDraft);
+  // Resume the flow where the reload interrupts it: applying from the start
+  // line's Edit lands back on the start line; applying from the Track step
+  // moves on to the racer (the step a track pick would have advanced to).
+  saveFlowResume(flowStep === "startline" ? "startline" : "cat");
   markReload("track-apply");
   location.reload(); // rebuild the world from the new recipe
 });
 
-// --- Garage: pick your cat + kart, with a live 3D preview ------------------
+// --- Racer step: pick your cat + kart, with a live 3D preview --------------
 // The selection just rides in garageConfig; the player kart reads it at race start
-// (raceRoster/buildKarts) so no reload is needed. While the garage is open the menu
-// loop renders an orbiting preview kart instead of the cinematic (see the loop).
-const garageEl = document.getElementById("garage");
+// (raceRoster/buildKarts) so no reload is needed. While the Racer step is up the
+// menu loop renders an orbiting preview kart instead of the cinematic (see the loop).
 let _garageDraft = null; // { cat, kart } in-progress; committed to garageConfig on Done
 let _garageOpen = false;
 let _garagePreview = null; // the preview kart's group in the scene
@@ -3372,33 +3494,52 @@ let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
 const _garageLook = new THREE.Vector3();
 
-// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
-// materials, skipping the shared colour-keyed/constant ones other karts use.)
-function _clearGaragePreview() {
-  if (!_garagePreview) return;
-  scene.remove(_garagePreview);
-  _disposeGroup(_garagePreview);
-  _garagePreview = null;
-  _garagePreviewKart = null;
+// The last-built preview kart is CACHED (not disposed) so re-entering the
+// showroom is instant; a boot-idle prewarm builds + pipeline-compiles the saved
+// racer so even the FIRST entry doesn't hitch. Changing the draft evicts.
+const _previewCache = { key: null, kart: null };
+function _previewKey(draft) {
+  const cat = catSpec(draft);
+  const kart = kartSpec(draft);
+  return [cat.fur, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
 }
-// Rebuild the preview kart from the current draft (cheap enough for a click, not a
-// per-frame op). Reuses the real Kart + the rim/toon treatment so it matches racing.
-function buildGaragePreview() {
-  _clearGaragePreview();
-  const cat = catSpec(_garageDraft);
-  const kart = kartSpec(_garageDraft);
+function _buildPreviewKart(draft) {
+  const cat = catSpec(draft);
+  const kart = kartSpec(draft);
   const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
-  pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
   });
   toonify(pk.group);
+  // (compileAsync was tried here on r185 and REGRESSED: whole-scene pipeline
+  // batches stalled the next render 2-6s on device. See startRace note.)
+  return pk;
+}
+// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
+// materials, skipping the shared colour-keyed/constant ones other karts use.)
+function _clearGaragePreview() {
+  if (!_garagePreview) return;
+  scene.remove(_garagePreview); // stays parked in _previewCache for next time
+  _garagePreview = null;
+  _garagePreviewKart = null;
+}
+// Show the draft's kart: pulled straight from the cache when it matches, else
+// built fresh (a click-time cost, same as the old garage steppers).
+function buildGaragePreview() {
+  const key = _previewKey(_garageDraft);
+  if (_garagePreview && _previewCache.key === key) return; // already showing it
+  _clearGaragePreview();
+  if (_previewCache.key !== key) {
+    if (_previewCache.kart) _disposeGroup(_previewCache.kart.group); // evict the stale build
+    _previewCache.kart = _buildPreviewKart(_garageDraft);
+    _previewCache.key = key;
+  }
+  const pk = _previewCache.kart;
+  pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
   scene.add(pk.group);
   _garagePreview = pk.group;
   _garagePreviewKart = pk;
-  // (compileAsync was tried here on r185 and REGRESSED: whole-scene pipeline
-  // batches stalled the next render 2-6s on device. See startRace note.)
 }
 
 // --- Custom creator -------------------------------------------------------
@@ -3406,7 +3547,7 @@ function buildGaragePreview() {
 // offer. Custom picks aren't limited to these — they just seed quick choices.
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned"];
+const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Cage"];
 const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
 const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
 const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
@@ -3460,48 +3601,48 @@ function _syncAccColorGrid(accId, chosenColor) {
   for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === effective);
 }
 
-// Refresh the creator panels: Custom mode (chosen on the Presets/Custom toggle)
-// swaps the preset stepper for the creator, and mirrors the draft's custom
-// values into its controls.
+// Mirror the draft's custom values into the two editor screens' controls.
 function syncCreators() {
-  const catCustom = _garageDraft.cat === CUSTOM_CAT_IDX;
-  const kartCustom = _garageDraft.kart === CUSTOM_KART_IDX;
-  document.getElementById("cat-custom").classList.toggle("hidden", !catCustom);
-  document.getElementById("kart-custom").classList.toggle("hidden", !kartCustom);
-  // The stepper only browses presets, so it steps aside in Custom mode (the
-  // creator has its own name field + controls).
-  document.getElementById("cat-stepper")?.classList.toggle("hidden", catCustom);
-  document.getElementById("kart-stepper")?.classList.toggle("hidden", kartCustom);
-  document.getElementById("cat-src-preset")?.classList.toggle("is-active", !catCustom);
-  document.getElementById("cat-src-custom")?.classList.toggle("is-active", catCustom);
-  document.getElementById("kart-src-preset")?.classList.toggle("is-active", !kartCustom);
-  document.getElementById("kart-src-custom")?.classList.toggle("is-active", kartCustom);
-  if (catCustom) {
-    const c = _garageDraft.customCat;
-    document.getElementById("cat-pat-name").textContent = _cap(c.pattern);
-    document.getElementById("cat-acc-name").textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
-    const ni = document.getElementById("cat-custom-name");
-    if (ni.value !== c.name) ni.value = c.name;
-    _markSelectedSwatch("cat-color-grid", c.fur);
-    _syncAccColorGrid(c.accessory, c.accessoryColor);
-  }
-  if (kartCustom) {
-    const k = _garageDraft.customKart;
-    document.getElementById("kart-style-name").textContent = KART_STYLE_NAMES[k.style] || "GP";
-    document.getElementById("kart-num-name").textContent = String(k.number);
-    const ni = document.getElementById("kart-custom-name");
-    if (ni.value !== k.name) ni.value = k.name;
-    _markSelectedSwatch("kart-color-grid", k.color);
+  if (!_garageDraft) return;
+  const c = _garageDraft.customCat;
+  const patName = document.getElementById("cat-pat-name");
+  if (patName) patName.textContent = _cap(c.pattern);
+  const accName = document.getElementById("cat-acc-name");
+  if (accName) accName.textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
+  const ni = document.getElementById("cat-custom-name");
+  if (ni && ni.value !== c.name) ni.value = c.name;
+  _markSelectedSwatch("cat-color-grid", c.fur);
+  _syncAccColorGrid(c.accessory, c.accessoryColor);
+  const k = _garageDraft.customKart;
+  const styleName = document.getElementById("kart-style-name");
+  if (styleName) styleName.textContent = KART_STYLE_NAMES[k.style] || "GP";
+  const numName = document.getElementById("kart-num-name");
+  if (numName) numName.textContent = String(k.number);
+  const nk = document.getElementById("kart-custom-name");
+  if (nk && nk.value !== k.name) nk.value = k.name;
+  _markSelectedSwatch("kart-color-grid", k.color);
+}
+// The studios gate USING a design on the creator purchase (design freely —
+// window shopping stays). Each editor carries its own note + Buy row.
+function refreshEditorLocks() {
+  for (const [which, id, label] of [["cat", "custom.cat", "Custom Cat"], ["kart", "custom.kart", "Custom Kart"]]) {
+    const note = document.getElementById(which + "-edit-note");
+    const buy = document.getElementById(which + "-edit-buy");
+    if (!note || !buy) continue;
+    const owned = isUnlocked(profile, id);
+    const entry = catalogEntry(id);
+    buy.classList.toggle("hidden", owned);
+    if (owned) { note.textContent = ""; continue; }
+    buy.textContent = `🐟 Buy the ${label} creator · ${entry.price}`;
+    buy.disabled = profile.treats < entry.price;
+    note.textContent = profile.treats < entry.price
+      ? `🔒 Design freely — buying the creator lets you race it. You have 🐟 ${profile.treats}, earn ${entry.price - profile.treats} more by racing.`
+      : `🔒 Design freely — buy the creator to race your design.`;
   }
 }
 function syncGarageUI() {
-  const cat = catSpec(_garageDraft);
-  const kart = kartSpec(_garageDraft);
-  document.getElementById("cat-name").textContent = cat.name;
-  document.getElementById("kart-name").textContent = kart.name;
-  document.getElementById("cat-swatch").style.background = _hex6(cat.fur);
-  document.getElementById("kart-swatch").style.background = _hex6(kart.color);
   syncCreators();
+  refreshEditorLocks();
 }
 // The main menu's Racer tile: current cat + kart by name, with their colours as
 // two little swatch dots, so the choice reads without opening the garage.
@@ -3516,56 +3657,37 @@ function refreshRacerSummary() {
   const ks = document.getElementById("racer-swatch-kart");
   if (ks) ks.style.background = _hex6(kart.color);
 }
-function openGaragePanel() {
-  _garageDraft = {
-    cat: garageConfig.cat,
-    kart: garageConfig.kart,
-    customCat: { ...garageConfig.customCat },
-    customKart: { ...garageConfig.customKart },
-  };
-  const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
-  _garageAnchor.copy(slot.position);
-  // Seed the "last browsed preset" so leaving Custom returns somewhere sensible.
-  _garagePrevPreset.cat = _garageDraft.cat < CUSTOM_CAT_IDX ? _garageDraft.cat : 0;
-  _garagePrevPreset.kart = _garageDraft.kart < CUSTOM_KART_IDX ? _garageDraft.kart : 0;
-  syncGarageUI();
-  buildGaragePreview();
-  // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
-  // would otherwise hang over the live preview as a doubled "ghost" of the level.
-  if (menuXfade) menuXfade.style.opacity = 0;
-  _menuPhase = "hold";
-  _menuShotT = 0;
-  _garageOpen = true;
-  openSubScreen(garageEl);
+// Entering any racer-family screen (cat / kart / the two studios): open the
+// showroom once — the draft persists across the whole family and commits when
+// the kart is chosen.
+function openRacerStep() {
+  if (!_garageOpen) {
+    _garageDraft = {
+      cat: garageConfig.cat,
+      kart: garageConfig.kart,
+      customCat: { ...garageConfig.customCat },
+      customKart: { ...garageConfig.customKart },
+    };
+    const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
+    _garageAnchor.copy(slot.position);
+    // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
+    // would otherwise hang over the live preview as a doubled "ghost" of the level.
+    if (menuXfade) menuXfade.style.opacity = 0;
+    _menuPhase = "hold";
+    _menuShotT = 0;
+    _garageOpen = true;
+  }
+  refreshRacerPreview();
+}
+// Instant when the cached kart matches (the prewarmed/common case); a cold
+// build waits for the slide to land so the transition never stutters.
+function refreshRacerPreview() {
+  if (_previewCache.key === _previewKey(_garageDraft)) buildGaragePreview();
+  else setTimeout(() => { if (_garageOpen) buildGaragePreview(); }, 470);
 }
 function closeGarage() {
   _garageOpen = false;
   _clearGaragePreview();
-  closeSubScreen(garageEl);
-}
-// The stepper browses PRESETS only; Custom is its own mode on the toggle above
-// it (an explicit affordance, not a hidden extra slot at the end of the cycle).
-function stepGarage(which, dir) {
-  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
-  _garageDraft[which] = ((_garageDraft[which] % n) + dir + n) % n;
-  syncGarageUI();
-  buildGaragePreview();
-}
-// Remembers the preset you were browsing so toggling Custom → Presets returns
-// to it instead of resetting to the first cat/kart.
-const _garagePrevPreset = { cat: 0, kart: 0 };
-function setGarageSource(which, custom) {
-  const customIdx = which === "cat" ? CUSTOM_CAT_IDX : CUSTOM_KART_IDX;
-  const isCustom = _garageDraft[which] === customIdx;
-  if (custom === isCustom) return;
-  if (custom) {
-    _garagePrevPreset[which] = _garageDraft[which];
-    _garageDraft[which] = customIdx;
-  } else {
-    _garageDraft[which] = _garagePrevPreset[which] ?? 0;
-  }
-  syncGarageUI();
-  buildGaragePreview();
 }
 // Mutate the draft's custom cat/kart, then refresh UI + preview. `rebuild=false`
 // skips the (model-irrelevant) preview rebuild for pure name edits.
@@ -3589,37 +3711,163 @@ function stepCustom(which, list, dir) {
   }
 }
 // Slowly orbit the camera around the parked preview kart. The control card is
-// docked to the left half of the (landscape) screen, so frame the kart in the
-// open RIGHT half: orbit a touch further back (smaller kart) and pan the aim to
-// the left, which slides the kart rightward on screen.
+// docked to the RIGHT half of the (landscape) screen, so frame the kart in the
+// open LEFT half: orbit a touch further back (smaller kart) and pan the aim to
+// the right, which slides the kart leftward on screen.
 const _garageRight = new THREE.Vector3();
 function renderGarage(timeSec, dt = 0.016) {
   if (!_garagePreview) return;
   _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
   const p = _garagePreview.position;
   const ang = timeSec * 0.5;
-  const r = 9.6; // well back so the whole kart reads small and never clips
+  const r = 11.2; // well back so the whole kart reads small and never clips
   camera.position.set(p.x + Math.sin(ang) * r, p.y + 3.1, p.z + Math.cos(ang) * r);
   if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
   _garageLook.set(p.x, p.y + 1.25, p.z);
   camera.lookAt(_garageLook);
-  // Pan the aim left along the camera's screen-right axis so the kart sits in
-  // the open right half (the card covers the left). Re-aim after the shift.
+  // Pan the aim right along the camera's screen-right axis so the kart sits in
+  // the open left half (the card covers the right). Re-aim after the shift.
   _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-  _garageLook.addScaledVector(_garageRight, -3.6);
+  _garageLook.addScaledVector(_garageRight, 3.4);
   camera.lookAt(_garageLook);
   renderFrame();
 }
 
-document.getElementById("open-garage")?.addEventListener("click", openGaragePanel);
-document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage("cat", -1));
-document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
-document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
-document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
-document.getElementById("cat-src-preset")?.addEventListener("click", () => setGarageSource("cat", false));
-document.getElementById("cat-src-custom")?.addEventListener("click", () => setGarageSource("cat", true));
-document.getElementById("kart-src-preset")?.addEventListener("click", () => setGarageSource("kart", false));
-document.getElementById("kart-src-custom")?.addEventListener("click", () => setGarageSource("kart", true));
+// --- Start-line grid tableau ----------------------------------------------
+// The "Start line" screen renders the ACTUAL starting grid behind the panel:
+// your preview kart parked in pole and the real AI lineup (aiRoster — the same
+// cats you'll race) on the slots behind, shot from in front of the gantry.
+// Rivals are built staggered (one per frame-ish) so entering the screen never
+// hitches, and cached like the showroom preview so re-entry is instant.
+let _gridOpen = false;
+let _gridRivals = []; // rival Karts currently placed in the scene
+const _gridRivalCache = { key: null, karts: [] };
+let _gridBuildTimer = 0;
+const _gridCamPos = new THREE.Vector3();
+const _gridCamBase = new THREE.Vector3();
+const _gridLook = new THREE.Vector3();
+const _gridSide = new THREE.Vector3();
+const _gridRight = new THREE.Vector3();
+function _gridRivalKey() {
+  const look = playerLook();
+  return [look.color, look.catColor].join("|"); // rival de-clash depends only on these
+}
+function _buildGridRival(cfg) {
+  const k = new Kart({ ...cfg, isPlayer: false });
+  k.group.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+  });
+  toonify(k.group);
+  return k;
+}
+// Place (or re-place) the field for the current mode: pole = you; gp/cup show
+// the rivals, time trial leaves you alone at the line.
+function _placeGridField() {
+  const pole = track.gridSlot(0);
+  // Your kart: straight from the showroom cache when it matches; a cold build
+  // waits for the slide to land (same trick as refreshRacerPreview).
+  const key = _previewKey(garageConfig);
+  const placePlayer = () => {
+    if (!_gridOpen) return;
+    if (_previewCache.key !== key) {
+      if (_previewCache.kart) _disposeGroup(_previewCache.kart.group);
+      _previewCache.kart = _buildPreviewKart(garageConfig);
+      _previewCache.key = key;
+    }
+    const pk = _previewCache.kart;
+    pk.placeAt(pole.position, pole.heading, track);
+    if (!pk.group.parent) scene.add(pk.group);
+  };
+  if (_previewCache.key === key) placePlayer();
+  else setTimeout(placePlayer, 470);
+  // Rivals: cached across visits; evicted when the player's look changes
+  // (their de-clashed colours depend on it). Built one at a time.
+  clearTimeout(_gridBuildTimer);
+  for (const k of _gridRivals) scene.remove(k.group);
+  _gridRivals = [];
+  if (raceMode === "tt") { _aimGridCamera(); return; }
+  const rkey = _gridRivalKey();
+  if (_gridRivalCache.key !== rkey) {
+    for (const k of _gridRivalCache.karts) _disposeGroup(k.group);
+    _gridRivalCache.karts = [];
+    _gridRivalCache.key = rkey;
+  }
+  const roster = aiRoster(playerLook());
+  const placeRival = (i) => {
+    if (!_gridOpen || i >= roster.length) {
+      if (_gridOpen && state === State.MENU) beginWarmAll(1); // compile any new pipelines off-tap
+      return;
+    }
+    let k = _gridRivalCache.karts[i];
+    if (!k) { k = _buildGridRival(roster[i]); _gridRivalCache.karts[i] = k; }
+    const slot = track.gridSlot(i + 1);
+    k.placeAt(slot.position, slot.heading, track);
+    scene.add(k.group);
+    _gridRivals.push(k);
+    _gridBuildTimer = setTimeout(() => placeRival(i + 1), _gridRivalCache.karts[i + 1] ? 0 : 90);
+  };
+  const cached = _gridRivalCache.karts.length === roster.length;
+  _gridBuildTimer = setTimeout(() => placeRival(0), cached ? 0 : 500);
+  _aimGridCamera();
+}
+// Fixed cinematic: stand a few lengths past the start line, low, looking back
+// through the gantry at the field. The panel covers the right half, so the aim
+// pans screen-right which slides the grid into the open left half.
+function _aimGridCamera() {
+  const s0 = track.gridSlot(0);
+  const s1 = track.gridSlot(1);
+  const h = s0.heading;
+  const fwdX = Math.sin(h), fwdZ = Math.cos(h);
+  _gridSide.set(fwdZ, 0, -fwdX); // right of the direction of travel
+  _gridCamBase.copy(s0.position).add(s1.position).multiplyScalar(0.5); // front-row centre
+  _gridLook.set(_gridCamBase.x - fwdX * 7, _gridCamBase.y + 1.0, _gridCamBase.z - fwdZ * 7);
+  // Stand on the POLE side (slot 0 sits at +_gridSide) so your kart is the one
+  // nearest the lens, with the rivals receding behind it.
+  _gridCamBase.x += fwdX * 11.5; _gridCamBase.z += fwdZ * 11.5;
+  _gridCamBase.addScaledVector(_gridSide, 6.4);
+  _gridCamBase.y += 3.4;
+}
+function renderStartGrid(timeSec, dt) {
+  const pk = _previewCache.kart;
+  if (pk && pk.group.parent) pk.idleBlink?.(dt);
+  for (const k of _gridRivals) k.idleBlink?.(dt);
+  // A slow breathing dolly — alive, but nothing like the menu's orbit drift.
+  _gridCamPos.copy(_gridCamBase);
+  _gridCamPos.addScaledVector(_gridSide, Math.sin(timeSec * 0.24) * 0.9);
+  _gridCamPos.y += Math.sin(timeSec * 0.5) * 0.22;
+  camera.position.copy(_gridCamPos);
+  if (camera.fov !== 42) { camera.fov = 42; camera.updateProjectionMatrix(); }
+  camera.lookAt(_gridLook);
+  // Pan the aim toward screen-right so the field sits in the open left half.
+  _gridRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  _gridLook.addScaledVector(_gridRight, 3.4);
+  camera.lookAt(_gridLook);
+  _gridLook.addScaledVector(_gridRight, -3.4); // restore for the next frame
+  renderFrame();
+}
+function openStartGrid() {
+  if (!_gridOpen) {
+    _gridOpen = true;
+    // Kill any in-progress menu cross-dissolve (its frozen snapshot would hang
+    // over the live grid as a ghost), same as the showroom does.
+    if (menuXfade) menuXfade.style.opacity = 0;
+    _menuPhase = "hold";
+    _menuShotT = 0;
+  }
+  _placeGridField(); // re-place even when already open: the mode may have changed
+}
+function closeStartGrid() {
+  if (!_gridOpen) return;
+  _gridOpen = false;
+  clearTimeout(_gridBuildTimer);
+  const pk = _previewCache.kart;
+  if (pk && pk.group.parent && pk.group !== _garagePreview) scene.remove(pk.group);
+  for (const k of _gridRivals) scene.remove(k.group); // stay parked in the cache
+  _gridRivals = [];
+}
+// Debug hook so headless probes can assert the tableau state.
+window.__zoomies.startGrid = () => ({ open: _gridOpen, rivals: _gridRivals.length, player: !!(_previewCache.kart && _previewCache.kart.group.parent) });
 
 // Custom-cat creator controls.
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
@@ -3639,8 +3887,11 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
 
 // Custom-kart creator controls.
 _buildSwatchGrid("kart-color-grid", KART_COLOR_SWATCHES, (c) => editCustomKart({ color: c }));
-document.getElementById("kart-style-prev")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + KART_STYLE_COUNT - 1) % KART_STYLE_COUNT }));
-document.getElementById("kart-style-next")?.addEventListener("click", () => editCustomKart({ style: (_garageDraft.customKart.style + 1) % KART_STYLE_COUNT }));
+const _stepKartStyle = (dir) => {
+  editCustomKart({ style: (_garageDraft.customKart.style + dir + KART_STYLE_COUNT) % KART_STYLE_COUNT });
+};
+document.getElementById("kart-style-prev")?.addEventListener("click", () => _stepKartStyle(-1));
+document.getElementById("kart-style-next")?.addEventListener("click", () => _stepKartStyle(1));
 document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
 document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
 document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
@@ -3648,16 +3899,144 @@ document.getElementById("kart-randomize")?.addEventListener("click", () => editC
   color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
-document.getElementById("garage-apply")?.addEventListener("click", () => {
+// --- Racer grids: one card per cat/kart (real catalog renders), doors that
+// advance. Locked priced cards buy in place with a tap-again confirm; cup and
+// difficulty prizes shake and say how to win them. ---
+function racerGridCard({ img, name, sub, buyId, onPick, rerender }) {
+  const owned = !buyId || isUnlocked(profile, buyId);
+  const b = document.createElement("button");
+  b.className = "tap-card racer-tap" + (owned ? "" : " locked");
+  const shot = document.createElement("span");
+  shot.className = "racer-shot";
+  const im = document.createElement("img");
+  im.src = img;
+  im.alt = name;
+  im.loading = "lazy";
+  im.addEventListener("error", () => im.remove());
+  shot.appendChild(im);
+  if (!owned) {
+    const lk = document.createElement("span");
+    lk.className = "racer-lock";
+    lk.textContent = "🔒";
+    shot.appendChild(lk);
+  }
+  const nm = document.createElement("span");
+  nm.className = "track-name";
+  nm.textContent = name;
+  const sb = document.createElement("span");
+  sb.className = "track-sub";
+  sb.textContent = sub ?? (owned ? "" : prizeHow(buyId));
+  b.append(shot, nm, sb);
+  cueifyButton(b);
+  b.addEventListener("click", () => {
+    if (owned) { onPick(); return; }
+    const entry = catalogEntry(buyId);
+    if (entry && typeof entry.price === "number") {
+      if (b.dataset.confirm) {
+        if (buyUnlock(profile, buyId)) {
+          saveProfile();
+          refreshTreatsChip();
+          uiCue("chime");
+          rerender();
+        } else {
+          uiCue("error");
+          sb.textContent = `You have 🐟 ${profile.treats} — earn ${entry.price - profile.treats} more by racing`;
+        }
+      } else {
+        b.dataset.confirm = "1";
+        sb.textContent = `Tap again to buy · 🐟 ${entry.price}`;
+        setTimeout(() => { delete b.dataset.confirm; sb.textContent = prizeHow(buyId); }, 4000);
+      }
+      return;
+    }
+    // Cup / difficulty exclusives: the sub already says how to win it.
+    uiCue("error");
+    b.classList.add("shake");
+    setTimeout(() => b.classList.remove("shake"), 500);
+  });
+  return b;
+}
+function renderCatCards() {
+  const grid = document.getElementById("cat-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+  CAT_PRESETS.forEach((c, i) => {
+    grid.appendChild(racerGridCard({
+      img: `assets/catalog/cat-${i}.jpg`,
+      name: c.name,
+      buyId: `cat.${i}`,
+      onPick: () => { _garageDraft.cat = i; flowGo("kart"); },
+      rerender: renderCatCards,
+    }));
+  });
+  grid.appendChild(racerGridCard({
+    img: "assets/catalog/custom-cat.jpg",
+    name: "Custom Cat",
+    sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
+    onPick: () => flowGo("cat-edit"),
+  }));
+}
+function renderKartCards() {
+  const grid = document.getElementById("kart-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+  KART_PRESETS.forEach((k, i) => {
+    grid.appendChild(racerGridCard({
+      img: `assets/catalog/kart-${i}.jpg`,
+      name: k.name,
+      buyId: `kart.${i}`,
+      onPick: () => { _garageDraft.kart = i; commitRacer(); },
+      rerender: renderKartCards,
+    }));
+  });
+  grid.appendChild(racerGridCard({
+    img: "assets/catalog/custom-kart.jpg",
+    name: "Custom Kart",
+    sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
+    onPick: () => flowGo("kart-edit"),
+  }));
+}
+// Kart chosen → the racer is complete: save it and roll on (friends-hosting
+// goes to the lobby — this tap is the fullscreen + motion gesture).
+function commitRacer() {
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
   garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
-  closeGarage();
+  if (raceMode === "mp") hostGame();
+  else flowGo("startline");
+}
+// With Friends has no start line, so its racer steps drop the step count.
+function refreshRacerEyebrows() {
+  const mp = raceMode === "mp";
+  const c = document.getElementById("cat-eyebrow");
+  if (c) c.textContent = mp ? "Your racer" : "Step 3 of 4";
+  const k = document.getElementById("kart-eyebrow");
+  if (k) k.textContent = mp ? "Your racer" : "Step 4 of 4";
+}
+// Studio actions: Buy unlocks the creator; Use adopts the design and rolls on.
+for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
+  document.getElementById(which + "-edit-buy")?.addEventListener("click", () => {
+    if (buyUnlock(profile, id)) {
+      saveProfile();
+      refreshTreatsChip();
+      uiCue("chime");
+    } else uiCue("error");
+    refreshEditorLocks();
+  });
+}
+document.getElementById("cat-edit-use")?.addEventListener("click", () => {
+  if (!isUnlocked(profile, "custom.cat")) { uiCue("error"); refreshEditorLocks(); return; }
+  _garageDraft.cat = CUSTOM_CAT_IDX;
+  flowGo("kart");
 });
-document.getElementById("garage-back")?.addEventListener("click", closeGarage);
+document.getElementById("kart-edit-use")?.addEventListener("click", () => {
+  if (!isUnlocked(profile, "custom.kart")) { uiCue("error"); refreshEditorLocks(); return; }
+  _garageDraft.kart = CUSTOM_KART_IDX;
+  commitRacer();
+});
 refreshRacerSummary();
 
 musicToggle?.addEventListener("click", () => {
@@ -3668,6 +4047,7 @@ musicToggle?.addEventListener("click", () => {
 sfxToggle?.addEventListener("click", () => {
   audio.unlock();
   audio.setSfxOn(!audio.sfxOn);
+  setUiCuesEnabled(audio.sfxOn); // menu cues follow the SFX setting
   refreshAudioUI();
 });
 musicVol?.addEventListener("input", () => {
@@ -3701,49 +4081,120 @@ window.addEventListener("keydown", (e) => {
     if (state === State.RACING) pauseGame();
     else if (state === State.PAUSED) resumeGame();
     else if (state === State.FLYVIEW) exitFlyView();
+    // Esc walks back out: topmost sheet first, then one flow step.
+    else if (e.code === "Escape" && !escCloseTopScreen()) flowBack();
   }
 });
 
-// --- Menu wiring ---
-// One primary START button whose label + action follow the game mode chosen on
-// the Game Mode screen: Grand Prix starts a race, Time Trial a solo run, and
-// Multiplayer hosts a room (joining by code sits right under the button).
-// "Race again" repeats whichever mode you were just in.
+// --- Menu flow -----------------------------------------------------------
+// One linear road to the grid: title → mode → (track | cup | friends) →
+// racer → startline → lobby. Screens slide directionally (forward = in from
+// the right); each step's enter/leave hook owns its content + 3D backdrop.
 document.getElementById("restart-btn").addEventListener("click", () => (timeTrial ? startTimeTrial() : startRace()));
 
 const startBtn = document.getElementById("start-btn");
 const mpCodeInput = document.getElementById("mp-code");
 const MODE_KEY = "zoomies-mode-v1";
-const MODE_INFO = {
-  gp: { cta: "🏁 START RACE" },
-  tt: { cta: "⏱ START TIME TRIAL" },
-  mp: { cta: "🎮 HOST GAME" },
-};
+// Which cup the Cup Series mode races (persisted; mid-cup boots override it).
+const CUP_CHOICE_KEY = "zoomies-cup-choice";
+let _cupChoice = CUPS[0].id;
+try { const c = localStorage.getItem(CUP_CHOICE_KEY); if (cupById(c)) _cupChoice = c; } catch { /* ignore */ }
+if (_cupState && _activeCup) _cupChoice = _activeCup.id;
 // Multiplayer needs a configured relay key; without one the mode isn't offered.
 const mpAvailable = !!resolveAblyKey();
 let raceMode = "gp";
 try {
   const m = localStorage.getItem(MODE_KEY);
-  if (m === "gp" || m === "tt") raceMode = m; // "mp" never persists (needs a live room)
+  if (m === "gp" || m === "tt" || m === "cup") raceMode = m; // "mp" never persists (needs a live room)
 } catch {}
+// A cup reload chain always lands in Cup Series mode; a daily link races single.
+if (_cupState && _activeCup) raceMode = "cup";
+else if (_dailyActive) raceMode = "gp";
 
-// The Game Mode tile echoes the chosen mode plus its options at a glance.
-function refreshModeSummary() {
-  const el = document.getElementById("mode-summary");
-  if (!el) return;
-  el.textContent =
-    raceMode === "tt" ? "Time Trial · One lap vs the clock"
-    : raceMode === "mp" ? "Multiplayer · Host or join friends"
-    : `Grand Prix · ${TOTAL_LAPS} lap${TOTAL_LAPS > 1 ? "s" : ""} · ${AI_DIFFICULTY[DIFFICULTY].label} rivals`;
+// --- Flow controller ---
+const menuFlowEl = document.getElementById("menu");
+let flowStep = "title";
+const RACER_FAMILY = ["cat", "kart", "cat-edit", "kart-edit"];
+// A track pick / maker apply rebuilds the world via a reload — remember where
+// the flow was so the boot lands back mid-flow instead of on the title.
+const FLOW_RESUME_KEY = "zoomies-flow-resume";
+function saveFlowResume(step) {
+  try { sessionStorage.setItem(FLOW_RESUME_KEY, step); } catch { /* ignore */ }
 }
+function flowGo(step, dir = 1, instant = false) {
+  const next = document.getElementById("flow-" + step);
+  if (!next) return;
+  const cur = document.getElementById("flow-" + flowStep);
+  const changing = flowStep !== step;
+  // Leave hooks: the racer family (cat/kart + studios) shares the 3D showroom
+  // preview and its draft — close only when leaving the family entirely.
+  if (changing && RACER_FAMILY.includes(flowStep) && !RACER_FAMILY.includes(step)) closeGarage();
+  if (changing && flowStep === "startline") closeStartGrid();
+  // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
+  if (step === "title") refreshTitlePlay();
+  else if (step === "mode") refreshModeCards();
+  else if (step === "track") renderTrackCards();
+  else if (step === "cup") renderCupOptions();
+  else if (step === "cat") { openRacerStep(); renderCatCards(); refreshRacerEyebrows(); }
+  else if (step === "kart") { openRacerStep(); renderKartCards(); refreshRacerEyebrows(); }
+  else if (step === "cat-edit") { openRacerStep(); _garageDraft.cat = CUSTOM_CAT_IDX; syncGarageUI(); refreshRacerPreview(); }
+  else if (step === "kart-edit") { openRacerStep(); _garageDraft.kart = CUSTOM_KART_IDX; syncGarageUI(); refreshRacerPreview(); }
+  else if (step === "startline") { refreshStartline(); openStartGrid(); }
+  if (changing) {
+    if (instant) menuFlowEl.classList.add("flow-instant");
+    if (cur) {
+      cur.classList.remove("is-active");
+      cur.style.setProperty("--fx", dir > 0 ? "-55%" : "55%"); // exit opposite the entry side
+    }
+    next.style.setProperty("--fx", dir > 0 ? "55%" : "-55%");
+    void next.offsetWidth; // commit the start position before activating
+    next.classList.add("is-active");
+    if (instant) requestAnimationFrame(() => requestAnimationFrame(() => menuFlowEl.classList.remove("flow-instant")));
+    flowStep = step;
+    menuFlowEl.dataset.step = step;
+  }
+  refreshMenuChrome();
+}
+// Back is always the same edge: one step toward the title. The racer's back
+// depends on how you got there; leaving the lobby leaves the room flow.
+function flowBack() {
+  if (state !== State.MENU || menuFlowEl.classList.contains("hidden")) return false;
+  if (flowStep === "lobby") { toMenu(); return true; }
+  const back = {
+    mode: "title",
+    track: "mode",
+    cup: "mode",
+    friends: "mode",
+    cat: raceMode === "mp" ? "friends" : raceMode === "cup" ? "cup" : "track",
+    kart: "cat",
+    "cat-edit": "cat",
+    "kart-edit": "kart",
+    startline: "kart",
+  }[flowStep];
+  if (!back) return false;
+  flowGo(back, -1);
+  return true;
+}
+menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", flowBack));
+
+// Title: the one way forward. A mid-cup boot jumps straight to the start
+// line (the series brings its own track + racer context).
+function refreshTitlePlay() {
+  if (!startBtn) return;
+  if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+  else startBtn.textContent = "▶  Play";
+}
+startBtn?.addEventListener("click", () => {
+  audio.unlock(); // the opening tap doubles as the audio unlock
+  if (raceMode === "cup" && _cupState && _activeCup) { flowGo("startline"); return; }
+  flowGo("mode");
+});
+
+// Kept as the shared "mode/options changed" refresher (setRaceMode + the
+// multiplayer connect path call it).
 function applyModeUI() {
-  if (startBtn) startBtn.textContent = MODE_INFO[raceMode].cta;
-  const mp = raceMode === "mp";
-  document.getElementById("mp-join")?.classList.toggle("hidden", !mp);
-  document.getElementById("mp-menu-status")?.classList.toggle("hidden", !mp);
-  for (const m of ["gp", "tt", "mp"])
-    document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
-  refreshModeSummary();
+  refreshTitlePlay();
+  if (flowStep === "startline") refreshStartline();
 }
 function setRaceMode(mode) {
   if (mode === "mp" && !mpAvailable) return;
@@ -3753,18 +4204,151 @@ function setRaceMode(mode) {
   if (mode !== "mp") try { localStorage.setItem(MODE_KEY, mode); } catch {}
   applyModeUI();
 }
-startBtn?.addEventListener("click", () => {
-  if (raceMode === "tt") startTimeTrial();
-  else if (raceMode === "mp") hostGame();
-  else startRace();
-});
 
-// Game Mode screen: one card per mode; the selected card expands its options.
-const modePanel = document.getElementById("mode-panel");
-for (const m of ["gp", "tt", "mp"])
-  document.getElementById("mode-" + m)?.addEventListener("click", () => setRaceMode(m));
-document.getElementById("open-mode")?.addEventListener("click", () => openSubScreen(modePanel));
-document.getElementById("mode-done")?.addEventListener("click", () => closeSubScreen(modePanel));
+// Mode: one tap chooses AND advances (no selected state — these are doors,
+// not toggles). The daily card doubles as today's status line.
+function refreshModeCards() {
+  const sub = document.getElementById("mode-daily-sub");
+  if (sub) {
+    sub.textContent = profile.dailyPaid === todayStr()
+      ? "Bonus banked for today — race it again or come back tomorrow"
+      : "Everyone races today's track — finish for bonus treats!";
+  }
+}
+document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
+document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
+document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
+document.getElementById("mode-mp")?.addEventListener("click", () => flowGo("friends"));
+// Friends: hosting picks the mode here; joining reloads into the friend's room.
+document.getElementById("mp-host-btn")?.addEventListener("click", () => { setRaceMode("mp"); flowGo("cat"); });
+
+// --- Track step: featured recipes painted from the real generator ----------
+// Fixed seeds/knobs so the cards are stable, nameable places. Picking a card
+// that isn't already built saves the recipe and reloads (the world is built
+// from the config at boot), resuming the flow at the Racer step.
+const FEATURED_TRACKS = [
+  { name: "Buttercup Run", sub: "🌳 Meadow · Midday", cfg: { mode: "custom", seed: "MEOW", size: 0.45, curviness: 0.5, twist: 0.42, hilliness: 0.35, hills: 0.5, biomes: ["meadow", "forest"], timeOfDay: "midday" } },
+  { name: "Whisker Canyon", sub: "⛰️ Desert · Sunset", cfg: { mode: "custom", seed: "DUNE", size: 0.55, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["desert", "mesa"], timeOfDay: "sunset" } },
+  { name: "Neon Alley", sub: "🏙 City · Night", cfg: { mode: "custom", seed: "NEON", size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ["city"], timeOfDay: "night" } },
+  { name: "Tuna Cove", sub: "🏖 Beach · Midday", cfg: { mode: "custom", seed: "TUNA", size: 0.5, curviness: 0.5, twist: 0.45, hilliness: 0.35, hills: 0.45, biomes: ["beach", "jungle"], timeOfDay: "midday" } },
+  { name: "Snowcap Sprint", sub: "🏔 Alpine · Sunset", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
+  { name: "Maple Falls", sub: "🍂 Autumn · Sunset", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
+  { name: "Petal Parade", sub: "🌸 Blossom · Midday", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
+];
+const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
+function trackCardCurrent(cfg) {
+  if (cfg.mode !== "custom") return trackConfig.mode !== "custom";
+  return trackConfig.mode === "custom"
+    && _TRACK_CFG_KEYS.every((k) => trackConfig[k] === cfg[k])
+    && String(trackConfig.biomes || []) === String(cfg.biomes || []);
+}
+function renderTrackCards() {
+  const grid = document.getElementById("track-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+  const addCard = (name, sub, cfg, current) => {
+    const b = document.createElement("button");
+    b.className = "tap-card track-tap";
+    const shot = document.createElement("span");
+    shot.className = "track-shot";
+    const canvas = document.createElement("canvas");
+    canvas.width = 300;
+    canvas.height = 188;
+    shot.appendChild(canvas);
+    const nm = document.createElement("span");
+    nm.className = "track-name";
+    nm.textContent = name;
+    const sb = document.createElement("span");
+    sb.className = "track-sub";
+    sb.textContent = sub;
+    b.append(shot, nm, sb);
+    cueifyButton(b);
+    b.addEventListener("click", () => chooseTrackCard(cfg));
+    grid.appendChild(b);
+    try { paintTrackMap(canvas, previewLoopPoints(cfg)); } catch { /* a bad recipe just leaves a blank shot */ }
+  };
+  addCard("Classic Circuit", "🏁 The original loop", { mode: "classic" }, trackConfig.mode !== "custom");
+  for (const t of FEATURED_TRACKS) addCard(t.name, t.sub, t.cfg, trackCardCurrent(t.cfg));
+  // The player's own recipe, when the live world isn't one of the cards above.
+  if (trackConfig.mode === "custom" && !FEATURED_TRACKS.some((t) => trackCardCurrent(t.cfg))) {
+    addCard(trackTitle(track.features, WORLD_SEED), `🛠 My track · ${TOD_LABELS[trackConfig.timeOfDay] || "Midday"}`, { ...trackConfig }, true);
+  }
+  const mk = document.createElement("button");
+  mk.className = "tap-card track-maker-card";
+  mk.innerHTML = `<span class="tap-chip" style="background:#ff9ecb">🛠️</span><span class="tap-title">Make your own track</span><span class="tap-chev">›</span>`;
+  cueifyButton(mk);
+  mk.addEventListener("click", openTrackPanel);
+  grid.appendChild(mk);
+}
+function chooseTrackCard(cfg) {
+  if (trackCardCurrent(cfg)) { flowGo("cat"); return; } // already built → onward
+  saveTrackConfig({ ...trackConfig, ...cfg });
+  saveFlowResume("cat");
+  uiCue("loading");
+  markReload("track-pick");
+  // Drop any explicit world params (a daily/cup/join link) so the saved recipe
+  // drives the rebuild instead of the URL's seed.
+  const u = new URL(location.href);
+  for (const p of ["seed", "w", "daily", "cup"]) u.searchParams.delete(p);
+  location.href = u.toString();
+}
+
+// --- Start line: the only full summary — map, racer, options, one giant GO --
+const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP" };
+// The stakes line: what a WIN pays at the current laps/difficulty (plus the
+// daily bonus when it's still unclaimed) — so the segs read as a bet, not a
+// form. Time trial hides it (its note talks PBs instead).
+function refreshStakes() {
+  const el = document.getElementById("start-stakes");
+  if (!el) return;
+  const show = raceMode !== "tt";
+  document.getElementById("stakes-row")?.classList.toggle("hidden", !show);
+  if (!show) return;
+  const daily = _dailyActive && profile.dailyPaid !== todayStr();
+  const top = racePayout({ place: 1, field: ROSTER.length, laps: TOTAL_LAPS, difficulty: DIFFICULTY, daily, stats: {} }).total;
+  el.textContent = `Win up to 🐟 ${top}`;
+}
+function refreshStartline() {
+  refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
+  refreshRacerSummary();
+  refreshRaceOptSegs();
+  refreshStakes();
+  const goBtn = document.getElementById("go-btn");
+  const note = document.getElementById("start-note");
+  const cupDef = cupById(_cupChoice);
+  const midCup = raceMode === "cup" && _cupState && _activeCup;
+  document.getElementById("laps-row")?.classList.toggle("hidden", raceMode !== "gp");
+  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || (raceMode === "cup" && !midCup)));
+  if (note) {
+    let txt = "";
+    if (_dailyActive) txt = "📅 Today's challenge — everyone races the same track. Daily bonus when you finish!";
+    else if (midCup) txt = `${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1} of ${_activeCup.races.length}. Points carry across the series.`;
+    else if (raceMode === "cup" && cupDef) {
+      txt = `${cupDef.emoji} ${cupDef.name} — ${cupDef.races.length} races, points and trophies.`;
+      if (cupDef.unlockId && !profile.trophies[cupDef.id]) txt += ` 🎁 First win: ${unlockName(cupDef.unlockId)}.`;
+    } else if (raceMode === "tt") {
+      const pb = loadTimeTrial()[0];
+      txt = pb ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
+        : "⏱ One flying lap against the clock — set your first PB!";
+    }
+    note.textContent = txt;
+    note.classList.toggle("hidden", !txt);
+  }
+  if (goBtn) {
+    if (midCup) goBtn.textContent = `▶  RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+    else if (_dailyActive) goBtn.textContent = "📅  START DAILY";
+    else goBtn.textContent = GO_LABELS[raceMode] || GO_LABELS.gp;
+  }
+}
+document.getElementById("startline-edit")?.addEventListener("click", () => flowGo("cat", -1));
+// GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.
+document.getElementById("go-btn")?.addEventListener("click", () => {
+  if (raceMode === "tt") startTimeTrial();
+  else if (raceMode === "cup") {
+    if (_cupState && _activeCup) beginRace(); // continue the series (this tap grants tilt)
+    else startCup(_cupChoice);
+  } else startRace();
+});
 
 // Host: connect to my own room (= my world seed) and go straight into the lobby.
 // The click is the user gesture beginRace needs for fullscreen + motion permission.
@@ -3789,9 +4373,10 @@ function claimHost() {
 // motion permission inside the gesture so it survives the reload.
 function joinGame() {
   const code = (mpCodeInput?.value || "").trim().toUpperCase();
-  if (!/^[A-Z0-9]{2,6}$/.test(code)) { mpCodeInput?.focus(); return; }
+  if (!/^[A-Z0-9]{2,6}$/.test(code)) { mpCodeInput?.focus(); uiCue("error"); return; }
   if (code === WORLD_SEED && MP.enabled) { beginRace(); return; } // already in this room
   audio.unlock();
+  uiCue("loading"); // joining the room (the reload lands in the lobby)
   try { input.enableMotion(); } catch {}
   // I'm joining someone else's room → I'm a guest, not the host (clear any prior
   // hosted-seed so a refresh in this tab doesn't wrongly crown me).
@@ -3815,6 +4400,7 @@ function enterMultiplayer() {
   _amHost = true; // I'm creating this room → I'm the host (survives a refresh below)
   try { sessionStorage.setItem("mp-host-seed", WORLD_SEED); } catch { /* ignore */ }
   audio.unlock();
+  uiCue("loading"); // connecting… (resolved by the onRoster "ready" cue)
   const u = new URL(location.href);
   u.searchParams.set("mp", "1");
   u.searchParams.set("seed", WORLD_SEED);
@@ -3847,6 +4433,484 @@ if (mpAvailable) {
 }
 applyModeUI();
 refreshRaceOptSegs();
+// Boot restore: a track pick / maker apply reloaded mid-flow — land back on the
+// remembered step (the ?mp=1 lobby path wins; it clears through autoOpenLobby).
+{
+  let _resume = null;
+  try {
+    _resume = sessionStorage.getItem(FLOW_RESUME_KEY);
+    sessionStorage.removeItem(FLOW_RESUME_KEY);
+  } catch { /* ignore */ }
+  if (_resume === "racer") _resume = "cat"; // pre-split marker from an old build
+  if (_resume && !new URLSearchParams(location.search).has("mp") && document.getElementById("flow-" + _resume)) {
+    // Deferred: the racer step's enter hook touches state (menu cinematic,
+    // preview build) that initialises later in this module.
+    setTimeout(() => flowGo(_resume, 1, true), 60);
+  }
+}
+// Prewarm the showroom: build the saved cat-in-kart during title idle and draw
+// it far underground for two culling-off frames (compiles its pipelines), then
+// park it in the cache — entering "Pick your racer" is seamless instead of a
+// visible hitch on the first visit.
+setTimeout(() => {
+  if (state !== State.MENU || _garageOpen || _previewCache.kart) return;
+  try {
+    const draft = { cat: garageConfig.cat, kart: garageConfig.kart, customCat: { ...garageConfig.customCat }, customKart: { ...garageConfig.customKart } };
+    const pk = _buildPreviewKart(draft);
+    _previewCache.kart = pk;
+    _previewCache.key = _previewKey(draft);
+    const slot = track.gridSlot(0);
+    pk.group.position.set(slot.position.x, slot.position.y - 80, slot.position.z);
+    scene.add(pk.group);
+    beginWarmAll(2); // culling-off frames so the buried kart actually draws
+    setTimeout(() => { if (!_gridOpen && pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group); }, 800);
+  } catch { /* prewarm is best-effort */ }
+}, 2500);
+
+// --- Progression UI wiring (treats chip, cups, daily, Cat-alog, backup, dev) ---
+function refreshTreatsChip() {
+  const el = document.getElementById("treats-balance");
+  if (el) el.textContent = String(profile.treats);
+  const c = document.getElementById("chrome-treats-n");
+  if (c) c.textContent = String(profile.treats);
+  refreshCatalogTile();
+}
+// The Cat-alog button's alert dot advertises the reward loop: badges waiting
+// to be claimed, or a prize the player can already afford.
+function refreshCatalogTile() {
+  const alertDot = document.getElementById("catalog-tile-alert");
+  if (!alertDot) return;
+  const hot = profile.pendingClaims.length > 0
+    || CATALOG.some((e) => typeof e.price === "number" && e.price > 0 && e.price <= profile.treats && !isUnlocked(profile, e.id));
+  alertDot.classList.toggle("hidden", !hot);
+}
+
+// Start a cup: seed the run state and reload into race 1 (each cup race is a
+// different seed, and the world is built from the seed at load).
+function cupRaceURL(cup, raceIndex) {
+  const race = cup.races[raceIndex];
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", race.seed);
+  u.searchParams.set("cup", cup.id);
+  // The full generated world rides the same token the multiplayer invite uses, so
+  // the boot path builds EXACTLY this track whatever the player's saved settings.
+  const w = encodeWorld({ cfg: race.cfg, laps: 3, seed: race.seed });
+  if (w) u.searchParams.set("w", w);
+  return u.toString();
+}
+function startCup(id) {
+  const cup = cupById(id);
+  if (!cup) return;
+  audio.unlock();
+  try { input.enableMotion(); } catch { /* ignore */ } // grab iOS tilt permission inside the tap, like joinGame
+  try { sessionStorage.setItem(CUP_KEY, JSON.stringify({ id, race: 0, points: {}, diff: DIFFICULTY })); } catch { /* ignore */ }
+  markReload("cup-start");
+  location.href = cupRaceURL(cup, 0);
+}
+document.getElementById("results-next-btn")?.addEventListener("click", () => {
+  if (!_cupState || !_activeCup) return;
+  _cupState.race++;
+  try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
+  try { input.enableMotion(); } catch { /* ignore */ } // tap = motion permission survives the reload
+  markReload("cup-next");
+  location.href = cupRaceURL(_activeCup, _cupState.race);
+});
+
+// Daily challenge: a mode card. Reloads into today's shared seed (the daily
+// brings its own track) and resumes the flow at the Racer step; the start
+// line's GO reads START DAILY. Re-tapping while already in today's world just
+// advances — no rebuild.
+document.getElementById("mode-daily")?.addEventListener("click", () => {
+  setRaceMode("gp"); // the daily rides the single-race path (payout adds the bonus)
+  const today = dailySeedFor(todayStr());
+  if (_dailyActive && WORLD_SEED === today) { flowGo("cat"); return; }
+  audio.unlock();
+  try { input.enableMotion(); } catch { /* ignore */ }
+  uiCue("loading");
+  saveFlowResume("cat");
+  markReload("daily-start");
+  const u = new URL(location.origin + location.pathname);
+  u.searchParams.set("seed", today);
+  u.searchParams.set("daily", "1");
+  location.href = u.toString();
+});
+
+// Cup step: one tap-card per series, showing the prize. Picking advances.
+const CUP_CHIP_COLORS = ["#ffc24b", "#4cc9f0", "#ff5d5d", "#a4e022"];
+function renderCupOptions() {
+  const list = document.getElementById("cup-list");
+  if (!list) return;
+  list.replaceChildren();
+  CUPS.forEach((cup, i) => {
+    const won = profile.trophies[cup.id];
+    const b = document.createElement("button");
+    b.className = "tap-card cup-tap";
+    const prize = won
+      ? `<span class="cup-pill won">🏆 Won on ${won}</span>`
+      : cup.unlockId ? `<span class="cup-pill prize">🎁 Win ${unlockName(cup.unlockId)}</span>` : "";
+    b.innerHTML =
+      `<span class="tap-chip" style="background:${CUP_CHIP_COLORS[i % CUP_CHIP_COLORS.length]}">${cup.emoji}</span>`
+      + `<span class="tap-text"><span class="tap-title">${cup.name}</span><span class="tap-sub">${cup.desc}</span></span>`
+      + `<span class="tap-chev">›</span>`
+      + `<span class="cup-meta"><span class="cup-pill">🏁 ${cup.races.length} races</span>${prize}</span>`;
+    cueifyButton(b);
+    b.addEventListener("click", () => {
+      _cupChoice = cup.id;
+      try { localStorage.setItem(CUP_CHOICE_KEY, cup.id); } catch { /* ignore */ }
+      clearCupRun(); // picking a (new) cup abandons any half-run series
+      flowGo("cat");
+    });
+    list.appendChild(b);
+  });
+}
+renderCupOptions();
+
+// --- Menu map: cycle the Cup Series' tracks with a cross-fade -----------------
+// In Cup Series mode the menu map pages through the chosen cup's generated
+// layouts (fade out → repaint → fade in), so the whole series is visible before
+// you start. Any other mode shows the live world map as before.
+function refreshMenuMapCycle() {
+  const cupDef = raceMode === "cup" ? cupById(_cupChoice) : null;
+  if (_mapCycleTimer) { clearInterval(_mapCycleTimer); _mapCycleTimer = null; }
+  // Cup previews aren't editable — drop the Edit affordance while cycling.
+  document.getElementById("menu-map-btn")?.classList.toggle("map-no-edit", !!cupDef);
+  const canvas = document.getElementById("menu-map");
+  if (!cupDef || !canvas) {
+    if (canvas) canvas.style.opacity = "1";
+    refreshMenuMap(); // restore the live-world map
+    return;
+  }
+  _mapCycleIdx = _cupState && _activeCup && _activeCup.id === cupDef.id ? _cupState.race : 0;
+  const label = document.getElementById("menu-map-label");
+  const paint = () => {
+    const race = cupDef.races[_mapCycleIdx % cupDef.races.length];
+    paintTrackMap(canvas, previewLoopPoints(race.cfg));
+    if (label) label.textContent = `${cupDef.emoji} ${cupDef.name} · Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`;
+  };
+  paint();
+  canvas.style.opacity = "1";
+  _mapCycleTimer = setInterval(() => {
+    if (state !== State.MENU || _garageOpen || flowStep !== "startline") return; // idle unless the board is up
+    canvas.style.opacity = "0";
+    setTimeout(() => {
+      _mapCycleIdx = (_mapCycleIdx + 1) % cupDef.races.length;
+      paint();
+      canvas.style.opacity = "1";
+    }, 420); // matches the CSS opacity transition
+  }, 3200);
+}
+
+// Cat-alog: the Prizes page (everything you can win + how) is the main view;
+// the second tab holds the trophy shelf, achievements and career stats.
+const catalogEl = document.getElementById("catalog");
+
+// ✨ burst — the little dopamine pop for claiming a badge or buying a prize:
+// sparkle glyphs fly out from the element's centre and fade (direction via
+// inline CSS vars, see .sparkle / @keyframes sparkle-fly).
+function sparkleBurst(el, n = 10) {
+  if (getComputedStyle(el).position === "static") el.style.position = "relative";
+  for (let i = 0; i < n; i++) {
+    const s = document.createElement("span");
+    s.className = "sparkle";
+    s.textContent = ["✨", "⭐", "🌟"][i % 3];
+    const ang = (i / n) * Math.PI * 2 + Math.random() * 0.6;
+    const dist = 30 + Math.random() * 30;
+    s.style.setProperty("--sx", `${Math.round(Math.cos(ang) * dist)}px`);
+    s.style.setProperty("--sy", `${Math.round(Math.sin(ang) * dist - 10)}px`);
+    s.style.animationDelay = `${(Math.random() * 0.12).toFixed(2)}s`;
+    el.appendChild(s);
+    setTimeout(() => s.remove(), 950);
+  }
+}
+
+// First tap on a locked, priced prize → an in-tile confirm ("Get X for 🐟N?");
+// Yes → buy, sparkle, tile flips to owned. Can't afford → a shake + how much is
+// missing. The garage's Buy button still works; this is the Cat-alog's own till.
+function beginPrizeBuy(tile, id, name, price) {
+  if (isUnlocked(profile, id) || tile.querySelector(".prize-confirm")) return;
+  const c = document.createElement("div");
+  c.className = "prize-confirm";
+  if (profile.treats < price) {
+    c.innerHTML = `<span class="pc-text">Need 🐟 ${price - profile.treats} more</span>`;
+    tile.appendChild(c);
+    tile.classList.add("shake");
+    uiCue("error");
+    setTimeout(() => { c.remove(); tile.classList.remove("shake"); }, 1400);
+    return;
+  }
+  const txt = document.createElement("span");
+  txt.className = "pc-text";
+  txt.textContent = `Get ${name} for 🐟 ${price}?`;
+  const yes = document.createElement("button");
+  yes.className = "pc-yes";
+  yes.textContent = "✓ Yes!";
+  yes.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (!buyUnlock(profile, id)) { c.remove(); return; }
+    saveProfile();
+    refreshTreatsChip();
+    c.remove();
+    sparkleBurst(tile, 12);
+    uiCue("success");
+    tile.classList.add("owned", "just-bought");
+    tile.classList.remove("buyable");
+    const how = tile.querySelector(".prize-how");
+    if (how) how.textContent = "✓ yours";
+    const bal = document.getElementById("catalog-treats");
+    if (bal) bal.textContent = `🐟 ${profile.treats}`;
+  });
+  const no = document.createElement("button");
+  no.className = "pc-no";
+  no.textContent = "✕";
+  no.addEventListener("click", (ev) => { ev.stopPropagation(); c.remove(); });
+  c.append(txt, yes, no);
+  tile.appendChild(c);
+}
+
+// The badge-claim interstitial: shown on the way from results to the menu when
+// badges are waiting. Every card must be tapped (each pays with a sparkle
+// burst) before Continue appears — claiming IS the moment, so it can't be
+// scrolled past. With nothing pending it goes straight through to onDone.
+function showClaimScreen(onDone) {
+  const pending = ACHIEVEMENTS.filter((a) => profile.pendingClaims.includes(a.id));
+  if (!pending.length) { onDone(); return; }
+  const scr = document.getElementById("claim-screen");
+  const list = document.getElementById("claim-list");
+  const cont = document.getElementById("claim-continue");
+  if (!scr || !list || !cont) { onDone(); return; }
+  list.innerHTML = "";
+  cont.classList.add("hidden");
+  for (const a of pending) {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "claim-card";
+    card.innerHTML = `<span class="claim-medal">🏅</span><span class="claim-text"><span class="claim-name">${a.name}</span><span class="claim-desc">${a.desc}</span></span><span class="claim-cta">TAP! +${a.pay}</span>`;
+    card.addEventListener("click", () => {
+      const paid = claimAchievement(profile, a.id);
+      if (!paid) return;
+      saveProfile();
+      refreshTreatsChip();
+      sparkleBurst(card, 14);
+      uiCue("success");
+      card.classList.add("claimed");
+      card.disabled = true;
+      card.querySelector(".claim-cta").textContent = `+${paid.pay} 🐟`;
+      if (!profile.pendingClaims.length) cont.classList.remove("hidden");
+    });
+    list.appendChild(card);
+  }
+  cont.onclick = () => { scr.classList.add("hidden"); onDone(); };
+  scr.classList.remove("hidden");
+  uiCue("chime"); // gentle "you've got badges" attention
+}
+function prizeTile(id, name, colorHex, how, owned) {
+  const d = document.createElement("div");
+  d.className = "prize-tile" + (owned ? " owned" : "")
+    + (id.startsWith("kart.") || id === "custom.kart" ? " wide" : "");
+  // Real render of the prize (tools/catalog-shots.mjs). If a shot is missing,
+  // fall back to the old colour swatch so the tile never shows a broken image.
+  const im = document.createElement("img");
+  im.className = "prize-shot";
+  im.alt = name;
+  im.loading = "lazy";
+  im.src = `assets/catalog/${id.replace(".", "-")}.jpg`;
+  im.addEventListener("error", () => {
+    const sw = document.createElement("span");
+    sw.className = "prize-swatch";
+    sw.style.background = colorHex;
+    im.replaceWith(sw);
+  });
+  const nm = document.createElement("span");
+  nm.className = "prize-name";
+  nm.textContent = name;
+  const st = document.createElement("span");
+  st.className = "prize-how";
+  st.textContent = owned ? "✓ yours" : how;
+  d.append(im, nm, st);
+  const e = catalogEntry(id);
+  if (!owned && e && typeof e.price === "number" && e.price > 0) {
+    d.classList.add("buyable");
+    d.addEventListener("click", () => beginPrizeBuy(d, id, name, e.price));
+  }
+  return d;
+}
+function prizeHow(id) {
+  const e = catalogEntry(id);
+  if (!e) return "";
+  if (typeof e.price === "number" && e.price > 0) return `🐟 ${e.price}`;
+  if (e.cup) { const c = cupById(e.cup); return `🏆 win the ${c ? c.name : e.cup}`; }
+  if (e.diff) return e.diff === "hard" ? "🎖 win any cup on Hard" : "🎖 win any cup on Medium+";
+  return "free";
+}
+function renderPrizes() {
+  const box = document.getElementById("catalog-prizes");
+  if (!box) return;
+  box.innerHTML = "";
+  const head = (t) => { const h = document.createElement("div"); h.className = "prize-head"; h.textContent = t; box.appendChild(h); };
+  head("🐱 Cats");
+  const catGrid = document.createElement("div");
+  catGrid.className = "prize-grid";
+  CAT_PRESETS.forEach((c, i) => {
+    const id = `cat.${i}`;
+    catGrid.appendChild(prizeTile(id, c.name, _hex6(c.fur), prizeHow(id), isUnlocked(profile, id)));
+  });
+  box.appendChild(catGrid);
+  head("🏎 Karts");
+  const kartGrid = document.createElement("div");
+  kartGrid.className = "prize-grid prize-grid-wide";
+  KART_PRESETS.forEach((k, i) => {
+    const id = `kart.${i}`;
+    kartGrid.appendChild(prizeTile(id, k.name, _hex6(k.color), prizeHow(id), isUnlocked(profile, id)));
+  });
+  box.appendChild(kartGrid);
+  head("✨ Creators");
+  const cGrid = document.createElement("div");
+  cGrid.className = "prize-grid";
+  cGrid.appendChild(prizeTile("custom.cat", "Custom Cat", "#f0a830", prizeHow("custom.cat"), isUnlocked(profile, "custom.cat")));
+  cGrid.appendChild(prizeTile("custom.kart", "Custom Kart", "#e53935", prizeHow("custom.kart"), isUnlocked(profile, "custom.kart")));
+  box.appendChild(cGrid);
+}
+function setCatalogTab(prizes) {
+  document.getElementById("catalog-prizes")?.classList.toggle("hidden", !prizes);
+  document.getElementById("catalog-page-ach")?.classList.toggle("hidden", prizes);
+  document.getElementById("catalog-tab-prizes")?.classList.toggle("is-active", prizes);
+  document.getElementById("catalog-tab-ach")?.classList.toggle("is-active", !prizes);
+}
+document.getElementById("catalog-tab-prizes")?.addEventListener("click", () => setCatalogTab(true));
+document.getElementById("catalog-tab-ach")?.addEventListener("click", () => setCatalogTab(false));
+function renderCatalog() {
+  renderPrizes();
+  setCatalogTab(true); // Prizes is the main page
+  refreshTreatsChip();
+  const bal = document.getElementById("catalog-treats");
+  if (bal) bal.textContent = `🐟 ${profile.treats}`;
+  const shelf = document.getElementById("catalog-trophies");
+  if (shelf) {
+    shelf.innerHTML = "";
+    for (const cup of CUPS) {
+      const won = profile.trophies[cup.id];
+      const d = document.createElement("div");
+      d.className = "shelf-cup" + (won ? " won" : "");
+      d.innerHTML = `<span class="shelf-emoji">${won ? "🏆" : cup.emoji}</span><span class="shelf-name">${cup.name}</span><span class="shelf-diff">${won ? won : "not won"}</span>`;
+      shelf.appendChild(d);
+    }
+  }
+  const list = document.getElementById("catalog-achievements");
+  if (list) {
+    list.innerHTML = "";
+    for (const a of ACHIEVEMENTS) {
+      const got = profile.achievements.includes(a.id);
+      const pend = profile.pendingClaims.includes(a.id);
+      const d = document.createElement("div");
+      d.className = "ach-row" + (got ? " got" : "");
+      d.innerHTML = `<span class="ach-mark">${got ? "🏅" : "⬜"}</span><span class="ach-text"><span class="ach-name">${a.name}</span><span class="ach-desc">${a.desc}</span></span><span class="ach-pay">${pend ? "" : `🐟 ${a.pay}`}</span>`;
+      // A badge earned but never claimed (e.g. the player skipped the results
+      // screen) keeps its CLAIM button here, so the treats are never lost.
+      if (pend) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "ach-claim";
+        b.textContent = `CLAIM +${a.pay}`;
+        b.addEventListener("click", () => {
+          if (!claimAchievement(profile, a.id)) return;
+          saveProfile();
+          refreshTreatsChip();
+          sparkleBurst(d, 10);
+          b.replaceWith(Object.assign(document.createElement("span"), { className: "ach-pay", textContent: `+${a.pay} 🐟` }));
+          const bal = document.getElementById("catalog-treats");
+          if (bal) bal.textContent = `🐟 ${profile.treats}`;
+        });
+        d.appendChild(b);
+      }
+      list.appendChild(d);
+    }
+  }
+  const st = document.getElementById("catalog-stats");
+  if (st) {
+    const s = profile.stats;
+    st.textContent = `${s.races} races · ${s.wins} wins · ${s.boxes} boxes · ${s.treatsEarned} treats earned`;
+  }
+}
+document.getElementById("open-catalog")?.addEventListener("click", () => {
+  renderCatalog();
+  openSubScreen(catalogEl);
+});
+document.getElementById("catalog-back")?.addEventListener("click", () => closeSubScreen(catalogEl));
+
+// Backup: the whole profile as a copy-paste code (Settings → Progress).
+document.getElementById("backup-copy")?.addEventListener("click", async () => {
+  const tok = encodeProfileToken(profile);
+  let copied = false;
+  try { await navigator.clipboard.writeText(tok); copied = true; } catch { /* ignore */ }
+  if (!copied) window.prompt("Copy your backup code:", tok);
+  const note = document.getElementById("backup-note");
+  if (note) note.textContent = copied ? "Backup code copied to the clipboard ✓" : "Copy the code from the box above.";
+});
+document.getElementById("backup-restore")?.addEventListener("click", () => {
+  const tok = window.prompt("Paste your backup code (ZP1.…):", "");
+  if (!tok) return;
+  const restored = decodeProfileToken(tok);
+  const note = document.getElementById("backup-note");
+  if (!restored) { if (note) note.textContent = "That code didn't parse — check it and try again."; return; }
+  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(restored)); } catch { /* ignore */ }
+  if (note) note.textContent = "Profile restored — reloading…";
+  markReload("profile-restore");
+  setTimeout(() => location.reload(), 400);
+});
+
+// Developer mode: hidden until ?dev=1 or 7 taps on the Settings title.
+function applyDevUI() {
+  document.getElementById("dev-card")?.classList.toggle("hidden", !devMode);
+}
+let _devTaps = 0;
+document.querySelector("#settings h1")?.addEventListener("click", () => {
+  if (devMode) return;
+  if (++_devTaps >= 7) {
+    devMode = true;
+    try { localStorage.setItem(DEV_KEY, "1"); } catch { /* ignore */ }
+    installDevApi();
+    applyDevUI();
+  }
+});
+document.getElementById("dev-treats")?.addEventListener("click", () => {
+  profile.treats += 1000;
+  saveProfile();
+  refreshTreatsChip();
+});
+document.getElementById("dev-unlock")?.addEventListener("click", () => {
+  for (const a of ACHIEVEMENTS) if (!profile.achievements.includes(a.id)) profile.achievements.push(a.id);
+  for (const e of ["cat.3","cat.4","cat.5","cat.6","cat.7","cat.8","cat.9","kart.3","kart.4","kart.5","kart.6","kart.7","kart.8","custom.cat","custom.kart"]) {
+    if (!profile.unlocked.includes(e)) profile.unlocked.push(e);
+  }
+  for (const cup of CUPS) if (!profile.trophies[cup.id]) profile.trophies[cup.id] = "hard";
+  saveProfile();
+  refreshTreatsChip();
+});
+document.getElementById("dev-reset")?.addEventListener("click", () => {
+  if (!window.confirm("Reset ALL progression (treats, unlocks, trophies, achievements)?")) return;
+  try { localStorage.removeItem(PROFILE_KEY); } catch { /* ignore */ }
+  markReload("profile-reset");
+  location.reload();
+});
+document.getElementById("dev-off")?.addEventListener("click", () => {
+  devMode = false;
+  try { localStorage.removeItem(DEV_KEY); } catch { /* ignore */ }
+  applyDevUI();
+});
+// Console API for the same powers (guarded by dev mode).
+function installDevApi() {
+  if (!devMode || !window.__zoomies) return;
+  window.__zoomies.dev = {
+    grantTreats(n = 1000) { profile.treats += Math.max(0, n | 0); saveProfile(); refreshTreatsChip(); return profile.treats; },
+    unlockAll() { document.getElementById("dev-unlock")?.click(); return profile.unlocked.length; },
+    profile() { return profile; },
+    exportToken() { return encodeProfileToken(profile); },
+  };
+}
+installDevApi();
+applyDevUI();
+refreshTreatsChip();
+
 
 // A canonical invite URL for the current room (origin + path + ?seed=…&mp=1),
 // independent of whatever junk is on location.href right now.
@@ -3974,6 +5038,7 @@ function beginRace() {
   input.calibrate();
   input.jumpHeld = false; // clear any held state from a previous run
   input.shielding = false;
+  closeStartGrid(); // the tableau's karts leave before the real field builds
 
   // In multiplayer the START button takes you to the lobby; the race itself
   // begins when the host starts it, synchronized across everyone. (Doing the
@@ -4016,10 +5081,13 @@ let _racePrepPending = false;
 // both from the local START click and from a network-triggered synchronized start.
 function prepareRace() {
   _raceParked = false; // starting fresh; nothing parked to resume
+  _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0, boxes: 0 };
+  _racePaid = false;
+  document.getElementById("results-earnings")?.classList.add("hidden");
+  document.getElementById("results-next-btn")?.classList.add("hidden");
   refreshResumeBtn();
   document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
-  document.getElementById("lobby").classList.add("hidden");
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // fresh race → controls back
@@ -4164,9 +5232,9 @@ function armGuestTiltOnGesture() {
 
 function enterLobby() {
   MP.inLobby = true;
-  document.getElementById("menu").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
-  document.getElementById("lobby").classList.remove("hidden");
+  document.getElementById("menu").classList.remove("hidden");
+  flowGo("lobby"); // slides in over the world tour
   renderLobby();
   if (!mpIsHost()) armGuestTiltOnGesture(); // joiner: first touch enables tilt steering
 }
@@ -4935,9 +6003,138 @@ function fieldSnapshot() {
   return _fieldSnap;
 }
 
+// --- Race rewards settlement ------------------------------------------------
+// Runs ONCE per race, on the first showResults: folds the per-race moment
+// counters into the career stats, pays treats, scores the cup, and fires any
+// newly earned achievements. Returns everything the earnings panel renders.
+function settleRaceRewards() {
+  if (_racePaid || timeTrial || !player || !player.finished || !_raceStats) return null;
+  _racePaid = true;
+  updatePlacement();
+  const s = profile.stats;
+  s.races++;
+  const won = player.place === 1;
+  if (won) s.wins++;
+  if (won && DIFFICULTY === "hard") s.winsHard++;
+  if (won && TIME_OF_DAY === "night") s.winsNight++;
+  if (trackConfig.mode === "custom") s.racesCustom++;
+  s.driftBoosts += _raceStats.driftBoosts;
+  s.slipSeconds += Math.round(_raceStats.slipSeconds);
+  s.milkTrips += _raceStats.milkTrips;
+  s.heartSaves += _raceStats.heartSaves;
+  s.boxes += _raceStats.boxes;
+  const daily = _dailyActive && profile.dailyPaid !== todayStr();
+  if (daily) { profile.dailyPaid = todayStr(); s.dailies++; }
+  const payout = racePayout({
+    place: player.place, field: raceField().length, laps: TOTAL_LAPS,
+    difficulty: DIFFICULTY, daily, stats: _raceStats,
+  });
+  profile.treats += payout.total;
+  s.treatsEarned += payout.total;
+  // Cup scoring: every kart banks points by placement; the final race settles it.
+  let cup = null;
+  // `scored` guards a restarted cup race from banking its points twice.
+  if (_cupState && _activeCup && !MP.enabled && _cupState.scored !== _cupState.race) {
+    _cupState.scored = _cupState.race;
+    for (const k of raceField()) {
+      const name = k === player ? "You" : k.name;
+      _cupState.points[name] = (_cupState.points[name] || 0) + cupPoints(k.place);
+    }
+    const last = _cupState.race >= _activeCup.races.length - 1;
+    const standings = cupStandings(_cupState.points);
+    cup = { last, standings, cupDef: _activeCup, raceIndex: _cupState.race };
+    if (last) {
+      cup.award = awardCup(profile, _activeCup.id, standings, "You", DIFFICULTY);
+      clearCupRun();
+    } else {
+      try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
+    }
+  }
+  const fresh = checkAchievements(profile);
+  saveProfile();
+  refreshTreatsChip();
+  return { payout, fresh, cup };
+}
+function clearCupRun() {
+  try { sessionStorage.removeItem(CUP_KEY); } catch { /* ignore */ }
+}
+
+// The earnings panel under the standings: itemized treats, achievement banners,
+// and — in a cup — the running points table + the Next Race button.
+function renderRaceEarnings(settled) {
+  const box = document.getElementById("results-earnings");
+  const nextBtn = document.getElementById("results-next-btn");
+  if (!box) return;
+  if (!settled) { return; } // MP re-renders keep the panel from the first settle
+  box.innerHTML = "";
+  box.classList.remove("hidden");
+  const { payout, fresh, cup } = settled;
+  for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
+  box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));
+  // Badges are teased here but CLAIMED on the interstitial between results and
+  // the menu (showClaimScreen) — that tap is the reward moment.
+  for (const a of fresh) box.appendChild(earnRow(`🏅 ${a.name} — ${a.desc}`, "badge!", "earn-ach"));
+  if (cup) {
+    const head = document.createElement("div");
+    head.className = "earn-cup-head";
+    head.textContent = `${cup.cupDef.emoji} ${cup.cupDef.name} standings`;
+    box.appendChild(head);
+    cup.standings.forEach((r, i) => box.appendChild(earnRow(`${i + 1}. ${r.name}`, `${r.pts} pts`, r.name === "You" ? "earn-you" : "")));
+    if (!cup.last) {
+      document.getElementById("results-title").textContent = `${cup.cupDef.emoji} Race ${cup.raceIndex + 1}/${cup.cupDef.races.length} · ${cup.cupDef.name}`;
+      if (nextBtn) {
+        nextBtn.textContent = `▶ Race ${cup.raceIndex + 2} of ${cup.cupDef.races.length}`;
+        nextBtn.classList.remove("hidden");
+      }
+    } else {
+      const youWon = cup.standings[0] && cup.standings[0].name === "You";
+      document.getElementById("results-title").textContent = youWon ? `🏆 ${cup.cupDef.name} Champion!` : `${cup.cupDef.emoji} ${cup.cupDef.name} — ${ordinal(1 + cup.standings.findIndex((r) => r.name === "You"))}`;
+      if (cup.award) {
+        if (cup.award.treats > 0) box.appendChild(earnRow(`🏆 ${cup.cupDef.name} won`, `+${cup.award.treats}`, "earn-ach"));
+        if (cup.award.unlockId) box.appendChild(earnRow(`🎁 Exclusive unlocked: ${unlockName(cup.award.unlockId)}`, "NEW", "earn-ach"));
+        for (const id of cup.award.extraUnlocks || []) box.appendChild(earnRow(`🎖 ${AI_DIFFICULTY[DIFFICULTY].label} prize unlocked: ${unlockName(id)}`, "NEW", "earn-ach"));
+        if (!cup.award.firstWin && cup.award.upgraded) box.appendChild(earnRow(`🏆 Trophy upgraded to ${cup.award.difficulty}`, "", "earn-ach"));
+        if (cup.award.unlockId || (cup.award.extraUnlocks || []).length) uiCue("sparkle"); // a prize was revealed
+      }
+    }
+  }
+}
+function earnRow(label, amt, cls = "") {
+  const li = document.createElement("div");
+  li.className = "earn-row" + (cls ? " " + cls : "");
+  const l = document.createElement("span");
+  l.textContent = label;
+  const a = document.createElement("span");
+  a.textContent = amt;
+  li.append(l, a);
+  return li;
+}
+// Human name for an unlock id ("cat.8" -> "Pepper", "custom.kart" -> the creator).
+function unlockName(id) {
+  if (id === "custom.cat") return "Custom Cat creator";
+  if (id === "custom.kart") return "Custom Kart creator";
+  const am = id.match(/^acc\.(\w+)$/);
+  if (am) return ACCESSORY_LABELS[am[1]] || am[1];
+  const m = id.match(/^(cat|kart)\.(\d+)$/);
+  if (!m) return id;
+  const arr = m[1] === "cat" ? CAT_PRESETS : KART_PRESETS;
+  return arr[+m[2]] ? arr[+m[2]].name : id;
+}
+
+// Debug hook: finish the race NOW (headless probes verify the settle → earnings
+// flow without driving three real laps). Client-side only, like every hook here.
+window.__zoomies.debugFinish = () => {
+  if (!player || player.finished) return false;
+  player.finished = true;
+  player.finishTime = raceTime;
+  showResults();
+  return true;
+};
+
 function showResults() {
   state = State.FINISHED;
   renderResults();
+  renderRaceEarnings(settleRaceRewards());
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // results overlay takes over from the faded victory HUD
@@ -5254,6 +6451,15 @@ function loop(now) {
       renderFrame();
       return;
     }
+    if (_gridOpen) {
+      // Start line: hold on the starting-grid tableau (throttled like the menu
+      // drift — the shot barely moves, no need to burn battery at 60).
+      if (now - _lastMenuDraw >= 32) {
+        _lastMenuDraw = now;
+        renderStartGrid(now / 1000, dt);
+      }
+      return;
+    }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
     updateMenuCamera(now / 1000); // advance tour timing/phase (cheap; keeps the drift smooth)
@@ -5437,9 +6643,7 @@ function loop(now) {
       ? [...karts, ...[...MP.remotes.values()].map((r) => r.kart)]
       : karts;
     updateSlipstream(draftField);
-    // Laser pointers: lock + zap + beam visuals over the same live field. Runs
-    // before physics so Kart.update reads this frame's zapTimer.
-    updateLasers(draftField);
+    if (_raceStats && player && player.slipstream > 0.3) _raceStats.slipSeconds += dt;
 
     // Step physics
     for (const k of karts) k.update(dt, track);
@@ -5484,6 +6688,7 @@ function loop(now) {
         // Gloat: whoever's milk this was gets to look back and laugh.
         if (p && p.owner && p.owner !== k) {
           p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
+          if (p.owner === player && _raceStats) _raceStats.milkTrips++;
         } else if (p && p.ownerId && k === player && MP.enabled && MP.net) {
           MP.net.sendMilkGloat(p.ownerId); // a remote's milk tripped ME → tell them to gloat
         }
@@ -5527,11 +6732,8 @@ function loop(now) {
         k.lifePulse = false;
         effects.tootBurst(k, 1, false);
         audio.boost(k === player ? null : k.position);
-        if (k === player) hud.showToast("😻 Saved by a life!");
+        if (k === player) { hud.showToast("😻 Saved by a life!"); if (_raceStats) _raceStats.heartSaves++; }
       }
-      // Being lasered: red sparkles on the zapped kart (skip while shielded — the
-      // bubble is visibly eating the beam instead).
-      if (k.zapTimer > 0 && !k.shielding) effects.laserZapSparks(k);
       if (k.spinTimer > 0) effects.skid(k);
       // Drift sparks + skid marks for the rest of the field too (the player is
       // handled above), so the whole pack throws sparks through the corners —
@@ -5557,6 +6759,7 @@ function loop(now) {
       if (k.boostPuff >= 0) {
         effects.tootBurst(k, k.boostPuff);
         audio.boost(k === player ? null : k.position);
+        if (k === player && _raceStats) _raceStats.driftBoosts++;
         k.boostPuff = -1;
       }
     }
@@ -5654,7 +6857,7 @@ function loop(now) {
     _hudOpts.speedKmh = Math.abs(player.speed) * 3.0;
     _hudOpts.time = timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
     hud.update(_hudOpts);
-    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles, player.lives, player.laserTimer);
+    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles, player.lives);
     // Incoming-yarn ping: only lights inside the ~1s reaction window — early
     // enough to defend on a read, late enough that pre-arming a shield costs.
     const _yEta = items.yarnEta(player);
@@ -5701,9 +6904,6 @@ function loop(now) {
       // read as a celebration, not a paused race (the "FINISH!" toast stays — see
       // the .victory-hidden rule). Restored when results show / the next race starts.
       document.getElementById("hud").classList.add("victory-hidden");
-      // Douse any live laser beams — the laser pass doesn't run during the victory
-      // lap, so a beam would otherwise freeze mid-air.
-      for (const [, b] of _laserBeams) b.visible = false;
       if (timeTrial) {
         const lapTime = player.finishTime - (ttLapStart >= 0 ? ttLapStart : 0);
         _ttResult = recordTimeTrial(lapTime);
@@ -5721,7 +6921,9 @@ function loop(now) {
           MP.net.sendFinish(player.finishTime, player.finishClock);
           if (_ref) _ref.claimFinish(); // referee stamps the authoritative place (no-op if off)
         }
-        setTimeout(showResults, 13000);
+        // The HUD fades for the victory lap now, so a long empty orbit drags —
+        // one flying pass (~6.5s) is celebration enough before the results.
+        setTimeout(showResults, 6500);
       }
       state = State.FINISHED; // freeze player input; kart auto-pilots its victory lap
     }

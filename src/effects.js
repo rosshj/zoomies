@@ -384,19 +384,6 @@ export class EffectsManager {
     }
   }
 
-  // Laser-zap sparkles — red glints popping off a kart that's being lasered, so
-  // both the shooter and the victim can read the zap landing. Small and quick.
-  laserZapSparks(kart) {
-    if (Math.random() > 0.55) return;
-    _pos.copy(kart.position);
-    _pos.x += (Math.random() - 0.5) * 1.6;
-    _pos.y += (kart.y || 0) + 0.9 + Math.random() * 0.8;
-    _pos.z += (Math.random() - 0.5) * 1.6;
-    _col.setHex(Math.random() < 0.7 ? 0xff3b30 : 0xffb3ab);
-    _vel.set((Math.random() - 0.5) * 4, 1.5 + Math.random() * 2.5, (Math.random() - 0.5) * 4);
-    this._spawn(_pos, _col, { additive: true, spark: true, size: 0.45, life: 0.25, v: _vel, damp: 1 });
-  }
-
   // A faint wake trailing a kart that's BEING drafted, so the sweet spot behind it
   // is visible to aim for. Subtle by design — it shouldn't compete with drift/boost.
   slipstreamWake(kart, strength) {
