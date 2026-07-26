@@ -3247,13 +3247,6 @@ function maxBiomesForSize(size) {
 let _trackDraft = null;
 function syncTrackPanel() {
   if (!_trackDraft) return;
-  const custom = _trackDraft.mode === "custom";
-  document.getElementById("track-classic")?.classList.toggle("is-active", !custom);
-  document.getElementById("track-custom")?.classList.toggle("is-active", custom);
-  const knobs = document.getElementById("track-knobs");
-  if (knobs) knobs.style.display = custom ? "" : "none";
-  const reroll = document.getElementById("track-new"); // lives in the map box now
-  if (reroll) reroll.style.display = custom ? "" : "none";
   const set = (id, v) => {
     const pct = Math.round(v * 100);
     const el = document.getElementById(id);
@@ -3305,8 +3298,9 @@ function scheduleTrackPreview() {
 }
 const ALL_FEATS = [...FEATURE_CHIP_KINDS, "extras"];
 function openTrackPanel() {
+  // The maker is custom-only — Classic Circuit is a card on the Track step.
   _trackDraft = {
-    mode: trackConfig.mode || "classic",
+    mode: "custom",
     size: trackConfig.size ?? 0.5,
     curviness: trackConfig.curviness ?? 0.5,
     hilliness: trackConfig.hilliness ?? 0.5,
@@ -3365,14 +3359,6 @@ document.getElementById("menu-map-btn")?.addEventListener("click", () => {
 });
 refreshMenuMap();
 document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
-document.getElementById("track-classic")?.addEventListener("click", () => {
-  _trackDraft.mode = "classic";
-  syncTrackPanel();
-});
-document.getElementById("track-custom")?.addEventListener("click", () => {
-  _trackDraft.mode = "custom";
-  syncTrackPanel();
-});
 const setTrackVal = (id, v) => {
   const val = document.getElementById(id + "-val");
   if (val) val.textContent = v;
@@ -3431,7 +3417,7 @@ trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
   });
 });
 document.getElementById("track-apply")?.addEventListener("click", () => {
-  if (_trackDraft.mode === "custom" && !_trackDraft.seed) _trackDraft.seed = randomSeed();
+  if (!_trackDraft.seed) _trackDraft.seed = randomSeed();
   saveTrackConfig(_trackDraft);
   // Resume the flow where the reload interrupts it: applying from the start
   // line's Edit lands back on the start line; applying from the Track step
@@ -4014,6 +4000,8 @@ const FEATURED_TRACKS = [
   { name: "Neon Alley", sub: "🏙 City · Night", cfg: { mode: "custom", seed: "NEON", size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ["city"], timeOfDay: "night" } },
   { name: "Tuna Cove", sub: "🏖 Beach · Midday", cfg: { mode: "custom", seed: "TUNA", size: 0.5, curviness: 0.5, twist: 0.45, hilliness: 0.35, hills: 0.45, biomes: ["beach", "jungle"], timeOfDay: "midday" } },
   { name: "Snowcap Sprint", sub: "🏔 Alpine · Sunset", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
+  { name: "Maple Falls", sub: "🍂 Autumn · Sunset", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
+  { name: "Petal Parade", sub: "🌸 Blossom · Midday", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
 ];
 const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
 function trackCardCurrent(cfg) {

@@ -521,6 +521,11 @@ body {
   min-width: 210px;
   max-width: 290px;
   display: flex;
+  /* Pin the preview while the controls column scrolls (the sheet's .flow-body
+     is the scroll container), so the map is always in view. */
+  position: sticky;
+  top: 4px;
+  align-self: flex-start;
 }
 /* Map box holds the preview plus the reroll button beneath it. */
 .track-col-map .map-frame {
