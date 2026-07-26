@@ -18,9 +18,9 @@ await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1&seed=
 await page.waitForSelector("#start-btn", { timeout: 20000 });
 await page.click("body", { position: { x: 5, y: 5 } }).catch(() => {});
 // Walk the menu flow to the start line: Play → Single Race → current track →
-// racer Next → GO. (Headless transitions stall without pumped frames, but the
-// buttons are clickable immediately — force skips actionability waits.)
-for (const sel of ["#start-btn", "#mode-gp", "#track-grid .track-tap", "#garage-apply", "#go-btn"]) {
+// first cat → first kart → GO. (Headless transitions stall without pumped
+// frames, but the buttons are clickable immediately — force skips waits.)
+for (const sel of ["#start-btn", "#mode-gp", "#track-grid .track-tap", "#cat-grid .racer-tap", "#kart-grid .racer-tap", "#go-btn"]) {
   await page.waitForSelector(sel, { timeout: 20000 });
   await page.waitForTimeout(400);
   await page.click(sel, { force: true });

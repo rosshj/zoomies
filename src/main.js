@@ -3422,7 +3422,7 @@ document.getElementById("track-apply")?.addEventListener("click", () => {
   // Resume the flow where the reload interrupts it: applying from the start
   // line's Edit lands back on the start line; applying from the Track step
   // moves on to the racer (the step a track pick would have advanced to).
-  saveFlowResume(flowStep === "startline" ? "startline" : "racer");
+  saveFlowResume(flowStep === "startline" ? "startline" : "cat");
   markReload("track-apply");
   location.reload(); // rebuild the world from the new recipe
 });
@@ -3545,96 +3545,48 @@ function _syncAccColorGrid(accId, chosenColor) {
   for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === effective);
 }
 
-// Refresh the creator panels: Custom mode (chosen on the Presets/Custom toggle)
-// swaps the preset stepper for the creator, and mirrors the draft's custom
-// values into its controls.
+// Mirror the draft's custom values into the two editor screens' controls.
 function syncCreators() {
-  const catCustom = _garageDraft.cat === CUSTOM_CAT_IDX;
-  const kartCustom = _garageDraft.kart === CUSTOM_KART_IDX;
-  document.getElementById("cat-custom").classList.toggle("hidden", !catCustom);
-  document.getElementById("kart-custom").classList.toggle("hidden", !kartCustom);
-  // The stepper only browses presets, so it steps aside in Custom mode (the
-  // creator has its own name field + controls).
-  document.getElementById("cat-stepper")?.classList.toggle("hidden", catCustom);
-  document.getElementById("kart-stepper")?.classList.toggle("hidden", kartCustom);
-  document.getElementById("cat-src-preset")?.classList.toggle("is-active", !catCustom);
-  document.getElementById("cat-src-custom")?.classList.toggle("is-active", catCustom);
-  document.getElementById("kart-src-preset")?.classList.toggle("is-active", !kartCustom);
-  document.getElementById("kart-src-custom")?.classList.toggle("is-active", kartCustom);
-  if (catCustom) {
-    const c = _garageDraft.customCat;
-    document.getElementById("cat-pat-name").textContent = _cap(c.pattern);
-    document.getElementById("cat-acc-name").textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
-    const ni = document.getElementById("cat-custom-name");
-    if (ni.value !== c.name) ni.value = c.name;
-    _markSelectedSwatch("cat-color-grid", c.fur);
-    _syncAccColorGrid(c.accessory, c.accessoryColor);
-  }
-  if (kartCustom) {
-    const k = _garageDraft.customKart;
-    document.getElementById("kart-style-name").textContent = KART_STYLE_NAMES[k.style] || "GP";
-    document.getElementById("kart-num-name").textContent = String(k.number);
-    const ni = document.getElementById("kart-custom-name");
-    if (ni.value !== k.name) ni.value = k.name;
-    _markSelectedSwatch("kart-color-grid", k.color);
-  }
+  if (!_garageDraft) return;
+  const c = _garageDraft.customCat;
+  const patName = document.getElementById("cat-pat-name");
+  if (patName) patName.textContent = _cap(c.pattern);
+  const accName = document.getElementById("cat-acc-name");
+  if (accName) accName.textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
+  const ni = document.getElementById("cat-custom-name");
+  if (ni && ni.value !== c.name) ni.value = c.name;
+  _markSelectedSwatch("cat-color-grid", c.fur);
+  _syncAccColorGrid(c.accessory, c.accessoryColor);
+  const k = _garageDraft.customKart;
+  const styleName = document.getElementById("kart-style-name");
+  if (styleName) styleName.textContent = KART_STYLE_NAMES[k.style] || "GP";
+  const numName = document.getElementById("kart-num-name");
+  if (numName) numName.textContent = String(k.number);
+  const nk = document.getElementById("kart-custom-name");
+  if (nk && nk.value !== k.name) nk.value = k.name;
+  _markSelectedSwatch("kart-color-grid", k.color);
 }
-// Unlock id for the draft's current pick on one side of the garage.
-function draftItemId(which) {
-  const idx = _garageDraft[which];
-  if (which === "cat") return idx === CUSTOM_CAT_IDX ? "custom.cat" : `cat.${idx}`;
-  return idx === CUSTOM_KART_IDX ? "custom.kart" : `kart.${idx}`;
-}
-// Reflect lock state: 🔒 on locked names, and a Buy/prize row when the current
-// pick isn't owned. Browsing locked items is allowed (window shopping — the
-// preview shows them); only Done is gated.
-function syncGarageLocks() {
-  const buyBtn = document.getElementById("garage-buy");
-  const note = document.getElementById("garage-lock-note");
-  let lockedId = null;
-  for (const which of ["cat", "kart"]) {
-    const id = draftItemId(which);
-    const el = document.getElementById(which + "-name");
+// The studios gate USING a design on the creator purchase (design freely —
+// window shopping stays). Each editor carries its own note + Buy row.
+function refreshEditorLocks() {
+  for (const [which, id, label] of [["cat", "custom.cat", "Custom Cat"], ["kart", "custom.kart", "Custom Kart"]]) {
+    const note = document.getElementById(which + "-edit-note");
+    const buy = document.getElementById(which + "-edit-buy");
+    if (!note || !buy) continue;
     const owned = isUnlocked(profile, id);
-    if (el && !owned) el.textContent = "🔒 " + el.textContent;
-    if (!owned && !lockedId) lockedId = id;
-  }
-  if (!buyBtn || !note) return;
-  if (!lockedId) {
-    buyBtn.classList.add("hidden");
-    note.textContent = "";
-    return;
-  }
-  const entry = catalogEntry(lockedId);
-  if (entry && typeof entry.price === "number") {
-    buyBtn.classList.remove("hidden");
-    buyBtn.textContent = `🐟 Buy ${unlockName(lockedId)} · ${entry.price}`;
-    buyBtn.disabled = profile.treats < entry.price;
+    const entry = catalogEntry(id);
+    buy.classList.toggle("hidden", owned);
+    if (owned) { note.textContent = ""; continue; }
+    buy.textContent = `🐟 Buy the ${label} creator · ${entry.price}`;
+    buy.disabled = profile.treats < entry.price;
     note.textContent = profile.treats < entry.price
-      ? `You have 🐟 ${profile.treats} — earn ${entry.price - profile.treats} more by racing.`
-      : `You have 🐟 ${profile.treats}.`;
-    buyBtn.dataset.unlock = lockedId;
-  } else if (entry && entry.cup) {
-    buyBtn.classList.add("hidden");
-    const cup = cupById(entry.cup);
-    note.textContent = `🏆 ${unlockName(lockedId)} is the ${cup ? cup.name : entry.cup} prize — win the cup to unlock it.`;
-  } else if (entry && entry.diff) {
-    buyBtn.classList.add("hidden");
-    note.textContent = `🎖 ${unlockName(lockedId)} unlocks by winning any cup on ${entry.diff === "hard" ? "Hard" : "Medium or harder"}.`;
-  } else {
-    buyBtn.classList.add("hidden");
-    note.textContent = "Locked.";
+      ? `🔒 Design freely — buying the creator lets you race it. You have 🐟 ${profile.treats}, earn ${entry.price - profile.treats} more by racing.`
+      : `🔒 Design freely — buy the creator to race your design.`;
   }
 }
 function syncGarageUI() {
-  const cat = catSpec(_garageDraft);
-  const kart = kartSpec(_garageDraft);
-  document.getElementById("cat-name").textContent = cat.name;
-  document.getElementById("kart-name").textContent = kart.name;
-  document.getElementById("cat-swatch").style.background = _hex6(cat.fur);
-  document.getElementById("kart-swatch").style.background = _hex6(kart.color);
   syncCreators();
-  syncGarageLocks();
+  refreshEditorLocks();
 }
 // The main menu's Racer tile: current cat + kart by name, with their colours as
 // two little swatch dots, so the choice reads without opening the garage.
@@ -3649,57 +3601,37 @@ function refreshRacerSummary() {
   const ks = document.getElementById("racer-swatch-kart");
   if (ks) ks.style.background = _hex6(kart.color);
 }
-function openGaragePanel() {
-  _garageDraft = {
-    cat: garageConfig.cat,
-    kart: garageConfig.kart,
-    customCat: { ...garageConfig.customCat },
-    customKart: { ...garageConfig.customKart },
-  };
-  const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
-  _garageAnchor.copy(slot.position);
-  // Seed the "last browsed preset" so leaving Custom returns somewhere sensible.
-  _garagePrevPreset.cat = _garageDraft.cat < CUSTOM_CAT_IDX ? _garageDraft.cat : 0;
-  _garagePrevPreset.kart = _garageDraft.kart < CUSTOM_KART_IDX ? _garageDraft.kart : 0;
-  syncGarageUI();
-  // Instant when the cached kart matches (the prewarmed/common case); a cold
-  // build waits for the slide to land so the transition never stutters.
+// Entering any racer-family screen (cat / kart / the two studios): open the
+// showroom once — the draft persists across the whole family and commits when
+// the kart is chosen.
+function openRacerStep() {
+  if (!_garageOpen) {
+    _garageDraft = {
+      cat: garageConfig.cat,
+      kart: garageConfig.kart,
+      customCat: { ...garageConfig.customCat },
+      customKart: { ...garageConfig.customKart },
+    };
+    const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
+    _garageAnchor.copy(slot.position);
+    // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
+    // would otherwise hang over the live preview as a doubled "ghost" of the level.
+    if (menuXfade) menuXfade.style.opacity = 0;
+    _menuPhase = "hold";
+    _menuShotT = 0;
+    _garageOpen = true;
+  }
+  refreshRacerPreview();
+}
+// Instant when the cached kart matches (the prewarmed/common case); a cold
+// build waits for the slide to land so the transition never stutters.
+function refreshRacerPreview() {
   if (_previewCache.key === _previewKey(_garageDraft)) buildGaragePreview();
   else setTimeout(() => { if (_garageOpen) buildGaragePreview(); }, 470);
-  // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
-  // would otherwise hang over the live preview as a doubled "ghost" of the level.
-  if (menuXfade) menuXfade.style.opacity = 0;
-  _menuPhase = "hold";
-  _menuShotT = 0;
-  _garageOpen = true;
 }
 function closeGarage() {
   _garageOpen = false;
   _clearGaragePreview();
-}
-// The stepper browses PRESETS only; Custom is its own mode on the toggle above
-// it (an explicit affordance, not a hidden extra slot at the end of the cycle).
-function stepGarage(which, dir) {
-  const n = which === "cat" ? CAT_PRESETS.length : KART_PRESETS.length;
-  _garageDraft[which] = ((_garageDraft[which] % n) + dir + n) % n;
-  syncGarageUI();
-  buildGaragePreview();
-}
-// Remembers the preset you were browsing so toggling Custom → Presets returns
-// to it instead of resetting to the first cat/kart.
-const _garagePrevPreset = { cat: 0, kart: 0 };
-function setGarageSource(which, custom) {
-  const customIdx = which === "cat" ? CUSTOM_CAT_IDX : CUSTOM_KART_IDX;
-  const isCustom = _garageDraft[which] === customIdx;
-  if (custom === isCustom) return;
-  if (custom) {
-    _garagePrevPreset[which] = _garageDraft[which];
-    _garageDraft[which] = customIdx;
-  } else {
-    _garageDraft[which] = _garagePrevPreset[which] ?? 0;
-  }
-  syncGarageUI();
-  buildGaragePreview();
 }
 // Mutate the draft's custom cat/kart, then refresh UI + preview. `rebuild=false`
 // skips the (model-irrelevant) preview rebuild for pure name edits.
@@ -3745,14 +3677,6 @@ function renderGarage(timeSec, dt = 0.016) {
   renderFrame();
 }
 
-document.getElementById("cat-prev")?.addEventListener("click", () => stepGarage("cat", -1));
-document.getElementById("cat-next")?.addEventListener("click", () => stepGarage("cat", 1));
-document.getElementById("kart-prev")?.addEventListener("click", () => stepGarage("kart", -1));
-document.getElementById("kart-next")?.addEventListener("click", () => stepGarage("kart", 1));
-document.getElementById("cat-src-preset")?.addEventListener("click", () => setGarageSource("cat", false));
-document.getElementById("cat-src-custom")?.addEventListener("click", () => setGarageSource("cat", true));
-document.getElementById("kart-src-preset")?.addEventListener("click", () => setGarageSource("kart", false));
-document.getElementById("kart-src-custom")?.addEventListener("click", () => setGarageSource("kart", true));
 
 // Custom-cat creator controls.
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
@@ -3784,35 +3708,143 @@ document.getElementById("kart-randomize")?.addEventListener("click", () => editC
   color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
-document.getElementById("garage-buy")?.addEventListener("click", (e) => {
-  const id = e.currentTarget.dataset.unlock;
-  if (!id) return;
-  if (buyUnlock(profile, id)) {
-    saveProfile();
-    refreshTreatsChip();
-    audio.uiClick?.();
+// --- Racer grids: one card per cat/kart (real catalog renders), doors that
+// advance. Locked priced cards buy in place with a tap-again confirm; cup and
+// difficulty prizes shake and say how to win them. ---
+function racerGridCard({ img, name, sub, buyId, onPick, rerender }) {
+  const owned = !buyId || isUnlocked(profile, buyId);
+  const b = document.createElement("button");
+  b.className = "tap-card racer-tap" + (owned ? "" : " locked");
+  const shot = document.createElement("span");
+  shot.className = "racer-shot";
+  const im = document.createElement("img");
+  im.src = img;
+  im.alt = name;
+  im.loading = "lazy";
+  im.addEventListener("error", () => im.remove());
+  shot.appendChild(im);
+  if (!owned) {
+    const lk = document.createElement("span");
+    lk.className = "racer-lock";
+    lk.textContent = "🔒";
+    shot.appendChild(lk);
   }
-  syncGarageUI();
-});
-document.getElementById("garage-apply")?.addEventListener("click", () => {
-  // Next is the gate: locked picks can be browsed/previewed but not kept.
-  const lockedSide = ["cat", "kart"].find((w) => !isUnlocked(profile, draftItemId(w)));
-  if (lockedSide) {
-    const note = document.getElementById("garage-lock-note");
-    if (note) note.textContent = `🔒 ${unlockName(draftItemId(lockedSide))} is locked — buy it or win it first.`;
+  const nm = document.createElement("span");
+  nm.className = "track-name";
+  nm.textContent = name;
+  const sb = document.createElement("span");
+  sb.className = "track-sub";
+  sb.textContent = sub ?? (owned ? "" : prizeHow(buyId));
+  b.append(shot, nm, sb);
+  cueifyButton(b);
+  b.addEventListener("click", () => {
+    if (owned) { onPick(); return; }
+    const entry = catalogEntry(buyId);
+    if (entry && typeof entry.price === "number") {
+      if (b.dataset.confirm) {
+        if (buyUnlock(profile, buyId)) {
+          saveProfile();
+          refreshTreatsChip();
+          uiCue("chime");
+          rerender();
+        } else {
+          uiCue("error");
+          sb.textContent = `You have 🐟 ${profile.treats} — earn ${entry.price - profile.treats} more by racing`;
+        }
+      } else {
+        b.dataset.confirm = "1";
+        sb.textContent = `Tap again to buy · 🐟 ${entry.price}`;
+        setTimeout(() => { delete b.dataset.confirm; sb.textContent = prizeHow(buyId); }, 4000);
+      }
+      return;
+    }
+    // Cup / difficulty exclusives: the sub already says how to win it.
     uiCue("error");
-    return;
-  }
+    b.classList.add("shake");
+    setTimeout(() => b.classList.remove("shake"), 500);
+  });
+  return b;
+}
+function renderCatCards() {
+  const grid = document.getElementById("cat-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+  CAT_PRESETS.forEach((c, i) => {
+    grid.appendChild(racerGridCard({
+      img: `assets/catalog/cat-${i}.jpg`,
+      name: c.name,
+      buyId: `cat.${i}`,
+      onPick: () => { _garageDraft.cat = i; flowGo("kart"); },
+      rerender: renderCatCards,
+    }));
+  });
+  grid.appendChild(racerGridCard({
+    img: "assets/catalog/custom-cat.jpg",
+    name: "Custom Cat",
+    sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
+    onPick: () => flowGo("cat-edit"),
+  }));
+}
+function renderKartCards() {
+  const grid = document.getElementById("kart-grid");
+  if (!grid) return;
+  grid.replaceChildren();
+  KART_PRESETS.forEach((k, i) => {
+    grid.appendChild(racerGridCard({
+      img: `assets/catalog/kart-${i}.jpg`,
+      name: k.name,
+      buyId: `kart.${i}`,
+      onPick: () => { _garageDraft.kart = i; commitRacer(); },
+      rerender: renderKartCards,
+    }));
+  });
+  grid.appendChild(racerGridCard({
+    img: "assets/catalog/custom-kart.jpg",
+    name: "Custom Kart",
+    sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
+    onPick: () => flowGo("kart-edit"),
+  }));
+}
+// Kart chosen → the racer is complete: save it and roll on (friends-hosting
+// goes to the lobby — this tap is the fullscreen + motion gesture).
+function commitRacer() {
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
   garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
-  // Onward: friends-hosting goes to the lobby (this tap is the fullscreen +
-  // motion gesture); every solo mode reviews the race on the start line.
   if (raceMode === "mp") hostGame();
   else flowGo("startline");
+}
+// With Friends has no start line, so its racer steps drop the step count.
+function refreshRacerEyebrows() {
+  const mp = raceMode === "mp";
+  const c = document.getElementById("cat-eyebrow");
+  if (c) c.textContent = mp ? "Your racer" : "Step 3 of 4";
+  const k = document.getElementById("kart-eyebrow");
+  if (k) k.textContent = mp ? "Your racer" : "Step 4 of 4";
+}
+// Studio actions: Buy unlocks the creator; Use adopts the design and rolls on.
+for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
+  document.getElementById(which + "-edit-buy")?.addEventListener("click", () => {
+    if (buyUnlock(profile, id)) {
+      saveProfile();
+      refreshTreatsChip();
+      uiCue("chime");
+    } else uiCue("error");
+    refreshEditorLocks();
+  });
+}
+document.getElementById("cat-edit-use")?.addEventListener("click", () => {
+  if (!isUnlocked(profile, "custom.cat")) { uiCue("error"); refreshEditorLocks(); return; }
+  _garageDraft.cat = CUSTOM_CAT_IDX;
+  flowGo("kart");
+});
+document.getElementById("kart-edit-use")?.addEventListener("click", () => {
+  if (!isUnlocked(profile, "custom.kart")) { uiCue("error"); refreshEditorLocks(); return; }
+  _garageDraft.kart = CUSTOM_KART_IDX;
+  commitRacer();
 });
 refreshRacerSummary();
 
@@ -3891,6 +3923,7 @@ else if (_dailyActive) raceMode = "gp";
 // --- Flow controller ---
 const menuFlowEl = document.getElementById("menu");
 let flowStep = "title";
+const RACER_FAMILY = ["cat", "kart", "cat-edit", "kart-edit"];
 // A track pick / maker apply rebuilds the world via a reload — remember where
 // the flow was so the boot lands back mid-flow instead of on the title.
 const FLOW_RESUME_KEY = "zoomies-flow-resume";
@@ -3902,14 +3935,18 @@ function flowGo(step, dir = 1, instant = false) {
   if (!next) return;
   const cur = document.getElementById("flow-" + flowStep);
   const changing = flowStep !== step;
-  // Leave hooks: the racer step owns the 3D showroom preview.
-  if (changing && flowStep === "racer") closeGarage();
+  // Leave hooks: the racer family (cat/kart + studios) shares the 3D showroom
+  // preview and its draft — close only when leaving the family entirely.
+  if (changing && RACER_FAMILY.includes(flowStep) && !RACER_FAMILY.includes(step)) closeGarage();
   // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
   if (step === "title") refreshTitlePlay();
   else if (step === "mode") refreshModeCards();
   else if (step === "track") renderTrackCards();
   else if (step === "cup") renderCupOptions();
-  else if (step === "racer") openGaragePanel();
+  else if (step === "cat") { openRacerStep(); renderCatCards(); refreshRacerEyebrows(); }
+  else if (step === "kart") { openRacerStep(); renderKartCards(); refreshRacerEyebrows(); }
+  else if (step === "cat-edit") { openRacerStep(); _garageDraft.cat = CUSTOM_CAT_IDX; syncGarageUI(); refreshRacerPreview(); }
+  else if (step === "kart-edit") { openRacerStep(); _garageDraft.kart = CUSTOM_KART_IDX; syncGarageUI(); refreshRacerPreview(); }
   else if (step === "startline") refreshStartline();
   if (changing) {
     if (instant) menuFlowEl.classList.add("flow-instant");
@@ -3936,8 +3973,11 @@ function flowBack() {
     track: "mode",
     cup: "mode",
     friends: "mode",
-    racer: raceMode === "mp" ? "friends" : raceMode === "cup" ? "cup" : "track",
-    startline: "racer",
+    cat: raceMode === "mp" ? "friends" : raceMode === "cup" ? "cup" : "track",
+    kart: "cat",
+    "cat-edit": "cat",
+    "kart-edit": "kart",
+    startline: "kart",
   }[flowStep];
   if (!back) return false;
   flowGo(back, -1);
@@ -3988,7 +4028,7 @@ document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMod
 document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
 document.getElementById("mode-mp")?.addEventListener("click", () => flowGo("friends"));
 // Friends: hosting picks the mode here; joining reloads into the friend's room.
-document.getElementById("mp-host-btn")?.addEventListener("click", () => { setRaceMode("mp"); flowGo("racer"); });
+document.getElementById("mp-host-btn")?.addEventListener("click", () => { setRaceMode("mp"); flowGo("cat"); });
 
 // --- Track step: featured recipes painted from the real generator ----------
 // Fixed seeds/knobs so the cards are stable, nameable places. Picking a card
@@ -4049,9 +4089,9 @@ function renderTrackCards() {
   grid.appendChild(mk);
 }
 function chooseTrackCard(cfg) {
-  if (trackCardCurrent(cfg)) { flowGo("racer"); return; } // already built → onward
+  if (trackCardCurrent(cfg)) { flowGo("cat"); return; } // already built → onward
   saveTrackConfig({ ...trackConfig, ...cfg });
-  saveFlowResume("racer");
+  saveFlowResume("cat");
   uiCue("loading");
   markReload("track-pick");
   // Drop any explicit world params (a daily/cup/join link) so the saved recipe
@@ -4094,7 +4134,7 @@ function refreshStartline() {
     else goBtn.textContent = GO_LABELS[raceMode] || GO_LABELS.gp;
   }
 }
-document.getElementById("startline-edit")?.addEventListener("click", () => flowGo("racer", -1));
+document.getElementById("startline-edit")?.addEventListener("click", () => flowGo("cat", -1));
 // GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.
 document.getElementById("go-btn")?.addEventListener("click", () => {
   if (raceMode === "tt") startTimeTrial();
@@ -4195,6 +4235,7 @@ refreshRaceOptSegs();
     _resume = sessionStorage.getItem(FLOW_RESUME_KEY);
     sessionStorage.removeItem(FLOW_RESUME_KEY);
   } catch { /* ignore */ }
+  if (_resume === "racer") _resume = "cat"; // pre-split marker from an old build
   if (_resume && !new URLSearchParams(location.search).has("mp") && document.getElementById("flow-" + _resume)) {
     // Deferred: the racer step's enter hook touches state (menu cinematic,
     // preview build) that initialises later in this module.
@@ -4276,11 +4317,11 @@ document.getElementById("results-next-btn")?.addEventListener("click", () => {
 document.getElementById("mode-daily")?.addEventListener("click", () => {
   setRaceMode("gp"); // the daily rides the single-race path (payout adds the bonus)
   const today = dailySeedFor(todayStr());
-  if (_dailyActive && WORLD_SEED === today) { flowGo("racer"); return; }
+  if (_dailyActive && WORLD_SEED === today) { flowGo("cat"); return; }
   audio.unlock();
   try { input.enableMotion(); } catch { /* ignore */ }
   uiCue("loading");
-  saveFlowResume("racer");
+  saveFlowResume("cat");
   markReload("daily-start");
   const u = new URL(location.origin + location.pathname);
   u.searchParams.set("seed", today);
@@ -4311,7 +4352,7 @@ function renderCupOptions() {
       _cupChoice = cup.id;
       try { localStorage.setItem(CUP_CHOICE_KEY, cup.id); } catch { /* ignore */ }
       clearCupRun(); // picking a (new) cup abandons any half-run series
-      flowGo("racer");
+      flowGo("cat");
     });
     list.appendChild(b);
   });

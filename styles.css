@@ -282,48 +282,8 @@ body {
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
 }
 
-.garage-pick {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 5px;
-}
 /* Header row per picker: the CAT/KART label plus the Presets/Custom toggle —
    customising gets the same explicit affordance as the track's mode toggle. */
-.garage-pick-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding-left: 6px;
-}
-.garage-pick-label {
-  font-size: 11px;
-  letter-spacing: 0.16em;
-  font-weight: 700;
-  color: var(--accent);
-  opacity: 0.85;
-}
-.garage-seg {
-  margin-top: 0;
-  padding: 2px;
-}
-.garage-seg .seg-btn {
-  font-size: 11.5px;
-  letter-spacing: 0.4px;
-  padding: 4px 13px;
-}
-.garage-stepper {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(0, 0, 0, 0.3));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: var(--pill);
-  padding: 6px;
-  justify-content: space-between;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 4px 14px rgba(0, 0, 0, 0.32);
-}
 .garage-arrow {
   font-size: 13px;
   width: 36px;
@@ -346,22 +306,6 @@ body {
   background: var(--sel);
   color: var(--sel-ink);
   transform: scale(0.9);
-}
-.garage-swatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4);
-  flex: 0 0 auto;
-}
-.garage-name {
-  flex: 1;
-  text-align: center;
-  font-weight: 800;
-  font-size: 15px;
-  letter-spacing: 0.3px;
-  color: #fff;
 }
 /* Custom cat/kart creator — revealed when a stepper lands on the "Custom" slot. */
 .creator {
@@ -453,12 +397,6 @@ body {
   margin-top: 2px;
 }
 
-.garage-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  margin-top: 4px;
-}
 /* Right-size the two actions into an even row (the default button is huge). */
 .garage-actions button {
   flex: 1 1 0;
@@ -2944,3 +2882,72 @@ button.small { white-space: nowrap; }
   box-shadow: 0 5px 0 rgba(16, 7, 34, 0.9);
   padding: 12px 14px;
 }
+
+/* ============================================================
+   Racer steps: cat/kart portrait grids + the two studios
+   ============================================================ */
+.racer-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: clamp(8px, 1.6vh, 12px);
+  max-width: 940px;
+  margin: 0 auto;
+  min-height: 100%;
+  align-content: center;
+}
+.racer-tap {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+  padding: 7px 7px 8px;
+  text-align: center;
+}
+.racer-tap .track-name { text-align: center; }
+.racer-tap .track-sub { text-align: center; min-height: 1em; }
+.racer-shot {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 2px solid var(--f-ink);
+  background: #223052;
+  aspect-ratio: 1;
+}
+.racer-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.racer-tap.locked .racer-shot img { filter: grayscale(0.8) brightness(0.75); }
+.racer-lock {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  font-size: 17px;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+}
+.racer-tap.shake { animation: racer-shake 0.4s ease; }
+@keyframes racer-shake {
+  25% { transform: translateX(-5px); }
+  50% { transform: translateX(4px); }
+  75% { transform: translateX(-2px); }
+}
+
+/* Studios: one subject per screen, so everything gets room — big swatches,
+   roomy steppers (the split's whole point). */
+.racer-card .creator { display: flex; flex-direction: column; gap: 11px; }
+.racer-card .swatch-dot {
+  width: 38px;
+  height: 38px;
+  border-width: 2px;
+}
+.racer-card .swatch-grid { gap: 8px; }
+.racer-card .mini-stepper .garage-arrow {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+}
+.racer-card .mini-name { font-size: 15px; }
+.racer-card .creator-label { font-size: 11px; }
+.racer-card .creator-input { min-height: 42px; font-size: 15px; }

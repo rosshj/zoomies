@@ -298,7 +298,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 1 of 3</div>
+          <div class="flow-eyebrow">Step 1 of 4</div>
           <h2 class="flow-h">How do you want to race?</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -340,7 +340,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 2 of 3</div>
+          <div class="flow-eyebrow">Step 2 of 4</div>
           <h2 class="flow-h">Pick a track</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -355,7 +355,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 2 of 3</div>
+          <div class="flow-eyebrow">Step 2 of 4</div>
           <h2 class="flow-h">Pick a cup</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -401,35 +401,52 @@
 
     <!-- Racer: the showroom. The live 3D cat-in-kart orbits in the open left
          half; the controls dock right. (Was the garage overlay.) -->
-    <section id="flow-racer" class="flow-screen">
+    <!-- Pick your cat: a portrait grid (real catalog renders). Locked cats buy
+         in place; the Custom Cat card drills into the studio. -->
+    <section id="flow-cat" class="flow-screen">
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow" id="racer-eyebrow">Step 3 of 3</div>
-          <h2 class="flow-h">Pick your racer</h2>
+          <div class="flow-eyebrow" id="cat-eyebrow">Step 3 of 4</div>
+          <h2 class="flow-h">Pick your cat</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body">
+        <div id="cat-grid" class="racer-grid"></div>
+      </div>
+    </section>
+
+    <!-- Pick your kart: same shape as the cat grid. -->
+    <section id="flow-kart" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow" id="kart-eyebrow">Step 4 of 4</div>
+          <h2 class="flow-h">Pick your kart</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body">
+        <div id="kart-grid" class="racer-grid"></div>
+      </div>
+    </section>
+
+    <!-- Cat studio: the custom-cat editor, one drill-in with room to breathe.
+         The live 3D preview orbits in the open left half. -->
+    <section id="flow-cat-edit" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">✨ Custom</div>
+          <h2 class="flow-h">Cat studio</h2>
         </div>
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body racer-body">
         <div class="racer-showroom"><!-- live 3D preview renders behind --></div>
-        <div id="garage-panel" class="sticker-deep racer-card">
-        <div class="garage-pick">
-          <!-- Presets vs Custom is an explicit toggle (like the track's
-               Classic/Generated) instead of a hidden extra stepper slot. -->
-          <div class="garage-pick-head">
-            <span class="garage-pick-label">CAT</span>
-            <div class="seg-toggle garage-seg" id="cat-src">
-              <button id="cat-src-preset" class="seg-btn is-active">Presets</button>
-              <button id="cat-src-custom" class="seg-btn">✨ Custom</button>
-            </div>
-          </div>
-          <div class="garage-stepper" id="cat-stepper">
-            <button id="cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
-            <span class="garage-swatch" id="cat-swatch"></span>
-            <span class="garage-name" id="cat-name">Marmalade</span>
-            <button id="cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
-          </div>
-          <div id="cat-custom" class="creator hidden">
+        <div class="sticker-deep racer-card">
+          <div class="creator">
             <div class="creator-row">
               <span class="creator-label">Colour</span>
               <div class="swatch-grid" id="cat-color-grid"></div>
@@ -458,24 +475,31 @@
               <span class="creator-label">Name</span>
               <input id="cat-custom-name" class="creator-input" maxlength="14" placeholder="My Cat" />
             </div>
-            <button id="cat-randomize" class="secondary small creator-rand">🎲 Surprise me</button>
+            <button id="cat-randomize" class="btn-cream small-pill creator-rand">🎲 Surprise me</button>
+          </div>
+          <p id="cat-edit-note" class="garage-lock-note"></p>
+          <div class="racer-actions">
+            <button id="cat-edit-buy" class="btn-cream racer-buy hidden">🐟 Buy</button>
+            <button id="cat-edit-use" class="btn-gold racer-next">✓&nbsp; Use this cat</button>
           </div>
         </div>
-        <div class="garage-pick">
-          <div class="garage-pick-head">
-            <span class="garage-pick-label">KART</span>
-            <div class="seg-toggle garage-seg" id="kart-src">
-              <button id="kart-src-preset" class="seg-btn is-active">Presets</button>
-              <button id="kart-src-custom" class="seg-btn">✨ Custom</button>
-            </div>
-          </div>
-          <div class="garage-stepper" id="kart-stepper">
-            <button id="kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
-            <span class="garage-swatch" id="kart-swatch"></span>
-            <span class="garage-name" id="kart-name">Ember</span>
-            <button id="kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
-          </div>
-          <div id="kart-custom" class="creator hidden">
+      </div>
+    </section>
+
+    <!-- Kart shop: the custom-kart editor. -->
+    <section id="flow-kart-edit" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow">✨ Custom</div>
+          <h2 class="flow-h">Kart shop</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body racer-body">
+        <div class="racer-showroom"><!-- live 3D preview renders behind --></div>
+        <div class="sticker-deep racer-card">
+          <div class="creator">
             <div class="creator-row">
               <span class="creator-label">Colour</span>
               <div class="swatch-grid" id="kart-color-grid"></div>
@@ -500,17 +524,17 @@
               <span class="creator-label">Name</span>
               <input id="kart-custom-name" class="creator-input" maxlength="14" placeholder="My Kart" />
             </div>
-            <button id="kart-randomize" class="secondary small creator-rand">🎲 Surprise me</button>
+            <button id="kart-randomize" class="btn-cream small-pill creator-rand">🎲 Surprise me</button>
           </div>
-        </div>
-          <p id="garage-lock-note" class="garage-lock-note"></p>
+          <p id="kart-edit-note" class="garage-lock-note"></p>
           <div class="racer-actions">
-            <button id="garage-buy" class="btn-cream racer-buy hidden">🐟 Buy</button>
-            <button id="garage-apply" class="btn-gold racer-next">Next&nbsp;&nbsp;→</button>
+            <button id="kart-edit-buy" class="btn-cream racer-buy hidden">🐟 Buy</button>
+            <button id="kart-edit-use" class="btn-gold racer-next">✓&nbsp; Use this kart</button>
           </div>
         </div>
       </div>
     </section>
+
 
     <!-- Start line: the ONLY full summary — the map, your racer, plain-language
          options, one giant GO. -->
