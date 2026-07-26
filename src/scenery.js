@@ -963,7 +963,7 @@ function ribbonWaterMesh(L, mat) {
 
 // Instanced grass blades along the roadside, swaying in the wind.
 function buildGrass(scene, track, heightAt) {
-  const COUNT = 6000;
+  const COUNT = 26000; // one instanced draw of 2-triangle quads — cheap to raise
   const halfW = track.halfWidth;
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
@@ -1047,33 +1047,47 @@ function buildGrass(scene, track, heightAt) {
   const tint = new THREE.Color();
   const aRoot = new Float32Array(COUNT * 3);
   const aYawScale = new Float32Array(COUNT * 2);
+  const _side = new THREE.Vector3();
   let n = 0;
   let tries = 0;
-  while (n < COUNT && tries < COUNT * 4) {
+  // PLACEMENT — the sway was invisible in play for a placement reason, not a
+  // shader one. The old scatter spread single blades evenly from the kerb out
+  // to 36u, which over a ~2.8km loop worked out to ONE BLADE PER ~34m², with
+  // the median blade 20u past the road edge: nothing you could ever see from a
+  // kart. Now they go down in TUFTS hugging the verge, where the eye actually
+  // is, with a thinner outfield scatter so the fringe doesn't end in a stripe.
+  const TUFT = 7; // blades per tuft — a clump reads as grass; a lone blade doesn't
+  while (n < COUNT && tries < COUNT * 3) {
     tries++;
     const i = Math.floor(rand() * N);
     const pt = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    _side.crossVectors(track._tans[i], up).normalize();
     const dir = rand() < 0.5 ? 1 : -1;
-    const dist = halfW + 2.5 + rand() * 34;
-    const x = pt.x + side.x * dir * dist + (rand() - 0.5) * 3;
-    const z = pt.z + side.z * dir * dist + (rand() - 0.5) * 3;
-    if (track.distanceToCenter(x, z) < halfW + 2) continue;
-    if (_inLake(x, z)) continue;
-    const biome = biomeAt(x, z);
+    // 4 in 5 tufts sit in the 7.5u fringe just past the kerb; the rest thin out
+    // across the next 16u so the verge blends into the scenery.
+    const dist = rand() < 0.8 ? halfW + 1 + rand() * 7.5 : halfW + 8.5 + rand() * 16;
+    const tx = pt.x + _side.x * dir * dist;
+    const tz = pt.z + _side.z * dir * dist;
+    if (track.distanceToCenter(tx, tz) < halfW + 0.8) continue;
+    if (_inLake(tx, tz)) continue;
+    const biome = biomeAt(tx, tz);
     if (rand() > biome.grassDensity) continue; // sparse in dry biomes
-    const y = heightAt(x, z);
-    const yaw = rand() * Math.PI;
-    const scale = 0.7 + rand() * 1.1;
-    dummy.position.set(x, y, z);
-    dummy.rotation.set((rand() - 0.5) * 0.3, yaw, (rand() - 0.5) * 0.3);
-    dummy.scale.setScalar(scale);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(n, dummy.matrix);
-    mesh.setColorAt(n, tint.set(biome.grassTint)); // tints the blade gradient
-    aRoot[n * 3] = x; aRoot[n * 3 + 1] = y; aRoot[n * 3 + 2] = z;
-    aYawScale[n * 2] = yaw; aYawScale[n * 2 + 1] = scale;
-    n++;
+    for (let k = 0; k < TUFT && n < COUNT; k++) {
+      const x = tx + (rand() - 0.5) * 0.9;
+      const z = tz + (rand() - 0.5) * 0.9;
+      const y = heightAt(x, z);
+      const yaw = rand() * Math.PI;
+      const scale = 0.7 + rand() * 1.1;
+      dummy.position.set(x, y, z);
+      dummy.rotation.set((rand() - 0.5) * 0.3, yaw, (rand() - 0.5) * 0.3);
+      dummy.scale.setScalar(scale);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(n, dummy.matrix);
+      mesh.setColorAt(n, tint.set(biome.grassTint)); // tints the blade gradient
+      aRoot[n * 3] = x; aRoot[n * 3 + 1] = y; aRoot[n * 3 + 2] = z;
+      aYawScale[n * 2] = yaw; aYawScale[n * 2 + 1] = scale;
+      n++;
+    }
   }
   blade.setAttribute("aRoot", new THREE.InstancedBufferAttribute(aRoot, 3));
   blade.setAttribute("aYawScale", new THREE.InstancedBufferAttribute(aYawScale, 2));

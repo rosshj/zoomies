@@ -136,16 +136,20 @@ const AHEAD = Number(process.env.AHEAD || 6);
 const SCALE = Number(process.env.SCALE || 1);
 const OFFMUL = Number(process.env.OFFMUL || 0.55);
 const ONCE = process.env.LAYONCE === "1"; // lay the plot once, then drive INTO it
+const NOPLOT = process.env.NOPLOT === "1"; // leave the real roadside scatter alone and just drive
 let s = null;
-for (let i = 1; i <= 6; i++) {
-  if (!ONCE || i === 1) s = await page.evaluate((a) => window.__lay(a.ahead, a.side, a.scale, a.off), { ahead: AHEAD, side: SIDE, scale: SCALE, off: OFFMUL });
+for (let i = 1; i <= (process.env.NOPLOT === "1" ? 26 : 6); i++) {
+  if (NOPLOT) s = { d: 0, push: 0 };
+  else if (!ONCE || i === 1) s = await page.evaluate((a) => window.__lay(a.ahead, a.side, a.scale, a.off), { ahead: AHEAD, side: SIDE, scale: SCALE, off: OFFMUL });
   else s = await page.evaluate(() => window.__where());
+  if (NOPLOT) await page.waitForTimeout(400);
   await page.waitForTimeout(900);
   console.log("lay", JSON.stringify(s));
   await page.screenshot({ path: path.join(OUT, `pass-${String(i).padStart(2, "0")}-d${s.d}-p${s.push}.png`) });
 }
 await page.keyboard.up("ArrowUp");
 
+if (!NOPLOT) {
 // A/B the bow-wave itself: park the kart, lay a fresh plot right in front of
 // it, then freeze the uniform on the plot centre (the race loop rewrites it
 // every frame, so neuter the setter) and shoot push OFF vs push ON. Only w
@@ -164,6 +168,7 @@ for (const [name, w] of [["freeze-a-push0", 0], ["freeze-b-push1", 1.1]]) {
   }, w);
   await page.waitForTimeout(900);
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
+}
 }
 console.log("wrote", fs.readdirSync(OUT).sort().join(" "));
 await browser.close();
