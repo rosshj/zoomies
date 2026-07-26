@@ -5582,15 +5582,17 @@ function updateCamera(dt, snap = false) {
   _camDesired.y += 7 - sn * 1.3 * (1 - slopeK) + player.y * 0.5;
 
   // Tunnel rail: through a tunnel (and its portal approaches) the desired
-  // camera blends onto the bore spine at a fixed height under the arch, so it
-  // threads the portals dead-centre instead of being shoved around by the
-  // rock clamps — see tunnelCamGuide.
-  const _tg = tunnelCamGuide(track.features, track, _camDesired.x, _camDesired.z);
+  // camera is pre-fitted inside the bore, so it never meets the hard rock
+  // clamps below and never lurches at a portal. It only trims an offset that
+  // would put the eye in rock — the chase framing, including how the camera
+  // follows the kart across the lane, is otherwise untouched. See
+  // tunnelCamGuide (an earlier cut railed it onto the centreline, which made
+  // tunnels genuinely hard to drive).
+  const _tg = tunnelCamGuide(track.features, track, _camDesired.x, _camDesired.z, _camDesired.y);
   if (_tg) {
     _camDesired.x += (_tg.x - _camDesired.x) * _tg.k;
+    _camDesired.y += (_tg.y - _camDesired.y) * _tg.k;
     _camDesired.z += (_tg.z - _camDesired.z) * _tg.k;
-    const railY = _tg.y + 5.4; // comfortably under the 15u apex, above the kart
-    _camDesired.y += (railY - _camDesired.y) * _tg.k;
   }
   _camLook.copy(player.position).addScaledVector(_camFwd, 6);
   _camLook.y += 1.5 + player.y;

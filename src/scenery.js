@@ -988,10 +988,9 @@ function buildGrass(scene, track, heightAt) {
   // nodes: the idle wind sway, the sun backlight (reading the same shared
   // uSunView/uSunCol nodes as the tree foliage), and the new kart BOW-WAVE.
   //
-  // Bow-wave: blades within ~4.6u of the player kart are shoved radially away
-  // (tip-weighted, so they bend rather than slide), harder with speed — the
-  // roadside physically parts as you blast past. uKart is (x, y, z, strength),
-  // written once per frame from the main loop.
+  // Bow-wave: blades close to the player kart lean away from it, harder with
+  // speed — the roadside physically parts as you blast past. uKart is
+  // (x, y, z, strength), written once per frame from the main loop.
   const uKart = uniform(new THREE.Vector4(1e6, 0, 1e6, 0));
   const mat = new THREE.MeshStandardNodeMaterial({
     vertexColors: true,
@@ -1002,28 +1001,37 @@ function buildGrass(scene, track, heightAt) {
   {
     const root = attribute("aRoot"); // blade base, world space
     const yawScale = attribute("aYawScale"); // instance yaw + scale
-    const tipW = positionLocal.y; // 0 at the base -> 1 at the tip (pre-scale)
-    // Idle wind sway (local space, tip-weighted — as the GLSL version intended).
-    const ph = root.x.add(root.z).mul(0.15);
-    const swayX = time.mul(1.6).add(ph).sin().mul(0.18).mul(tipW);
-    const swayZ = time.mul(1.3).add(ph).cos().mul(0.10).mul(tipW);
-    // Bow-wave push, computed in WORLD space then rotated into the blade's
-    // local frame by -yaw (instances are yaw + a small tilt; the tilt error is
-    // invisible) and divided by the instance scale so the world-space
-    // magnitude is scale-independent.
+    // A blade BENDS about its planted base — it never slides. Every offset
+    // below is a FRACTION OF THE BLADE'S OWN HEIGHT (local space is exactly 1
+    // unit tall, so the numbers are already that fraction) weighted by y²: nil
+    // at the root, all of it at the tip. The first cut instead pushed tips by a
+    // fixed number of WORLD units, which uprooted short blades, stretched them
+    // to twice their length and made the meadow look like it was flying apart.
+    const y01 = positionLocal.y; // 0 at the base -> 1 at the tip
+    const bend = y01.mul(y01); // base holds firm, the top gives
+    // Idle wind: two slow crossing waves whose phase comes from world position,
+    // so a gust sweeps ACROSS the field instead of every blade twitching alone.
+    const ph = root.x.mul(0.11).add(root.z.mul(0.08));
+    const swayX = time.mul(1.1).add(ph).sin().mul(0.13);
+    const swayZ = time.mul(0.8).add(ph.mul(1.37)).sin().mul(0.06);
+    // Bow-wave direction is WORLD space, so rotate it into the blade's local
+    // frame by -yaw (instances are yaw + a small tilt; the tilt error is
+    // invisible). No division by the instance scale: a short blade should bend
+    // by the same ANGLE as a tall one, which fraction-of-height already gives.
     const dx = root.x.sub(uKart.x);
     const dz = root.z.sub(uKart.z);
     const dist = dx.mul(dx).add(dz.mul(dz)).sqrt().max(0.001);
-    const near = smoothstep(1.0, 4.6, dist).oneMinus(); // 1 at the kart -> 0 by 4.6u
-    const mag = near.mul(uKart.w).mul(tipW).div(yawScale.y);
-    const wx = dx.div(dist).mul(mag);
-    const wz = dz.div(dist).mul(mag);
+    const near = smoothstep(0.9, 3.8, dist).oneMinus(); // 1 at the kart -> 0 by 3.8u
+    const push = near.mul(near).mul(uKart.w).mul(0.5); // <= ~0.55 of a blade height
+    const wx = dx.div(dist).mul(push);
+    const wz = dz.div(dist).mul(push);
     const cy = yawScale.x.cos();
     const sy = yawScale.x.sin();
-    const px = swayX.add(wx.mul(cy).sub(wz.mul(sy)));
-    const pz = swayZ.add(wx.mul(sy).add(wz.mul(cy)));
-    // Shoved blades also crouch a little, so the wave reads in silhouette.
-    const py = mag.mul(-0.3);
+    const px = swayX.add(wx.mul(cy).sub(wz.mul(sy))).mul(bend);
+    const pz = swayZ.add(wx.mul(sy).add(wz.mul(cy))).mul(bend);
+    // Length preservation: leaning a tip out by s costs it ~s²/2 of reach, so
+    // the blade arcs over its base rather than growing.
+    const py = px.mul(px).add(pz.mul(pz)).mul(-0.5);
     mat.positionNode = positionLocal.add(vec3(px, py, pz));
     // Looking toward the sun through the blade -> warm translucent glow,
     // strongest near the (lighter) tips. Same shared nodes as the foliage
