@@ -13,6 +13,7 @@ import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunn
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
+import { setWind } from "./wind.js";
 import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
@@ -552,6 +553,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
+window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 const items = new ItemManager(scene, track); // yarn balls + milk puddles
 Object.assign(window.__zoomies, { world, track, items }); // items: headless item-behavior probes
 _boot.world = performance.now();

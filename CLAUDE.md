@@ -28,12 +28,44 @@ Fit rules that keep re-appearing:
 - Verify every model change with a headless viewer render from the user's
   screenshot angle before regenerating `assets/catalog` and pushing.
 
+## Anything that blows reads ONE wind field
+
+`src/wind.js` owns the world's wind: a direction, a strength, and a gust wave
+that TRAVELS along that direction. Never give a new swaying thing its own
+`time.mul(k).sin()` — independent clocks read as a pile of unrelated twitching
+instead of weather, and the whole point is that one gust lays the grass over,
+then reaches the treeline a beat later.
+
+- `windLean(px, pz, amp)` → world-XZ lean vec2 for something rooted at that
+  world position. `amp` is a FRACTION OF THE OBJECT'S OWN HEIGHT, so the same
+  number bends a blade of grass and an oak through the same angle.
+- `windBendNode(amp)` → a ready-made `positionNode` for planted, instanced
+  things. Needs `aBend` per vertex (bake with `bakeBendWeights(geo)`) and
+  `aWindRoot` per instance = (world x, world z, instance yaw) — the yaw is
+  there because the lean is computed in world space and has to be rotated back
+  into the instance's frame.
+- On a `MeshStandardMaterial`, `userData.sway = amp` is enough: `toToon` sees
+  it and wires `windBendNode` into the toon material it builds.
+
+Bending rules that keep re-appearing (the grass got both wrong first):
+- Offsets are fractions of the object's own height, never fixed world units —
+  a fixed push uproots small instances and stretches them.
+- Weight by height² so the base stays planted, and drop the tip by s²/2 so the
+  shape bows over instead of growing.
+- Per-instance attributes mean the geometry must be CLONED off any shared
+  cache (`_foliageGeoCache` hands the same geometry to every batch).
+
 ## Verification loop for art changes
 
 1. `node --check src/models.js`
 2. One-off probe in `tools/` (Playwright + `/opt/pw-browsers/chromium`,
    SwiftShader args, `viewer.html?webgl=1&plain=1`, drive `window.__viewer`),
    screenshot to the scratchpad and LOOK at it.
+   For world/scenery motion the probe has to PIN THE CAMERA — the race loop
+   moves it through `camera.position.copy` + `camera.lookAt`, so neutering
+   those two freezes the shot (see `tools/wind-probe.mjs`), and only a frozen
+   shot tells a lean apart from a camera drift. Adaptive quality also HIDES the
+   grass outright at SwiftShader framerates; force `visible` back on.
 3. `node tools/catalog-shots.mjs` when presets/models changed.
 4. `npm run check` (+ `node tools/progress-check.mjs` if the economy changed),
    `node tools/build-web.mjs`, then commit + push.

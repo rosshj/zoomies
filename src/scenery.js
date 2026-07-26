@@ -11,6 +11,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // around the runs and build their structures. See features.js for the system.
 import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 import { uSunViewNode, uSunColNode } from "./toon.js"; // shared per-frame sun nodes (grass backlight reads them)
+import { windLean, bakeBendWeights, setWind } from "./wind.js"; // the world's one wind field
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -356,6 +357,9 @@ export function buildWorld(scene, track, opts = {}) {
   _flutterers.length = 0;
   _critters.length = 0;
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
+  // Every track gets its own prevailing wind out of the seed, so the direction
+  // the grass and the treeline lean is part of a world's character.
+  setWind({ dirRad: rand() * Math.PI * 2, strength: 1 + rand() * 0.45 });
 
   // Gentle rolling detail laid on top of the road-anchored hills (kept small so
   // it never digs the ground below the road — that just makes scenery vanish
@@ -1009,11 +1013,11 @@ function buildGrass(scene, track, heightAt) {
     // to twice their length and made the meadow look like it was flying apart.
     const y01 = positionLocal.y; // 0 at the base -> 1 at the tip
     const bend = y01.mul(y01); // base holds firm, the top gives
-    // Idle wind: two slow crossing waves whose phase comes from world position,
-    // so a gust sweeps ACROSS the field instead of every blade twitching alone.
-    const ph = root.x.mul(0.11).add(root.z.mul(0.08));
-    const swayX = time.mul(1.1).add(ph).sin().mul(0.13);
-    const swayZ = time.mul(0.8).add(ph.mul(1.37)).sin().mul(0.06);
+    // Idle wind comes from the shared field (wind.js), so a gust that lays the
+    // grass over is the same gust rolling through the trees a moment later.
+    const sway = windLean(root.x, root.z, 0.18);
+    const swayX = sway.x;
+    const swayZ = sway.y;
     // Bow-wave direction is WORLD space, so rotate it into the blade's local
     // frame by -yaw (instances are yaw + a small tilt; the tilt error is
     // invisible). No division by the instance scale: a short blade should bend
@@ -1841,6 +1845,11 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
   const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
   foliageMat.userData.backlight = true; // glow when backlit by the sun (set in toonify)
+  // Canopies bow in the shared wind field, pivoting on the trunk top. The
+  // number is the crown's lean as a fraction of its own height; 0.12 reads
+  // clearly from a kart at speed (0.085 was there first and all but vanished
+  // in motion) while staying a breeze rather than a gale.
+  foliageMat.userData.sway = 0.12;
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
   const m = new THREE.Matrix4();
@@ -1877,12 +1886,20 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
   trunks.layers.set(1); // excluded from the rear-view mirror render
   scene.add(trunks);
 
-  // One foliage mesh per shape.
+  // One foliage mesh per shape. The canopy geometry is CLONED off the shared
+  // cache here because the wind bend needs per-instance data (aWindRoot) on it,
+  // and the cache hands the same geometry to every batch in the world.
   for (const [shape, arr] of byShape) {
-    const foliage = new THREE.InstancedMesh(foliageGeoFor(shape), foliageMat, arr.length);
+    const geo = bakeBendWeights(foliageGeoFor(shape).clone());
+    const windRoot = new Float32Array(arr.length * 3);
+    geo.setAttribute("aWindRoot", new THREE.InstancedBufferAttribute(windRoot, 3));
+    const foliage = new THREE.InstancedMesh(geo, foliageMat, arr.length);
     foliage.castShadow = true;
     foliage.layers.set(1);
     arr.forEach((spot, i) => {
+      windRoot[i * 3] = spot.x; // where it stands: the gust wave is sampled here
+      windRoot[i * 3 + 1] = spot.z;
+      windRoot[i * 3 + 2] = spot._yaw; // to rotate the world-space lean into local
       const { b } = spot;
       const sc = spot._sc;
       q.setFromAxisAngle(UP_Y, spot._yaw);
