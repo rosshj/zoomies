@@ -283,11 +283,12 @@
         <div class="title-extras">
           <button id="open-catalog" class="btn-cream extra-btn">📖 Cat&#8209;alog<span id="catalog-tile-alert" class="tile-alert hidden">!</span></button>
           <button id="howto-btn" class="btn-cream extra-btn">❓ How to Play</button>
-          <button id="open-daily" class="btn-cream extra-btn">📅 Daily</button>
-          <button id="open-settings" class="btn-cream extra-btn">⚙️ Settings</button>
           <!-- Shown only when not already installed (JS); does the native install
-               prompt where supported, or opens the iOS instructions overlay. -->
+               prompt where supported, or opens the iOS instructions overlay.
+               Sits BEFORE Settings so Settings stays the last child: with an odd
+               number of visible buttons it spans the final row (CSS). -->
           <button id="install-btn" class="btn-cream extra-btn hidden">📲 Install</button>
+          <button id="open-settings" class="btn-cream extra-btn">⚙️ Settings</button>
         </div>
       </div>
     </section>
@@ -322,6 +323,11 @@
           <button id="mode-mp" class="tap-card mode-tap hidden">
             <span class="tap-chip" style="background:#a4e022">🎮</span>
             <span class="tap-text"><span class="tap-title">With Friends</span><span class="tap-sub">Make a room, share the code — race your pals</span></span>
+            <span class="tap-chev">›</span>
+          </button>
+          <button id="mode-daily" class="tap-card mode-tap mode-daily">
+            <span class="tap-chip" style="background:#c084fc">📅</span>
+            <span class="tap-text"><span class="tap-title">Daily Challenge</span><span class="tap-sub" id="mode-daily-sub">Everyone races today's track — finish for bonus treats!</span></span>
             <span class="tap-chev">›</span>
           </button>
         </div>

@@ -3959,17 +3959,16 @@ function flowBack() {
 }
 menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("click", flowBack));
 
-// Title: the one way forward. A mid-cup or daily boot jumps straight to the
-// start line (the series/daily brings its own track + racer context).
+// Title: the one way forward. A mid-cup boot jumps straight to the start
+// line (the series brings its own track + racer context).
 function refreshTitlePlay() {
   if (!startBtn) return;
   if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
-  else if (_dailyActive) startBtn.textContent = "📅 START DAILY";
   else startBtn.textContent = "▶  Play";
 }
 startBtn?.addEventListener("click", () => {
   audio.unlock(); // the opening tap doubles as the audio unlock
-  if ((raceMode === "cup" && _cupState && _activeCup) || _dailyActive) { flowGo("startline"); return; }
+  if (raceMode === "cup" && _cupState && _activeCup) { flowGo("startline"); return; }
   flowGo("mode");
 });
 
@@ -3988,10 +3987,15 @@ function setRaceMode(mode) {
   applyModeUI();
 }
 
-// Mode: one tap chooses AND advances.
+// Mode: one tap chooses AND advances (no selected state — these are doors,
+// not toggles). The daily card doubles as today's status line.
 function refreshModeCards() {
-  for (const m of ["gp", "tt", "mp", "cup"])
-    document.getElementById("mode-" + m)?.classList.toggle("is-selected", raceMode === m);
+  const sub = document.getElementById("mode-daily-sub");
+  if (sub) {
+    sub.textContent = profile.dailyPaid === todayStr()
+      ? "Bonus banked for today — race it again or come back tomorrow"
+      : "Everyone races today's track — finish for bonus treats!";
+  }
 }
 document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
 document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
@@ -4024,7 +4028,7 @@ function renderTrackCards() {
   grid.replaceChildren();
   const addCard = (name, sub, cfg, current) => {
     const b = document.createElement("button");
-    b.className = "tap-card track-tap" + (current ? " is-selected" : "");
+    b.className = "tap-card track-tap";
     const shot = document.createElement("span");
     shot.className = "track-shot";
     const canvas = document.createElement("canvas");
@@ -4277,13 +4281,21 @@ document.getElementById("results-next-btn")?.addEventListener("click", () => {
   location.href = cupRaceURL(_activeCup, _cupState.race);
 });
 
-// Daily challenge: reload into today's shared seed with the daily flag.
-document.getElementById("open-daily")?.addEventListener("click", () => {
+// Daily challenge: a mode card. Reloads into today's shared seed (the daily
+// brings its own track) and resumes the flow at the Racer step; the start
+// line's GO reads START DAILY. Re-tapping while already in today's world just
+// advances — no rebuild.
+document.getElementById("mode-daily")?.addEventListener("click", () => {
+  setRaceMode("gp"); // the daily rides the single-race path (payout adds the bonus)
+  const today = dailySeedFor(todayStr());
+  if (_dailyActive && WORLD_SEED === today) { flowGo("racer"); return; }
   audio.unlock();
   try { input.enableMotion(); } catch { /* ignore */ }
+  uiCue("loading");
+  saveFlowResume("racer");
   markReload("daily-start");
   const u = new URL(location.origin + location.pathname);
-  u.searchParams.set("seed", dailySeedFor(todayStr()));
+  u.searchParams.set("seed", today);
   u.searchParams.set("daily", "1");
   location.href = u.toString();
 });
@@ -4297,7 +4309,7 @@ function renderCupOptions() {
   CUPS.forEach((cup, i) => {
     const won = profile.trophies[cup.id];
     const b = document.createElement("button");
-    b.className = "tap-card cup-tap" + (cup.id === _cupChoice ? " is-selected" : "");
+    b.className = "tap-card cup-tap";
     const prize = won
       ? `<span class="cup-pill won">🏆 Won on ${won}</span>`
       : cup.unlockId ? `<span class="cup-pill prize">🎁 Win ${unlockName(cup.unlockId)}</span>` : "";

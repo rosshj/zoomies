@@ -2427,11 +2427,6 @@ button.secondary.small,
   transform: translateY(3px);
   box-shadow: 0 2px 0 var(--f-ink), 0 8px 14px -8px rgba(14, 6, 30, 0.5);
 }
-.tap-card.is-selected {
-  background: linear-gradient(180deg, #ffe3a1 0%, #ffd066 100%);
-  box-shadow: 0 5px 0 var(--f-ink), 0 0 0 4px rgba(255, 194, 75, 0.45),
-    0 14px 24px -10px rgba(14, 6, 30, 0.55);
-}
 /* non-button tap-card (holds inputs); no hover/press motion */
 .tap-card.is-static:hover,
 .tap-card.is-static:active {
@@ -2466,14 +2461,14 @@ button.secondary.small,
 /* --- Title ------------------------------------------------------------------ */
 .title-wrap {
   position: absolute;
-  left: max(5%, var(--safe-left, 0px));
+  left: 50%;
   top: 50%;
-  transform: translateY(-50%);
+  transform: translate(-50%, -50%);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: clamp(6px, 1.6vh, 12px);
-  width: min(430px, 47%);
+  width: min(460px, 58%);
 }
 .title-logo {
   margin: 0;
@@ -2511,6 +2506,9 @@ button.secondary.small,
   width: 100%;
   margin-top: clamp(2px, 1vh, 8px);
 }
+/* With Install hidden there are three visible buttons — Settings spans the
+   final row. When Install shows (4 visible) the grid is a clean 2×2. */
+#install-btn.hidden ~ #open-settings { grid-column: 1 / -1; }
 .extra-btn {
   position: relative;
   font-size: clamp(12px, 2.4vh, 14px);
@@ -2547,6 +2545,7 @@ button.secondary.small,
   align-items: stretch;
 }
 .mode-tap { min-height: clamp(64px, 13vh, 92px); }
+.mode-daily { grid-column: 1 / -1; min-height: clamp(56px, 10vh, 76px); }
 .friends-card { min-height: clamp(88px, 18vh, 120px); }
 .mp-join-row { display: flex; gap: 8px; margin-top: 6px; }
 #mp-code {
