@@ -2282,7 +2282,9 @@ button.secondary.small,
   min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 8px max(16px, var(--safe-right, 0px)) max(12px, var(--safe-bottom, 0px))
+  /* Even breathing room: top/bottom match the 16px sides (bottom still clears
+     the home-bar safe area when that's bigger). */
+  padding: 16px max(16px, var(--safe-right, 0px)) max(16px, var(--safe-bottom, 0px))
     max(16px, var(--safe-left, 0px));
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 246, 229, 0.35) transparent;
