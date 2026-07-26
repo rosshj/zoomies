@@ -704,6 +704,49 @@ function tunnelShellWA(run, halfW, p, u01) {
   return { W, A, skew, endT };
 }
 
+// Tunnel camera RAIL — the fix for the long-standing "camera goes weird at
+// tunnel mouths". The reactive clamps below can only shove the camera around
+// once it's already inside rock, and the shoves (plus their release at the
+// portals) are exactly the lurch players see. Instead, updateCamera asks this
+// guide every frame: when the camera's desired position is inside a tunnel's
+// tube — or within the approach fade either side of a portal — it blends the
+// desired position onto the bore's spine at a fixed height under the arch, so
+// the camera threads the portal dead-centre and never meets the clamps at
+// all. Returns null when no tunnel is near, else { k, x, z, y }: blend 0..1
+// and the spine anchor at the camera's nearest bore sample.
+export function tunnelCamGuide(feats, track, x, z) {
+  if (!feats) return null;
+  const N = track.samples;
+  for (const run of feats.runs) {
+    if (run.kind !== "tunnel") continue;
+    if (!runNear(run, x, z, track.halfWidth + 46)) continue;
+    // Portal rings sit inset 16% into the run (matches buildTunnel's sweep and
+    // featureCameraClamp). FADE samples (~35u) either side ramp the rail in on
+    // approach and back out after the exit.
+    const inset = Math.round((run.i1 - run.i0) * 0.16);
+    const t0 = run.i0 + inset;
+    const t1 = run.i1 - inset;
+    const FADE = 14;
+    let best = -1;
+    let bestD2 = 80 * 80;
+    for (let i = t0 - FADE; i <= t1 + FADE; i++) {
+      const p = track._pts[((i % N) + N) % N];
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) { bestD2 = d2; best = i; }
+    }
+    if (best < 0) continue;
+    // 0 a FADE outside either portal -> 1 from the portal ring inward.
+    const depth = Math.min(best - (t0 - FADE), t1 + FADE - best) / FADE;
+    const k = smooth01(Math.max(0, Math.min(1, depth)));
+    if (k <= 0) continue;
+    const p = track._pts[((best % N) + N) % N];
+    return { k, x: p.x, z: p.z, y: p.y };
+  }
+  return null;
+}
+
 // Keep the chase camera out of tunnel rock. When the kart hugs the bore wall
 // (or reverses sideways inside), the camera's spot behind it can land inside
 // the mountain shell — the render then shows the shell's inside-out skin.

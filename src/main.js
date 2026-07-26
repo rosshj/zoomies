@@ -9,7 +9,7 @@ import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
-import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
+import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunnelCamGuide } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
@@ -5568,16 +5568,32 @@ function updateCamera(dt, snap = false) {
   // back; negative = braking, camera crowds in. A boost's instant speed kick
   // spikes this for ~half a second, which is exactly the "pinned to your seat"
   // beat we want.
-  const accelPull = snap ? 0 : Math.max(-1.2, Math.min(2.4, (_sp - _spSmooth) * 0.22));
+  const accelPull = snap ? 0 : Math.max(-1.2, Math.min(1.6, (_sp - _spSmooth) * 0.22));
   _spSmooth += (_sp - _spSmooth) * Math.min(1, dt * 2.5);
   if (snap) _spSmooth = _sp;
 
   _camFwd.set(Math.sin(player.heading), 0, Math.cos(player.heading));
   // At speed the camera drops lower and hangs a touch further back: optic flow
   // scales with proximity to the ground, so the same physics speed reads much
-  // faster from a lower, longer vantage.
-  _camDesired.copy(player.position).addScaledVector(_camFwd, -(13 + sn * 1.4 + accelPull));
-  _camDesired.y += 7 - sn * 1.3 + player.y * 0.5;
+  // faster from a lower, longer vantage. Both trimmed after playtesting (the
+  // first cut sat too far back), and the LOWERING fades out on any real grade —
+  // on a climb the lowered eye fought the ground clamp, and on a descent it
+  // dipped the framing; hills keep the standard relative height.
+  const slopeK = Math.min(1, Math.abs(player.slopePitch || 0) / 0.16);
+  _camDesired.copy(player.position).addScaledVector(_camFwd, -(13 + sn * 0.7 + accelPull));
+  _camDesired.y += 7 - sn * 1.3 * (1 - slopeK) + player.y * 0.5;
+
+  // Tunnel rail: through a tunnel (and its portal approaches) the desired
+  // camera blends onto the bore spine at a fixed height under the arch, so it
+  // threads the portals dead-centre instead of being shoved around by the
+  // rock clamps — see tunnelCamGuide.
+  const _tg = tunnelCamGuide(track.features, track, _camDesired.x, _camDesired.z);
+  if (_tg) {
+    _camDesired.x += (_tg.x - _camDesired.x) * _tg.k;
+    _camDesired.z += (_tg.z - _camDesired.z) * _tg.k;
+    const railY = _tg.y + 5.4; // comfortably under the 15u apex, above the kart
+    _camDesired.y += (railY - _camDesired.y) * _tg.k;
+  }
   _camLook.copy(player.position).addScaledVector(_camFwd, 6);
   _camLook.y += 1.5 + player.y;
 

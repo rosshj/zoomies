@@ -980,6 +980,40 @@ export class Track {
       this._tans.push(this.curve.getTangentAt(t));
     }
 
+    // Smooth the sampled ELEVATION profile. The height plan is evaluated at
+    // the coarse control net (~60-120u apart) and Catmull-Rom interpolation
+    // ripples slightly between those points — big hills read as subtly bumpy,
+    // especially now the speed camera rides lower. Two box-blur passes
+    // (±10 samples ≈ ±25u) kill that control-point ripple while leaving real
+    // hills (300u+ wavelengths) intact. XZ stays untouched. Every consumer
+    // (road mesh, physics project/groundInfo, scenery, features) reads these
+    // samples, and getPointAt() re-bases its height on them, so the whole
+    // world stays consistent with the road that actually gets built.
+    {
+      const S = this.samples;
+      const W = 10;
+      let ys = this._pts.map((p) => p.y);
+      for (let pass = 0; pass < 2; pass++) {
+        const out = new Array(S);
+        let sum = 0;
+        for (let k = -W; k <= W; k++) sum += ys[((k % S) + S) % S];
+        for (let i = 0; i < S; i++) {
+          out[i] = sum / (2 * W + 1);
+          sum -= ys[(((i - W) % S) + S) % S];
+          sum += ys[((i + W + 1) % S)];
+        }
+        ys = out;
+      }
+      for (let i = 0; i < S; i++) this._pts[i].y = ys[i];
+      // Re-derive tangents from the smoothed samples (central difference) so
+      // slopes agree with the road that actually gets built.
+      for (let i = 0; i < S; i++) {
+        const a = this._pts[(i - 1 + S) % S];
+        const b = this._pts[(i + 1) % S];
+        this._tans[i].set(b.x - a.x, b.y - a.y, b.z - a.z).normalize();
+      }
+    }
+
     // Point list for cheap distance/height queries used by scenery.
     this._coarse = [];
     for (let i = 0; i < this.samples; i += 2) this._coarse.push(this._pts[i]);
@@ -1599,7 +1633,7 @@ export class Track {
   }
 
   _buildStartLine() {
-    const p = this.curve.getPointAt(0);
+    const p = this.getPointAt(0); // smoothed height, flush with the built road
     const tan = this.curve.getTangentAt(0);
     const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
@@ -1843,7 +1877,15 @@ export class Track {
   // `target` (optional) is written and returned instead of allocating — the AI
   // drivers call these several times per kart per frame.
   getPointAt(t, target) {
-    return this.curve.getPointAt(((t % 1) + 1) % 1, target);
+    const tw = ((t % 1) + 1) % 1;
+    const p = this.curve.getPointAt(tw, target);
+    // Height comes from the smoothed samples (see constructor), not the raw
+    // curve, so callers (items, grid slots, AI) sit flush on the built road.
+    const f = tw * this.samples;
+    const i0 = Math.floor(f) % this.samples;
+    const i1 = (i0 + 1) % this.samples;
+    p.y = this._pts[i0].y + (this._pts[i1].y - this._pts[i0].y) * (f - Math.floor(f));
+    return p;
   }
 
   getTangentAt(t, target) {
