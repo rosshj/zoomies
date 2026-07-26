@@ -384,6 +384,35 @@ export class EffectsManager {
     }
   }
 
+  // Wind streaks at sustained near-top speed and under boosts — the classic
+  // "speed lines" trick: short-lived bright specks spawned wide of the kart and
+  // ahead of the camera, flung backward faster than the kart moves so they whip
+  // past the edges of the frame. Same recipe as slipstreamWind but wider and
+  // higher (framing the screen, not hugging a rival's wake) so it reads as raw
+  // velocity anywhere on track. `strength` 0..1 ramps rate/brightness/size.
+  windStreaks(kart, strength) {
+    if (Math.random() > 0.3 + strength * 0.55) return;
+    const fwx = Math.sin(kart.heading), fwz = Math.cos(kart.heading);
+    const rx = Math.cos(kart.heading), rz = -Math.sin(kart.heading); // kart's right
+    const sp = 30 + Math.abs(kart.speed) * 0.9;
+    const n = strength > 0.7 ? 2 : 1;
+    for (let i = 0; i < n; i++) {
+      // Wide of the racing line so streaks frame the view instead of crossing it.
+      const side = (Math.random() < 0.5 ? -1 : 1) * (2.6 + Math.random() * 2.8);
+      const fore = 4 + Math.random() * 7;
+      _pos.copy(kart.position);
+      _pos.x += rx * side + fwx * fore;
+      _pos.z += rz * side + fwz * fore;
+      _pos.y += kart.y + 0.5 + Math.random() * 2.6;
+      _vel.set(-fwx * sp, (Math.random() - 0.5) * 1.5, -fwz * sp);
+      _col.setHex(0xf2f8ff);
+      this._spawn(_pos, _col, {
+        additive: true, spark: true, size: 0.4 + strength * 0.35,
+        life: 0.2, v: _vel, opacity: 0.1 + strength * 0.3, damp: 0.3,
+      });
+    }
+  }
+
   // A faint wake trailing a kart that's BEING drafted, so the sweet spot behind it
   // is visible to aim for. Subtle by design — it shouldn't compete with drift/boost.
   slipstreamWake(kart, strength) {

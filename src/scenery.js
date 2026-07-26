@@ -467,6 +467,7 @@ export function buildWorld(scene, track, opts = {}) {
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
+  buildRhythmPosts(scene, track, heightAt); // evenly-beat marker bollards hugging both verges (perceived speed)
   const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
@@ -1856,6 +1857,61 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   halos.frustumCulled = false; // instances ring the whole lap
   halos.layers.set(1);
   scene.add(halos);
+}
+
+// Trackside rhythm posts: small red-capped marker bollards hugging BOTH verges
+// at a steady ~16u beat all the way around the lap. Pure perceived-speed
+// furniture — optic flow needs reference objects streaming past close to the
+// eye, and a regular beat makes speed legible the way fence posts do from a
+// motorway. Denser than the lamps (which are avenue dressing), much smaller,
+// and cheap: two instanced meshes for the whole lap, no shadows, no lights.
+function buildRhythmPosts(scene, track, heightAt) {
+  const up = new THREE.Vector3(0, 1, 0);
+  const N = track.samples;
+  const spacing = 16; // ~metres between posts along the road
+  const step = Math.max(1, Math.round((N * spacing) / track.length));
+  const BODY_H = 1.5;
+  const CAP_H = 0.34;
+  const spots = [];
+  for (let i = 0; i < N; i += step) {
+    const p = track._pts[i];
+    const s = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    for (const dir of [1, -1]) {
+      const off = track.halfWidth + 2.6; // just outside the barrier line
+      const x = p.x + s.x * dir * off;
+      const z = p.z + s.z * dir * off;
+      // Same guards as the street lamps: skip where the verge folds onto another
+      // pass of the lap, into a lake, under a set piece's own furniture, or
+      // where the road runs elevated (a ground post would become a stilt).
+      if (track.distanceToCenter(x, z) < track.halfWidth + 1.8) continue;
+      if (_inLake(x, z)) continue;
+      if (featureSpanBlock(track.features, x, z)) continue;
+      const gy = heightAt(x, z);
+      if (p.y - gy > 4) continue;
+      spots.push({ x, z, y: gy });
+    }
+  }
+  if (!spots.length) return;
+
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.8 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xd83a2f, roughness: 0.6 });
+  const bodies = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.17, BODY_H, 6), bodyMat, spots.length);
+  const caps = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.14, CAP_H, 6), capMat, spots.length);
+  const m = new THREE.Matrix4();
+  const ID = new THREE.Quaternion();
+  const sc = new THREE.Vector3(1, 1, 1);
+  const pos = new THREE.Vector3();
+  spots.forEach((sp, i) => {
+    pos.set(sp.x, sp.y + BODY_H / 2, sp.z);
+    bodies.setMatrixAt(i, m.compose(pos, ID, sc));
+    pos.set(sp.x, sp.y + BODY_H + CAP_H / 2 - 0.02, sp.z);
+    caps.setMatrixAt(i, m.compose(pos, ID, sc));
+  });
+  for (const im of [bodies, caps]) {
+    im.instanceMatrix.needsUpdate = true;
+    im.layers.set(1); // out of the rear-view mirror render (same as the lamps)
+    scene.add(im);
+  }
 }
 
 // Festive bulb strings strung in a catenary over a few road spans. The bulbs are

@@ -57,8 +57,16 @@ export async function createNativeAdapter(name) {
       impact(style = "medium") {
         try { Haptics?.impact({ style: style.toUpperCase() })?.catch?.(() => {}); } catch { /* n/a */ }
       },
+      // A single subtle tick. selectionStart() alone only ARMS the generator on
+      // iOS — selectionChanged() is what actually fires the tap — so run the
+      // full start→changed→end dance (each call is a bridge promise).
       selection() {
-        try { Haptics?.selectionStart()?.catch?.(() => {}); } catch { /* n/a */ }
+        try {
+          const p = Haptics?.selectionStart();
+          p?.then?.(() => Haptics?.selectionChanged())
+            ?.then?.(() => Haptics?.selectionEnd())
+            ?.catch?.(() => {});
+        } catch { /* n/a */ }
       },
       // Apple's "success" notification pattern (double tap) — race finish etc.
       success() {

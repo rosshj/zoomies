@@ -466,11 +466,29 @@ function gradeOutput(base) {
   c = c.mul(mix(float(1), vig, _uVignette));
   return c;
 }
+// Chromatic aberration (boost rush): re-sample the scene's R and B channels a
+// touch inward/outward of the green sample, growing toward the corners so the
+// centre of the road stays crisp. Gated behind a uniform If — uAberr is the
+// same value for every pixel, so when it's 0 (any time you're not boosting)
+// the GPU skips both extra samples with no divergence cost, same trick as the
+// god-ray loop.
+const _uAberr = uniform(0);
+const _caScene = Fn(() => {
+  const c = vec3(_sceneTex.sample(viewportUV).rgb).toVar();
+  If(_uAberr.greaterThan(0.0004), () => {
+    const d = viewportUV.sub(0.5);
+    const off = d.mul(_uAberr).mul(d.dot(d).mul(3).add(0.25)); // quadratic falloff: strong at the corners, ~nothing at centre
+    const r = _sceneTex.sample(viewportUV.sub(off)).r;
+    const b = _sceneTex.sample(viewportUV.add(off)).b;
+    c.assign(vec3(r, c.g, b));
+  });
+  return c;
+})();
 // High: scene + god-ray shafts + bloom. Low: scene + bloom only — drops the
 // per-pixel god-ray pass, the big GPU/memory win on weak devices (see
 // applyQuality()).
-const _highOutput = gradeOutput(_sceneTex.add(_shaftTex).add(_bloomNode));
-const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
+const _highOutput = gradeOutput(_caScene.add(_shaftTex).add(_bloomNode));
+const _lowOutput = gradeOutput(_caScene.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
@@ -519,12 +537,13 @@ const godrayPass = { enabled: true, setSize() {}, uniforms: {
 } };
 const flarePass = _passStub({ uVis: { value: 0 } });
 const fxPass = _passStub({
-  uAberr: { value: 0 },
+  uAberr: _uAberr, // LIVE: boost chromatic aberration (driven from updateCamera)
   uRadial: { value: 0 },
-  uVignette: _uVignette,
+  uVignette: _uVignette, // LIVE: speed vignette (driven from updateCamera)
   uSat: _uSat,
   uContrast: _uContrast,
 });
+const BASE_VIGNETTE = _uVignette.value; // resting corner darkening (menus, low speed)
 
 const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
 track.totalLaps = TOTAL_LAPS;
@@ -3096,7 +3115,7 @@ const _audioPolicyReady = getPlatform().then(async (p) => {
     }
   } catch { /* best-effort */ }
 }).catch(() => {});
-const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0 };
+const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0, rumble: 0 };
 function updateHaptics(nowMs) {
   if (!_platformA || !player || state !== State.RACING) return;
   const h = _platformA.haptics;
@@ -3125,6 +3144,17 @@ function updateHaptics(nowMs) {
   // Crossing the finish line: Apple's "success" double-tap pattern.
   if (player.finished && !_feel.finished) { _feel.last = nowMs; h.success(); }
   _feel.finished = player.finished;
+  // The one exception to "discrete moments only": a faint metronome of the
+  // LIGHTEST tick available while boosting (or pinned at the very top of the
+  // speed range), so full throttle physically hums. Slow cadence + selection
+  // strength keeps it a texture, not a buzz; it never claims _feel.last, and
+  // yields (nowMs - last check) whenever a discrete event just fired so those
+  // always read clean over it.
+  const _rumbleOn = boosting || Math.abs(player.speed) > player.maxSpeed * 0.97;
+  if (_rumbleOn && nowMs - _feel.rumble > (boosting ? 170 : 280) && nowMs - _feel.last > 140) {
+    _feel.rumble = nowMs;
+    h.selection();
+  }
 }
 
 // --- How to Play sub-menu (replaces the main menu) ---
@@ -5292,6 +5322,12 @@ const _camDesired = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
 const _camAim = new THREE.Vector3(); // aim point after pitch-stabilising against eye clamps
 let shakeMag = 0;
+// Acceleration camera pull: a slow-follow copy of the player's speed. The gap
+// between real and smoothed speed is the perceived acceleration — hard throttle
+// (or a boost's instant kick) lets the kart pull ahead of its rest framing for
+// half a second, braking lets the camera crowd it. Reset on race start so the
+// first frame doesn't inherit a stale gap.
+let _spSmooth = 0;
 // Boost pads: a short speed kick (and its rainbow trail) when a kart drives over
 // a chevron pad, with a per-kart cooldown so it fires once per pass.
 function applyBoostPads(dt) {
@@ -5449,6 +5485,9 @@ function _orbitMenuCam(anchor, ang) {
     camera.fov = 58;
     camera.updateProjectionMatrix();
   }
+  // A race's speed post-effects must never linger over the menus.
+  _uVignette.value = BASE_VIGNETTE;
+  _uAberr.value = 0;
 }
 
 // Render the menu background. While dissolving, render the OUTGOING biome (live)
@@ -5512,14 +5551,33 @@ function updateCamera(dt, snap = false) {
     featureCameraClamp(track.features, track, camPos); // victory orbit can sweep into tunnel rock
     camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
+    // Ease the speed post-effects back to rest for the victory lap.
+    _uVignette.value += (BASE_VIGNETTE - _uVignette.value) * Math.min(1, dt * 5);
+    _uAberr.value += (0 - _uAberr.value) * Math.min(1, dt * 5);
     camera.position.copy(camPos);
     camera.lookAt(camTarget);
     return;
   }
 
+  // Perceived speed, the shared driver for the FOV/height/pull/shake work below:
+  // 0..1 of plain top speed (a boost pushes real speed past maxSpeed — clamped,
+  // the boost terms add their own kick instead).
+  const _sp = Math.abs(player.speed);
+  const sn = Math.min(1, _sp / player.maxSpeed);
+  // Acceleration pull (see _spSmooth): positive = accelerating, camera stretches
+  // back; negative = braking, camera crowds in. A boost's instant speed kick
+  // spikes this for ~half a second, which is exactly the "pinned to your seat"
+  // beat we want.
+  const accelPull = snap ? 0 : Math.max(-1.2, Math.min(2.4, (_sp - _spSmooth) * 0.22));
+  _spSmooth += (_sp - _spSmooth) * Math.min(1, dt * 2.5);
+  if (snap) _spSmooth = _sp;
+
   _camFwd.set(Math.sin(player.heading), 0, Math.cos(player.heading));
-  _camDesired.copy(player.position).addScaledVector(_camFwd, -13);
-  _camDesired.y += 7 + player.y * 0.5;
+  // At speed the camera drops lower and hangs a touch further back: optic flow
+  // scales with proximity to the ground, so the same physics speed reads much
+  // faster from a lower, longer vantage.
+  _camDesired.copy(player.position).addScaledVector(_camFwd, -(13 + sn * 1.4 + accelPull));
+  _camDesired.y += 7 - sn * 1.3 + player.y * 0.5;
   _camLook.copy(player.position).addScaledVector(_camFwd, 6);
   _camLook.y += 1.5 + player.y;
 
@@ -5571,16 +5629,31 @@ function updateCamera(dt, snap = false) {
   _camAim.copy(camTarget);
   _camAim.y += camLift * 0.7;
 
-  // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
-  // a rush — but only a touch, so the road stays readable and easy to drive.
-  const targetFov = 62 + (player.boosting ? 7 : 0) + (player.catnipBoosting ? 4 : 0);
+  // FOV scales continuously with speed — accelerating from rest to top speed
+  // stretches the world toward you instead of only kicking on a boost — and the
+  // boost/catnip kicks stack on top for the rush. Kicks trimmed from the old
+  // 7/4 so the boosted ceiling stays readable and easy to drive.
+  const targetFov = 62 + sn * 6 + (player.boosting ? 5 : 0) + (player.catnipBoosting ? 4 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
   camera.updateProjectionMatrix();
 
+  // Speed vignette + boost chromatic aberration (post uniforms, ~free): corners
+  // darken as speed builds (tunnel-vision focus), colour fringing only under a
+  // boost/catnip surge. Both ease so they never pop.
+  const vigTarget = BASE_VIGNETTE + 0.1 * sn * sn + (player.boosting || player.catnipBoosting ? 0.06 : 0);
+  _uVignette.value += (vigTarget - _uVignette.value) * Math.min(1, dt * 5);
+  const caTarget = player.catnipBoosting ? 0.014 : player.boosting ? 0.011 : 0;
+  _uAberr.value += (caTarget - _uAberr.value) * Math.min(1, dt * (caTarget > _uAberr.value ? 10 : 4));
+
   // Screen shake (decays). Catnip keeps a faint constant rumble going (minor, so
-  // it reads as raw speed without fighting your steering).
+  // it reads as raw speed without fighting your steering), and the top of the
+  // plain speed range gets a smaller engine-vibration floor of its own.
   shakeMag *= 1 - Math.min(1, 6 * dt);
   if (player.catnipBoosting) shakeMag = Math.max(shakeMag, 0.14);
+  else if (sn > 0.75) {
+    const k = (sn - 0.75) / 0.25;
+    shakeMag = Math.max(shakeMag, 0.06 * k * k);
+  }
   camera.position.copy(camPos);
   if (shakeMag > 0.001) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
@@ -6603,6 +6676,14 @@ function loop(now) {
 
     // Rainbow boost trail + drift sparks/skids for the player.
     if (player.boosting) effects.trickle(player, player.catnipBoosting);
+    // Wind-streak speed lines: fade in over the last ~18% of the speed range so
+    // plain flat-out cruising earns them, and run at full strength under any
+    // boost. (Boost speeds exceed maxSpeed, so the ramp is already saturated.)
+    {
+      const _snPlayer = Math.min(1, _sp / player.maxSpeed);
+      const _windK = player.boosting || player.catnipBoosting ? 1 : (_snPlayer - 0.82) / 0.18;
+      if (_windK > 0) effects.windStreaks(player, Math.min(1, _windK));
+    }
     const _catnipBurnout = player.catnipBoosting && _sp > 10 && !player.airborne;
     if (player.drifting) {
       effects.driftSparks(player);
@@ -6620,12 +6701,16 @@ function loop(now) {
     if (!player.airborne && _sp > 6) {
       biomeDustColor(player.position.x, player.position.z, _dustCol);
       let amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      // Flat-out (top ~10% of the speed range): the faint cruising veil thickens
+      // into a proper plume, so max speed is visibly working the road.
+      const _snDust = _sp / player.maxSpeed;
+      if (_snDust > 0.9) amt = Math.max(amt, 0.45 + 0.3 * Math.min(1, (_snDust - 0.9) / 0.1));
       if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
       if (amt > 0.02) effects.dust(player, _dustCol, amt);
     }
-    // (Chromatic aberration / radial blur: their uniforms are dead stubs — the
-    // effects aren't in the post graph (see fxPass) — so nothing eases them
-    // per-frame anymore. Re-add the easing when the passes are actually wired in.)
+    // (Chromatic aberration is live again — wired into the post graph via
+    // _caScene and eased from updateCamera alongside the speed vignette. Radial
+    // blur remains a dead stub in fxPass.)
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.

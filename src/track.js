@@ -1202,6 +1202,7 @@ export class Track {
     this._buildWalls();
     this._buildCenterLine();
     this._buildEdgeLines();
+    this._buildRoadSeams();
     this._buildBoostPads();
     this._buildPuddles();
     this._buildStartLine();
@@ -1350,6 +1351,61 @@ export class Track {
     this.group.add(mesh);
   }
 
+  // Transverse tar seams (expansion joints): a faint dark strip ACROSS the road
+  // every ~24u, all the way around the lap. The road surface itself is the one
+  // thing always in view, and without a repeating longitudinal marker its noise
+  // just slides — a steady beat of cross-seams gives the ground measurable flow
+  // at any speed, on every biome (the dashed centre line only runs in towns).
+  // Deliberately subtle: thin, low-opacity, no lighting; one merged mesh.
+  _buildRoadSeams() {
+    const div = this.samples;
+    const spacing = 24; // ~metres between seams
+    const step = Math.max(2, Math.round((div * spacing) / this.length));
+    const inset = 0.7; // stop short of the painted edge lines
+    const hd = 0.09; // half-depth of the strip along the direction of travel
+    const positions = [];
+    const indices = [];
+    for (let i = 0; i < div; i += step) {
+      const p = this._pts[i];
+      const side = this._sideAt(i);
+      const tan = this._tans[i];
+      const w = this.halfWidth - inset;
+      const y = p.y + 0.045; // above the road (0.02), below the painted lines (0.05)
+      const base = positions.length / 3;
+      // Two verts per end: back edge then front edge, left then right.
+      for (const sw of [-w, w]) {
+        for (const td of [-hd, hd]) {
+          positions.push(
+            p.x + side.x * sw + tan.x * td,
+            y,
+            p.z + side.z * sw + tan.z * td
+          );
+        }
+      }
+      indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    }
+    if (!positions.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    // Flat road decal: normals straight up (same SSR-prepass note as the lines).
+    const nrm = new Float32Array(positions.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setIndex(indices);
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        color: 0x101014,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        side: THREE.DoubleSide, // winding follows loop direction (see the road note)
+      })
+    );
+    mesh.renderOrder = 1;
+    this.group.add(mesh);
+  }
+
   _buildSandTrim() {
     const div = this.samples;
     const positions = [];
@@ -1495,6 +1551,13 @@ export class Track {
     }
 
     const hw = 0.24; // half-width of the line
+    // Dash the line instead of painting it solid: a repeating on/off beat along
+    // the samples. Dashes strobe past at speed — a strong, cheap optic-flow cue
+    // right where the player looks — where the old continuous stripe just slid.
+    // Baked into the same per-vertex alpha as the zone fade, so dash ends stay
+    // soft (painted, not clinical) and it's still one mesh / one draw.
+    const DASH = 8; // samples per on+off cycle…
+    const DASH_ON = 5; // …of which this many are painted
     const positions = [];
     const alphas = [];
     const indices = [];
@@ -1505,7 +1568,8 @@ export class Track {
       const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
       const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
       positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-      alphas.push(vis[idx], vis[idx]);
+      const dash = idx % DASH < DASH_ON ? 1 : 0;
+      alphas.push(vis[idx] * dash, vis[idx] * dash);
       if (i < div) {
         const k = i * 2;
         indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
