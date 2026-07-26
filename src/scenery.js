@@ -10,6 +10,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // planner lives on the track (track.features); these helpers shape the terrain
 // around the runs and build their structures. See features.js for the system.
 import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
+import { uSunViewNode, uSunColNode } from "./toon.js"; // shared per-frame sun nodes (grass backlight reads them)
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -478,6 +479,7 @@ export function buildWorld(scene, track, opts = {}) {
   const fireflies = buildFireflies(scene, track, heightAt);
   buildAmbientFlyers(scene, track, heightAt, litLevel); // butterflies/dragonflies (day) or moths (night) — GPU-animated, no per-frame CPU
   buildWindDebris(scene, track, heightAt); // tumbleweed (desert) + seed-fluff (savanna), GPU-animated wind buffeting
+  buildRoadCrossers(scene, track, heightAt); // leaves/wisps/litter crossing the road itself (perceived speed)
   const pigeonFlocks = buildPigeons(scene, track, heightAt);
 
   return {
@@ -979,42 +981,64 @@ function buildGrass(scene, track, heightAt) {
   }
   blade.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
 
-  const mat = new THREE.MeshStandardMaterial({
+  // TSL node material. The old GLSL onBeforeCompile sway/backlight never ran
+  // under WebGPURenderer — BOTH its backends (WebGPU and the WebGL2 fallback)
+  // compile through the node system, which ignores onBeforeCompile — so the
+  // meadow has stood perfectly still since the WebGPU migration. Rebuilt as
+  // nodes: the idle wind sway, the sun backlight (reading the same shared
+  // uSunView/uSunCol nodes as the tree foliage), and the new kart BOW-WAVE.
+  //
+  // Bow-wave: blades within ~4.6u of the player kart are shoved radially away
+  // (tip-weighted, so they bend rather than slide), harder with speed — the
+  // roadside physically parts as you blast past. uKart is (x, y, z, strength),
+  // written once per frame from the main loop.
+  const uKart = uniform(new THREE.Vector4(1e6, 0, 1e6, 0));
+  const mat = new THREE.MeshStandardNodeMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
     roughness: 1,
   });
-  mat.userData.skipToon = true; // keep the wind vertex shader
-  mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uTime = { value: 0 };
-    // View-space sun direction + colour, updated each frame, for a backlit glow
-    // so the meadow lights up when the sun is behind it (atmospheric warmth).
-    shader.uniforms.uSunView = { value: new THREE.Vector3(0, 0, 1) };
-    shader.uniforms.uSunCol = { value: new THREE.Color(0xffe6b0) };
-    shader.vertexShader = "uniform float uTime;\n" + shader.vertexShader;
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <begin_vertex>",
-      `#include <begin_vertex>
-       float ph = instanceMatrix[3][0] * 0.15 + instanceMatrix[3][2] * 0.15;
-       transformed.x += sin(uTime * 1.6 + ph) * 0.18 * position.y;
-       transformed.z += cos(uTime * 1.3 + ph) * 0.10 * position.y;`
-    );
-    shader.fragmentShader =
-      "uniform vec3 uSunView;\nuniform vec3 uSunCol;\n" + shader.fragmentShader;
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <dithering_fragment>",
-      `#include <dithering_fragment>
-       // Looking toward the sun through the blade -> warm translucent glow,
-       // strongest near the (lighter) tips.
-       float backlit = pow(max(dot(normalize(vViewPosition), uSunView), 0.0), 3.0);
-       gl_FragColor.rgb += uSunCol * backlit * (0.35 + 0.65 * vColor.g);`
-    );
-    mat.userData.shader = shader;
-  };
+  mat.userData.skipToon = true; // keep the custom position/emissive nodes
+  {
+    const root = attribute("aRoot"); // blade base, world space
+    const yawScale = attribute("aYawScale"); // instance yaw + scale
+    const tipW = positionLocal.y; // 0 at the base -> 1 at the tip (pre-scale)
+    // Idle wind sway (local space, tip-weighted — as the GLSL version intended).
+    const ph = root.x.add(root.z).mul(0.15);
+    const swayX = time.mul(1.6).add(ph).sin().mul(0.18).mul(tipW);
+    const swayZ = time.mul(1.3).add(ph).cos().mul(0.10).mul(tipW);
+    // Bow-wave push, computed in WORLD space then rotated into the blade's
+    // local frame by -yaw (instances are yaw + a small tilt; the tilt error is
+    // invisible) and divided by the instance scale so the world-space
+    // magnitude is scale-independent.
+    const dx = root.x.sub(uKart.x);
+    const dz = root.z.sub(uKart.z);
+    const dist = dx.mul(dx).add(dz.mul(dz)).sqrt().max(0.001);
+    const near = smoothstep(1.0, 4.6, dist).oneMinus(); // 1 at the kart -> 0 by 4.6u
+    const mag = near.mul(uKart.w).mul(tipW).div(yawScale.y);
+    const wx = dx.div(dist).mul(mag);
+    const wz = dz.div(dist).mul(mag);
+    const cy = yawScale.x.cos();
+    const sy = yawScale.x.sin();
+    const px = swayX.add(wx.mul(cy).sub(wz.mul(sy)));
+    const pz = swayZ.add(wx.mul(sy).add(wz.mul(cy)));
+    // Shoved blades also crouch a little, so the wave reads in silhouette.
+    const py = mag.mul(-0.3);
+    mat.positionNode = positionLocal.add(vec3(px, py, pz));
+    // Looking toward the sun through the blade -> warm translucent glow,
+    // strongest near the (lighter) tips. Same shared nodes as the foliage
+    // (main.js drives them each frame); ×1.4 restores the grass's slightly
+    // brighter glow from the GLSL era.
+    const backlit = positionViewDirection.negate().dot(uSunViewNode).max(0).pow(3);
+    mat.emissiveNode = uSunColNode.mul(1.4).mul(backlit).mul(attribute("color").y.mul(0.65).add(0.35));
+  }
 
   const mesh = new THREE.InstancedMesh(blade, mat, COUNT);
+  mesh.userData.uKart = uKart; // main.js writes the kart position + push here
   const dummy = new THREE.Object3D();
   const tint = new THREE.Color();
+  const aRoot = new Float32Array(COUNT * 3);
+  const aYawScale = new Float32Array(COUNT * 2);
   let n = 0;
   let tries = 0;
   while (n < COUNT && tries < COUNT * 4) {
@@ -1030,14 +1054,21 @@ function buildGrass(scene, track, heightAt) {
     if (_inLake(x, z)) continue;
     const biome = biomeAt(x, z);
     if (rand() > biome.grassDensity) continue; // sparse in dry biomes
-    dummy.position.set(x, heightAt(x, z), z);
-    dummy.rotation.set((rand() - 0.5) * 0.3, rand() * Math.PI, (rand() - 0.5) * 0.3);
-    dummy.scale.setScalar(0.7 + rand() * 1.1);
+    const y = heightAt(x, z);
+    const yaw = rand() * Math.PI;
+    const scale = 0.7 + rand() * 1.1;
+    dummy.position.set(x, y, z);
+    dummy.rotation.set((rand() - 0.5) * 0.3, yaw, (rand() - 0.5) * 0.3);
+    dummy.scale.setScalar(scale);
     dummy.updateMatrix();
     mesh.setMatrixAt(n, dummy.matrix);
     mesh.setColorAt(n, tint.set(biome.grassTint)); // tints the blade gradient
+    aRoot[n * 3] = x; aRoot[n * 3 + 1] = y; aRoot[n * 3 + 2] = z;
+    aYawScale[n * 2] = yaw; aYawScale[n * 2 + 1] = scale;
     n++;
   }
+  blade.setAttribute("aRoot", new THREE.InstancedBufferAttribute(aRoot, 3));
+  blade.setAttribute("aYawScale", new THREE.InstancedBufferAttribute(aYawScale, 2));
   mesh.count = n;
   mesh.instanceMatrix.needsUpdate = true;
   if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
@@ -1253,6 +1284,33 @@ const GROUND_DEBRIS = {
   alpine: { dens: 0.42, cols: SNOW_DEBRIS_COLS },
   tundra: { dens: 0.5, cols: SNOW_DEBRIS_COLS },
 };
+
+// Colour for one airborne fleck of the LOCAL biome's loose debris (the wake
+// wash the karts throw up at speed — see effects.wakeDebris): a random pick
+// from the same palettes as the ground-leaf carpet, so what flies up behind a
+// kart matches what's lying on the verge. Biomes without a carpet get their
+// own small palettes (city litter, beach sand, jungle leaves); anything else
+// falls back to the dust tint. Writes/returns `out` (caller owns it).
+const WAKE_DEBRIS_COLS = {
+  autumn: GROUND_LEAF_COLS,
+  blossom: PETAL_COLS,
+  forest: FOREST_LEAF_COLS,
+  meadow: MEADOW_DEBRIS_COLS,
+  savanna: SAVANNA_DEBRIS_COLS,
+  desert: DESERT_DEBRIS_COLS,
+  mesa: DESERT_DEBRIS_COLS,
+  alpine: SNOW_DEBRIS_COLS,
+  tundra: SNOW_DEBRIS_COLS,
+  city: [0xd8d8d2, 0xbfc3c7, 0xe8e6da, 0xaab0b6], // paper scraps + street grit
+  beach: [0xe8d9ae, 0xf2e8c8, 0xd9c493, 0xfbf6e4], // sand + shell chips
+  jungle: [0x2f6e33, 0x4a8f3c, 0x6aa84f, 0x3c5a24], // deep green leaf bits
+};
+export function biomeDebrisColor(x, z, out = new THREE.Color()) {
+  const pal = WAKE_DEBRIS_COLS[biomeAt(x, z).name];
+  if (!pal) return biomeDustColor(x, z, out);
+  return out.set(pal[(Math.random() * pal.length) | 0]);
+}
+
 function buildGroundLeaves(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
@@ -1494,6 +1552,41 @@ function debrisTexture(kind) {
       ctx.ellipse(24, 24, 8 + i * 2.4, 6 + i * 2.6, i * 0.6, 0, Math.PI * 2);
       ctx.stroke();
     }
+  } else if (kind === "leaf") {
+    // Small pointed leaf silhouette (white — tinted per biome by mat.color).
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.beginPath();
+    ctx.moveTo(24, 6);
+    ctx.quadraticCurveTo(40, 18, 24, 42);
+    ctx.quadraticCurveTo(8, 18, 24, 6);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.5)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(24, 8);
+    ctx.lineTo(24, 40);
+    ctx.stroke();
+  } else if (kind === "streak") {
+    // Ground-hugging wisp (blown sand / spindrift): a soft horizontal ribbon.
+    const g = ctx.createLinearGradient(2, 0, 46, 0);
+    g.addColorStop(0, "rgba(255,255,255,0)");
+    g.addColorStop(0.3, "rgba(255,255,255,0.75)");
+    g.addColorStop(0.7, "rgba(255,255,255,0.75)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.ellipse(24, 24, 22, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (kind === "paper") {
+    // A scrap of litter: a slightly tilted white square with a soft crease.
+    ctx.save();
+    ctx.translate(24, 24);
+    ctx.rotate(0.35);
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.fillRect(-11, -14, 22, 28);
+    ctx.fillStyle = "rgba(200,200,200,0.5)";
+    ctx.fillRect(-11, -2, 22, 3);
+    ctx.restore();
   } else {
     // Soft fluffy seed: a fading radial puff.
     const g = ctx.createRadialGradient(24, 24, 0, 24, 24, 22);
@@ -1564,6 +1657,82 @@ function buildWindDebris(scene, track, heightAt) {
   build("tumbleweed", "desert", { want: 34, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, gustSpd: 0.45, amp: 5.5, bounceSpd: 3.2, bounce: 1.6 });
   // Seed-fluff: small, pale, floats higher and drifts more gently.
   build("fluff", "savanna", { want: 90, size: 0.7, baseLift: 1.6, tint: 0xf2ecd8, opacity: 0.7, gustSpd: 0.35, amp: 3.2, bounceSpd: 1.4, bounce: 0.5 });
+}
+
+// Debris that CROSSES the road (perceived speed): leaves skittering over the
+// tarmac, sand/spindrift wisps snaking across, litter tumbling through the
+// city. The wind debris above lives on the verges — these motes put MOVING
+// reference objects directly in your path, and overtaking something that is
+// itself moving reads faster than passing anything static. Same recipe as
+// buildWindDebris (one InstancedMesh per kind+biome actually present, motion
+// entirely in the vertex shader off `time`, zero per-frame CPU): each mote
+// glides from verge to verge along its row's side vector and FADES OUT before
+// the ends, so the wrap-around teleport is never visible.
+function buildRoadCrossers(scene, track, heightAt) {
+  const N = track.samples;
+  const up = new THREE.Vector3(0, 1, 0);
+  const span = track.halfWidth + 7; // crossing half-width: verge to verge, a bit beyond
+  const build = (kind, biome, cfg) => {
+    const bases = [];
+    const sides = [];
+    let tries = 0;
+    while (bases.length / 3 < cfg.want && tries < cfg.want * 12) {
+      tries++;
+      const i = Math.floor(rand() * N);
+      const p = track._pts[i];
+      if (biomeAt(p.x, p.z).name !== biome) continue;
+      if (featureSpanBlock(track.features, p.x, p.z)) continue; // decks/tunnels own their spans
+      const s = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      bases.push(p.x, p.y + cfg.lift, p.z);
+      sides.push(s.x, s.z);
+    }
+    if (!bases.length) return;
+    const count = bases.length / 3;
+    const geo = new THREE.PlaneGeometry(cfg.size, cfg.size * (cfg.aspect || 1));
+    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(new Float32Array(bases), 3));
+    geo.setAttribute("aSide", new THREE.InstancedBufferAttribute(new Float32Array(sides), 2));
+    const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
+    mat.map = debrisTexture(kind);
+    mat.color = new THREE.Color(cfg.tint);
+    const b = attribute("aBase");
+    const sd = attribute("aSide");
+    const ph = hash(instanceIndex);
+    // -1 -> +1 across the road, wrapping; per-mote phase AND speed variation so
+    // the field never marches in step.
+    const u = time.mul(cfg.rate).mul(ph.mul(0.5).add(0.75)).add(ph.mul(7.31)).fract().mul(2).sub(1);
+    const hop = time.add(ph.mul(6.2832)).mul(cfg.hopSpd).sin().abs().mul(cfg.hop); // skittering bounce
+    const drift = time.add(ph.mul(9.7)).mul(0.9).sin().mul(cfg.driftAmp); // small along-road wobble
+    mat.positionNode = vec3(
+      b.x.add(sd.x.mul(u.mul(span))).sub(sd.y.mul(drift)),
+      b.y.add(hop),
+      b.z.add(sd.y.mul(u.mul(span))).add(sd.x.mul(drift))
+    );
+    // Fade at both ends of the crossing so the wrap is invisible.
+    mat.opacityNode = float(cfg.opacity).mul(smoothstep(1.0, 0.82, u.abs()));
+    const mesh = new THREE.InstancedMesh(geo, mat, count);
+    mesh.name = `roadCrosser:${kind}:${biome}`; // findable in headless probes
+    mesh.frustumCulled = false; // instances span whole biome stretches
+    mesh.castShadow = false;
+    mesh.renderOrder = 3;
+    mesh.layers.set(1);
+    scene.add(mesh);
+  };
+  // Leaves amble across (~10-16s a crossing); wisps gust across low and fast;
+  // litter tumbles through at city-wind pace. Builds for absent biomes no-op.
+  // Kept deliberately sparse, small and low — a handful of motes crossing your
+  // path sells the speed; a confetti field just reads as clutter.
+  const leaf = { want: 10, size: 0.42, lift: 0.16, opacity: 0.6, rate: 0.05, hopSpd: 2.6, hop: 0.3, driftAmp: 1.4 };
+  build("leaf", "forest", { ...leaf, tint: 0x4a7230 });
+  build("leaf", "autumn", { ...leaf, want: 12, tint: 0xc05f1a });
+  build("leaf", "jungle", { ...leaf, tint: 0x3f7d33 });
+  build("leaf", "blossom", { ...leaf, size: 0.34, tint: 0xff9fc4, hop: 0.45 }); // petals, floatier
+  const wisp = { want: 10, size: 2.4, aspect: 0.4, lift: 0.3, opacity: 0.42, rate: 0.09, hopSpd: 1.2, hop: 0.15, driftAmp: 2.2 };
+  build("streak", "desert", { ...wisp, tint: 0xe3c88f });
+  build("streak", "mesa", { ...wisp, tint: 0xd9b184 });
+  build("streak", "beach", { ...wisp, tint: 0xf0e4bc });
+  build("streak", "alpine", { ...wisp, tint: 0xf4f8ff, opacity: 0.55 }); // spindrift
+  build("streak", "tundra", { ...wisp, tint: 0xf4f8ff, opacity: 0.55 });
+  build("paper", "city", { want: 8, size: 0.42, lift: 0.3, opacity: 0.65, rate: 0.07, hopSpd: 3.1, hop: 0.7, driftAmp: 1.8, tint: 0xe4e4de });
 }
 
 function buildTrees(scene, track, heightAt, flatten) {

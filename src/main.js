@@ -19,7 +19,7 @@ import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
@@ -765,6 +765,7 @@ const effects = new EffectsManager(scene);
 const _warmPos = new THREE.Vector3();
 const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
+const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
 const hud = new HUD();
 const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
@@ -1687,12 +1688,9 @@ function updateAtmosphere() {
   const sunGlow = (sunVisibleMood ? 0.5 : 0) * clear;
   uSunViewNode.value.copy(_sunViewVec);
   uSunColNode.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
-  // Grass keeps its own (still-GLSL, M5) backlight shader when present.
-  const gsh = world.grass && world.grass.material.userData.shader;
-  if (gsh && gsh.uniforms.uSunView) {
-    gsh.uniforms.uSunView.value.copy(_sunViewVec);
-    gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
-  }
+  // (Grass now reads the shared uSunView/uSunCol nodes directly — its old
+  // GLSL onBeforeCompile shader never ran under WebGPURenderer, so the
+  // per-frame uniform copy that lived here drove a shader that didn't exist.)
   // Puddles now animate via the TSL `time` node (no per-frame uniform write needed;
   // node materials drop the dummy .uniforms after they compile).
 }
@@ -6723,6 +6721,23 @@ function loop(now) {
       if (_snDust > 0.9) amt = Math.max(amt, 0.45 + 0.3 * Math.min(1, (_snDust - 0.9) / 0.1));
       if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
       if (amt > 0.02) effects.dust(player, _dustCol, amt);
+    }
+    // The world reacting to your speed (the strongest speed cue there is):
+    // biome debris yanked airborne in the wake from ~60% of top speed, and
+    // pale tire grit flicked off the rear wheels once flat-out.
+    if (!player.airborne && _sp > 6) {
+      const _snFx = Math.min(1, _sp / player.maxSpeed);
+      if (_snFx > 0.6) {
+        biomeDebrisColor(player.position.x, player.position.z, _wakeCol);
+        effects.wakeDebris(player, _wakeCol, Math.min(1, (_snFx - 0.6) / 0.35));
+      }
+      if (_snFx > 0.85) effects.tireGrit(player);
+    }
+    // Grass bow-wave: the roadside blades shove away from the kart, harder
+    // with speed (the uniform is read by buildGrass's position node).
+    {
+      const _guk = world.grass && world.grass.userData.uKart;
+      if (_guk) _guk.value.set(player.position.x, player.position.y, player.position.z, 0.25 + 0.85 * Math.min(1, _sp / player.maxSpeed));
     }
     // (Chromatic aberration is live again — wired into the post graph via
     // _caScene and eased from updateCamera alongside the speed vignette. Radial
