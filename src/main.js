@@ -3278,6 +3278,19 @@ function syncTrackPanel() {
   trackPanel?.querySelectorAll("#track-tod .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", chip.dataset.tod === tod);
   });
+  const near = (a, b) => Math.abs(a - b) < 0.011;
+  const styleId = Object.keys(TRACK_STYLES).find((k) => {
+    const s = TRACK_STYLES[k];
+    return near(s.curviness, _trackDraft.curviness ?? 0.5) && near(s.twist, _trackDraft.twist ?? 0.5)
+      && near(s.hilliness, _trackDraft.hilliness ?? 0.5) && near(s.hills, _trackDraft.hills ?? 0.5);
+  });
+  trackPanel?.querySelectorAll("#track-style .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", chip.dataset.style === styleId);
+  });
+  const sizeId = Object.keys(TRACK_SIZES).find((k) => near(TRACK_SIZES[k], _trackDraft.size ?? 0.5));
+  trackPanel?.querySelectorAll("#track-sizeseg .biome-chip").forEach((chip) => {
+    chip.classList.toggle("on", chip.dataset.size === sizeId);
+  });
   trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", _trackDraft.features.includes(chip.dataset.feat));
   });
@@ -3297,6 +3310,15 @@ function scheduleTrackPreview() {
   });
 }
 const ALL_FEATS = [...FEATURE_CHIP_KINDS, "extras"];
+// Style + Size presets: human words over the raw generator knobs (the knobs
+// themselves live behind Fine-tune). Style × Size is the expressive front —
+// Wild + Small is a tight brawl, Chill + Large a Sunday drive.
+const TRACK_STYLES = {
+  chill: { curviness: 0.3, twist: 0.25, hilliness: 0.2, hills: 0.3 },
+  classic: { curviness: 0.5, twist: 0.5, hilliness: 0.5, hills: 0.5 },
+  wild: { curviness: 0.75, twist: 0.85, hilliness: 0.75, hills: 0.75 },
+};
+const TRACK_SIZES = { small: 0.3, medium: 0.55, large: 0.85 };
 function openTrackPanel() {
   // The maker is custom-only — Classic Circuit is a card on the Track step.
   _trackDraft = {
@@ -3318,6 +3340,39 @@ function openTrackPanel() {
   syncTrackPanel();
   openSubScreen(trackPanel);
 }
+// Style / Size chips write the underlying knobs; Fine-tune reveals them raw.
+trackPanel?.querySelectorAll("#track-style .biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    Object.assign(_trackDraft, TRACK_STYLES[chip.dataset.style]);
+    syncTrackPanel();
+  });
+});
+trackPanel?.querySelectorAll("#track-sizeseg .biome-chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    _trackDraft.size = TRACK_SIZES[chip.dataset.size];
+    syncTrackPanel(); // re-applies the size-driven biome cap too
+  });
+});
+{
+  const advT = document.getElementById("track-adv-toggle");
+  const fine = document.getElementById("track-finetune");
+  advT?.addEventListener("click", () => {
+    const open = fine.classList.toggle("hidden") === false;
+    advT.textContent = open ? "Fine-tune ▾" : "Fine-tune ▸";
+    advT.setAttribute("aria-expanded", String(open));
+  });
+}
+// One-tap whole-map roll: place, style, size, time and a fresh loop.
+document.getElementById("track-surprise")?.addEventListener("click", () => {
+  Object.assign(_trackDraft, TRACK_STYLES[_pick(Object.keys(TRACK_STYLES))]);
+  _trackDraft.size = TRACK_SIZES[_pick(Object.keys(TRACK_SIZES))];
+  const cap = maxBiomesForSize(_trackDraft.size);
+  const pool = [...ALL_BIOMES].sort(() => Math.random() - 0.5);
+  _trackDraft.biomes = pool.slice(0, 1 + Math.floor(Math.random() * cap));
+  _trackDraft.timeOfDay = _pick(["midday", "sunset", "night"]);
+  _trackDraft.seed = randomSeed();
+  syncTrackPanel();
+});
 // Time-of-day picker (single-select: midday / sunset / night / random).
 document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -3359,34 +3414,28 @@ document.getElementById("menu-map-btn")?.addEventListener("click", () => {
 });
 refreshMenuMap();
 document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
-const setTrackVal = (id, v) => {
-  const val = document.getElementById(id + "-val");
-  if (val) val.textContent = v;
-};
+// The shape sliders re-sync the whole panel (not just their label) so the
+// Style chips light up when the knobs land on a preset and clear when they
+// drift off one.
 document.getElementById("track-curvy")?.addEventListener("input", (e) => {
   _trackDraft.curviness = e.target.value / 100;
-  setTrackVal("track-curvy", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-twist")?.addEventListener("input", (e) => {
   _trackDraft.twist = e.target.value / 100;
-  setTrackVal("track-twist", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-hilly")?.addEventListener("input", (e) => {
   _trackDraft.hilliness = e.target.value / 100;
-  setTrackVal("track-hilly", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-hills")?.addEventListener("input", (e) => {
   _trackDraft.hills = e.target.value / 100;
-  setTrackVal("track-hills", e.target.value);
-  scheduleTrackPreview();
+  syncTrackPanel();
 });
 document.getElementById("track-size")?.addEventListener("input", (e) => {
   _trackDraft.size = e.target.value / 100;
-  setTrackVal("track-size", e.target.value);
-  // Re-apply the biome cap and refresh the hint/locked chips as the map resizes.
+  // Re-applies the biome cap and refreshes the hint/locked chips as the map resizes.
   syncTrackPanel();
 });
 document.getElementById("track-new")?.addEventListener("click", (e) => {

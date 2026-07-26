@@ -743,14 +743,57 @@
     <div class="sheet-inner track-main">
       <div class="track-body">
         <div class="track-col-map">
-          <!-- The reroll lives inside the map box, right under the preview. -->
+          <!-- The reroll + full-random both live in the map box: the map IS
+               the fun part, so its buttons sit right under it. -->
           <div class="map-frame">
             <canvas id="track-preview" class="track-map" width="440" height="300"></canvas>
             <button id="track-new" class="secondary small map-reroll">🎲 Reroll shape</button>
+            <button id="track-surprise" class="secondary small map-reroll">✨ Surprise me</button>
           </div>
         </div>
         <div class="track-col-ctrl">
-          <div id="track-knobs">
+          <!-- Three human questions (Where / Style / Size), then time of day.
+               The raw generator knobs + set-piece permissions hide behind
+               Fine-tune below — tinkerers lose nothing, kids never see them. -->
+          <div class="env-label">Where? <span id="biome-max-hint" class="env-hint"></span></div>
+          <div class="biome-pick" id="track-biomes">
+              <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>
+              <button data-biome="forest" class="biome-chip">🌲 Forest</button>
+              <button data-biome="alpine" class="biome-chip">🏔 Alpine</button>
+              <button data-biome="autumn" class="biome-chip">🍂 Autumn</button>
+              <button data-biome="desert" class="biome-chip">🏜 Desert</button>
+              <button data-biome="mesa" class="biome-chip">🪨 Mesa</button>
+              <button data-biome="blossom" class="biome-chip">🌸 Blossom</button>
+              <button data-biome="jungle" class="biome-chip">🌴 Jungle</button>
+              <button data-biome="savanna" class="biome-chip">🦒 Savanna</button>
+              <button data-biome="tundra" class="biome-chip">❄️ Tundra</button>
+              <button data-biome="city" class="biome-chip">🏙 City</button>
+              <button data-biome="beach" class="biome-chip">🏖 Beach</button>
+          </div>
+          <div class="env-label">Style</div>
+          <div class="tod-grid trio" id="track-style">
+            <button data-style="chill" class="biome-chip">🍃 Chill</button>
+            <button data-style="classic" class="biome-chip">🏁 Classic</button>
+            <button data-style="wild" class="biome-chip">🌪️ Wild</button>
+          </div>
+          <div class="env-label">Size</div>
+          <div class="tod-grid trio" id="track-sizeseg">
+            <button data-size="small" class="biome-chip">Small</button>
+            <button data-size="medium" class="biome-chip">Medium</button>
+            <button data-size="large" class="biome-chip">Large</button>
+          </div>
+          <div class="tod-pick">
+            <span class="env-label">Time of day</span>
+            <div class="tod-grid" id="track-tod">
+              <button data-tod="midday" class="biome-chip">☀️ Midday</button>
+              <button data-tod="sunset" class="biome-chip">🌇 Sunset</button>
+              <button data-tod="night" class="biome-chip">🌙 Night</button>
+              <button data-tod="random" class="biome-chip">🎲 Random</button>
+            </div>
+          </div>
+          <!-- The raw generator knobs, for tinkerers. -->
+          <button id="track-adv-toggle" class="adv-toggle" aria-expanded="false">Fine-tune ▸</button>
+          <div id="track-finetune" class="hidden">
             <div class="track-row"><span class="setting-label">Curvy</span>
               <input id="track-curvy" class="slider" type="range" min="0" max="100" value="50" />
               <span class="track-val" id="track-curvy-val">50</span></div>
@@ -780,31 +823,6 @@
               <button data-feat="dam" class="biome-chip">💧 Dam</button>
               <button data-feat="causeway" class="biome-chip">🌊 Causeway</button>
               <button data-feat="extras" class="biome-chip">✨ Extras</button>
-            </div>
-            <div class="env-label">Environment <span id="biome-max-hint" class="env-hint"></span></div>
-            <div class="biome-pick" id="track-biomes">
-              <button data-biome="meadow" class="biome-chip">🌳 Meadow</button>
-              <button data-biome="forest" class="biome-chip">🌲 Forest</button>
-              <button data-biome="alpine" class="biome-chip">🏔 Alpine</button>
-              <button data-biome="autumn" class="biome-chip">🍂 Autumn</button>
-              <button data-biome="desert" class="biome-chip">🏜 Desert</button>
-              <button data-biome="mesa" class="biome-chip">🪨 Mesa</button>
-              <button data-biome="blossom" class="biome-chip">🌸 Blossom</button>
-              <button data-biome="jungle" class="biome-chip">🌴 Jungle</button>
-              <button data-biome="savanna" class="biome-chip">🦒 Savanna</button>
-              <button data-biome="tundra" class="biome-chip">❄️ Tundra</button>
-              <button data-biome="city" class="biome-chip">🏙 City</button>
-              <button data-biome="beach" class="biome-chip">🏖 Beach</button>
-            </div>
-          </div>
-          <!-- Outside #track-knobs so it stays available in Classic mode too. -->
-          <div class="tod-pick">
-            <span class="env-label">Time of day</span>
-            <div class="tod-grid" id="track-tod">
-              <button data-tod="midday" class="biome-chip">☀️ Midday</button>
-              <button data-tod="sunset" class="biome-chip">🌇 Sunset</button>
-              <button data-tod="night" class="biome-chip">🌙 Night</button>
-              <button data-tod="random" class="biome-chip">🎲 Random</button>
             </div>
           </div>
           <div class="track-actions">

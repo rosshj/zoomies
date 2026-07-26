@@ -2981,3 +2981,8 @@ button.small { white-space: nowrap; }
 .racer-card .mini-name { font-size: 15px; }
 .racer-card .creator-label { font-size: 11px; }
 .racer-card .creator-input { min-height: 42px; font-size: 15px; }
+
+/* Track maker: 3-up chip rows (Style / Size) + the Fine-tune drawer. */
+.tod-grid.trio { grid-template-columns: repeat(3, 1fr); }
+#track-finetune { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+.map-frame .map-reroll + .map-reroll { margin-top: 2px; }
