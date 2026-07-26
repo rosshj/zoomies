@@ -872,13 +872,13 @@ function _pickUnused(palette, used) {
 // The per-race roster: the player (slot 0) wears the garage selection; the AI keep
 // their names/skills but get nudged off the player's kart + cat colours so the
 // player stands out. Multiplayer / time-trial fields are the player alone.
-function raceRoster() {
-  const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
-  if (MP.enabled || timeTrial) return [playerCfg];
+// The AI lineup for a given player look (deterministic: same look → same
+// rivals). Shared by the race build AND the start-line grid tableau, so the
+// cats you see waiting on the grid are exactly the cats you race.
+function aiRoster(look) {
   const usedKart = new Set([look.color]);
   const usedCat = new Set([look.catColor]);
-  const ai = ROSTER.slice(1).map((cfg, i) => {
+  return ROSTER.slice(1).map((cfg, i) => {
     let { color, catColor } = cfg;
     if (usedKart.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), usedKart);
     usedKart.add(color);
@@ -887,7 +887,12 @@ function raceRoster() {
     // Spread body styles + give each rival its own number so the field varies.
     return { ...cfg, color, catColor, kartStyle: i % 3, kartNumber: 11 + i * 6 };
   });
-  return [playerCfg, ...ai];
+}
+function raceRoster() {
+  const look = playerLook();
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  if (MP.enabled || timeTrial) return [playerCfg];
+  return [playerCfg, ...aiRoster(look)];
 }
 
 // Per-race seeded RNG for the SIM path (grid shuffle, AI lane/shield, spinouts),
@@ -2123,12 +2128,14 @@ document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
     TOTAL_LAPS = Number(b.dataset.laps);
     try { localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS)); } catch {}
     refreshRaceOptSegs();
+    refreshStakes();
   }));
 document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     DIFFICULTY = b.dataset.diff;
     try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
     refreshRaceOptSegs();
+    refreshStakes();
   }));
 
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
@@ -3726,6 +3733,141 @@ function renderGarage(timeSec, dt = 0.016) {
   renderFrame();
 }
 
+// --- Start-line grid tableau ----------------------------------------------
+// The "Start line" screen renders the ACTUAL starting grid behind the panel:
+// your preview kart parked in pole and the real AI lineup (aiRoster — the same
+// cats you'll race) on the slots behind, shot from in front of the gantry.
+// Rivals are built staggered (one per frame-ish) so entering the screen never
+// hitches, and cached like the showroom preview so re-entry is instant.
+let _gridOpen = false;
+let _gridRivals = []; // rival Karts currently placed in the scene
+const _gridRivalCache = { key: null, karts: [] };
+let _gridBuildTimer = 0;
+const _gridCamPos = new THREE.Vector3();
+const _gridCamBase = new THREE.Vector3();
+const _gridLook = new THREE.Vector3();
+const _gridSide = new THREE.Vector3();
+const _gridRight = new THREE.Vector3();
+function _gridRivalKey() {
+  const look = playerLook();
+  return [look.color, look.catColor].join("|"); // rival de-clash depends only on these
+}
+function _buildGridRival(cfg) {
+  const k = new Kart({ ...cfg, isPlayer: false });
+  k.group.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
+  });
+  toonify(k.group);
+  return k;
+}
+// Place (or re-place) the field for the current mode: pole = you; gp/cup show
+// the rivals, time trial leaves you alone at the line.
+function _placeGridField() {
+  const pole = track.gridSlot(0);
+  // Your kart: straight from the showroom cache when it matches; a cold build
+  // waits for the slide to land (same trick as refreshRacerPreview).
+  const key = _previewKey(garageConfig);
+  const placePlayer = () => {
+    if (!_gridOpen) return;
+    if (_previewCache.key !== key) {
+      if (_previewCache.kart) _disposeGroup(_previewCache.kart.group);
+      _previewCache.kart = _buildPreviewKart(garageConfig);
+      _previewCache.key = key;
+    }
+    const pk = _previewCache.kart;
+    pk.placeAt(pole.position, pole.heading, track);
+    if (!pk.group.parent) scene.add(pk.group);
+  };
+  if (_previewCache.key === key) placePlayer();
+  else setTimeout(placePlayer, 470);
+  // Rivals: cached across visits; evicted when the player's look changes
+  // (their de-clashed colours depend on it). Built one at a time.
+  clearTimeout(_gridBuildTimer);
+  for (const k of _gridRivals) scene.remove(k.group);
+  _gridRivals = [];
+  if (raceMode === "tt") { _aimGridCamera(); return; }
+  const rkey = _gridRivalKey();
+  if (_gridRivalCache.key !== rkey) {
+    for (const k of _gridRivalCache.karts) _disposeGroup(k.group);
+    _gridRivalCache.karts = [];
+    _gridRivalCache.key = rkey;
+  }
+  const roster = aiRoster(playerLook());
+  const placeRival = (i) => {
+    if (!_gridOpen || i >= roster.length) {
+      if (_gridOpen && state === State.MENU) beginWarmAll(1); // compile any new pipelines off-tap
+      return;
+    }
+    let k = _gridRivalCache.karts[i];
+    if (!k) { k = _buildGridRival(roster[i]); _gridRivalCache.karts[i] = k; }
+    const slot = track.gridSlot(i + 1);
+    k.placeAt(slot.position, slot.heading, track);
+    scene.add(k.group);
+    _gridRivals.push(k);
+    _gridBuildTimer = setTimeout(() => placeRival(i + 1), _gridRivalCache.karts[i + 1] ? 0 : 90);
+  };
+  const cached = _gridRivalCache.karts.length === roster.length;
+  _gridBuildTimer = setTimeout(() => placeRival(0), cached ? 0 : 500);
+  _aimGridCamera();
+}
+// Fixed cinematic: stand a few lengths past the start line, low, looking back
+// through the gantry at the field. The panel covers the right half, so the aim
+// pans screen-right which slides the grid into the open left half.
+function _aimGridCamera() {
+  const s0 = track.gridSlot(0);
+  const s1 = track.gridSlot(1);
+  const h = s0.heading;
+  const fwdX = Math.sin(h), fwdZ = Math.cos(h);
+  _gridSide.set(fwdZ, 0, -fwdX); // right of the direction of travel
+  _gridCamBase.copy(s0.position).add(s1.position).multiplyScalar(0.5); // front-row centre
+  _gridLook.set(_gridCamBase.x - fwdX * 7, _gridCamBase.y + 1.0, _gridCamBase.z - fwdZ * 7);
+  // Stand on the POLE side (slot 0 sits at +_gridSide) so your kart is the one
+  // nearest the lens, with the rivals receding behind it.
+  _gridCamBase.x += fwdX * 11.5; _gridCamBase.z += fwdZ * 11.5;
+  _gridCamBase.addScaledVector(_gridSide, 6.4);
+  _gridCamBase.y += 3.4;
+}
+function renderStartGrid(timeSec, dt) {
+  const pk = _previewCache.kart;
+  if (pk && pk.group.parent) pk.idleBlink?.(dt);
+  for (const k of _gridRivals) k.idleBlink?.(dt);
+  // A slow breathing dolly — alive, but nothing like the menu's orbit drift.
+  _gridCamPos.copy(_gridCamBase);
+  _gridCamPos.addScaledVector(_gridSide, Math.sin(timeSec * 0.24) * 0.9);
+  _gridCamPos.y += Math.sin(timeSec * 0.5) * 0.22;
+  camera.position.copy(_gridCamPos);
+  if (camera.fov !== 42) { camera.fov = 42; camera.updateProjectionMatrix(); }
+  camera.lookAt(_gridLook);
+  // Pan the aim toward screen-right so the field sits in the open left half.
+  _gridRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
+  _gridLook.addScaledVector(_gridRight, 3.4);
+  camera.lookAt(_gridLook);
+  _gridLook.addScaledVector(_gridRight, -3.4); // restore for the next frame
+  renderFrame();
+}
+function openStartGrid() {
+  if (!_gridOpen) {
+    _gridOpen = true;
+    // Kill any in-progress menu cross-dissolve (its frozen snapshot would hang
+    // over the live grid as a ghost), same as the showroom does.
+    if (menuXfade) menuXfade.style.opacity = 0;
+    _menuPhase = "hold";
+    _menuShotT = 0;
+  }
+  _placeGridField(); // re-place even when already open: the mode may have changed
+}
+function closeStartGrid() {
+  if (!_gridOpen) return;
+  _gridOpen = false;
+  clearTimeout(_gridBuildTimer);
+  const pk = _previewCache.kart;
+  if (pk && pk.group.parent && pk.group !== _garagePreview) scene.remove(pk.group);
+  for (const k of _gridRivals) scene.remove(k.group); // stay parked in the cache
+  _gridRivals = [];
+}
+// Debug hook so headless probes can assert the tableau state.
+window.__zoomies.startGrid = () => ({ open: _gridOpen, rivals: _gridRivals.length, player: !!(_previewCache.kart && _previewCache.kart.group.parent) });
 
 // Custom-cat creator controls.
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
@@ -3987,6 +4129,7 @@ function flowGo(step, dir = 1, instant = false) {
   // Leave hooks: the racer family (cat/kart + studios) shares the 3D showroom
   // preview and its draft — close only when leaving the family entirely.
   if (changing && RACER_FAMILY.includes(flowStep) && !RACER_FAMILY.includes(step)) closeGarage();
+  if (changing && flowStep === "startline") closeStartGrid();
   // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
   if (step === "title") refreshTitlePlay();
   else if (step === "mode") refreshModeCards();
@@ -3996,7 +4139,7 @@ function flowGo(step, dir = 1, instant = false) {
   else if (step === "kart") { openRacerStep(); renderKartCards(); refreshRacerEyebrows(); }
   else if (step === "cat-edit") { openRacerStep(); _garageDraft.cat = CUSTOM_CAT_IDX; syncGarageUI(); refreshRacerPreview(); }
   else if (step === "kart-edit") { openRacerStep(); _garageDraft.kart = CUSTOM_KART_IDX; syncGarageUI(); refreshRacerPreview(); }
-  else if (step === "startline") refreshStartline();
+  else if (step === "startline") { refreshStartline(); openStartGrid(); }
   if (changing) {
     if (instant) menuFlowEl.classList.add("flow-instant");
     if (cur) {
@@ -4152,10 +4295,24 @@ function chooseTrackCard(cfg) {
 
 // --- Start line: the only full summary — map, racer, options, one giant GO --
 const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP" };
+// The stakes line: what a WIN pays at the current laps/difficulty (plus the
+// daily bonus when it's still unclaimed) — so the segs read as a bet, not a
+// form. Time trial hides it (its note talks PBs instead).
+function refreshStakes() {
+  const el = document.getElementById("start-stakes");
+  if (!el) return;
+  const show = raceMode !== "tt";
+  document.getElementById("stakes-row")?.classList.toggle("hidden", !show);
+  if (!show) return;
+  const daily = _dailyActive && profile.dailyPaid !== todayStr();
+  const top = racePayout({ place: 1, field: ROSTER.length, laps: TOTAL_LAPS, difficulty: DIFFICULTY, daily, stats: {} }).total;
+  el.textContent = `Win up to 🐟 ${top}`;
+}
 function refreshStartline() {
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
   refreshRacerSummary();
   refreshRaceOptSegs();
+  refreshStakes();
   const goBtn = document.getElementById("go-btn");
   const note = document.getElementById("start-note");
   const cupDef = cupById(_cupChoice);
@@ -4306,7 +4463,7 @@ setTimeout(() => {
     pk.group.position.set(slot.position.x, slot.position.y - 80, slot.position.z);
     scene.add(pk.group);
     beginWarmAll(2); // culling-off frames so the buried kart actually draws
-    setTimeout(() => { if (pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group); }, 800);
+    setTimeout(() => { if (!_gridOpen && pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group); }, 800);
   } catch { /* prewarm is best-effort */ }
 }, 2500);
 
@@ -4881,6 +5038,7 @@ function beginRace() {
   input.calibrate();
   input.jumpHeld = false; // clear any held state from a previous run
   input.shielding = false;
+  closeStartGrid(); // the tableau's karts leave before the real field builds
 
   // In multiplayer the START button takes you to the lobby; the race itself
   // begins when the host starts it, synchronized across everyone. (Doing the
@@ -6291,6 +6449,15 @@ function loop(now) {
       camera.lookAt(c[3], c[4], c[5]);
       if (menuXfade) menuXfade.style.opacity = 0;
       renderFrame();
+      return;
+    }
+    if (_gridOpen) {
+      // Start line: hold on the starting-grid tableau (throttled like the menu
+      // drift — the shot barely moves, no need to burn battery at 60).
+      if (now - _lastMenuDraw >= 32) {
+        _lastMenuDraw = now;
+        renderStartGrid(now / 1000, dt);
+      }
       return;
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above

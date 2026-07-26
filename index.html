@@ -548,13 +548,14 @@
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body startline-body">
-        <div class="start-board">
-          <button id="menu-map-btn" class="map-frame map-frame-btn" title="Edit track">
-            <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
-            <span id="menu-map-label" class="map-label">Classic circuit</span>
-            <span class="map-edit-hint">Edit ›</span>
-          </button>
-        </div>
+        <!-- The hero is the 3D starting grid rendered behind the menu (your kart
+             in pole + the actual rivals, framed by the gantry) — so the map
+             demotes to a small corner chip and the panel docks right. -->
+        <button id="menu-map-btn" class="map-chip map-frame-btn" title="Edit track">
+          <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
+          <span id="menu-map-label" class="map-label">Classic circuit</span>
+          <span class="map-edit-hint">Edit ›</span>
+        </button>
         <div class="start-side">
           <div class="sticker-deep start-racer">
             <span class="tile-swatches">
@@ -585,6 +586,10 @@
                 <button class="seg-btn" data-diff="medium">Medium</button>
                 <button class="seg-btn" data-diff="hard">Hard</button>
               </div>
+            </div>
+            <div class="mode-opt-row" id="stakes-row">
+              <span class="mode-opt-label">Prize</span>
+              <span class="start-stakes" id="start-stakes">Win up to 🐟 0</span>
             </div>
             <p id="start-note" class="start-note hidden"></p>
           </div>
