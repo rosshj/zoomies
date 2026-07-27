@@ -704,6 +704,77 @@ function tunnelShellWA(run, halfW, p, u01) {
   return { W, A, skew, endT };
 }
 
+// Tunnel camera RAIL — the fix for the long-standing "camera goes weird at
+// tunnel mouths". The reactive clamps below can only shove the camera around
+// once it's already inside rock, and the shoves (plus their release at the
+// portals) are exactly the lurch players see. Instead, updateCamera asks this
+// guide every frame and gets back a desired position that ALREADY fits inside
+// the bore, faded in over the portal approach so nothing ever snaps.
+//
+// It LIMITS, it does not CENTRE. The first cut blended the camera all the way
+// onto the bore spine, which pinned the view to the road centreline for the
+// whole passage: the kart slid off to one side of the frame, the camera stopped
+// answering the wheel, and driving a tunnel went half-blind. Now only the part
+// of the offset that would actually bury the camera in rock is taken away, so
+// it keeps tracking the kart across the lane until a wall is genuinely in the
+// way — and the height is left alone unless the arch is about to clip it.
+// Returns null when no tunnel is near, else { k, x, y, z }: the blend weight
+// and the corrected position (equal to the input wherever nothing is in the
+// way, which makes the blend a no-op in the common case).
+export function tunnelCamGuide(feats, track, x, z, y) {
+  if (!feats) return null;
+  const N = track.samples;
+  for (const run of feats.runs) {
+    if (run.kind !== "tunnel") continue;
+    if (!runNear(run, x, z, track.halfWidth + 46)) continue;
+    // Portal rings sit inset 16% into the run (matches buildTunnel's sweep and
+    // featureCameraClamp). FADE samples (~35u) either side ramp the rail in on
+    // approach and back out after the exit.
+    const inset = Math.round((run.i1 - run.i0) * 0.16);
+    const t0 = run.i0 + inset;
+    const t1 = run.i1 - inset;
+    const FADE = 14;
+    let best = -1;
+    let bestD2 = 80 * 80;
+    for (let i = t0 - FADE; i <= t1 + FADE; i++) {
+      const p = track._pts[((i % N) + N) % N];
+      const dx = x - p.x;
+      const dz = z - p.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < bestD2) { bestD2 = d2; best = i; }
+    }
+    if (best < 0) continue;
+    // 0 a FADE outside either portal -> 1 from the portal ring inward.
+    const depth = Math.min(best - (t0 - FADE), t1 + FADE - best) / FADE;
+    const k = smooth01(Math.max(0, Math.min(1, depth)));
+    if (k <= 0) continue;
+    const p = track._pts[((best % N) + N) % N];
+    // Lateral unit vector at the anchor (= sideAt: cross(tan, up) normalized).
+    const tan = track._tans[((best % N) + N) % N];
+    const tl = Math.hypot(tan.x, tan.z) || 1;
+    const sideX = -tan.z / tl;
+    const sideZ = tan.x / tl;
+    const halfW = track.halfWidth + 2.6; // bore half-width (matches buildTunnel)
+    const APEX = 15;
+    const M = 1.5; // stay this far off the bore surface
+    // Height is held wherever it fits, so the framing inside a tunnel matches
+    // the framing outside it; only the floor and (below) the arch move it.
+    let cy = Math.max(y, p.y + 2.2);
+    // Lateral room the half-ellipse still leaves at that height, then clamp.
+    const relY = Math.max(0, (cy - p.y) / APEX);
+    const room = relY >= 1 ? 0 : halfW * Math.sqrt(1 - relY * relY) - M;
+    const latLim = Math.max(0, Math.min(halfW - M, room));
+    const lat = (x - p.x) * sideX + (z - p.z) * sideZ;
+    const latC = Math.max(-latLim, Math.min(latLim, lat));
+    // Only a camera higher than the arch itself is left after that pull-in.
+    const ceil = p.y + APEX * Math.sqrt(Math.max(0, 1 - (latC / halfW) * (latC / halfW))) - M;
+    if (cy > ceil) cy = Math.max(p.y + 2.2, ceil);
+    const pull = lat - latC;
+    return { k, x: x - sideX * pull, y: cy, z: z - sideZ * pull };
+  }
+  return null;
+}
+
 // Keep the chase camera out of tunnel rock. When the kart hugs the bore wall
 // (or reverses sideways inside), the camera's spot behind it can land inside
 // the mountain shell — the render then shows the shell's inside-out skin.

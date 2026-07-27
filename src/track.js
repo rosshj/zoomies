@@ -980,6 +980,40 @@ export class Track {
       this._tans.push(this.curve.getTangentAt(t));
     }
 
+    // Smooth the sampled ELEVATION profile. The height plan is evaluated at
+    // the coarse control net (~60-120u apart) and Catmull-Rom interpolation
+    // ripples slightly between those points — big hills read as subtly bumpy,
+    // especially now the speed camera rides lower. Two box-blur passes
+    // (±10 samples ≈ ±25u) kill that control-point ripple while leaving real
+    // hills (300u+ wavelengths) intact. XZ stays untouched. Every consumer
+    // (road mesh, physics project/groundInfo, scenery, features) reads these
+    // samples, and getPointAt() re-bases its height on them, so the whole
+    // world stays consistent with the road that actually gets built.
+    {
+      const S = this.samples;
+      const W = 10;
+      let ys = this._pts.map((p) => p.y);
+      for (let pass = 0; pass < 2; pass++) {
+        const out = new Array(S);
+        let sum = 0;
+        for (let k = -W; k <= W; k++) sum += ys[((k % S) + S) % S];
+        for (let i = 0; i < S; i++) {
+          out[i] = sum / (2 * W + 1);
+          sum -= ys[(((i - W) % S) + S) % S];
+          sum += ys[((i + W + 1) % S)];
+        }
+        ys = out;
+      }
+      for (let i = 0; i < S; i++) this._pts[i].y = ys[i];
+      // Re-derive tangents from the smoothed samples (central difference) so
+      // slopes agree with the road that actually gets built.
+      for (let i = 0; i < S; i++) {
+        const a = this._pts[(i - 1 + S) % S];
+        const b = this._pts[(i + 1) % S];
+        this._tans[i].set(b.x - a.x, b.y - a.y, b.z - a.z).normalize();
+      }
+    }
+
     // Point list for cheap distance/height queries used by scenery.
     this._coarse = [];
     for (let i = 0; i < this.samples; i += 2) this._coarse.push(this._pts[i]);
@@ -1202,6 +1236,7 @@ export class Track {
     this._buildWalls();
     this._buildCenterLine();
     this._buildEdgeLines();
+    this._buildRoadSeams();
     this._buildBoostPads();
     this._buildPuddles();
     this._buildStartLine();
@@ -1350,6 +1385,61 @@ export class Track {
     this.group.add(mesh);
   }
 
+  // Transverse tar seams (expansion joints): a faint dark strip ACROSS the road
+  // every ~24u, all the way around the lap. The road surface itself is the one
+  // thing always in view, and without a repeating longitudinal marker its noise
+  // just slides — a steady beat of cross-seams gives the ground measurable flow
+  // at any speed, on every biome (the dashed centre line only runs in towns).
+  // Deliberately subtle: thin, low-opacity, no lighting; one merged mesh.
+  _buildRoadSeams() {
+    const div = this.samples;
+    const spacing = 24; // ~metres between seams
+    const step = Math.max(2, Math.round((div * spacing) / this.length));
+    const inset = 0.7; // stop short of the painted edge lines
+    const hd = 0.09; // half-depth of the strip along the direction of travel
+    const positions = [];
+    const indices = [];
+    for (let i = 0; i < div; i += step) {
+      const p = this._pts[i];
+      const side = this._sideAt(i);
+      const tan = this._tans[i];
+      const w = this.halfWidth - inset;
+      const y = p.y + 0.045; // above the road (0.02), below the painted lines (0.05)
+      const base = positions.length / 3;
+      // Two verts per end: back edge then front edge, left then right.
+      for (const sw of [-w, w]) {
+        for (const td of [-hd, hd]) {
+          positions.push(
+            p.x + side.x * sw + tan.x * td,
+            y,
+            p.z + side.z * sw + tan.z * td
+          );
+        }
+      }
+      indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    }
+    if (!positions.length) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    // Flat road decal: normals straight up (same SSR-prepass note as the lines).
+    const nrm = new Float32Array(positions.length);
+    for (let i = 1; i < nrm.length; i += 3) nrm[i] = 1;
+    geo.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+    geo.setIndex(indices);
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        color: 0x101014,
+        transparent: true,
+        opacity: 0.22,
+        depthWrite: false,
+        side: THREE.DoubleSide, // winding follows loop direction (see the road note)
+      })
+    );
+    mesh.renderOrder = 1;
+    this.group.add(mesh);
+  }
+
   _buildSandTrim() {
     const div = this.samples;
     const positions = [];
@@ -1495,6 +1585,13 @@ export class Track {
     }
 
     const hw = 0.24; // half-width of the line
+    // Dash the line instead of painting it solid: a repeating on/off beat along
+    // the samples. Dashes strobe past at speed — a strong, cheap optic-flow cue
+    // right where the player looks — where the old continuous stripe just slid.
+    // Baked into the same per-vertex alpha as the zone fade, so dash ends stay
+    // soft (painted, not clinical) and it's still one mesh / one draw.
+    const DASH = 8; // samples per on+off cycle…
+    const DASH_ON = 5; // …of which this many are painted
     const positions = [];
     const alphas = [];
     const indices = [];
@@ -1505,7 +1602,8 @@ export class Track {
       const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
       const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
       positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-      alphas.push(vis[idx], vis[idx]);
+      const dash = idx % DASH < DASH_ON ? 1 : 0;
+      alphas.push(vis[idx] * dash, vis[idx] * dash);
       if (i < div) {
         const k = i * 2;
         indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
@@ -1535,7 +1633,7 @@ export class Track {
   }
 
   _buildStartLine() {
-    const p = this.curve.getPointAt(0);
+    const p = this.getPointAt(0); // smoothed height, flush with the built road
     const tan = this.curve.getTangentAt(0);
     const side = new THREE.Vector3().crossVectors(tan, new THREE.Vector3(0, 1, 0)).normalize();
 
@@ -1779,7 +1877,15 @@ export class Track {
   // `target` (optional) is written and returned instead of allocating — the AI
   // drivers call these several times per kart per frame.
   getPointAt(t, target) {
-    return this.curve.getPointAt(((t % 1) + 1) % 1, target);
+    const tw = ((t % 1) + 1) % 1;
+    const p = this.curve.getPointAt(tw, target);
+    // Height comes from the smoothed samples (see constructor), not the raw
+    // curve, so callers (items, grid slots, AI) sit flush on the built road.
+    const f = tw * this.samples;
+    const i0 = Math.floor(f) % this.samples;
+    const i1 = (i0 + 1) % this.samples;
+    p.y = this._pts[i0].y + (this._pts[i1].y - this._pts[i0].y) * (f - Math.floor(f));
+    return p;
   }
 
   getTangentAt(t, target) {

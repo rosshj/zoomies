@@ -9,17 +9,18 @@ import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
-import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp } from "./features.js";
+import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunnelCamGuide } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
+import { setWind } from "./wind.js";
 import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
@@ -466,11 +467,29 @@ function gradeOutput(base) {
   c = c.mul(mix(float(1), vig, _uVignette));
   return c;
 }
+// Chromatic aberration (boost rush): re-sample the scene's R and B channels a
+// touch inward/outward of the green sample, growing toward the corners so the
+// centre of the road stays crisp. Gated behind a uniform If — uAberr is the
+// same value for every pixel, so when it's 0 (any time you're not boosting)
+// the GPU skips both extra samples with no divergence cost, same trick as the
+// god-ray loop.
+const _uAberr = uniform(0);
+const _caScene = Fn(() => {
+  const c = vec3(_sceneTex.sample(viewportUV).rgb).toVar();
+  If(_uAberr.greaterThan(0.0004), () => {
+    const d = viewportUV.sub(0.5);
+    const off = d.mul(_uAberr).mul(d.dot(d).mul(3).add(0.25)); // quadratic falloff: strong at the corners, ~nothing at centre
+    const r = _sceneTex.sample(viewportUV.sub(off)).r;
+    const b = _sceneTex.sample(viewportUV.add(off)).b;
+    c.assign(vec3(r, c.g, b));
+  });
+  return c;
+})();
 // High: scene + god-ray shafts + bloom. Low: scene + bloom only — drops the
 // per-pixel god-ray pass, the big GPU/memory win on weak devices (see
 // applyQuality()).
-const _highOutput = gradeOutput(_sceneTex.add(_shaftTex).add(_bloomNode));
-const _lowOutput = gradeOutput(_sceneTex.add(_bloomNode));
+const _highOutput = gradeOutput(_caScene.add(_shaftTex).add(_bloomNode));
+const _lowOutput = gradeOutput(_caScene.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
@@ -519,12 +538,13 @@ const godrayPass = { enabled: true, setSize() {}, uniforms: {
 } };
 const flarePass = _passStub({ uVis: { value: 0 } });
 const fxPass = _passStub({
-  uAberr: { value: 0 },
+  uAberr: _uAberr, // LIVE: boost chromatic aberration (driven from updateCamera)
   uRadial: { value: 0 },
-  uVignette: _uVignette,
+  uVignette: _uVignette, // LIVE: speed vignette (driven from updateCamera)
   uSat: _uSat,
   uContrast: _uContrast,
 });
+const BASE_VIGNETTE = _uVignette.value; // resting corner darkening (menus, low speed)
 
 const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
 track.totalLaps = TOTAL_LAPS;
@@ -533,6 +553,7 @@ scene.add(track.group);
 
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
+window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 const items = new ItemManager(scene, track); // yarn balls + milk puddles
 Object.assign(window.__zoomies, { world, track, items }); // items: headless item-behavior probes
 _boot.world = performance.now();
@@ -746,6 +767,7 @@ const effects = new EffectsManager(scene);
 const _warmPos = new THREE.Vector3();
 const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
+const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
 const hud = new HUD();
 const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
@@ -1668,12 +1690,9 @@ function updateAtmosphere() {
   const sunGlow = (sunVisibleMood ? 0.5 : 0) * clear;
   uSunViewNode.value.copy(_sunViewVec);
   uSunColNode.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow * 0.7);
-  // Grass keeps its own (still-GLSL, M5) backlight shader when present.
-  const gsh = world.grass && world.grass.material.userData.shader;
-  if (gsh && gsh.uniforms.uSunView) {
-    gsh.uniforms.uSunView.value.copy(_sunViewVec);
-    gsh.uniforms.uSunCol.value.copy(godrayPass.uniforms.uColor.value).multiplyScalar(sunGlow);
-  }
+  // (Grass now reads the shared uSunView/uSunCol nodes directly — its old
+  // GLSL onBeforeCompile shader never ran under WebGPURenderer, so the
+  // per-frame uniform copy that lived here drove a shader that didn't exist.)
   // Puddles now animate via the TSL `time` node (no per-frame uniform write needed;
   // node materials drop the dummy .uniforms after they compile).
 }
@@ -2022,7 +2041,17 @@ function updateDRS(rawMs, dt) {
   // (kart build GC, the 12-angle pipeline prewarm). Acting on that junk dropped
   // a resolution rung during the countdown — a realloc hitch at the start plus
   // a needlessly blurry opening stretch. Freeze rung decisions until it's down.
-  if (_veilActive) {
+  // The MENU screens are not a race and must never cost the race resolution.
+  // They deliberately render at ~30fps (the drift and the start-line tableau
+  // both throttle to a 32ms draw to save battery) and they are where the bulk
+  // of the world's pipelines compile for the first time — so every menu frame
+  // looks like a blown budget to the scaler. It duly dropped two rungs on the
+  // TITLE screen, and the player then walked through the racer tableau, the
+  // veil and the countdown already blurred, with the recovery ladder only
+  // clawing it back seconds into the race. Same for PAUSED, which draws once
+  // and holds: those free frames read as headroom and would ratchet the scale
+  // UP, so un-pausing hitched. Judge resolution on racing frames only.
+  if (_veilActive || state === State.MENU || state === State.PAUSED) {
     _drsOverT = 0;
     _drsUnderT = 0;
     _drsCooldown = Math.max(_drsCooldown, 0.5); // and give the first live frames a beat
@@ -3096,7 +3125,7 @@ const _audioPolicyReady = getPlatform().then(async (p) => {
     }
   } catch { /* best-effort */ }
 }).catch(() => {});
-const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0 };
+const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0, rumble: 0 };
 function updateHaptics(nowMs) {
   if (!_platformA || !player || state !== State.RACING) return;
   const h = _platformA.haptics;
@@ -3125,6 +3154,17 @@ function updateHaptics(nowMs) {
   // Crossing the finish line: Apple's "success" double-tap pattern.
   if (player.finished && !_feel.finished) { _feel.last = nowMs; h.success(); }
   _feel.finished = player.finished;
+  // The one exception to "discrete moments only": a faint metronome of the
+  // LIGHTEST tick available while boosting (or pinned at the very top of the
+  // speed range), so full throttle physically hums. Slow cadence + selection
+  // strength keeps it a texture, not a buzz; it never claims _feel.last, and
+  // yields (nowMs - last check) whenever a discrete event just fired so those
+  // always read clean over it.
+  const _rumbleOn = boosting || Math.abs(player.speed) > player.maxSpeed * 0.97;
+  if (_rumbleOn && nowMs - _feel.rumble > (boosting ? 170 : 280) && nowMs - _feel.last > 140) {
+    _feel.rumble = nowMs;
+    h.selection();
+  }
 }
 
 // --- How to Play sub-menu (replaces the main menu) ---
@@ -5292,6 +5332,12 @@ const _camDesired = new THREE.Vector3();
 const _camLook = new THREE.Vector3();
 const _camAim = new THREE.Vector3(); // aim point after pitch-stabilising against eye clamps
 let shakeMag = 0;
+// Acceleration camera pull: a slow-follow copy of the player's speed. The gap
+// between real and smoothed speed is the perceived acceleration — hard throttle
+// (or a boost's instant kick) lets the kart pull ahead of its rest framing for
+// half a second, braking lets the camera crowd it. Reset on race start so the
+// first frame doesn't inherit a stale gap.
+let _spSmooth = 0;
 // Boost pads: a short speed kick (and its rainbow trail) when a kart drives over
 // a chevron pad, with a per-kart cooldown so it fires once per pass.
 function applyBoostPads(dt) {
@@ -5449,6 +5495,9 @@ function _orbitMenuCam(anchor, ang) {
     camera.fov = 58;
     camera.updateProjectionMatrix();
   }
+  // A race's speed post-effects must never linger over the menus.
+  _uVignette.value = BASE_VIGNETTE;
+  _uAberr.value = 0;
 }
 
 // Render the menu background. While dissolving, render the OUTGOING biome (live)
@@ -5512,14 +5561,51 @@ function updateCamera(dt, snap = false) {
     featureCameraClamp(track.features, track, camPos); // victory orbit can sweep into tunnel rock
     camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
+    // Ease the speed post-effects back to rest for the victory lap.
+    _uVignette.value += (BASE_VIGNETTE - _uVignette.value) * Math.min(1, dt * 5);
+    _uAberr.value += (0 - _uAberr.value) * Math.min(1, dt * 5);
     camera.position.copy(camPos);
     camera.lookAt(camTarget);
     return;
   }
 
+  // Perceived speed, the shared driver for the FOV/height/pull/shake work below:
+  // 0..1 of plain top speed (a boost pushes real speed past maxSpeed — clamped,
+  // the boost terms add their own kick instead).
+  const _sp = Math.abs(player.speed);
+  const sn = Math.min(1, _sp / player.maxSpeed);
+  // Acceleration pull (see _spSmooth): positive = accelerating, camera stretches
+  // back; negative = braking, camera crowds in. A boost's instant speed kick
+  // spikes this for ~half a second, which is exactly the "pinned to your seat"
+  // beat we want.
+  const accelPull = snap ? 0 : Math.max(-1.2, Math.min(1.6, (_sp - _spSmooth) * 0.22));
+  _spSmooth += (_sp - _spSmooth) * Math.min(1, dt * 2.5);
+  if (snap) _spSmooth = _sp;
+
   _camFwd.set(Math.sin(player.heading), 0, Math.cos(player.heading));
-  _camDesired.copy(player.position).addScaledVector(_camFwd, -13);
-  _camDesired.y += 7 + player.y * 0.5;
+  // At speed the camera drops lower and hangs a touch further back: optic flow
+  // scales with proximity to the ground, so the same physics speed reads much
+  // faster from a lower, longer vantage. Both trimmed after playtesting (the
+  // first cut sat too far back), and the LOWERING fades out on any real grade —
+  // on a climb the lowered eye fought the ground clamp, and on a descent it
+  // dipped the framing; hills keep the standard relative height.
+  const slopeK = Math.min(1, Math.abs(player.slopePitch || 0) / 0.16);
+  _camDesired.copy(player.position).addScaledVector(_camFwd, -(13 + sn * 0.7 + accelPull));
+  _camDesired.y += 7 - sn * 1.3 * (1 - slopeK) + player.y * 0.5;
+
+  // Tunnel rail: through a tunnel (and its portal approaches) the desired
+  // camera is pre-fitted inside the bore, so it never meets the hard rock
+  // clamps below and never lurches at a portal. It only trims an offset that
+  // would put the eye in rock — the chase framing, including how the camera
+  // follows the kart across the lane, is otherwise untouched. See
+  // tunnelCamGuide (an earlier cut railed it onto the centreline, which made
+  // tunnels genuinely hard to drive).
+  const _tg = tunnelCamGuide(track.features, track, _camDesired.x, _camDesired.z, _camDesired.y);
+  if (_tg) {
+    _camDesired.x += (_tg.x - _camDesired.x) * _tg.k;
+    _camDesired.y += (_tg.y - _camDesired.y) * _tg.k;
+    _camDesired.z += (_tg.z - _camDesired.z) * _tg.k;
+  }
   _camLook.copy(player.position).addScaledVector(_camFwd, 6);
   _camLook.y += 1.5 + player.y;
 
@@ -5571,16 +5657,31 @@ function updateCamera(dt, snap = false) {
   _camAim.copy(camTarget);
   _camAim.y += camLift * 0.7;
 
-  // FOV kick when boosting for a sense of speed; catnip widens it a touch more for
-  // a rush — but only a touch, so the road stays readable and easy to drive.
-  const targetFov = 62 + (player.boosting ? 7 : 0) + (player.catnipBoosting ? 4 : 0);
+  // FOV scales continuously with speed — accelerating from rest to top speed
+  // stretches the world toward you instead of only kicking on a boost — and the
+  // boost/catnip kicks stack on top for the rush. Kicks trimmed from the old
+  // 7/4 so the boosted ceiling stays readable and easy to drive.
+  const targetFov = 62 + sn * 6 + (player.boosting ? 5 : 0) + (player.catnipBoosting ? 4 : 0);
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
   camera.updateProjectionMatrix();
 
+  // Speed vignette + boost chromatic aberration (post uniforms, ~free): corners
+  // darken as speed builds (tunnel-vision focus), colour fringing only under a
+  // boost/catnip surge. Both ease so they never pop.
+  const vigTarget = BASE_VIGNETTE + 0.1 * sn * sn + (player.boosting || player.catnipBoosting ? 0.06 : 0);
+  _uVignette.value += (vigTarget - _uVignette.value) * Math.min(1, dt * 5);
+  const caTarget = player.catnipBoosting ? 0.014 : player.boosting ? 0.011 : 0;
+  _uAberr.value += (caTarget - _uAberr.value) * Math.min(1, dt * (caTarget > _uAberr.value ? 10 : 4));
+
   // Screen shake (decays). Catnip keeps a faint constant rumble going (minor, so
-  // it reads as raw speed without fighting your steering).
+  // it reads as raw speed without fighting your steering), and the top of the
+  // plain speed range gets a smaller engine-vibration floor of its own.
   shakeMag *= 1 - Math.min(1, 6 * dt);
   if (player.catnipBoosting) shakeMag = Math.max(shakeMag, 0.14);
+  else if (sn > 0.75) {
+    const k = (sn - 0.75) / 0.25;
+    shakeMag = Math.max(shakeMag, 0.06 * k * k);
+  }
   camera.position.copy(camPos);
   if (shakeMag > 0.001) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
@@ -6603,6 +6704,14 @@ function loop(now) {
 
     // Rainbow boost trail + drift sparks/skids for the player.
     if (player.boosting) effects.trickle(player, player.catnipBoosting);
+    // Wind-streak speed lines: fade in over the last ~18% of the speed range so
+    // plain flat-out cruising earns them, and run at full strength under any
+    // boost. (Boost speeds exceed maxSpeed, so the ramp is already saturated.)
+    {
+      const _snPlayer = Math.min(1, _sp / player.maxSpeed);
+      const _windK = player.boosting || player.catnipBoosting ? 1 : (_snPlayer - 0.82) / 0.18;
+      if (_windK > 0) effects.windStreaks(player, Math.min(1, _windK));
+    }
     const _catnipBurnout = player.catnipBoosting && _sp > 10 && !player.airborne;
     if (player.drifting) {
       effects.driftSparks(player);
@@ -6620,12 +6729,33 @@ function loop(now) {
     if (!player.airborne && _sp > 6) {
       biomeDustColor(player.position.x, player.position.z, _dustCol);
       let amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
+      // Flat-out (top ~10% of the speed range): the faint cruising veil thickens
+      // into a proper plume, so max speed is visibly working the road.
+      const _snDust = _sp / player.maxSpeed;
+      if (_snDust > 0.9) amt = Math.max(amt, 0.45 + 0.3 * Math.min(1, (_snDust - 0.9) / 0.1));
       if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
       if (amt > 0.02) effects.dust(player, _dustCol, amt);
     }
-    // (Chromatic aberration / radial blur: their uniforms are dead stubs — the
-    // effects aren't in the post graph (see fxPass) — so nothing eases them
-    // per-frame anymore. Re-add the easing when the passes are actually wired in.)
+    // The world reacting to your speed (the strongest speed cue there is):
+    // biome debris yanked airborne in the wake from ~60% of top speed, and
+    // pale tire grit flicked off the rear wheels once flat-out.
+    if (!player.airborne && _sp > 6) {
+      const _snFx = Math.min(1, _sp / player.maxSpeed);
+      if (_snFx > 0.6) {
+        biomeDebrisColor(player.position.x, player.position.z, _wakeCol);
+        effects.wakeDebris(player, _wakeCol, Math.min(1, (_snFx - 0.6) / 0.35));
+      }
+      if (_snFx > 0.85) effects.tireGrit(player);
+    }
+    // Grass bow-wave: the roadside blades shove away from the kart, harder
+    // with speed (the uniform is read by buildGrass's position node).
+    {
+      const _guk = world.grass && world.grass.userData.uKart;
+      if (_guk) _guk.value.set(player.position.x, player.position.y, player.position.z, 0.25 + 0.85 * Math.min(1, _sp / player.maxSpeed));
+    }
+    // (Chromatic aberration is live again — wired into the post graph via
+    // _caScene and eased from updateCamera alongside the speed vignette. Radial
+    // blur remains a dead stub in fxPass.)
 
     // AI
     // AI drivers — plus any kart that's finished, so it auto-pilots its victory lap.

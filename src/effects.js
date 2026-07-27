@@ -33,7 +33,10 @@ export class EffectsManager {
     this.parts = []; // { pos, v, r,g,b, life, opacity, scale, grow, damp, gravity, spark }
     // Hard cap on live particles, so a whole field boosting at once can't spike the
     // count. Over budget, the oldest (most-faded) is recycled before spawning.
-    this.maxParts = 240;
+    // (240 -> 280 when the wake-wash/tire-grit emitters landed — both are
+    // rate-limited, but flat-out driving now runs dust + wash + grit + streaks
+    // together and the old cap made bursts steal each other's particles.)
+    this.maxParts = 280;
     this.smokeTex = softTexture(false);
     this.sparkTex = softTexture(true);
     // One instanced billboard field per texture (both additive). Each is sized for
@@ -384,6 +387,35 @@ export class EffectsManager {
     }
   }
 
+  // Wind streaks at sustained near-top speed and under boosts — the classic
+  // "speed lines" trick: short-lived bright specks spawned wide of the kart and
+  // ahead of the camera, flung backward faster than the kart moves so they whip
+  // past the edges of the frame. Same recipe as slipstreamWind but wider and
+  // higher (framing the screen, not hugging a rival's wake) so it reads as raw
+  // velocity anywhere on track. `strength` 0..1 ramps rate/brightness/size.
+  windStreaks(kart, strength) {
+    // Deliberately sparse and faint (playtested down from a denser first cut —
+    // bright dots floating over the kart read as clutter, not wind): one low,
+    // dim speck at a time, kept wide of the kart so it skims the frame edges.
+    if (Math.random() > 0.22 + strength * 0.42) return;
+    const fwx = Math.sin(kart.heading), fwz = Math.cos(kart.heading);
+    const rx = Math.cos(kart.heading), rz = -Math.sin(kart.heading); // kart's right
+    const sp = 30 + Math.abs(kart.speed) * 0.9;
+    // Wide of the racing line so streaks frame the view instead of crossing it.
+    const side = (Math.random() < 0.5 ? -1 : 1) * (3.4 + Math.random() * 2.2);
+    const fore = 4 + Math.random() * 7;
+    _pos.copy(kart.position);
+    _pos.x += rx * side + fwx * fore;
+    _pos.z += rz * side + fwz * fore;
+    _pos.y += kart.y + 0.3 + Math.random() * 1.1; // hug the road — never over the kart's head
+    _vel.set(-fwx * sp, (Math.random() - 0.5) * 1.5, -fwz * sp);
+    _col.setHex(0xf2f8ff);
+    this._spawn(_pos, _col, {
+      additive: true, spark: true, size: 0.28 + strength * 0.18,
+      life: 0.18, v: _vel, opacity: 0.06 + strength * 0.15, damp: 0.3,
+    });
+  }
+
   // A faint wake trailing a kart that's BEING drafted, so the sweet spot behind it
   // is visible to aim for. Subtle by design — it shouldn't compete with drift/boost.
   slipstreamWake(kart, strength) {
@@ -430,6 +462,70 @@ export class EffectsManager {
         opacity: (0.32 + Math.random() * 0.22) * (0.6 + amount * 0.5),
       });
     }
+  }
+
+  // Wake wash — flecks of the local biome's loose debris (leaves, petals, sand,
+  // paper scraps) yanked into the air by the kart's slipstream and arcing back
+  // down behind it. Complements the static ground-leaf pop (scenery.js
+  // buildGroundLeaves lifts the carpet in place) with airborne matter, so the
+  // world visibly REACTS to your velocity — the strongest speed cue there is.
+  // `color` comes from biomeDebrisColor; `strength` 0..1 ramps rate and count.
+  wakeDebris(kart, color, strength = 1) {
+    if (Math.random() > 0.22 + strength * 0.5) return;
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    const n = strength > 0.8 && Math.random() < 0.4 ? 2 : 1;
+    const groundY = (kart.groundY ?? kart.position.y) + 0.25;
+    for (let i = 0; i < n; i++) {
+      _pos
+        .copy(kart.position)
+        .addScaledVector(_fwd, -(2 + Math.random() * 1.5));
+      _pos.x += (Math.random() - 0.5) * 2.4;
+      _pos.z += (Math.random() - 0.5) * 2.4;
+      _pos.y = groundY;
+      _vel
+        .set((Math.random() - 0.5) * 5, 2.5 + Math.random() * 3.5, (Math.random() - 0.5) * 5)
+        .addScaledVector(_fwd, -(4 + Math.random() * 7)); // flung backward in the wake
+      _col.copy(color).multiplyScalar(0.85 + Math.random() * 0.3);
+      this._spawn(_pos, _col, {
+        spark: Math.random() < 0.35, // a few tight flecks among the soft ones
+        size: 0.24 + Math.random() * 0.2,
+        life: 0.55 + Math.random() * 0.35,
+        v: _vel,
+        damp: 1.6,
+        gravity: 10, // arcs up then settles — debris, not smoke
+        opacity: 0.75,
+      });
+    }
+  }
+
+  // Tire grit — at the top of the speed range the rear tires flick tiny pale
+  // chips backward that arc down under hard gravity. Small, low and short-lived
+  // (deliberately unlike the wind streaks), it makes the tarmac itself read as
+  // being WORKED at full speed.
+  tireGrit(kart) {
+    if (Math.random() > 0.55) return;
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    const side = Math.random() < 0.5 ? -1.3 : 1.3; // one rear wheel or the other
+    _pos
+      .copy(kart.position)
+      .addScaledVector(_fwd, -1.5)
+      .addScaledVector(_right, side);
+    _pos.y = (kart.groundY ?? kart.position.y) + 0.2;
+    _vel
+      .set(0, 2.5 + Math.random() * 2.5, 0)
+      .addScaledVector(_fwd, -(9 + Math.random() * 8))
+      .addScaledVector(_right, side * (0.6 + Math.random() * 1.4)); // splays off the tyre's outside edge
+    _col.setHex(0xd8cdb4).multiplyScalar(0.8 + Math.random() * 0.4);
+    this._spawn(_pos, _col, {
+      spark: true,
+      size: 0.15 + Math.random() * 0.1,
+      life: 0.3 + Math.random() * 0.15,
+      v: _vel,
+      damp: 0.6,
+      gravity: 20,
+      opacity: 0.55,
+    });
   }
 
   // Lay continuous tyre marks: extend a ribbon from each rear wheel by appending a

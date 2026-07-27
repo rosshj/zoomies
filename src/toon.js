@@ -4,6 +4,7 @@
 // the very same conversion so what it previews is exactly what ships.
 import * as THREE from "three";
 import { color as tslColor, float, smoothstep, normalView, positionViewDirection, uniform } from "three/tsl";
+import { windBendNode } from "./wind.js"; // userData.sway → the shared wind field
 
 function makeToonGradient() {
   // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
@@ -56,8 +57,11 @@ export function toToon(m) {
   // which REPLACES the material's emissive — so only apply them to MATTE materials
   // (black emissive). Materials with a live emissive (brake lights, headlight
   // bulbs, glowing pads) keep stock toon so their dynamic emissiveIntensity works.
+  // ud.sway also forces the node path — a stock MeshToonMaterial has nowhere to
+  // hang a positionNode, so a swaying material converted the plain way would go
+  // silently rigid (exactly how the grass lost its sway once before).
   const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim || ud.paint) && matte) {
+  if ((ud.backlight || ud.rim || ud.paint || ud.sway) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
     let term = null;
     if (ud.backlight) {
@@ -86,6 +90,11 @@ export function toToon(m) {
       term = term ? term.add(paintTerm) : paintTerm;
     }
     t.emissiveNode = term;
+    // Rooted-and-bowing in the shared wind (tree canopies). The number is the
+    // lean at the crown as a fraction of the object's own height, so it reads
+    // the same on a sapling and a giant. Only set this on materials whose every
+    // mesh carries the aBend / aWindRoot attributes windBendNode reads.
+    if (ud.sway) t.positionNode = windBendNode(ud.sway);
     // A toon made from a shared source is itself shared across karts (the cache
     // hands the same instance to every user) — carry the flag so teardown code
     // (_disposeGroup) knows not to dispose it out from under the others.
