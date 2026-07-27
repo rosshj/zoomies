@@ -92,9 +92,27 @@ await page.evaluate(() => {
     c.updateMatrixWorld(true);
     return { at: [Math.round(p.x), Math.round(p.y), Math.round(p.z)], sample: bi };
   };
+  // Bushes take the LOOSE (non-instanced) bend, which is its own code path and
+  // has to be seen rendering — "no console errors" says nothing about whether a
+  // positionNode threw the geometry out of the world.
+  window.__bush = () => {
+    const found = [];
+    Z.scene.traverse((o) => {
+      if (o.isMesh && !o.isInstancedMesh && o.geometry.attributes.aBend) found.push(o);
+    });
+    if (!found.length) return { bushes: 0 };
+    const b = found[(found.length / 2) | 0];
+    const w = new (Z.camera.position.constructor)();
+    b.getWorldPosition(w);
+    const c = Z.camera;
+    Object.getPrototypeOf(c.position).set.call(c.position, w.x + 3.4, w.y + 2.0, w.z + 3.4);
+    Object.getPrototypeOf(c).lookAt.call(c, w.x, w.y + 0.6, w.z);
+    c.updateMatrixWorld(true);
+    return { bushes: found.length, at: [Math.round(w.x), Math.round(w.y), Math.round(w.z)] };
+  };
 });
 
-for (const [name, tag] of [["rail-timber", "flower"], ["stone-dry", "scrub"], ["kerb-city", "blade"]]) {
+for (const [name, tag] of [["rail-timber", "flower"], ["stone-dry", "scrub"], ["slat-bamboo", "reed"], ["slat-snow", "tussock"], ["slat-dune", "marram"], ["slat-thorn", "stalk"], ["kerb-city", "blade"]]) {
   for (const sideSign of [1, -1]) {
     const info = await page.evaluate((a) => window.__fence(a.tag, a.s), { tag, s: sideSign });
     if (!info) { console.log(" ", name, "no sprigs of that kind on this map"); break; }
@@ -102,6 +120,12 @@ for (const [name, tag] of [["rail-timber", "flower"], ["stone-dry", "scrub"], ["
     await page.screenshot({ path: path.join(OUT, `${name}-side${sideSign > 0 ? "L" : "R"}.png`) });
     console.log(" ", name, sideSign, JSON.stringify(info));
   }
+}
+const bush = await page.evaluate(() => window.__bush());
+console.log("  bush", JSON.stringify(bush));
+if (bush.bushes) {
+  await page.waitForTimeout(1200);
+  await page.screenshot({ path: path.join(OUT, "bush-loose-sway.png") });
 }
 await browser.close();
 server.close();

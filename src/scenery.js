@@ -11,7 +11,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // around the runs and build their structures. See features.js for the system.
 import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 import { uSunViewNode, uSunColNode } from "./toon.js"; // shared per-frame sun nodes (grass backlight reads them)
-import { windLean, windGustDrift, bakeBendWeights, setWind } from "./wind.js"; // the world's one wind field
+import { windLean, windGustDrift, bakeBendWeights, setWind, uKartPos } from "./wind.js"; // the world's one wind field
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -239,6 +239,9 @@ function biomeAt(x, z, y) {
 //   stone dry-stone wall: the same sweep, but height and width jittered
 //         per-sample off a hash so no two metres of it match, and coloured
 //         from a rubble palette instead of stripes.
+//   slat  uprights on a sill under a top rail — one shape that covers a
+//         bamboo palisade, a slatted snow fence, a beach dune fence and a
+//         savanna thorn boma, which are the same fence in different timber.
 //
 // Whatever the style, the top edge keeps a light/dark contrast and the height
 // stays near 1.6u: at 100km/h the barrier's first job is telling you where the
@@ -252,6 +255,17 @@ const BARRIER_STYLES = {
   // barrier has to separate from the terrain to say "track ends here".
   desert: { kind: "stone", lo: 0x8a7458, hi: 0xc4b394, cap: 0xe6dcc4 },
   mesa: { kind: "stone", lo: 0x6f4a3a, hi: 0xa8836b, cap: 0xd8c3ad },
+  // Split-log: the meadow fence gone rough and dark under the canopy.
+  forest: { kind: "rail", post: 0x4a3520, rail: 0x6d5334, cap: 0xa39070, sill: 0x3f6b32 },
+  // Bamboo palisade: tall close-set green uprights, pale at the cut tops.
+  jungle: { kind: "slat", slat: 0x86a83f, cap: 0xd8e2a0, rail: 0x5f7a30, sill: 0x2f7a34, h: 1.75, gap: 0.42, lean: 0.05 },
+  // Snow fence: weathered slats, widely spaced, snow banked against the sill.
+  alpine: { kind: "slat", slat: 0x8a6f4e, cap: 0xe8e2d6, rail: 0x6b5439, sill: 0xe6eef4, h: 1.35, gap: 0.85, lean: 0.13 },
+  tundra: { kind: "slat", slat: 0x7f6a52, cap: 0xdfe6ea, rail: 0x60503c, sill: 0xd6e0e4, h: 1.3, gap: 0.9, lean: 0.15 },
+  // Dune fence: pale sand-bleached slats, half-buried.
+  beach: { kind: "slat", slat: 0xd8c48e, cap: 0xf4ead0, rail: 0xb8a070, sill: 0xe6d6a2, h: 1.25, gap: 0.7, lean: 0.16 },
+  // Thorn boma: dark scrappy branches at every angle, no two the same height.
+  savanna: { kind: "slat", slat: 0x5c4a2e, cap: 0x9a8258, rail: 0x4a3a24, sill: 0xa07f3a, h: 1.5, gap: 0.5, lean: 0.34 },
 };
 export function biomeBarrierStyle(x, z) {
   const b = biomeAt(x, z);
@@ -267,6 +281,29 @@ export function biomeNameAt(x, z, y) {
 // Precipitation the biome at a position brings ("none" / "rain" / "snow").
 export function biomeWeatherAt(x, z) {
   return biomeAt(x, z).weather;
+}
+
+// How hard the wind blows in each biome — the weather half of a biome's
+// character, and the thing that makes an alpine pass feel like a storm and a
+// desert feel like dead air. Multiplies the track's own prevailing force, and
+// main.js eases toward it as you drive, so a biome boundary is weather closing
+// in over a few seconds rather than a switch being thrown.
+const BIOME_WIND = {
+  alpine: 2.1, // the storm biome: snow driving sideways off the pass
+  tundra: 1.9,
+  forest: 1.7, // squally under the canopy
+  beach: 1.6, // onshore breeze, nothing to break it
+  jungle: 1.5,
+  autumn: 1.35,
+  savanna: 1.2,
+  meadow: 1.0,
+  city: 0.9, // sheltered between the buildings
+  blossom: 0.85, // still enough for the petals to hang
+  mesa: 0.75,
+  desert: 0.7, // dead air over the heat
+};
+export function biomeWindAt(x, z) {
+  return BIOME_WIND[biomeAt(x, z).name] ?? 1;
 }
 
 // Road-surface character for the biome at a position: an RGB multiplier applied
@@ -1084,7 +1121,7 @@ function buildGrass(scene, track, heightAt) {
   // Bow-wave: blades close to the player kart lean away from it, harder with
   // speed — the roadside physically parts as you blast past. uKart is
   // (x, y, z, strength), written once per frame from the main loop.
-  const uKart = uniform(new THREE.Vector4(1e6, 0, 1e6, 0));
+  const uKart = uKartPos; // shared: the petal flurry reads the same kart
   const mat = new THREE.MeshStandardNodeMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
@@ -1653,7 +1690,23 @@ function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
   const _t = time.mul(1.4).add(_ph);
   const _drift = windGustDrift(positionLocal.x, positionLocal.z, 1.15, hash(instanceIndex));
   const _flut = vec3(0, _t.mul(2.3).sin().mul(cfg.tumble), 0);
-  mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut);
+  // FLURRY: blast through a blossom grove and the fall is disturbed — specks
+  // near the kart are thrown outward and UP, hardest at speed, settling back as
+  // you pull away. Ambient weather you can also disturb beats ambient weather
+  // you can only watch, and the petals were the one biome signature that stayed
+  // completely indifferent to the race happening inside it.
+  // positionLocal.xz is the speck's world column (three has already folded the
+  // instance matrix in), so these are world-space deltas.
+  const _kdx = positionLocal.x.sub(uKartPos.x);
+  const _kdz = positionLocal.z.sub(uKartPos.z);
+  const _kd = _kdx.mul(_kdx).add(_kdz.mul(_kdz)).sqrt().max(0.001);
+  const _kick = smoothstep(2.5, 12, _kd).oneMinus().pow(1.6).mul(uKartPos.w);
+  const _flurry = vec3(
+    _kdx.div(_kd).mul(_kick).mul(3.4),
+    _kick.mul(2.8).mul(_t.mul(3.1).sin().mul(0.25).add(0.85)), // lift, with a churn
+    _kdz.div(_kd).mul(_kick).mul(3.4)
+  );
+  mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut).add(_flurry);
 
   const CHUNK = 200; // (was 130 — see the ground-leaf chunk note)
   const buckets = new Map();

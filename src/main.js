@@ -13,14 +13,14 @@ import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunn
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
-import { setWind } from "./wind.js";
+import { setWind, windToward } from "./wind.js";
 import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { buildWorld, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
@@ -6902,6 +6902,9 @@ function loop(now) {
     // biomes. The Weather class crossfades smoothly as you cross between them.
     const where = biomeWeatherAt(player.position.x, player.position.z);
     weather.setWeather(where);
+    // The wind crossfades with the weather: a snowbound pass blows a gale, a
+    // desert is dead air. Eased inside windToward so it arrives over seconds.
+    windToward(biomeWindAt(player.position.x, player.position.z), dt);
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;
     // Kick up a splash when driving through a puddle while it's raining.

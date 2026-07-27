@@ -10,11 +10,17 @@
 // no uniform upload, and nothing anyone can forget to update — the field is
 // live the moment a material reads it.
 import * as THREE from "three";
-import { uniform, time, vec2, vec3, attribute, positionLocal, positionGeometry } from "three/tsl";
+import { uniform, time, vec2, vec3, vec4, attribute, positionLocal, positionGeometry, modelWorldMatrix, modelWorldMatrixInverse } from "three/tsl";
 
 export const uWindDir = uniform(new THREE.Vector2(0.82, 0.57)); // unit XZ, points DOWNWIND
 export const uWindStr = uniform(1); // overall force; weather scales it
 export const uWindSpeed = uniform(0.9); // how fast gust fronts travel
+// Where the player's kart is, and how fast: (world x, y, z, 0..1 of top speed).
+// Lives here rather than on any one material because more than one thing now
+// reacts to the kart — the grass parts around it, the petals flurry up in its
+// wake — and they must all read the SAME position. main.js writes it once a
+// frame via the handle buildGrass hangs on the roadside-cover group.
+export const uKartPos = uniform(new THREE.Vector4(1e6, 0, 1e6, 0));
 
 const _phase = time.mul(uWindSpeed);
 
@@ -96,6 +102,36 @@ export function windBendNode(amp) {
   return positionLocal.add(vec3(ox, oy, oz));
 }
 
+// The same bend for a NON-instanced mesh — a bush, a hedge, anything placed as
+// its own object rather than as one of thousands. Two differences follow from
+// that, and both are the mirror image of the instanced case:
+//   • there is no instance matrix folded into positionLocal, so an offset added
+//     here is in the object's LOCAL space and the world-space lean has to be
+//     rotated INTO it (w=0 in the vec4 so only the rotation applies, not the
+//     translation);
+//   • the object's world position comes off its own world matrix rather than a
+//     per-instance attribute.
+// Still needs `aBend` baked on the geometry. Wire it with userData.swayLoose.
+//
+// NOT YET USED BY ANYTHING. The obvious customer is the roadside bushes, but
+// they never reach the scene as the plain per-object meshes makeBush returns —
+// a probe looking for non-instanced geometry carrying aBend found none, so
+// something downstream merges or rebuilds them. Finding out what is its own
+// pass; until then treat this as untested and verify it renders before
+// believing it.
+export function windBendLooseNode(amp) {
+  const h = attribute("aBend").max(0.001); // geometry height
+  const norm = positionGeometry.y.div(h).clamp(0, 1); // 0 base -> 1 crown
+  const reach = norm.mul(norm).mul(h);
+  const org = modelWorldMatrix.mul(vec4(0, 0, 0, 1)).xyz; // where it stands
+  const lean = windLean(org.x, org.z, amp);
+  const loc = modelWorldMatrixInverse.mul(vec4(lean.x, 0, lean.y, 0)).xyz;
+  const ox = loc.x.mul(reach);
+  const oz = loc.z.mul(reach);
+  const oy = ox.mul(ox).add(oz.mul(oz)).mul(-0.5).div(h);
+  return positionLocal.add(vec3(ox, oy, oz));
+}
+
 // Bake the `aBend` attribute a windBendNode material expects: the geometry's
 // own height, which the shader normalises positionGeometry.y against. That pins
 // the object at its origin — for a canopy that is the trunk top, exactly where
@@ -109,10 +145,31 @@ export function bakeBendWeights(geo) {
   return geo;
 }
 
-// Point the wind somewhere and set its force. Called once per world build (each
-// track gets its own prevailing wind from the seed); weather can lean on it too.
+// The force in uWindStr is two things multiplied: the track's own prevailing
+// wind (drawn from the seed at world build, so worlds differ) and the biome
+// factor the player is currently driving through (eased below).
+let _base = 1;
+let _baseSpeed = 0.9;
+let _biome = 1;
+
+// Point the wind somewhere and set the track's prevailing force. Called once
+// per world build.
 export function setWind({ dirRad, strength, speed } = {}) {
   if (dirRad != null) uWindDir.value.set(Math.sin(dirRad), Math.cos(dirRad));
-  if (strength != null) uWindStr.value = strength;
-  if (speed != null) uWindSpeed.value = speed;
+  if (strength != null) _base = strength;
+  if (speed != null) _baseSpeed = speed;
+  uWindStr.value = _base * _biome;
+  uWindSpeed.value = _baseSpeed;
+}
+
+// Ease the wind toward whatever the biome under the player asks for, and write
+// the combined force. Called every frame from the race loop, right beside the
+// weather crossfade — driving out of a still desert into a snowbound pass
+// should feel like the weather closing in, which means it has to arrive over
+// seconds, not snap at the biome seam. Gusts also travel faster in a blow, so
+// the rhythm quickens with the force rather than the field just scaling up.
+export function windToward(target, dt) {
+  _biome += (target - _biome) * Math.min(1, dt * 0.55);
+  uWindStr.value = _base * _biome;
+  uWindSpeed.value = _baseSpeed * (0.72 + 0.28 * _biome);
 }

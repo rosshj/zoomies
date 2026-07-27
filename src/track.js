@@ -1530,6 +1530,7 @@ export class Track {
     const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 });
     const railMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.95 });
     const postGeos = [];
+    const slats = []; // {x,y,z,yaw,lean,h,col} — one instanced draw for the lot
     for (const dirSign of [1, -1]) {
       const positions = [];
       const colors = [];
@@ -1561,6 +1562,10 @@ export class Track {
         } else if (style.kind === "rail") {
           hMul = 0.3; // just a grassy sill so the base is never a ragged gap
           wMul = 1.1;
+          c.set(style.sill);
+        } else if (style.kind === "slat") {
+          hMul = 0.26; // a low bank the uprights stand in
+          wMul = 1.25;
           c.set(style.sill);
         } else {
           // The original alternating stripe, ~17u per band.
@@ -1634,6 +1639,56 @@ export class Track {
             g.translate(p.x + sx * d, p.y, p.z + sz * d);
             postGeos.push(g);
           }
+        } else if (style.kind === "slat") {
+          // One capping rail along the top of the uprights, reusing the rail
+          // strip (its second bar sits at the style height, the first is
+          // collapsed onto it so the two rings stay in step with the code above).
+          const base = rp.length / 3;
+          const capc = new THREE.Color(style.cap);
+          const railc = new THREE.Color(style.rail);
+          for (const ry of [style.h * 0.97, style.h * 0.97]) {
+            for (const [ds, dy] of [[-0.1, -0.07], [0.28, -0.07], [0.28, 0.07], [-0.1, 0.07]]) {
+              const d = off + 0.42 + ds;
+              rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
+              const cc = dy > 0 ? capc : railc;
+              rc.push(cc.r, cc.g, cc.b);
+            }
+          }
+          if (prevRail !== null) {
+            for (let k = 0; k < 2; k++) {
+              const a0 = prevRail + k * 4;
+              const b0 = base + k * 4;
+              for (let j = 0; j < 4; j++) {
+                const j2 = (j + 1) % 4;
+                ri.push(a0 + j, a0 + j2, b0 + j, a0 + j2, b0 + j2, b0 + j);
+              }
+            }
+          }
+          prevRail = base;
+          // Uprights: stepped along the gap between this sample and the next,
+          // so spacing is in METRES rather than one-per-sample (which at 2.8u
+          // apart would read as posts, not a palisade).
+          if (i < this.samples) {
+            const n2 = this._pts[(idx + 1) % this.samples];
+            const seg = Math.hypot(n2.x - p.x, n2.z - p.z);
+            const per = Math.max(1, Math.round(seg / style.gap));
+            for (let k = 0; k < per; k++) {
+              const t = k / per;
+              const d = off + 0.42;
+              const wx = p.x + (n2.x - p.x) * t + sx * d;
+              const wz = p.z + (n2.z - p.z) * t + sz * d;
+              const wy = p.y + (n2.y - p.y) * t;
+              const j1 = wob(idx * 7 + k, 6);
+              const j2 = wob(idx * 7 + k, 7);
+              slats.push({
+                x: wx, y: wy, z: wz,
+                yaw: Math.atan2(sx, sz) + (j2 - 0.5) * style.lean * 2,
+                lean: (j1 - 0.5) * style.lean,
+                h: style.h * (0.82 + j2 * 0.36),
+                slat: style.slat, cap: style.cap,
+              });
+            }
+          }
         } else prevRail = null;
       }
       const geo = new THREE.BufferGeometry();
@@ -1671,6 +1726,39 @@ export class Track {
       posts.castShadow = true;
       posts.receiveShadow = false;
       this.group.add(posts);
+    }
+    // Every upright on the track in ONE instanced draw. There are thousands of
+    // them at half-metre spacing, so merging (as the sparse fence posts do)
+    // would be a lot of duplicated vertex data for no gain.
+    if (slats.length) {
+      const sg = new THREE.BoxGeometry(0.11, 1, 0.06);
+      sg.translate(0, 0.5, 0); // stand on y=0 so the instance scale IS the height
+      const cols = [];
+      const gp = sg.attributes.position;
+      for (let v = 0; v < gp.count; v++) cols.push(1, 1, 1); // tinted per instance
+      sg.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+      const slatMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
+      const mesh = new THREE.InstancedMesh(sg, slatMat, slats.length);
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const e = new THREE.Euler();
+      const v3 = new THREE.Vector3();
+      const t3 = new THREE.Vector3();
+      const col = new THREE.Color();
+      slats.forEach((sl, i) => {
+        e.set(sl.lean, sl.yaw, sl.lean * 0.7);
+        q.setFromEuler(e);
+        m.compose(t3.set(sl.x, sl.y, sl.z), q, v3.set(1, sl.h, 1));
+        mesh.setMatrixAt(i, m);
+        // A hint of the cap colour mixed in so the top edge of a palisade still
+        // reads as a line, the same job the capstones do on the wall.
+        mesh.setColorAt(i, col.set(sl.slat).lerp(new THREE.Color(sl.cap), 0.18));
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      mesh.castShadow = true;
+      mesh.receiveShadow = false;
+      this.group.add(mesh);
     }
   }
 
