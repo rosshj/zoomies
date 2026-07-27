@@ -1459,6 +1459,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
   const pos = [];
   const col = [];
   const idx = [];
+  const frac = []; // 0 at the apex -> 1 at the base, per vertex, for the skirt conform
   for (let i = 0; i <= RINGS; i++) {
     const t = i / RINGS; // 0 at the apex -> 1 at the base
     // Concave flare, plus a splayed foot (the talus a mountain actually sits in
@@ -1489,6 +1490,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
       const x = Math.sin(th) * r * ex + leanX * rad * (1 - t);
       const z = Math.cos(th) * r * ez + leanZ * rad * (1 - t);
       pos.push(x, y, z);
+      frac.push(t);
       // Colour: rock gets lighter with height, then a ragged snowline on top.
       const f = Math.max(0, Math.min(1, y / h));
       c.copy(lo).lerp(hi, Math.pow(f, 0.8));
@@ -1538,12 +1540,14 @@ function mountainGeo(h, rad, rock, opts = {}) {
     topY = Math.max(topY, pos[j * 3 + 1]);
   }
   pos.push(cx / SEGS, topY + h * 0.01, cz / SEGS);
+  frac.push(0);
   col.push(col[0], col[1], col[2]); // the summit's own colour, snow and all
   for (let j = 0; j < SEGS; j++) idx.push(capIdx, j, (j + 1) % SEGS);
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
+  g.userData.frac = frac; // consumed by place() once the peak is in world space
   g.computeVertexNormals();
   return g;
 }
@@ -1575,6 +1579,28 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     _q.setFromEuler(_e);
     _m4.compose(_v.set(x, y, z), _q, new THREE.Vector3(1, 1, 1));
     geo.applyMatrix4(_m4);
+    // CONFORM THE SKIRT. A peak is anchored at ONE sampled ground height, but
+    // its apron now spans far more terrain than the old cones did — so on any
+    // slope the uphill side buries itself while the downhill side hangs in
+    // mid-air, a mountain visibly overhanging the hill it stands on. The
+    // geometry is in world space by this point, so each foot vertex can be
+    // pulled down to the ground actually beneath IT, ramping in over the lower
+    // flank so the summit keeps the shape it was sculpted with. min() means a
+    // vertex already under the terrain is left buried — this only ever closes
+    // a gap, never lifts the mountain out of the ground.
+    const p = geo.attributes.position;
+    const fr = geo.userData.frac;
+    for (let i = 0; i < p.count; i++) {
+      const w = fr[i];
+      if (w < 0.5) continue; // the top half is sculpture, not landscape
+      const k = (w - 0.5) / 0.5;
+      const cur = p.getY(i);
+      const gy = heightAt(p.getX(i), p.getZ(i)) - 1.5; // a touch under, so no hairline seam
+      p.setY(i, cur + (Math.min(cur, gy) - cur) * k);
+    }
+    p.needsUpdate = true;
+    geo.computeVertexNormals();
+    delete geo.userData.frac; // don't carry it into the merge
     peakGeos.push(geo);
   };
   const _grnd = new THREE.Color();
