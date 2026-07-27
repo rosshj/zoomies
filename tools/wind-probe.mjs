@@ -101,16 +101,24 @@ console.log("framed", JSON.stringify(framed));
 
 // Same frame, three winds. The kart is never touched, so anything that moves
 // between these shots moved because of the field.
+// Strengths chosen to land on the forces the GAME actually produces once the
+// per-biome factor and the saturating curve are applied — an arbitrary "crank
+// it to 3.2" tells you nothing about what a player will ever see.
 const SHOTS = [
-  ["a-calm", { strength: 0, speed: 0.9 }],
-  ["b-rest", { strength: 1, speed: 0.9 }],
-  ["c-gale", { strength: 3.2, speed: 0.9 }],
-  ["d-gale-later", { strength: 3.2, speed: 9 }],
+  ["a-calm", { strength: 0 }],
+  ["b-rest", { strength: 1.1 }],
+  ["c-storm", { strength: 2.8 }],
+  ["d-storm-later", { strength: 2.8, speed: 9 }],
 ];
 for (const [name, cfg] of SHOTS) {
-  await page.evaluate((c) => window.__zoomies.setWind(c), cfg);
+  const got = await page.evaluate((c) => {
+    window.__zoomies.setWind(c);
+    const w = window.__zoomies.wind || {};
+    return { bend: +(w.uWindStr?.value ?? -1).toFixed(2), air: +(w.uWindAir?.value ?? -1).toFixed(2) };
+  }, cfg);
   await page.waitForTimeout(1200);
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
+  console.log(" ", name, JSON.stringify(got));
 }
 console.log("wrote", fs.readdirSync(OUT).sort().join(" "));
 await browser.close();

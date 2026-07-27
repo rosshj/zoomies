@@ -4,7 +4,7 @@
 // the very same conversion so what it previews is exactly what ships.
 import * as THREE from "three";
 import { color as tslColor, float, smoothstep, normalView, positionViewDirection, uniform } from "three/tsl";
-import { windBendNode } from "./wind.js"; // userData.sway → the shared wind field
+import { windBendNode, windBendLooseNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
 
 function makeToonGradient() {
   // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
@@ -61,7 +61,7 @@ export function toToon(m) {
   // hang a positionNode, so a swaying material converted the plain way would go
   // silently rigid (exactly how the grass lost its sway once before).
   const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim || ud.paint || ud.sway) && matte) {
+  if ((ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
     let term = null;
     if (ud.backlight) {
@@ -95,6 +95,8 @@ export function toToon(m) {
     // the same on a sapling and a giant. Only set this on materials whose every
     // mesh carries the aBend / aWindRoot attributes windBendNode reads.
     if (ud.sway) t.positionNode = windBendNode(ud.sway);
+    // …and the same for a bush or hedge placed as its own object (see wind.js).
+    else if (ud.swayLoose) t.positionNode = windBendLooseNode(ud.swayLoose);
     // A toon made from a shared source is itself shared across karts (the cache
     // hands the same instance to every user) — carry the flag so teardown code
     // (_disposeGroup) knows not to dispose it out from under the others.
