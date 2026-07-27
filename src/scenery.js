@@ -1523,11 +1523,21 @@ function mountainGeo(h, rad, rock, opts = {}) {
   // any angle that cleared the rim, a clean circular HOLE with sky through it.
   // A fan to a centre vertex sitting just above the ring's mean height closes
   // it as a small rocky top.
+  // The apex sits on the RING'S OWN centroid, not the geometry origin. The axis
+  // leans, so by the time it reaches the top the summit ring is displaced
+  // sideways by up to a fifth of the radius — fanning that back to x=0,z=0 drew
+  // a long thin triangular flap off every peak, the sideways "beak" that showed
+  // up on the whole skyline. It also rides just ABOVE the ring's highest vertex
+  // rather than its mean, so the summit jag can never poke through its own cap
+  // and leave the top dished.
   const capIdx = pos.length / 3;
-  let cy = 0;
-  for (let j = 0; j < SEGS; j++) cy += pos[j * 3 + 1];
-  cy = cy / SEGS + h * 0.012;
-  pos.push(0, cy, 0);
+  let cx = 0, cz = 0, topY = -Infinity;
+  for (let j = 0; j < SEGS; j++) {
+    cx += pos[j * 3];
+    cz += pos[j * 3 + 2];
+    topY = Math.max(topY, pos[j * 3 + 1]);
+  }
+  pos.push(cx / SEGS, topY + h * 0.01, cz / SEGS);
   col.push(col[0], col[1], col[2]); // the summit's own colour, snow and all
   for (let j = 0; j < SEGS; j++) idx.push(capIdx, j, (j + 1) % SEGS);
   const g = new THREE.BufferGeometry();
