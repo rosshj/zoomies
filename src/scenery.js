@@ -1437,6 +1437,16 @@ function mountainGeo(h, rad, rock, opts = {}) {
   const shAmp = 0.18 + rand() * 0.22;
   const shAt = 0.42 + rand() * 0.22;
   const snowStart = opts.snow ?? rock.snow;
+  // Vegetation (or sand, or scree — whatever the biome's floor is) climbing the
+  // foot of the mountain. Same idea as the snowline but from below: a mountain
+  // that meets the ground as a hard colour edge reads as a prop dropped onto
+  // the terrain, whereas a skirt of the local ground tone ties it into the
+  // landscape it grew out of. Ragged, so it follows the ridges and runs further
+  // up the gullies exactly as real treelines do.
+  const vegLine = 0.13 + rand() * 0.13;
+  const vegWob = 0.05 + rand() * 0.06;
+  const vegPh = rand() * TAU;
+  const vegCol = opts.ground ? new THREE.Color(opts.ground) : null;
   const snowWob = 0.055 + rand() * 0.05; // how ragged the snowline is
   const snowPh = rand() * TAU;
   const summitPh = rand() * TAU;
@@ -1486,6 +1496,11 @@ function mountainGeo(h, rad, rock, opts = {}) {
         const line = snowStart + Math.cos(2 * th + snowPh) * snowWob + Math.cos(5 * th - snowPh) * snowWob * 0.5;
         const sAmt = Math.max(0, Math.min(1, (f - line) / 0.07));
         if (sAmt > 0) c.lerp(snowCol, sAmt);
+      }
+      if (vegCol) {
+        const vLine = vegLine + Math.cos(3 * th + vegPh) * vegWob + Math.cos(7 * th - vegPh) * vegWob * 0.45;
+        const vAmt = Math.max(0, Math.min(1, (vLine - f) / 0.11));
+        if (vAmt > 0) c.lerp(vegCol, vAmt * 0.88);
       }
       // Gullies sit in their own shade — cheap baked occlusion that makes the
       // erosion read in silhouette-free views.
@@ -1552,10 +1567,13 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     geo.applyMatrix4(_m4);
     peakGeos.push(geo);
   };
+  const _grnd = new THREE.Color();
   const peak = (x, z, h, rad, bury) => {
     const rock = MOUNTAIN_ROCK[biomeAt(x, z).name] || MOUNTAIN_ROCK.meadow;
     const base = heightAt(x, z) - bury;
-    place(mountainGeo(h * (rock.tall ?? 1), rad, rock, { apron: rock.apron }), x, base, z);
+    biomeGround(x, z, _grnd, base); // the local floor tone, for the skirt
+    const gOpt = { apron: rock.apron, ground: _grnd.getHex() };
+    place(mountainGeo(h * (rock.tall ?? 1), rad, rock, gOpt), x, base, z);
     peakInfo.push({ x, z, y: base, h, rad });
     // Bigger peaks come as a MASSIF rather than a lone spike: a subsidiary
     // summit set off to one side and fused into the same footprint. It is the
@@ -1569,19 +1587,45 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
       const d = rad * (0.85 + rand() * 0.45);
       const sx = x + Math.cos(a) * d;
       const sz = z + Math.sin(a) * d;
-      place(mountainGeo(h * (rock.tall ?? 1) * (0.30 + rand() * 0.20), rad * (0.5 + rand() * 0.25), rock, { apron: rock.apron }), sx, heightAt(sx, sz) - bury * 0.7, sz);
+      place(mountainGeo(h * (rock.tall ?? 1) * (0.30 + rand() * 0.20), rad * (0.5 + rand() * 0.25), rock, gOpt), sx, heightAt(sx, sz) - bury * 0.7, sz);
     }
   };
 
-  // Distant mountain ring around the whole world. Pushed out past the loop's
-  // ACTUAL reach (big maps stretch further than the old fixed ring allowed),
-  // so a ring peak never lands on the track.
+  // Distant mountain RANGES around the whole world. Pushed out past the loop's
+  // ACTUAL reach (big maps stretch further than the old fixed ring allowed), so
+  // a ring peak never lands on the track.
+  //
+  // Peaks go down in chains along a shared ridge line, spaced closely enough
+  // that their (now much wider) aprons INTERPENETRATE. That is the whole point:
+  // isolated cones read as scattered props however good each one is, whereas
+  // overlapping feet fuse into a skyline with saddles and cols between the
+  // summits — a range rather than a row. Heights taper along the chain so one
+  // summit dominates and the rest fall away as subsidiary tops.
   const ringBase = Math.max(1080, trackReach + 230);
-  const count = 24;
+  const count = 14;
   for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + rand() * 0.2;
+    const a = (i / count) * Math.PI * 2 + rand() * 0.25;
     const r = ringBase + rand() * 180;
-    peak(Math.cos(a) * r, Math.sin(a) * r, 175 + rand() * 165, 105 + rand() * 105, 30);
+    const cx = Math.cos(a) * r;
+    const cz = Math.sin(a) * r;
+    // The ridge runs roughly tangentially, so a range presents its LENGTH to
+    // the middle of the world rather than pointing at you end-on.
+    const ridge = a + Math.PI / 2 + (rand() - 0.5) * 1.1;
+    const links = 2 + Math.floor(rand() * 3); // 2-4 summits per range
+    const domH = 175 + rand() * 165;
+    const domR = 105 + rand() * 105;
+    let along = -((links - 1) / 2) * domR * 0.95;
+    for (let k = 0; k < links; k++) {
+      // Spacing under one radius guarantees the aprons overlap into a saddle.
+      const step = domR * (0.72 + rand() * 0.34);
+      const drift = (rand() - 0.5) * domR * 0.5; // the ridge is not a ruled line
+      const px = cx + Math.cos(ridge) * along + Math.cos(ridge + Math.PI / 2) * drift;
+      const pz = cz + Math.sin(ridge) * along + Math.sin(ridge + Math.PI / 2) * drift;
+      // One dominant summit, the rest stepping down.
+      const fall = k === 0 ? 1 : 0.55 + rand() * 0.35;
+      peak(px, pz, domH * fall, domR * (0.72 + rand() * 0.45), 30);
+      along += step;
+    }
   }
 
   // A few peaks brought in close beside the track, so you race right up against
