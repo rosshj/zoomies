@@ -1414,6 +1414,11 @@ function mountainGeo(h, rad, rock, opts = {}) {
   // centre over the base.
   const ex = 1 + (rand() - 0.5) * 0.5;
   const ez = 1 + (rand() - 0.5) * 0.5;
+  // How the flank falls away. A LOW exponent spreads the mass low and wide (a
+  // massif you could walk up); a high one keeps the sides straight and steep.
+  // Rolling it per peak is what stops a range being all the same aspect — the
+  // old cones varied only in how big the identical shape was.
+  const profExp = 0.55 + rand() * 0.38;
   const leanX = (rand() - 0.5) * 0.42;
   const leanZ = (rand() - 0.5) * 0.42;
   // A shoulder: one flank swells into a subsidiary bulge partway down.
@@ -1423,6 +1428,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
   const snowStart = opts.snow ?? rock.snow;
   const snowWob = 0.055 + rand() * 0.05; // how ragged the snowline is
   const snowPh = rand() * TAU;
+  const summitPh = rand() * TAU;
 
   const lo = new THREE.Color(rock.lo);
   const hi = new THREE.Color(rock.hi);
@@ -1438,7 +1444,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
     // — a clean elliptical cut into the ground is the other half of what made
     // these read as dropped-in cones) and a summit that is a small broken crest
     // rather than a machined point.
-    const prof = Math.pow(t, 0.72) + 0.12 * Math.pow(t, 5) + 0.055 * Math.pow(1 - t, 3);
+    const prof = Math.pow(t, profExp) + 0.12 * Math.pow(t, 5) + 0.04 * Math.pow(1 - t, 3);
     const ridgeW = Math.sin(Math.PI * Math.pow(t, 0.75)); // spurs peak mid-flank
     for (let j = 0; j < SEGS; j++) {
       const th = (j / SEGS) * TAU;
@@ -1452,7 +1458,12 @@ function mountainGeo(h, rad, rock, opts = {}) {
       const sh = shA * shA * shH * shH * shAmp;
       const r = rad * prof * (1 + az * ridgeW - gully + sh);
       // Summit jag: the very top is broken rock, not a machined point.
-      const jag = (Math.cos(3 * th + harm[0].ph) * 0.06 + Math.cos(5 * th - harm[1].ph) * 0.035) * Math.pow(1 - t, 1.9);
+      // Summit relief. This must stay SMALL relative to the summit ring, which
+      // is only a few units across: a multi-lobe harmonic at 0.095 of the whole
+      // mountain's height put ~19u of vertical wobble on an ~8u-wide top and
+      // split every peak into a tuning fork. One lobe, gently, so the crest
+      // leans to one side and reads as broken rock rather than twin spires.
+      const jag = Math.cos(th + summitPh) * 0.022 * Math.pow(1 - t, 1.6);
       const y = h * (1 - t) + h * jag;
       const x = Math.sin(th) * r * ex + leanX * rad * (1 - t);
       const z = Math.cos(th) * r * ez + leanZ * rad * (1 - t);
@@ -1525,12 +1536,16 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     // Bigger peaks come as a MASSIF rather than a lone spike: a subsidiary
     // summit set off to one side and fused into the same footprint. It is the
     // single strongest cue that a mountain is a mountain and not a pyramid.
-    if (h > 150 && rand() < 0.7) {
+    if (h > 150 && rand() < 0.45) {
+      // Set WELL out and WELL down. Close and tall was a second summit of
+      // roughly the main one's height sitting half a radius away, which from
+      // most angles is exactly the forked twin-peak silhouette to avoid; a
+      // lower mass further out reads as the shoulder of a range instead.
       const a = rand() * Math.PI * 2;
-      const d = rad * (0.55 + rand() * 0.3);
+      const d = rad * (0.85 + rand() * 0.45);
       const sx = x + Math.cos(a) * d;
       const sz = z + Math.sin(a) * d;
-      place(mountainGeo(h * (0.5 + rand() * 0.22), rad * (0.55 + rand() * 0.2), rock), sx, heightAt(sx, sz) - bury * 0.7, sz);
+      place(mountainGeo(h * (0.30 + rand() * 0.20), rad * (0.5 + rand() * 0.25), rock), sx, heightAt(sx, sz) - bury * 0.7, sz);
     }
   };
 
@@ -1542,7 +1557,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
   for (let i = 0; i < count; i++) {
     const a = (i / count) * Math.PI * 2 + rand() * 0.2;
     const r = ringBase + rand() * 180;
-    peak(Math.cos(a) * r, Math.sin(a) * r, 190 + rand() * 160, 90 + rand() * 70, 30);
+    peak(Math.cos(a) * r, Math.sin(a) * r, 175 + rand() * 165, 105 + rand() * 105, 30);
   }
 
   // A few peaks brought in close beside the track, so you race right up against
