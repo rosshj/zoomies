@@ -1363,23 +1363,32 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
   scene.add(mesh);
 }
 
-// Rock palette and snowline per biome. `snow` is the fraction of the mountain's
-// own height above which snow starts (1 = never — a snow-capped peak behind a
-// cactus looks absurd), and it's a fraction rather than a world height so a
-// small foothill and a giant both get their caps in proportion.
+// Rock palette, snowline and SLOPE CHARACTER per biome. `snow` is the fraction
+// of the mountain's own height above which snow starts (1 = never — a
+// snow-capped peak behind a cactus looks absurd), and it's a fraction rather
+// than a world height so a small foothill and a giant both get their caps in
+// proportion.
+//
+// `apron` is how much the flank spreads into a broad skirt toward the foot, and
+// it is what makes a mountain read as a mountain rather than a pyramid: real
+// slopes ease off as they descend into foothills, they don't run straight to
+// the ground at one angle. `tall` scales the height against that, because a
+// gradual mountain that stays as tall as a spire just becomes a bigger spire.
+// The dry biomes keep a small apron and full height on purpose — mesas and
+// buttes really are steep-sided towers, and that's the one place spires belong.
 const MOUNTAIN_ROCK = {
-  alpine: { lo: 0x4e5866, hi: 0x8a97a8, snow: 0.40 },
-  tundra: { lo: 0x59616a, hi: 0x939ba4, snow: 0.44 },
-  forest: { lo: 0x4a5348, hi: 0x7d8878, snow: 0.66 },
-  jungle: { lo: 0x3f5040, hi: 0x6f8470, snow: 0.74 },
-  meadow: { lo: 0x6a6355, hi: 0x9a9384, snow: 0.68 },
-  blossom: { lo: 0x6e6559, hi: 0xa09689, snow: 0.70 },
-  autumn: { lo: 0x6f6045, hi: 0xa08d6c, snow: 0.72 },
-  savanna: { lo: 0x7a6647, hi: 0xb09a74, snow: 1 },
-  desert: { lo: 0x9c6a3e, hi: 0xd6a874, snow: 1 },
-  mesa: { lo: 0x8d4830, hi: 0xc47f56, snow: 1 },
-  beach: { lo: 0x8a8270, hi: 0xc0b7a0, snow: 0.85 },
-  city: { lo: 0x63656a, hi: 0x94969c, snow: 0.68 },
+  alpine: { lo: 0x4e5866, hi: 0x8a97a8, snow: 0.40 , apron: 0.30, tall: 0.92 },
+  tundra: { lo: 0x59616a, hi: 0x939ba4, snow: 0.44 , apron: 0.34, tall: 0.92 },
+  forest: { lo: 0x4a5348, hi: 0x7d8878, snow: 0.66 , apron: 0.58, tall: 0.82 },
+  jungle: { lo: 0x3f5040, hi: 0x6f8470, snow: 0.74 , apron: 0.55, tall: 0.84 },
+  meadow: { lo: 0x6a6355, hi: 0x9a9384, snow: 0.68 , apron: 0.62, tall: 0.80 },
+  blossom: { lo: 0x6e6559, hi: 0xa09689, snow: 0.70 , apron: 0.62, tall: 0.80 },
+  autumn: { lo: 0x6f6045, hi: 0xa08d6c, snow: 0.72 , apron: 0.58, tall: 0.82 },
+  savanna: { lo: 0x7a6647, hi: 0xb09a74, snow: 1 , apron: 0.66, tall: 0.78 },
+  desert: { lo: 0x9c6a3e, hi: 0xd6a874, snow: 1 , apron: 0.20, tall: 1.05 },
+  mesa: { lo: 0x8d4830, hi: 0xc47f56, snow: 1 , apron: 0.14, tall: 1.10 },
+  beach: { lo: 0x8a8270, hi: 0xc0b7a0, snow: 0.85 , apron: 0.60, tall: 0.80 },
+  city: { lo: 0x63656a, hi: 0x94969c, snow: 0.68 , apron: 0.56, tall: 0.84 },
 };
 
 // ONE MOLDED SURFACE, not a cone. The old peaks were literally ConeGeometry
@@ -1414,11 +1423,13 @@ function mountainGeo(h, rad, rock, opts = {}) {
   // centre over the base.
   const ex = 1 + (rand() - 0.5) * 0.5;
   const ez = 1 + (rand() - 0.5) * 0.5;
-  // How the flank falls away. A LOW exponent spreads the mass low and wide (a
-  // massif you could walk up); a high one keeps the sides straight and steep.
-  // Rolling it per peak is what stops a range being all the same aspect — the
-  // old cones varied only in how big the identical shape was.
-  const profExp = 0.55 + rand() * 0.38;
+  // How the flank falls away. The exponent alone is the wrong lever: below 1 it
+  // flattens the SUMMIT into a dome, above 1 it needles the summit into a
+  // spike, and neither is what a mountain does. What a mountain does is hold a
+  // fairly straight upper flank and then EASE OFF into a skirt of foothills, so
+  // the flank stays near-linear and the character comes from the apron term.
+  const profExp = 0.95 + rand() * 0.22;
+  const apron = (opts.apron ?? 0.5) * (0.75 + rand() * 0.5);
   const leanX = (rand() - 0.5) * 0.42;
   const leanZ = (rand() - 0.5) * 0.42;
   // A shoulder: one flank swells into a subsidiary bulge partway down.
@@ -1444,7 +1455,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
     // — a clean elliptical cut into the ground is the other half of what made
     // these read as dropped-in cones) and a summit that is a small broken crest
     // rather than a machined point.
-    const prof = Math.pow(t, profExp) + 0.12 * Math.pow(t, 5) + 0.04 * Math.pow(1 - t, 3);
+    const prof = Math.pow(t, profExp) + apron * Math.pow(t, 2.4) + 0.045 * Math.pow(1 - t, 3);
     const ridgeW = Math.sin(Math.PI * Math.pow(t, 0.75)); // spurs peak mid-flank
     for (let j = 0; j < SEGS; j++) {
       const th = (j / SEGS) * TAU;
@@ -1491,6 +1502,19 @@ function mountainGeo(h, rad, rock, opts = {}) {
       idx.push(a0, b0, a1, a1, b0, b1);
     }
   }
+  // CAP THE SUMMIT. The top ring has a small but non-zero radius (that is what
+  // gives a broken crest rather than a machined point) and nothing closed it,
+  // so every mountain in the world was an open tube — from close up, and from
+  // any angle that cleared the rim, a clean circular HOLE with sky through it.
+  // A fan to a centre vertex sitting just above the ring's mean height closes
+  // it as a small rocky top.
+  const capIdx = pos.length / 3;
+  let cy = 0;
+  for (let j = 0; j < SEGS; j++) cy += pos[j * 3 + 1];
+  cy = cy / SEGS + h * 0.012;
+  pos.push(0, cy, 0);
+  col.push(col[0], col[1], col[2]); // the summit's own colour, snow and all
+  for (let j = 0; j < SEGS; j++) idx.push(capIdx, j, (j + 1) % SEGS);
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
@@ -1531,7 +1555,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
   const peak = (x, z, h, rad, bury) => {
     const rock = MOUNTAIN_ROCK[biomeAt(x, z).name] || MOUNTAIN_ROCK.meadow;
     const base = heightAt(x, z) - bury;
-    place(mountainGeo(h, rad, rock), x, base, z);
+    place(mountainGeo(h * (rock.tall ?? 1), rad, rock, { apron: rock.apron }), x, base, z);
     peakInfo.push({ x, z, y: base, h, rad });
     // Bigger peaks come as a MASSIF rather than a lone spike: a subsidiary
     // summit set off to one side and fused into the same footprint. It is the
@@ -1545,7 +1569,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
       const d = rad * (0.85 + rand() * 0.45);
       const sx = x + Math.cos(a) * d;
       const sz = z + Math.sin(a) * d;
-      place(mountainGeo(h * (0.30 + rand() * 0.20), rad * (0.5 + rand() * 0.25), rock), sx, heightAt(sx, sz) - bury * 0.7, sz);
+      place(mountainGeo(h * (rock.tall ?? 1) * (0.30 + rand() * 0.20), rad * (0.5 + rand() * 0.25), rock, { apron: rock.apron }), sx, heightAt(sx, sz) - bury * 0.7, sz);
     }
   };
 
