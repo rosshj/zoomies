@@ -11,7 +11,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // around the runs and build their structures. See features.js for the system.
 import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 import { uSunViewNode, uSunColNode } from "./toon.js"; // shared per-frame sun nodes (grass backlight reads them)
-import { windLean, bakeBendWeights, setWind } from "./wind.js"; // the world's one wind field
+import { windLean, windGustDrift, bakeBendWeights, setWind } from "./wind.js"; // the world's one wind field
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -1616,10 +1616,14 @@ function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
   // descent from FALL_H down to 0, then an instant (and visually hidden) reset.
   const _fallClock = time.mul(cfg.speed).add(hash(instanceIndex));
   const _fall = float(FALL_H).mul(_fallClock.fract().oneMinus());
-  // Gentle drift + flutter. Geo is baked flat with yaw-only instances, so a local
-  // +Y offset is world-up (same trick as the ground leaves).
+  // Drift + flutter. Geo is baked flat with yaw-only instances, so a local +Y
+  // offset is world-up (same trick as the ground leaves) — and because three
+  // folds the instance matrix into positionLocal before this runs, positionLocal
+  // .xz IS the speck's world position, which is exactly what the wind field
+  // wants to be sampled at. So petals blow the way the trees are leaning,
+  // instead of milling about on a clock of their own.
   const _t = time.mul(1.4).add(_ph);
-  const _drift = vec3(_t.sin().mul(0.9), 0, _t.mul(0.8).cos().mul(0.9));
+  const _drift = windGustDrift(positionLocal.x, positionLocal.z, 1.15, hash(instanceIndex));
   const _flut = vec3(0, _t.mul(2.3).sin().mul(cfg.tumble), 0);
   mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut);
 
@@ -1729,23 +1733,26 @@ function debrisTexture(kind) {
   return (_debrisTex[kind] = tex);
 }
 
-// Wind-blown debris: tumbleweed buffeting across the DESERT and pale seed-fluff
-// drifting over the SAVANNA. Each mote is buffeted around its home point by a
-// smooth two-axis gust + (tumbleweed) a ground-hugging bounce — all in the vertex
-// shader off `time`, so each biome's field is ONE draw with zero per-frame CPU
-// and no visible wrap/snap. Nothing here is precipitation (that's the weather
-// system); this is dry-biome atmosphere the leafy biomes already get from leaves.
+// Wind-blown debris — every dry or bare biome's airborne signature: tumbleweed
+// bowling across the DESERT and MESA, seed-fluff over the SAVANNA, spindrift
+// snaking off the ALPINE and TUNDRA snow, litter tumbling through the CITY.
+// Each mote hovers around its home point (no linear wrap, so no snap) and is
+// carried by the SHARED wind field, which is the whole point: the gust that
+// lays the grass over and bends the treeline is the same gust that shoves this
+// entire field of tumbleweeds downwind together. Motion is all vertex shader,
+// one draw per kind, zero per-frame CPU. Nothing here is precipitation (that's
+// the weather system) — this is atmosphere the leafy biomes get from leaves.
 function buildWindDebris(scene, track, heightAt) {
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-  const build = (kind, biome, cfg) => {
+  const build = (kind, biomes, cfg) => {
     const bases = [];
     let tries = 0;
     while (bases.length / 3 < cfg.want && tries < cfg.want * 9) {
       tries++;
       const i = Math.floor(rand() * N);
       const p = track._pts[i];
-      if (biomeAt(p.x, p.z).name !== biome) continue;
+      if (!biomes.includes(biomeAt(p.x, p.z).name)) continue;
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const dirS = rand() < 0.5 ? 1 : -1;
       const dist = track.halfWidth + 3 + rand() * 40;
@@ -1764,26 +1771,28 @@ function buildWindDebris(scene, track, heightAt) {
     mat.color = new THREE.Color(cfg.tint);
     mat.opacity = cfg.opacity;
     const b = attribute("aBase");
-    const ph = hash(instanceIndex).mul(6.2832);
-    const t = time.add(ph);
-    // Smooth two-axis gust buffeting (no linear wrap → no snap) + a bounce.
-    const gust = vec3(
-      t.mul(cfg.gustSpd).sin().mul(cfg.amp).add(t.mul(cfg.gustSpd * 2.3).sin().mul(cfg.amp * 0.3)),
-      t.mul(cfg.bounceSpd).sin().abs().mul(cfg.bounce),
-      t.mul(cfg.gustSpd * 0.8).cos().mul(cfg.amp * 0.7)
-    );
-    mat.positionNode = b.add(gust);
+    // Carried by the shared field: downwind on the gust, back as it passes,
+    // hopping when it's actually being shoved.
+    mat.positionNode = b.add(windGustDrift(b.x, b.z, cfg.amp, hash(instanceIndex), cfg.bounce));
     const mesh = new THREE.InstancedMesh(geo, mat, count);
     mesh.frustumCulled = false;
     mesh.castShadow = false;
     mesh.renderOrder = 3;
     mesh.layers.set(1);
+    mesh.userData.debris = kind + ":" + biomes.join("+"); // probes frame by this
     scene.add(mesh);
   };
-  // Tumbleweed: bigger, tan, hops along the ground with wide horizontal gusts.
-  build("tumbleweed", "desert", { want: 34, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, gustSpd: 0.45, amp: 5.5, bounceSpd: 3.2, bounce: 1.6 });
+  // Tumbleweed: bigger, tan, bowls along the ground and hops on the gusts.
+  build("tumbleweed", ["desert", "mesa"], { want: 46, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, amp: 5.5, bounce: 1.6 });
   // Seed-fluff: small, pale, floats higher and drifts more gently.
-  build("fluff", "savanna", { want: 90, size: 0.7, baseLift: 1.6, tint: 0xf2ecd8, opacity: 0.7, gustSpd: 0.35, amp: 3.2, bounceSpd: 1.4, bounce: 0.5 });
+  build("fluff", ["savanna"], { want: 90, size: 0.7, baseLift: 1.6, tint: 0xf2ecd8, opacity: 0.7, amp: 3.2, bounce: 0.5 });
+  // Spindrift: loose snow torn off the drifts, hugging the ground in long
+  // streaks — the cold biomes' answer to the desert's tumbleweed. Tinted COOL
+  // rather than white: pure white spindrift over white snow is invisible, and
+  // the faint blue shadow-tone is what actually reads as blowing snow.
+  build("streak", ["alpine", "tundra"], { want: 130, size: 1.9, baseLift: 0.35, tint: 0xc9dcf0, opacity: 0.62, amp: 4.4, bounce: 0.25 });
+  // Litter: paper scraps loose in the streets, kicked about between the kerbs.
+  build("paper", ["city"], { want: 42, size: 0.55, baseLift: 0.8, tint: 0xf0eee6, opacity: 0.75, amp: 3.6, bounce: 0.9 });
 }
 
 // Debris that CROSSES the road (perceived speed): leaves skittering over the

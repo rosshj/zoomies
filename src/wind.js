@@ -43,6 +43,29 @@ export function windLean(px, pz, amp) {
   );
 }
 
+// World-space drift for something AIRBORNE, hovering around a home point.
+// Where windLean BENDS something rooted, this CARRIES something loose: the
+// travelling gust shoves the mote downwind and it eases back as the front goes
+// by, so a whole field of tumbleweeds surges together instead of each one
+// jiggling on its own private clock. Staying anchored to a home point (rather
+// than translating forever and wrapping) is what keeps the motion snap-free.
+//
+// `amp` is in world units. `jitter` is a per-mote 0..1 node (hash the instance
+// index) so they aren't in perfect lockstep. `lift` adds a hop on the gust —
+// a tumbleweed should bounce when it's actually being shoved.
+export function windGustDrift(px, pz, amp, jitter, lift = 0) {
+  const { gust } = gustAt(px, pz);
+  const ph = jitter.mul(6.2832);
+  const own = ph.add(_phase.mul(1.7)).sin(); // the mote's own small wander
+  const g = gust.mul(0.72).add(own.mul(0.28)).mul(uWindStr);
+  const cross = ph.add(_phase.mul(0.9)).cos().mul(0.38).mul(uWindStr);
+  return vec3(
+    uWindDir.x.mul(g).sub(uWindDir.y.mul(cross)).mul(amp),
+    g.abs().mul(lift),
+    uWindDir.y.mul(g).add(uWindDir.x.mul(cross)).mul(amp)
+  );
+}
+
 // A positionNode for anything PLANTED in the ground: rooted at its base, bowing
 // downwind, never stretching. Needs two attributes on the geometry:
 //   aBend      per-vertex float — the object's own geometry height, so one

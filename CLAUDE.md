@@ -41,9 +41,14 @@ then reaches the treeline a beat later.
   number bends a blade of grass and an oak through the same angle.
 - `windBendNode(amp)` → a ready-made `positionNode` for planted, instanced
   things. Needs `aBend` per vertex (bake with `bakeBendWeights(geo)`) and
-  `aWindRoot` per instance = (world x, world z, instance yaw) — the yaw is
-  there because the lean is computed in world space and has to be rotated back
-  into the instance's frame.
+  `aWindRoot` per instance = (world x, world z, instance height scale) — the
+  world XZ is where the gust wave gets sampled, the scale turns a
+  fraction-of-height lean into world units.
+- `windGustDrift(px, pz, amp, jitter, lift)` → world-XZ(+Y) drift for AIRBORNE
+  motes (tumbleweed, spindrift, litter, petals). They are carried, not bent:
+  the gust shoves them downwind and they ease back as the front passes. Keep
+  them anchored to a home point — a mote that translates forever has to wrap,
+  and the wrap always shows.
 - On a `MeshStandardMaterial`, `userData.sway = amp` is enough: `toToon` sees
   it and wires `windBendNode` into the toon material it builds.
 
@@ -54,6 +59,12 @@ Bending rules that keep re-appearing (the grass got both wrong first):
   shape bows over instead of growing.
 - Per-instance attributes mean the geometry must be CLONED off any shared
   cache (`_foliageGeoCache` hands the same geometry to every batch).
+- On an InstancedMesh, three folds the instance matrix into `positionLocal`
+  BEFORE a material's `positionNode` runs. So `positionLocal.y` is the vertex's
+  WORLD height (squaring it for a bend weight throws the object out of the
+  world — this is what "the grass flies everywhere" actually was), and an
+  offset added to `positionLocal` is already in WORLD space, so do NOT rotate
+  it by the instance yaw. Take heights off `positionGeometry` instead.
 
 ## Verification loop for art changes
 

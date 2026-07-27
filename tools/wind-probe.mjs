@@ -91,7 +91,11 @@ const framed = await page.evaluate(() => {
   cam.updateMatrixWorld(true);
   cam.position.copy = function () { return this; }; // the race loop can't move it
   cam.lookAt = () => {};
-  return { canopies: canopies.length, found: true, dist: +bestD.toFixed(1), tree: [Math.round(best.x), Math.round(y), Math.round(best.z)] };
+  // Airborne fields carry aBase; report what got built so a missing biome
+  // signature shows up as an absence, not a silent pass.
+  const air = [];
+  Z.scene.traverse((o) => { if (o.isInstancedMesh && o.geometry.attributes.aBase) air.push(o.count); });
+  return { air, canopies: canopies.length, found: true, dist: +bestD.toFixed(1), tree: [Math.round(best.x), Math.round(y), Math.round(best.z)] };
 });
 console.log("framed", JSON.stringify(framed));
 

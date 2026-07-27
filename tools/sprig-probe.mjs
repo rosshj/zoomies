@@ -69,9 +69,14 @@ const kinds = await page.evaluate(() => {
     return mode;
   };
   window.__aim = (tag) => {
-    const m = Z.world.grass.children.find((c) => c.userData.sprig === tag);
+    let m = Z.world.grass.children.find((c) => c.userData.sprig === tag);
+    let attr = "aRoot";
+    if (!m) { // airborne fields (tumbleweed / fluff / spindrift / litter)
+      Z.scene.traverse((o) => { if (o.userData && o.userData.debris === tag) m = o; });
+      attr = "aBase";
+    }
     if (!m) return null;
-    const a = m.geometry.attributes.aRoot.array;
+    const a = m.geometry.attributes[attr].array;
     // Densest instance: the sprig with the most neighbours inside 4u.
     let bi = 0, bn = -1;
     for (let i = 0; i < m.count; i += Math.max(1, (m.count / 400) | 0)) {
@@ -84,8 +89,10 @@ const kinds = await page.evaluate(() => {
     }
     const x = a[bi * 3], y = a[bi * 3 + 1], z = a[bi * 3 + 2];
     const c = Z.camera;
-    Object.getPrototypeOf(c.position).set.call(c.position, x + 1.7, y + 1.05, z + 1.7);
-    Object.getPrototypeOf(c).lookAt.call(c, x, y + 0.45, z);
+    const far = attr === "aBase"; // motes are spread over metres, sprigs over centimetres
+    const d = far ? 11 : 1.7;
+    Object.getPrototypeOf(c.position).set.call(c.position, x + d, y + (far ? 4.5 : 1.05), z + d);
+    Object.getPrototypeOf(c).lookAt.call(c, x, y + (far ? 1.2 : 0.45), z);
     c.updateMatrixWorld(true);
     const V3 = c.position.constructor;
     const ndc = new V3(x, y + 0.5, z).project(c);
@@ -98,7 +105,9 @@ const kinds = await page.evaluate(() => {
       ndc: [+ndc.x.toFixed(2), +ndc.y.toFixed(2), +ndc.z.toFixed(3)],
       cam: c.position.toArray().map(Math.round), frust: m.frustumCulled };
   };
-  return Z.world.grass.children.map((c) => c.userData.sprig);
+  const tags = Z.world.grass.children.map((c) => c.userData.sprig);
+  Z.scene.traverse((o) => { if (o.userData && o.userData.debris) tags.push(o.userData.debris); });
+  return tags;
 });
 console.log("kinds", JSON.stringify(kinds));
 const BISECT = process.env.BISECT || "";
