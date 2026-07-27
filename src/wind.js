@@ -10,7 +10,7 @@
 // no uniform upload, and nothing anyone can forget to update — the field is
 // live the moment a material reads it.
 import * as THREE from "three";
-import { uniform, time, vec2, vec3, attribute, positionLocal } from "three/tsl";
+import { uniform, time, vec2, vec3, attribute, positionLocal, positionGeometry } from "three/tsl";
 
 export const uWindDir = uniform(new THREE.Vector2(0.82, 0.57)); // unit XZ, points DOWNWIND
 export const uWindStr = uniform(1); // overall force; weather scales it
@@ -45,42 +45,44 @@ export function windLean(px, pz, amp) {
 
 // A positionNode for anything PLANTED in the ground: rooted at its base, bowing
 // downwind, never stretching. Needs two attributes on the geometry:
-//   aBend      per-vertex vec2 — (height up the object 0..1, the object's total
-//              local height) so one shared material can serve several shapes
-//   aWindRoot  per-instance vec3 — (world x, world z, instance yaw)
-// The yaw is there because the lean is computed in WORLD space and has to be
-// rotated back into the instance's own frame. Same length-preserving arc the
-// grass uses: lean a tip out by s and it loses ~s²/2 of reach, so the crown
-// bows over its trunk instead of growing taller.
+//   aBend      per-vertex float — the object's own geometry height, so one
+//              shared material can serve several shapes at once
+//   aWindRoot  per-instance vec3 — (world x, world z, instance height scale)
+//
+// Note what is NOT here: any rotation by the instance's yaw. On an
+// InstancedMesh three folds the instance matrix into positionLocal BEFORE a
+// material's positionNode runs, so an offset added here lands in world space
+// already (these meshes sit at the origin) — rotating it would send every tree
+// leaning a different way and undo the whole point of a shared wind. For the
+// same reason the height has to come off positionGeometry: positionLocal.y is
+// the vertex's WORLD height by this point, and squaring that for the bend
+// weight throws the object into the distance.
+//
+// Same length-preserving arc the grass uses: lean a tip out by s and it loses
+// ~s²/2 of reach, so the crown bows over its trunk instead of growing taller.
 export function windBendNode(amp) {
   const root = attribute("aWindRoot");
   const w = attribute("aBend");
-  const reach = w.x.mul(w.x).mul(w.y); // norm² × height → local units at amp = 1
-  const lean = windLean(root.x, root.y, amp); // aWindRoot is (x, z, yaw)
-  const cy = root.z.cos();
-  const sy = root.z.sin();
-  const lx = lean.x.mul(reach);
-  const lz = lean.y.mul(reach);
-  const ox = lx.mul(cy).sub(lz.mul(sy));
-  const oz = lx.mul(sy).add(lz.mul(cy));
-  const oy = ox.mul(ox).add(oz.mul(oz)).mul(-0.5).div(w.y.max(0.001));
+  const tall = w.mul(root.z).max(0.001); // the object's height in WORLD units
+  const norm = positionGeometry.y.div(w.max(0.001)).clamp(0, 1); // 0 base -> 1 crown
+  const reach = norm.mul(norm).mul(tall); // world units at amp = 1
+  const lean = windLean(root.x, root.y, amp); // aWindRoot is (x, z, scale)
+  const ox = lean.x.mul(reach);
+  const oz = lean.y.mul(reach);
+  const oy = ox.mul(ox).add(oz.mul(oz)).mul(-0.5).div(tall);
   return positionLocal.add(vec3(ox, oy, oz));
 }
 
-// Bake the `aBend` attribute a windBendNode material expects. Pins the geometry
-// at its own origin (for a canopy that is the trunk top, which is exactly where
-// a tree should pivot) and normalises the rest of the way to its crown.
+// Bake the `aBend` attribute a windBendNode material expects: the geometry's
+// own height, which the shader normalises positionGeometry.y against. That pins
+// the object at its origin — for a canopy that is the trunk top, exactly where
+// a tree should pivot — and puts the full lean at its crown.
 export function bakeBendWeights(geo) {
   const pos = geo.attributes.position;
   let maxY = 0;
   for (let i = 0; i < pos.count; i++) maxY = Math.max(maxY, pos.getY(i));
   if (maxY <= 0) maxY = 1;
-  const out = new Float32Array(pos.count * 2);
-  for (let i = 0; i < pos.count; i++) {
-    out[i * 2] = Math.max(0, Math.min(1, pos.getY(i) / maxY));
-    out[i * 2 + 1] = maxY;
-  }
-  geo.setAttribute("aBend", new THREE.BufferAttribute(out, 2));
+  geo.setAttribute("aBend", new THREE.BufferAttribute(new Float32Array(pos.count).fill(maxY), 1));
   return geo;
 }
 

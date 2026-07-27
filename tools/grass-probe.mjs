@@ -71,11 +71,12 @@ for (let t = 0; t < 90; t++) {
 // where the kart is about to be.
 await page.evaluate(() => {
   const Z = window.__zoomies;
-  const g = Z.world.grass;
+  // world.grass is a GROUP of sprig meshes now; the probe drives the first one.
+  const g = Z.world.grass.isInstancedMesh ? Z.world.grass : Z.world.grass.children.find((c) => c.isInstancedMesh);
   const track = Z.track;
-  const uk = g.userData.uKart;
+  const uk = (Z.world.grass.userData || {}).uKart || g.userData.uKart;
   // Adaptive quality hides the grass outright at SwiftShader framerates.
-  Object.defineProperty(g, "visible", { get: () => true, set: () => {}, configurable: true });
+  Object.defineProperty(Z.world.grass, "visible", { get: () => true, set: () => {}, configurable: true });
   g.frustumCulled = false;
   // three isn't on the debug hook, so borrow the classes off live objects.
   const Matrix4 = g.matrix.constructor, Vector3 = g.position.constructor;

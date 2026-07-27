@@ -2041,7 +2041,17 @@ function updateDRS(rawMs, dt) {
   // (kart build GC, the 12-angle pipeline prewarm). Acting on that junk dropped
   // a resolution rung during the countdown — a realloc hitch at the start plus
   // a needlessly blurry opening stretch. Freeze rung decisions until it's down.
-  if (_veilActive) {
+  // The MENU screens are not a race and must never cost the race resolution.
+  // They deliberately render at ~30fps (the drift and the start-line tableau
+  // both throttle to a 32ms draw to save battery) and they are where the bulk
+  // of the world's pipelines compile for the first time — so every menu frame
+  // looks like a blown budget to the scaler. It duly dropped two rungs on the
+  // TITLE screen, and the player then walked through the racer tableau, the
+  // veil and the countdown already blurred, with the recovery ladder only
+  // clawing it back seconds into the race. Same for PAUSED, which draws once
+  // and holds: those free frames read as headroom and would ratchet the scale
+  // UP, so un-pausing hitched. Judge resolution on racing frames only.
+  if (_veilActive || state === State.MENU || state === State.PAUSED) {
     _drsOverT = 0;
     _drsUnderT = 0;
     _drsCooldown = Math.max(_drsCooldown, 0.5); // and give the first live frames a beat

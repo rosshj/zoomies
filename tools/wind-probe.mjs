@@ -65,7 +65,7 @@ for (let t = 0; t < 90; t++) {
 // a still shot is the only way to tell a lean from a camera move.
 const framed = await page.evaluate(() => {
   const Z = window.__zoomies;
-  const g = Z.world.grass;
+  const g = Z.world.grass; // a group of sprig meshes
   Object.defineProperty(g, "visible", { get: () => true, set: () => {}, configurable: true });
   // Canopies are the instanced meshes carrying the wind attribute.
   const canopies = [];

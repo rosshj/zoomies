@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
 import { rand, makeRng } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { cloudClusterGeo } from "./scene.js"; // the sky ring's cloud lump (asset catalog shows one)
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
@@ -517,8 +517,10 @@ export function buildWorld(scene, track, opts = {}) {
       // dummy .uniforms after they compile, so don't write to them.)
       if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
       for (const w of waters) if (w.uniforms) w.uniforms.uTime.value = time;
-      const sh = grass && grass.material.userData.shader;
-      if (sh) sh.uniforms.uTime.value = time;
+      // (the roadside cover is a group of TSL sprig meshes driven by the shared
+      // wind field's own `time` node — nothing to tick from here. The old
+      // GLSL-era uniform poke that lived here was already dead code, and threw
+      // outright once `grass` became a group.)
     },
   };
 }
@@ -965,25 +967,84 @@ function ribbonWaterMesh(L, mat) {
   return mesh;
 }
 
-// Instanced grass blades along the roadside, swaying in the wind.
+// ---- Roadside ground cover -------------------------------------------------
+// One tapered card standing on y=0, exactly 1 unit tall (the wind bend measures
+// its offsets as a fraction of that height, so every sprig must share it) with
+// a base→tip colour gradient baked in. Two height segments, because a bend
+// weighted by y² across a single quad can only shear it — the extra ring is
+// what turns the lean into an arc.
+function sprigCard(wBase, wTop, lo, hi, curve = 0) {
+  const SEG = 2;
+  const pos = [], col = [], idx = [];
+  const a = new THREE.Color(lo), b = new THREE.Color(hi), c = new THREE.Color();
+  for (let s = 0; s <= SEG; s++) {
+    const t = s / SEG;
+    const w = (wBase + (wTop - wBase) * t) * 0.5;
+    const bow = curve * t * t; // a resting curve, before any wind
+    pos.push(-w, t, bow, w, t, bow);
+    c.copy(a).lerp(b, t);
+    col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+  }
+  for (let s = 0; s < SEG; s++) {
+    const i0 = s * 2;
+    idx.push(i0, i0 + 1, i0 + 3, i0, i0 + 3, i0 + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+// Each biome's signature roadside plant. All are built from the same cards and
+// all ride the same wind + kart bow-wave, so a gust crosses a meadow of
+// flowers, a savanna of dry stalks and a jungle of reeds as ONE gust.
+// `scale` stretches the 1-unit card to the plant's real height; `tinted` says
+// whether the biome's grass tint multiplies it (flower heads carry their own
+// colour and must not be washed green).
+const SPRIGS = {
+  blade: { scale: 1.0, tinted: true, geo: () => sprigCard(0.18, 0.05, 0x2f7d32, 0x86c560, 0.06) },
+  flower: { scale: 0.95, tinted: true, geo: () => sprigCard(0.07, 0.035, 0x3c7d3a, 0x6faa52, 0.05) },
+  stalk: { scale: 1.75, tinted: true, geo: () => sprigCard(0.07, 0.03, 0x8a7434, 0xd8c072, 0.1) },
+  reed: { scale: 1.6, tinted: true, geo: () => sprigCard(0.16, 0.02, 0x1f6b2c, 0x63b45a, 0.14) },
+  scrub: { scale: 0.6, tinted: true, geo: () => sprigCard(0.1, 0.02, 0x6f6338, 0xa79a63, 0.16) },
+  tussock: { scale: 0.55, tinted: true, geo: () => sprigCard(0.14, 0.03, 0x5d6a55, 0x9aa88c, 0.1) },
+  marram: { scale: 1.2, tinted: true, geo: () => sprigCard(0.09, 0.02, 0x7f8a52, 0xc3c98a, 0.18) },
+};
+const SPRIG_BY_BIOME = {
+  meadow: "flower", blossom: "flower",
+  savanna: "stalk", autumn: "stalk",
+  jungle: "reed",
+  desert: "scrub", mesa: "scrub",
+  alpine: "tussock", tundra: "tussock",
+  beach: "marram",
+};
+// Flower-head palettes. The heads ride as a SECOND instanced mesh on the very
+// same roots, yaws and scales as the stems, so they bend with their own stem
+// exactly — and being separate, they can carry a colour of their own instead of
+// being multiplied into the biome's green.
+const FLOWER_COLS = {
+  meadow: [0xfff3d0, 0xffe27a, 0xf6f2ff, 0xe8b6f0],
+  blossom: [0xffd3e4, 0xffb0cd, 0xfff0f6, 0xff9ec2],
+};
+// A few petals: two crossed cards up at the top of the stem, tiny and white so
+// the per-instance colour reads true.
+function flowerHeadGeo() {
+  const a = sprigCard(0.02, 0.17, 0xffffff, 0xffffff);
+  const b = sprigCard(0.02, 0.17, 0xf2f2f2, 0xf2f2f2);
+  a.translate(0, -1, 0); a.scale(1, 0.13, 1); a.translate(0, 0.95, 0);
+  b.translate(0, -1, 0); b.scale(1, 0.13, 1); b.translate(0, 0.95, 0);
+  b.rotateY(Math.PI / 2);
+  return mergeGeometries([a, b]);
+}
+
+// Instanced roadside cover along the verge, swaying in the shared wind.
 function buildGrass(scene, track, heightAt) {
-  const COUNT = 26000; // one instanced draw of 2-triangle quads — cheap to raise
+  const COUNT = 26000; // instanced 4-triangle cards — cheap to raise
   const halfW = track.halfWidth;
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-
-  const blade = new THREE.PlaneGeometry(0.18, 1.0, 1, 1);
-  blade.translate(0, 0.5, 0); // pivot at the base
-  // base darker, tip lighter green
-  const cols = [];
-  const lo = new THREE.Color(0x2f7d32);
-  const hi = new THREE.Color(0x86c560);
-  const p = blade.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const c = lo.clone().lerp(hi, p.getY(i));
-    cols.push(c.r, c.g, c.b);
-  }
-  blade.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
 
   // TSL node material. The old GLSL onBeforeCompile sway/backlight never ran
   // under WebGPURenderer — BOTH its backends (WebGPU and the WebGL2 fallback)
@@ -1011,31 +1072,40 @@ function buildGrass(scene, track, heightAt) {
     // at the root, all of it at the tip. The first cut instead pushed tips by a
     // fixed number of WORLD units, which uprooted short blades, stretched them
     // to twice their length and made the meadow look like it was flying apart.
-    const y01 = positionLocal.y; // 0 at the base -> 1 at the tip
+    // A sprig BENDS about its planted base — it never slides.
+    //
+    // Read the height off positionGeometry, NOT positionLocal: on an
+    // InstancedMesh three has already folded the instance matrix into
+    // positionLocal by the time a positionNode sees it, so positionLocal.y is
+    // the blade's WORLD height (tens of units on a hillside), not 0..1. Using
+    // it squared the terrain height into the bend weight and hurled the whole
+    // meadow into the distance — which is precisely the "grass flies all over
+    // the place" this shader was reported for. It survived earlier passes only
+    // because the coefficients happened to be small enough to look merely odd.
+    //
+    // The flip side of that same fact: an offset added to positionLocal lands
+    // in WORLD space (these meshes sit at the origin), so the wind and bow-wave
+    // vectors go in as-is — no rotating them back through the instance yaw.
+    const y01 = positionGeometry.y; // 0 at the base -> 1 at the tip, always
     const bend = y01.mul(y01); // base holds firm, the top gives
+    const height = yawScale.y; // uniform instance scale of a 1-unit card = its height
     // Idle wind comes from the shared field (wind.js), so a gust that lays the
     // grass over is the same gust rolling through the trees a moment later.
     const sway = windLean(root.x, root.z, 0.18);
-    const swayX = sway.x;
-    const swayZ = sway.y;
-    // Bow-wave direction is WORLD space, so rotate it into the blade's local
-    // frame by -yaw (instances are yaw + a small tilt; the tilt error is
-    // invisible). No division by the instance scale: a short blade should bend
-    // by the same ANGLE as a tall one, which fraction-of-height already gives.
+    // Bow-wave: sprigs close to the player kart lean away from it, harder with
+    // speed. Amplitudes are fractions of the plant's OWN height, so a short
+    // blade and a tall reed bend through the same angle.
     const dx = root.x.sub(uKart.x);
     const dz = root.z.sub(uKart.z);
     const dist = dx.mul(dx).add(dz.mul(dz)).sqrt().max(0.001);
     const near = smoothstep(0.9, 3.8, dist).oneMinus(); // 1 at the kart -> 0 by 3.8u
-    const push = near.mul(near).mul(uKart.w).mul(0.5); // <= ~0.55 of a blade height
-    const wx = dx.div(dist).mul(push);
-    const wz = dz.div(dist).mul(push);
-    const cy = yawScale.x.cos();
-    const sy = yawScale.x.sin();
-    const px = swayX.add(wx.mul(cy).sub(wz.mul(sy))).mul(bend);
-    const pz = swayZ.add(wx.mul(sy).add(wz.mul(cy))).mul(bend);
+    const push = near.mul(near).mul(uKart.w).mul(0.5); // <= ~0.55 of a plant height
+    const reach = bend.mul(height); // world units at an amplitude of 1
+    const px = sway.x.add(dx.div(dist).mul(push)).mul(reach);
+    const pz = sway.y.add(dz.div(dist).mul(push)).mul(reach);
     // Length preservation: leaning a tip out by s costs it ~s²/2 of reach, so
-    // the blade arcs over its base rather than growing.
-    const py = px.mul(px).add(pz.mul(pz)).mul(-0.5);
+    // the sprig arcs over its base rather than growing.
+    const py = px.mul(px).add(pz.mul(pz)).mul(-0.5).div(height.max(0.001));
     mat.positionNode = positionLocal.add(vec3(px, py, pz));
     // Looking toward the sun through the blade -> warm translucent glow,
     // strongest near the (lighter) tips. Same shared nodes as the foliage
@@ -1045,13 +1115,15 @@ function buildGrass(scene, track, heightAt) {
     mat.emissiveNode = uSunColNode.mul(1.4).mul(backlit).mul(attribute("color").y.mul(0.65).add(0.35));
   }
 
-  const mesh = new THREE.InstancedMesh(blade, mat, COUNT);
-  mesh.userData.uKart = uKart; // main.js writes the kart position + push here
+  // All sprig kinds share the material (and so the one wind + bow-wave shader),
+  // and hang off a group so main.js keeps its single `world.grass` handle for
+  // the uKart write and the quality toggle.
+  const group = new THREE.Group();
+  group.userData.uKart = uKart; // main.js writes the kart position + push here
   const dummy = new THREE.Object3D();
   const tint = new THREE.Color();
-  const aRoot = new Float32Array(COUNT * 3);
-  const aYawScale = new Float32Array(COUNT * 2);
   const _side = new THREE.Vector3();
+  const byKind = new Map(); // kind -> instance records, bucketed for one mesh each
   let n = 0;
   let tries = 0;
   // PLACEMENT — the sway was invisible in play for a placement reason, not a
@@ -1076,31 +1148,60 @@ function buildGrass(scene, track, heightAt) {
     if (_inLake(tx, tz)) continue;
     const biome = biomeAt(tx, tz);
     if (rand() > biome.grassDensity) continue; // sparse in dry biomes
+    // The whole tuft is one plant type — mixed sprigs in a single clump read as
+    // a mess, and a stand of one thing is what a verge actually looks like.
+    const kind = SPRIG_BY_BIOME[biome.name] || "blade";
+    const petals = FLOWER_COLS[biome.name];
+    let recs = byKind.get(kind);
+    if (!recs) byKind.set(kind, (recs = []));
     for (let k = 0; k < TUFT && n < COUNT; k++) {
       const x = tx + (rand() - 0.5) * 0.9;
       const z = tz + (rand() - 0.5) * 0.9;
-      const y = heightAt(x, z);
-      const yaw = rand() * Math.PI;
-      const scale = 0.7 + rand() * 1.1;
-      dummy.position.set(x, y, z);
-      dummy.rotation.set((rand() - 0.5) * 0.3, yaw, (rand() - 0.5) * 0.3);
-      dummy.scale.setScalar(scale);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(n, dummy.matrix);
-      mesh.setColorAt(n, tint.set(biome.grassTint)); // tints the blade gradient
-      aRoot[n * 3] = x; aRoot[n * 3 + 1] = y; aRoot[n * 3 + 2] = z;
-      aYawScale[n * 2] = yaw; aYawScale[n * 2 + 1] = scale;
+      recs.push({
+        x, y: heightAt(x, z), z,
+        yaw: rand() * Math.PI,
+        scale: (0.7 + rand() * 1.1) * SPRIGS[kind].scale,
+        tilt: [(rand() - 0.5) * 0.3, (rand() - 0.5) * 0.3],
+        tint: biome.grassTint,
+        petal: petals ? petals[(rand() * petals.length) | 0] : 0xffffff,
+      });
       n++;
     }
   }
-  blade.setAttribute("aRoot", new THREE.InstancedBufferAttribute(aRoot, 3));
-  blade.setAttribute("aYawScale", new THREE.InstancedBufferAttribute(aYawScale, 2));
-  mesh.count = n;
-  mesh.instanceMatrix.needsUpdate = true;
-  if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  mesh.layers.set(2); // own layer: out of the mirror AND the outline pass
-  scene.add(mesh);
-  return mesh;
+
+  // One instanced mesh per sprig kind (plus a second for flower heads).
+  const addMesh = (geo, recs, colourOf, tag) => {
+    const aRoot = new Float32Array(recs.length * 3);
+    const aYawScale = new Float32Array(recs.length * 2);
+    geo.setAttribute("aRoot", new THREE.InstancedBufferAttribute(aRoot, 3));
+    geo.setAttribute("aYawScale", new THREE.InstancedBufferAttribute(aYawScale, 2));
+    const mesh = new THREE.InstancedMesh(geo, mat, recs.length);
+    recs.forEach((r, i) => {
+      dummy.position.set(r.x, r.y, r.z);
+      dummy.rotation.set(r.tilt[0], r.yaw, r.tilt[1]);
+      dummy.scale.setScalar(r.scale);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i, dummy.matrix);
+      mesh.setColorAt(i, tint.set(colourOf(r)));
+      aRoot[i * 3] = r.x; aRoot[i * 3 + 1] = r.y; aRoot[i * 3 + 2] = r.z;
+      aYawScale[i * 2] = r.yaw; aYawScale[i * 2 + 1] = r.scale;
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+    mesh.layers.set(2); // own layer: out of the mirror AND the outline pass
+    mesh.userData.sprig = tag; // which biome signature this is (probes frame by it)
+    group.add(mesh);
+  };
+  for (const [kind, recs] of byKind) {
+    if (!recs.length) continue;
+    addMesh(SPRIGS[kind].geo(), recs, (r) => r.tint, kind);
+    // Flower heads: same roots, yaws and scales, so each head bends with its
+    // own stem — but its own mesh, so its colour isn't multiplied by the
+    // biome's green.
+    if (kind === "flower") addMesh(flowerHeadGeo(), recs, (r) => r.petal, "flower-head");
+  }
+  scene.add(group);
+  return group;
 }
 
 function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
@@ -1899,7 +2000,7 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
     arr.forEach((spot, i) => {
       windRoot[i * 3] = spot.x; // where it stands: the gust wave is sampled here
       windRoot[i * 3 + 1] = spot.z;
-      windRoot[i * 3 + 2] = spot._yaw; // to rotate the world-space lean into local
+      windRoot[i * 3 + 2] = spot.b.sy * spot._sc; // its height scale, so the lean is a fraction of ITS height
       const { b } = spot;
       const sc = spot._sc;
       q.setFromAxisAngle(UP_Y, spot._yaw);
