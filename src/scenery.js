@@ -1363,29 +1363,174 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
   scene.add(mesh);
 }
 
-function buildMountains(scene, heightAt, track, trackReach = 900) {
-  const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, roughness: 1 });
-  const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
-  const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
+// Rock palette and snowline per biome. `snow` is the fraction of the mountain's
+// own height above which snow starts (1 = never — a snow-capped peak behind a
+// cactus looks absurd), and it's a fraction rather than a world height so a
+// small foothill and a giant both get their caps in proportion.
+const MOUNTAIN_ROCK = {
+  alpine: { lo: 0x4e5866, hi: 0x8a97a8, snow: 0.40 },
+  tundra: { lo: 0x59616a, hi: 0x939ba4, snow: 0.44 },
+  forest: { lo: 0x4a5348, hi: 0x7d8878, snow: 0.66 },
+  jungle: { lo: 0x3f5040, hi: 0x6f8470, snow: 0.74 },
+  meadow: { lo: 0x6a6355, hi: 0x9a9384, snow: 0.68 },
+  blossom: { lo: 0x6e6559, hi: 0xa09689, snow: 0.70 },
+  autumn: { lo: 0x6f6045, hi: 0xa08d6c, snow: 0.72 },
+  savanna: { lo: 0x7a6647, hi: 0xb09a74, snow: 1 },
+  desert: { lo: 0x9c6a3e, hi: 0xd6a874, snow: 1 },
+  mesa: { lo: 0x8d4830, hi: 0xc47f56, snow: 1 },
+  beach: { lo: 0x8a8270, hi: 0xc0b7a0, snow: 0.85 },
+  city: { lo: 0x63656a, hi: 0x94969c, snow: 0.68 },
+};
 
-  // Peaks never move — collect every cone and bake the lot into ONE
-  // multi-material mesh at the end (~50 draw calls → 1). The ring surrounds the
-  // camera so half of it is in view from anywhere; per-peak frustum culling
-  // bought little, and the whole ring is only a few thousand triangles.
-  const peakMeshes = [];
+// ONE MOLDED SURFACE, not a cone. The old peaks were literally ConeGeometry
+// with a smaller cone stuck on top for snow, which is why they all read the
+// same however the height and radius were rolled: a cone has no silhouette to
+// vary. This sweeps a single unbroken skin from summit to base and sculpts it
+// with azimuth-aware terms — ridges radiating off the summit, gullies eroded
+// between them, an off-centre apex, an elliptical base and a leaning axis — so
+// every mountain gets its own outline and its own profile from any angle.
+//
+// The azimuth terms are all cos/sin of INTEGER harmonics, which is what keeps
+// the surface welded where the ring closes: any hash-per-vertex noise would
+// leave a visible split seam running down one flank. Indices wrap modulo SEGS
+// so there is no duplicated seam column to disagree in the first place.
+//
+// Snow is baked into the vertex colours off the vertex's own height rather
+// than being a separate cap mesh, so the snowline follows the ridges and dips
+// into the gullies — a ragged line the way real snow lies, not a clean circle.
+function mountainGeo(h, rad, rock, opts = {}) {
+  const RINGS = 15;
+  const SEGS = 28;
+  const TAU = Math.PI * 2;
+  // Ridge/erosion harmonics. Low counts read as big spurs, high as scree.
+  const harm = [];
+  for (let k = 0; k < 4; k++) {
+    harm.push({ n: 2 + k * 2 + Math.floor(rand() * 2), ph: rand() * TAU, a: (0.20 - k * 0.04) * (0.6 + rand() * 0.8) });
+  }
+  const gullyN = 5 + Math.floor(rand() * 5);
+  const gullyPh = rand() * TAU;
+  const gullyA = 0.09 + rand() * 0.09;
+  // Elliptical footprint + an axis that leans, so the apex doesn't sit dead
+  // centre over the base.
+  const ex = 1 + (rand() - 0.5) * 0.5;
+  const ez = 1 + (rand() - 0.5) * 0.5;
+  const leanX = (rand() - 0.5) * 0.42;
+  const leanZ = (rand() - 0.5) * 0.42;
+  // A shoulder: one flank swells into a subsidiary bulge partway down.
+  const shPh = rand() * TAU;
+  const shAmp = 0.18 + rand() * 0.22;
+  const shAt = 0.42 + rand() * 0.22;
+  const snowStart = opts.snow ?? rock.snow;
+  const snowWob = 0.055 + rand() * 0.05; // how ragged the snowline is
+  const snowPh = rand() * TAU;
+
+  const lo = new THREE.Color(rock.lo);
+  const hi = new THREE.Color(rock.hi);
+  const snowCol = new THREE.Color(0xf2f6fb);
+  const c = new THREE.Color();
+
+  const pos = [];
+  const col = [];
+  const idx = [];
+  for (let i = 0; i <= RINGS; i++) {
+    const t = i / RINGS; // 0 at the apex -> 1 at the base
+    // Concave flare, plus a splayed foot (the talus a mountain actually sits in
+    // — a clean elliptical cut into the ground is the other half of what made
+    // these read as dropped-in cones) and a summit that is a small broken crest
+    // rather than a machined point.
+    const prof = Math.pow(t, 0.72) + 0.12 * Math.pow(t, 5) + 0.055 * Math.pow(1 - t, 3);
+    const ridgeW = Math.sin(Math.PI * Math.pow(t, 0.75)); // spurs peak mid-flank
+    for (let j = 0; j < SEGS; j++) {
+      const th = (j / SEGS) * TAU;
+      let az = 0;
+      for (const { n, ph, a } of harm) az += Math.cos(n * th + ph) * a;
+      // Gullies only bite the lower flanks, where water would actually run.
+      const gully = Math.max(0, Math.cos(gullyN * th + gullyPh)) * gullyA * Math.pow(t, 1.4);
+      // The shoulder is a smooth lobe in both azimuth and height.
+      const shA = Math.max(0, Math.cos(th - shPh));
+      const shH = Math.max(0, 1 - Math.abs(t - shAt) / 0.3);
+      const sh = shA * shA * shH * shH * shAmp;
+      const r = rad * prof * (1 + az * ridgeW - gully + sh);
+      // Summit jag: the very top is broken rock, not a machined point.
+      const jag = (Math.cos(3 * th + harm[0].ph) * 0.06 + Math.cos(5 * th - harm[1].ph) * 0.035) * Math.pow(1 - t, 1.9);
+      const y = h * (1 - t) + h * jag;
+      const x = Math.sin(th) * r * ex + leanX * rad * (1 - t);
+      const z = Math.cos(th) * r * ez + leanZ * rad * (1 - t);
+      pos.push(x, y, z);
+      // Colour: rock gets lighter with height, then a ragged snowline on top.
+      const f = Math.max(0, Math.min(1, y / h));
+      c.copy(lo).lerp(hi, Math.pow(f, 0.8));
+      if (snowStart < 1) {
+        const line = snowStart + Math.cos(2 * th + snowPh) * snowWob + Math.cos(5 * th - snowPh) * snowWob * 0.5;
+        const sAmt = Math.max(0, Math.min(1, (f - line) / 0.07));
+        if (sAmt > 0) c.lerp(snowCol, sAmt);
+      }
+      // Gullies sit in their own shade — cheap baked occlusion that makes the
+      // erosion read in silhouette-free views.
+      const shade = 1 - gully * 2.1;
+      col.push(c.r * shade, c.g * shade, c.b * shade);
+    }
+  }
+  for (let i = 0; i < RINGS; i++) {
+    for (let j = 0; j < SEGS; j++) {
+      const a0 = i * SEGS + j;
+      const a1 = i * SEGS + ((j + 1) % SEGS); // wrap: no seam column to split
+      const b0 = a0 + SEGS;
+      const b1 = a1 + SEGS;
+      idx.push(a0, b0, a1, a1, b0, b1);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildMountains(scene, heightAt, track, trackReach = 900) {
+  // One vertex-coloured material for every peak in the world: the rock palette,
+  // the snowline and the gully shading all live in the vertex colours, so the
+  // whole ring still bakes down to a single draw.
+  const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
+
+  // Peaks never move — collect every one and bake the lot into ONE mesh at the
+  // end (~50 draw calls → 1). The ring surrounds the camera so half of it is in
+  // view from anywhere; per-peak frustum culling bought little, and the whole
+  // ring is only a few thousand triangles.
+  // Peaks never move — collect every one and bake the lot into ONE mesh at the
+  // end. NOTE they are merged here with mergeGeometries rather than the shared
+  // mergeMeshes helper: that one strips every attribute except position/normal/
+  // uv so mismatched parts always merge cleanly, which silently threw away the
+  // `color` attribute and left vertexColors reading nothing — a range of
+  // blank-white mountains that raised no error at all.
+  const peakGeos = [];
+  const peakInfo = []; // where each summit ended up, so probes can frame one
+  const _m4 = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+  const _v = new THREE.Vector3();
+  const place = (geo, x, y, z) => {
+    _e.set(0, rand() * Math.PI * 2, 0);
+    _q.setFromEuler(_e);
+    _m4.compose(_v.set(x, y, z), _q, new THREE.Vector3(1, 1, 1));
+    geo.applyMatrix4(_m4);
+    peakGeos.push(geo);
+  };
   const peak = (x, z, h, rad, bury) => {
-    const desert = biomeAt(x, z).name === "desert";
-    const base = heightAt(x, z) + h / 2 - bury;
-    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 18), desert ? rockDesert : rockN);
-    m.position.set(x, base, z);
-    m.rotation.y = rand() * Math.PI;
-    peakMeshes.push(m);
-    // No snow caps in the desert — snowy peaks behind cacti look wrong.
-    if (!desert) {
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 18), snow);
-      cap.position.set(x, base + h * 0.5 - h * 0.15, z);
-      cap.rotation.y = m.rotation.y;
-      peakMeshes.push(cap);
+    const rock = MOUNTAIN_ROCK[biomeAt(x, z).name] || MOUNTAIN_ROCK.meadow;
+    const base = heightAt(x, z) - bury;
+    place(mountainGeo(h, rad, rock), x, base, z);
+    peakInfo.push({ x, z, y: base, h, rad });
+    // Bigger peaks come as a MASSIF rather than a lone spike: a subsidiary
+    // summit set off to one side and fused into the same footprint. It is the
+    // single strongest cue that a mountain is a mountain and not a pyramid.
+    if (h > 150 && rand() < 0.7) {
+      const a = rand() * Math.PI * 2;
+      const d = rad * (0.55 + rand() * 0.3);
+      const sx = x + Math.cos(a) * d;
+      const sz = z + Math.sin(a) * d;
+      place(mountainGeo(h * (0.5 + rand() * 0.22), rad * (0.55 + rand() * 0.2), rock), sx, heightAt(sx, sz) - bury * 0.7, sz);
     }
   };
 
@@ -1414,7 +1559,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
         const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
         const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
         const off = 165 + rand() * 55;
-        const rad = 50 + rand() * 22;
+        const rad = 62 + rand() * 30;
         const x = p.x + side.x * outward * off;
         const z = p.z + side.z * outward * off;
         // Need the road's nearest approach to clear the cone's base radius.
@@ -1424,13 +1569,16 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
       }
     }
   }
-  if (peakMeshes.length) {
-    const merged = mergeMeshes(peakMeshes, { castShadow: false });
+  if (peakGeos.length) {
+    const merged = new THREE.Mesh(mergeGeometries(peakGeos), rockMat);
+    merged.castShadow = false;
     merged.receiveShadow = false;
     merged.frustumCulled = false; // the ring surrounds every viewpoint anyway
+    merged.userData.mountains = peakInfo; // probes census + frame the range by this
     scene.add(merged);
   }
 }
+
 
 // Helper: scatter `count` valid positions away from the road.
 function scatter(count, track, flatten, minFlat, range) {
