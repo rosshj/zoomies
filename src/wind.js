@@ -13,7 +13,8 @@ import * as THREE from "three";
 import { uniform, time, vec2, vec3, vec4, attribute, positionLocal, positionGeometry, modelWorldMatrix, modelWorldMatrixInverse } from "three/tsl";
 
 export const uWindDir = uniform(new THREE.Vector2(0.82, 0.57)); // unit XZ, points DOWNWIND
-export const uWindStr = uniform(1); // overall force; weather scales it
+export const uWindStr = uniform(1); // force felt by things that BEND
+export const uWindAir = uniform(1); // force felt by things that are CARRIED
 export const uWindSpeed = uniform(0.9); // how fast gust fronts travel
 // Where the player's kart is, and how fast: (world x, y, z, 0..1 of top speed).
 // Lives here rather than on any one material because more than one thing now
@@ -63,8 +64,12 @@ export function windGustDrift(px, pz, amp, jitter, lift = 0) {
   const { gust } = gustAt(px, pz);
   const ph = jitter.mul(6.2832);
   const own = ph.add(_phase.mul(1.7)).sin(); // the mote's own small wander
-  const g = gust.mul(0.72).add(own.mul(0.28)).mul(uWindStr);
-  const cross = ph.add(_phase.mul(0.9)).cos().mul(0.38).mul(uWindStr);
+  // Airborne motes read uWindAir, not uWindStr. A bend is self-limiting — a
+  // tree runs out of tree — but this offset is SIGNED and unbounded, so at
+  // storm strength a linear response walked tumbleweeds ~17u off their home
+  // point and back. See windToward for the two curves.
+  const g = gust.mul(0.72).add(own.mul(0.28)).mul(uWindAir);
+  const cross = ph.add(_phase.mul(0.9)).cos().mul(0.38).mul(uWindAir);
   return vec3(
     uWindDir.x.mul(g).sub(uWindDir.y.mul(cross)).mul(amp),
     g.abs().mul(lift),
@@ -158,8 +163,24 @@ export function setWind({ dirRad, strength, speed } = {}) {
   if (dirRad != null) uWindDir.value.set(Math.sin(dirRad), Math.cos(dirRad));
   if (strength != null) _base = strength;
   if (speed != null) _baseSpeed = speed;
-  uWindStr.value = _base * _biome;
-  uWindSpeed.value = _baseSpeed;
+  if (speed != null) uWindSpeed.value = _baseSpeed;
+  _write();
+}
+
+// Diminishing returns on force. The track's seeded wind MULTIPLIES the biome's,
+// so a gusty seed in an alpine pass was reaching ~3.0 — the value the gale A/B
+// used as its deliberately-overdone upper bound, except permanently, and only
+// on some tracks, which is exactly the "sometimes it goes crazy" this fixes.
+// Normalised so ordinary wind (1) still comes out at 1 and only the top end is
+// pulled in: 2.5 -> 1.73, and it can never pass 2.4 however the dice fall.
+const K = 2.4;
+const soften = (x) => (x * (1 + 1 / K)) / (1 + x / K);
+function _write() {
+  const soft = soften(_base * _biome);
+  uWindStr.value = soft;
+  // Carried things get the gentler curve again. A bend is self-limiting; a
+  // loose mote's displacement is not, so it must not track force one-for-one.
+  uWindAir.value = Math.sqrt(soft);
 }
 
 // Ease the wind toward whatever the biome under the player asks for, and write
@@ -170,6 +191,6 @@ export function setWind({ dirRad, strength, speed } = {}) {
 // the rhythm quickens with the force rather than the field just scaling up.
 export function windToward(target, dt) {
   _biome += (target - _biome) * Math.min(1, dt * 0.55);
-  uWindStr.value = _base * _biome;
+  _write();
   uWindSpeed.value = _baseSpeed * (0.72 + 0.28 * _biome);
 }

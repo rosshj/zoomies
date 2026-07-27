@@ -424,7 +424,7 @@ export function buildWorld(scene, track, opts = {}) {
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
   // Every track gets its own prevailing wind out of the seed, so the direction
   // the grass and the treeline lean is part of a world's character.
-  setWind({ dirRad: rand() * Math.PI * 2, strength: 1 + rand() * 0.45 });
+  setWind({ dirRad: rand() * Math.PI * 2, strength: 0.9 + rand() * 0.3 });
 
   // Gentle rolling detail laid on top of the road-anchored hills (kept small so
   // it never digs the ground below the road — that just makes scenery vanish
@@ -1864,7 +1864,7 @@ function buildWindDebris(scene, track, heightAt) {
     scene.add(mesh);
   };
   // Tumbleweed: bigger, tan, bowls along the ground and hops on the gusts.
-  build("tumbleweed", ["desert", "mesa"], { want: 46, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, amp: 5.5, bounce: 1.6 });
+  build("tumbleweed", ["desert", "mesa"], { want: 46, size: 2.4, baseLift: 1.1, tint: 0xcfae72, opacity: 0.9, amp: 4.2, bounce: 1.6 });
   // Seed-fluff: small, pale, floats higher and drifts more gently.
   build("fluff", ["savanna"], { want: 90, size: 0.7, baseLift: 1.6, tint: 0xf2ecd8, opacity: 0.7, amp: 3.2, bounce: 0.5 });
   // Spindrift: loose snow torn off the drifts, hugging the ground in long
