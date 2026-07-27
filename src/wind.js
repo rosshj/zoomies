@@ -16,7 +16,8 @@ export const uWindDir = uniform(new THREE.Vector2(0.82, 0.57)); // unit XZ, poin
 export const uWindStr = uniform(1); // force felt by things that BEND
 export const uWindAir = uniform(1); // force felt by things that are CARRIED
 export const uWindSpeed = uniform(0.9); // how fast gust fronts travel
-// Where the player's kart is, and how fast: (world x, y, z, 0..1 of top speed).
+// Where the player's kart is, and how hard it shoves: (world x, y, z, push),
+// where push is ~0.25 at rest rising to ~1.1 flat out.
 // Lives here rather than on any one material because more than one thing now
 // reacts to the kart — the grass parts around it, the petals flurry up in its
 // wake — and they must all read the SAME position. main.js writes it once a

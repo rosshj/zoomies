@@ -1704,6 +1704,7 @@ export class Track {
       // is an easy extra source of acne for no real visual gain.
       mesh.castShadow = true;
       mesh.receiveShadow = false;
+      mesh.userData.barrier = "wall"; // probes census the barrier by these tags
       this.group.add(mesh);
 
       if (ri.length) {
@@ -1715,6 +1716,7 @@ export class Track {
         const rm = new THREE.Mesh(rg, railMat);
         rm.castShadow = true;
         rm.receiveShadow = false;
+        rm.userData.barrier = "rails";
         this.group.add(rm);
       }
     }
@@ -1725,6 +1727,7 @@ export class Track {
       const posts = new THREE.Mesh(mergeGeometries(postGeos), wallMat);
       posts.castShadow = true;
       posts.receiveShadow = false;
+      posts.userData.barrier = "posts";
       this.group.add(posts);
     }
     // Every upright on the track in ONE instanced draw. There are thousands of
@@ -1758,6 +1761,7 @@ export class Track {
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
       mesh.castShadow = true;
       mesh.receiveShadow = false;
+      mesh.userData.barrier = "slats";
       this.group.add(mesh);
     }
   }
