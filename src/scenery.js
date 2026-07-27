@@ -225,9 +225,37 @@ function biomeAt(x, z, y) {
   return wb.t < 0.5 ? wb.a : wb.b;
 }
 
-// Roadside-barrier colours for the biome at a position (used by the track).
+// What the roadside barrier is actually MADE OF, per biome. Every biome used to
+// get the identical chunky striped kerb with only the paint swapped, which
+// reads as one track wearing different colours rather than different country.
+// The barrier is not the collision surface — kart.js clamps on the track
+// projection at halfWidth and props.js reflects off halfWidth + 0.8, both
+// independent of this mesh — so a fence here can be mostly air (post-and-rail)
+// or lumpy and irregular (dry stone) without anything falling through it.
+//
+//   kerb  the original swept wall, alternating stripes. Right for a street
+//         circuit, and the fallback for biomes not yet given their own.
+//   rail  a low sill with two timber rails over it on posts — countryside.
+//   stone dry-stone wall: the same sweep, but height and width jittered
+//         per-sample off a hash so no two metres of it match, and coloured
+//         from a rubble palette instead of stripes.
+//
+// Whatever the style, the top edge keeps a light/dark contrast and the height
+// stays near 1.6u: at 100km/h the barrier's first job is telling you where the
+// track ends, and naturalism that costs legibility is a bad trade.
+const BARRIER_STYLES = {
+  meadow: { kind: "rail", post: 0x6b4a2b, rail: 0xa9855a, cap: 0xe8dcc4, sill: 0x8a9b6a },
+  blossom: { kind: "rail", post: 0x7a5a3c, rail: 0xc0a07c, cap: 0xffeef4, sill: 0x8fae68 },
+  autumn: { kind: "rail", post: 0x5f4a30, rail: 0x8f7550, cap: 0xd9c9a8, sill: 0x8a7a44 },
+  // Stone is pulled GREYER than the ground it stands on. Matching the local
+  // earth is what real dry stone does and it reads as a berm, not a wall — the
+  // barrier has to separate from the terrain to say "track ends here".
+  desert: { kind: "stone", lo: 0x8a7458, hi: 0xc4b394, cap: 0xe6dcc4 },
+  mesa: { kind: "stone", lo: 0x6f4a3a, hi: 0xa8836b, cap: 0xd8c3ad },
+};
 export function biomeBarrierStyle(x, z) {
-  return biomeAt(x, z).barrier;
+  const b = biomeAt(x, z);
+  return BARRIER_STYLES[b.name] || { kind: "kerb", ...b.barrier };
 }
 
 // Biome NAME at a position (used by the track's set-piece planner, which needs

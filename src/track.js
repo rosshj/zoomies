@@ -1496,8 +1496,9 @@ export class Track {
   _buildWalls() {
     const wallH = 1.6;
     const off = this.halfWidth + 0.8; // inner face — kept where the old thin wall sat
-    const ca = new THREE.Color();
-    const cb = new THREE.Color();
+    const c = new THREE.Color();
+    const _capCol = new THREE.Color();
+    const _hiCol = new THREE.Color();
 
     // Cross-section of the barrier, offset OUTWARD from the road (sOff) and UP
     // (yOff): a solid wall with a rounded top, so it reads as a chunky kerb
@@ -1514,25 +1515,67 @@ export class Track {
     profile.push([W, 0]);
     const P = profile.length;
 
-    // Continuous barriers (no gaps) down each side of the road. The two
-    // alternating colours come from the biome the segment sits in, so the
-    // fencing changes as you pass from meadow to forest to desert, etc.
+    // Deterministic per-sample wobble for the dry-stone wall. A hash, not a
+    // random, so the same seed rebuilds the same wall every time.
+    const wob = (i, k) => {
+      const n = Math.sin(i * 12.9898 + k * 78.233) * 43758.5453;
+      return n - Math.floor(n); // 0..1
+    };
+
+    // Continuous barriers (no gaps) down each side of the road. The STYLE —
+    // striped kerb, timber post-and-rail, dry stone — comes from the biome the
+    // segment sits in, so the fencing changes as you pass from meadow to desert
+    // the same way the road surface and the roadside planting already do.
     // One material for both sides (was a fresh identical material per side).
     const wallMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.9 });
+    const railMat = new THREE.MeshStandardMaterial({ vertexColors: true, side: THREE.DoubleSide, roughness: 0.95 });
+    const postGeos = [];
     for (const dirSign of [1, -1]) {
       const positions = [];
       const colors = [];
       const indices = [];
+      // The rails are their own swept strips, emitted only across spans where
+      // both ends are the same rail style — so a fence never grows out of a
+      // stone wall across a biome seam.
+      const rp = [];
+      const rc = [];
+      const ri = [];
+      let prevRail = null; // previous sample's rail ring base index, or null
       for (let i = 0; i <= this.samples; i++) {
         const idx = i % this.samples;
         const p = this._pts[idx];
         const side = this._sideAt(idx); // horizontal lateral; outward when scaled by dirSign
-        const style = biomeBarrierStyle(p.x + side.x * dirSign * off, p.z + side.z * dirSign * off);
-        const c = Math.floor(i / 6) % 2 === 0 ? ca.set(style.a) : cb.set(style.b);
-        for (const [sOff, yOff] of profile) {
-          const d = off + sOff;
-          positions.push(p.x + side.x * dirSign * d, p.y + yOff, p.z + side.z * dirSign * d);
-          colors.push(c.r, c.g, c.b);
+        const sx = side.x * dirSign;
+        const sz = side.z * dirSign;
+        const style = biomeBarrierStyle(p.x + sx * off, p.z + sz * off);
+
+        // --- the swept body: full wall for kerb/stone, a low sill under a fence
+        let hMul = 1;
+        let wMul = 1;
+        if (style.kind === "stone") {
+          // Lumpy: every metre of a dry-stone wall is a different metre.
+          hMul = 0.78 + wob(idx, 1) * 0.42;
+          wMul = 1.15 + wob(idx, 2) * 0.75;
+          const t = wob(idx, 3);
+          c.set(style.lo).lerp(_hiCol.set(style.hi), t);
+        } else if (style.kind === "rail") {
+          hMul = 0.3; // just a grassy sill so the base is never a ragged gap
+          wMul = 1.1;
+          c.set(style.sill);
+        } else {
+          // The original alternating stripe, ~17u per band.
+          c.set(Math.floor(i / 6) % 2 === 0 ? style.a : style.b);
+        }
+        for (let j = 0; j < P; j++) {
+          const [sOff, yOff] = profile[j];
+          const d = off + sOff * wMul;
+          positions.push(p.x + sx * d, p.y + yOff * hMul, p.z + sz * d);
+          // Pale capstones along the top course, so the edge of the track still
+          // reads as a LINE at speed however lumpy the wall below it is.
+          if (style.kind === "stone" && yOff > wallH * 0.66) {
+            const cc = _capCol.set(style.cap);
+            colors.push(cc.r, cc.g, cc.b);
+          } else colors.push(c.r, c.g, c.b);
         }
         if (i < this.samples) {
           const a0 = i * P;
@@ -1541,6 +1584,57 @@ export class Track {
             indices.push(a0 + j, a0 + j + 1, b0 + j, a0 + j + 1, b0 + j + 1, b0 + j);
           }
         }
+
+        // --- timber rails + posts
+        if (style.kind === "rail") {
+          // Two rails, each a thin box swept along the spine. 4 ring points per
+          // rail (a square section), stacked so one strip carries both.
+          const base = rp.length / 3;
+          const rc0 = new THREE.Color(style.rail);
+          const cap = new THREE.Color(style.cap);
+          const RAILS = [[0.78, 0.11], [1.36, 0.11]]; // [height, half-thickness]
+          for (const [ry, rt] of RAILS) {
+            for (const [ds, dy] of [[-0.09, -rt], [0.24, -rt], [0.24, rt], [-0.09, rt]]) {
+              const d = off + 0.42 + ds;
+              rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
+              // top face catches the light cap so the rail line stays legible
+              const cc = dy > 0 ? cap : rc0;
+              rc.push(cc.r, cc.g, cc.b);
+            }
+          }
+          if (prevRail !== null) {
+            for (let k = 0; k < 2; k++) {
+              const a0 = prevRail + k * 4;
+              const b0 = base + k * 4;
+              for (let j = 0; j < 4; j++) {
+                const j2 = (j + 1) % 4;
+                ri.push(a0 + j, a0 + j2, b0 + j, a0 + j2, b0 + j2, b0 + j);
+              }
+            }
+          }
+          prevRail = base;
+          // A post every 8 samples (~22u), leaning a touch so the line of them
+          // isn't machine-perfect.
+          if (idx % 8 === 0) {
+            const g = new THREE.BoxGeometry(0.2, 1.62, 0.2);
+            g.translate(0, 0.81, 0);
+            const cols = [];
+            const pc = new THREE.Color(style.post);
+            const capc = new THREE.Color(style.cap);
+            const gp = g.attributes.position;
+            for (let v = 0; v < gp.count; v++) {
+              const top = gp.getY(v) > 1.5; // painted top: the containment cue
+              const cc = top ? capc : pc;
+              cols.push(cc.r, cc.g, cc.b);
+            }
+            g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
+            g.rotateZ((wob(idx, 4) - 0.5) * 0.09);
+            g.rotateY(Math.atan2(sx, sz) + (wob(idx, 5) - 0.5) * 0.2);
+            const d = off + 0.42;
+            g.translate(p.x + sx * d, p.y, p.z + sz * d);
+            postGeos.push(g);
+          }
+        } else prevRail = null;
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
@@ -1556,6 +1650,27 @@ export class Track {
       mesh.castShadow = true;
       mesh.receiveShadow = false;
       this.group.add(mesh);
+
+      if (ri.length) {
+        const rg = new THREE.BufferGeometry();
+        rg.setAttribute("position", new THREE.Float32BufferAttribute(rp, 3));
+        rg.setAttribute("color", new THREE.Float32BufferAttribute(rc, 3));
+        rg.setIndex(ri);
+        rg.computeVertexNormals();
+        const rm = new THREE.Mesh(rg, railMat);
+        rm.castShadow = true;
+        rm.receiveShadow = false;
+        this.group.add(rm);
+      }
+    }
+    // Every fence post on the track in one mesh — they're identical boxes, but
+    // each is already baked at its own world position/lean, so merging beats
+    // instancing here and costs one draw for the lot.
+    if (postGeos.length) {
+      const posts = new THREE.Mesh(mergeGeometries(postGeos), wallMat);
+      posts.castShadow = true;
+      posts.receiveShadow = false;
+      this.group.add(posts);
     }
   }
 
