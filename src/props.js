@@ -479,7 +479,8 @@ function build(scene, track, opts) {
             pr.quat.copy(pr.mesh.quaternion); // continue from its current spun pose
             pr.pos.y = pr.groundY + pr.rest + HOVER; // fall from the hover height
             pr.mode = "ground";
-            pr.spent = true; // a used box never floats again
+            pr.spent = true; // a used box never floats again (tracks recycle below in battle)
+            if (spotList) pr.spentCd = 10; // battle arenas RECYCLE: the finite pool must last a whole match
             pr.asleep = false;
             pr.settle = false;
             const launch = 13 + Math.min(mk.speed, 150) * 0.8;
@@ -544,6 +545,19 @@ function build(scene, track, opts) {
     // rather than popping in from nowhere.
     if (promoteTimer > 0) promoteTimer -= dt;
     if (itemsEnabled) {
+      // Battle recycle: a spent crate that has sat quietly for a while becomes
+      // promotable again, so the pool survives a 2-minute item-hungry brawl.
+      if (spotList) {
+        for (const pr of props) {
+          if (pr.spent && pr.spentCd != null && pr.mode === "ground" && pr.hit <= 0) {
+            pr.spentCd -= dt;
+            if (pr.spentCd <= 0) {
+              pr.spent = false;
+              pr.spentCd = null;
+            }
+          }
+        }
+      }
       let floatingNow = 0;
       for (const pr of props) if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) floatingNow++;
       if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;

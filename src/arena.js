@@ -49,8 +49,8 @@ const STREAM = { r: 59, half: 8, a0: 0.5, a1: 1.55, depth: 2.0 };
 const BUTTE = { x: -62, z: 62, core: 8.5, band: 15.5, h: 9, entry: -0.6, sweep: 5.24 };
 // Parkade pose (kit-built below; exposed for probes).
 const PK = { x: 78, z: 8, yaw: 0.35, hu: 17, hv: 13, h: 8.2, rampL: 24, rampW: 7 };
-// Café podium.
-const CAFE = { x: 0, z: -72, w: 56, d: 34, h: 6 };
+// Café podium (top is ABSOLUTE height: terrace 3.2 + one storey).
+const CAFE = { x: 0, z: -72, w: 56, d: 34, h: 9.4 };
 // Mega-ramp (a solid wedge now — crisp geometry, not molded ground).
 const MEGA = { x: 52, z: 74, yaw: Math.atan2(-52, -74), L: 24, W: 11, H: 4.6 };
 
@@ -66,34 +66,39 @@ const wrapPi = (a) => {
 // north (-z), parkade east, alley west.
 function makeLayout() {
   const solids = [
-    // Boundary walls (stone). Overlapping corners keep the compound sealed.
-    { x: 0, z: -101.5, yaw: 0, w: 232, d: 3, h: 3.2, kind: "stone" },
-    { x: 0, z: 101.5, yaw: 0, w: 232, d: 3, h: 3.2, kind: "stone" },
-    { x: 116.5, z: 0, yaw: 0, w: 3, d: 206, h: 3.2, kind: "stone" },
-    { x: -116.5, z: 0, yaw: 0, w: 3, d: 206, h: 3.2, kind: "stone" },
+    // Boundary walls (stone). Tall enough to read on the terrace; actual
+    // containment is the hard boundary clamp in collide(), which even a
+    // ballistic jump cannot clear.
+    { x: 0, z: -101.5, yaw: 0, w: 232, d: 3, h: 7, kind: "stone" },
+    { x: 0, z: 101.5, yaw: 0, w: 232, d: 3, h: 4, kind: "stone" },
+    { x: 116.5, z: 0, yaw: 0, w: 3, d: 206, h: 5.5, kind: "stone" },
+    { x: -116.5, z: 0, yaw: 0, w: 3, d: 206, h: 5.5, kind: "stone" },
     // Café podium (drivable roof).
     { x: CAFE.x, z: CAFE.z, yaw: 0, w: CAFE.w, d: CAFE.d, h: CAFE.h, kind: "cafe" },
     // Alley: staggered corridor walls.
     { x: -70, z: -10, yaw: 0, w: 3, d: 70, h: 3.4, kind: "stone" },
     { x: -88, z: 6, yaw: 0, w: 3, d: 70, h: 3.4, kind: "stone" },
   ];
+  // Ramp feet use h0: "auto" — resolved to the terrain height at the foot, so
+  // ramps meet the ground flush wherever the terrain now rolls. Wider than v2:
+  // oblique entries slide on and up instead of demanding a square hit.
   const ramps = [
-    // Café roof access, east + west faces.
-    { x: 40, z: -72, yaw: -Math.PI / 2, L: 24, W: 10, h0: 0, h1: CAFE.h, kind: "cafe" },
-    { x: -40, z: -72, yaw: Math.PI / 2, L: 24, W: 10, h0: 0, h1: CAFE.h, kind: "cafe" },
+    // Café roof access, east + west faces (feet on the terrace).
+    { x: 40, z: -72, yaw: -Math.PI / 2, L: 24, W: 14, h0: "auto", h1: CAFE.h, kind: "cafe" },
+    { x: -40, z: -72, yaw: Math.PI / 2, L: 24, W: 14, h0: "auto", h1: CAFE.h, kind: "cafe" },
     // Parkade access.
     {
       x: PK.x + (PK.hu + PK.rampL) * Math.sin(PK.yaw), z: PK.z + (PK.hu + PK.rampL) * Math.cos(PK.yaw),
-      yaw: PK.yaw + Math.PI, L: PK.rampL, W: PK.rampW, h0: 0, h1: PK.h, kind: "concrete",
+      yaw: PK.yaw + Math.PI, L: PK.rampL, W: 9, h0: "auto", h1: PK.h, kind: "concrete",
     },
     // Mega-ramp: the big garden launch wedge.
-    { x: MEGA.x, z: MEGA.z, yaw: MEGA.yaw, L: MEGA.L, W: MEGA.W, h0: 0, h1: MEGA.H, kind: "mega" },
+    { x: MEGA.x, z: MEGA.z, yaw: MEGA.yaw, L: MEGA.L, W: 12, h0: "auto", h1: MEGA.H, kind: "mega" },
     // Bridge approach wedges — heads overlap the deck so there's no gap-dip.
-    { x: 42.3, z: 27.2, yaw: 1.0, L: 6.5, W: 7.2, h0: 0, h1: 1.6, kind: "wood" },
-    { x: 65.4, z: 42.0, yaw: 1.0 + Math.PI, L: 6.5, W: 7.2, h0: 0, h1: 1.6, kind: "wood" },
+    { x: 42.3, z: 27.2, yaw: 1.0, L: 6.5, W: 7.2, h0: "auto", h1: 1.6, kind: "wood" },
+    { x: 65.4, z: 42.0, yaw: 1.0 + Math.PI, L: 6.5, W: 7.2, h0: "auto", h1: 1.6, kind: "wood" },
   ];
   const decks = [
-    // Café awning: the porch you drive under.
+    // Café awning: the porch you drive under (flush with the roof).
     { x: 0, z: -50, yaw: 0, hw: 20, hd: 5, h: CAFE.h, kind: "awning" },
     // Parkade deck.
     { x: PK.x, z: PK.z, yaw: PK.yaw, hw: PK.hv, hd: PK.hu, h: PK.h, kind: "concrete" },
@@ -142,12 +147,12 @@ function makeLayout() {
     const p = pkWorld(u, v);
     obstacles.push({ x: p.x, z: p.z, r: 1.3, h: 7.4, kind: "pillar" });
   }
-  // Awning posts.
+  // Awning posts (tops just under the raised awning slab).
   for (const [x, z] of [[-17, -46], [17, -46]]) {
-    obstacles.push({ x, z, r: 1.0, h: 5.4, kind: "pillar" });
+    obstacles.push({ x, z, r: 1.0, h: 8.6, kind: "pillar" });
   }
   const itemSpots = [
-    { x: 0, z: -72, y: CAFE.h, mode: "float" }, // café roof — king of the hill
+    { x: 0, z: -72, y: CAFE.h, mode: "float" }, // café roof — the high ground
     { x: 74.5, z: 11.4, y: PK.h, mode: "float" }, // parkade deck
     { x: -62, z: 62, mode: "float" }, // tower top
     { x: 53.8, z: 34.6, y: 1.6, mode: "float" }, // on the bridge
@@ -194,6 +199,7 @@ export class Arena {
     this.parkade = PK;
     this.megaRamp = MEGA;
     this.butte = BUTTE;
+    this.cafe = CAFE;
 
     const L = makeLayout();
     this.solids = L.solids.map(prep);
@@ -204,6 +210,9 @@ export class Arena {
     this.obstacles = L.obstacles;
     this._itemSpots = L.itemSpots;
     this.respawns = L.respawns;
+    // Ramp feet marked "auto" sit flush on the terrain wherever it rolls.
+    // (After ALL layout fields exist — _terrainH reads the kicker list.)
+    for (const rp of this.ramps) if (rp.h0 === "auto") rp.h0 = this._terrainH(rp.x, rp.z);
 
     // Map outline for the minimap / sun-shadow fit: the boundary rectangle.
     this._pts = [];
@@ -224,10 +233,25 @@ export class Arena {
 
   // ---- Ground queries ------------------------------------------------------
 
-  // Organic base: mostly flat plaza/streets, gentle garden, the sunken stream,
-  // and the round tower. The architecture sits on top of this.
+  // Organic base: REAL relief now — the flat-plane feel was half the problem.
+  // The map is terraced: a raised north terrace carries the café district, an
+  // east ridge carries the parkade, the garden sits in a shallow valley, the
+  // plaza is a gentle amphitheatre dish, and broad rolling waves keep every
+  // straight line alive. The architecture stands on top of all of it.
   _terrainH(x, z) {
-    let h = 0;
+    let h = 0.5 * Math.sin(x * 0.045) * Math.sin(z * 0.05); // broad rolling ground
+
+    // Plaza: a soft amphitheatre dish around the fountain.
+    h -= 0.8 * smooth01((40 - Math.hypot(x, z + 4)) / 24);
+
+    // North terrace: the café district sits a storey above the plaza.
+    h += 3.2 * smooth01((-40 - z) / 18);
+
+    // East ridge under the parkade.
+    h += 2.2 * smooth01((48 - Math.hypot(x - 85, z - 10)) / 26);
+
+    // Garden valley.
+    h -= 1.2 * smooth01((52 - Math.hypot(x + 40, z - 62)) / 30);
 
     // Garden moguls (south-west of the plaza; clear of the spawn corridor).
     if (x > -52 && x < -10 && z > 42 && z < 88) {
@@ -374,9 +398,103 @@ export class Arena {
 
   // ---- Battle physics hooks ------------------------------------------------
 
+  // A wall contact that SLIDES: push out along the wall's true normal and
+  // scrub only the head-on speed component. Glancing hits keep most of their
+  // pace along the wall — this is what makes architecture feel solid instead
+  // of sticky, and kills the clip-into-the-corner artifacts of the old
+  // forward-probe pushback.
+  _wallContact(k, nx, nz, push, dt) {
+    k.position.x += nx * push;
+    k.position.z += nz * push;
+    const dir = k.speed >= 0 ? 1 : -1;
+    const fx = Math.sin(k.heading) * dir, fz = Math.cos(k.heading) * dir;
+    const into = Math.max(0, -(fx * nx + fz * nz)); // 1 = square hit, 0 = graze
+    k.speed *= 1 - Math.min(0.7, into * into * 6 * dt);
+    k.knock.multiplyScalar(0.6);
+    k._wallHold = 0.2; // the push isn't a lip — don't let it fake a launch
+    if (k.drifting && into > 0.4) {
+      k.drifting = false;
+      k.driftCharge = 0;
+      k.driftRamp = 0;
+    }
+    if (Math.abs(k.speed) > 6 && into > 0.35) {
+      k.wallHit = true;
+      k.wallHitDir.set(-nx, 0, -nz);
+      k.wallHitPulse = 0.12;
+    }
+  }
+
+  // Rotated-box collision for one solid (constant top) or ramp (top rises
+  // along u). No side walls where the top is near the kart's own level, so a
+  // low ramp foot is enterable from ANY angle — you slide on and drive up.
+  _collideBox(k, b, isRamp) {
+    const kartY = k.position.y + k.y;
+    const dx = k.position.x - b.x, dz = k.position.z - b.z;
+    let u = dx * b.sin + dz * b.cos;
+    let v = dx * b.cos - dz * b.sin;
+    let halfU, halfV;
+    if (isRamp) {
+      halfU = b.L / 2;
+      halfV = b.W / 2;
+      u -= b.L / 2; // ramp local origin is its foot; recentre
+    } else {
+      halfU = b.d / 2;
+      halfV = b.w / 2;
+    }
+    const R = k.radius;
+    if (Math.abs(u) >= halfU + R || Math.abs(v) >= halfV + R) return false;
+    const top = isRamp
+      ? b.h0 + (b.h1 - b.h0) * Math.min(1, Math.max(0, (u + halfU) / b.L))
+      : b.h;
+    if (kartY > top - 0.9) return false; // on/above it — not a wall interaction
+    const pu = halfU + R - Math.abs(u);
+    const pv = halfV + R - Math.abs(v);
+    let nx, nz, push;
+    if (pu < pv) {
+      const s = u >= 0 ? 1 : -1;
+      nx = b.sin * s;
+      nz = b.cos * s;
+      push = pu;
+    } else {
+      const s = v >= 0 ? 1 : -1;
+      nx = b.cos * s;
+      nz = -b.sin * s;
+      push = pv;
+    }
+    // Only a contact when moving INTO the box. Driving OFF a solid's top edge
+    // leaves the kart momentarily inside the box's margin at ground level —
+    // pushing there (and arming _wallHold) swallowed the launch, which is why
+    // the mega-ramp lip dead-dropped while deck edges flew.
+    const dir = k.speed >= 0 ? 1 : -1;
+    const fx = Math.sin(k.heading) * dir, fz = Math.cos(k.heading) * dir;
+    if (fx * nx + fz * nz > 0.15) return false; // moving away — leaving, not hitting
+    this._wallContact(k, nx, nz, push, k._dt || 0.016);
+    return true;
+  }
+
   collide(k) {
     let hit = false;
     const dt = k._dt || 0.016;
+
+    // HARD boundary: a rectangle clamp that holds even mid-flight — the walls
+    // are scenery, this is the actual edge of the world.
+    {
+      const BX = 114, BZ = 99;
+      if (Math.abs(k.position.x) > BX) {
+        const s = Math.sign(k.position.x);
+        k.position.x = s * BX;
+        this._wallContact(k, -s, 0, 0, dt);
+        hit = true;
+      }
+      if (Math.abs(k.position.z) > BZ) {
+        const s = Math.sign(k.position.z);
+        k.position.z = s * BZ;
+        this._wallContact(k, 0, -s, 0, dt);
+        hit = true;
+      }
+    }
+
+    // Round obstacles (fountain, toys, pillars) — circles slide naturally.
     for (const o of this.obstacles) {
       if (k.position.y + k.y > o.h) continue;
       const dx = k.position.x - o.x;
@@ -385,46 +503,30 @@ export class Arena {
       const d2 = dx * dx + dz * dz;
       if (d2 >= rr * rr || d2 < 1e-6) continue;
       const d = Math.sqrt(d2);
-      const nx = dx / d, nz = dz / d;
-      k.position.x = o.x + nx * rr;
-      k.position.z = o.z + nz * rr;
-      k.speed *= 1 - Math.min(0.4, 1.6 * dt);
-      k.knock.multiplyScalar(0.5);
-      if (k.drifting) {
-        k.drifting = false;
-        k.driftCharge = 0;
-        k.driftRamp = 0;
-      }
-      if (Math.abs(k.speed) > 6) {
-        k.wallHit = true;
-        k.wallHitDir.set(-nx, 0, -nz);
-        k.wallHitPulse = 0.12;
-      }
+      this._wallContact(k, dx / d, dz / d, rr - d, dt);
       hit = true;
     }
 
-    // Steep-wall rule (uphill-only: ledges stay droppable from above).
+    // Architecture: exact box collision with sliding (grounded karts only —
+    // an airborne kart above a block's top already passed the height test,
+    // and one below it mid-flight should smack it, which this also handles).
+    for (const b of this.solids) {
+      if (this._collideBox(k, b, false)) hit = true;
+    }
+    for (const rp of this.ramps) {
+      if (this._collideBox(k, rp, true)) hit = true;
+    }
+
+    // Steep-wall rule for ORGANIC terrain only (tower cliffs, steep banks) —
+    // architecture no longer needs the heuristic.
     if (!k.airborne && k.y <= 0 && Math.abs(k.speed) > 0.5) {
       const dir = k.speed >= 0 ? 1 : -1;
       const fx = Math.sin(k.heading) * dir, fz = Math.cos(k.heading) * dir;
-      const hC = this.heightNear(k.position.x, k.position.z, k.position.y);
-      const hA = this.heightNear(k.position.x + fx * 1.7, k.position.z + fz * 1.7, k.position.y);
+      const hC = this._terrainH(k.position.x, k.position.z);
+      const hA = this._terrainH(k.position.x + fx * 1.7, k.position.z + fz * 1.7);
       if (hA - hC > 1.7 * WALL_GRADE) {
-        const back = Math.abs(k.speed) * dt + 0.12; // uncapped: must beat any dt's advance
-        k.position.x -= fx * back;
-        k.position.z -= fz * back;
-        k._wallHold = 0.25; // suppress the launch rule (pushback ≠ a lip)
-        k.speed *= 1 - Math.min(0.55, 4 * dt);
-        if (k.drifting) {
-          k.drifting = false;
-          k.driftCharge = 0;
-          k.driftRamp = 0;
-        }
-        if (Math.abs(k.speed) > 6) {
-          k.wallHit = true;
-          k.wallHitDir.set(fx, 0, fz);
-          k.wallHitPulse = 0.12;
-        }
+        const back = Math.abs(k.speed) * dt + 0.12;
+        this._wallContact(k, -fx, -fz, back, dt);
         hit = true;
       }
     }
@@ -462,12 +564,17 @@ export class Arena {
       k.y = drop;
       const dir = k.speed >= 0 ? 1 : -1;
       const fx = Math.sin(k.heading) * dir, fz = Math.cos(k.heading) * dir;
-      const lipY = k.position.y + drop;
-      const h1 = this.heightNear(k.position.x - fx * 2, k.position.z - fz * 2, lipY);
-      const h2 = this.heightNear(k.position.x - fx * 6, k.position.z - fz * 6, lipY);
-      const grade = (h1 - h2) / 4;
+      const lipY = k.position.y + drop; // the surface we just left
+      // Take-off grade, sampled behind the PREVIOUS grounded position — that
+      // point is guaranteed to be on the surface the kart actually drove
+      // (sampling behind the current position reads past the lip at large
+      // dts, and a stray sample on a wall face made rocket launches). Capped
+      // at a real ramp angle either way.
+      const bx = (px !== undefined ? px : k.position.x) - fx * 4;
+      const bz = (pz !== undefined ? pz : k.position.z) - fz * 4;
+      const grade = Math.min(0.55, Math.max(0, (lipY - this.heightNear(bx, bz, lipY)) / 4));
       k.vy = grade > 0.02
-        ? Math.min(24, Math.abs(k.speed) * grade / Math.sqrt(1 + grade * grade))
+        ? Math.abs(k.speed) * grade / Math.sqrt(1 + grade * grade)
         : 0; // ledges drop clean
       k.airborne = true;
       return true;
@@ -652,13 +759,14 @@ export class Arena {
         edge.position.set(0, b.h + 0.13, b.d / 2 - 1.4); // south lip: the plaza drop
         g.add(edge);
         // Café face: door + windows on the south wall (flat panels).
+        // Door + windows sit on the TERRACE the café stands on, not on y=0.
         const face = new THREE.MeshStandardMaterial({ color: 0x8a6a45, roughness: 0.9 });
         const door = new THREE.Mesh(new THREE.BoxGeometry(5, 4.4, 0.3), face);
-        door.position.set(0, 2.2, b.d / 2 + 0.16);
+        door.position.set(0, 3.1 + 2.2, b.d / 2 + 0.16);
         g.add(door);
         for (const wx of [-12, 12]) {
           const win = new THREE.Mesh(new THREE.BoxGeometry(7, 2.8, 0.3), new THREE.MeshStandardMaterial({ color: 0xbcd9e8, roughness: 0.4 }));
-          win.position.set(wx, 3.1, b.d / 2 + 0.16);
+          win.position.set(wx, 3.1 + 3.1, b.d / 2 + 0.16);
           g.add(win);
         }
       }
@@ -837,8 +945,10 @@ export class Arena {
         g.rotation.y = o.yawv || 0;
         this.group.add(g);
       } else if (o.kind === "pillar") {
-        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.0, o.h - 0.2, 10), concreteDark);
-        pillar.position.set(o.x, (o.h - 0.2) / 2, o.z);
+        // From the local ground up to the collider top (terrain-aware).
+        const hgt = Math.max(1, o.h - 0.2 - gy);
+        const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 1.0, hgt, 10), concreteDark);
+        pillar.position.set(o.x, gy + hgt / 2, o.z);
         this.group.add(pillar);
       }
     }

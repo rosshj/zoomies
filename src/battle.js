@@ -52,6 +52,7 @@ export class Battle {
       k.battleHearts = BATTLE_HEARTS;
       k.battleKOs = 0;
       k.battleDowns = 0; // times KO'd — the standings tie-break
+      k.battleAmmo = 0; // furballs are EARNED from boxes — everyone starts unarmed
       k._spinLatch = false;
       k._koTimer = 0;
       k._lastHitBy = null;
@@ -240,7 +241,7 @@ export class Battle {
 
     // Trigger discipline: fire on a lined-up living rival in range; drop milk
     // on a tail-gater. (Cadence-gated so a whole lobby doesn't fire as one.)
-    if (t && t.kart && k.shootCooldown <= 0) {
+    if (t && t.kart && k.shootCooldown <= 0 && (k.battleAmmo || 0) > 0) {
       const dx = t.kart.position.x - k.position.x, dz = t.kart.position.z - k.position.z;
       const d = Math.hypot(dx, dz);
       if (d < 38 && Math.abs(angleDelta(Math.atan2(dx, dz), k.heading)) < 0.13 && Math.random() < 6 * dt) {
@@ -262,8 +263,10 @@ export class Battle {
   }
 
   _pickTarget(k, karts, boxes) {
-    // Empty-handed and uncharged? Grab a box first (60/40 vs pressing the hunt).
-    const wantsBox = boxes && boxes.length && k.boxCooldown <= 0 && Math.random() < 0.45;
+    // No ammo? A box IS the weapon — hunt one hard. Armed karts still top up
+    // opportunistically.
+    const need = (k.battleAmmo || 0) <= 0;
+    const wantsBox = boxes && boxes.length && k.boxCooldown <= 0 && Math.random() < (need ? 0.85 : 0.3);
     if (wantsBox) {
       let best = null, bestD = 70;
       for (const b of boxes) {

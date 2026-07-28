@@ -649,6 +649,10 @@ function grantItem(kart) {
     rolled = ITEM_ROLL[pick].name;
   }
   switch (rolled) {
+    case "fur":
+      kart.battleAmmo = Math.min(9, (kart.battleAmmo || 0) + 3);
+      if (kart === player) hud.showToast("🐾 Furballs ×3!");
+      break;
     case "shield":
       kart.giveShield(15);
       if (kart === player) hud.showToast("🛡️ Shield — 15s of protection!");
@@ -663,6 +667,7 @@ function grantItem(kart) {
       break;
     case "tri":
       kart.giveTriShots(3);
+      if (battleMode) kart.battleAmmo = Math.min(9, (kart.battleAmmo || 0) + 3); // fans need ammo too
       if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
       break;
     case "life":
@@ -693,11 +698,12 @@ const ITEM_ROLL = [
 // Battle roll: no yarn (it rolls on the track spline). The KO leader defends,
 // the hunted mid-pack gets ammo, and whoever's getting farmed gets the catnip.
 const BATTLE_ROLL = [
-  { name: "shield", w: [0.16, 0.10, 0.04] }, // rare: a shielded lobby is a boring lobby
-  { name: "milk",   w: [0.30, 0.24, 0.12] },
-  { name: "tri",    w: [0.30, 0.30, 0.24] },
-  { name: "life",   w: [0.16, 0.16, 0.18] },
-  { name: "catnip", w: [0.08, 0.20, 0.42] },
+  { name: "fur",    w: [0.30, 0.30, 0.26] }, // the bread-and-butter ammo
+  { name: "tri",    w: [0.16, 0.20, 0.20] },
+  { name: "milk",   w: [0.22, 0.18, 0.10] },
+  { name: "shield", w: [0.14, 0.08, 0.04] }, // rare: a shielded lobby is a boring lobby
+  { name: "life",   w: [0.12, 0.12, 0.14] },
+  { name: "catnip", w: [0.06, 0.12, 0.26] },
 ];
 function rollWeightsIn(table, f) {
   const a = f < 0.5 ? 0 : 1;
@@ -5952,6 +5958,19 @@ const SHOOT_OPENING_LOCKOUT = 15;
 // Fire whatever the trigger is loaded with: an armed yarn ball takes over the
 // shot slot for one roll, then the button goes back to furballs.
 function fireShot(kart, charge = 0) {
+  // Battle: furballs are AMMO, earned from item boxes — the match starts as a
+  // scramble for weapons, not an instant free-for-all.
+  if (battleMode) {
+    if ((kart.battleAmmo || 0) <= 0) {
+      if (kart === player && kart.shootCooldown <= 0) {
+        kart.shootCooldown = 0.6; // throttle the reminder
+        hud.showToast("🐾 Out of furballs — grab a box!");
+      }
+      return false;
+    }
+    if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
+    kart.battleAmmo--;
+  }
   if (kart.yarnShots > 0) return fireYarn(kart);
   return fireHairball(kart, charge);
 }
@@ -7203,7 +7222,7 @@ function loop(now) {
       const hearts = "❤".repeat(player.battleHearts || 0) + "🖤".repeat(Math.max(0, BATTLE_HEARTS - (player.battleHearts || 0)));
       if (hud.lap.textContent !== hearts) hud.lap.textContent = hearts;
       hud.lap.classList.remove("hidden");
-      const kos = `💥 ${player.battleKOs || 0} KO`;
+      const kos = `💥 ${player.battleKOs || 0} KO · 🐾 ${player.battleAmmo || 0}`;
       if (hud.place.textContent !== kos) hud.place.textContent = kos;
       hud.place.classList.remove("hidden");
       // Last-10-seconds urgency: the clock flashes via the TT "behind" style.
