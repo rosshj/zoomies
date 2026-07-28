@@ -141,25 +141,25 @@ export class Battle {
     if (this.hooks.onKO) this.hooks.onKO(k, attacker);
   }
 
-  // Respawn at the ring point farthest from every living rival — never in
+  // Respawn at the authored point farthest from every living rival — never in
   // someone's lap, never twice in a row in a camping corner.
   _respawn(k, karts) {
-    const R = this.arena.radius * 0.62;
+    const spots = this.arena.respawns || [];
     let best = null, bestScore = -1;
-    for (let i = 0; i < 12; i++) {
-      const a = (i / 12) * Math.PI * 2;
-      const x = Math.sin(a) * R, z = Math.cos(a) * R;
+    for (const s of spots) {
       let nearest = Infinity;
       for (const other of karts) {
         if (other === k || other._koTimer > 0) continue;
-        nearest = Math.min(nearest, Math.hypot(other.position.x - x, other.position.z - z));
+        nearest = Math.min(nearest, Math.hypot(other.position.x - s.x, other.position.z - s.z));
       }
       if (nearest > bestScore) {
         bestScore = nearest;
-        best = { x, z, heading: a + Math.PI }; // face the arena centre
+        best = s;
       }
     }
-    k.placeAt({ x: best.x, y: 0, z: best.z }, best.heading, this.arena);
+    if (!best) best = { x: 0, z: this.arena.radius * 0.4 };
+    const heading = Math.atan2(-best.x, -best.z); // face the map centre
+    k.placeAt({ x: best.x, y: 0, z: best.z }, heading, this.arena);
     k.battleHearts = BATTLE_HEARTS;
     k.shieldTimer = MERCY_SHIELD;
     k._spinLatch = false;

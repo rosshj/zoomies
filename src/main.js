@@ -6951,7 +6951,9 @@ function loop(now) {
     updateSlipstream(draftField);
     if (_raceStats && player && player.slipstream > 0.3) _raceStats.slipSeconds += dt;
 
-    // Step physics
+    // Step physics. Battle: airborne karts lose most steering authority — the
+    // arc is committed at the lip, like a real jump.
+    if (battleMode) for (const k of karts) if (k.airborne && k.y > 0) k.steerInput *= 0.35;
     for (const k of karts) k.update(dt, track);
     // Battle arena: static obstacle collision + crest-launch/air ground
     // continuity (the Track never needed either). Both may move the kart after
@@ -6960,7 +6962,20 @@ function loop(now) {
       for (const k of karts) {
         const c = track.collide(k);
         const a = track.airTransfer(k, dt);
-        if (c || a) k._syncMesh();
+        const airNow = k.airborne && k.y > 0;
+        if (airNow) {
+          // The nose follows the flight arc — up on the rise, down on the fall.
+          k.slopePitch = -Math.atan2(k.vy, Math.max(8, Math.abs(k.speed))) * 0.7;
+          k._syncMesh();
+        } else if (k._wasAir) {
+          // Touchdown: a thump and a dust puff scaled by how hard we landed.
+          effects.tootBurst(k, 1.2, false);
+          audio.bump(k === player ? null : k.position, 0.55);
+          if (c || a) k._syncMesh();
+        } else if (c || a) {
+          k._syncMesh();
+        }
+        k._wasAir = airNow;
       }
       // Rules pass: heart latches, KO/respawn timers, the match clock.
       if (battle) battle.update(dt, karts);

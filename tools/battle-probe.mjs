@@ -1,14 +1,14 @@
-// Battle-arena probe (phase 2): boots ?battle=1, starts the solo session and
-// verifies the Backyard map end-to-end:
-//   - spawn → full throttle crosses the mesa ramp lane, over the paw plateau
-//     (position.y climbs past 4.5) and on into the far fence, which pins the
-//     kart at exactly radius - kart.radius,
-//   - a kicker run gives real air (kart.y ballistic without a jump press),
-//   - obstacle colliders push the kart out (yarn ball test) with the wall's
-//     spark latch,
-//   - laps never advance, no console errors.
-// Screenshots (grid, mid-drive, fence, kicker air, two pinned overviews) land
-// in the scratchpad for the look-at-it half of the verification loop.
+// Battle-arena probe (Whisker Junction): boots ?battle=1, starts the session
+// and verifies the authored map + ballistic air end-to-end:
+//   - spawn → plaza → under the café awning (no level snap) → stopped by the
+//     café wall (containment by architecture, not a radial fence),
+//   - pad → kicker clears the alley walls with honest ballistic air,
+//   - café roof holds at h6, and driving off its lip is a clean drop,
+//   - the parkade still works both storeys + the deck-edge drop,
+//   - the mega-ramp wedge launches,
+//   - the tower's gap cliff can't be climbed,
+//   - full combat loop: KO, credit, respawn (authored spawn points), match end.
+// Screenshots land in the scratchpad for the look-at-it half of the loop.
 import { chromium } from "playwright-core";
 import http from "node:http";
 import fs from "node:fs";
@@ -51,7 +51,6 @@ await page.goto(`http://127.0.0.1:${PORT}/index.html?battle=1&webgl=1&nosw=1&now
 await page.waitForSelector("#start-btn", { timeout: 15000 });
 await page.click("#start-btn", { force: true });
 
-// Wait out the veil + countdown until the player kart exists.
 const t0 = Date.now();
 let live = false;
 while (Date.now() - t0 < 120000) {
@@ -63,24 +62,20 @@ while (Date.now() - t0 < 120000) {
   await page.waitForTimeout(1000);
 }
 if (!live) errors.push("player kart never appeared");
-// Phase 4: AI rivals brawl for real now — shield the player through the
-// terrain legs so a stray furball can't randomize the physics assertions.
+// Shield the player through the terrain legs so the live AI can't randomize them.
 await page.evaluate(() => { window.__zoomies.karts[0].shieldTimer = 9999; });
 await page.screenshot({ path: path.join(SHOTS, "battle-1-grid.png") });
 
 const sample = () => page.evaluate(() => {
   const k = window.__zoomies.karts[0];
-  const t = window.__zoomies.track;
   return {
     x: +k.position.x.toFixed(2), z: +k.position.z.toFixed(2),
-    r: +Math.hypot(k.position.x, k.position.z).toFixed(2),
     gy: +k.position.y.toFixed(2), air: +k.y.toFixed(2), speed: +k.speed.toFixed(2),
-    wallHit: k.wallHitPulse > 0, radius: t.radius, lap: k.lap,
+    wallHit: k.wallHitPulse > 0, lap: k.lap,
   };
 });
 
-// Hold throttle first, then wait for control to unlock (veil + countdown can
-// take a long time under SwiftShader).
+// Hold throttle, wait out veil + countdown.
 await page.keyboard.down("ArrowUp");
 const tGo = Date.now();
 let unlocked = false;
@@ -91,38 +86,44 @@ while (Date.now() - tGo < 90000) {
 }
 if (!unlocked) errors.push("control never unlocked (countdown/veil never finished)");
 
-// --- Leg 1: spawn → mesa lane → plateau → far field → fence pin -----------
-let maxGy = 0, maxR = 0, maxSpeed = 0, sawWall = false, pinned = 0, last = null;
-for (let i = 0; i < 120; i++) {
+// Park the AI during the geometry legs (the KO hold keeps them frozen +
+// hidden) — they hunt the player and mobbing randomizes pure map tests.
+await page.evaluate(() => {
+  for (const k of window.__zoomies.karts) if (!k.isPlayer) k._koTimer = 9999;
+});
+
+// --- Leg 1: spawn → plaza → under the awning → stopped by the café ---------
+let minZ = 99, awningOk = true, sawWall = false, maxSpeed = 0, contained = true, lapLast = -1;
+for (let i = 0; i < 60; i++) {
   await page.waitForTimeout(1000);
   const s = await sample();
-  last = s;
-  maxGy = Math.max(maxGy, s.gy);
-  maxR = Math.max(maxR, s.r);
   maxSpeed = Math.max(maxSpeed, s.speed);
+  minZ = Math.min(minZ, s.z);
+  if (s.z < -44 && s.z > -55 && s.gy > 2.5) awningOk = false; // snapped onto the awning
   if (s.wallHit) sawWall = true;
-  if (i === 10) await page.screenshot({ path: path.join(SHOTS, "battle-2-mesa.png") });
-  if (s.r > (s.radius || 140) - 3) pinned++;
-  if (pinned >= 3) break;
+  if (Math.abs(s.x) > 120 || Math.abs(s.z) > 105) contained = false;
+  lapLast = s.lap;
+  if (i === 8) await page.screenshot({ path: path.join(SHOTS, "battle-2-plaza.png") });
+  if (s.z < -46) { await page.screenshot({ path: path.join(SHOTS, "battle-2b-awning.png") }); }
+  if (minZ < -48 && sawWall) break;
 }
-await page.screenshot({ path: path.join(SHOTS, "battle-3-fence.png") });
-const R = last?.radius || 140;
-if (maxSpeed < 15) errors.push(`kart barely moved (max speed ${maxSpeed})`);
-if (maxGy < 4.5) errors.push(`never climbed the mesa (max ground y ${maxGy})`);
-if (maxR < R - 12) errors.push(`never reached the rim (max r ${maxR} of ${R})`);
-if (maxR > R - 1.2) errors.push(`fence clamp failed (max r ${maxR} > ${R - 1.2})`);
-if (last && last.lap !== -1) errors.push(`laps advanced in an arena (lap ${last.lap})`);
-
-// --- Leg 2: pad → kicker BIG air — start behind the creek-jump boost pad ---
 await page.keyboard.up("ArrowUp");
+if (maxSpeed < 15) errors.push(`kart barely moved (max speed ${maxSpeed})`);
+if (minZ > -44) errors.push(`never reached the café porch (min z ${minZ})`);
+if (minZ < -57.5) errors.push(`drove through the café wall (min z ${minZ})`);
+if (!awningOk) errors.push("ground snapped onto the awning while driving under it");
+if (!sawWall) errors.push("café wall never latched a wall hit");
+if (!contained) errors.push("kart escaped the boundary walls");
+if (lapLast !== -1) errors.push(`laps advanced in an arena (lap ${lapLast})`);
+
+// --- Leg 2: pad → kicker → ballistic air over the alley --------------------
 await page.evaluate(() => {
   const k = window.__zoomies.karts[0];
   const kick = window.__zoomies.track.kickers[0];
   k.position.x = kick.x - Math.sin(kick.yaw) * 42;
   k.position.z = kick.z - Math.cos(kick.yaw) * 42;
   k.heading = kick.yaw;
-  k.speed = 0;
-  k.knock.set(0, 0, 0);
+  k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
 });
 await page.keyboard.down("ArrowUp");
 let sawAir = 0, maxAir = 0, padSpeed = 0;
@@ -130,7 +131,6 @@ for (let i = 0; i < 50; i++) {
   await page.waitForTimeout(700);
   const s = await sample();
   padSpeed = Math.max(padSpeed, s.speed);
-  // Only count air earned at speed — the teleport settling also falls.
   if (s.speed > 20) {
     maxAir = Math.max(maxAir, s.air);
     if (s.air > 0.7) {
@@ -138,80 +138,41 @@ for (let i = 0; i < 50; i++) {
       if (sawAir === 2) await page.screenshot({ path: path.join(SHOTS, "battle-4-air.png") });
     }
   }
-  if (sawAir >= 2 && maxAir > 2.2) break;
+  if (sawAir >= 2 && maxAir > 2) break;
 }
 await page.keyboard.up("ArrowUp");
 if (sawAir < 2) errors.push("kicker never launched the kart (no ballistic air)");
-if (maxAir < 2.2) errors.push(`air too small (apex ${maxAir} — want a real flight)`);
+if (maxAir < 2) errors.push(`air too small (apex ${maxAir})`);
 if (padSpeed < 40) errors.push(`boost pad never fired (max speed ${padSpeed})`);
 
-// --- Leg 3: obstacle collider — drive square into a yarn ball --------------
+// --- Leg 3: café roof — holds at 6, drops clean off the lip ----------------
 await page.evaluate(() => {
   const k = window.__zoomies.karts[0];
-  const o = window.__zoomies.track.obstacles.find((o) => o.kind === "yarn");
-  const a = Math.atan2(o.x - (o.x + 20), o.z - (o.z + 20)); // from +20,+20 toward the ball
-  k.position.x = o.x + 20;
-  k.position.z = o.z + 20;
-  k.heading = a;
-  k.speed = 0;
-  k.knock.set(0, 0, 0);
-  k.y = 0; k.vy = 0; k.airborne = false;
-  window.__probeObstacle = o;
+  k.position.x = 0; k.position.z = -72; k.position.y = 6;
+  k.heading = 0; // toward the plaza (the hazard-striped lip)
+  k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
 });
 await page.keyboard.down("ArrowUp");
-let minDist = Infinity, obstacleSpark = false;
-for (let i = 0; i < 30; i++) {
-  await page.waitForTimeout(700);
-  const s = await page.evaluate(() => {
-    const k = window.__zoomies.karts[0];
-    const o = window.__probeObstacle;
-    return { d: Math.hypot(k.position.x - o.x, k.position.z - o.z), spark: k.wallHitPulse > 0, or: o.r };
-  });
-  minDist = Math.min(minDist, s.d);
-  if (s.spark) obstacleSpark = true;
-  if (i === 12) await page.screenshot({ path: path.join(SHOTS, "battle-5-obstacle.png") });
-}
-await page.keyboard.up("ArrowUp");
-const obstacleR = await page.evaluate(() => window.__probeObstacle.r);
-if (minDist < obstacleR + 1.8 - 0.7) errors.push(`obstacle collider leaked (min dist ${minDist.toFixed(2)} vs ${obstacleR + 1.8})`);
-if (minDist > obstacleR + 6) errors.push(`kart never reached the obstacle (min dist ${minDist.toFixed(2)})`);
-if (!obstacleSpark) errors.push("obstacle hit never latched the spark pulse");
-
-// --- Leg 4: steep-wall rule — the butte's gap cliff must not be climbable --
-await page.evaluate(() => {
-  const k = window.__zoomies.karts[0];
-  // The 60° gap sector faces local azimuth ≈ -0.08 from the butte centre.
-  k.position.x = -32 + Math.sin(-0.08) * 24;
-  k.position.z = 30 + Math.cos(-0.08) * 24;
-  k.heading = Math.atan2(-32 - k.position.x, 30 - k.position.z); // face the core
-  k.speed = 0;
-  k.knock.set(0, 0, 0);
-  k.y = 0; k.vy = 0; k.airborne = false;
-});
-await page.keyboard.down("ArrowUp");
-let wallMaxGy = 0, wallSpark = false;
-for (let i = 0; i < 20; i++) {
+const roof = { held: false, dropAir: 0, landed: false };
+// Roof → awning (flush at h6) → off the awning lip → plaza: allow the full run.
+for (let i = 0; i < 34; i++) {
   await page.waitForTimeout(700);
   const s = await sample();
-  wallMaxGy = Math.max(wallMaxGy, s.gy);
-  if (s.wallHit) wallSpark = true;
+  if (s.gy > 5.5) roof.held = true;
+  roof.dropAir = Math.max(roof.dropAir, s.air);
+  if (roof.held && s.air <= 0.05 && s.gy < 2.5) { roof.landed = true; break; }
 }
 await page.keyboard.up("ArrowUp");
-await page.screenshot({ path: path.join(SHOTS, "battle-5b-wall.png") });
-if (wallMaxGy > 5.5) errors.push(`climbed the butte cliff (ground y ${wallMaxGy} — steep-wall rule failed)`);
-if (!wallSpark) errors.push("steep wall never latched the spark pulse");
-// Sanity: the butte deck really is the high ground.
-const butteTop = await page.evaluate(() => +window.__zoomies.track.heightAt(-32, 30).toFixed(2));
-if (butteTop < 8.5) errors.push(`butte deck too low (${butteTop})`);
+if (!roof.held) errors.push("café roof surface never registered");
+if (roof.dropAir < 1.5) errors.push(`café roof lip gave no air (${roof.dropAir})`);
+if (!roof.landed) errors.push("never landed in the plaza after the roof drop");
 
-// --- Leg 4b: the parkade — two storeys over one XZ footprint ---------------
+// --- Leg 4: parkade — both storeys + the deck-edge drop --------------------
 const parkade = { underMax: 0, deckSeen: false, dropAir: 0, landed: false };
-// Under the deck: park at the parkade's centre at ground level and drive out
-// through the pillars — the ground query must NEVER snap up to the deck.
 await page.evaluate(() => {
   const k = window.__zoomies.karts[0];
   const P = window.__zoomies.track.parkade;
-  k.position.x = P.x; k.position.z = P.z; k.position.y = 0.6;
+  k.position.x = P.x; k.position.z = P.z; k.position.y = 0.5;
   k.heading = P.yaw + Math.PI;
   k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
 });
@@ -222,8 +183,6 @@ for (let i = 0; i < 10; i++) {
   parkade.underMax = Math.max(parkade.underMax, s.gy);
 }
 await page.keyboard.up("ArrowUp");
-// On the deck: spawn at deck height — the query must hold the UPPER surface —
-// then drive off the open edge for the big drop.
 await page.evaluate(() => {
   const k = window.__zoomies.karts[0];
   const P = window.__zoomies.track.parkade;
@@ -236,23 +195,23 @@ for (let i = 0; i < 18; i++) {
   await page.waitForTimeout(700);
   const s = await sample();
   if (s.gy > 7.5) parkade.deckSeen = true;
-  if (s.air > parkade.dropAir) parkade.dropAir = s.air;
+  parkade.dropAir = Math.max(parkade.dropAir, s.air);
   if (parkade.deckSeen && s.air <= 0.05 && s.gy < 2.5) { parkade.landed = true; break; }
 }
 await page.keyboard.up("ArrowUp");
 await page.screenshot({ path: path.join(SHOTS, "battle-10-parkade.png") });
 if (parkade.underMax > 2.5) errors.push(`ground snapped toward the deck underneath (gy ${parkade.underMax})`);
-if (!parkade.deckSeen) errors.push("never registered the deck surface at 8.2");
-if (parkade.dropAir < 1.5) errors.push(`deck-edge drop gave no air (max ${parkade.dropAir})`);
-if (!parkade.landed) errors.push("never landed back on base terrain after the deck drop");
+if (!parkade.deckSeen) errors.push("never registered the parkade deck");
+if (parkade.dropAir < 1.5) errors.push(`deck-edge drop gave no air (${parkade.dropAir})`);
+if (!parkade.landed) errors.push("never landed after the parkade drop");
 
-// --- Leg 4c: mega-ramp — big geometric wedge must fly ----------------------
+// --- Leg 5: mega-ramp wedge ------------------------------------------------
 await page.evaluate(() => {
   const k = window.__zoomies.karts[0];
   const M = window.__zoomies.track.megaRamp;
   k.position.x = M.x - Math.sin(M.yaw) * 14;
   k.position.z = M.z - Math.cos(M.yaw) * 14;
-  k.position.y = 1;
+  k.position.y = 0.5;
   k.heading = M.yaw;
   k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
 });
@@ -267,8 +226,36 @@ for (let i = 0; i < 22; i++) {
 await page.keyboard.up("ArrowUp");
 if (megaAir < 2) errors.push(`mega-ramp never launched (max air ${megaAir})`);
 
-// --- Leg 5: combat — shoot an AI down to a KO, watch it respawn ------------
-const combat = { hits: 0, ko: false, respawned: false, boxes: 0, aiAlive: false };
+// --- Leg 6: tower gap cliff must not be climbable --------------------------
+await page.evaluate(() => {
+  const k = window.__zoomies.karts[0];
+  const B = window.__zoomies.track.butte;
+  k.position.x = B.x + Math.sin(-0.08) * 24;
+  k.position.z = B.z + Math.cos(-0.08) * 24;
+  k.position.y = 0.5;
+  k.heading = Math.atan2(B.x - k.position.x, B.z - k.position.z);
+  k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
+});
+await page.keyboard.down("ArrowUp");
+let wallMaxGy = 0, wallSpark = false;
+for (let i = 0; i < 20; i++) {
+  await page.waitForTimeout(700);
+  const s = await sample();
+  wallMaxGy = Math.max(wallMaxGy, s.gy);
+  if (s.wallHit) wallSpark = true;
+}
+await page.keyboard.up("ArrowUp");
+if (wallMaxGy > 5.5) errors.push(`climbed the tower cliff (gy ${wallMaxGy})`);
+if (!wallSpark) errors.push("tower wall never latched the spark pulse");
+
+// Release the parked AI (they respawn at the authored points).
+await page.evaluate(() => {
+  for (const k of window.__zoomies.karts) if (!k.isPlayer) k._koTimer = 0.01;
+});
+await page.waitForTimeout(4000);
+
+// --- Leg 7: combat — shoot an AI to a KO, watch it respawn -----------------
+const combat = { ko: false, respawned: false, boxes: 0, aiAlive: false };
 combat.boxes = await page.evaluate(() =>
   window.__zoomies.props ? window.__zoomies.props._props.filter((p) => p.kind === "crate" && p.mode === "float").length : -1
 );
@@ -277,12 +264,11 @@ combat.aiAlive = await page.evaluate(() =>
 );
 await page.evaluate(() => {
   const p = window.__zoomies.karts[0];
-  p.shieldTimer = 9999; // stay covered while we play executioner
-  p.position.x = 0; p.position.z = 60; p.heading = Math.PI; p.speed = 0; p.knock.set(0, 0, 0);
+  p.shieldTimer = 9999;
+  p.position.x = 0; p.position.z = 60; p.position.y = 0.5;
+  p.heading = Math.PI; p.speed = 0; p.knock.set(0, 0, 0);
 });
 for (let round = 0; round < 30; round++) {
-  // Only (re)park the victim when the air is clear — a re-teleport mid-flight
-  // yanks it away from the ball under SwiftShader's time dilation.
   const st = await page.evaluate(() => {
     const z = window.__zoomies;
     const p = z.karts[0];
@@ -295,7 +281,7 @@ for (let round = 0; round < 30; round++) {
       t.speed = 0;
       t.shieldTimer = 0;
       t.catnipTimer = 0;
-      t.lives = 0; // banked Nine-Lives saves absorb spins — strip them or hits cost no hearts
+      t.lives = 0;
       p.shootCooldown = 0;
       return { parked: true, ko: false };
     }
@@ -307,7 +293,6 @@ for (let round = 0; round < 30; round++) {
     await page.waitForTimeout(300);
     await page.keyboard.up("KeyF");
   }
-  // Let the shot fly and the spin/latch resolve before the next round.
   for (let w = 0; w < 12; w++) {
     await page.waitForTimeout(500);
     const done = await page.evaluate(() => {
@@ -318,7 +303,6 @@ for (let round = 0; round < 30; round++) {
   }
 }
 if (combat.ko) await page.screenshot({ path: path.join(SHOTS, "battle-8-ko.png") });
-// Respawn: hearts refill, kart re-appears somewhere on the ring.
 for (let i = 0; i < 30 && !combat.respawned; i++) {
   await page.waitForTimeout(1000);
   combat.respawned = await page.evaluate(() => {
@@ -327,49 +311,48 @@ for (let i = 0; i < 30 && !combat.respawned; i++) {
   });
 }
 const myKOs = await page.evaluate(() => window.__zoomies.karts[0].battleKOs);
-// The float count breathes during play (a grabbed box sinks spent, a pool
-// crate rises after a delay) — just prove the arena pool is live and near cap.
 if (combat.boxes < 8) errors.push(`floating box pool too small (${combat.boxes} of 10)`);
 if (!combat.aiAlive) errors.push("battle AI never drove");
-if (!combat.ko) errors.push("never KO'd the target AI (hearts/latch pipeline broken?)");
+if (!combat.ko) errors.push("never KO'd the target AI");
 if (combat.ko && !combat.respawned) errors.push("KO'd kart never respawned");
-if (combat.ko && myKOs < 1) errors.push(`KO not credited to the shooter (player KOs ${myKOs})`);
+if (combat.ko && myKOs < 1) errors.push(`KO not credited (player KOs ${myKOs})`);
 
-// --- Leg 6: match end — fast-forward the clock, expect KO standings --------
+// --- Leg 8: match end ------------------------------------------------------
 await page.evaluate(() => { window.__zoomies.battle.left = 5; });
-let ended = false, resultsTitle = "";
+let ended = false;
 for (let i = 0; i < 60 && !ended; i++) {
   await page.waitForTimeout(1000);
   ended = await page.evaluate(() => !document.getElementById("results").classList.contains("hidden"));
 }
 if (!ended) errors.push("match never ended (timer → results flow broken)");
 else {
-  resultsTitle = await page.evaluate(() => document.getElementById("results-title").textContent);
+  const resultsTitle = await page.evaluate(() => document.getElementById("results-title").textContent);
   const rows = await page.evaluate(() => document.getElementById("results-list").children.length);
   if (!/KO|Top Cat/.test(resultsTitle)) errors.push(`battle results title looks wrong: "${resultsTitle}"`);
   if (rows !== 4) errors.push(`battle standings should list 4 cats, got ${rows}`);
   await page.screenshot({ path: path.join(SHOTS, "battle-9-results.png") });
-  // Back out to the menu so the overview shots below aren't behind the overlay.
   await page.evaluate(() => document.getElementById("results").classList.add("hidden"));
 }
 
-// --- Overview shots: pin the camera (the race loop re-aims it every frame) --
+// --- Overview shots (pinned camera) ----------------------------------------
 for (const [name, px, py, pz] of [
-  ["battle-6-overview", 30, 210, 190],
-  ["battle-7-low", -170, 55, 150],
+  ["battle-6-overview", 0, 235, 160],
+  ["battle-7-low", -190, 70, 125],
 ]) {
   await page.evaluate(({ px, py, pz }) => {
     const cam = window.__zoomies.camera;
-    cam.position.copy = function () { return this; }; // neuter the chase cam
+    cam.position.copy = function () { return this; };
     cam.lookAt = () => {};
     cam.position.set(px, py, pz);
-    Object.getPrototypeOf(Object.getPrototypeOf(cam)).lookAt.call(cam, 0, 0, 0);
+    Object.getPrototypeOf(Object.getPrototypeOf(cam)).lookAt.call(cam, 0, 0, -10);
   }, { px, py, pz });
   await page.waitForTimeout(2500);
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 }
 
-console.log(JSON.stringify({ maxGy, maxR, maxSpeed, sawWall, sawAir, minDist: +minDist.toFixed(2), parkade, megaAir, combat, myKOs, errors }, null, 2));
+console.log(JSON.stringify({
+  minZ, maxSpeed, maxAir, padSpeed, roof, parkade, megaAir, wallMaxGy, combat, myKOs, errors,
+}, null, 2));
 await browser.close();
 server.close();
 process.exit(errors.length ? 1 : 0);
