@@ -241,7 +241,9 @@ function build(scene, track, opts) {
   // pool crate rises to keep the count, same as on a track).
   if (spotList) {
     for (const s of spotList) {
-      addProp(s.x, s.z, track.groundInfo(s.x, s.z).y, makeCrate(), {
+      // s.y pins a spot to an elevated surface (a deck) the 2D ground sampler
+      // can't see.
+      addProp(s.x, s.z, s.y != null ? s.y : track.groundInfo(s.x, s.z).y, makeCrate(), {
         kind: "crate",
         mode: (s.mode || "float") === "float" ? "float" : "ground",
       });

@@ -1,37 +1,28 @@
-// Battle arena (phase 3): "The Backyard" grows verticality — a spiral butte,
-// a raised platform with a boost-pad runway into an edge jump, boost pads,
-// and air you actually feel. Still one analytic heightfield feeding both the
-// physics probes and the terrain mesh, so wheels always sit on what's drawn,
-// and `Kart` still runs unchanged.
+// Battle arena (phase 4.5): ARCHITECTURE — the Backyard gains real structures
+// you can drive UNDER as well as on: a rectangular two-storey PARKADE on
+// pillars, a free-standing MEGA-RAMP, and bolder kickers. Plus the feel fix
+// that matters most: launches are now computed analytically from the
+// heightfield, so you catch air at any frame rate.
 //
-// The three phase-2 engine pieces, upgraded:
-//   - heightAt(x, z): now holds cliffs, a helical ramp and plateaus. Design
-//     rule: every surface is either DRIVABLE (< ~30°) or a WALL (> ~46°,
-//     blocked by the steep-wall rule below) — nothing in between, so there is
-//     no slope you can tediously crawl up.
-//   - collide(kart): circle colliders for the toys PLUS the steep-wall rule:
-//     a probe one kart-length ahead samples the ground; rising faster than
-//     ~46° reads as a wall (push-back, scrub, sparks). It only ever looks
-//     UPHILL, so ledges stay droppable from above — the cliff blocks you at
-//     its foot, never at its lip.
-//   - airTransfer(kart, dt): crest launches got a punch-up (vy boost at the
-//     lip) and airborne karts get an upward float assist — arena gravity
-//     feels ~2/3 of track gravity, so a kicker is a genuine flight, not a
-//     hop. Ground-height continuity for airborne karts as before.
+// The multi-level trick: the kart's ground queries carry the kart's own y
+// (kart.position.y IS its current ground height), so heightNear(x, z, y)
+// returns the surface NEAREST that y — base terrain under the deck, the deck
+// on top of it. Selection is stable mid-hop because position.y stays the
+// ground height while kart.y carries the jump. (The Track does the same for
+// its crossover strands.)
 //
-// The map (radius 140, spawn at azimuth 0 / +z, facing the centre):
-//   - CENTRE MESA (h 5.5): paw-print plateau, two gentle ramp lanes, steep
-//     launchable skirt everywhere else.
-//   - SPIRAL BUTTE (h 9, SW of the mesa): a 300° helical ramp winds up to
-//     the highest deck in the arena; the last 60° is a sheer cliff — drop
-//     off it, or get walled at its foot.
-//   - PATIO PLATFORM (h 4.2, NE): a stone deck with a two-pad boost runway
-//     firing you off an edge kicker, out over the box cluster.
-//   - DRY CREEK (west), MOGUL MEADOW (NE), DUNE WAVES (SW): ground rhythm.
-//   - KICKERS with curled ski-jump lips; BOOST PADS (the racing pad logic in
-//     main.js consumes track.boostPads — the arena just supplies them).
-//   - CAT TOYS (yarn balls / scratching-post slalom / cardboard boxes) as
-//     circle colliders inside the banked rim + fence.
+// Design rules that survived playtesting and probes:
+//   - Every slope is either DRIVABLE (< ~30°) or a WALL (> ~46°). The
+//     steep-wall rule in collide() probes one kart-length ahead and only ever
+//     looks UPHILL — so cliffs block you at the foot but every deck edge and
+//     lip stays droppable from above.
+//   - Launch vy comes from the heightfield's own up-face slope behind the
+//     lip, NOT from frame history: at 60fps the wheelbase-averaged groundY
+//     starts falling before the kart's centre crosses the lip, so measured
+//     climb rates read ~0 on real devices and jumps died. Analytic slope +
+//     a minimum pop = air you can feel at any speed and any dt.
+//   - Wall pushback exceeds speed*dt (uncapped) and suppresses the launch
+//     rule for a beat, or fast karts tunnel/catapult (see phase-3 history).
 import * as THREE from "three";
 
 const MESA_H = 5.5;
@@ -39,18 +30,33 @@ const MESA_TOP = 20; // plateau radius
 const CREEK_R = 66; // creek band centreline radius
 const CREEK_HALF = 9; // band half-width
 const CREEK_DEPTH = 2.0;
-const KICK_H = 3.4; // kicker crest height
+const KICK_H = 3.8; // kicker crest height
 const KICK_BACK = 18; // up-face length
 const KICK_LIP = 5; // drop-face length
+const KICK_HALF = 9; // half-width — wide enough that you hit them on purpose
 const LAUNCH_SLOPE = 0.26; // ground falling faster than this grade → airborne
-const LAUNCH_BOOST = 1.25; // lip vy multiplier — launches read as jumps, not stumbles
+const LAUNCH_BOOST = 1.25; // lip vy multiplier
+const LAUNCH_MIN_VY = 5.5; // any real up-face lip gives at least this pop
 const AIR_FLOAT = 9; // upward assist while airborne (30 gravity feels like 21)
 const WALL_GRADE = 1.05; // ground rising faster than this (≈46°) ahead = wall
 
-// Spiral butte.
+// Spiral butte (round structure, high deck).
 const BUTTE = { x: -32, z: 30, core: 8.5, band: 15.5, h: 9, entry: -0.6, sweep: 5.24 };
-// Patio platform.
-const PATIO = { x: 55, z: -48, top: 17, h: 4.2 };
+// The Parkade: a rectangular two-storey deck on pillars. Local frame: u runs
+// along yaw (the long axis), v across. One straight access ramp continues off
+// the +u end; the -u edge is the open drive-off.
+const PK = {
+  x: 57, z: -46, yaw: -0.85,
+  hu: 17, hv: 13, h: 8.2,
+  rampL: 24, rampW: 7,
+  sin: Math.sin(-0.85), cos: Math.cos(-0.85),
+};
+// Mega-ramp: a big geometric launch wedge in the open south field, firing you
+// into the dune bowl.
+const MEGA = {
+  x: 30, z: 78, yaw: -1.97, L: 24, W: 5.5, H: 4.6,
+  sin: Math.sin(-1.97), cos: Math.cos(-1.97),
+};
 
 const smooth01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 const wrapPi = (a) => {
@@ -69,31 +75,35 @@ export class Arena {
     this.totalLaps = 3; // overwritten by main.js like the Track's; unused (t never advances)
     this.raceTime = 0;
     this.features = { runs: [] }; // no tunnels/bridges: camera clamps + glyphs no-op
+    this.parkade = PK; // exposed for probes
+    this.megaRamp = MEGA;
 
-    // Launch kickers: pos + the yaw they fire you along. Each one has a job.
+    // Launch kickers: pos + the yaw they fire you along.
     this.kickers = [
       { x: -82, z: -12, yaw: Math.atan2(82, 12) }, // aimed inward: throws you across the creek
       { x: 44, z: 58, yaw: 2.39 }, // aimed at the cardboard boxes — low enough to clear
       { x: 49, z: -81, yaw: -2.11 }, // tangential, keeps the outer counter-clockwise lap alive
-      { x: 57.2, z: -33.2, yaw: 0.148 }, // the patio edge jump: pads → lip → over the boxes
     ];
     for (const k of this.kickers) {
       k.sin = Math.sin(k.yaw);
       k.cos = Math.cos(k.yaw);
     }
 
-    // Boost pads — main.js's applyBoostPads already consumes this shape.
-    // Placed to set up a jump or a climb, not as random candy.
+    // Boost pads — main.js's applyBoostPads consumes this shape (pads with a
+    // `y` only fire at that level: deck pads don't trigger under the deck).
+    const pkWorld = (u, v) => ({ x: PK.x + u * PK.sin + v * PK.cos, z: PK.z + u * PK.cos - v * PK.sin });
+    const padA = pkWorld(-9, -4), padB = pkWorld(-9, 4);
     this.boostPads = [
       { x: 0, z: 62, r: 4, yaw: Math.PI }, // spawn straight, into the mesa lane climb
       { x: -103.8, z: -15.2, r: 4, yaw: Math.atan2(82, 12) }, // run-up to the creek jump
       { x: 69.6, z: -68.7, r: 4, yaw: -2.11 }, // outer lap, into the tangential kicker
       { x: -42.7, z: 45.7, r: 4, yaw: Math.atan2(32 - 42.7, 30 - 45.7) + Math.PI }, // butte spiral entry
-      { x: 52, z: -62, r: 4, yaw: 0.148 }, // patio runway pad 1
-      { x: 54.5, z: -48, r: 4, yaw: 0.148 }, // patio runway pad 2
+      { x: padA.x, z: padA.z, r: 4, yaw: PK.yaw + Math.PI, y: PK.h }, // parkade runway →
+      { x: padB.x, z: padB.z, r: 4, yaw: PK.yaw + Math.PI, y: PK.h }, // → the open deck edge
+      { x: 39.2, z: 81.9, r: 4, yaw: MEGA.yaw }, // mega-ramp run-up
     ];
 
-    // Cat-toy obstacles: {x, z, r (collider), h (clearable-over height), kind}.
+    // Cat-toy obstacles + parkade pillars: {x, z, r (collider), h, kind}.
     this.obstacles = [
       { x: 38, z: -40, r: 3.4, h: 5, kind: "yarn", color: 0xe4607a },
       { x: -66, z: -2, r: 3.4, h: 5, kind: "yarn", color: 0x6fa8dc }, // sitting in the dry creek bed
@@ -103,14 +113,20 @@ export class Arena {
       { x: -2, z: -56, r: 1.7, h: 9, kind: "post" },
       { x: -16, z: -52, r: 1.7, h: 9, kind: "post" },
       { x: -28, z: -44, r: 1.7, h: 9, kind: "post" },
-      // Cardboard box cluster east — LOW (2.4): clearable off the kickers aimed at them.
+      // Cardboard box cluster east — LOW (2.4): clearable off the kicker aimed at them.
       { x: 74, z: 26, r: 2.9, h: 2.4, kind: "box", yawv: 0.4 },
       { x: 66, z: 36, r: 2.9, h: 2.4, kind: "box", yawv: -0.2 },
       { x: 78, z: 16, r: 2.9, h: 2.4, kind: "box", yawv: 1.1 },
     ];
+    // Parkade pillars hold the deck up AND stop you (they're full-height).
+    // Pillar tops stop BELOW the deck: a kart driving the deck (abs height
+    // 8.2) must clear them, a kart underneath must not.
+    for (const [u, v] of [[-11, -8], [-11, 8], [0, -8], [0, 8], [11, -8], [11, 8]]) {
+      const p = pkWorld(u, v);
+      this.obstacles.push({ x: p.x, z: p.z, r: 1.3, h: 7.4, kind: "pillar" });
+    }
 
-    // Fence outline in Track._pts form: the minimap draws it as the map bounds
-    // and fitSunShadow fits the light frustum around it.
+    // Fence outline in Track._pts form (minimap + sun-shadow fitting).
     this._pts = [];
     this._tans = [];
     const rimY = this.heightAt(0, radius);
@@ -124,9 +140,7 @@ export class Arena {
     this._build();
   }
 
-  // ---- The heightfield -----------------------------------------------------
-  // The single source of truth: physics probes, the terrain mesh, prop
-  // placement and the camera clamp all sample this one function.
+  // ---- The heightfield (BASE surface: terrain + molded features) -----------
   heightAt(x, z) {
     const R = this.radius;
     const r = Math.hypot(x, z);
@@ -148,10 +162,8 @@ export class Arena {
       h += MESA_H * smooth01((MESA_TOP + skirt - r) / skirt);
     }
 
-    // Spiral butte: a 300° helical ramp climbing to the arena's highest deck.
-    // Ramp grade ≈ 8°; the core wall and the 60° gap sector are sheer (the
-    // steep-wall rule turns them into real walls from below, and the gap lip
-    // is the drop-off from above).
+    // Spiral butte: a 300° helical ramp to the arena's highest deck. Crisper
+    // edges than v1 (2.5u side falloff) so it reads built, not molded.
     {
       const dx = x - BUTTE.x, dz = z - BUTTE.z;
       const rho = Math.hypot(dx, dz);
@@ -160,35 +172,29 @@ export class Arena {
         let u = BUTTE.entry - phi;
         while (u < 0) u += Math.PI * 2;
         while (u >= Math.PI * 2) u -= Math.PI * 2;
-        // Core deck (flat top) rises over a sheer 2.5u wall...
         const core = BUTTE.h * smooth01((BUTTE.core + 2.5 - rho) / 2.5);
-        // ...and the ramp band wraps it, fading to grade over a 4.5u outer
-        // skirt. Past the 300° sweep the ramp sheers off over 0.35 rad — a
-        // sub-guard-height-per-frame LEDGE, so driving off the end launches
-        // ballistic instead of reading as a teleport snap.
         let ramp = 0;
         if (u <= BUTTE.sweep + 0.35) {
           const p = Math.min(1, u / BUTTE.sweep);
-          const lat = smooth01((BUTTE.band + 4.5 - rho) / 4.5);
+          const lat = smooth01((BUTTE.band + 2.5 - rho) / 2.5);
           const endFade = smooth01((BUTTE.sweep + 0.35 - u) / 0.35);
-          ramp = BUTTE.h * (0.08 + 0.92 * p) * lat * endFade; // starts 0.7u proud so the entry reads
+          ramp = BUTTE.h * (0.08 + 0.92 * p) * lat * endFade;
         }
         h += Math.max(core, ramp);
       }
     }
 
-    // Patio platform: a stone deck with one drivable lane facing the arena
-    // centre; the rest of the skirt is steep. The runway pads + edge kicker
-    // live on top.
+    // Mega-ramp: a crisp geometric wedge — long climb, hard lip, nothing past
+    // it (the drop IS the point).
     {
-      const dx = x - PATIO.x, dz = z - PATIO.z;
-      const rho = Math.hypot(dx, dz);
-      if (rho < PATIO.top + 22) {
-        const toCentre = Math.atan2(-PATIO.x, -PATIO.z);
-        const local = Math.abs(wrapPi(Math.atan2(dx, dz) - toCentre));
-        const lane = 1 - smooth01((local - 0.45) / 0.3);
-        const skirt = 8 + 12 * lane; // 28° cliffish → 12° lane
-        h += PATIO.h * smooth01((PATIO.top + skirt - rho) / skirt);
+      const dx = x - MEGA.x, dz = z - MEGA.z;
+      const u = dx * MEGA.sin + dz * MEGA.cos;
+      if (u >= 0 && u <= MEGA.L) {
+        const v = dx * MEGA.cos - dz * MEGA.sin;
+        if (Math.abs(v) < MEGA.W + 1.5) {
+          const lat = smooth01((MEGA.W + 1.5 - Math.abs(v)) / 1.5); // near-vertical sides = walls
+          h += MEGA.H * (u / MEGA.L) * smooth01(u / 4) * lat;
+        }
       }
     }
 
@@ -215,15 +221,14 @@ export class Arena {
       h += 0.8 * (0.5 + 0.5 * Math.sin(r * 0.55)) * w;
     }
 
-    // Kickers: long gentle up-face with a CURLED lip (power curve steepens
-    // the last metres to ~24°), then a steep drop — the launch moment.
+    // Kickers: long up-face, curled lip, steep drop.
     for (const k of this.kickers) {
       const dx = x - k.x, dz = z - k.z;
-      const u = dx * k.sin + dz * k.cos; // along the launch direction
+      const u = dx * k.sin + dz * k.cos;
       if (u < -KICK_BACK || u > KICK_LIP) continue;
-      const v = dx * k.cos - dz * k.sin; // across
-      if (v < -6 || v > 6) continue;
-      const lat = smooth01((6 - Math.abs(v)) / 2.5);
+      const v = dx * k.cos - dz * k.sin;
+      if (v < -KICK_HALF || v > KICK_HALF) continue;
+      const lat = smooth01((KICK_HALF - Math.abs(v)) / 3);
       const rise = u <= 0
         ? Math.pow(smooth01((u + KICK_BACK) / KICK_BACK), 1.6)
         : 1 - smooth01(u / KICK_LIP);
@@ -233,15 +238,38 @@ export class Arena {
     return h;
   }
 
+  // The parkade's elevated surface (deck + access ramp) where one exists.
+  _deckSurface(x, z) {
+    const dx = x - PK.x, dz = z - PK.z;
+    const u = dx * PK.sin + dz * PK.cos;
+    const v = dx * PK.cos - dz * PK.sin;
+    if (Math.abs(v) <= PK.hv && Math.abs(u) <= PK.hu) return PK.h;
+    if (Math.abs(v) <= PK.rampW / 2 && u > PK.hu && u <= PK.hu + PK.rampL) {
+      const h = PK.h * (1 - (u - PK.hu) / PK.rampL);
+      return h > this.heightAt(x, z) + 0.3 ? h : null; // hand off to grade at the foot
+    }
+    return null;
+  }
+
+  // Multi-level ground query: the surface nearest the caller's own height.
+  // kart.position.y IS its current ground height, so a kart under the deck
+  // stays on base terrain and a kart on top stays on the deck — stable even
+  // mid-hop (jump height lives in kart.y, not position.y).
+  heightNear(x, z, y = 0) {
+    const base = this.heightAt(x, z);
+    const deck = this._deckSurface(x, z);
+    if (deck == null) return base;
+    return Math.abs(y - deck) < Math.abs(y - base) ? deck : base;
+  }
+
   // Same contract as Track.project, in radial terms: `side` points outward
-  // from the arena centre and `lateral` is the centre distance, so the kart's
-  // wall clamp holds it inside the fence and shoves radially on a scrape.
+  // from the arena centre and `lateral` is the centre distance (fence clamp).
   project(pos) {
     const x = pos.x, z = pos.z;
     const r = Math.hypot(x, z);
     const side = r > 1e-4 ? new THREE.Vector3(x / r, 0, z / r) : new THREE.Vector3(1, 0, 0);
     const tangent = new THREE.Vector3(-side.z, 0, side.x);
-    const groundY = this.heightAt(x, z);
+    const groundY = this.heightNear(x, z, pos.y || 0);
     return {
       t: 0, // constant: no arc coordinate, no laps
       point: new THREE.Vector3(x, groundY, z),
@@ -253,26 +281,21 @@ export class Arena {
     };
   }
 
-  groundYNear(x, z) {
-    return this.heightAt(x, z);
+  groundYNear(x, z, y = 0) {
+    return this.heightNear(x, z, y);
   }
 
-  // Scenery-style sampler: y = ground height, dist = how far OUTSIDE the play
-  // area (0 anywhere in the bowl), mirroring "distance from the road corridor".
   groundInfo(x, z) {
     const r = Math.hypot(x, z);
     return { y: this.heightAt(x, z), dist: Math.max(0, r - this.radius) };
   }
 
   // Track's is "distance from the road centreline"; the arena's centreline is
-  // a point, so knocked crates reflect off halfWidth (the fence) and promote
-  // checks pass anywhere inside — same semantics, radial frame.
+  // a point — knocked crates reflect off halfWidth (the fence).
   distanceToCenter(x, z) {
     return Math.hypot(x, z);
   }
 
-  // A circle at mid-floor stands in for the centreline: the menu orbit
-  // anchors sweep it, and any t-space consumer gets sensible world points.
   getPointAt(t, target = new THREE.Vector3()) {
     const a = (((t % 1) + 1) % 1) * Math.PI * 2;
     const r = this.radius * 0.5;
@@ -285,15 +308,13 @@ export class Arena {
     return target.set(Math.cos(a), 0, -Math.sin(a));
   }
 
-  // Power-up box placement for props.js (opts.spots): float boxes at earned
-  // or contested spots — the decks pay you for the climb, the creek pays you
-  // for the exposure — plus ground crates as the promotion pool (a grabbed box
-  // sinks spent and a pool crate rises to keep the count).
+  // Power-up box spots for props.js — decks pay for the climb, the creek pays
+  // for the exposure. `y` pins a box to an elevated surface.
   itemSpots() {
     return [
       { x: 0, z: -8, mode: "float" }, // mesa plateau (north of the paw)
       { x: -32, z: 30, mode: "float" }, // spiral butte deck — the prize for the climb
-      { x: 55, z: -44, mode: "float" }, // patio deck, by the runway
+      { x: 54, z: -43.4, y: PK.h, mode: "float" }, // parkade deck, on the runway
       { x: -63, z: -25, mode: "float" }, // down in the dry creek bed
       { x: 70, z: 40, mode: "float" }, // mogul meadow
       { x: -45, z: 70, mode: "float" }, // dune field
@@ -311,8 +332,6 @@ export class Arena {
     ];
   }
 
-  // Start cluster on the spawn side, facing the mesa — rows-of-2 like the
-  // Track grid, on the flat ground short of the rim bank.
   gridSlot(index) {
     const back = 80 + Math.floor(index / 2) * 8;
     const lateral = (index % 2 === 0 ? -1 : 1) * 5;
@@ -323,13 +342,11 @@ export class Arena {
 
   // ---- Battle physics hooks (called from the main loop after kart.update) --
 
-  // Obstacle circles + the steep-wall rule. Returns true when it moved the
-  // kart (caller re-syncs the mesh).
   collide(k) {
     let hit = false;
     const dt = k._dt || 0.016;
     for (const o of this.obstacles) {
-      if (k.y > o.h) continue; // flying clean over it
+      if (k.position.y + k.y > o.h) continue; // above it (deck level over a pillar's top, or flying)
       const dx = k.position.x - o.x;
       const dz = k.position.z - o.z;
       const rr = o.r + k.radius;
@@ -354,28 +371,22 @@ export class Arena {
       hit = true;
     }
 
-    // Steep-wall rule: sample the ground one kart-length ahead (in the travel
-    // direction); rising steeper than ~46° means cliff face, not hill — hold
-    // the kart off it like a wall. Looking only UPHILL is what keeps every
-    // ledge droppable from above.
+    // Steep-wall rule (uphill-only probe = ledges stay droppable from above).
     if (!k.airborne && k.y <= 0 && Math.abs(k.speed) > 0.5) {
       const dir = k.speed >= 0 ? 1 : -1;
       const fx = Math.sin(k.heading) * dir, fz = Math.cos(k.heading) * dir;
-      const hC = this.heightAt(k.position.x, k.position.z);
-      const hA = this.heightAt(k.position.x + fx * 1.7, k.position.z + fz * 1.7);
+      const hC = this.heightNear(k.position.x, k.position.z, k.position.y);
+      const hA = this.heightNear(k.position.x + fx * 1.7, k.position.z + fz * 1.7, k.position.y);
       if (hA - hC > 1.7 * WALL_GRADE) {
-        // Push back MORE than this frame's advance, or a fast kart forces
-        // through the wall band frame by frame and crests the cliff. No cap:
-        // at big clamped dts (slow devices) the advance itself exceeds any
-        // fixed cap, and the pushback must always win.
+        // Push back MORE than this frame's advance (uncapped — big clamped
+        // dts advance further than any fixed cap) or fast karts tunnel.
         const back = Math.abs(k.speed) * dt + 0.12;
-        // ...and hold the launch rule off for a beat: the pushback lands on
-        // lower ground, which would otherwise read as "ground fell away" and
-        // CATAPULT the kart up the very wall that stopped it (vy comes from
-        // the wall's own climbing slope).
-        k._wallHold = 0.25;
         k.position.x -= fx * back;
         k.position.z -= fz * back;
+        // ...and hold the launch rule off a beat: the pushback lands on lower
+        // ground, which would otherwise read as a lip and CATAPULT the kart
+        // up the very wall that stopped it.
+        k._wallHold = 0.25;
         k.speed *= 1 - Math.min(0.55, 4 * dt);
         if (k.drifting) {
           k.drifting = false;
@@ -394,13 +405,16 @@ export class Arena {
   }
 
   // Crest launches, float assist, and airborne ground-height continuity.
-  // Returns true when it changed the kart (caller re-syncs the mesh).
   airTransfer(k, dt) {
     const gy = k.groundY;
     const prevGy = k._agy;
-    const prevPrevGy = k._agy2;
-    k._agy2 = prevGy;
     k._agy = gy;
+    // Teleport guard is about the KART moving, not the ground: a respawn jumps
+    // metres of XZ in a frame; a deck edge doesn't move you at all.
+    const px = k._apx, pz = k._apz;
+    k._apx = k.position.x;
+    k._apz = k.position.z;
+    const moved = px === undefined ? 0 : Math.hypot(k.position.x - px, k.position.z - pz);
     if (k._wallHold > 0) k._wallHold -= dt;
     if (prevGy === undefined) return false;
 
@@ -409,12 +423,11 @@ export class Arena {
 
     const drop = prevGy - gy; // + when the ground fell away this frame
     if (drop === 0) return false;
-    if (Math.abs(drop) > 4.5) return false; // teleport (respawn/probe) — resync only
+    if (moved > 6 || Math.abs(drop) > 12) return false; // teleport — resync only
     if (k.airborne || k.y > 0) {
       // Mid-air: keep WORLD height continuous while the ground moves below.
       k.y += drop;
       if (k.y <= 0) {
-        // Rising ground caught us: land.
         k.y = 0;
         if (k.vy < -2) k._squash = Math.min(1, -k.vy / 14);
         k.vy = 0;
@@ -423,14 +436,20 @@ export class Arena {
       return true;
     }
     // Grounded: launch when the surface drops faster than a wheels-down
-    // descent could follow — unless a wall pushback just moved us (that drop
-    // is the pushback itself, not a lip). vy carries the MEASURED ground-climb
-    // rate of the frame before the lip (dt-robust where the smoothed
-    // slopePitch straddles the crest), punched up so a lip reads as a jump.
+    // descent could follow. vy comes from the heightfield's OWN up-face slope
+    // just behind the lip — frame-rate independent (see file comment) — with
+    // a minimum pop so even a slow roll off a kicker visibly jumps.
     if (!(k._wallHold > 0) && drop > Math.max(0.05, Math.abs(k.speed) * dt * LAUNCH_SLOPE)) {
       k.y = drop; // world height continuity at the lip
-      const climbRate = prevPrevGy !== undefined ? (prevGy - prevPrevGy) / Math.max(dt, 0.001) : 0;
-      k.vy = Math.max(-18, Math.min(26, climbRate * LAUNCH_BOOST));
+      const dir = k.speed >= 0 ? 1 : -1;
+      const fx = Math.sin(k.heading) * dir, fz = Math.cos(k.heading) * dir;
+      const lipY = k.position.y + drop; // the surface we just left
+      const h1 = this.heightNear(k.position.x - fx * 2, k.position.z - fz * 2, lipY);
+      const h2 = this.heightNear(k.position.x - fx * 6, k.position.z - fz * 6, lipY);
+      const slopeUp = (h1 - h2) / 4;
+      k.vy = slopeUp > 0.06
+        ? Math.min(26, Math.max(LAUNCH_MIN_VY, slopeUp * Math.abs(k.speed) * LAUNCH_BOOST))
+        : 0; // pure ledge (deck edge, creek bank): clean ballistic drop
       k.airborne = true;
       return true;
     }
@@ -444,13 +463,12 @@ export class Arena {
     this._buildFence();
     this._buildToys();
     this._buildPads();
+    this._buildStructures();
   }
 
-  // Terrain: a polar grid displaced by heightAt (the SAME function physics
-  // reads), vertex-coloured by feature so the map reads at a glance.
   _buildTerrain() {
     const R = this.radius;
-    const SEG = 200, RINGS = 120; // dense enough for the butte wall + kicker lips
+    const SEG = 200, RINGS = 120;
     const vertCount = 1 + RINGS * SEG;
     const positions = new Float32Array(vertCount * 3);
     const colors = new Float32Array(vertCount * 3);
@@ -473,7 +491,7 @@ export class Arena {
       }
     }
     const idx = [];
-    for (let j = 0; j < SEG; j++) idx.push(0, 1 + j, 1 + ((j + 1) % SEG)); // centre fan
+    for (let j = 0; j < SEG; j++) idx.push(0, 1 + j, 1 + ((j + 1) % SEG));
     for (let i = 1; i < RINGS; i++) {
       const a0 = 1 + (i - 1) * SEG;
       const b0 = 1 + i * SEG;
@@ -490,8 +508,6 @@ export class Arena {
     this.group.add(new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 })));
   }
 
-  // Per-vertex ground paint. Priorities: kicker faces > butte/patio decks >
-  // creek bed > mesa > mogul/dune shading > boundary ring > rim zone > sand.
   _colorAt(x, z, h) {
     const R = this.radius;
     const r = Math.hypot(x, z);
@@ -508,7 +524,7 @@ export class Arena {
       else c.lerp(new THREE.Color(0xb9a06b), -bump * w * 0.55);
     }
 
-    // Dune waves: lighter crests over the south-west washboard.
+    // Dune waves: lighter crests.
     if (a > -0.55 && a < -0.12 && r > 42 && r < 95) {
       const w =
         smooth01((a + 0.55) / 0.1) * smooth01((-0.12 - a) / 0.1) *
@@ -516,7 +532,7 @@ export class Arena {
       c.lerp(new THREE.Color(0xe4d4a4), (0.5 + 0.5 * Math.sin(r * 0.55)) * w * 0.55);
     }
 
-    // Worn boundary ring at r=100 + rim edge zone.
+    // Worn boundary ring + rim edge zone.
     if (Math.abs(r - 100) < 1.6) c.lerp(new THREE.Color(0xefe3c0), 0.55);
     if (r > R * 0.93) c.lerp(new THREE.Color(0xc4795a), smooth01((r - R * 0.93) / (R * 0.05)));
 
@@ -551,30 +567,32 @@ export class Arena {
         while (u < 0) u += Math.PI * 2;
         while (u >= Math.PI * 2) u -= Math.PI * 2;
         if (rho < BUTTE.core + 2) c.lerp(new THREE.Color(0xb97a4a), smooth01((BUTTE.core + 2 - rho) / 2));
-        else if (u <= BUTTE.sweep && rho < BUTTE.band + 4.5) {
-          const lat = smooth01((BUTTE.band + 4.5 - rho) / 4.5);
+        else if (u <= BUTTE.sweep && rho < BUTTE.band + 2.5) {
+          const lat = smooth01((BUTTE.band + 2.5 - rho) / 2.5);
           c.lerp(new THREE.Color(0xe0cfa8), lat * 0.85);
           if (rho > BUTTE.band - 1.2 && rho < BUTTE.band + 1.2) c.lerp(new THREE.Color(0xc4795a), 0.6);
         }
       }
     }
 
-    // Patio platform: cool stone deck with a cream edge ring.
+    // Under the parkade: shaded ground so the deck reads as OVERHEAD.
     {
-      const dx = x - PATIO.x, dz = z - PATIO.z;
-      const rho = Math.hypot(dx, dz);
-      if (rho < PATIO.top + 22) {
-        const toCentre = Math.atan2(-PATIO.x, -PATIO.z);
-        const local = Math.abs(wrapPi(Math.atan2(dx, dz) - toCentre));
-        const lane = 1 - smooth01((local - 0.45) / 0.3);
-        const skirt = 8 + 12 * lane;
-        const f = smooth01((PATIO.top + skirt - rho) / skirt);
-        if (f > 0.96) {
-          c.set(0xcfc3ae);
-          if (rho > PATIO.top - 3.4) c.lerp(new THREE.Color(0xefe3c0), 0.7);
-        } else if (f > 0) {
-          c.lerp(new THREE.Color(0xbfae94), f * 0.8);
-        }
+      const dx = x - PK.x, dz = z - PK.z;
+      const u = dx * PK.sin + dz * PK.cos;
+      const v = dx * PK.cos - dz * PK.sin;
+      if (Math.abs(u) < PK.hu + 1 && Math.abs(v) < PK.hv + 1) c.lerp(new THREE.Color(0x8f7f66), 0.5);
+    }
+
+    // Mega-ramp: concrete face, mint chevrons marching up, red lip.
+    {
+      const dx = x - MEGA.x, dz = z - MEGA.z;
+      const u = dx * MEGA.sin + dz * MEGA.cos;
+      const v = dx * MEGA.cos - dz * MEGA.sin;
+      if (u >= 0 && u <= MEGA.L && Math.abs(v) < MEGA.W + 1.5) {
+        c.lerp(new THREE.Color(0xc9c4b8), 0.9);
+        const chev = ((u - Math.abs(v) * 0.7) % 7 + 7) % 7;
+        if (chev < 1.8 && u > 3) c.lerp(new THREE.Color(0x39e6a0), 0.85);
+        if (u > MEGA.L - 1.6) c.lerp(new THREE.Color(0xc4795a), 0.9);
       }
     }
 
@@ -585,14 +603,14 @@ export class Arena {
       c.lerp(new THREE.Color(0x9b8560), (0.5 + 0.5 * Math.cos(Math.PI * t)) * w);
     }
 
-    // Kickers: cream up-face so they read as "hit me", red lip band.
+    // Kickers: cream up-face, red lip band.
     for (const k of this.kickers) {
       const dx = x - k.x, dz = z - k.z;
       const u = dx * k.sin + dz * k.cos;
       if (u < -KICK_BACK || u > KICK_LIP) continue;
       const v = dx * k.cos - dz * k.sin;
-      if (Math.abs(v) > 6) continue;
-      const lat = smooth01((6 - Math.abs(v)) / 2.5);
+      if (Math.abs(v) > KICK_HALF) continue;
+      const lat = smooth01((KICK_HALF - Math.abs(v)) / 3);
       if (u <= 0) c.lerp(new THREE.Color(0xefe3c0), Math.pow(smooth01((u + KICK_BACK) / KICK_BACK), 1.6) * lat * 0.85);
       else c.lerp(new THREE.Color(0xc4795a), lat * 0.9);
     }
@@ -607,7 +625,7 @@ export class Arena {
       new THREE.CylinderGeometry(R + 0.35, R + 0.35, 3.9, 128, 1, true),
       new THREE.MeshStandardMaterial({ color: 0x9a6a45, roughness: 0.9, side: THREE.DoubleSide })
     );
-    wall.position.y = rimY + 1.45; // 0.5u buried
+    wall.position.y = rimY + 1.45;
     this.group.add(wall);
 
     const rail = new THREE.Mesh(
@@ -630,7 +648,6 @@ export class Arena {
     }
     this.group.add(posts);
 
-    // Apron: flat meadow from just outside the fence to past the fog.
     const apron = new THREE.Mesh(
       new THREE.RingGeometry(R + 0.7, 1400, 128, 1),
       new THREE.MeshStandardMaterial({ color: 0x6fae5a, roughness: 1 })
@@ -640,8 +657,6 @@ export class Arena {
     this.group.add(apron);
   }
 
-  // The cat toys. Discrete props (like trees), not molded curved surfaces —
-  // primitives are fine.
   _buildToys() {
     for (const o of this.obstacles) {
       const gy = this.heightAt(o.x, o.z);
@@ -705,29 +720,107 @@ export class Arena {
         g.rotation.y = o.yawv || 0;
         this.group.add(g);
       }
+      // "pillar" visuals are built with the parkade in _buildStructures.
     }
   }
 
-  // Boost pads: mint chevron decals laid on the ground, pointing along the
-  // pad's launch direction (the gameplay logic lives in main.js's
-  // applyBoostPads, which already consumes track.boostPads).
   _buildPads() {
     const mat = new THREE.MeshStandardMaterial({ color: 0x39e6a0, roughness: 0.6 });
     const matPale = new THREE.MeshStandardMaterial({ color: 0xbef2dc, roughness: 0.6 });
-    const armGeo = new THREE.PlaneGeometry(3.0, 1.1).rotateX(-Math.PI / 2); // flat, long axis X
+    const armGeo = new THREE.PlaneGeometry(3.0, 1.1).rotateX(-Math.PI / 2);
     for (const p of this.boostPads) {
       const g = new THREE.Group();
       for (let i = 0; i < 3; i++) {
         for (const side of [-1, 1]) {
           const arm = new THREE.Mesh(armGeo, i === 1 ? matPale : mat);
-          arm.rotation.y = side * 0.62; // the two arms angle to a ">" point
-          arm.position.set(side * 1.2, 0, -2.2 + i * 2.2 + Math.abs(side) * 0);
+          arm.rotation.y = side * 0.62;
+          arm.position.set(side * 1.2, 0, -2.2 + i * 2.2);
           g.add(arm);
         }
       }
-      g.position.set(p.x, this.heightAt(p.x, p.z) + 0.09, p.z);
-      g.rotation.y = p.yaw; // chevrons march along the launch direction
+      g.position.set(p.x, (p.y != null ? p.y : this.heightAt(p.x, p.z)) + 0.09, p.z);
+      g.rotation.y = p.yaw;
       this.group.add(g);
+    }
+  }
+
+  // The built things: parkade (slab, ramp, pillars, paint) + butte supports.
+  _buildStructures() {
+    const concrete = new THREE.MeshStandardMaterial({ color: 0xb9b4a8, roughness: 0.95 });
+    const concreteDark = new THREE.MeshStandardMaterial({ color: 0x9a958a, roughness: 0.95 });
+    const cream = new THREE.MeshStandardMaterial({ color: 0xefe3c0, roughness: 0.8 });
+    const hazard = new THREE.MeshStandardMaterial({ color: 0xc4795a, roughness: 0.8 });
+    const mint = new THREE.MeshStandardMaterial({ color: 0x39e6a0, roughness: 0.6 });
+
+    // Parkade group in its local frame (+z = local u, +x = local v).
+    const pk = new THREE.Group();
+    pk.position.set(PK.x, 0, PK.z);
+    pk.rotation.y = PK.yaw;
+
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(PK.hv * 2, 1, PK.hu * 2), concrete);
+    slab.position.y = PK.h - 0.5;
+    pk.add(slab);
+
+    // Parking stripes on the deck + a hazard band along the open (-u) edge.
+    for (const zu of [-10, -5, 0, 5, 10]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(8, 0.06, 0.35), cream);
+      stripe.position.set(4.5, PK.h + 0.03, zu);
+      pk.add(stripe);
+    }
+    const edge = new THREE.Mesh(new THREE.BoxGeometry(PK.hv * 2, 0.07, 1.0), hazard);
+    edge.position.set(0, PK.h + 0.03, -PK.hu + 0.5);
+    pk.add(edge);
+
+    // Pillars (visuals for the colliders registered in the constructor).
+    const pillarGeo = new THREE.CylinderGeometry(0.9, 1.0, PK.h - 0.9, 10);
+    for (const [u, v] of [[-11, -8], [-11, 8], [0, -8], [0, 8], [11, -8], [11, 8]]) {
+      const pillar = new THREE.Mesh(pillarGeo, concreteDark);
+      pillar.position.set(v, (PK.h - 0.9) / 2, u);
+      pk.add(pillar);
+    }
+
+    // Access ramp: one molded prism from deck lip to grade.
+    {
+      const w = PK.rampW / 2;
+      const y0 = 0.15, u0 = PK.hu, u1 = PK.hu + PK.rampL;
+      const pos = new Float32Array([
+        // top surface
+        -w, PK.h, u0,  w, PK.h, u0,  w, y0, u1,
+        -w, PK.h, u0,  w, y0, u1,  -w, y0, u1,
+        // left skirt
+        -w, PK.h, u0,  -w, y0, u1,  -w, 0, u0,
+        // right skirt
+        w, PK.h, u0,  w, 0, u0,  w, y0, u1,
+      ]);
+      const rampGeo = new THREE.BufferGeometry();
+      rampGeo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+      rampGeo.computeVertexNormals();
+      const ramp = new THREE.Mesh(rampGeo, new THREE.MeshStandardMaterial({ color: 0xb9b4a8, roughness: 0.95, side: THREE.DoubleSide }));
+      pk.add(ramp);
+      // Mint chevron strips up the ramp face.
+      const slope = Math.atan2(PK.h - y0, PK.rampL);
+      for (let i = 1; i <= 3; i++) {
+        const t = i / 4;
+        const strip = new THREE.Mesh(new THREE.BoxGeometry(PK.rampW - 1, 0.06, 1.1), mint);
+        strip.position.set(0, PK.h + (y0 - PK.h) * t + 0.06, u0 + PK.rampL * t);
+        strip.rotation.x = slope;
+        pk.add(strip);
+      }
+    }
+    this.group.add(pk);
+
+    // Butte supports: stubby stone columns under the helical band, so the
+    // spiral reads as a built ramp rather than molded ground.
+    for (const p of [0.35, 0.6, 0.85]) {
+      const u = BUTTE.sweep * p;
+      const phi = BUTTE.entry - u;
+      const rho = 12;
+      const x = BUTTE.x + Math.sin(phi) * rho, z = BUTTE.z + Math.cos(phi) * rho;
+      const top = BUTTE.h * (0.08 + 0.92 * p) - 0.4;
+      if (top < 1) continue;
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 1.0, top, 10), concreteDark);
+      col.position.set(x, top / 2, z);
+      this.group.add(col);
     }
   }
 }

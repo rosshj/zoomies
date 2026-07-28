@@ -693,11 +693,11 @@ const ITEM_ROLL = [
 // Battle roll: no yarn (it rolls on the track spline). The KO leader defends,
 // the hunted mid-pack gets ammo, and whoever's getting farmed gets the catnip.
 const BATTLE_ROLL = [
-  { name: "shield", w: [0.30, 0.15, 0.06] },
-  { name: "milk",   w: [0.26, 0.20, 0.10] },
-  { name: "tri",    w: [0.24, 0.28, 0.22] },
-  { name: "life",   w: [0.15, 0.17, 0.20] },
-  { name: "catnip", w: [0.05, 0.20, 0.42] },
+  { name: "shield", w: [0.16, 0.10, 0.04] }, // rare: a shielded lobby is a boring lobby
+  { name: "milk",   w: [0.30, 0.24, 0.12] },
+  { name: "tri",    w: [0.30, 0.30, 0.24] },
+  { name: "life",   w: [0.16, 0.16, 0.18] },
+  { name: "catnip", w: [0.08, 0.20, 0.42] },
 ];
 function rollWeightsIn(table, f) {
   const a = f < 0.5 ? 0 : 1;
@@ -834,6 +834,8 @@ if (battleMode) {
   hud.place?.classList.add("hidden");
   const rb = document.getElementById("restart-btn");
   if (rb) rb.textContent = "😼 BATTLE AGAIN";
+  // Shield is item-only in battle — the hold-to-block button goes away.
+  document.getElementById("btn-shield")?.classList.add("hidden");
 }
 
 // Battle rules (phase 4): hearts, KOs, respawns, the match clock and the
@@ -5471,6 +5473,8 @@ function applyBoostPads(dt) {
     k._padCd = (k._padCd || 0) - dt;
     if (k.finished || k.spinTimer > 0 || k._padCd > 0 || k.speed < 4) continue;
     for (const pad of pads) {
+      // Pads with a `y` belong to an elevated deck — don't fire underneath it.
+      if (pad.y != null && Math.abs(k.position.y - pad.y) > 3) continue;
       const dx = k.position.x - pad.x;
       const dz = k.position.z - pad.z;
       if (dx * dx + dz * dz < pad.r * pad.r) {
@@ -6809,7 +6813,9 @@ function loop(now) {
       player.driftCharge = 0;
       player.driftRamp = 0;
     }
-    player.shielding = input.shielding;
+    // Battle: the shield is a POWER-UP only (the held button made everyone
+    // turtle) — kart.update re-asserts shielding while an item shield runs.
+    player.shielding = battleMode ? false : input.shielding;
     player.driftHeld = input.jumpHeld;
     // Steering dot: skip the style write (string build + composite) when the
     // needle hasn't visibly moved (~0.4px at the 80px throw).

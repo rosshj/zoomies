@@ -204,6 +204,69 @@ if (!wallSpark) errors.push("steep wall never latched the spark pulse");
 const butteTop = await page.evaluate(() => +window.__zoomies.track.heightAt(-32, 30).toFixed(2));
 if (butteTop < 8.5) errors.push(`butte deck too low (${butteTop})`);
 
+// --- Leg 4b: the parkade — two storeys over one XZ footprint ---------------
+const parkade = { underMax: 0, deckSeen: false, dropAir: 0, landed: false };
+// Under the deck: park at the parkade's centre at ground level and drive out
+// through the pillars — the ground query must NEVER snap up to the deck.
+await page.evaluate(() => {
+  const k = window.__zoomies.karts[0];
+  const P = window.__zoomies.track.parkade;
+  k.position.x = P.x; k.position.z = P.z; k.position.y = 0.6;
+  k.heading = P.yaw + Math.PI;
+  k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
+});
+await page.keyboard.down("ArrowUp");
+for (let i = 0; i < 10; i++) {
+  await page.waitForTimeout(700);
+  const s = await sample();
+  parkade.underMax = Math.max(parkade.underMax, s.gy);
+}
+await page.keyboard.up("ArrowUp");
+// On the deck: spawn at deck height — the query must hold the UPPER surface —
+// then drive off the open edge for the big drop.
+await page.evaluate(() => {
+  const k = window.__zoomies.karts[0];
+  const P = window.__zoomies.track.parkade;
+  k.position.x = P.x; k.position.z = P.z; k.position.y = P.h;
+  k.heading = P.yaw + Math.PI;
+  k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
+});
+await page.keyboard.down("ArrowUp");
+for (let i = 0; i < 18; i++) {
+  await page.waitForTimeout(700);
+  const s = await sample();
+  if (s.gy > 7.5) parkade.deckSeen = true;
+  if (s.air > parkade.dropAir) parkade.dropAir = s.air;
+  if (parkade.deckSeen && s.air <= 0.05 && s.gy < 2.5) { parkade.landed = true; break; }
+}
+await page.keyboard.up("ArrowUp");
+await page.screenshot({ path: path.join(SHOTS, "battle-10-parkade.png") });
+if (parkade.underMax > 2.5) errors.push(`ground snapped toward the deck underneath (gy ${parkade.underMax})`);
+if (!parkade.deckSeen) errors.push("never registered the deck surface at 8.2");
+if (parkade.dropAir < 1.5) errors.push(`deck-edge drop gave no air (max ${parkade.dropAir})`);
+if (!parkade.landed) errors.push("never landed back on base terrain after the deck drop");
+
+// --- Leg 4c: mega-ramp — big geometric wedge must fly ----------------------
+await page.evaluate(() => {
+  const k = window.__zoomies.karts[0];
+  const M = window.__zoomies.track.megaRamp;
+  k.position.x = M.x - Math.sin(M.yaw) * 14;
+  k.position.z = M.z - Math.cos(M.yaw) * 14;
+  k.position.y = 1;
+  k.heading = M.yaw;
+  k.speed = 0; k.knock.set(0, 0, 0); k.y = 0; k.vy = 0; k.airborne = false;
+});
+await page.keyboard.down("ArrowUp");
+let megaAir = 0;
+for (let i = 0; i < 22; i++) {
+  await page.waitForTimeout(700);
+  const s = await sample();
+  if (s.speed > 15) megaAir = Math.max(megaAir, s.air);
+  if (megaAir > 2) { await page.screenshot({ path: path.join(SHOTS, "battle-11-megaramp.png") }); break; }
+}
+await page.keyboard.up("ArrowUp");
+if (megaAir < 2) errors.push(`mega-ramp never launched (max air ${megaAir})`);
+
 // --- Leg 5: combat — shoot an AI down to a KO, watch it respawn ------------
 const combat = { hits: 0, ko: false, respawned: false, boxes: 0, aiAlive: false };
 combat.boxes = await page.evaluate(() =>
@@ -306,7 +369,7 @@ for (const [name, px, py, pz] of [
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 }
 
-console.log(JSON.stringify({ maxGy, maxR, maxSpeed, sawWall, sawAir, minDist: +minDist.toFixed(2), combat, myKOs, errors }, null, 2));
+console.log(JSON.stringify({ maxGy, maxR, maxSpeed, sawWall, sawAir, minDist: +minDist.toFixed(2), parkade, megaAir, combat, myKOs, errors }, null, 2));
 await browser.close();
 server.close();
 process.exit(errors.length ? 1 : 0);

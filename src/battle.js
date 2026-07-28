@@ -173,6 +173,10 @@ export class Battle {
   // the trigger pulls — main.js owns the actual firing (it also does audio/fx).
   driveAI(k, karts, boxes, dt) {
     const out = { shoot: false, milk: false };
+    // Shield is a timed item here: default OFF every frame and let kart.update
+    // re-assert it while shieldTimer runs. (Racing's aiActions did this reset;
+    // without it the first shield item latched an AI's bubble on FOREVER.)
+    k.shielding = false;
     if (k._koTimer > 0 || k.spinTimer > 0 || this.over) {
       k.driftHeld = false;
       return out;
@@ -206,13 +210,14 @@ export class Battle {
     // shallower side (the collide() wall rule is the hard stop; this keeps the
     // AI from grinding on cliffs and fences).
     const fx = Math.sin(k.heading), fz = Math.cos(k.heading);
-    const hC = this.arena.heightAt(k.position.x, k.position.z);
+    const ky = k.position.y; // level-aware probes: a deck overhead is not a wall
+    const hC = this.arena.heightNear(k.position.x, k.position.z, ky);
     const probe = 7;
-    if (this.arena.heightAt(k.position.x + fx * probe, k.position.z + fz * probe) - hC > 2.4 ||
+    if (this.arena.heightNear(k.position.x + fx * probe, k.position.z + fz * probe, ky) - hC > 2.4 ||
         Math.hypot(k.position.x + fx * probe, k.position.z + fz * probe) > this.arena.radius - 4) {
       const aL = k.heading - 0.7, aR = k.heading + 0.7;
-      const hL = this.arena.heightAt(k.position.x + Math.sin(aL) * probe, k.position.z + Math.cos(aL) * probe);
-      const hR = this.arena.heightAt(k.position.x + Math.sin(aR) * probe, k.position.z + Math.cos(aR) * probe);
+      const hL = this.arena.heightNear(k.position.x + Math.sin(aL) * probe, k.position.z + Math.cos(aL) * probe, ky);
+      const hR = this.arena.heightNear(k.position.x + Math.sin(aR) * probe, k.position.z + Math.cos(aR) * probe, ky);
       steer = hL < hR ? -1 : 1;
       throttle = 0.55;
     } else {
