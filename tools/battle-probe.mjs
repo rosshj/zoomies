@@ -110,30 +110,37 @@ if (maxR < R - 12) errors.push(`never reached the rim (max r ${maxR} of ${R})`);
 if (maxR > R - 1.2) errors.push(`fence clamp failed (max r ${maxR} > ${R - 1.2})`);
 if (last && last.lap !== -1) errors.push(`laps advanced in an arena (lap ${last.lap})`);
 
-// --- Leg 2: kicker air — teleport to the creek-jump run-up, drive, fly -----
+// --- Leg 2: pad → kicker BIG air — start behind the creek-jump boost pad ---
 await page.keyboard.up("ArrowUp");
 await page.evaluate(() => {
   const k = window.__zoomies.karts[0];
   const kick = window.__zoomies.track.kickers[0];
-  k.position.x = kick.x - Math.sin(kick.yaw) * 30;
-  k.position.z = kick.z - Math.cos(kick.yaw) * 30;
+  k.position.x = kick.x - Math.sin(kick.yaw) * 42;
+  k.position.z = kick.z - Math.cos(kick.yaw) * 42;
   k.heading = kick.yaw;
   k.speed = 0;
   k.knock.set(0, 0, 0);
 });
 await page.keyboard.down("ArrowUp");
-let sawAir = 0;
-for (let i = 0; i < 40; i++) {
+let sawAir = 0, maxAir = 0, padSpeed = 0;
+for (let i = 0; i < 50; i++) {
   await page.waitForTimeout(700);
   const s = await sample();
-  if (s.air > 0.7) {
-    sawAir++;
-    if (sawAir === 2) await page.screenshot({ path: path.join(SHOTS, "battle-4-air.png") });
-    if (sawAir >= 2) break;
+  padSpeed = Math.max(padSpeed, s.speed);
+  // Only count air earned at speed — the teleport settling also falls.
+  if (s.speed > 20) {
+    maxAir = Math.max(maxAir, s.air);
+    if (s.air > 0.7) {
+      sawAir++;
+      if (sawAir === 2) await page.screenshot({ path: path.join(SHOTS, "battle-4-air.png") });
+    }
   }
+  if (sawAir >= 2 && maxAir > 2.2) break;
 }
 await page.keyboard.up("ArrowUp");
 if (sawAir < 2) errors.push("kicker never launched the kart (no ballistic air)");
+if (maxAir < 2.2) errors.push(`air too small (apex ${maxAir} — want a real flight)`);
+if (padSpeed < 40) errors.push(`boost pad never fired (max speed ${padSpeed})`);
 
 // --- Leg 3: obstacle collider — drive square into a yarn ball --------------
 await page.evaluate(() => {
@@ -166,6 +173,33 @@ const obstacleR = await page.evaluate(() => window.__probeObstacle.r);
 if (minDist < obstacleR + 1.8 - 0.7) errors.push(`obstacle collider leaked (min dist ${minDist.toFixed(2)} vs ${obstacleR + 1.8})`);
 if (minDist > obstacleR + 6) errors.push(`kart never reached the obstacle (min dist ${minDist.toFixed(2)})`);
 if (!obstacleSpark) errors.push("obstacle hit never latched the spark pulse");
+
+// --- Leg 4: steep-wall rule — the butte's gap cliff must not be climbable --
+await page.evaluate(() => {
+  const k = window.__zoomies.karts[0];
+  // The 60° gap sector faces local azimuth ≈ -0.08 from the butte centre.
+  k.position.x = -32 + Math.sin(-0.08) * 24;
+  k.position.z = 30 + Math.cos(-0.08) * 24;
+  k.heading = Math.atan2(-32 - k.position.x, 30 - k.position.z); // face the core
+  k.speed = 0;
+  k.knock.set(0, 0, 0);
+  k.y = 0; k.vy = 0; k.airborne = false;
+});
+await page.keyboard.down("ArrowUp");
+let wallMaxGy = 0, wallSpark = false;
+for (let i = 0; i < 20; i++) {
+  await page.waitForTimeout(700);
+  const s = await sample();
+  wallMaxGy = Math.max(wallMaxGy, s.gy);
+  if (s.wallHit) wallSpark = true;
+}
+await page.keyboard.up("ArrowUp");
+await page.screenshot({ path: path.join(SHOTS, "battle-5b-wall.png") });
+if (wallMaxGy > 5.5) errors.push(`climbed the butte cliff (ground y ${wallMaxGy} — steep-wall rule failed)`);
+if (!wallSpark) errors.push("steep wall never latched the spark pulse");
+// Sanity: the butte deck really is the high ground.
+const butteTop = await page.evaluate(() => +window.__zoomies.track.heightAt(-32, 30).toFixed(2));
+if (butteTop < 8.5) errors.push(`butte deck too low (${butteTop})`);
 
 // --- Overview shots: pin the camera (the race loop re-aims it every frame) --
 for (const [name, px, py, pz] of [
