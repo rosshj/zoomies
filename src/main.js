@@ -9,6 +9,7 @@ import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
+import { Arena } from "./arena.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunnelCamGuide } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
@@ -212,7 +213,13 @@ const WORLD_SEED = (
   randomSeed()
 ).toUpperCase();
 setSeed(WORLD_SEED);
-console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
+
+// Battle mode (phase 1): an open fenced arena instead of a circuit — a solo
+// free-driving sandbox for now. `?battle=1` opts in. The Arena duck-types the
+// Track interface the karts/camera/minimap consume; multiplayer, AI rivals and
+// power-up boxes aren't wired to arenas yet, so those paths stay off in battle.
+const battleMode = _qs.has("battle");
+console.log(`[zoomies] world seed: ${getSeed()} · track: ${battleMode ? "battle arena" : trackConfig.mode}`);
 
 // --- Player progression (treats / unlocks / cups / daily) -------------------
 // The pure economy lives in src/progress.js; this block owns storage + the boot
@@ -546,12 +553,18 @@ const fxPass = _passStub({
 });
 const BASE_VIGNETTE = _uVignette.value; // resting corner darkening (menus, low speed)
 
-const track = new Track(trackConfig.mode === "custom" ? trackConfig : null);
+const track = battleMode ? new Arena() : new Track(trackConfig.mode === "custom" ? trackConfig : null);
 track.totalLaps = TOTAL_LAPS;
 track.raceTime = 0;
 scene.add(track.group);
 
-const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+// Battle: the arena brings its own ground/fence/apron, so skip the circuit
+// scenery and stand in a stub world (every scenery hook in the loop is guarded
+// on the field it uses, and the biome samplers fall back to their angular-wedge
+// defaults without a build).
+const world = battleMode
+  ? { heightAt: (x, z) => track.groundHeightAt(Math.hypot(x, z)), lakes: [], balloons: [], update() {} }
+  : buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 window.__zoomies.wind = { uWindStr, uWindAir, biomeWindAt }; // debug hook: force a shot was taken at + the per-biome target
@@ -565,7 +578,9 @@ _boot.world = performance.now();
 // and the game is fine. Grounded crates just tumble; only the floating boxes hold
 // a power-up — driving through one rolls a position-weighted item (see grantItem).
 let props = null;
-initProps(scene, track, {
+// Battle: no roadside props or power-up boxes yet (their placement walks the
+// track spline) — the arena starts empty in phase 1.
+if (!battleMode) initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
@@ -770,6 +785,12 @@ const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
 const hud = new HUD();
+// Battle: laps and race position don't exist in an arena — hide their readouts
+// (the loop still writes them; they're just not shown).
+if (battleMode) {
+  hud.lap?.classList.add("hidden");
+  hud.place?.classList.add("hidden");
+}
 const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
 // Boost (toot) meter UI reflects the player kart's own meter.
@@ -914,7 +935,7 @@ function aiRoster(look) {
 function raceRoster() {
   const look = playerLook();
   const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
-  if (MP.enabled || timeTrial) return [playerCfg];
+  if (MP.enabled || timeTrial || battleMode) return [playerCfg]; // battle: solo until the arena AI lands
   return [playerCfg, ...aiRoster(look)];
 }
 
@@ -1313,6 +1334,7 @@ function refereeEnabled() {
 }
 
 function initMultiplayer() {
+  if (battleMode) return; // arenas aren't world-synced yet — no MP in battle
   const ablyKey = resolveAblyKey();
   const host = resolveHost();
   if ((!ablyKey && !host) || !new URLSearchParams(location.search).has("mp")) return;
@@ -4222,11 +4244,15 @@ menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("cl
 // line (the series brings its own track + racer context).
 function refreshTitlePlay() {
   if (!startBtn) return;
-  if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+  if (battleMode) startBtn.textContent = "▶  Battle!";
+  else if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
   else startBtn.textContent = "▶  Play";
 }
 startBtn?.addEventListener("click", () => {
   audio.unlock(); // the opening tap doubles as the audio unlock
+  // Battle (phase 1): no track/cup/racer steps apply — straight into the arena
+  // with the saved garage look.
+  if (battleMode) { startRace(); return; }
   if (raceMode === "cup" && _cupState && _activeCup) { flowGo("startline"); return; }
   flowGo("mode");
 });
@@ -6632,8 +6658,9 @@ function loop(now) {
       track.setStartLight?.("green"); // green means green: karts can move NOW
       audio.startEngine(); // engines fire up on the green light
       audio.playMusic("bg");
-      // Hold everyone's first shot for an opening grace period.
-      for (const k of karts) k.shootCooldown = Math.max(k.shootCooldown, SHOOT_OPENING_LOCKOUT);
+      // Hold everyone's first shot for an opening grace period. (Not in battle:
+      // there's no start pack to protect — furballs are hot off the line.)
+      if (!battleMode) for (const k of karts) k.shootCooldown = Math.max(k.shootCooldown, SHOOT_OPENING_LOCKOUT);
     }
     renderFrame();
     return;
@@ -7003,9 +7030,9 @@ function loop(now) {
 
     // Opening furball grace: count down the charge, then announce "armed". Skipped
     // in time trial (there's no one to shoot).
-    const shootLockLeft = timeTrial ? 0 : SHOOT_OPENING_LOCKOUT - raceTime;
+    const shootLockLeft = timeTrial || battleMode ? 0 : SHOOT_OPENING_LOCKOUT - raceTime;
     hud.setShootLock(shootLockLeft);
-    if (!timeTrial && !_furballsArmed && shootLockLeft <= 0) {
+    if (!timeTrial && !battleMode && !_furballsArmed && shootLockLeft <= 0) {
       _furballsArmed = true;
       hud.showToast("🐾 Furballs armed!");
     }
