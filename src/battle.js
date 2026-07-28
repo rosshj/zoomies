@@ -203,35 +203,123 @@ export class Battle {
       tx = 0; tz = 0; // nothing alive: drift toward the middle
     }
 
+    // Keep the aim inside the walls: chasing a rival pinned against a wall
+    // used to mean driving straight into that wall, so aim points are clamped
+    // well inside and we approach obliquely.
+    const H = this.arena.half;
+    tx = clamp(tx, -(H - 18), H - 18);
+    tz = clamp(tz, -(H - 18), H - 18);
+
+    // Corner escape: wedged into a map corner, nothing matters except getting
+    // out, so commit to the middle for a beat instead of re-deciding every
+    // frame and dithering against the walls.
+    if (k._btEscape > 0) k._btEscape -= dt;
+    const deep = Math.abs(k.position.x) > H - 12 && Math.abs(k.position.z) > H - 12;
+    if (deep && Math.abs(k.speed) < 10) k._btEscape = 1.6;
+    if (k._btEscape > 0) {
+      tx = 0;
+      tz = 0;
+    }
+
     const desired = Math.atan2(tx - k.position.x, tz - k.position.z);
     let steer = clamp(angleDelta(desired, k.heading) * 2.6, -1, 1);
     let throttle = 1;
 
-    // Terrain avoidance: if a wall-grade face looms ahead, steer toward the
-    // shallower side (the collide() wall rule is the hard stop; this keeps the
-    // AI from grinding on cliffs and fences).
+    // Look ahead for anything we can't drive through: a wall-grade rise, or
+    // the map boundary. (The old check was radial — a leftover from the round
+    // arena — so against square walls it never fired and karts ground along
+    // the west wall for whole matches.)
     const fx = Math.sin(k.heading), fz = Math.cos(k.heading);
     const ky = k.position.y; // level-aware probes: a deck overhead is not a wall
     const hC = this.arena.heightNear(k.position.x, k.position.z, ky);
+    // Sample the ground at several distances, not just one: a single 7u probe
+    // steps clean OVER a near wall (the mega-ramp's head face, a crate corner)
+    // and reports open road while the nose is already against it.
     const probe = 7;
-    if (this.arena.heightNear(k.position.x + fx * probe, k.position.z + fz * probe, ky) - hC > 2.4 ||
-        Math.hypot(k.position.x + fx * probe, k.position.z + fz * probe) > this.arena.radius - 4) {
-      const aL = k.heading - 0.7, aR = k.heading + 0.7;
-      const hL = this.arena.heightNear(k.position.x + Math.sin(aL) * probe, k.position.z + Math.cos(aL) * probe, ky);
-      const hR = this.arena.heightNear(k.position.x + Math.sin(aR) * probe, k.position.z + Math.cos(aR) * probe, ky);
-      steer = hL < hR ? -1 : 1;
+    let rise = 0;
+    for (const dd of [3, 6, 9]) {
+      rise = Math.max(rise, this.arena.heightNear(k.position.x + fx * dd, k.position.z + fz * dd, ky) - hC);
+    }
+    const px = k.position.x + fx * probe, pz = k.position.z + fz * probe;
+    const intoWall = Math.abs(px) > H - 3 || Math.abs(pz) > H - 3;
+    if (rise > 2.4 || intoWall) {
+      if (intoWall) {
+        // Turn back toward open ground — the shortest way off the wall.
+        steer = clamp(angleDelta(Math.atan2(-k.position.x, -k.position.z), k.heading) * 2.0, -1, 1);
+        if (Math.abs(steer) < 0.6) steer = steer >= 0 ? 0.6 : -0.6; // never dither into it
+        // Steering authority scales with SPEED, so a kart nosed into a wall at
+        // walking pace can barely turn — it just leans on the wall forever.
+        // Back off, and COMMIT to it for a beat: an instantaneous speed test
+        // flips to forward the moment reverse builds pace, which stalls and
+        // drops it back under the threshold — a perfect oscillation that pins
+        // the kart to the wall (the audit caught it repeating on one spot).
+        if (Math.abs(k.speed) < 9 && !(k._btBackoff > 0)) k._btBackoff = 1.2;
+      } else {
+        const aL = k.heading - 0.7, aR = k.heading + 0.7;
+        const hL = this.arena.heightNear(k.position.x + Math.sin(aL) * probe, k.position.z + Math.cos(aL) * probe, ky);
+        const hR = this.arena.heightNear(k.position.x + Math.sin(aR) * probe, k.position.z + Math.cos(aR) * probe, ky);
+        steer = hL < hR ? -1 : 1;
+      }
       throttle = 0.55;
     } else {
-      // Obstacle avoidance: bend around toys on the line to the target.
-      for (const o of this.arena.obstacles) {
+      // Obstacle avoidance: bend around anything solid on the line to the
+      // target — the round toys AND the buildings. (It used to know only about
+      // the toys, so once cover became solid blocks the AI would drive into a
+      // crate, slide along it and orbit there; the audit logged the circles.)
+      for (const o of this._blockers()) {
         const dx = o.x - k.position.x, dz = o.z - k.position.z;
         const d = Math.hypot(dx, dz);
-        if (d > 14 || d < 0.01) continue;
+        const reach = 10 + o.r;
+        if (d > reach || d < 0.01) continue;
+        if (k.position.y + k.y > o.top) continue; // we're driving over it
         const ahead = (dx * fx + dz * fz) / d;
-        if (ahead < 0.75) continue;
-        let rel = angleDelta(Math.atan2(dx, dz), k.heading);
+        if (ahead < 0.7) continue;
+        const rel = angleDelta(Math.atan2(dx, dz), k.heading);
         const away = Math.abs(rel) < 0.04 ? 1 : -Math.sign(rel);
-        steer = clamp(steer + away * (1 - d / 14) * 1.6, -1, 1);
+        steer = clamp(steer + away * (1 - d / reach) * 1.8, -1, 1);
+      }
+      // Separation: four hunters converging on the same box deadlock into a
+      // scrum that none of them can drive out of. Peel off a rival who's right
+      // in front (the racing brain has always done this; the battle brain
+      // shipped without it, and the audit found the pile-ups).
+      for (const other of karts) {
+        if (other === k || other._koTimer > 0) continue;
+        const dx = other.position.x - k.position.x, dz = other.position.z - k.position.z;
+        const d = Math.hypot(dx, dz);
+        if (d > 9 || d < 0.01) continue;
+        if ((dx * fx + dz * fz) / d < 0.4) continue; // only what's in our way
+        const rel = angleDelta(Math.atan2(dx, dz), k.heading);
+        const away = Math.abs(rel) < 0.05 ? (k.battleKOs % 2 ? 1 : -1) : -Math.sign(rel);
+        steer = clamp(steer + away * (1 - d / 9) * 1.3, -1, 1);
+        throttle = Math.min(throttle, 0.75);
+      }
+    }
+
+    // Committed wall back-off (see intoWall above). Steering inverts in
+    // reverse, so the escape direction flips with it.
+    if (k._btBackoff > 0) {
+      k._btBackoff -= dt;
+      throttle = -1;
+      steer = -steer;
+    }
+
+    // Stuck recovery: wanting to move and not moving means we're wedged on
+    // something. Back off and turn out — a human would. (The racing driver has
+    // always had this; the battle brain shipped without it, so an AI that
+    // caught a wall could grind there for the rest of the match.)
+    if (k.grounded && Math.abs(k.speed) < 4 && throttle > 0.4) {
+      k._btStuck = (k._btStuck || 0) + dt;
+    } else {
+      k._btStuck = Math.max(0, (k._btStuck || 0) - dt * 2);
+    }
+    if (k._btStuck > 0.7) {
+      throttle = -1; // reverse out
+      steer = (k._btStuckDir || (k._btStuckDir = Math.random() < 0.5 ? -1 : 1)) * 0.6;
+      if (k._btStuck > 2.0) {
+        k._btStuck = 0; // try forward again, on a FRESH line
+        k._btStuckDir = null;
+        k._btTarget = null; // and stop pulling toward whatever wedged us
+        k._btRetarget = RETARGET_EVERY;
       }
     }
 
@@ -262,23 +350,50 @@ export class Battle {
     return out;
   }
 
+  // Everything the AI must steer around, as circles: the toys plus the
+  // buildings (a box's bounding circle is close enough for avoidance, and the
+  // exact collision still lives in Arena.collide). Boundary walls are excluded
+  // — the wall logic handles those. Built once and cached.
+  _blockers() {
+    if (this._blockCache) return this._blockCache;
+    const out = [];
+    for (const o of this.arena.obstacles) out.push({ x: o.x, z: o.z, r: o.r, top: o.h });
+    for (const b of this.arena.solids || []) {
+      if (b.bound > 30) continue; // the map's perimeter walls
+      out.push({ x: b.x, z: b.z, r: b.bound, top: b.h });
+    }
+    // Ramps too: a wedge's SIDES are walls, and the AI used to grind along the
+    // launch ramp's flank for whole matches. Steering around them costs the AI
+    // nothing — the podium is terrain (always drivable), and the ramps are
+    // player toys.
+    for (const rp of this.arena.ramps || []) {
+      out.push({ x: rp.x + rp.sin * rp.L * 0.5, z: rp.z + rp.cos * rp.L * 0.5, r: rp.bound, top: rp.h1 });
+    }
+    this._blockCache = out;
+    return out;
+  }
+
   _pickTarget(k, karts, boxes) {
     // No ammo? A box IS the weapon — hunt one hard. Armed karts still top up
     // opportunistically.
     const need = (k.battleAmmo || 0) <= 0;
     const wantsBox = boxes && boxes.length && k.boxCooldown <= 0 && Math.random() < (need ? 0.85 : 0.3);
     if (wantsBox) {
-      let best = null, bestD = 70;
+      // Collect the near ones and pick among them at random rather than all
+      // piling onto the single closest box — four karts converging on one spot
+      // deadlock into a scrum (the audit sees it as a cluster of stuck events).
+      const near = [];
       for (const b of boxes) {
         const d = Math.hypot(b.x - k.position.x, b.z - k.position.z);
         // Boxes on high decks read as "nearby" in 2D while being a climb away —
         // only chase one near our own level.
-        if (d < bestD && Math.abs(b.y - k.position.y) < 4) {
-          bestD = d;
-          best = b;
-        }
+        if (d < 70 && Math.abs(b.y - k.position.y) < 4) near.push({ b, d });
       }
-      if (best) return { x: best.x, z: best.z };
+      if (near.length) {
+        near.sort((p, q) => p.d - q.d);
+        const pick = near[Math.floor(Math.random() * Math.min(3, near.length))];
+        return { x: pick.b.x, z: pick.b.z };
+      }
     }
     let best = null, bestD = Infinity;
     for (const other of karts) {

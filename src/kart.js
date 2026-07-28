@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { color as tslColor, time, normalView, positionViewDirection } from "three/tsl";
 import { createKartModel, createCat, updateCatRig } from "./models.js";
+import { arenaLaunch, arenaTakeoffCheck, arenaAirStep } from "./battlephysics.js";
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Scratch vectors for the per-frame integrator — shared by every kart (each is
@@ -152,6 +153,14 @@ export class Kart {
     this.groundY = 0; // road surface height under the kart
     this.slopePitch = 0;
 
+    // Battle arena only: set to the Arena to switch on the real 3D contact
+    // model (see battlephysics.js). Racing leaves this null and is untouched.
+    this.arena = null;
+    this.vel = new THREE.Vector3(); // true velocity while airborne
+    this.grounded = true;
+    this._wy = 0; // world height while flying
+    this._landImpact = 0; // normal-impact speed of the last touchdown (fx hook)
+
     // Spinout
     this.spinTimer = 0;
     this.spinDir = 1;
@@ -297,6 +306,17 @@ export class Kart {
     this.trackT = proj.t;
     this.groundY = proj.groundY;
     this.position.y = this.groundY;
+    // Land cleanly: a respawn/placement must never leave a kart mid-flight.
+    this.y = 0;
+    this.vy = 0;
+    this.airborne = false;
+    this.grounded = true;
+    this.vel.set(0, 0, 0);
+    this._wy = this.groundY;
+    // Drop the previous-ground reference: a respawn moves the kart metres in
+    // one frame, and a stale value reads as "the ground fell away" — faking a
+    // ledge launch that can even drop the kart onto the wrong level.
+    this._pgy = undefined;
     this.lap = -1;
     this.totalProgress = -1 + proj.t;
     this._syncMesh();
@@ -304,6 +324,12 @@ export class Kart {
 
   jump() {
     if (!this.airborne && this.spinTimer <= 0) {
+      // Battle: a hop is the one place an impulse is added on top of the
+      // kart's own surface velocity — ramps get nothing but their geometry.
+      if (this.arena) {
+        arenaLaunch(this, 9);
+        return;
+      }
       this.vy = 9;
       this.airborne = true;
     }
@@ -624,6 +650,13 @@ export class Kart {
   }
 
   _integrate(dt, track, finishing) {
+    // Battle arena, airborne: a true projectile — no forward-along-heading
+    // advance, no terrain following, no ground snapping. See battlephysics.js.
+    if (this.arena && !this.grounded) {
+      arenaAirStep(this, dt);
+      this._squash = (this._squash || 0) * Math.max(0, 1 - 9 * dt);
+      return;
+    }
     const fwd = _iFwd.set(Math.sin(this.heading), 0, Math.cos(this.heading));
     this.position.addScaledVector(fwd, this.speed * dt);
 
@@ -680,7 +713,14 @@ export class Kart {
     this.position.y = this.groundY;
 
     // Vertical / jump physics (relative to the road surface).
-    if (this.airborne || this.y > 0 || this.vy !== 0) {
+    if (this.arena) {
+      // Battle: glued to the surface until geometry says otherwise — the
+      // crest test owns every take-off (no thresholds, no frame-differencing).
+      this.y = 0;
+      this.vy = 0;
+      this._wy = this.position.y;
+      arenaTakeoffCheck(this, dt);
+    } else if (this.airborne || this.y > 0 || this.vy !== 0) {
       this.vy -= 30 * dt;
       this.y += this.vy * dt;
       if (this.y <= 0) {

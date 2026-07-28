@@ -480,7 +480,7 @@ function build(scene, track, opts) {
             pr.pos.y = pr.groundY + pr.rest + HOVER; // fall from the hover height
             pr.mode = "ground";
             pr.spent = true; // a used box never floats again (tracks recycle below in battle)
-            if (spotList) pr.spentCd = 10; // battle arenas RECYCLE: the finite pool must last a whole match
+            if (spotList) pr.spentCd = 6; // battle arenas RECYCLE fast: four hunters strip a finite pool in seconds
             pr.asleep = false;
             pr.settle = false;
             const launch = 13 + Math.min(mk.speed, 150) * 0.8;
