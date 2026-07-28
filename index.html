@@ -288,6 +288,9 @@
                Sits BEFORE Settings so Settings stays the last child: with an odd
                number of visible buttons it spans the final row (CSS). -->
           <button id="install-btn" class="btn-cream extra-btn hidden">📲 Install</button>
+          <!-- Shown only while battle mode is active: drops the flag and reloads
+               back into the racing world. -->
+          <button id="battle-exit-btn" class="btn-cream extra-btn hidden">🏁 Back to racing</button>
           <button id="open-settings" class="btn-cream extra-btn">⚙️ Settings</button>
         </div>
       </div>
@@ -328,6 +331,13 @@
           <button id="mode-daily" class="tap-card mode-tap mode-daily">
             <span class="tap-chip" style="background:#c084fc">📅</span>
             <span class="tap-text"><span class="tap-title">Daily Challenge</span><span class="tap-sub" id="mode-daily-sub">Everyone races today's track — finish for bonus treats!</span></span>
+            <span class="tap-chev">›</span>
+          </button>
+          <!-- Battle (beta): reloads into the arena world — the map is chosen at
+               boot, like a track pick. Exit via the title-screen button. -->
+          <button id="mode-battle" class="tap-card mode-tap">
+            <span class="tap-chip" style="background:#ff9d3b">😼</span>
+            <span class="tap-text"><span class="tap-title">Battle Arena (beta)</span><span class="tap-sub">Open bowl, no laps — free driving for now, brawling soon</span></span>
             <span class="tap-chev">›</span>
           </button>
         </div>

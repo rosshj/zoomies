@@ -215,10 +215,19 @@ const WORLD_SEED = (
 setSeed(WORLD_SEED);
 
 // Battle mode (phase 1): an open fenced arena instead of a circuit — a solo
-// free-driving sandbox for now. `?battle=1` opts in. The Arena duck-types the
-// Track interface the karts/camera/minimap consume; multiplayer, AI rivals and
-// power-up boxes aren't wired to arenas yet, so those paths stay off in battle.
-const battleMode = _qs.has("battle");
+// free-driving sandbox for now. The Arena duck-types the Track interface the
+// karts/camera/minimap consume; multiplayer, AI rivals and power-up boxes
+// aren't wired to arenas yet, so those paths stay off in battle.
+//
+// Opted into via the "Battle Arena" mode card (persisted — an installed PWA has
+// no URL bar, so the mode must survive a relaunch; the title screen grows a
+// "Back to racing" exit while it's on) or a `?battle=1` override for desktop
+// testing. Like a track pick, the world is chosen at boot, so entering/leaving
+// goes through a reload.
+const BATTLE_KEY = "zoomies-battle";
+let _battleSaved = false;
+try { _battleSaved = localStorage.getItem(BATTLE_KEY) === "1"; } catch { /* ignore */ }
+const battleMode = _qs.has("battle") || _battleSaved;
 console.log(`[zoomies] world seed: ${getSeed()} · track: ${battleMode ? "battle arena" : trackConfig.mode}`);
 
 // --- Player progression (treats / unlocks / cups / daily) -------------------
@@ -4286,6 +4295,22 @@ document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMod
 document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
 document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
 document.getElementById("mode-mp")?.addEventListener("click", () => flowGo("friends"));
+// Battle Arena (beta): the arena world is built at boot (like a track pick), so
+// entering persists the flag and reloads. The title screen's "Back to racing"
+// button is the way out.
+document.getElementById("mode-battle")?.addEventListener("click", () => {
+  try { localStorage.setItem(BATTLE_KEY, "1"); } catch { /* ignore */ }
+  location.reload();
+});
+const battleExitBtn = document.getElementById("battle-exit-btn");
+if (battleMode) battleExitBtn?.classList.remove("hidden");
+battleExitBtn?.addEventListener("click", () => {
+  try { localStorage.removeItem(BATTLE_KEY); } catch { /* ignore */ }
+  // Also strip a ?battle=1 override so a desktop test tab really leaves too.
+  const u = new URL(location.href);
+  u.searchParams.delete("battle");
+  location.href = u.toString();
+});
 // Friends: hosting picks the mode here; joining reloads into the friend's room.
 document.getElementById("mp-host-btn")?.addEventListener("click", () => { setRaceMode("mp"); flowGo("cat"); });
 
