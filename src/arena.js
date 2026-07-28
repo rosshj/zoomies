@@ -264,6 +264,13 @@ export class Arena {
     return { y: this.heightAt(x, z), dist: Math.max(0, r - this.radius) };
   }
 
+  // Track's is "distance from the road centreline"; the arena's centreline is
+  // a point, so knocked crates reflect off halfWidth (the fence) and promote
+  // checks pass anywhere inside — same semantics, radial frame.
+  distanceToCenter(x, z) {
+    return Math.hypot(x, z);
+  }
+
   // A circle at mid-floor stands in for the centreline: the menu orbit
   // anchors sweep it, and any t-space consumer gets sensible world points.
   getPointAt(t, target = new THREE.Vector3()) {
@@ -276,6 +283,32 @@ export class Arena {
   getTangentAt(t, target = new THREE.Vector3()) {
     const a = (((t % 1) + 1) % 1) * Math.PI * 2;
     return target.set(Math.cos(a), 0, -Math.sin(a));
+  }
+
+  // Power-up box placement for props.js (opts.spots): float boxes at earned
+  // or contested spots — the decks pay you for the climb, the creek pays you
+  // for the exposure — plus ground crates as the promotion pool (a grabbed box
+  // sinks spent and a pool crate rises to keep the count).
+  itemSpots() {
+    return [
+      { x: 0, z: -8, mode: "float" }, // mesa plateau (north of the paw)
+      { x: -32, z: 30, mode: "float" }, // spiral butte deck — the prize for the climb
+      { x: 55, z: -44, mode: "float" }, // patio deck, by the runway
+      { x: -63, z: -25, mode: "float" }, // down in the dry creek bed
+      { x: 70, z: 40, mode: "float" }, // mogul meadow
+      { x: -45, z: 70, mode: "float" }, // dune field
+      { x: -8, z: -54, mode: "float" }, // threaded through the post slalom
+      { x: 0, z: -110, mode: "float" }, // far-north outer field
+      { x: 40, z: 100, mode: "float" }, // south-east outer field
+      { x: -34, z: -34, mode: "float" }, // open west field
+      // Promotion pool (plain ground crates; they tumble until they rise).
+      { x: 18, z: 30, mode: "ground" },
+      { x: -15, z: 60, mode: "ground" },
+      { x: 30, z: -70, mode: "ground" },
+      { x: -50, z: 40, mode: "ground" },
+      { x: 80, z: -20, mode: "ground" },
+      { x: 12, z: -80, mode: "ground" },
+    ];
   }
 
   // Start cluster on the spawn side, facing the mesa — rows-of-2 like the

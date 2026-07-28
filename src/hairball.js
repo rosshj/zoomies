@@ -64,7 +64,7 @@ export class HairballManager {
   // `remotes` (a Map of RemoteKart) and `onRemoteHit(id, dir)` are supplied in
   // multiplayer: our own hairballs can hit remote ghosts, and we report the hit
   // to that client (shooter-authoritative) so it spins its own kart out.
-  update(dt, karts, remotes = null, onRemoteHit = null) {
+  update(dt, karts, remotes = null, onRemoteHit = null, onLocalHit = null) {
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const b = this.balls[i];
       b.life -= dt;
@@ -79,7 +79,11 @@ export class HairballManager {
         for (const k of karts) {
           if (k === b.owner || k.finished) continue;
           if (this._overlaps(b, k)) {
-            if (!k.shielding) k.spinOut(this._travelDir(b));
+            if (!k.shielding) {
+              k.spinOut(this._travelDir(b));
+              // Battle mode credits the KO to the shooter; racing passes null.
+              if (onLocalHit) onLocalHit(k, b.owner);
+            }
             hit = true; // shield blocks & destroys the hairball
             break;
           }

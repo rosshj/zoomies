@@ -63,6 +63,9 @@ while (Date.now() - t0 < 120000) {
   await page.waitForTimeout(1000);
 }
 if (!live) errors.push("player kart never appeared");
+// Phase 4: AI rivals brawl for real now — shield the player through the
+// terrain legs so a stray furball can't randomize the physics assertions.
+await page.evaluate(() => { window.__zoomies.karts[0].shieldTimer = 9999; });
 await page.screenshot({ path: path.join(SHOTS, "battle-1-grid.png") });
 
 const sample = () => page.evaluate(() => {
@@ -201,6 +204,60 @@ if (!wallSpark) errors.push("steep wall never latched the spark pulse");
 const butteTop = await page.evaluate(() => +window.__zoomies.track.heightAt(-32, 30).toFixed(2));
 if (butteTop < 8.5) errors.push(`butte deck too low (${butteTop})`);
 
+// --- Leg 5: combat — shoot an AI down to a KO, watch it respawn ------------
+const combat = { hits: 0, ko: false, respawned: false, boxes: 0, aiAlive: false };
+combat.boxes = await page.evaluate(() =>
+  window.__zoomies.props ? window.__zoomies.props._props.filter((p) => p.kind === "crate" && p.mode === "float").length : -1
+);
+combat.aiAlive = await page.evaluate(() =>
+  window.__zoomies.karts.some((k) => !k.isPlayer && Math.abs(k.throttleInput) > 0.1)
+);
+await page.evaluate(() => {
+  const p = window.__zoomies.karts[0];
+  p.shieldTimer = 9999; // stay covered while we play executioner
+  p.position.x = 0; p.position.z = 60; p.heading = Math.PI; p.speed = 0; p.knock.set(0, 0, 0);
+});
+for (let round = 0; round < 30; round++) {
+  const st = await page.evaluate(() => {
+    const z = window.__zoomies;
+    const p = z.karts[0];
+    const t = z.karts[1];
+    // Park the victim square in front of the muzzle each round.
+    if (t._koTimer <= 0 && t.spinTimer <= 0) {
+      const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
+      t.position.x = p.position.x + fx * 11;
+      t.position.z = p.position.z + fz * 11;
+      t.speed = 0;
+      t.shieldTimer = 0;
+      t.catnipTimer = 0;
+    }
+    p.shootCooldown = 0;
+    return { hearts: t.battleHearts, ko: t._koTimer > 0, vis: t.group.visible, myKOs: p.battleKOs };
+  });
+  if (st.ko) { combat.ko = true; break; }
+  await page.keyboard.down("KeyF");
+  await page.waitForTimeout(250);
+  await page.keyboard.up("KeyF");
+  await page.waitForTimeout(1800);
+}
+if (combat.ko) await page.screenshot({ path: path.join(SHOTS, "battle-8-ko.png") });
+// Respawn: hearts refill, kart re-appears somewhere on the ring.
+for (let i = 0; i < 30 && !combat.respawned; i++) {
+  await page.waitForTimeout(1000);
+  combat.respawned = await page.evaluate(() => {
+    const t = window.__zoomies.karts[1];
+    return t._koTimer <= 0 && t.group.visible && t.battleHearts === 3;
+  });
+}
+const myKOs = await page.evaluate(() => window.__zoomies.karts[0].battleKOs);
+// The float count breathes during play (a grabbed box sinks spent, a pool
+// crate rises after a delay) — just prove the arena pool is live and near cap.
+if (combat.boxes < 8) errors.push(`floating box pool too small (${combat.boxes} of 10)`);
+if (!combat.aiAlive) errors.push("battle AI never drove");
+if (!combat.ko) errors.push("never KO'd the target AI (hearts/latch pipeline broken?)");
+if (combat.ko && !combat.respawned) errors.push("KO'd kart never respawned");
+if (combat.ko && myKOs < 1) errors.push(`KO not credited to the shooter (player KOs ${myKOs})`);
+
 // --- Overview shots: pin the camera (the race loop re-aims it every frame) --
 for (const [name, px, py, pz] of [
   ["battle-6-overview", 30, 210, 190],
@@ -217,7 +274,7 @@ for (const [name, px, py, pz] of [
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
 }
 
-console.log(JSON.stringify({ maxGy, maxR, maxSpeed, sawWall, sawAir, minDist: +minDist.toFixed(2), errors }, null, 2));
+console.log(JSON.stringify({ maxGy, maxR, maxSpeed, sawWall, sawAir, minDist: +minDist.toFixed(2), combat, myKOs, errors }, null, 2));
 await browser.close();
 server.close();
 process.exit(errors.length ? 1 : 0);

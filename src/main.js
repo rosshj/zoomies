@@ -10,6 +10,7 @@ installCrashGuard(); // capture errors/rejections from the very start (survives 
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
 import { Arena } from "./arena.js";
+import { Battle, BATTLE_HEARTS } from "./battle.js";
 import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunnelCamGuide } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow } from "./kart.js";
@@ -587,11 +588,12 @@ _boot.world = performance.now();
 // and the game is fine. Grounded crates just tumble; only the floating boxes hold
 // a power-up — driving through one rolls a position-weighted item (see grantItem).
 let props = null;
-// Battle: no roadside props or power-up boxes yet (their placement walks the
-// track spline) — the arena starts empty in phase 1.
-if (!battleMode) initProps(scene, track, {
+// Battle: boxes at the arena's designed spots (decks, creek, slalom) instead
+// of the track-spline walk; racing keeps the spline placement.
+initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
+  spots: battleMode ? track.itemSpots() : null,
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
@@ -626,11 +628,25 @@ function grantItem(kart) {
   // have); the mid-pack gets the targeted-offense knife fight (yarn + tri); the
   // back gets rescue (catnip + hearts). Every kart rolls locally; remotes short-
   // circuit at the top of this function, and the resulting spawn replicates.
-  const w = rollWeights(f);
-  const r = Math.random();
-  let acc = 0, pick = ITEM_ROLL.length - 1;
-  for (let i = 0; i < ITEM_ROLL.length; i++) { acc += w[i]; if (r < acc) { pick = i; break; } }
-  switch (ITEM_ROLL[pick].name) {
+  // Battle: its own table (no yarn — it rolls on the track spline) ranked by
+  // KO standings; racing keeps the position-weighted roll.
+  let rolled;
+  if (battleMode && battle) {
+    const bf = battle.rankFrac(kart, karts);
+    const bw = rollWeightsIn(BATTLE_ROLL, bf);
+    const br = Math.random();
+    let acc = 0;
+    rolled = BATTLE_ROLL[BATTLE_ROLL.length - 1].name;
+    for (let i = 0; i < BATTLE_ROLL.length; i++) { acc += bw[i]; if (br < acc) { rolled = BATTLE_ROLL[i].name; break; } }
+  } else {
+    const w = rollWeights(f);
+    const r = Math.random();
+    let pick = ITEM_ROLL.length - 1;
+    let acc = 0;
+    for (let i = 0; i < ITEM_ROLL.length; i++) { acc += w[i]; if (r < acc) { pick = i; break; } }
+    rolled = ITEM_ROLL[pick].name;
+  }
+  switch (rolled) {
     case "shield":
       kart.giveShield(15);
       if (kart === player) hud.showToast("🛡️ Shield — 15s of protection!");
@@ -672,6 +688,20 @@ const ITEM_ROLL = [
   { name: "life",   w: [0.16, 0.16, 0.15] },
   { name: "catnip", w: [0.00, 0.06, 0.50] },
 ];
+// Battle roll: no yarn (it rolls on the track spline). The KO leader defends,
+// the hunted mid-pack gets ammo, and whoever's getting farmed gets the catnip.
+const BATTLE_ROLL = [
+  { name: "shield", w: [0.30, 0.15, 0.06] },
+  { name: "milk",   w: [0.26, 0.20, 0.10] },
+  { name: "tri",    w: [0.24, 0.28, 0.22] },
+  { name: "life",   w: [0.15, 0.17, 0.20] },
+  { name: "catnip", w: [0.05, 0.20, 0.42] },
+];
+function rollWeightsIn(table, f) {
+  const a = f < 0.5 ? 0 : 1;
+  const t = f < 0.5 ? f / 0.5 : (f - 0.5) / 0.5;
+  return table.map((it) => it.w[a] + (it.w[a + 1] - it.w[a]) * t);
+}
 function rollWeights(f) {
   const a = f < 0.5 ? 0 : 1;
   const t = f < 0.5 ? f / 0.5 : (f - 0.5) / 0.5;
@@ -795,11 +825,43 @@ const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted ka
 const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
 const hud = new HUD();
 // Battle: laps and race position don't exist in an arena — hide their readouts
-// (the loop still writes them; they're just not shown).
+// (repurposed below as hearts + KO count once the match starts).
 if (battleMode) {
   hud.lap?.classList.add("hidden");
   hud.place?.classList.add("hidden");
 }
+
+// Battle rules (phase 4): hearts, KOs, respawns, the match clock and the
+// arena AI live in src/battle.js; these hooks are the presentation layer.
+const battle = battleMode
+  ? new Battle(track, {
+      onHeart: (k, attacker) => {
+        audio.hit(k === player ? null : k.position);
+        if (k === player) {
+          triggerHit();
+          hud.showToast(`💔 ${"❤".repeat(k.battleHearts)} left!`);
+        } else if (attacker === player) {
+          hud.showToast(`🎯 Hit ${k.name}!`);
+        }
+      },
+      onKO: (k, attacker) => {
+        effects.fireworkBurst(k.position);
+        audio.hit(k === player ? null : k.position);
+        if (k === player) {
+          triggerHit();
+          hud.showToast(attacker ? `😵 KO'd by ${attacker.name}!` : "😵 KO'd!");
+        } else {
+          hud.showToast(attacker === player ? `💥 You KO'd ${k.name}!` : `💥 ${k.name} is down!`);
+          if (attacker === player) audio.finish();
+        }
+      },
+      onRespawn: (k) => {
+        effects.tootBurst(k, 3, false);
+        if (k === player) hud.showToast("😼 Back in — go get 'em!");
+      },
+      onEnd: () => endBattle(),
+    })
+  : null;
 const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
 // Boost (toot) meter UI reflects the player kart's own meter.
@@ -944,7 +1006,8 @@ function aiRoster(look) {
 function raceRoster() {
   const look = playerLook();
   const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
-  if (MP.enabled || timeTrial || battleMode) return [playerCfg]; // battle: solo until the arena AI lands
+  if (MP.enabled || timeTrial) return [playerCfg];
+  if (battleMode) return [playerCfg, ...aiRoster(look).slice(0, 3)]; // a 4-cat brawl
   return [playerCfg, ...aiRoster(look)];
 }
 
@@ -5203,6 +5266,7 @@ function prepareRace() {
 
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
+  if (battle) battle.reset(karts); // fresh hearts/KOs/match clock every battle
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
   // Warm the race effects' GPU pipelines during the countdown, where a stalled
   // frame is invisible: one near-invisible particle per texture field, one
@@ -6284,10 +6348,26 @@ window.__zoomies.debugFinish = () => {
   return true;
 };
 
+// Battle: the clock ran out. Freeze the fight (Battle.driveAI goes idle once
+// over), bring any mid-respawn cat back for the bow, and show the standings
+// after a short beat.
+function endBattle() {
+  hud.showToast("⏱ TIME!");
+  audio.finish();
+  for (const k of karts) {
+    if (k._koTimer > 0) {
+      k._koTimer = 0;
+      if (k.group) k.group.visible = true;
+    }
+    k.throttleInput = 0;
+  }
+  setTimeout(showResults, 3000);
+}
+
 function showResults() {
   state = State.FINISHED;
   renderResults();
-  renderRaceEarnings(settleRaceRewards());
+  if (!battleMode) renderRaceEarnings(settleRaceRewards());
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // results overlay takes over from the faded victory HUD
@@ -6299,6 +6379,20 @@ function showResults() {
 function renderResults() {
   if (timeTrial) {
     renderTimeTrialResults();
+    return;
+  }
+  // Battle standings: most KOs takes it.
+  if (battleMode && battle) {
+    const order = battle.standings(karts);
+    const list = document.getElementById("results-list");
+    list.innerHTML = "";
+    order.forEach((k, i) => {
+      const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : ordinal(i + 1);
+      list.appendChild(resultRow(medal, k.name, `${k.battleKOs || 0} KO`, k === player));
+    });
+    const myPlace = order.indexOf(player) + 1;
+    document.getElementById("results-title").textContent =
+      myPlace === 1 ? "🏆 Top Cat!" : `😼 ${ordinal(myPlace)} — ${player.battleKOs || 0} KOs`;
     return;
   }
   updatePlacement();
@@ -6816,8 +6910,23 @@ function loop(now) {
     // only when one's nearly on their line, trailing karts detour further for a
     // catch-up item (see driveAI).
     const boxTargets = props ? props.boxTargets() : null;
-    for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, boxTargets, karts);
-    aiActions(dt);
+    if (battle) {
+      // Battle: the hunter AI (chase/shoot/box-seek) replaces the racing-line
+      // driver and its lap-centric aiActions entirely.
+      for (const k of karts) {
+        if (k.isPlayer) continue;
+        const act = battle.driveAI(k, karts, boxTargets, dt);
+        if (act.shoot) fireShot(k);
+        if (act.milk && k.milkBottles > 0 && k.spinTimer <= 0) {
+          k.milkBottles = 0;
+          items.dropMilk(k);
+        }
+        if (k.boosting) effects.trickle(k, k.catnipBoosting);
+      }
+    } else {
+      for (const k of karts) if (!k.isPlayer || k.finished) k.driveAI(track, dt, boxTargets, karts);
+      aiActions(dt);
+    }
 
     // Slipstreaming: score each kart's draft over the live field (incl. remote
     // ghosts online) so a tuck behind a rival charges the toot boost faster. Runs
@@ -6839,6 +6948,8 @@ function loop(now) {
         const a = track.airTransfer(k, dt);
         if (c || a) k._syncMesh();
       }
+      // Rules pass: heart latches, KO/respawn timers, the match clock.
+      if (battle) battle.update(dt, karts);
     }
     updateHaptics(now); // discrete taptic feedback off fresh player state
     applyBoostPads(dt);
@@ -6859,7 +6970,9 @@ function loop(now) {
             const r = MP.remotes.get(id);
             if (r) r.bump(dir.x, dir.z, 15);
           }
-        : null
+        : null,
+      // Battle: credit the shooter so the KO scoreboard means something.
+      battle ? (victim, owner) => battle.noteHit(victim, owner) : null
     );
     // Yarn balls + milk puddles (local karts only; no MP replication yet).
     items.update(dt, karts, {
@@ -6878,6 +6991,7 @@ function loop(now) {
       onMilkHit: (k, p) => {
         effects.tootBurst(k, 2, false);
         audio.shoot(k === player ? null : k.position);
+        if (battle && p && p.owner) battle.noteHit(k, p.owner); // KO credit for a milk trip
         // Gloat: whoever's milk this was gets to look back and laugh.
         if (p && p.owner && p.owner !== k) {
           p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
@@ -7051,8 +7165,21 @@ function loop(now) {
     _hudOpts.place = player.place;
     _hudOpts.totalKarts = karts.length + (MP.enabled ? MP.remotes.size : 0);
     _hudOpts.speedKmh = Math.abs(player.speed) * 3.0;
-    _hudOpts.time = timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
+    _hudOpts.time = battle ? battle.left : timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
     hud.update(_hudOpts);
+    // Battle HUD: the lap/place readouts become hearts + KO count. Written
+    // against the live DOM text (hud.update change-gates on race values and
+    // could re-write these slots once early on).
+    if (battle) {
+      const hearts = "❤".repeat(player.battleHearts || 0) + "🖤".repeat(Math.max(0, BATTLE_HEARTS - (player.battleHearts || 0)));
+      if (hud.lap.textContent !== hearts) hud.lap.textContent = hearts;
+      hud.lap.classList.remove("hidden");
+      const kos = `💥 ${player.battleKOs || 0} KO`;
+      if (hud.place.textContent !== kos) hud.place.textContent = kos;
+      hud.place.classList.remove("hidden");
+      // Last-10-seconds urgency: the clock flashes via the TT "behind" style.
+      timerEl?.classList.toggle("behind", battle.left <= 10 && !battle.over);
+    }
     hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles, player.lives);
     // Incoming-yarn ping: only lights inside the ~1s reaction window — early
     // enough to defend on a read, late enough that pre-arming a shield costs.
@@ -7127,8 +7254,10 @@ function loop(now) {
 
   if (state === State.FINISHED) {
     // Victory lap: every kart auto-pilots around the circuit and the camera orbits
-    // the player's kart; fireworks keep popping from the arch.
-    for (const k of karts) k.driveAI(track, dt);
+    // the player's kart; fireworks keep popping from the arch. Battle: the spline
+    // driver has nothing to follow in an arena (everyone would converge on one
+    // point and grind) — the field just coasts out for the end tableau.
+    if (!battleMode) for (const k of karts) k.driveAI(track, dt);
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
     updateFireworks(dt);

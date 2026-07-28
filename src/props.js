@@ -96,7 +96,12 @@ function build(scene, track, opts) {
   // 5 boxes ≈ a roll every ~40% of a lap for a 6-kart field — items stay in hands
   // without tipping into item spam (was 3/5, which left mid-pack players dry for
   // laps at a time; the 3s per-kart pickup cooldown still stops vacuuming).
-  const boxCount = size >= 0.55 ? 7 : 5;
+  // Battle arenas hand in explicit spots instead of the spline walk below; the
+  // floating pool size then matches the designed float spots.
+  const spotList = opts.spots || null;
+  const boxCount = spotList
+    ? spotList.filter((s) => (s.mode || "float") === "float").length
+    : size >= 0.55 ? 7 : 5;
   const HOVER = 1.5;           // how high a power-up box floats above its rest spot
   const RISE_TIME = 0.5;       // seconds to rise into / sink out of a floating box
   const PROMOTE_DELAY = 3;     // beat after a pickup before a replacement rises
@@ -231,6 +236,17 @@ function build(scene, track, opts) {
   // the fence; only leaf piles (ground decor) may sit just off the verge.
   const up = new THREE.Vector3(0, 1, 0);
 
+  // Explicit placement (battle arena): float boxes at the designed spots plus
+  // plain ground crates as the promotion pool (a grabbed box sinks spent and a
+  // pool crate rises to keep the count, same as on a track).
+  if (spotList) {
+    for (const s of spotList) {
+      addProp(s.x, s.z, track.groundInfo(s.x, s.z).y, makeCrate(), {
+        kind: "crate",
+        mode: (s.mode || "float") === "float" ? "float" : "ground",
+      });
+    }
+  } else {
   // Floating power-up boxes sit ON the racing line (a row you drive through),
   // evenly spaced around the lap so there's always one coming up. They're plain
   // crates that hover (mode "float"); the bob/spin in update() sells the float.
@@ -268,6 +284,7 @@ function build(scene, track, opts) {
       } else addLeafPile(x, z, groundAt(x, z)); // piles sit on the real ground (groundY is road-curve height -> floats off-road)
     }
   }
+  } // end spline-walk placement (skipped when opts.spots was given)
 
   if (!props.length && !leafPiles.length) {
     scene.remove(group);

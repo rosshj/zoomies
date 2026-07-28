@@ -146,6 +146,30 @@ export class ItemManager {
 
   dropMilk(owner) {
     const track = this.track;
+    // Battle arena: no spline to place against — the puddle drops straight
+    // behind the kart's own tail at a track-puddle size (the arena's halfWidth
+    // is the whole map, so the road-width formula below would flood the field).
+    if (track.isArena) {
+      const fx = Math.sin(owner.heading), fz = Math.cos(owner.heading);
+      const x = owner.position.x - fx * 6;
+      const z = owner.position.z - fz * 6;
+      const r = 5;
+      const mesh = new THREE.Mesh(this._milkGeo, this._milkMat.clone());
+      mesh.scale.set(r, 1, r);
+      mesh.position.set(x, track.groundYNear(x, z) + 0.09, z);
+      mesh.rotation.y = owner.heading;
+      mesh.renderOrder = 2;
+      this.scene.add(mesh);
+      this.puddles.push({
+        mesh, x, z, r,
+        owner,
+        grace: MILK_GRACE,
+        life: MILK_LIFE,
+        fading: 0,
+        spread: 0,
+      });
+      return this.puddles[this.puddles.length - 1];
+    }
     const proj = owner._proj || track.project(owner.position);
     // Drop a few metres behind the rear bumper, at the kart's own lane.
     let t = proj.t - 6 / track.length;
