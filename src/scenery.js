@@ -1363,41 +1363,305 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
   scene.add(mesh);
 }
 
-function buildMountains(scene, heightAt, track, trackReach = 900) {
-  const rockN = new THREE.MeshStandardMaterial({ color: 0x6d6253, roughness: 1 });
-  const rockDesert = new THREE.MeshStandardMaterial({ color: 0xb07a4a, roughness: 1 });
-  const snow = new THREE.MeshStandardMaterial({ color: 0xf4f7fb, roughness: 1 });
+// Rock palette, snowline and SLOPE CHARACTER per biome. `snow` is the fraction
+// of the mountain's own height above which snow starts (1 = never — a
+// snow-capped peak behind a cactus looks absurd), and it's a fraction rather
+// than a world height so a small foothill and a giant both get their caps in
+// proportion.
+//
+// `apron` is how much the flank spreads into a broad skirt toward the foot, and
+// it is what makes a mountain read as a mountain rather than a pyramid: real
+// slopes ease off as they descend into foothills, they don't run straight to
+// the ground at one angle. `tall` scales the height against that, because a
+// gradual mountain that stays as tall as a spire just becomes a bigger spire.
+// The dry biomes keep a small apron and full height on purpose — mesas and
+// buttes really are steep-sided towers, and that's the one place spires belong.
+const MOUNTAIN_ROCK = {
+  alpine: { lo: 0x4e5866, hi: 0x8a97a8, snow: 0.40 , apron: 0.30, tall: 0.92 },
+  tundra: { lo: 0x59616a, hi: 0x939ba4, snow: 0.44 , apron: 0.34, tall: 0.92 },
+  forest: { lo: 0x4a5348, hi: 0x7d8878, snow: 0.66 , apron: 0.58, tall: 0.82 },
+  jungle: { lo: 0x3f5040, hi: 0x6f8470, snow: 0.74 , apron: 0.55, tall: 0.84 },
+  meadow: { lo: 0x6a6355, hi: 0x9a9384, snow: 0.68 , apron: 0.62, tall: 0.80 },
+  blossom: { lo: 0x6e6559, hi: 0xa09689, snow: 0.70 , apron: 0.62, tall: 0.80 },
+  autumn: { lo: 0x6f6045, hi: 0xa08d6c, snow: 0.72 , apron: 0.58, tall: 0.82 },
+  savanna: { lo: 0x7a6647, hi: 0xb09a74, snow: 1 , apron: 0.66, tall: 0.78 },
+  desert: { lo: 0x9c6a3e, hi: 0xd6a874, snow: 1 , apron: 0.20, tall: 1.05 },
+  mesa: { lo: 0x8d4830, hi: 0xc47f56, snow: 1 , apron: 0.14, tall: 1.10 },
+  beach: { lo: 0x8a8270, hi: 0xc0b7a0, snow: 0.85 , apron: 0.60, tall: 0.80 },
+  city: { lo: 0x63656a, hi: 0x94969c, snow: 0.68 , apron: 0.56, tall: 0.84 },
+};
 
-  // Peaks never move — collect every cone and bake the lot into ONE
-  // multi-material mesh at the end (~50 draw calls → 1). The ring surrounds the
-  // camera so half of it is in view from anywhere; per-peak frustum culling
-  // bought little, and the whole ring is only a few thousand triangles.
-  const peakMeshes = [];
+// ONE MOLDED SURFACE, not a cone. The old peaks were literally ConeGeometry
+// with a smaller cone stuck on top for snow, which is why they all read the
+// same however the height and radius were rolled: a cone has no silhouette to
+// vary. This sweeps a single unbroken skin from summit to base and sculpts it
+// with azimuth-aware terms — ridges radiating off the summit, gullies eroded
+// between them, an off-centre apex, an elliptical base and a leaning axis — so
+// every mountain gets its own outline and its own profile from any angle.
+//
+// The azimuth terms are all cos/sin of INTEGER harmonics, which is what keeps
+// the surface welded where the ring closes: any hash-per-vertex noise would
+// leave a visible split seam running down one flank. Indices wrap modulo SEGS
+// so there is no duplicated seam column to disagree in the first place.
+//
+// Snow is baked into the vertex colours off the vertex's own height rather
+// than being a separate cap mesh, so the snowline follows the ridges and dips
+// into the gullies — a ragged line the way real snow lies, not a clean circle.
+function mountainGeo(h, rad, rock, opts = {}) {
+  const RINGS = 15;
+  const SEGS = 28;
+  const TAU = Math.PI * 2;
+  // Ridge/erosion harmonics. Low counts read as big spurs, high as scree.
+  const harm = [];
+  for (let k = 0; k < 4; k++) {
+    harm.push({ n: 2 + k * 2 + Math.floor(rand() * 2), ph: rand() * TAU, a: (0.20 - k * 0.04) * (0.6 + rand() * 0.8) });
+  }
+  const gullyN = 5 + Math.floor(rand() * 5);
+  const gullyPh = rand() * TAU;
+  const gullyA = 0.09 + rand() * 0.09;
+  // Elliptical footprint + an axis that leans, so the apex doesn't sit dead
+  // centre over the base.
+  const ex = 1 + (rand() - 0.5) * 0.5;
+  const ez = 1 + (rand() - 0.5) * 0.5;
+  // How the flank falls away. The exponent alone is the wrong lever: below 1 it
+  // flattens the SUMMIT into a dome, above 1 it needles the summit into a
+  // spike, and neither is what a mountain does. What a mountain does is hold a
+  // fairly straight upper flank and then EASE OFF into a skirt of foothills, so
+  // the flank stays near-linear and the character comes from the apron term.
+  const profExp = 0.95 + rand() * 0.22;
+  const apron = (opts.apron ?? 0.5) * (0.75 + rand() * 0.5);
+  const leanX = (rand() - 0.5) * 0.42;
+  const leanZ = (rand() - 0.5) * 0.42;
+  // A shoulder: one flank swells into a subsidiary bulge partway down.
+  const shPh = rand() * TAU;
+  const shAmp = 0.18 + rand() * 0.22;
+  const shAt = 0.42 + rand() * 0.22;
+  const snowStart = opts.snow ?? rock.snow;
+  // Vegetation (or sand, or scree — whatever the biome's floor is) climbing the
+  // foot of the mountain. Same idea as the snowline but from below: a mountain
+  // that meets the ground as a hard colour edge reads as a prop dropped onto
+  // the terrain, whereas a skirt of the local ground tone ties it into the
+  // landscape it grew out of. Ragged, so it follows the ridges and runs further
+  // up the gullies exactly as real treelines do.
+  const vegLine = 0.13 + rand() * 0.13;
+  const vegWob = 0.05 + rand() * 0.06;
+  const vegPh = rand() * TAU;
+  const vegCol = opts.ground ? new THREE.Color(opts.ground) : null;
+  const snowWob = 0.055 + rand() * 0.05; // how ragged the snowline is
+  const snowPh = rand() * TAU;
+  const summitPh = rand() * TAU;
+
+  const lo = new THREE.Color(rock.lo);
+  const hi = new THREE.Color(rock.hi);
+  const snowCol = new THREE.Color(0xf2f6fb);
+  const c = new THREE.Color();
+
+  const pos = [];
+  const col = [];
+  const idx = [];
+  const frac = []; // 0 at the apex -> 1 at the base, per vertex, for the skirt conform
+  for (let i = 0; i <= RINGS; i++) {
+    const t = i / RINGS; // 0 at the apex -> 1 at the base
+    // Concave flare, plus a splayed foot (the talus a mountain actually sits in
+    // — a clean elliptical cut into the ground is the other half of what made
+    // these read as dropped-in cones) and a summit that is a small broken crest
+    // rather than a machined point.
+    const prof = Math.pow(t, profExp) + apron * Math.pow(t, 2.4) + 0.045 * Math.pow(1 - t, 3);
+    const ridgeW = Math.sin(Math.PI * Math.pow(t, 0.75)); // spurs peak mid-flank
+    for (let j = 0; j < SEGS; j++) {
+      const th = (j / SEGS) * TAU;
+      let az = 0;
+      for (const { n, ph, a } of harm) az += Math.cos(n * th + ph) * a;
+      // Gullies only bite the lower flanks, where water would actually run.
+      const gully = Math.max(0, Math.cos(gullyN * th + gullyPh)) * gullyA * Math.pow(t, 1.4);
+      // The shoulder is a smooth lobe in both azimuth and height.
+      const shA = Math.max(0, Math.cos(th - shPh));
+      const shH = Math.max(0, 1 - Math.abs(t - shAt) / 0.3);
+      const sh = shA * shA * shH * shH * shAmp;
+      const r = rad * prof * (1 + az * ridgeW - gully + sh);
+      // Summit jag: the very top is broken rock, not a machined point.
+      // Summit relief. This must stay SMALL relative to the summit ring, which
+      // is only a few units across: a multi-lobe harmonic at 0.095 of the whole
+      // mountain's height put ~19u of vertical wobble on an ~8u-wide top and
+      // split every peak into a tuning fork. One lobe, gently, so the crest
+      // leans to one side and reads as broken rock rather than twin spires.
+      const jag = Math.cos(th + summitPh) * 0.022 * Math.pow(1 - t, 1.6);
+      const y = h * (1 - t) + h * jag;
+      const x = Math.sin(th) * r * ex + leanX * rad * (1 - t);
+      const z = Math.cos(th) * r * ez + leanZ * rad * (1 - t);
+      pos.push(x, y, z);
+      frac.push(t);
+      // Colour: rock gets lighter with height, then a ragged snowline on top.
+      const f = Math.max(0, Math.min(1, y / h));
+      c.copy(lo).lerp(hi, Math.pow(f, 0.8));
+      if (snowStart < 1) {
+        const line = snowStart + Math.cos(2 * th + snowPh) * snowWob + Math.cos(5 * th - snowPh) * snowWob * 0.5;
+        const sAmt = Math.max(0, Math.min(1, (f - line) / 0.07));
+        if (sAmt > 0) c.lerp(snowCol, sAmt);
+      }
+      if (vegCol) {
+        const vLine = vegLine + Math.cos(3 * th + vegPh) * vegWob + Math.cos(7 * th - vegPh) * vegWob * 0.45;
+        const vAmt = Math.max(0, Math.min(1, (vLine - f) / 0.11));
+        if (vAmt > 0) c.lerp(vegCol, vAmt * 0.88);
+      }
+      // Gullies sit in their own shade — cheap baked occlusion that makes the
+      // erosion read in silhouette-free views.
+      const shade = 1 - gully * 2.1;
+      col.push(c.r * shade, c.g * shade, c.b * shade);
+    }
+  }
+  for (let i = 0; i < RINGS; i++) {
+    for (let j = 0; j < SEGS; j++) {
+      const a0 = i * SEGS + j;
+      const a1 = i * SEGS + ((j + 1) % SEGS); // wrap: no seam column to split
+      const b0 = a0 + SEGS;
+      const b1 = a1 + SEGS;
+      idx.push(a0, b0, a1, a1, b0, b1);
+    }
+  }
+  // CAP THE SUMMIT. The top ring has a small but non-zero radius (that is what
+  // gives a broken crest rather than a machined point) and nothing closed it,
+  // so every mountain in the world was an open tube — from close up, and from
+  // any angle that cleared the rim, a clean circular HOLE with sky through it.
+  // A fan to a centre vertex sitting just above the ring's mean height closes
+  // it as a small rocky top.
+  // The apex sits on the RING'S OWN centroid, not the geometry origin. The axis
+  // leans, so by the time it reaches the top the summit ring is displaced
+  // sideways by up to a fifth of the radius — fanning that back to x=0,z=0 drew
+  // a long thin triangular flap off every peak, the sideways "beak" that showed
+  // up on the whole skyline. It also rides just ABOVE the ring's highest vertex
+  // rather than its mean, so the summit jag can never poke through its own cap
+  // and leave the top dished.
+  const capIdx = pos.length / 3;
+  let cx = 0, cz = 0, topY = -Infinity;
+  for (let j = 0; j < SEGS; j++) {
+    cx += pos[j * 3];
+    cz += pos[j * 3 + 2];
+    topY = Math.max(topY, pos[j * 3 + 1]);
+  }
+  pos.push(cx / SEGS, topY + h * 0.01, cz / SEGS);
+  frac.push(0);
+  col.push(col[0], col[1], col[2]); // the summit's own colour, snow and all
+  for (let j = 0; j < SEGS; j++) idx.push(capIdx, j, (j + 1) % SEGS);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  g.userData.frac = frac; // consumed by place() once the peak is in world space
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildMountains(scene, heightAt, track, trackReach = 900) {
+  // One vertex-coloured material for every peak in the world: the rock palette,
+  // the snowline and the gully shading all live in the vertex colours, so the
+  // whole ring still bakes down to a single draw.
+  const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
+
+  // Peaks never move — collect every one and bake the lot into ONE mesh at the
+  // end (~50 draw calls → 1). The ring surrounds the camera so half of it is in
+  // view from anywhere; per-peak frustum culling bought little, and the whole
+  // ring is only a few thousand triangles.
+  // Peaks never move — collect every one and bake the lot into ONE mesh at the
+  // end. NOTE they are merged here with mergeGeometries rather than the shared
+  // mergeMeshes helper: that one strips every attribute except position/normal/
+  // uv so mismatched parts always merge cleanly, which silently threw away the
+  // `color` attribute and left vertexColors reading nothing — a range of
+  // blank-white mountains that raised no error at all.
+  const peakGeos = [];
+  const peakInfo = []; // where each summit ended up, so probes can frame one
+  const _m4 = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+  const _v = new THREE.Vector3();
+  const place = (geo, x, y, z) => {
+    _e.set(0, rand() * Math.PI * 2, 0);
+    _q.setFromEuler(_e);
+    _m4.compose(_v.set(x, y, z), _q, new THREE.Vector3(1, 1, 1));
+    geo.applyMatrix4(_m4);
+    // CONFORM THE SKIRT. A peak is anchored at ONE sampled ground height, but
+    // its apron now spans far more terrain than the old cones did — so on any
+    // slope the uphill side buries itself while the downhill side hangs in
+    // mid-air, a mountain visibly overhanging the hill it stands on. The
+    // geometry is in world space by this point, so each foot vertex can be
+    // pulled down to the ground actually beneath IT, ramping in over the lower
+    // flank so the summit keeps the shape it was sculpted with. min() means a
+    // vertex already under the terrain is left buried — this only ever closes
+    // a gap, never lifts the mountain out of the ground.
+    const p = geo.attributes.position;
+    const fr = geo.userData.frac;
+    for (let i = 0; i < p.count; i++) {
+      const w = fr[i];
+      if (w < 0.5) continue; // the top half is sculpture, not landscape
+      const k = (w - 0.5) / 0.5;
+      const cur = p.getY(i);
+      const gy = heightAt(p.getX(i), p.getZ(i)) - 1.5; // a touch under, so no hairline seam
+      p.setY(i, cur + (Math.min(cur, gy) - cur) * k);
+    }
+    p.needsUpdate = true;
+    geo.computeVertexNormals();
+    delete geo.userData.frac; // don't carry it into the merge
+    peakGeos.push(geo);
+  };
+  const _grnd = new THREE.Color();
   const peak = (x, z, h, rad, bury) => {
-    const desert = biomeAt(x, z).name === "desert";
-    const base = heightAt(x, z) + h / 2 - bury;
-    const m = new THREE.Mesh(new THREE.ConeGeometry(rad, h, 18), desert ? rockDesert : rockN);
-    m.position.set(x, base, z);
-    m.rotation.y = rand() * Math.PI;
-    peakMeshes.push(m);
-    // No snow caps in the desert — snowy peaks behind cacti look wrong.
-    if (!desert) {
-      const cap = new THREE.Mesh(new THREE.ConeGeometry(rad * 0.4, h * 0.3, 18), snow);
-      cap.position.set(x, base + h * 0.5 - h * 0.15, z);
-      cap.rotation.y = m.rotation.y;
-      peakMeshes.push(cap);
+    const rock = MOUNTAIN_ROCK[biomeAt(x, z).name] || MOUNTAIN_ROCK.meadow;
+    const base = heightAt(x, z) - bury;
+    biomeGround(x, z, _grnd, base); // the local floor tone, for the skirt
+    const gOpt = { apron: rock.apron, ground: _grnd.getHex() };
+    place(mountainGeo(h * (rock.tall ?? 1), rad, rock, gOpt), x, base, z);
+    peakInfo.push({ x, z, y: base, h, rad });
+    // Bigger peaks come as a MASSIF rather than a lone spike: a subsidiary
+    // summit set off to one side and fused into the same footprint. It is the
+    // single strongest cue that a mountain is a mountain and not a pyramid.
+    if (h > 150 && rand() < 0.45) {
+      // Set WELL out and WELL down. Close and tall was a second summit of
+      // roughly the main one's height sitting half a radius away, which from
+      // most angles is exactly the forked twin-peak silhouette to avoid; a
+      // lower mass further out reads as the shoulder of a range instead.
+      const a = rand() * Math.PI * 2;
+      const d = rad * (0.85 + rand() * 0.45);
+      const sx = x + Math.cos(a) * d;
+      const sz = z + Math.sin(a) * d;
+      place(mountainGeo(h * (rock.tall ?? 1) * (0.30 + rand() * 0.20), rad * (0.5 + rand() * 0.25), rock, gOpt), sx, heightAt(sx, sz) - bury * 0.7, sz);
     }
   };
 
-  // Distant mountain ring around the whole world. Pushed out past the loop's
-  // ACTUAL reach (big maps stretch further than the old fixed ring allowed),
-  // so a ring peak never lands on the track.
+  // Distant mountain RANGES around the whole world. Pushed out past the loop's
+  // ACTUAL reach (big maps stretch further than the old fixed ring allowed), so
+  // a ring peak never lands on the track.
+  //
+  // Peaks go down in chains along a shared ridge line, spaced closely enough
+  // that their (now much wider) aprons INTERPENETRATE. That is the whole point:
+  // isolated cones read as scattered props however good each one is, whereas
+  // overlapping feet fuse into a skyline with saddles and cols between the
+  // summits — a range rather than a row. Heights taper along the chain so one
+  // summit dominates and the rest fall away as subsidiary tops.
   const ringBase = Math.max(1080, trackReach + 230);
-  const count = 24;
+  const count = 14;
   for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2 + rand() * 0.2;
+    const a = (i / count) * Math.PI * 2 + rand() * 0.25;
     const r = ringBase + rand() * 180;
-    peak(Math.cos(a) * r, Math.sin(a) * r, 190 + rand() * 160, 90 + rand() * 70, 30);
+    const cx = Math.cos(a) * r;
+    const cz = Math.sin(a) * r;
+    // The ridge runs roughly tangentially, so a range presents its LENGTH to
+    // the middle of the world rather than pointing at you end-on.
+    const ridge = a + Math.PI / 2 + (rand() - 0.5) * 1.1;
+    const links = 2 + Math.floor(rand() * 3); // 2-4 summits per range
+    const domH = 175 + rand() * 165;
+    const domR = 105 + rand() * 105;
+    let along = -((links - 1) / 2) * domR * 0.95;
+    for (let k = 0; k < links; k++) {
+      // Spacing under one radius guarantees the aprons overlap into a saddle.
+      const step = domR * (0.72 + rand() * 0.34);
+      const drift = (rand() - 0.5) * domR * 0.5; // the ridge is not a ruled line
+      const px = cx + Math.cos(ridge) * along + Math.cos(ridge + Math.PI / 2) * drift;
+      const pz = cz + Math.sin(ridge) * along + Math.sin(ridge + Math.PI / 2) * drift;
+      // One dominant summit, the rest stepping down.
+      const fall = k === 0 ? 1 : 0.55 + rand() * 0.35;
+      peak(px, pz, domH * fall, domR * (0.72 + rand() * 0.45), 30);
+      along += step;
+    }
   }
 
   // A few peaks brought in close beside the track, so you race right up against
@@ -1414,7 +1678,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
         const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
         const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
         const off = 165 + rand() * 55;
-        const rad = 50 + rand() * 22;
+        const rad = 62 + rand() * 30;
         const x = p.x + side.x * outward * off;
         const z = p.z + side.z * outward * off;
         // Need the road's nearest approach to clear the cone's base radius.
@@ -1424,13 +1688,16 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
       }
     }
   }
-  if (peakMeshes.length) {
-    const merged = mergeMeshes(peakMeshes, { castShadow: false });
+  if (peakGeos.length) {
+    const merged = new THREE.Mesh(mergeGeometries(peakGeos), rockMat);
+    merged.castShadow = false;
     merged.receiveShadow = false;
     merged.frustumCulled = false; // the ring surrounds every viewpoint anyway
+    merged.userData.mountains = peakInfo; // probes census + frame the range by this
     scene.add(merged);
   }
 }
+
 
 // Helper: scatter `count` valid positions away from the road.
 function scatter(count, track, flatten, minFlat, range) {
