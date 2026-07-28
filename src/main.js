@@ -580,6 +580,8 @@ window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; han
 window.__zoomies.wind = { uWindStr, uWindAir, biomeWindAt }; // debug hook: force a shot was taken at + the per-biome target
 const items = new ItemManager(scene, track); // yarn balls + milk puddles
 Object.assign(window.__zoomies, { world, track, items }); // items: headless item-behavior probes
+// battle is created later (needs hud/effects); the probe reaches it lazily.
+Object.defineProperty(window.__zoomies, "battle", { get: () => battle, configurable: true });
 _boot.world = performance.now();
 
 
@@ -817,6 +819,7 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 
 const input = new Input();
 const hairballs = new HairballManager(scene);
+window.__zoomies.hairballs = hairballs; // debug hook (the battle probe waits out ball flights)
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).
 const _warmPos = new THREE.Vector3();
@@ -829,6 +832,8 @@ const hud = new HUD();
 if (battleMode) {
   hud.lap?.classList.add("hidden");
   hud.place?.classList.add("hidden");
+  const rb = document.getElementById("restart-btn");
+  if (rb) rb.textContent = "😼 BATTLE AGAIN";
 }
 
 // Battle rules (phase 4): hearts, KOs, respawns, the match clock and the
@@ -857,7 +862,10 @@ const battle = battleMode
       },
       onRespawn: (k) => {
         effects.tootBurst(k, 3, false);
-        if (k === player) hud.showToast("😼 Back in — go get 'em!");
+        if (k === player) {
+          hud.showToast("😼 Back in — go get 'em!");
+          camPos.set(0, 0, 0); // zeroed camPos = updateCamera's snap cue: no cross-map swoop
+        }
       },
       onEnd: () => endBattle(),
     })

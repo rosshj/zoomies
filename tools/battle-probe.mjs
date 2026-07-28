@@ -218,27 +218,41 @@ await page.evaluate(() => {
   p.position.x = 0; p.position.z = 60; p.heading = Math.PI; p.speed = 0; p.knock.set(0, 0, 0);
 });
 for (let round = 0; round < 30; round++) {
+  // Only (re)park the victim when the air is clear — a re-teleport mid-flight
+  // yanks it away from the ball under SwiftShader's time dilation.
   const st = await page.evaluate(() => {
     const z = window.__zoomies;
     const p = z.karts[0];
     const t = z.karts[1];
-    // Park the victim square in front of the muzzle each round.
-    if (t._koTimer <= 0 && t.spinTimer <= 0) {
+    const ballsLive = z.hairballs.balls.length > 0;
+    if (!ballsLive && t._koTimer <= 0 && t.spinTimer <= 0) {
       const fx = Math.sin(p.heading), fz = Math.cos(p.heading);
       t.position.x = p.position.x + fx * 11;
       t.position.z = p.position.z + fz * 11;
       t.speed = 0;
       t.shieldTimer = 0;
       t.catnipTimer = 0;
+      t.lives = 0; // banked Nine-Lives saves absorb spins — strip them or hits cost no hearts
+      p.shootCooldown = 0;
+      return { parked: true, ko: false };
     }
-    p.shootCooldown = 0;
-    return { hearts: t.battleHearts, ko: t._koTimer > 0, vis: t.group.visible, myKOs: p.battleKOs };
+    return { parked: false, ko: t._koTimer > 0 };
   });
   if (st.ko) { combat.ko = true; break; }
-  await page.keyboard.down("KeyF");
-  await page.waitForTimeout(250);
-  await page.keyboard.up("KeyF");
-  await page.waitForTimeout(1800);
+  if (st.parked) {
+    await page.keyboard.down("KeyF");
+    await page.waitForTimeout(300);
+    await page.keyboard.up("KeyF");
+  }
+  // Let the shot fly and the spin/latch resolve before the next round.
+  for (let w = 0; w < 12; w++) {
+    await page.waitForTimeout(500);
+    const done = await page.evaluate(() => {
+      const z = window.__zoomies;
+      return z.hairballs.balls.length === 0 && z.karts[1].spinTimer <= 0;
+    });
+    if (done) break;
+  }
 }
 if (combat.ko) await page.screenshot({ path: path.join(SHOTS, "battle-8-ko.png") });
 // Respawn: hearts refill, kart re-appears somewhere on the ring.
@@ -257,6 +271,24 @@ if (!combat.aiAlive) errors.push("battle AI never drove");
 if (!combat.ko) errors.push("never KO'd the target AI (hearts/latch pipeline broken?)");
 if (combat.ko && !combat.respawned) errors.push("KO'd kart never respawned");
 if (combat.ko && myKOs < 1) errors.push(`KO not credited to the shooter (player KOs ${myKOs})`);
+
+// --- Leg 6: match end — fast-forward the clock, expect KO standings --------
+await page.evaluate(() => { window.__zoomies.battle.left = 5; });
+let ended = false, resultsTitle = "";
+for (let i = 0; i < 60 && !ended; i++) {
+  await page.waitForTimeout(1000);
+  ended = await page.evaluate(() => !document.getElementById("results").classList.contains("hidden"));
+}
+if (!ended) errors.push("match never ended (timer → results flow broken)");
+else {
+  resultsTitle = await page.evaluate(() => document.getElementById("results-title").textContent);
+  const rows = await page.evaluate(() => document.getElementById("results-list").children.length);
+  if (!/KO|Top Cat/.test(resultsTitle)) errors.push(`battle results title looks wrong: "${resultsTitle}"`);
+  if (rows !== 4) errors.push(`battle standings should list 4 cats, got ${rows}`);
+  await page.screenshot({ path: path.join(SHOTS, "battle-9-results.png") });
+  // Back out to the menu so the overview shots below aren't behind the overlay.
+  await page.evaluate(() => document.getElementById("results").classList.add("hidden"));
+}
 
 // --- Overview shots: pin the camera (the race loop re-aims it every frame) --
 for (const [name, px, py, pz] of [

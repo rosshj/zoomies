@@ -51,6 +51,7 @@ export class Battle {
     for (const k of karts) {
       k.battleHearts = BATTLE_HEARTS;
       k.battleKOs = 0;
+      k.battleDowns = 0; // times KO'd — the standings tie-break
       k._spinLatch = false;
       k._koTimer = 0;
       k._lastHitBy = null;
@@ -70,7 +71,10 @@ export class Battle {
   }
 
   standings(karts) {
-    return [...karts].sort((a, b) => (b.battleKOs || 0) - (a.battleKOs || 0));
+    // Most KOs wins; equal KOs ranks whoever went down less.
+    return [...karts].sort(
+      (a, b) => (b.battleKOs || 0) - (a.battleKOs || 0) || (a.battleDowns || 0) - (b.battleDowns || 0)
+    );
   }
 
   // 0 for the KO leader … 1 for last: feeds the battle item roll the same way
@@ -122,6 +126,7 @@ export class Battle {
     }
     // KO.
     if (attacker) attacker.battleKOs = (attacker.battleKOs || 0) + 1;
+    k.battleDowns = (k.battleDowns || 0) + 1;
     k._koTimer = RESPAWN_DELAY;
     k._lastHitBy = null;
     // Strip run-state so nothing dangles across the respawn.
