@@ -572,7 +572,7 @@ scene.add(track.group);
 // on the field it uses, and the biome samplers fall back to their angular-wedge
 // defaults without a build).
 const world = battleMode
-  ? { heightAt: (x, z) => track.groundHeightAt(Math.hypot(x, z)), lakes: [], balloons: [], update() {} }
+  ? { heightAt: (x, z) => track.heightAt(x, z), lakes: [], balloons: [], update() {} }
   : buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
@@ -6830,6 +6830,16 @@ function loop(now) {
 
     // Step physics
     for (const k of karts) k.update(dt, track);
+    // Battle arena: static obstacle collision + crest-launch/air ground
+    // continuity (the Track never needed either). Both may move the kart after
+    // its own _syncMesh ran, so re-sync when they did.
+    if (battleMode) {
+      for (const k of karts) {
+        const c = track.collide(k);
+        const a = track.airTransfer(k, dt);
+        if (c || a) k._syncMesh();
+      }
+    }
     updateHaptics(now); // discrete taptic feedback off fresh player state
     applyBoostPads(dt);
     resolveCollisions();
