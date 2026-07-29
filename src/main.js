@@ -5494,6 +5494,17 @@ let _menuPrevTime = -1;
 function _setMenuAnchor(i) {
   _menuAnchor.copy(track.getPointAt(_menuShots[i % _menuShots.length]));
 }
+// Debug hook: headless probes watch the tour's phase/clock to verify the
+// shot transitions actually run (and which style they used). peak/mode are
+// recorded by the fade itself — SwiftShader stalls through entire fades, so
+// a probe can never time-sample the overlay mid-transition.
+let _menuFadePeak = 0; // highest overlay opacity the LAST fade reached
+let _menuFadeMode = null; // "dissolve" | "dip" (how it ran)
+window.__zoomies.menuTour = () => ({
+  phase: _menuPhase, shotT: _menuShotT, fadeT: _menuFadeT,
+  shots: _menuShots.length, opacity: menuXfade?.style.opacity ?? null,
+  peak: _menuFadePeak, mode: _menuFadeMode,
+});
 
 // Advance the menu-tour clock and phase (timing only — rendering is separate so
 // the dissolve can render BOTH biomes live).
@@ -5537,56 +5548,71 @@ function _orbitMenuCam(anchor, ang) {
   _uAberr.value = 0;
 }
 
-// Render the menu background. While dissolving, render the OUTGOING biome (live)
-// into the overlay and fade it out over the INCOMING biome (live) — a true
-// cross-fade with both sides still moving, no freeze and no dip to black.
+// Render the menu background. Two transition styles, chosen by what the
+// backend can do SAFELY:
+//   • WebGL2 — true cross-dissolve: snapshot the outgoing biome once into
+//     the overlay canvas (a cheap, verified readback there) and fade it out
+//     over the live incoming render.
+//   • WebGPU (and anything else) — a capture-free DIP: the overlay fills
+//     with the app's deep navy, rises to full cover, the shot swaps under
+//     it, and it lifts again. drawImage from a WebGPU canvas is exactly the
+//     kind of API that "works" and then hands back blank pixels on some
+//     platform we can't test — a dip PAINTS its own pixels, so it cannot
+//     show wrong content anywhere, and it has zero readback (the original
+//     iOS stall is moot). ?xfade=dip forces the dip for testing on WebGL2.
+const _xfadeForceDip = new URLSearchParams(location.search).get("xfade") === "dip";
 function renderMenuBackground(timeSec) {
   const ang = timeSec * 0.07; // gentle drift
-  // The capture below (drawImage of the renderer's canvas into a 2D canvas)
-  // is a SYNCHRONOUS GPU->CPU readback of a full-res frame. When it ran EVERY
-  // frame of the fade, iOS/WebGPU stalled ~1s per menu transition (the "0
-  // shader creates" freezes in the device log) — hence the old rule "WebGPU
-  // hard-cuts". Now that the fade snapshots ONCE (see below), that cost is a
-  // single readback per 6.5s transition, fine on desktop WebGPU too — and the
-  // hard-cut itself had become the desktop bug: on a Mac (Electron = WebGPU)
-  // the menu background visibly popped to a new biome every hold. Only native
-  // iOS keeps the conservative cut, honouring the original stall report.
-  const canCapture = !!menuXfadeCtx && !(renderer?.backend?.isWebGPUBackend && isNativePlatform());
-  if (_menuPhase === "fading" && !canCapture) {
-    _menuPhase = "hold"; // skip the fade entirely: render the incoming shot
-    _menuShotT = 0; // restart the hold timer, as a completed fade would
+  const canDissolve = !!menuXfadeCtx && !_xfadeForceDip && !renderer?.backend?.isWebGPUBackend;
+  if (_menuPhase === "fading" && !menuXfadeCtx) {
+    _menuPhase = "hold"; // no overlay at all: hard cut
+    _menuShotT = 0;
     if (menuXfade) menuXfade.style.opacity = 0;
   }
   if (_menuPhase === "fading") {
     const k = Math.min(1, _menuFadeT / SHOT_FADE);
-    // ONE capture at fade start: the outgoing biome freezes in the overlay
-    // while the incoming one keeps moving underneath. The old version
-    // re-rendered the outgoing shot AND read the canvas back EVERY fade frame
-    // — invisible under slow software GL, but on fast high-dpi desktops the
-    // doubled render cost pumped the resolution scaler and the readback could
-    // land on a stale frame, both showing as menu-background flicker.
-    if (!_menuSnapped && menuXfadeCtx) {
-      _orbitMenuCam(_menuAnchorPrev, ang);
+    if (canDissolve) {
+      // ONE capture at fade start (per-frame readback pumped the resolution
+      // scaler and could land stale frames — the original desktop flicker).
+      if (!_menuSnapped) {
+        _orbitMenuCam(_menuAnchorPrev, ang);
+        renderFrame();
+        const gl = renderer.domElement;
+        if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
+          menuXfade.width = gl.width;
+          menuXfade.height = gl.height;
+        }
+        try {
+          menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
+        } catch (e) {
+          // Never fade stale pixels from a previous transition.
+          menuXfadeCtx.clearRect(0, 0, menuXfade.width, menuXfade.height);
+        }
+        _menuSnapped = true;
+      }
+      menuXfade.style.opacity = (1 - k).toFixed(3);
+      if (1 - k > _menuFadePeak) _menuFadePeak = 1 - k;
+      _menuFadeMode = "dissolve";
+      _orbitMenuCam(_menuAnchor, ang); // incoming biome -> the displayed frame
       renderFrame();
-      const gl = renderer.domElement;
-      if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
-        menuXfade.width = gl.width;
-        menuXfade.height = gl.height;
+    } else {
+      // Capture-free dip. The overlay is a self-painted navy sheet: up over
+      // the first 35% of the fade, held solid through the middle (the shot
+      // swaps fully covered), released over the last 35%.
+      if (!_menuSnapped) {
+        menuXfade.width = 2; // flat colour — a 2×2 canvas stretches to fit
+        menuXfade.height = 2;
+        menuXfadeCtx.fillStyle = "#0e1320"; // the app's deep-navy chrome
+        menuXfadeCtx.fillRect(0, 0, 2, 2);
+        _menuSnapped = true;
       }
-      try {
-        menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
-      } catch (e) {
-        // Capture failed (rare): clear the overlay so the fade shows the
-        // incoming render, NOT stale pixels left over from a previous fade
-        // (the canvas keeps its contents when the size didn't change).
-        menuXfadeCtx.clearRect(0, 0, menuXfade.width, menuXfade.height);
-      }
-      _menuSnapped = true;
+      const a = Math.min(1, k < 0.35 ? k / 0.35 : k > 0.65 ? (1 - k) / 0.35 : 1);
+      menuXfade.style.opacity = a.toFixed(3);
+      if (a > _menuFadePeak) _menuFadePeak = a;
+      _menuFadeMode = "dip";
+      _orbitMenuCam(k < 0.5 ? _menuAnchorPrev : _menuAnchor, ang);
+      renderFrame();
     }
-    menuXfade.style.opacity = (1 - k).toFixed(3);
-    // Incoming biome -> the displayed frame.
-    _orbitMenuCam(_menuAnchor, ang);
-    renderFrame();
   } else {
     _menuSnapped = false;
     _orbitMenuCam(_menuAnchor, ang);

@@ -15,6 +15,7 @@
     "check:offline": "node tools/offline-check.mjs",
     "check:gamepad": "node tools/gamepad-check.mjs",
     "check:menupad": "node tools/menupad-check.mjs",
+    "check:xfade": "node tools/xfade-check.mjs && MODE=dip node tools/xfade-check.mjs",
     "check:items": "node tools/items-check.mjs",
     "check:lives": "node tools/lives-check.mjs",
     "check:progress": "node tools/progress-check.mjs",
