@@ -6,8 +6,7 @@
   "description": "Electron desktop shell for Zoomies GP — the Steam build.",
   "main": "main.cjs",
   "scripts": {
-    "start": "npm --prefix .. run build:web && electron .",
-    "start:fast": "electron .",
+    "start": "electron .",
     "dist": "npm --prefix .. run build:web && electron-builder --config electron-builder.json"
   },
   "devDependencies": {

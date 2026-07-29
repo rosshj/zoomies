@@ -9,11 +9,14 @@ build is already offline-complete.
 ## Run it locally
 
 ```sh
-# from repo root: assemble dist/, then launch the shell
 cd desktop
-npm install
-npm start          # runs build:web first; `npm run start:fast` skips it
+npm install        # first time only
+npm start
 ```
+
+Dev launches serve the WORKING TREE directly (same as the headless checks),
+so a `git pull` is live on the next `npm start` — no build step, no stale
+`dist/` to bite you. `dist/` only exists for packaging.
 
 `F11` or `Alt+Enter` toggles fullscreen. Gamepads work through the standard
 browser Gamepad API (see the mapping below), keyboard through the existing
@@ -100,8 +103,7 @@ treat the overlay as unsupported — nothing in the game may depend on it.
 `xvfb-run -a node tools/electron-smoke.mjs` (repo root) launches THIS shell
 for real via Playwright's Electron driver and asserts the app:// chain boots
 the game to the title screen with the preload bridge live. `SHOT=/path.png`
-grabs a screenshot. Prereqs: `npm run build:web` at the root, `npm install`
-here.
+grabs a screenshot. Prereq: `npm install` here.
 
 ## Steam Deck
 

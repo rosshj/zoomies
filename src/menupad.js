@@ -26,6 +26,17 @@ export class MenuPad {
     }
     if (!pad) { this._prev.length = 0; this._setFocus(null); return; }
 
+    // First contact: the Gamepad API only exposes a pad after its FIRST
+    // input, so that input's edges all read as fresh presses. Seat the ring
+    // and swallow them — the first touch should show where focus is, never
+    // act on it (an invisible ring "activated" the title button this way).
+    if (this._prev.length === 0) {
+      const scope = this._scope();
+      if (scope) { this._scopeEl = scope; this._seatDefault(scope); }
+      this._commit(pad);
+      return;
+    }
+
     const prev = this._prev;
     const down = (i) => !!pad.buttons[i]?.pressed && !prev[i];
 

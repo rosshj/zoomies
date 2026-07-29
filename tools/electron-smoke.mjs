@@ -15,10 +15,8 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DESKTOP = path.join(ROOT, "desktop");
 
-if (!fs.existsSync(path.join(ROOT, "dist", "index.html"))) {
-  console.error("no dist/ build — run `npm run build:web` first");
-  process.exit(1);
-}
+// (No dist/ prerequisite: the dev shell serves the repo root directly, and a
+// packaged EXE carries its own dist/ inside resources.)
 
 // EXE overrides the target: point it at a PACKAGED build (e.g.
 // desktop/out/linux-unpacked/zoomies-gp) to exercise the app.isPackaged

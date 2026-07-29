@@ -10,11 +10,15 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 
-// Packaged builds carry dist/ in resources (see electron-builder.json); in
-// dev it's the repo-root dist/ produced by `npm run build:web`.
+// Packaged builds carry dist/ in resources (see electron-builder.json). Dev
+// launches serve the REPO ROOT directly — the web app runs from the working
+// tree as-is (that's how every headless check serves it), so a `git pull` is
+// live on the next launch with no build step. dist/ + build-web.mjs remain
+// the packaging path only. (A stale dist/ once shipped an old build to a
+// tester through `start:fast` — this removes that class of error.)
 const DIST = app.isPackaged
   ? path.join(process.resourcesPath, "dist")
-  : path.join(__dirname, "..", "dist");
+  : path.join(__dirname, "..");
 
 // app:// must be registered standard+secure BEFORE app ready so module
 // scripts, fetch and localStorage all behave like a normal https origin.
@@ -121,7 +125,7 @@ if (!app.requestSingleInstanceLock()) app.quit();
 
 app.whenReady().then(() => {
   if (!fs.existsSync(path.join(DIST, "index.html"))) {
-    console.error(`[shell] no game build at ${DIST} — run \`npm run build:web\` at the repo root first`);
+    console.error(`[shell] no game at ${DIST}` + (app.isPackaged ? "" : " — is the repo checkout intact?"));
     app.quit();
     return;
   }

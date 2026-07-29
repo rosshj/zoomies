@@ -49,7 +49,11 @@ await ctx.addInitScript(() => {
     axes: [0, 0, 0, 0],
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
   };
-  navigator.getGamepads = () => [window.__pad];
+  // Model the real API: a pad is INVISIBLE to getGamepads until its first
+  // input (Chrome's gesture rule) — the check flips __padVisible on the
+  // first press, exactly like a player picking the pad up.
+  window.__padVisible = false;
+  navigator.getGamepads = () => (window.__padVisible ? [window.__pad] : []);
   // Fake Electron preload bridge: the quit buttons must reveal themselves.
   window.__quitCalls = 0;
   window.zoomiesDesktop = { quit: () => { window.__quitCalls++; } };
@@ -78,8 +82,12 @@ async function frames(n, timeoutMs = 120000) {
 await frames(10); // menu loop is live and warm
 
 // One press = set, hold across ≥2 real frames, release, settle ≥2 more.
+// The first press also EXPOSES the pad, as the real Gamepad API does.
 async function press(button) {
-  await page.evaluate((b) => { window.__pad.buttons[b].pressed = true; }, button);
+  await page.evaluate((b) => {
+    window.__padVisible = true;
+    window.__pad.buttons[b].pressed = true;
+  }, button);
   await frames(2);
   await page.evaluate((b) => { window.__pad.buttons[b].pressed = false; }, button);
   await frames(2);
@@ -104,13 +112,19 @@ await check("quit buttons revealed for desktop shell", () =>
 await page.evaluate(() => document.getElementById("quit-btn-title").click());
 await check("quit button calls the bridge", () => window.__quitCalls === 1);
 
-// With a pad present the ring auto-seats on each screen's primary action —
-// on the title that's the gold Let's Go! button, before any input at all.
-await check("focus auto-seats on Let's Go!", () =>
-  document.getElementById("start-btn").classList.contains("pad-focus"));
+// Before the pad's first input the API hides it — no ring anywhere.
+await check("no ring before the pad is touched", () =>
+  !document.querySelector(".pad-focus"));
+
+// The pad's FIRST press exposes it. That press must only reveal the ring on
+// the title's primary action — never activate an invisible focus.
+await press(0);
+await check("first pad touch seats the ring on Let's Go! (and only seats it)", () =>
+  document.getElementById("start-btn").classList.contains("pad-focus") &&
+  document.getElementById("flow-title").classList.contains("is-active"));
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 
-// A presses it: the mode screen slides in…
+// Now A presses it: the mode screen slides in…
 await press(0);
 await check("A advances to the mode screen", () =>
   document.getElementById("flow-mode").classList.contains("is-active"));
