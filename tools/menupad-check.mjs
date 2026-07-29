@@ -138,6 +138,16 @@ await check("track screen auto-seats on the first card", () => {
   return !!f && f === first;
 });
 
+// Seating focus mid-slide must never drag the flow sideways: #menu is
+// overflow:hidden and a scrollIntoView on a still-translated button scrolls
+// it permanently (cut-off headers, stranded panels — the desktop bug).
+await frames(6); // let the slide finish
+await check("menu container never scrolls sideways", () => {
+  const menu = document.getElementById("menu");
+  const scr = document.querySelector(".flow-screen.is-active").getBoundingClientRect();
+  return menu.scrollLeft === 0 && menu.scrollTop === 0 && Math.abs(scr.left) < 2;
+});
+
 // B backs out to the mode screen, then the title.
 await press(1);
 await press(1);

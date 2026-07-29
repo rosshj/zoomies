@@ -184,9 +184,32 @@ export class MenuPad {
     this._focus = el;
     if (el) {
       el.classList.add("pad-focus");
-      el.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+      this._scrollTo(el);
     } else {
       this._scopeEl = null;
+    }
+  }
+
+  // Bring the ringed button into view WITHOUT scrollIntoView: that call also
+  // scrolls overflow:hidden ancestors, and seating focus while a flow screen
+  // is still mid-slide (translateX) dragged #menu sideways PERMANENTLY —
+  // cut-off headers and stranded panels on desktop. Scroll only the nearest
+  // overflow-y container, only vertically; a mid-slide translateX can't
+  // affect scrollTop, so seating during the animation is harmless.
+  _scrollTo(el) {
+    // Repair any stray sideways drag first (nothing in the menus may ever
+    // scroll #menu itself — screens move by transform, bodies scroll in y).
+    const menu = document.getElementById("menu");
+    if (menu) { menu.scrollLeft = 0; menu.scrollTop = 0; }
+    for (let p = el.parentElement; p; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if (/(auto|scroll)/.test(s.overflowY)) {
+        const pr = p.getBoundingClientRect();
+        const er = el.getBoundingClientRect();
+        if (er.top < pr.top + 8) p.scrollTop += er.top - pr.top - 8;
+        else if (er.bottom > pr.bottom - 8) p.scrollTop += er.bottom - pr.bottom + 8;
+        break;
+      }
     }
   }
 

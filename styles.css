@@ -3019,11 +3019,21 @@ button.small { white-space: nowrap; }
 .map-frame .map-reroll + .map-reroll { margin-top: 2px; }
 
 /* Gamepad focus ring (menupad.js): which button the pad will press. Outline
-   (not border) so it never shifts layout, with a soft glow that survives on
-   both cream and gold buttons. Appears only once the pad is touched. */
+   (not border) so it never shifts layout. Two-tone — a dark seat under a
+   white ring under a gold glow — so it reads on EVERY surface: a gold ring
+   alone vanished on the gold Let's Go! button and on bright snowy scenes.
+   A slow pulse keeps it findable even when nothing else moves. */
 .pad-focus {
-  outline: 3px solid var(--accent);
-  outline-offset: 3px;
-  box-shadow: 0 0 0 6px rgba(255, 179, 0, 0.25), 0 0 18px rgba(255, 179, 0, 0.55);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(20, 14, 40, 0.85), 0 0 0 8px var(--accent),
+    0 0 22px rgba(255, 179, 0, 0.85);
+  animation: pad-focus-pulse 1.2s ease-in-out infinite;
   z-index: 1;
+}
+@keyframes pad-focus-pulse {
+  50% {
+    box-shadow: 0 0 0 2px rgba(20, 14, 40, 0.85), 0 0 0 6px var(--accent),
+      0 0 30px rgba(255, 179, 0, 0.6);
+  }
 }

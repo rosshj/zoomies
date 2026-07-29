@@ -5542,13 +5542,16 @@ function _orbitMenuCam(anchor, ang) {
 // cross-fade with both sides still moving, no freeze and no dip to black.
 function renderMenuBackground(timeSec) {
   const ang = timeSec * 0.07; // gentle drift
-  // The capture below (drawImage of the renderer's canvas into a 2D canvas) is
-  // a SYNCHRONOUS GPU->CPU readback of a full-res frame, every frame of the
-  // fade — on iOS/WebGPU that's a ~1s main-thread stall per menu transition
-  // (the "0 shader creates" freezes in the device log). WebGPU menus hard-cut
-  // instead: the camera drift keeps the shot change feeling deliberate. The
-  // dissolve stays on WebGL2, where the readback is cheap.
-  const canCapture = !!menuXfadeCtx && !renderer?.backend?.isWebGPUBackend;
+  // The capture below (drawImage of the renderer's canvas into a 2D canvas)
+  // is a SYNCHRONOUS GPU->CPU readback of a full-res frame. When it ran EVERY
+  // frame of the fade, iOS/WebGPU stalled ~1s per menu transition (the "0
+  // shader creates" freezes in the device log) — hence the old rule "WebGPU
+  // hard-cuts". Now that the fade snapshots ONCE (see below), that cost is a
+  // single readback per 6.5s transition, fine on desktop WebGPU too — and the
+  // hard-cut itself had become the desktop bug: on a Mac (Electron = WebGPU)
+  // the menu background visibly popped to a new biome every hold. Only native
+  // iOS keeps the conservative cut, honouring the original stall report.
+  const canCapture = !!menuXfadeCtx && !(renderer?.backend?.isWebGPUBackend && isNativePlatform());
   if (_menuPhase === "fading" && !canCapture) {
     _menuPhase = "hold"; // skip the fade entirely: render the incoming shot
     _menuShotT = 0; // restart the hold timer, as a completed fade would
@@ -5573,7 +5576,10 @@ function renderMenuBackground(timeSec) {
       try {
         menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
       } catch (e) {
-        /* capture failed (rare) — the incoming render still shows */
+        // Capture failed (rare): clear the overlay so the fade shows the
+        // incoming render, NOT stale pixels left over from a previous fade
+        // (the canvas keeps its contents when the size didn't change).
+        menuXfadeCtx.clearRect(0, 0, menuXfade.width, menuXfade.height);
       }
       _menuSnapped = true;
     }
