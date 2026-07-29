@@ -94,6 +94,16 @@ const seam = await page.evaluate(() => {
   };
 });
 check("split race is active", seam.split.active && seam.split.p2, seam);
+// The split cams must SEE what the game camera sees: scenery lives on layer
+// 1 and grass on layer 2, and a default-layer camera renders a bare world
+// (the 'level looks emptied' bug — trees cast shadows but never drew).
+const layers = await page.evaluate(() => {
+  const z = window.__zoomies;
+  const cams = z.splitCams();
+  return { c1: cams.c1.layers.mask, c2: cams.c2.layers.mask, main: z.camera.layers.mask };
+});
+check("split cams share the game camera's layer mask",
+  layers.c1 === layers.main && layers.c2 === layers.main, layers);
 check("six karts, two humans", seam.karts === 6 && seam.humans === 2, seam);
 check("split HUD is up", seam.hudSplit && seam.chipsShown, seam);
 check("P2 wears the startline pick (Snow · Clover)", seam.names.includes("Snow (P2)"), seam);

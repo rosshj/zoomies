@@ -778,6 +778,7 @@ let camS1 = null, camS2 = null; // per-player chase cams (lazy)
 let _splitChipLast1 = "", _splitChipLast2 = ""; // change-gated chip writes
 let _p1FinishToasted = false, _p2FinishToasted = false; // per-half FINISH banners
 window.__zoomies.split = () => ({ active: splitActive, p2: !!player2 }); // debug hook
+window.__zoomies.splitCams = () => (camS1 ? { c1: camS1.camera, c2: camS2.camera } : null); // debug hook
 
 // Per-half status chips: lap · place · held items, change-gated like every
 // other per-frame HUD write. The items matter — P2 has no powerups row.
@@ -2658,6 +2659,7 @@ function toMenu() {
   // Leaving a Versus race hands the keyboard/pads back to the solo reader
   // (menus, and any next race, expect the everything-input default).
   if (splitActive && !_raceParked) teardownSplit();
+  _pickingP2 = false; // never leave the racer screens wired to P2's pass
   hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
   // Leaving to the menu abandons an in-progress cup / daily run: clear the run
@@ -4165,12 +4167,14 @@ function renderCatCards() {
       rerender: renderCatCards,
     }));
   });
-  grid.appendChild(racerGridCard({
-    img: "assets/catalog/custom-cat.jpg",
-    name: "Custom Cat",
-    sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
-    onPick: () => flowGo("cat-edit"),
-  }));
+  if (!_pickingP2) {
+    grid.appendChild(racerGridCard({
+      img: "assets/catalog/custom-cat.jpg",
+      name: "Custom Cat",
+      sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
+      onPick: () => flowGo("cat-edit"),
+    }));
+  }
 }
 function renderKartCards() {
   const grid = document.getElementById("kart-grid");
@@ -4185,16 +4189,49 @@ function renderKartCards() {
       rerender: renderKartCards,
     }));
   });
-  grid.appendChild(racerGridCard({
-    img: "assets/catalog/custom-kart.jpg",
-    name: "Custom Kart",
-    sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
-    onPick: () => flowGo("kart-edit"),
-  }));
+  if (!_pickingP2) {
+    grid.appendChild(racerGridCard({
+      img: "assets/catalog/custom-kart.jpg",
+      name: "Custom Kart",
+      sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
+      onPick: () => flowGo("kart-edit"),
+    }));
+  }
 }
 // Kart chosen → the racer is complete: save it and roll on (friends-hosting
 // goes to the lobby — this tap is the fullscreen + motion gesture).
+// In Versus the SAME cat/kart screens then run a second pass for Player 2
+// (preset cards only — the custom studio designs belong to P1's save), whose
+// picks land in the P2 slot instead of the garage save.
+let _pickingP2 = false;
+function startP2Pick() {
+  _pickingP2 = true;
+  // Seat the shared draft on P2's current pick so the showroom preview and
+  // card grids show P2's racer; P1's picks are already committed/saved.
+  _garageDraft = {
+    cat: _p2Pick.cat,
+    kart: _p2Pick.kart,
+    customCat: garageConfig.customCat,
+    customKart: garageConfig.customKart,
+  };
+  refreshRacerEyebrows();
+  flowGo("cat");
+}
 function commitRacer() {
+  if (_pickingP2) {
+    // Customs are never offered on the P2 pass, so the draft indexes are
+    // always preset-range here.
+    _p2Pick = {
+      cat: Math.min(_garageDraft.cat, CAT_PRESETS.length - 1),
+      kart: Math.min(_garageDraft.kart, KART_PRESETS.length - 1),
+    };
+    try { localStorage.setItem(P2_RACER_KEY, JSON.stringify(_p2Pick)); } catch { /* ignore */ }
+    _pickingP2 = false;
+    refreshRacerEyebrows();
+    refreshP2Tile();
+    flowGo("startline");
+    return;
+  }
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
@@ -4202,15 +4239,17 @@ function commitRacer() {
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
   if (raceMode === "mp") hostGame();
+  else if (raceMode === "split") startP2Pick();
   else flowGo("startline");
 }
 // With Friends has no start line, so its racer steps drop the step count.
+// Versus labels whose racer is being picked on each pass.
 function refreshRacerEyebrows() {
   const mp = raceMode === "mp";
   const c = document.getElementById("cat-eyebrow");
-  if (c) c.textContent = mp ? "Your racer" : "Step 3 of 4";
+  if (c) c.textContent = _pickingP2 ? "Player 2" : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 3 of 4" : "Step 3 of 4";
   const k = document.getElementById("kart-eyebrow");
-  if (k) k.textContent = mp ? "Your racer" : "Step 4 of 4";
+  if (k) k.textContent = _pickingP2 ? "Player 2" : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 4 of 4" : "Step 4 of 4";
 }
 // Studio actions: Buy unlocks the creator; Use adopts the design and rolls on.
 for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
@@ -4369,6 +4408,18 @@ function flowGo(step, dir = 1, instant = false) {
 function flowBack() {
   if (state !== State.MENU || menuFlowEl.classList.contains("hidden")) return false;
   if (flowStep === "lobby") { toMenu(); return true; }
+  // Backing out of Player 2's pass through the racer screens unwinds to
+  // P1's kart step (P2's pass sits between P1-kart and the start line).
+  if (_pickingP2 && (flowStep === "cat" || flowStep === "kart")) {
+    if (flowStep === "cat") {
+      _pickingP2 = false;
+      refreshRacerEyebrows();
+      flowGo("kart", -1);
+    } else {
+      flowGo("cat", -1);
+    }
+    return true;
+  }
   const back = {
     mode: "title",
     track: "mode",
@@ -4553,6 +4604,9 @@ document.getElementById("p2-cat-prev")?.addEventListener("click", () => _p2Cycle
 document.getElementById("p2-cat-next")?.addEventListener("click", () => _p2Cycle("cat", 1, CAT_PRESETS.length));
 document.getElementById("p2-kart-prev")?.addEventListener("click", () => _p2Cycle("kart", -1, KART_PRESETS.length));
 document.getElementById("p2-kart-next")?.addEventListener("click", () => _p2Cycle("kart", 1, KART_PRESETS.length));
+// Edit opens the full card screens for P2 (the same pass that runs after
+// P1's picks); the arrows stay for one-tap tweaks on the start line.
+document.getElementById("p2-edit")?.addEventListener("click", () => startP2Pick());
 
 function refreshStartline() {
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
@@ -5367,7 +5421,18 @@ function prepareRace() {
   splitActive = raceMode === "split" && !!window.zoomiesDesktop;
   if (splitActive) {
     setupSplitInputs();
-    if (!camS1) { camS1 = new ChaseCam(); camS2 = new ChaseCam(); }
+    if (!camS1) {
+      camS1 = new ChaseCam();
+      camS2 = new ChaseCam();
+      // See the main camera's layer setup: scenery lives on layer 1 and the
+      // grass on layer 2 (the rear-view mirror uses plain layer 0 to skip
+      // them). The split cams are full player views — they must see exactly
+      // what the shared camera sees, now and after any future layer moves.
+      // (Missing this ONE line once stripped every tree/building/animal out
+      // of Versus while the startline tableau — shared camera — looked fine.)
+      camS1.camera.layers.mask = camera.layers.mask;
+      camS2.camera.layers.mask = camera.layers.mask;
+    }
     camS1.snap();
     camS2.snap();
     layoutStage(); // refresh the half-height aspects on the split cams
