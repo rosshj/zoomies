@@ -6395,6 +6395,13 @@ const FRAME_MIN_MS = 15;
 let _pauseDrawn = false;
 let _lastMenuDraw = 0;
 let _lastMiniDraw = 0;
+// Menu/tableau render cadence. Phones throttle to ~30fps to save battery, but
+// 32ms doesn't divide a 120Hz display's 8.3ms vsync — rendered frames land
+// alternately 3 and 4 ticks apart, and that uneven pacing reads as constant
+// background judder ("the menus flicker"; measured in a ProMotion screen
+// recording as alternating step sizes at a 4:3 ratio). The desktop shell is
+// plugged in: render menus at full rate there and keep pacing even.
+const MENU_DRAW_MS = window.zoomiesDesktop ? 0 : 32;
 
 function loop(now) {
   requestAnimationFrame(loop);
@@ -6514,7 +6521,7 @@ function loop(now) {
     if (_gridOpen) {
       // Start line: hold on the starting-grid tableau (throttled like the menu
       // drift — the shot barely moves, no need to burn battery at 60).
-      if (now - _lastMenuDraw >= 32) {
+      if (now - _lastMenuDraw >= MENU_DRAW_MS) {
         _lastMenuDraw = now;
         renderStartGrid(now / 1000, dt);
       }
@@ -6524,7 +6531,7 @@ function loop(now) {
     // the real world (the menu/how-to overlays are glassy and let it show through).
     // A slow ambient drift — render at ~30fps (halves the idle GPU/battery spent
     // sitting in menus); the canvas holds the last frame between draws.
-    if (now - _lastMenuDraw >= 32) {
+    if (now - _lastMenuDraw >= MENU_DRAW_MS) {
       _lastMenuDraw = now;
       renderMenuBackground(now / 1000);
     }

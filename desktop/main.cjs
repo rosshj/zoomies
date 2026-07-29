@@ -109,7 +109,11 @@ function createWindow() {
   // pin is dropped then, because in gpu.js a webgl param always beats webgpu.
   const extra = process.env.ZOOMIES_QUERY || "";
   const pin = /webgpu/.test(extra) ? "" : "&webgl=1";
-  win.loadURL(`app://game/index.html?nosw=1${pin}${extra ? "&" + extra : ""}`);
+  const url = `app://game/index.html?nosw=1${pin}${extra ? "&" + extra : ""}`;
+  // Printed to the npm-start terminal so "which build/backend am I actually
+  // running?" is answerable at a glance (a stale build once burned a tester).
+  console.log(`[shell] loading ${url} (packaged=${app.isPackaged})`);
+  win.loadURL(url);
 
   // F11 / Alt+Enter toggle fullscreen (the desktop-game habit).
   win.webContents.on("before-input-event", (e, input) => {
