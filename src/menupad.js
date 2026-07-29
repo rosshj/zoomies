@@ -40,21 +40,26 @@ export class MenuPad {
       return;
     }
     if (scope !== this._scopeEl) {
-      // New screen/sheet: drop the old ring. Focus only (re)appears on the
-      // first pad input HERE, so mouse/touch users never see a stray ring.
-      this._setFocus(null);
+      // New screen/sheet: seat the ring straight onto its primary action —
+      // with a pad plugged in (the only way this code runs) the player should
+      // always see what A will press, without having to touch a stick first.
       this._scopeEl = scope;
+      this._seatDefault(scope);
+    } else if (this._focus && !this._valid(this._focus)) {
+      // Same screen but the ringed button vanished (grids re-render on
+      // selection, buy buttons swap out): re-seat rather than going ringless.
+      this._seatDefault(scope);
     }
 
     // B backs out — same path as Escape (topmost sheet first, then one flow
     // step; resumes when paused).
     if (down(1)) this._key("Escape");
 
-    // A activates. If nothing is ringed yet, A means "the primary action":
-    // ring it first so the player sees what a second press will do.
+    // A activates the ringed button (auto-seated on entry; the fallback
+    // re-seat covers a ring lost to a mid-frame DOM swap).
     if (down(0)) {
       if (this._focus && this._valid(this._focus)) this._activate(this._focus);
-      else this._move(null, scope);
+      else this._seatDefault(scope);
     }
 
     // Direction: d-pad, or the left stick past a firm threshold. Held input
@@ -121,9 +126,24 @@ export class MenuPad {
     return out;
   }
 
-  // Move the ring: spatially from the current element, or (dir=null / no
-  // current ring) to the screen's primary action — the gold button when the
-  // screen has one, else the first button.
+  // The screen's primary action: the gold button when there is one (Let's
+  // Go!, START RACE), else the first button that ISN'T back/close chrome —
+  // which lands on the first real choice of every picker screen (Single race,
+  // the first track card, Marmalade, Ember, RESUME…).
+  _seatDefault(scope) {
+    const cands = this._candidates(scope);
+    if (!cands.length) { this._setFocus(null); return; }
+    const isChrome = (el) =>
+      el.classList.contains("flow-back") || el.hasAttribute("data-back") ||
+      /(^|-)(back|close)($|-)/.test(el.id);
+    const pick =
+      cands.find((c) => c.el.classList.contains("btn-gold")) ||
+      cands.find((c) => !isChrome(c.el)) ||
+      cands[0];
+    this._setFocus(pick.el);
+  }
+
+  // Move the ring spatially from the current element.
   _move(dir, scope) {
     const cands = this._candidates(scope);
     if (!cands.length) return;
@@ -133,7 +153,8 @@ export class MenuPad {
 
     let next = null;
     if (!cur || !dir) {
-      next = (cands.find((c) => c.el.classList.contains("btn-gold")) || cands[0]).el;
+      this._seatDefault(scope);
+      return;
     } else {
       const cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
       let best = Infinity;

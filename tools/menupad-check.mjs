@@ -104,21 +104,22 @@ await check("quit buttons revealed for desktop shell", () =>
 await page.evaluate(() => document.getElementById("quit-btn-title").click());
 await check("quit button calls the bridge", () => window.__quitCalls === 1);
 
-// First A seats the ring on the title's primary action (the gold PLAY)…
-await press(0);
-await check("A seats focus on PLAY", () =>
+// With a pad present the ring auto-seats on each screen's primary action —
+// on the title that's the gold Let's Go! button, before any input at all.
+await check("focus auto-seats on Let's Go!", () =>
   document.getElementById("start-btn").classList.contains("pad-focus"));
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 
-// …second A presses it: the mode screen slides in.
+// A presses it: the mode screen slides in…
 await press(0);
 await check("A advances to the mode screen", () =>
   document.getElementById("flow-mode").classList.contains("is-active"));
 
-// The ring re-seats on this screen with the first direction press.
-await press(13); // d-pad down
-await check("d-pad seats focus on the new screen", () =>
-  !!document.querySelector("#flow-mode .pad-focus"));
+// …and the ring is ALREADY on Single race (first non-back button), not the
+// back arrow.
+await frames(2);
+await check("mode screen auto-seats on Single race", () =>
+  document.getElementById("mode-gp").classList.contains("pad-focus"));
 
 // Walk down: the ring must MOVE (spatial nav, not stuck).
 const before = await page.evaluate(() => document.querySelector("#flow-mode .pad-focus")?.id ?? "");
@@ -127,17 +128,30 @@ const after = await page.evaluate(() => document.querySelector("#flow-mode .pad-
 if (after && after !== before) console.log("ok: d-pad moves focus (", before, "→", after, ")");
 else errors.push(`FAIL d-pad moves focus: stayed on '${before}'`);
 
-// B backs out to the title.
+// A on Single race → the track screen, auto-seated on the FIRST track card
+// (Classic circuit).
+await page.evaluate(() => document.getElementById("mode-gp").click());
+await frames(2);
+await check("track screen auto-seats on the first card", () => {
+  const f = document.querySelector("#flow-track .pad-focus");
+  const first = document.querySelector("#track-grid button");
+  return !!f && f === first;
+});
+
+// B backs out to the mode screen, then the title.
+await press(1);
 await press(1);
 await check("B backs out to the title", () =>
   document.getElementById("flow-title").classList.contains("is-active"));
 
-// Sheets: open settings, ring something in it, B closes it.
+// Sheets: open settings — focus auto-seats INSIDE the sheet (on its first
+// real control, not the ✕), and B closes it.
 await page.evaluate(() => document.getElementById("open-settings").click());
-await page.waitForTimeout(300);
-await press(13);
-await check("focus scopes to the open sheet", () =>
-  !!document.querySelector("#settings .pad-focus"));
+await frames(2);
+await check("focus auto-seats in the open sheet", () => {
+  const f = document.querySelector("#settings .pad-focus");
+  return !!f && f.id !== "settings-back";
+});
 await press(1);
 await check("B closes the sheet", () =>
   document.getElementById("settings").classList.contains("hidden"));

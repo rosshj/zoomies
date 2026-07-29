@@ -75,8 +75,11 @@ localStorage (`zoomies-*` keys); `preload.cjs` mirrors those keys into
 hydrates them back at boot when the file carries a newer stamp (so a
 cloud-synced file from another machine wins over an older local profile,
 never the reverse). Point Steam **Auto-Cloud** at that file — root
-`WinAppDataRoaming`, path `zoomies-desktop/zoomies-save.json` (Linux:
-`XDG_CONFIG_HOME` equivalent) — and cloud saves work with no further code.
+`WinAppDataRoaming`, path `Zoomies GP/zoomies-save.json` (macOS:
+`~/Library/Application Support/Zoomies GP/`; Linux: the `XDG_CONFIG_HOME`
+equivalent) — and cloud saves work with no further code. (The folder is the
+app's productName — it moved from `zoomies-desktop/` when the app got its
+real name; dev-run saves from before that rename start fresh.)
 
 The window remembers its size and fullscreen state across launches
 (`userData/window-state.json`).

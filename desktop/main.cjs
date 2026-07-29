@@ -60,7 +60,14 @@ function readJson(p) {
 
 function createWindow() {
   const saved = readJson(winStatePath());
+  // Dev-launch dock/window icon (packaged builds get theirs from
+  // electron-builder). dist/ ships the same 512px icon the PWA uses.
+  const icon = path.join(DIST, "icon-512.png");
+  if (process.platform === "darwin" && fs.existsSync(icon)) {
+    try { app.dock?.setIcon(icon); } catch { /* dev nicety only */ }
+  }
   const win = new BrowserWindow({
+    icon: fs.existsSync(icon) ? icon : undefined,
     width: saved?.width || 1280,
     height: saved?.height || 800,
     minWidth: 960,
@@ -101,6 +108,13 @@ function createWindow() {
   });
   return win;
 }
+
+// productName in package.json names the packaged app; setName makes dev
+// launches match everywhere the OS takes the name from the process (userData
+// path, notifications). Known limit: the macOS MENU BAR in a dev launch
+// still says "Electron" — that string comes from Electron.app's own
+// Info.plist and only a packaged .app (npm run dist) can change it.
+app.setName("Zoomies GP");
 
 // Steam relaunches the same executable if the player hits PLAY again.
 if (!app.requestSingleInstanceLock()) app.quit();

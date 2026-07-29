@@ -65,9 +65,16 @@ export function createWebAdapter() {
       for (const p of pads) {
         const a = p && p.connected && p.vibrationActuator;
         if (a?.playEffect) {
-          a.playEffect(a.type || "dual-rumble", {
-            duration: ms, strongMagnitude: strong, weakMagnitude: weak,
-          });
+          // Settings → Controls → "Controller rumble". Checked per call (it
+          // only fires on discrete race moments) so the toggle is live with
+          // no listener through the seam. A rumble-capable pad is the output
+          // device either way — toggled off means silence, not falling back
+          // to buzzing the phone the pad is plugged into.
+          if (localStorage.getItem("zoomies-rumble") !== "0") {
+            a.playEffect(a.type || "dual-rumble", {
+              duration: ms, strongMagnitude: strong, weakMagnitude: weak,
+            });
+          }
           return true;
         }
       }

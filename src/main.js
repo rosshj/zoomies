@@ -2734,6 +2734,27 @@ fpsToggle?.addEventListener("click", () => {
 });
 applyFpsSetting();
 
+// --- Controller rumble setting (Controls; persisted, default ON) ---
+// The web platform adapter checks the same key before firing the pad's
+// vibrationActuator, so this toggle needs no plumbing into the seam.
+const RUMBLE_KEY = "zoomies-rumble";
+const rumbleToggle = document.getElementById("set-rumble-toggle");
+function applyRumbleSetting() {
+  let on = true;
+  try { on = localStorage.getItem(RUMBLE_KEY) !== "0"; } catch {}
+  if (rumbleToggle) {
+    rumbleToggle.textContent = on ? "On" : "Off";
+    rumbleToggle.classList.toggle("off", !on);
+  }
+}
+rumbleToggle?.addEventListener("click", () => {
+  let on = true;
+  try { on = localStorage.getItem(RUMBLE_KEY) !== "0"; } catch {}
+  try { localStorage.setItem(RUMBLE_KEY, on ? "0" : "1"); } catch {}
+  applyRumbleSetting();
+});
+applyRumbleSetting();
+
 // --- Track viewer setting (Advanced; persisted) ---
 // Gates the pause menu's TRACK VIEWER button (see enterFlyView above).
 const TRACKVIEW_KEY = "zoomies-trackview";
@@ -4237,7 +4258,7 @@ menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("cl
 function refreshTitlePlay() {
   if (!startBtn) return;
   if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
-  else startBtn.textContent = "▶  Play";
+  else startBtn.textContent = "▶  Let's Go!";
 }
 startBtn?.addEventListener("click", () => {
   audio.unlock(); // the opening tap doubles as the audio unlock
@@ -5466,6 +5487,7 @@ const menuXfade = document.getElementById("menu-xfade");
 const menuXfadeCtx = menuXfade ? menuXfade.getContext("2d") : null;
 let _menuShot = 0;
 let _menuPhase = "hold"; // "hold" | "fading"
+let _menuSnapped = false; // outgoing-biome snapshot taken for the current fade
 let _menuShotT = 0; // time orbiting the current biome
 let _menuFadeT = 0; // elapsed cross-dissolve
 let _menuPrevTime = -1;
@@ -5534,10 +5556,15 @@ function renderMenuBackground(timeSec) {
   }
   if (_menuPhase === "fading") {
     const k = Math.min(1, _menuFadeT / SHOT_FADE);
-    // Outgoing biome -> capture into the overlay (fading out).
-    _orbitMenuCam(_menuAnchorPrev, ang);
-    renderFrame();
-    if (menuXfadeCtx) {
+    // ONE capture at fade start: the outgoing biome freezes in the overlay
+    // while the incoming one keeps moving underneath. The old version
+    // re-rendered the outgoing shot AND read the canvas back EVERY fade frame
+    // — invisible under slow software GL, but on fast high-dpi desktops the
+    // doubled render cost pumped the resolution scaler and the readback could
+    // land on a stale frame, both showing as menu-background flicker.
+    if (!_menuSnapped && menuXfadeCtx) {
+      _orbitMenuCam(_menuAnchorPrev, ang);
+      renderFrame();
       const gl = renderer.domElement;
       if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
         menuXfade.width = gl.width;
@@ -5545,15 +5572,17 @@ function renderMenuBackground(timeSec) {
       }
       try {
         menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
-        menuXfade.style.opacity = (1 - k).toFixed(3);
       } catch (e) {
         /* capture failed (rare) — the incoming render still shows */
       }
+      _menuSnapped = true;
     }
+    menuXfade.style.opacity = (1 - k).toFixed(3);
     // Incoming biome -> the displayed frame.
     _orbitMenuCam(_menuAnchor, ang);
     renderFrame();
   } else {
+    _menuSnapped = false;
     _orbitMenuCam(_menuAnchor, ang);
     renderFrame();
   }
@@ -5688,15 +5717,12 @@ function updateCamera(dt, snap = false) {
   const caTarget = player.catnipBoosting ? 0.014 : player.boosting ? 0.011 : 0;
   _uAberr.value += (caTarget - _uAberr.value) * Math.min(1, dt * (caTarget > _uAberr.value ? 10 : 4));
 
-  // Screen shake (decays). Catnip keeps a faint constant rumble going (minor, so
-  // it reads as raw speed without fighting your steering), and the top of the
-  // plain speed range gets a smaller engine-vibration floor of its own.
+  // Screen shake (decays). Catnip keeps a faint constant rumble going (minor,
+  // so it reads as raw speed without fighting your steering). Plain top speed
+  // stays steady — an engine-vibration floor here read as jitter on big
+  // desktop screens, and the FOV/vignette work above already sells the speed.
   shakeMag *= 1 - Math.min(1, 6 * dt);
   if (player.catnipBoosting) shakeMag = Math.max(shakeMag, 0.14);
-  else if (sn > 0.75) {
-    const k = (sn - 0.75) / 0.25;
-    shakeMag = Math.max(shakeMag, 0.06 * k * k);
-  }
   camera.position.copy(camPos);
   if (shakeMag > 0.001) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;

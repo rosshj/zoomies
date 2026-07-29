@@ -2308,6 +2308,11 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
   // clearly from a kart at speed (0.085 was there first and all but vanished
   // in motion) while staying a breeze rather than a gale.
   foliageMat.userData.sway = 0.12;
+  // …but a stiff tree mustn't track a gale one-for-one: uWindStr peaks at 2.4
+  // on stormy seeds, which flung the crowns (~29% of their height). Cap the
+  // force the canopies feel — ordinary wind (≤1) is untouched, the top end
+  // flattens to a firm lean instead of a thrash.
+  foliageMat.userData.swayMaxStr = 1.45;
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
   const m = new THREE.Matrix4();

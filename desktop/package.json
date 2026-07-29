@@ -1,5 +1,6 @@
 {
   "name": "zoomies-desktop",
+  "productName": "Zoomies GP",
   "version": "0.1.0",
   "private": true,
   "description": "Electron desktop shell for Zoomies GP — the Steam build.",

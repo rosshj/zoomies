@@ -4,7 +4,7 @@
   "directories": { "output": "out" },
   "files": ["main.cjs", "preload.cjs", "package.json"],
   "extraResources": [{ "from": "../dist", "to": "dist" }],
-  "win": { "target": "zip" },
-  "linux": { "target": "zip", "category": "Game" },
-  "mac": { "target": "zip", "category": "public.app-category.games" }
+  "win": { "target": "zip", "icon": "../icon-512.png" },
+  "linux": { "target": "zip", "category": "Game", "icon": "../icon-512.png", "executableName": "zoomies-desktop" },
+  "mac": { "target": "zip", "category": "public.app-category.games", "icon": "../icon-512.png" }
 }
