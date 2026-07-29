@@ -44,6 +44,8 @@ page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 await ctx.addInitScript(() => {
   try { localStorage.setItem("zoomies-fps", "1"); } catch {}
   try { localStorage.setItem("zoomies-mode-v1", "split"); } catch {}
+  // P2's startline pick (persisted): Snow (cat 3) in Clover (kart 2).
+  try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: 3, kart: 2 })); } catch {}
   window.zoomiesDesktop = { quit: () => {} }; // the shell bridge gates the mode
   // P1's controller (visible from boot — the check drives it, not a human).
   window.__pad = {
@@ -94,6 +96,7 @@ const seam = await page.evaluate(() => {
 check("split race is active", seam.split.active && seam.split.p2, seam);
 check("six karts, two humans", seam.karts === 6 && seam.humans === 2, seam);
 check("split HUD is up", seam.hudSplit && seam.chipsShown, seam);
+check("P2 wears the startline pick (Snow · Clover)", seam.names.includes("Snow (P2)"), seam);
 
 // Drive: P1 holds RT (pad), P2 holds ArrowUp (keyboard). Both must move —
 // independently (P2's key must not budge P1).
@@ -102,8 +105,8 @@ await page.keyboard.down("ArrowUp");
 await page.waitForTimeout(9000);
 const drive = await page.evaluate(() => {
   const z = window.__zoomies;
-  const p1 = z.karts.find((k) => k.isPlayer && k.name !== "Player 2");
-  const p2 = z.karts.find((k) => k.name === "Player 2");
+  const p1 = z.karts.find((k) => k.name === "Player 1");
+  const p2 = z.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name));
   return { s1: p1.speed, s2: p2.speed, chip1: document.getElementById("split-p1").textContent, chip2: document.getElementById("split-p2").textContent };
 });
 check("both humans accelerate independently", drive.s1 > 3 && drive.s2 > 3, drive);

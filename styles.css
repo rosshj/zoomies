@@ -3070,3 +3070,8 @@ button.small { white-space: nowrap; }
 #hud.split #rear-threat, #hud.split #shoot-lock, #hud.split #steer,
 #hud.split #throttle, #hud.split #action-buttons, #hud.split #yarn-warn,
 #hud.split #info, #hud.split #powerups { display: none; }
+
+/* Versus: Player 2's preset picker on the start line. */
+.p2-racer .start-racer-text { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.p2-pick-row { display: flex; align-items: center; gap: 8px; }
+.p2-pick-row .mini-name { flex: 1; text-align: center; }

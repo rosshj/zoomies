@@ -592,6 +592,26 @@
             </span>
             <button id="startline-edit" class="btn-cream small-pill">Edit</button>
           </div>
+          <!-- Versus only (revealed in split mode): Player 2 picks a named
+               cat + kart right here — the garage flow belongs to P1, and the
+               roster presets keep P2's pick one-tap on the shared screen. -->
+          <div class="sticker-deep start-racer p2-racer hidden" id="p2-racer">
+            <span class="start-racer-text">
+              <span class="start-racer-label">Player 2</span>
+              <span class="p2-pick-row">
+                <span class="tile-swatch" id="p2-swatch-cat"></span>
+                <button id="p2-cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
+                <span class="mini-name" id="p2-cat-name">Smokey</span>
+                <button id="p2-cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
+              </span>
+              <span class="p2-pick-row">
+                <span class="tile-swatch" id="p2-swatch-kart"></span>
+                <button id="p2-kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
+                <span class="mini-name" id="p2-kart-name">Lagoon</span>
+                <button id="p2-kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
+              </span>
+            </span>
+          </div>
           <div class="sticker-deep start-opts">
             <div class="mode-opt-row" id="laps-row">
               <span class="mode-opt-label">Laps</span>

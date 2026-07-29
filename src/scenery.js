@@ -559,6 +559,17 @@ export function buildWorld(scene, track, opts = {}) {
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     balloons, // debug hook: headless screenshot tours fly the camera to one
     update(time, dt = 0.016, playerPos = null) {
+      // playerPos: a Vector3, an ARRAY of Vector3s (split screen — every
+      // human wakes the world around them), or null (menus: animate all).
+      const ppos = Array.isArray(playerPos) ? playerPos : playerPos ? [playerPos] : null;
+      const nearAny = (x, z, r) => {
+        if (!ppos) return true;
+        for (const p of ppos) {
+          const dx = x - p.x, dz = z - p.z;
+          if (dx * dx + dz * dz < r * r) return true;
+        }
+        return false;
+      };
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
@@ -571,13 +582,10 @@ export function buildWorld(scene, track, opts = {}) {
       for (const c of _critters) {
         // Far-off animals freeze in place — an amble is invisible from 220u+,
         // and freezing (vs culling) means they're right there when you return.
-        if (playerPos) {
-          const dx = c.base.x - playerPos.x, dz = c.base.z - playerPos.z;
-          if (dx * dx + dz * dz > 220 * 220) continue;
-        }
+        if (!nearAny(c.base.x, c.base.z, 220)) continue;
         updateCritter(c, dt, time, heightAt);
       }
-      for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
+      for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, ppos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
       // dummy .uniforms after they compile, so don't write to them.)
       if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
@@ -5266,19 +5274,25 @@ function buildPigeons(scene, track, heightAt) {
   return flocks;
 }
 
-function updatePigeons(flock, dt, time, playerPos) {
+// `ppos`: null or an ARRAY of positions — every human counts (split screen),
+// so a flock wakes/scatters for whichever player reaches it.
+function _pigeonNearest(flock, ppos) {
+  let best = Infinity;
+  for (const p of ppos) {
+    const dx = p.x - flock.center.x, dz = p.z - flock.center.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < best) best = d2;
+  }
+  return best;
+}
+function updatePigeons(flock, dt, time, ppos) {
   if (!flock.scattered) {
-    // Perched flocks far from the player sleep as the merged proxy mesh — the
-    // 4cm idle bob is invisible from distance, and the ~42 live meshes only
-    // swap in close up (past the scatter trigger's reach, so the handoff is
-    // never visible mid-burst). A scattered flock keeps its live birds until
-    // it lands, wherever the player is.
-    let near = true;
-    if (playerPos) {
-      const dx = playerPos.x - flock.center.x;
-      const dz = playerPos.z - flock.center.z;
-      near = dx * dx + dz * dz < 60 * 60;
-    }
+    // Perched flocks far from every player sleep as the merged proxy mesh —
+    // the 4cm idle bob is invisible from distance, and the ~42 live meshes
+    // only swap in close up (past the scatter trigger's reach, so the handoff
+    // is never visible mid-burst). A scattered flock keeps its live birds
+    // until it lands, wherever the players are.
+    const near = !ppos || _pigeonNearest(flock, ppos) < 60 * 60;
     if (near !== flock.liveOn) {
       flock.liveOn = near;
       flock.group.visible = near;
@@ -5289,10 +5303,8 @@ function updatePigeons(flock, dt, time, playerPos) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
     }
-    if (playerPos) {
-      const dx = playerPos.x - flock.center.x;
-      const dz = playerPos.z - flock.center.z;
-      if (dx * dx + dz * dz < flock.triggerR * flock.triggerR) {
+    if (ppos) {
+      if (_pigeonNearest(flock, ppos) < flock.triggerR * flock.triggerR) {
         flock.scattered = true;
         flock.timer = 0;
         for (const b of flock.birds) {
@@ -5309,10 +5321,8 @@ function updatePigeons(flock, dt, time, playerPos) {
       for (const w of b.wings) w.wg.rotation.z = w.sx * (0.3 + Math.sin(time * 24 + b.phase) * 0.8);
       b.group.rotation.y = Math.atan2(b.vel.x, b.vel.z);
     }
-    if (flock.timer > 4 && playerPos) {
-      const dx = playerPos.x - flock.center.x;
-      const dz = playerPos.z - flock.center.z;
-      if (dx * dx + dz * dz > 80 * 80) {
+    if (flock.timer > 4 && ppos) {
+      if (_pigeonNearest(flock, ppos) > 80 * 80) {
         flock.scattered = false;
         for (const b of flock.birds) {
           b.group.position.copy(b.home);

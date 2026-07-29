@@ -598,7 +598,7 @@ function grantItem(kart) {
   const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
 
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
-  audio.boost(kart === player ? null : kart.position);
+  audio.boost(sfxPos(kart));
   // Position-shaped roll: each item lands where it's USEFUL. The leader defends
   // (shield + milk trap — yarn/tri need a target ahead, which they don't
   // have); the mid-pack gets the targeted-offense knife fight (yarn + tri); the
@@ -816,6 +816,13 @@ function setupSplitInputs() {
     input2.setSources({ keyboard: true, pads: [] });
   }
 }
+// Positional-SFX anchor: a HUMAN's own sounds play flat at full volume (null
+// position) — in Versus both players are "you", so P2's shots/boosts/hits
+// must not arrive faint and panned relative to P1's listener.
+function sfxPos(kart) {
+  return kart === player || (player2 && kart === player2) ? null : kart.position;
+}
+
 function teardownSplit() {
   splitActive = false;
   player2 = null;
@@ -981,20 +988,27 @@ function raceRoster() {
     // Versus: two humans + four rivals — same six-kart field (and headlight
     // budget) as solo, so the doubled render cost isn't compounded by extra
     // sim/draw load. P2 is a real isPlayer kart (human physics, no AI skill
-    // scaling); its colours are picked clear of P1 AND the rivals.
+    // scaling) wearing the startline pick; rivals recolour away from BOTH
+    // humans so nobody impersonates a player.
     playerCfg.name = "Player 1";
-    const ais = aiRoster(look).slice(0, 4);
-    const usedKart = new Set([look.color, ...ais.map((c) => c.color)]);
-    const usedCat = new Set([look.catColor, ...ais.map((c) => c.catColor)]);
+    const { cat: p2c, kart: p2k } = p2Look();
     const p2Cfg = {
       ...ROSTER[0],
-      name: "Player 2",
+      name: `${p2c.name} (P2)`,
       p2: true,
-      color: _pickUnused(KART_PRESETS.map((k) => k.color), usedKart),
-      catColor: _pickUnused(CAT_PRESETS.map((c) => c.fur), usedCat),
-      kartStyle: (look.kartStyle + 1) % 3,
-      kartNumber: 2,
+      color: p2k.color,
+      catColor: p2c.fur,
+      catPattern: p2c.pattern,
+      catAccessory: p2c.accessory,
+      kartStyle: p2k.style,
+      kartNumber: p2k.number,
     };
+    const ais = aiRoster(look).slice(0, 4).map((cfg) => {
+      let { color, catColor } = cfg;
+      if (color === p2k.color) color = _pickUnused(KART_PRESETS.map((k) => k.color), new Set([look.color, p2k.color]));
+      if (catColor === p2c.fur) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), new Set([look.catColor, p2c.fur]));
+      return { ...cfg, color, catColor };
+    });
     return [playerCfg, p2Cfg, ...ais];
   }
   return [playerCfg, ...aiRoster(look)];
@@ -1814,8 +1828,14 @@ function renderFrame() {
     // views, and skipping it is also the perf posture: a split race does two
     // scene passes per frame, so it sheds the post cost instead of tripling
     // work. Tone mapping lives on the renderer and still applies.
+    // Shadows render ONCE for both passes: the sun frustum doesn't care which
+    // half is looking, and letting each render() redo the shadow map was the
+    // hidden cost that pushed split frames over budget (DRS bottoming out +
+    // the watchdog stripping grass — the "level looks emptied" report).
     const { W, H } = stageState;
     const halfH = Math.floor(H / 2);
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true; // exactly one shadow pass, on P1's render
     renderer.setScissorTest(true);
     renderer.setViewport(0, halfH, W, H - halfH);
     renderer.setScissor(0, halfH, W, H - halfH);
@@ -1825,6 +1845,7 @@ function renderFrame() {
     renderer.render(scene, camS2.camera); // P2 bottom
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, W, H);
+    renderer.shadowMap.autoUpdate = true; // solo/menu path expects the default
   } else {
     composer.render();
   }
@@ -4497,6 +4518,42 @@ function refreshStakes() {
   const top = racePayout({ place: 1, field: ROSTER.length, laps: TOTAL_LAPS, difficulty: DIFFICULTY, daily, stats: {} }).total;
   el.textContent = `Win up to 🐟 ${top}`;
 }
+// --- Versus: Player 2's racer pick (preset roster, persisted) ---------------
+const P2_RACER_KEY = "zoomies-p2-racer";
+let _p2Pick = { cat: 1, kart: 1 }; // Smokey · Lagoon — distinct from P1's defaults
+try {
+  const v = JSON.parse(localStorage.getItem(P2_RACER_KEY) || "null");
+  if (v && Number.isInteger(v.cat) && Number.isInteger(v.kart)) {
+    _p2Pick = {
+      cat: ((v.cat % CAT_PRESETS.length) + CAT_PRESETS.length) % CAT_PRESETS.length,
+      kart: ((v.kart % KART_PRESETS.length) + KART_PRESETS.length) % KART_PRESETS.length,
+    };
+  }
+} catch { /* fresh default */ }
+function p2Look() {
+  return { cat: CAT_PRESETS[_p2Pick.cat], kart: KART_PRESETS[_p2Pick.kart] };
+}
+function refreshP2Tile() {
+  const { cat, kart } = p2Look();
+  const cs = document.getElementById("p2-swatch-cat");
+  const ks = document.getElementById("p2-swatch-kart");
+  if (cs) cs.style.background = "#" + cat.fur.toString(16).padStart(6, "0");
+  if (ks) ks.style.background = "#" + kart.color.toString(16).padStart(6, "0");
+  const cn = document.getElementById("p2-cat-name");
+  if (cn) cn.textContent = cat.name;
+  const kn = document.getElementById("p2-kart-name");
+  if (kn) kn.textContent = kart.name;
+}
+function _p2Cycle(field, dir, len) {
+  _p2Pick[field] = (_p2Pick[field] + dir + len) % len;
+  try { localStorage.setItem(P2_RACER_KEY, JSON.stringify(_p2Pick)); } catch { /* ignore */ }
+  refreshP2Tile();
+}
+document.getElementById("p2-cat-prev")?.addEventListener("click", () => _p2Cycle("cat", -1, CAT_PRESETS.length));
+document.getElementById("p2-cat-next")?.addEventListener("click", () => _p2Cycle("cat", 1, CAT_PRESETS.length));
+document.getElementById("p2-kart-prev")?.addEventListener("click", () => _p2Cycle("kart", -1, KART_PRESETS.length));
+document.getElementById("p2-kart-next")?.addEventListener("click", () => _p2Cycle("kart", 1, KART_PRESETS.length));
+
 function refreshStartline() {
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
   refreshRacerSummary();
@@ -4506,8 +4563,10 @@ function refreshStartline() {
   const note = document.getElementById("start-note");
   const cupDef = cupById(_cupChoice);
   const midCup = raceMode === "cup" && _cupState && _activeCup;
-  document.getElementById("laps-row")?.classList.toggle("hidden", raceMode !== "gp");
-  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || (raceMode === "cup" && !midCup)));
+  document.getElementById("laps-row")?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split"));
+  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split" || (raceMode === "cup" && !midCup)));
+  document.getElementById("p2-racer")?.classList.toggle("hidden", raceMode !== "split");
+  if (raceMode === "split") refreshP2Tile();
   if (note) {
     let txt = "";
     if (_dailyActive) txt = "📅 Today's challenge — everyone races the same track. Daily bonus when you finish!";
@@ -6003,7 +6062,7 @@ function fireYarn(kart) {
   }
   const y = items.spawnYarn(kart, target);
   effects.tootBurst(kart, 1.4, false); // launch kick: the ball leaves in a puff
-  audio.shoot(kart === player ? null : kart.position);
+  audio.shoot(sfxPos(kart));
   kart.shootCooldown = SHOOT_RECHARGE;
   // Replicate the ball (exact values read back from the record) so every client
   // renders a homing ghost; the hit rides sendHit from items.update, like hairballs.
@@ -6022,7 +6081,7 @@ function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
   const wasTri = kart.triShots > 0; // capture before spawn() consumes the charge
   hairballs.spawn(kart, charge);
-  audio.shoot(kart === player ? null : kart.position);
+  audio.shoot(sfxPos(kart));
   kart.shootCooldown = SHOOT_RECHARGE;
   // Tell other players about the shot so they can see the projectile fly (and fan
   // it into three on their side when it was a tri-furball).
@@ -6628,7 +6687,10 @@ function loop(now) {
   if (state !== State.PAUSED) {
     _pauseDrawn = false; // any live frame → the next pause redraws its frozen shot once
     const _t = performance.now();
-    world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
+    // Both humans wake the world around them in Versus (critters amble,
+    // pigeon flocks go live/scatter for whichever player gets close).
+    world.update(now / 1000, dt,
+      splitActive && player2 ? [player.position, player2.position] : player ? player.position : null);
     if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
     _seg.world = performance.now() - _t;
   }
@@ -6830,11 +6892,17 @@ function loop(now) {
       Math.sin(player.heading),
       Math.cos(player.heading)
     );
-    audio.setEngine(Math.min(1, Math.abs(player.speed) / player.maxSpeed), player.boosting);
+    // Engine pitch follows the FASTER human in Versus (one shared engine bed;
+    // idling it on a stopped P1 while P2 flies read as "P2 has no sound").
+    const _engK = player2
+      ? Math.max(Math.abs(player.speed) / player.maxSpeed, Math.abs(player2.speed) / player2.maxSpeed)
+      : Math.abs(player.speed) / player.maxSpeed;
+    audio.setEngine(Math.min(1, _engK), player.boosting || !!player2?.boosting);
     // Tires screech while drifting (full) and chatter through hard turns at speed
-    // (lighter), so cornering has grip feedback even without a drift.
+    // (lighter), so cornering has grip feedback even without a drift — from
+    // EITHER human's kart.
     const _sp = Math.abs(player.speed);
-    const _drift = player.drifting && _sp > 8;
+    const _drift = (player.drifting && _sp > 8) || (player2 && player2.drifting && Math.abs(player2.speed) > 8);
     const _hardTurn = !player.drifting && Math.abs(player.steerInput) > 0.62 && _sp > 24;
     audio.setSkid(_drift || _hardTurn, _drift ? 1 : 0.45);
 
@@ -6945,12 +7013,12 @@ function loop(now) {
       },
       onYarnHit: (k) => {
         effects.tootBurst(k, 2, false);
-        audio.shoot(k === player ? null : k.position);
+        audio.shoot(sfxPos(k));
       },
       onYarnBlocked: (k) => effects.tootBurst(k, 1, false),
       onMilkHit: (k, p) => {
         effects.tootBurst(k, 2, false);
-        audio.shoot(k === player ? null : k.position);
+        audio.shoot(sfxPos(k));
         // Gloat: whoever's milk this was gets to look back and laugh.
         if (p && p.owner && p.owner !== k) {
           p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
@@ -6985,7 +7053,7 @@ function loop(now) {
     for (const k of fxKarts) {
       if (k.wallHit) {
         effects.wallSparks(k);
-        audio.scrape(k === player ? null : k.position);
+        audio.scrape(sfxPos(k));
         k.wallHit = false;
       }
       // Slipstream: wind streaks on a kart drafting in a wake, a faint wake off a
@@ -6997,7 +7065,7 @@ function loop(now) {
       if (k.lifePulse) {
         k.lifePulse = false;
         effects.tootBurst(k, 1, false);
-        audio.boost(k === player ? null : k.position);
+        audio.boost(sfxPos(k));
         if (k === player) { hud.showToast("😻 Saved by a life!"); if (_raceStats) _raceStats.heartSaves++; }
       }
       if (k.spinTimer > 0) effects.skid(k);
@@ -7018,13 +7086,13 @@ function loop(now) {
       }
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
-        audio.hit(k.position);
+        audio.hit(sfxPos(k));
         audio.skidBurst(k.position, 0.8);
       }
       k._prevSpin = k.spinTimer;
       if (k.boostPuff >= 0) {
         effects.tootBurst(k, k.boostPuff);
-        audio.boost(k === player ? null : k.position);
+        audio.boost(sfxPos(k));
         if (k === player && _raceStats) _raceStats.driftBoosts++;
         k.boostPuff = -1;
       }
@@ -7048,17 +7116,19 @@ function loop(now) {
     windToward(biomeWindAt(_wx, _wz), dt);
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;
-    // Kick up a splash when driving through a puddle while it's raining.
-    if (track.puddles && wet > 0.2 && Math.abs(player.speed) > 6) {
-      player._puddleCd = (player._puddleCd || 0) - dt;
-      if (player._puddleCd <= 0) {
+    // Kick up a splash when driving through a puddle while it's raining —
+    // for each human kart (both halves deserve their splash in Versus).
+    for (const hk of player2 ? [player, player2] : [player]) {
+      if (!(track.puddles && wet > 0.2 && Math.abs(hk.speed) > 6)) continue;
+      hk._puddleCd = (hk._puddleCd || 0) - dt;
+      if (hk._puddleCd <= 0) {
         for (const pd of track.puddles) {
-          const dx = player.position.x - pd.x;
-          const dz = player.position.z - pd.z;
+          const dx = hk.position.x - pd.x;
+          const dz = hk.position.z - pd.z;
           if (dx * dx + dz * dz < pd.r * pd.r) {
-            effects.splash(player.position);
+            effects.splash(hk.position);
             audio.splash();
-            player._puddleCd = 0.14;
+            hk._puddleCd = 0.14;
             break;
           }
         }
