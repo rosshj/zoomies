@@ -246,6 +246,10 @@
            camera freely around the frozen race world. -->
       <button id="trackview-btn" class="secondary small hidden">🎥 TRACK VIEWER</button>
       <button id="menu-btn" class="secondary pause-exit">🏠 MAIN MENU</button>
+      <!-- Desktop (Electron) only — revealed by JS when the shell's quit
+           bridge exists. A windowed web game can just close the tab; a
+           fullscreen Steam build needs an exit that isn't Alt+F4. -->
+      <button id="quit-btn-pause" class="secondary pause-exit hidden">⏻ QUIT GAME</button>
     </div>
   </div>
 
@@ -289,6 +293,8 @@
                number of visible buttons it spans the final row (CSS). -->
           <button id="install-btn" class="btn-cream extra-btn hidden">📲 Install</button>
           <button id="open-settings" class="btn-cream extra-btn">⚙️ Settings</button>
+          <!-- Desktop (Electron) only — see #quit-btn-pause. -->
+          <button id="quit-btn-title" class="btn-cream extra-btn hidden">⏻ Quit</button>
         </div>
       </div>
     </section>

@@ -57,7 +57,10 @@ function createWindow() {
   // nosw=1: the service worker exists for offline WEB play; a desktop build
   // is already offline-complete, and a stale SW cache masking a shipped
   // update is the exact failure mode the build stamp exists to catch.
-  win.loadURL("app://game/index.html?nosw=1");
+  // ZOOMIES_QUERY appends extra params — the headless smoke test forces
+  // webgl=1 through it (WebGPU has no software fallback under Xvfb).
+  const query = "nosw=1" + (process.env.ZOOMIES_QUERY ? "&" + process.env.ZOOMIES_QUERY : "");
+  win.loadURL(`app://game/index.html?${query}`);
 
   // F11 / Alt+Enter toggle fullscreen (the desktop-game habit).
   win.webContents.on("before-input-event", (e, input) => {

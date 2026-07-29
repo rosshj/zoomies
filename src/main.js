@@ -17,6 +17,7 @@ import { setWind, windToward, uWindStr, uWindAir } from "./wind.js";
 import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
+import { MenuPad } from "./menupad.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal } from "./hud.js";
@@ -763,6 +764,7 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 
 const input = new Input();
 window.__zoomies.input = input; // debug hook (headless gamepad probe reads steer/throttle)
+const menupad = new MenuPad(); // gamepad drives the menus; inert during play
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).
@@ -4128,6 +4130,17 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// Desktop (Electron) shell: reveal the quit buttons only when the preload
+// bridge is present — on the web and in Capacitor they stay hidden.
+if (window.zoomiesDesktop?.quit) {
+  for (const id of ["quit-btn-pause", "quit-btn-title"]) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.classList.remove("hidden");
+    btn.addEventListener("click", () => window.zoomiesDesktop.quit());
+  }
+}
+
 // --- Menu flow -----------------------------------------------------------
 // One linear road to the grid: title → mode → (track | cup | friends) →
 // racer → startline → lobby. Screens slide directionally (forward = in from
@@ -6466,6 +6479,7 @@ function loop(now) {
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
+  menupad.update(); // before the PAUSED early-out — the pad must resume too
   if (state !== State.PAUSED) {
     _pauseDrawn = false; // any live frame → the next pause redraws its frozen shot once
     const _t = performance.now();

@@ -2473,6 +2473,9 @@ button.secondary.small,
 /* With Install hidden there are three visible buttons — Settings spans the
    final row. When Install shows (4 visible) the grid is a clean 2×2. */
 #install-btn.hidden ~ #open-settings { grid-column: 1 / -1; }
+/* Desktop shell: the revealed Quit makes it four visible again — back to a
+   clean 2×2 (Electron's Chromium always has :has). */
+#install-btn.hidden ~ #open-settings:has(~ #quit-btn-title:not(.hidden)) { grid-column: auto; }
 .extra-btn {
   position: relative;
   font-size: clamp(12px, 2.4vh, 14px);
@@ -3014,3 +3017,13 @@ button.small { white-space: nowrap; }
 .tod-grid.trio { grid-template-columns: repeat(3, 1fr); }
 #track-finetune { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
 .map-frame .map-reroll + .map-reroll { margin-top: 2px; }
+
+/* Gamepad focus ring (menupad.js): which button the pad will press. Outline
+   (not border) so it never shifts layout, with a soft glow that survives on
+   both cream and gold buttons. Appears only once the pad is touched. */
+.pad-focus {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(255, 179, 0, 0.25), 0 0 18px rgba(255, 179, 0, 0.55);
+  z-index: 1;
+}

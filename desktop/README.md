@@ -30,10 +30,16 @@ bindings.
 | B | boost |
 | Y | milk |
 | LB or RB | shield (hold) |
+| Start | pause / resume |
+
+In the menus the pad navigates too (`src/menupad.js`): stick/d-pad moves a
+focus ring spatially between buttons, A activates, B backs out (sheets first,
+then one flow step) — every screen works without registering anything.
 
 The one-action-at-a-time rule from the touch controls applies to the face
-buttons too. Verified headlessly by `npm run check:gamepad` at the repo root
-(stubs `navigator.getGamepads`, races, asserts every binding).
+buttons too. Verified headlessly at the repo root by `npm run check:gamepad`
+(stubs `navigator.getGamepads`, races, asserts every binding) and
+`npm run check:menupad` (walks the menu flow + sheets on the fake pad).
 
 ## Package
 
@@ -66,9 +72,17 @@ Known caveat: the **Steam overlay** frequently fails to render inside
 Electron. `main.cjs` calls `electronEnableSteamOverlay()` best-effort, but
 treat the overlay as unsupported — nothing in the game may depend on it.
 
+## Smoke test
+
+`xvfb-run -a node tools/electron-smoke.mjs` (repo root) launches THIS shell
+for real via Playwright's Electron driver and asserts the app:// chain boots
+the game to the title screen with the preload bridge live. `SHOT=/path.png`
+grabs a screenshot. Prereqs: `npm run build:web` at the root, `npm install`
+here.
+
 ## Steam Deck
 
-Runs via the linux64 depot (preferred) or Proton. For a Verified rating the
-blockers are full controller support in the MENUS (racing already has it —
-the menu flow still needs stick/d-pad navigation) and on-screen keyboard
-invocation for the multiplayer room-code field.
+Runs via the linux64 depot (preferred) or Proton. Racing and the menus are
+both fully pad-drivable now; the remaining Verified-rating blocker is
+on-screen keyboard invocation for the text fields (multiplayer room code,
+custom cat/kart names).
