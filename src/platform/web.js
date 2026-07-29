@@ -55,6 +55,25 @@ export function createWebAdapter() {
   const vibrate = (pattern) => {
     try { navigator.vibrate?.(pattern); } catch { /* unsupported */ }
   };
+  // Gamepad rumble: when a pad with an actuator is plugged in, the taptics go
+  // to the hands actually holding the game — on desktop (Steam) it's the ONLY
+  // haptic there is. Chrome exposes this as vibrationActuator ("dual-rumble":
+  // strong = low-frequency motor, weak = high-frequency).
+  const padRumble = (ms, strong, weak) => {
+    try {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const p of pads) {
+        const a = p && p.connected && p.vibrationActuator;
+        if (a?.playEffect) {
+          a.playEffect(a.type || "dual-rumble", {
+            duration: ms, strongMagnitude: strong, weakMagnitude: weak,
+          });
+          return true;
+        }
+      }
+    } catch { /* unsupported */ }
+    return false;
+  };
 
   return {
     name: "web",
@@ -66,17 +85,23 @@ export function createWebAdapter() {
     async ready() {},
 
     haptics: {
-      // Android Chrome: navigator.vibrate. iOS Safari: the switch-toggle trick
-      // above. Elsewhere: silently nothing — the native adapter has real taptics.
+      // Gamepad rumble first (a plugged-in pad is the hands on the game), then
+      // Android Chrome's navigator.vibrate, then iOS Safari's switch-toggle
+      // trick. Elsewhere: silently nothing — native has real taptics.
       impact(style = "medium") {
+        if (style === "heavy" ? padRumble(110, 1.0, 0.6) :
+            style === "light" ? padRumble(40, 0.25, 0.45) :
+            padRumble(70, 0.6, 0.5)) return;
         if (burst(style === "heavy" ? 3 : style === "medium" ? 2 : 1)) return;
         vibrate(style === "heavy" ? 25 : style === "light" ? 6 : 12);
       },
       selection() {
+        if (padRumble(20, 0.1, 0.3)) return;
         if (burst(1)) return;
         vibrate(5);
       },
       success() {
+        if (padRumble(180, 0.5, 0.7)) return;
         if (burst(3, 90)) return;
         vibrate([12, 60, 18]);
       },

@@ -64,9 +64,24 @@ The shell boots fine with no Steam present. To light Steam up:
 4. Upload with SteamPipe: one depot per OS containing the unpacked build from
    `out/`. Launch option = the executable, no arguments.
 
-Wire-up points once the App ID exists: achievements map onto the unlock
-events in `src/progress.js`, and Steam Cloud wants the save moved from
-localStorage to a real file (bridge it through `preload.cjs`).
+**Saves are already file-backed for Steam Cloud.** The game saves through
+localStorage (`zoomies-*` keys); `preload.cjs` mirrors those keys into
+`userData/zoomies-save.json` every 5s and flushes synchronously on close, and
+hydrates them back at boot when the file carries a newer stamp (so a
+cloud-synced file from another machine wins over an older local profile,
+never the reverse). Point Steam **Auto-Cloud** at that file — root
+`WinAppDataRoaming`, path `zoomies-desktop/zoomies-save.json` (Linux:
+`XDG_CONFIG_HOME` equivalent) — and cloud saves work with no further code.
+
+The window remembers its size and fullscreen state across launches
+(`userData/window-state.json`).
+
+**Rumble** works out of the box: the web platform adapter routes the game's
+discrete haptic moments (spin-outs, landings, boosts) to the connected pad's
+`vibrationActuator`, so no Steam API is involved.
+
+Remaining wire-up once the App ID exists: achievements, mapped onto the
+unlock events in `src/progress.js`.
 
 Known caveat: the **Steam overlay** frequently fails to render inside
 Electron. `main.cjs` calls `electronEnableSteamOverlay()` best-effort, but

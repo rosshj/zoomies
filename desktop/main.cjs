@@ -40,18 +40,47 @@ function initSteam() {
   }
 }
 
+// --- Save bridge (see preload.cjs) — the file Steam Cloud syncs ------------
+const savePath = () => path.join(app.getPath("userData"), "zoomies-save.json");
+function writeSave(payload) {
+  try {
+    const tmp = savePath() + ".tmp"; // atomic: never leave a half-written save
+    fs.writeFileSync(tmp, JSON.stringify(payload));
+    fs.renameSync(tmp, savePath());
+  } catch (err) {
+    console.error("[save-bridge] write failed:", err.message);
+  }
+}
+
+// --- Window state: remember size + fullscreen across launches ---------------
+const winStatePath = () => path.join(app.getPath("userData"), "window-state.json");
+function readJson(p) {
+  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
+}
+
 function createWindow() {
+  const saved = readJson(winStatePath());
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: saved?.width || 1280,
+    height: saved?.height || 800,
     minWidth: 960,
     minHeight: 600,
+    fullscreen: !!saved?.fullscreen,
     backgroundColor: "#0e1320", // matches the game's loading screen
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
     },
+  });
+  win.on("close", () => {
+    // getNormalBounds so a fullscreen quit remembers the WINDOWED size too.
+    const b = win.getNormalBounds();
+    try {
+      fs.writeFileSync(winStatePath(), JSON.stringify({
+        width: b.width, height: b.height, fullscreen: win.isFullScreen(),
+      }));
+    } catch { /* best-effort */ }
   });
 
   // nosw=1: the service worker exists for offline WEB play; a desktop build
@@ -95,6 +124,9 @@ app.whenReady().then(() => {
 
   initSteam();
   ipcMain.on("zoomies:quit", () => app.quit());
+  ipcMain.on("zoomies:load-save", (e) => { e.returnValue = readJson(savePath()); });
+  ipcMain.on("zoomies:save", (_e, payload) => writeSave(payload));
+  ipcMain.on("zoomies:save-flush", (e, payload) => { writeSave(payload); e.returnValue = true; });
   createWindow();
 });
 

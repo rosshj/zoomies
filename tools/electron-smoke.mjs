@@ -58,6 +58,27 @@ if (process.env.SHOT) {
   await page.screenshot({ path: process.env.SHOT }).catch((e) => errors.push("screenshot: " + e.message));
 }
 
+// Save bridge: the preload mirrors zoomies-* localStorage into userData every
+// 5s — wait one period and the file must exist and parse.
+const userData = await app.evaluate(({ app: a }) => a.getPath("userData")).catch(() => null);
+if (userData) {
+  await page.waitForTimeout(7000);
+  const saveFile = path.join(userData, "zoomies-save.json");
+  if (!fs.existsSync(saveFile)) errors.push("save bridge never wrote " + saveFile);
+  else {
+    try {
+      const s = JSON.parse(fs.readFileSync(saveFile, "utf8"));
+      if (typeof s.stamp !== "number" || typeof s.data !== "object") errors.push("save file shape wrong");
+    } catch { errors.push("save file is not valid JSON"); }
+  }
+} else errors.push("could not resolve userData path");
+
 console.log(JSON.stringify({ diag, errors }, null, 2));
 await app.close().catch(() => {});
+
+// Window close must have persisted the window state.
+if (userData && !fs.existsSync(path.join(userData, "window-state.json"))) {
+  errors.push("window-state.json not written on close");
+  console.log("late error: window-state.json not written on close");
+}
 process.exit(errors.length ? 1 : 0);
