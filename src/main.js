@@ -3735,11 +3735,6 @@ function openRacerStep() {
     };
     const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
     _garageAnchor.copy(slot.position);
-    // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
-    // would otherwise hang over the live preview as a doubled "ghost" of the level.
-    if (menuXfade) menuXfade.style.opacity = 0;
-    _menuPhase = "hold";
-    _menuShotT = 0;
     _garageOpen = true;
   }
   refreshRacerPreview();
@@ -3914,11 +3909,6 @@ function renderStartGrid(timeSec, dt) {
 function openStartGrid() {
   if (!_gridOpen) {
     _gridOpen = true;
-    // Kill any in-progress menu cross-dissolve (its frozen snapshot would hang
-    // over the live grid as a ghost), same as the showroom does.
-    if (menuXfade) menuXfade.style.opacity = 0;
-    _menuPhase = "hold";
-    _menuShotT = 0;
   }
   _placeGridField(); // re-place even when already open: the mode may have changed
 }
@@ -5222,10 +5212,6 @@ function prepareRace() {
   _fwNext = 0;
   _finishCamAngle = 0;
   camPos.set(0, 0, 0); // force the countdown camera to snap from the menu orbit
-  // Clear any in-progress menu cross-dissolve.
-  if (menuXfade) menuXfade.style.opacity = 0;
-  _menuPhase = "hold";
-  _menuShotT = 0;
   // Clear any finish/progress state carried over from a previous race on the
   // remote ghosts (they persist across races; only local karts are rebuilt).
   if (MP.enabled) {
@@ -5478,61 +5464,26 @@ const _menuShots = (() => {
   if (shots.length < 2) return [0.1, 0.35, 0.6, 0.85]; // fallback variety
   return shots;
 })();
-const SHOT_HOLD = 6.5; // seconds orbiting one biome
-const SHOT_FADE = 1.5; // seconds for the cross-dissolve
-const _menuAnchor = new THREE.Vector3(); // current/incoming biome
-const _menuAnchorPrev = new THREE.Vector3(); // outgoing biome (during a dissolve)
+const _menuAnchor = new THREE.Vector3(); // the shot this session orbits
 const _menuLook = new THREE.Vector3();
 const menuXfade = document.getElementById("menu-xfade");
-const menuXfadeCtx = menuXfade ? menuXfade.getContext("2d") : null;
-let _menuShot = 0;
-let _menuPhase = "hold"; // "hold" | "fading"
-let _menuSnapped = false; // outgoing-biome snapshot taken for the current fade
-let _menuShotT = 0; // time orbiting the current biome
-let _menuFadeT = 0; // elapsed cross-dissolve
-let _menuPrevTime = -1;
-function _setMenuAnchor(i) {
-  _menuAnchor.copy(track.getPointAt(_menuShots[i % _menuShots.length]));
-}
-// Debug hook: headless probes watch the tour's phase/clock to verify the
-// shot transitions actually run (and which style they used). peak/mode are
-// recorded by the fade itself — SwiftShader stalls through entire fades, so
-// a probe can never time-sample the overlay mid-transition.
-let _menuFadePeak = 0; // highest overlay opacity the LAST fade reached
-let _menuFadeMode = null; // "dissolve" | "dip" (how it ran)
-window.__zoomies.menuTour = () => ({
-  phase: _menuPhase, shotT: _menuShotT, fadeT: _menuFadeT,
-  shots: _menuShots.length, opacity: menuXfade?.style.opacity ?? null,
-  peak: _menuFadePeak, mode: _menuFadeMode,
-});
-
-// Advance the menu-tour clock and phase (timing only — rendering is separate so
-// the dissolve can render BOTH biomes live).
-function updateMenuCamera(timeSec) {
-  if (_menuPrevTime < 0) _setMenuAnchor(_menuShot);
-  let dt = timeSec - _menuPrevTime;
-  _menuPrevTime = timeSec;
-  if (dt < 0 || dt > 0.5) dt = 0; // first frame / tab was backgrounded
-
-  if (_menuPhase === "hold") {
-    _menuShotT += dt;
-    if (_menuShotT >= SHOT_HOLD) {
-      // Begin a dissolve: remember the outgoing biome, move to the next one.
-      _menuAnchorPrev.copy(_menuAnchor);
-      _menuShot = (_menuShot + 1) % _menuShots.length;
-      _setMenuAnchor(_menuShot);
-      _menuPhase = "fading";
-      _menuFadeT = 0;
-    }
-  } else {
-    _menuFadeT += dt;
-    if (_menuFadeT >= SHOT_FADE) {
-      _menuPhase = "hold";
-      _menuShotT = 0;
-      if (menuXfade) menuXfade.style.opacity = 0;
-    }
-  }
-}
+// The menu background is ONE calm shot per session — a slow orbit over a
+// curated anchor, world alive around it (wind, weather, critters), and
+// nothing else. It used to TOUR the biomes, changing shots every 6.5s; every
+// transition style tried (hard cut, snapshot dissolve, navy dip) read as
+// "the menu keeps flickering" on a desktop, because a background that
+// repeatedly changes IS a flicker, however gently it does it. The seed picks
+// which anchor a session features, so variety now comes across launches
+// instead of across seconds. The #menu-xfade overlay is retired; it stays in
+// the DOM at opacity 0 (styles/other code still reference it harmlessly).
+if (menuXfade) menuXfade.style.opacity = 0;
+const _menuShot = (() => {
+  let h = 0;
+  const s = String(getSeed());
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h) % _menuShots.length;
+})();
+_menuAnchor.copy(track.getPointAt(_menuShots[_menuShot]));
 
 // Orbit the camera around an anchor and aim slightly above the road.
 function _orbitMenuCam(anchor, ang) {
@@ -5548,76 +5499,10 @@ function _orbitMenuCam(anchor, ang) {
   _uAberr.value = 0;
 }
 
-// Render the menu background. Two transition styles, chosen by what the
-// backend can do SAFELY:
-//   • WebGL2 — true cross-dissolve: snapshot the outgoing biome once into
-//     the overlay canvas (a cheap, verified readback there) and fade it out
-//     over the live incoming render.
-//   • WebGPU (and anything else) — a capture-free DIP: the overlay fills
-//     with the app's deep navy, rises to full cover, the shot swaps under
-//     it, and it lifts again. drawImage from a WebGPU canvas is exactly the
-//     kind of API that "works" and then hands back blank pixels on some
-//     platform we can't test — a dip PAINTS its own pixels, so it cannot
-//     show wrong content anywhere, and it has zero readback (the original
-//     iOS stall is moot). ?xfade=dip forces the dip for testing on WebGL2.
-const _xfadeForceDip = new URLSearchParams(location.search).get("xfade") === "dip";
+// Render the menu background: the session's one shot, orbited slowly.
 function renderMenuBackground(timeSec) {
-  const ang = timeSec * 0.07; // gentle drift
-  const canDissolve = !!menuXfadeCtx && !_xfadeForceDip && !renderer?.backend?.isWebGPUBackend;
-  if (_menuPhase === "fading" && !menuXfadeCtx) {
-    _menuPhase = "hold"; // no overlay at all: hard cut
-    _menuShotT = 0;
-    if (menuXfade) menuXfade.style.opacity = 0;
-  }
-  if (_menuPhase === "fading") {
-    const k = Math.min(1, _menuFadeT / SHOT_FADE);
-    if (canDissolve) {
-      // ONE capture at fade start (per-frame readback pumped the resolution
-      // scaler and could land stale frames — the original desktop flicker).
-      if (!_menuSnapped) {
-        _orbitMenuCam(_menuAnchorPrev, ang);
-        renderFrame();
-        const gl = renderer.domElement;
-        if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
-          menuXfade.width = gl.width;
-          menuXfade.height = gl.height;
-        }
-        try {
-          menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
-        } catch (e) {
-          // Never fade stale pixels from a previous transition.
-          menuXfadeCtx.clearRect(0, 0, menuXfade.width, menuXfade.height);
-        }
-        _menuSnapped = true;
-      }
-      menuXfade.style.opacity = (1 - k).toFixed(3);
-      if (1 - k > _menuFadePeak) _menuFadePeak = 1 - k;
-      _menuFadeMode = "dissolve";
-      _orbitMenuCam(_menuAnchor, ang); // incoming biome -> the displayed frame
-      renderFrame();
-    } else {
-      // Capture-free dip. The overlay is a self-painted navy sheet: up over
-      // the first 35% of the fade, held solid through the middle (the shot
-      // swaps fully covered), released over the last 35%.
-      if (!_menuSnapped) {
-        menuXfade.width = 2; // flat colour — a 2×2 canvas stretches to fit
-        menuXfade.height = 2;
-        menuXfadeCtx.fillStyle = "#0e1320"; // the app's deep-navy chrome
-        menuXfadeCtx.fillRect(0, 0, 2, 2);
-        _menuSnapped = true;
-      }
-      const a = Math.min(1, k < 0.35 ? k / 0.35 : k > 0.65 ? (1 - k) / 0.35 : 1);
-      menuXfade.style.opacity = a.toFixed(3);
-      if (a > _menuFadePeak) _menuFadePeak = a;
-      _menuFadeMode = "dip";
-      _orbitMenuCam(k < 0.5 ? _menuAnchorPrev : _menuAnchor, ang);
-      renderFrame();
-    }
-  } else {
-    _menuSnapped = false;
-    _orbitMenuCam(_menuAnchor, ang);
-    renderFrame();
-  }
+  _orbitMenuCam(_menuAnchor, timeSec * 0.07); // gentle drift
+  renderFrame();
 }
 
 function updateCamera(dt, snap = false) {
@@ -6637,13 +6522,11 @@ function loop(now) {
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
-    updateMenuCamera(now / 1000); // advance tour timing/phase (cheap; keeps the drift smooth)
-    // The menu is a slow ambient drift — render it at ~30fps (halves the idle GPU/
-    // battery you spend sitting in menus) but keep the brief shot cross-fade at full
-    // rate so transitions stay smooth. The canvas holds the last frame between draws.
-    if (_menuPhase === "fading" || now - _lastMenuDraw >= 32) {
+    // A slow ambient drift — render at ~30fps (halves the idle GPU/battery spent
+    // sitting in menus); the canvas holds the last frame between draws.
+    if (now - _lastMenuDraw >= 32) {
       _lastMenuDraw = now;
-      renderMenuBackground(now / 1000); // single render, or dual-render cross-dissolve
+      renderMenuBackground(now / 1000);
     }
     return;
   }
