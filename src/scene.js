@@ -118,7 +118,12 @@ export function createScene() {
   // Far plane sits just past the farthest fog (max fogFar ~1850): everything beyond
   // is 100% fog anyway, so rendering it to 3000 was pure waste. 2050 culls that
   // invisible distance with zero visual change — a free draw-call cut on open views.
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2050);
+  // Near plane 0.3, not 0.1: depth precision scales with 1/near, and at 0.1
+  // the buffer resolved only ~15cm at 500u out — distant road layers and
+  // object silhouettes flickered per-pixel as the camera moved (worst in the
+  // menus, which stare across the whole map). Nothing flies closer than
+  // ~0.3u to the third-person/menu cameras, so the 3× precision is free.
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 2050);
   camera.position.set(0, 12, -18);
 
   const sunDir = new THREE.Vector3(0.4, 0.82, 0.55).normalize();

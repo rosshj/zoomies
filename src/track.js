@@ -1240,6 +1240,25 @@ export class Track {
     this._buildBoostPads();
     this._buildPuddles();
     this._buildStartLine();
+
+    // Road overlays (wear bands, lines, seams, pads, puddles) ride a couple
+    // of centimetres above the surface and keep depth TESTING on so hills
+    // still occlude them. But centimetres are below what the depth buffer can
+    // resolve at menu/start-line viewing distances — the test flips per pixel
+    // as the camera drifts, and the distant track SPARKLES ("the background
+    // keeps flickering"). polygonOffset biases their test by depth-buffer
+    // precision units (WebGPU: depthBias), so an overlay beats the road under
+    // it at ANY distance while terrain occlusion keeps working. Every decal
+    // here already follows one convention — renderOrder 1 + no depth write —
+    // which is exactly the set that needs the bias.
+    this.group.traverse((o) => {
+      const m = o.material;
+      if (o.renderOrder === 1 && m && m.depthWrite === false) {
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = -2;
+        m.polygonOffsetUnits = -4;
+      }
+    });
   }
 
   // Intentional puddles where water would actually pool: a big one in the LOWEST
