@@ -209,6 +209,16 @@
     </div>
 
     <!-- Lap toast -->
+    <!-- Split screen (Versus 2P): a divider line between the two views and a
+         status chip per player (lap · place · held items). The solo HUD's
+         #info block keeps serving P1 (it sits in the top half); P2 gets the
+         chip anchored just below the divider. -->
+    <div id="split-hud" class="hidden">
+      <div id="split-divider"></div>
+      <div class="split-chip" id="split-p1">P1</div>
+      <div class="split-chip" id="split-p2">P2</div>
+    </div>
+
     <div id="toast"></div>
 
     <!-- White hit flash -->
@@ -329,6 +339,14 @@
           <button id="mode-mp" class="tap-card mode-tap hidden">
             <span class="tap-chip" style="background:#a4e022">🎮</span>
             <span class="tap-text"><span class="tap-title">With Friends</span><span class="tap-sub">Make a room, share the code — race your pals</span></span>
+            <span class="tap-chev">›</span>
+          </button>
+          <!-- Desktop (Electron) only — revealed by JS when the shell bridge
+               exists. Two stacked views on one screen; P1 on the controller,
+               P2 on a second controller or the keyboard. -->
+          <button id="mode-split" class="tap-card mode-tap hidden">
+            <span class="tap-chip" style="background:#f472b6">🛋️</span>
+            <span class="tap-text"><span class="tap-title">Versus (2P)</span><span class="tap-sub">Split screen on this machine — controller vs controller or keyboard</span></span>
             <span class="tap-chev">›</span>
           </button>
           <button id="mode-daily" class="tap-card mode-tap mode-daily">
@@ -935,6 +953,7 @@
           <p class="setting-note"><b>Controller</b> — stick/d-pad steer (and browse the menus) · RT gas · LT brake · A hop &amp; drift · X shoot (hold to charge) · B boost · Y milk · LB/RB shield · Start pause.</p>
           <p class="setting-note"><b>Keyboard</b> — A/D or ◀▶ steer · W/S or ▲▼ gas/brake · Space hop &amp; drift · F shoot · B boost · M milk · Shift shield · P or Esc pause.</p>
           <p class="setting-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks.</p>
+          <p class="setting-note"><b>Versus (2P, desktop)</b> — P1 controller, P2 keyboard; with two controllers each player gets their own.</p>
         </section>
         <section class="settings-card">
           <h2 class="settings-section">💾 Progress</h2>

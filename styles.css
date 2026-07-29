@@ -3037,3 +3037,36 @@ button.small { white-space: nowrap; }
       0 0 30px rgba(255, 179, 0, 0.6);
   }
 }
+
+/* --- Split screen (Versus 2P) ---------------------------------------------- */
+#split-hud { position: absolute; inset: 0; pointer-events: none; }
+#split-divider {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, rgba(255, 194, 75, 0), rgba(255, 194, 75, 0.9) 18%, rgba(255, 194, 75, 0.9) 82%, rgba(255, 194, 75, 0));
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+.split-chip {
+  position: absolute;
+  right: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(14, 19, 32, 0.72);
+  border: 1px solid rgba(255, 194, 75, 0.5);
+  color: #fff4dd;
+  font-weight: 700;
+  font-size: clamp(12px, 2.2vh, 16px);
+  white-space: nowrap;
+}
+#split-p1 { top: 10px; }
+#split-p2 { top: calc(50% + 10px); }
+/* The solo HUD pieces that are P1-anchored or meaningless with two drivers:
+   rear-threat + shoot-lock point at ONE player, the tilt steering readout and
+   the touch controls have no seat on a desktop couch, and the solo info /
+   powerups blocks are replaced by the symmetric per-half chips (which carry
+   lap · place · items for each player). The minimap serves both. */
+#hud.split #rear-threat, #hud.split #shoot-lock, #hud.split #steer,
+#hud.split #throttle, #hud.split #action-buttons, #hud.split #yarn-warn,
+#hud.split #info, #hud.split #powerups { display: none; }

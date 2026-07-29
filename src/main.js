@@ -18,6 +18,7 @@ import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCa
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { MenuPad } from "./menupad.js";
+import { ChaseCam } from "./split.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal } from "./hud.js";
@@ -765,6 +766,64 @@ document.getElementById("calibrate").addEventListener("click", () => input.calib
 const input = new Input();
 window.__zoomies.input = input; // debug hook (headless gamepad probe reads steer/throttle)
 const menupad = new MenuPad(); // gamepad drives the menus; inert during play
+
+// --- Split screen (Versus 2P, desktop shell only) --------------------------
+// Two humans, two stacked viewports. P2's input instance is created lazily on
+// the first split race and kept for the session (its window listeners can't
+// be unbound); between split races it's scoped to nothing.
+let splitActive = false;
+let player2 = null; // the second human kart during a split race
+let input2 = null;
+let camS1 = null, camS2 = null; // per-player chase cams (lazy)
+let _splitChipLast1 = "", _splitChipLast2 = ""; // change-gated chip writes
+let _p1FinishToasted = false, _p2FinishToasted = false; // per-half FINISH banners
+window.__zoomies.split = () => ({ active: splitActive, p2: !!player2 }); // debug hook
+
+// Per-half status chips: lap · place · held items, change-gated like every
+// other per-frame HUD write. The items matter — P2 has no powerups row.
+function _splitChipText(kart) {
+  let s = `Lap ${kart.displayLap(track.totalLaps)}/${track.totalLaps} · ${ordinal(kart.place || 1)}`;
+  if (kart.shieldTimer > 0) s += " 🛡";
+  if (kart.triShots > 0) s += ` 🐾${kart.triShots}`;
+  if (kart.catnipTimer > 0) s += " 🌿";
+  if (kart.yarnShots > 0) s += ` 🧶${kart.yarnShots}`;
+  if (kart.milkBottles > 0) s += " 🥛";
+  return s;
+}
+function updateSplitChips() {
+  const t1 = "P1 · " + _splitChipText(player);
+  if (t1 !== _splitChipLast1) {
+    _splitChipLast1 = t1;
+    document.getElementById("split-p1").textContent = t1;
+  }
+  const t2 = "P2 · " + _splitChipText(player2);
+  if (t2 !== _splitChipLast2) {
+    _splitChipLast2 = t2;
+    document.getElementById("split-p2").textContent = t2;
+  }
+}
+function setupSplitInputs() {
+  if (!input2) input2 = new Input({ touch: false, keyboard: false, pads: [] });
+  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])]
+    .filter((p) => p && p.connected).map((p) => p.index);
+  if (pads.length >= 2) {
+    // Two controllers: one each; the keyboard stays P1's spare.
+    input.setSources({ keyboard: true, pads: [pads[0]] });
+    input2.setSources({ keyboard: false, pads: [pads[1]] });
+  } else {
+    // One (or zero) controllers: the pad is P1's, the keyboard is P2's.
+    input.setSources({ keyboard: false, pads: pads.length ? [pads[0]] : [] });
+    input2.setSources({ keyboard: true, pads: [] });
+  }
+}
+function teardownSplit() {
+  splitActive = false;
+  player2 = null;
+  input.setSources({ keyboard: true, pads: null }); // solo reads everything again
+  input2?.setSources({ keyboard: false, pads: [] });
+  document.getElementById("hud")?.classList.remove("split");
+  document.getElementById("split-hud")?.classList.add("hidden");
+}
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).
@@ -918,6 +977,26 @@ function raceRoster() {
   const look = playerLook();
   const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (MP.enabled || timeTrial) return [playerCfg];
+  if (raceMode === "split") {
+    // Versus: two humans + four rivals — same six-kart field (and headlight
+    // budget) as solo, so the doubled render cost isn't compounded by extra
+    // sim/draw load. P2 is a real isPlayer kart (human physics, no AI skill
+    // scaling); its colours are picked clear of P1 AND the rivals.
+    playerCfg.name = "Player 1";
+    const ais = aiRoster(look).slice(0, 4);
+    const usedKart = new Set([look.color, ...ais.map((c) => c.color)]);
+    const usedCat = new Set([look.catColor, ...ais.map((c) => c.catColor)]);
+    const p2Cfg = {
+      ...ROSTER[0],
+      name: "Player 2",
+      p2: true,
+      color: _pickUnused(KART_PRESETS.map((k) => k.color), usedKart),
+      catColor: _pickUnused(CAT_PRESETS.map((c) => c.fur), usedCat),
+      kartStyle: (look.kartStyle + 1) % 3,
+      kartNumber: 2,
+    };
+    return [playerCfg, p2Cfg, ...ais];
+  }
   return [playerCfg, ...aiRoster(look)];
 }
 
@@ -934,6 +1013,7 @@ function buildKarts() {
     _disposeGroup(k.group);
   }
   karts = [];
+  player2 = null; // reassigned below only when the roster carries a P2
   _simRng = makeRng(WORLD_SEED + "|sim"); // fresh seeded stream for this race
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
@@ -974,7 +1054,10 @@ function buildKarts() {
     toonify(kart.group); // cel-shade the kart + cat
     scene.add(kart.group);
     karts.push(kart);
-    if (cfg.isPlayer) player = kart;
+    if (cfg.isPlayer) {
+      if (cfg.p2) player2 = kart;
+      else player = kart;
+    }
   });
   attachBoostLight(player); // reparent the persistent exhaust glow to the new player kart
   window.__zoomies.karts = karts;
@@ -1493,6 +1576,13 @@ function layoutStage() {
 
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
+  // Split-view cameras cover a full-width half-height slab each.
+  if (camS1) {
+    camS1.camera.aspect = W / Math.max(1, H / 2);
+    camS1.camera.updateProjectionMatrix();
+    camS2.camera.aspect = camS1.camera.aspect;
+    camS2.camera.updateProjectionMatrix();
+  }
   applyResolution();
 }
 
@@ -1707,10 +1797,37 @@ function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   let _t = performance.now();
+  // Versus (2P): the shared camera mirrors P1's view so everything that reads
+  // it (atmosphere sun-view, weather field, mote follow, headlight ranking)
+  // keeps working; P2's half accepts P1's view-space sun rim — a subtle,
+  // static offset, invisible in play.
+  if (splitActive && player2 && state !== State.MENU && camS1) {
+    camera.position.copy(camS1.camera.position);
+    camera.quaternion.copy(camS1.camera.quaternion);
+  }
   updateAtmosphere();
   _seg.atmos += performance.now() - _t;
   _t = performance.now();
-  composer.render();
+  if (splitActive && player2 && state !== State.MENU && camS1) {
+    // Two stacked viewports, straight renders — the TSL post graph (bloom,
+    // god rays, grade) samples full-target viewport UVs and can't wrap two
+    // views, and skipping it is also the perf posture: a split race does two
+    // scene passes per frame, so it sheds the post cost instead of tripling
+    // work. Tone mapping lives on the renderer and still applies.
+    const { W, H } = stageState;
+    const halfH = Math.floor(H / 2);
+    renderer.setScissorTest(true);
+    renderer.setViewport(0, halfH, W, H - halfH);
+    renderer.setScissor(0, halfH, W, H - halfH);
+    renderer.render(scene, camS1.camera); // P1 top
+    renderer.setViewport(0, 0, W, halfH);
+    renderer.setScissor(0, 0, W, halfH);
+    renderer.render(scene, camS2.camera); // P2 bottom
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, W, H);
+  } else {
+    composer.render();
+  }
   _seg.render += performance.now() - _t;
   if (player && state !== State.MENU) {
     // The minimap is a tiny overview — ~20fps is plenty, and it holds its last draw
@@ -2517,6 +2634,9 @@ function toMenu() {
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
+  // Leaving a Versus race hands the keyboard/pads back to the solo reader
+  // (menus, and any next race, expect the everything-input default).
+  if (splitActive && !_raceParked) teardownSplit();
   hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
   // Leaving to the menu abandons an in-progress cup / daily run: clear the run
@@ -4172,6 +4292,8 @@ let raceMode = "gp";
 try {
   const m = localStorage.getItem(MODE_KEY);
   if (m === "gp" || m === "tt" || m === "cup") raceMode = m; // "mp" never persists (needs a live room)
+  // "split" persists only where it can run (the desktop shell).
+  if (m === "split" && window.zoomiesDesktop) raceMode = m;
 } catch {}
 // A cup reload chain always lands in Cup Series mode; a daily link races single.
 if (_cupState && _activeCup) raceMode = "cup";
@@ -4283,6 +4405,7 @@ function refreshModeCards() {
 }
 document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
 document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
+document.getElementById("mode-split")?.addEventListener("click", () => { setRaceMode("split"); flowGo("track"); });
 document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
 document.getElementById("mode-mp")?.addEventListener("click", () => flowGo("friends"));
 // Friends: hosting picks the mode here; joining reloads into the friend's room.
@@ -4360,14 +4483,14 @@ function chooseTrackCard(cfg) {
 }
 
 // --- Start line: the only full summary — map, racer, options, one giant GO --
-const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP" };
+const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP", split: "🛋️  START VERSUS" };
 // The stakes line: what a WIN pays at the current laps/difficulty (plus the
 // daily bonus when it's still unclaimed) — so the segs read as a bet, not a
 // form. Time trial hides it (its note talks PBs instead).
 function refreshStakes() {
   const el = document.getElementById("start-stakes");
   if (!el) return;
-  const show = raceMode !== "tt";
+  const show = raceMode !== "tt" && raceMode !== "split"; // Versus pays in bragging rights
   document.getElementById("stakes-row")?.classList.toggle("hidden", !show);
   if (!show) return;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
@@ -4485,6 +4608,11 @@ function teardownMultiplayer() {
   const u = new URL(location.href);
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
+}
+// Versus (2P split screen) is a desktop-shell mode: two viewports need a big
+// screen, and the P1-pad/P2-keyboard pairing assumes one machine, two seats.
+if (window.zoomiesDesktop) {
+  document.getElementById("mode-split")?.classList.remove("hidden");
 }
 if (mpAvailable) {
   document.getElementById("mode-mp")?.classList.remove("hidden");
@@ -5175,6 +5303,23 @@ function prepareRace() {
   godrayPass.uniforms.uWeight.value = mood.rayWeight ?? 1.05;
   hud.showToast(mood.name);
 
+  // Versus (2P): scope the inputs BEFORE buildKarts so a P2 kart exists to
+  // drive, wire the per-view cameras, and put the HUD in its split shape.
+  splitActive = raceMode === "split" && !!window.zoomiesDesktop;
+  if (splitActive) {
+    setupSplitInputs();
+    if (!camS1) { camS1 = new ChaseCam(); camS2 = new ChaseCam(); }
+    camS1.snap();
+    camS2.snap();
+    layoutStage(); // refresh the half-height aspects on the split cams
+  } else {
+    teardownSplit();
+  }
+  document.getElementById("hud").classList.toggle("split", splitActive);
+  document.getElementById("split-hud")?.classList.toggle("hidden", !splitActive);
+  _splitChipLast1 = _splitChipLast2 = ""; // re-write the chips on first frame
+  _p1FinishToasted = _p2FinishToasted = false;
+
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
@@ -5781,6 +5926,47 @@ const SHOOT_OPENING_LOCKOUT = 15;
 // recharge. Shared by the player and the AI so the rules are identical.
 // Fire whatever the trigger is loaded with: an armed yarn ball takes over the
 // shot slot for one roll, then the button goes back to furballs.
+// One human's controls → their kart, identical for P1 and P2 (Versus). The
+// solo-only extras (steering dot, boost UI, MP milk broadcast) stay with the
+// callers. A finished kart ignores input — it's already on victory autopilot.
+function applyHumanControls(kart, inp, dt) {
+  if (kart.finished) return;
+  kart.steerInput = inp.steer;
+  kart.throttleInput = inp.throttle;
+  // Raising the shield mid-drift is the one-thumb trade: the drift ends NOW
+  // and its charge is forfeit (no mini-turbo). Letting go of jump to shoot
+  // still releases the drift normally — that path keeps its earned boost.
+  if (inp.consumeShieldEngage() && kart.drifting) {
+    kart.drifting = false;
+    kart.driftCharge = 0;
+    kart.driftRamp = 0;
+  }
+  kart.shielding = inp.shielding;
+  kart.driftHeld = inp.jumpHeld;
+  if (inp.consumeJump()) kart.jump();
+  // Hold the shoot button to charge a faster/further shot; fire on release.
+  if (inp.shootHeld && kart.shootCooldown <= 0)
+    kart.shootCharge = Math.min(kart.shootCharge + dt / SHOOT_CHARGE_TIME, 1);
+  if (inp.consumeShootRelease()) {
+    fireShot(kart, kart.shootCharge);
+    kart.shootCharge = 0;
+  }
+  if (inp.consumeMilk() && kart.milkBottles > 0 && kart.spinTimer <= 0) {
+    kart.milkBottles = 0;
+    const p = items.dropMilk(kart);
+    if (MP.enabled && MP.net && p && kart === player) MP.net.sendMilk(p.x, p.z, p.r);
+    hud.showToast(kart === player2 ? "🥛 P2 spilled!" : "🥛 Spilled!");
+  }
+  if (inp.consumeBoost() && kart.boostMeter >= 1) {
+    const _over = kart.boostMeter > 1.02; // fired with overcharge → beefier burst
+    if (kart.tootBoost(kart.boostMeter)) {
+      kart.boostMeter = 0; // fully deplete on use
+      effects.tootBurst(kart, _over ? 3.5 : 2);
+      audio.toot();
+    }
+  }
+}
+
 function fireShot(kart, charge = 0) {
   if (kart.yarnShots > 0) return fireYarn(kart);
   return fireHairball(kart, charge);
@@ -5861,7 +6047,11 @@ function aiActions(dt) {
 
     // Rubber-band: trailing karts run a little faster, leaders a little slower,
     // to keep the pack competitive.
-    const gap = player.totalProgress - k.totalProgress;
+    // Rubber-band against the LEADING human (Versus has two): banding to a
+    // trailing P2 would let the pack idle while P1 runs away.
+    const gap = (player2
+      ? Math.max(player.totalProgress, player2.totalProgress)
+      : player.totalProgress) - k.totalProgress;
     // Catch up strongly when behind, but barely ease off when leading, so the
     // front-runners stay competitive instead of waiting for the player.
     const _rb = k.diff ? k.diff.rubber : 1; // easier modes catch up less
@@ -6067,6 +6257,9 @@ function fieldSnapshot() {
 // counters into the career stats, pays treats, scores the cup, and fires any
 // newly earned achievements. Returns everything the earnings panel renders.
 function settleRaceRewards() {
+  // Versus is a couch match, not an economy run: no treats, no stats — the
+  // podium is the prize (and P2 farming P1's profile would be too easy).
+  if (splitActive) return null;
   if (_racePaid || timeTrial || !player || !player.finished || !_raceStats) return null;
   _racePaid = true;
   updatePlacement();
@@ -6186,6 +6379,7 @@ window.__zoomies.debugFinish = () => {
   if (!player || player.finished) return false;
   player.finished = true;
   player.finishTime = raceTime;
+  if (player2 && !player2.finished) { player2.finished = true; player2.finishTime = raceTime + 0.5; }
   showResults();
   return true;
 };
@@ -6216,10 +6410,11 @@ function renderResults() {
       ? formatClock(k.finishTime)
       : MP.enabled ? "racing…" : "DNF";
     const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
-    list.appendChild(resultRow(medal, k.name, time, k === player));
+    list.appendChild(resultRow(medal, k.name, time, k === player || k === player2));
   });
-  document.getElementById("results-title").textContent =
-    player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
+  document.getElementById("results-title").textContent = splitActive && player2
+    ? (player.place < player2.place ? "🏆 Player 1 Wins!" : "🏆 Player 2 Wins!")
+    : player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
 }
 // One standings row: rank (medal for the podium) | name | time, so the columns
 // line up instead of reading as a text blob. `you` lights the player's row gold.
@@ -6564,7 +6759,12 @@ function loop(now) {
     // client reaches GO at the same instant regardless of local frame timing.
     if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
     else if (!_veilActive) countdown -= dt;
-    updateCamera(dt, camPos.lengthSq() === 0);
+    if (splitActive && player2) {
+      camS1.update(player, track, dt);
+      camS2.update(player2, track, dt);
+    } else {
+      updateCamera(dt, camPos.lengthSq() === 0);
+    }
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     // The whole GO moment — toast, chirp, GREEN light — fires at the actual
     // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
@@ -6606,47 +6806,19 @@ function loop(now) {
     raceTime += dt;
     track.raceTime = raceTime;
 
-    // Player controls
+    // Player controls (both humans in Versus; the helper mirrors the solo
+    // handling exactly — see applyHumanControls).
     input.update(dt);
-    player.steerInput = input.steer;
-    player.throttleInput = input.throttle;
-    // Raising the shield mid-drift is the one-thumb trade: the drift ends NOW
-    // and its charge is forfeit (no mini-turbo). Letting go of jump to shoot
-    // still releases the drift normally — that path keeps its earned boost.
-    if (input.consumeShieldEngage() && player.drifting) {
-      player.drifting = false;
-      player.driftCharge = 0;
-      player.driftRamp = 0;
-    }
-    player.shielding = input.shielding;
-    player.driftHeld = input.jumpHeld;
+    applyHumanControls(player, input, dt);
     // Steering dot: skip the style write (string build + composite) when the
     // needle hasn't visibly moved (~0.4px at the 80px throw).
     if (Math.abs(input.steer - _steerDotLast) > 0.005) {
       _steerDotLast = input.steer;
       steerDot.style.transform = `translateX(${input.steer * 80}px)`;
     }
-    if (input.consumeJump()) player.jump();
-    // Hold the shoot button to charge a faster/further shot; fire on release.
-    if (input.shootHeld && player.shootCooldown <= 0)
-      player.shootCharge = Math.min(player.shootCharge + dt / SHOOT_CHARGE_TIME, 1);
-    if (input.consumeShootRelease()) {
-      fireShot(player, player.shootCharge);
-      player.shootCharge = 0;
-    }
-    if (input.consumeMilk() && player.milkBottles > 0 && player.spinTimer <= 0) {
-      player.milkBottles = 0;
-      const p = items.dropMilk(player);
-      if (MP.enabled && MP.net && p) MP.net.sendMilk(p.x, p.z, p.r);
-      hud.showToast("🥛 Spilled!");
-    }
-    if (input.consumeBoost() && player.boostMeter >= 1) {
-      const _over = player.boostMeter > 1.02; // fired with overcharge → beefier burst
-      if (player.tootBoost(player.boostMeter)) {
-        player.boostMeter = 0; // fully deplete on use
-        effects.tootBurst(player, _over ? 3.5 : 2);
-        audio.toot();
-      }
+    if (splitActive && player2 && input2) {
+      input2.update(dt);
+      applyHumanControls(player2, input2, dt);
     }
     updateBoostUI();
 
@@ -6864,11 +7036,16 @@ function loop(now) {
     // Weather follows the BIOME (snow in alpine, rain in the wet forest), not
     // altitude — so a procedural track's hills don't sprinkle snow into warm
     // biomes. The Weather class crossfades smoothly as you cross between them.
-    const where = biomeWeatherAt(player.position.x, player.position.z);
+    // Versus samples the midpoint between the two humans: the field is one
+    // shared sky, and the midpoint keeps it from whipsawing when the players
+    // split across a biome seam.
+    const _wx = player2 ? (player.position.x + player2.position.x) / 2 : player.position.x;
+    const _wz = player2 ? (player.position.z + player2.position.z) / 2 : player.position.z;
+    const where = biomeWeatherAt(_wx, _wz);
     weather.setWeather(where);
     // The wind crossfades with the weather: a snowbound pass blows a gale, a
     // desert is dead air. Eased inside windToward so it arrives over seconds.
-    windToward(biomeWindAt(player.position.x, player.position.z), dt);
+    windToward(biomeWindAt(_wx, _wz), dt);
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;
     // Kick up a splash when driving through a puddle while it's raining.
@@ -6990,11 +7167,23 @@ function loop(now) {
       timerEl?.classList.toggle("behind", !ahead);
     }
 
-    updateCamera(dt);
+    if (splitActive && player2) {
+      camS1.update(player, track, dt);
+      camS2.update(player2, track, dt);
+      updateSplitChips();
+      // A human crossing the line gets their banner while the other races on
+      // (their kart switches to autopilot via the finished-karts AI pass).
+      if (player.finished && !_p1FinishToasted) { _p1FinishToasted = true; hud.showToast("🏁 P1 FINISHED!"); }
+      if (player2.finished && !_p2FinishToasted) { _p2FinishToasted = true; hud.showToast("🏁 P2 FINISHED!"); }
+    } else {
+      updateCamera(dt);
+    }
 
-    // Hand off to the victory lap once the player finishes; show results after a
-    // celebratory beat (camera orbits the kart, fireworks pop) rather than instantly.
-    if (player.finished) {
+    // Hand off to the victory lap once the player finishes (BOTH humans in
+    // Versus); show results after a celebratory beat (camera orbits the kart,
+    // fireworks pop) rather than instantly.
+    const humansFinished = player.finished && (!splitActive || !player2 || player2.finished);
+    if (humansFinished) {
       audio.finish();
       audio.setSkid(false);
       // Fade the racing HUD out for the victory lap so the camera orbit + fireworks
@@ -7010,7 +7199,7 @@ function loop(now) {
         hud.showToast(_ttResult.top[0] === _ttResult.entry ? "🏁 NEW BEST!" : "LAP DONE!");
         setTimeout(showResults, 4000);
       } else {
-        hud.showToast("FINISH!");
+        hud.showToast(splitActive ? "🏁 RACE OVER!" : "FINISH!");
         if (MP.enabled && MP.net) {
           // Stamp the finish on the shared clock so every client ranks it the
           // same way (local elapsed time drifts apart over a long race).
@@ -7028,13 +7217,19 @@ function loop(now) {
 
   if (state === State.FINISHED) {
     // Victory lap: every kart auto-pilots around the circuit and the camera orbits
-    // the player's kart; fireworks keep popping from the arch.
+    // the player's kart (each half keeps chasing its own kart in Versus);
+    // fireworks keep popping from the arch.
     for (const k of karts) k.driveAI(track, dt);
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
     updateFireworks(dt);
     effects.update(dt);
-    updateCamera(dt);
+    if (splitActive && player2) {
+      camS1.update(player, track, dt);
+      camS2.update(player2, track, dt);
+    } else {
+      updateCamera(dt);
+    }
   }
 
   renderFrame();

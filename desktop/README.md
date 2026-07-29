@@ -104,6 +104,18 @@ Known caveat: the **Steam overlay** frequently fails to render inside
 Electron. `main.cjs` calls `electronEnableSteamOverlay()` best-effort, but
 treat the overlay as unsupported — nothing in the game may depend on it.
 
+## Versus (2P split screen)
+
+Desktop-only mode (the card appears when the shell bridge is present): two
+stacked full-width views, P1 on top. Two humans + four rivals — the same
+six-kart field as solo. Pads: with two controllers each player gets one;
+with one, the controller is P1's and the keyboard is P2's (full bindings,
+same as solo keyboard). Perf posture: the post stack (bloom/god rays/grade)
+is bypassed in split — two scene passes replace one scene pass + post — and
+the dynamic resolution scaler stays in charge of the total frame cost.
+No treats are paid in Versus; the podium is the prize. Verified headlessly
+by `npm run check:split`.
+
 ## Smoke test
 
 `xvfb-run -a node tools/electron-smoke.mjs` (repo root) launches THIS shell
