@@ -2,8 +2,17 @@
 // the left throttle slider, right-side tap zones (jump / shoot), a desktop
 // keyboard fallback, and gamepads (Steam/desktop: stick + triggers + face
 // buttons, polled per frame in update()).
+//
+// An instance reads EVERY source by default (the solo player). Split screen
+// builds per-player instances scoped via opts / setSources():
+//   { keyboard: bool, pads: null | number[], touch: bool }
+// pads null = any connected pad; [1] = only pad index 1. Touch bindings can't
+// be unbound (DOM listeners), so `touch` is a constructor-only opt-out —
+// split screen never wants a second slider anyway.
 export class Input {
-  constructor() {
+  constructor(opts = {}) {
+    this._keyboard = opts.keyboard !== false; // read WASD/arrows/etc.
+    this._pads = opts.pads ?? null; // allowed gamepad indices (null = any)
     this.steer = 0; // -1 (left) .. 1 (right)   (smoothed)
     this.throttle = 0; // -1 (down/brake/reverse) .. 1 (up/accelerate)
 
@@ -36,9 +45,30 @@ export class Input {
     // Set by main once the stage layout is known; identity by default.
     this._stageMapper = (x, y) => ({ x, y });
 
-    this._bindSlider();
-    this._bindTapZones();
-    this._bindKeyboard();
+    if (opts.touch !== false) {
+      this._bindSlider();
+      this._bindTapZones();
+    }
+    this._bindKeyboard(); // always bound; gated per-event by _keyboard
+  }
+
+  // Re-scope which sources this instance listens to (split screen hands the
+  // keyboard to whichever player lacks a pad, and back again after).
+  setSources({ keyboard, pads } = {}) {
+    if (keyboard !== undefined) {
+      this._keyboard = keyboard;
+      if (!keyboard) {
+        // Drop anything the keyboard was holding, so a mid-race re-scope
+        // can't leave a phantom key pressed forever.
+        this._keys = {};
+        if (this._keyboardSteering) { this._steerTarget = 0; this._keyboardSteering = false; }
+        if (this._keyboardThrottle) { this.throttle = 0; this._keyboardThrottle = false; }
+      }
+    }
+    if (pads !== undefined) {
+      this._pads = pads;
+      this._padPrev.length = 0; // stale edges from another pad must not fire
+    }
   }
 
   // Ask for motion permission (iOS 13+) and start listening to DeviceMotion.
@@ -314,6 +344,7 @@ export class Input {
 
   _bindKeyboard() {
     window.addEventListener("keydown", (e) => {
+      if (!this._keyboard) return;
       if (e.repeat) return;
       this._keys[e.code] = true;
       if (e.code === "Space") {
@@ -340,6 +371,7 @@ export class Input {
       }
     });
     window.addEventListener("keyup", (e) => {
+      if (!this._keyboard) return;
       this._keys[e.code] = false;
       if (e.code === "Space") this.jumpHeld = false;
       if (e.code === "KeyF" && this.shootHeld) {
@@ -361,7 +393,10 @@ export class Input {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     let pad = null;
     for (const p of pads) {
-      if (p && p.connected && p.buttons?.length) { pad = p; break; }
+      if (!p || !p.connected || !p.buttons?.length) continue;
+      if (this._pads && !this._pads.includes(p.index)) continue; // not this player's pad
+      pad = p;
+      break;
     }
     if (!pad) {
       // Unplugged mid-drive: release everything the pad was holding.
