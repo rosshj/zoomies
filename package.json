@@ -13,6 +13,7 @@
     "android": "npx cap open android",
     "check": "node tools/headless-check.mjs",
     "check:offline": "node tools/offline-check.mjs",
+    "check:gamepad": "node tools/gamepad-check.mjs",
     "check:items": "node tools/items-check.mjs",
     "check:lives": "node tools/lives-check.mjs",
     "check:progress": "node tools/progress-check.mjs",

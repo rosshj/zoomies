@@ -762,6 +762,7 @@ let _steerDotLast = Infinity; // last written steer value (guards the style writ
 document.getElementById("calibrate").addEventListener("click", () => input.calibrate());
 
 const input = new Input();
+window.__zoomies.input = input; // debug hook (headless gamepad probe reads steer/throttle)
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).

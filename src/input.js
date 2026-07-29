@@ -1,6 +1,7 @@
 // Centralised player input: accelerometer steering (via DeviceMotion gravity),
-// the left throttle slider, right-side tap zones (jump / shoot) and a desktop
-// keyboard fallback.
+// the left throttle slider, right-side tap zones (jump / shoot), a desktop
+// keyboard fallback, and gamepads (Steam/desktop: stick + triggers + face
+// buttons, polled per frame in update()).
 export class Input {
   constructor() {
     this.steer = 0; // -1 (left) .. 1 (right)   (smoothed)
@@ -26,6 +27,10 @@ export class Input {
     this._keys = {};
     this._keyboardSteering = false;
     this._keyboardThrottle = false; // gas/brake key held → so release can return to neutral
+
+    this._padPrev = []; // last frame's gamepad button states (edge detection)
+    this._padSteering = false; // stick/d-pad steering → release must recentre
+    this._padThrottle = false; // triggers driving throttle → release must go neutral
 
     // Maps viewport (clientX, clientY) into the rotated stage's local space.
     // Set by main once the stage layout is known; identity by default.
@@ -345,8 +350,98 @@ export class Input {
     });
   }
 
-  // Called once per frame: folds keyboard state in and smooths steering.
+  // Gamepad, standard mapping (Xbox / PlayStation layout): left stick or d-pad
+  // steers, RT/LT are analog gas/brake, A hop/drift (hold sustains), X shoot
+  // (hold to charge, fires on release), B boost, Y milk, either bumper shields
+  // (held). The Gamepad API is poll-only — no state events — so this runs once
+  // per frame from update(), with edge detection against last frame's buttons.
+  // The face buttons follow the same one-action-at-a-time rule as the touch
+  // zones. Runs BEFORE the keyboard fold so held keys still win over the pad.
+  _pollGamepad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let pad = null;
+    for (const p of pads) {
+      if (p && p.connected && p.buttons?.length) { pad = p; break; }
+    }
+    if (!pad) {
+      // Unplugged mid-drive: release everything the pad was holding.
+      if (this._padSteering) { this._steerTarget = 0; this._padSteering = false; }
+      if (this._padThrottle) { this.throttle = 0; this._padThrottle = false; }
+      this._padPrev.length = 0;
+      return;
+    }
+
+    // Steering: stick right = steer right = NEGATIVE target (the ArrowRight
+    // convention below). Deadzone is rescaled away so travel starts at zero
+    // just outside it, then shaped with the same 1.5 expo as tilt steering so
+    // stick and accelerometer feel alike near centre. D-pad = full lock.
+    const DEAD = 0.15;
+    let x = pad.axes?.[0] ?? 0;
+    if (pad.buttons[14]?.pressed) x = -1;
+    else if (pad.buttons[15]?.pressed) x = 1;
+    if (Math.abs(x) > DEAD) {
+      const n = Math.min(1, (Math.abs(x) - DEAD) / (1 - DEAD));
+      this._steerTarget = -Math.sign(x) * Math.pow(n, 1.5);
+      this._padSteering = true;
+      this._keyboardSteering = false;
+    } else if (this._padSteering) {
+      this._steerTarget = 0;
+      this._padSteering = false;
+    }
+
+    // Throttle: RT minus LT keeps both analog (feathering the gas works);
+    // d-pad up/down is a digital fallback. Release returns to neutral via the
+    // same flag pattern as the keyboard, so it never fights the touch slider.
+    let t = (pad.buttons[7]?.value ?? 0) - (pad.buttons[6]?.value ?? 0);
+    if (pad.buttons[12]?.pressed) t = 1;
+    else if (pad.buttons[13]?.pressed) t = -1;
+    if (Math.abs(t) > 0.02) {
+      this.throttle = Math.max(-1, Math.min(1, t));
+      this._padThrottle = true;
+    } else if (this._padThrottle) {
+      this.throttle = 0;
+      this._padThrottle = false;
+    }
+
+    const prev = this._padPrev;
+    const down = (i) => !!pad.buttons[i]?.pressed && !prev[i];
+    const up = (i) => !pad.buttons[i]?.pressed && !!prev[i];
+
+    if (down(0)) { // A / Cross: hop + drift-sustain
+      this._releaseOthers("jump");
+      this._jumpQueued = true;
+      this.jumpHeld = true;
+    }
+    if (up(0)) this.jumpHeld = false;
+
+    if (down(2)) { // X / Square: charge…
+      this._releaseOthers("shoot");
+      this.shootHeld = true;
+    }
+    if (up(2) && this.shootHeld) { // …fire on release (unless cancelled)
+      this.shootHeld = false;
+      this._shootRelease = true;
+    }
+
+    if (down(1)) { this._releaseOthers(null); this._boostQueued = true; } // B / Circle
+    if (down(3)) { this._releaseOthers(null); this._milkQueued = true; } // Y / Triangle
+
+    const shieldNow = !!pad.buttons[4]?.pressed || !!pad.buttons[5]?.pressed;
+    const shieldWas = !!prev[4] || !!prev[5];
+    if (shieldNow && !shieldWas) {
+      this._releaseOthers("shield");
+      this.shielding = true;
+      this._shieldEngaged = true;
+    }
+    if (!shieldNow && shieldWas) this.shielding = false;
+
+    prev.length = pad.buttons.length;
+    for (let i = 0; i < pad.buttons.length; i++) prev[i] = !!pad.buttons[i]?.pressed;
+  }
+
+  // Called once per frame: folds gamepad + keyboard state in and smooths steering.
   update(dt = 0.016) {
+    this._pollGamepad();
     const k = this._keys;
 
     if (k.ArrowLeft || k.KeyA) {

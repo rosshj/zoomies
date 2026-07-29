@@ -1,0 +1,10 @@
+{
+  "appId": "gg.zoomies.gp",
+  "productName": "Zoomies GP",
+  "directories": { "output": "out" },
+  "files": ["main.cjs", "preload.cjs", "package.json"],
+  "extraResources": [{ "from": "../dist", "to": "dist" }],
+  "win": { "target": "zip" },
+  "linux": { "target": "zip", "category": "Game" },
+  "mac": { "target": "zip", "category": "public.app-category.games" }
+}
