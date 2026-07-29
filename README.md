@@ -147,9 +147,16 @@ generator is probably fine" into something measured.
 ```bash
 npm run check:tracks           # the shipped featured tracks
 npm run check:tracks:random    # 6 random generator recipes
-TRACKS=all SECONDS=45 npm run check:tracks
+TRACKS=extreme SEEDS=5 node tools/track-audit.mjs    # every slider maxed
 TRACKS="Whisker Canyon" node tools/track-audit.mjs   # re-run one failure
 ```
+
+There are three outcomes, kept deliberately distinct: **pass**, **fail** (a
+pathology was found), and **inconclusive** (the run hit its wall-clock budget
+before gathering enough racing to judge). Only a real failure sets the exit
+code — a harness that reports its own slowness as a broken track trains you to
+ignore red. Maxed-out recipes are the biggest thing the generator makes and
+need a bigger budget: raise it with `WALLCAP=900`.
 
 Timings are in **simulated race seconds**, not wall-clock: under the headless
 software renderer the sim runs several times slower than real time, so

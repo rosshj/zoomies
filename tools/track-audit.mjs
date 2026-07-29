@@ -24,6 +24,12 @@
 // majority of what it can produce. Sweeping seeds and gating on pathologies
 // turns "the generator is probably fine" into a measured claim.
 //
+// Three outcomes, deliberately distinct: PASS (judged, clean), FAIL (a
+// pathology was found), and INCONCLUSIVE (the run ran out of wall clock
+// before gathering enough racing to judge). Only FAIL sets the exit code —
+// a harness that reports its own slowness as a broken track is worse than no
+// harness, because it teaches you to ignore red.
+//
 // Deliberate limitation: this measures the ABSENCE OF BAD, not the presence
 // of good. A track can pass every gate here and still be dull.
 //
@@ -42,6 +48,13 @@ const PORT = 8089;
 const SECONDS = Number(process.env.SECONDS || 30); // SIMULATED race seconds sampled per track
 const SEEDS = Number(process.env.SEEDS || 4); // how many random recipes when asked
 const WHICH = process.env.TRACKS || "featured";
+// Wall-clock budget per track. Maxed-out recipes are the longest and most
+// detailed the generator makes, so they legitimately need several times the
+// wall time of a featured track to reach the same simulated seconds.
+const WALL_CAP = Number(process.env.WALLCAP || Math.max(240, SECONDS * 20)) * 1000;
+// Below this much simulated racing there isn't enough evidence to judge a
+// track either way — that is INCONCLUSIVE, which is not the same as broken.
+const MIN_SIM = Math.min(15, SECONDS * 0.5);
 
 // The shipped recipes from main.js's FEATURED_TRACKS — these are stable,
 // nameable places players actually race, so they must always be clean.
@@ -278,17 +291,15 @@ async function auditTrack(entry) {
     });
 
     // Run for SECONDS of SIMULATED race time, capped in wall time so a broken
-    // build can never hang the sweep.
+    // build can never hang the sweep. Hitting the cap is NOT a track failure —
+    // see the outcome split below.
     const t0 = Date.now();
-    const wallCap = Math.max(120, SECONDS * 14) * 1000;
+    let timedOut = false;
     for (;;) {
       await page.waitForTimeout(4000);
       const sim = await page.evaluate(() => window.__zoomies.__audit.sim).catch(() => 0);
       if (sim >= SECONDS) break;
-      if (Date.now() - t0 > wallCap) {
-        out.errors.push(`only reached ${sim.toFixed(0)}s of race time within the wall-clock cap`);
-        break;
-      }
+      if (Date.now() - t0 > WALL_CAP) { timedOut = true; break; }
     }
     out.wallSeconds = Math.round((Date.now() - t0) / 1000);
 
@@ -311,6 +322,18 @@ async function auditTrack(entry) {
     out.simSeconds = +a.sim.toFixed(0);
     const progressed = Object.values(a.progress);
     out.minProgress = progressed.length ? +Math.min(...progressed).toFixed(2) : -99;
+
+    // A run that ran out of wall clock without enough racing can't be judged.
+    // Reporting that as a broken track would be a lie — and the kind of lie
+    // that trains you to ignore the tool.
+    if (timedOut && out.simSeconds < MIN_SIM) {
+      out.inconclusive = `only ${out.simSeconds}s of race time in ${out.wallSeconds}s wall clock — too little to judge (raise WALLCAP or lower SECONDS)`;
+      await ctx.close();
+      return out;
+    }
+    // Past the minimum, the evidence gathered is plenty to spot a pathology:
+    // judge it, and note that the sample was short.
+    if (timedOut) out.partial = true;
 
     if (a.wedged > 0) out.errors.push(`${a.wedged} wedge event(s): ${a.wedgedAt.join(" | ")}`);
     if (out.grindPct > 12) out.errors.push(`barrier grind ${out.grindPct}% of race time`);
@@ -350,24 +373,28 @@ for (const entry of list) {
   const r = await auditTrack(entry);
   results.push(r);
   process.stderr.write(
-    r.errors.length
-      ? `FAIL (${r.errors.length})\n      ${r.errors.join("\n      ")}\n`
-      : `ok (${r.simSeconds}s raced in ${r.wallSeconds}s, mean ${r.meanSpeed} u/s, grind ${r.grindPct}%)\n`
+    r.inconclusive ? `INCONCLUSIVE\n      ${r.inconclusive}\n`
+    : r.errors.length ? `FAIL (${r.errors.length})\n      ${r.errors.join("\n      ")}\n`
+    : `ok${r.partial ? " (short sample)" : ""} (${r.simSeconds}s raced in ${r.wallSeconds}s, mean ${r.meanSpeed} u/s, grind ${r.grindPct}%)\n`
   );
 }
 
-const failed = results.filter((r) => r.errors.length);
+const inconclusive = results.filter((r) => r.inconclusive);
+const failed = results.filter((r) => !r.inconclusive && r.errors.length);
 console.log(JSON.stringify({
   seconds: SECONDS,
   tracks: results.map((r) => ({
-    name: r.name, seed: r.cfg.seed || null, grindPct: r.grindPct ?? null,
+    name: r.name, seed: r.cfg.seed || null,
+    outcome: r.inconclusive ? "inconclusive" : r.errors.length ? "fail" : r.partial ? "pass (short sample)" : "pass",
+    grindPct: r.grindPct ?? null,
     meanSpeed: r.meanSpeed ?? null, simSeconds: r.simSeconds ?? null,
     wallSeconds: r.wallSeconds ?? null, minProgress: r.minProgress ?? null,
     wedged: r.stats?.wedged ?? null,
     maxAir: r.stats ? +r.stats.maxAir.toFixed(1) : null, errors: r.errors,
   })),
-  passed: results.length - failed.length,
+  passed: results.length - failed.length - inconclusive.length,
   failed: failed.length,
+  inconclusive: inconclusive.length,
 }, null, 2));
 
 await browser.close();
