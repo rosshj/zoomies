@@ -62,6 +62,31 @@ function readJson(p) {
   try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
 }
 
+// Dev launches print the working tree's branch + commit, so "am I running
+// the latest?" is answered by the terminal instead of archaeology ("same
+// issues still exist" once meant an un-pulled checkout, twice). Reads .git
+// directly — no git binary needed.
+function gitHead() {
+  try {
+    const root = path.join(__dirname, "..");
+    const head = fs.readFileSync(path.join(root, ".git", "HEAD"), "utf8").trim();
+    const m = head.match(/^ref: (.+)$/);
+    if (!m) return head.slice(0, 8); // detached HEAD: the sha itself
+    const ref = m[1];
+    let sha = "";
+    const refPath = path.join(root, ".git", ref);
+    if (fs.existsSync(refPath)) sha = fs.readFileSync(refPath, "utf8").trim();
+    else {
+      const packed = fs.readFileSync(path.join(root, ".git", "packed-refs"), "utf8");
+      const line = packed.split("\n").find((l) => l.trim().endsWith(" " + ref) || l.trim().endsWith("\t" + ref));
+      sha = line ? line.trim().split(/\s+/)[0] : "";
+    }
+    return `${ref.replace("refs/heads/", "")} @ ${sha.slice(0, 8)}`;
+  } catch {
+    return "unknown (no .git?)";
+  }
+}
+
 function createWindow() {
   const saved = readJson(winStatePath());
   // Dev-launch dock/window icon (packaged builds get theirs from
@@ -113,6 +138,7 @@ function createWindow() {
   // Printed to the npm-start terminal so "which build/backend am I actually
   // running?" is answerable at a glance (a stale build once burned a tester).
   console.log(`[shell] loading ${url} (packaged=${app.isPackaged})`);
+  if (!app.isPackaged) console.log(`[shell] source ${gitHead()}`);
   win.loadURL(url);
 
   // F11 / Alt+Enter toggle fullscreen (the desktop-game habit).
