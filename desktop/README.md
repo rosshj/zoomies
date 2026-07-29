@@ -18,6 +18,12 @@ Dev launches serve the WORKING TREE directly (same as the headless checks),
 so a `git pull` is live on the next `npm start` — no build step, no stale
 `dist/` to bite you. `dist/` only exists for packaging.
 
+The shell pins the game to its **WebGL2 backend** (`webgl=1`): Electron's
+WebGPU swap-chain on macOS interleaves stale frames into the present queue
+(frame-by-frame analysis of a screen recording showed the live view
+alternating with ~37s-old frames — the reported "menu flicker"). Retest
+WebGPU on a newer Electron with `ZOOMIES_QUERY=webgpu=1 npm start`.
+
 `F11` or `Alt+Enter` toggles fullscreen. Gamepads work through the standard
 browser Gamepad API (see the mapping below), keyboard through the existing
 bindings.

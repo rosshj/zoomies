@@ -97,10 +97,19 @@ function createWindow() {
   // nosw=1: the service worker exists for offline WEB play; a desktop build
   // is already offline-complete, and a stale SW cache masking a shipped
   // update is the exact failure mode the build stamp exists to catch.
-  // ZOOMIES_QUERY appends extra params — the headless smoke test forces
-  // webgl=1 through it (WebGPU has no software fallback under Xvfb).
-  const query = "nosw=1" + (process.env.ZOOMIES_QUERY ? "&" + process.env.ZOOMIES_QUERY : "");
-  win.loadURL(`app://game/index.html?${query}`);
+  //
+  // webgl=1: the shell pins the game to its WebGL2 backend. Chromium's WebGPU
+  // swap-chain in Electron on macOS presents STALE frames — a screen
+  // recording showed the compositor interleaving the live render with frames
+  // from ~37s earlier, every other frame ("the menus flicker"). That happens
+  // below the app (one render loop, one camera — verified), so the fix is to
+  // not ride that path: WebGL2 is the game's fully supported backend, the one
+  // every headless check runs, and ANGLE-on-Metal presents rock-solid.
+  // Retest WebGPU after Electron upgrades with ZOOMIES_QUERY=webgpu=1 — the
+  // pin is dropped then, because in gpu.js a webgl param always beats webgpu.
+  const extra = process.env.ZOOMIES_QUERY || "";
+  const pin = /webgpu/.test(extra) ? "" : "&webgl=1";
+  win.loadURL(`app://game/index.html?nosw=1${pin}${extra ? "&" + extra : ""}`);
 
   // F11 / Alt+Enter toggle fullscreen (the desktop-game habit).
   win.webContents.on("before-input-event", (e, input) => {
