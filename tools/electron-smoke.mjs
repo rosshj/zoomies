@@ -20,15 +20,18 @@ if (!fs.existsSync(path.join(ROOT, "dist", "index.html"))) {
   process.exit(1);
 }
 
+// EXE overrides the target: point it at a PACKAGED build (e.g.
+// desktop/out/linux-unpacked/zoomies-gp) to exercise the app.isPackaged
+// resources path instead of the dev shell.
 const errors = [];
+const swArgs = [
+  // Same software-GL stack as the browser checks — Xvfb has no GPU.
+  "--use-gl=angle", "--use-angle=swiftshader",
+  "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox",
+];
 const app = await _electron.launch({
-  executablePath: path.join(DESKTOP, "node_modules", ".bin", "electron"),
-  args: [
-    path.join(DESKTOP, "main.cjs"),
-    // Same software-GL stack as the browser checks — Xvfb has no GPU.
-    "--use-gl=angle", "--use-angle=swiftshader",
-    "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox",
-  ],
+  executablePath: process.env.EXE || path.join(DESKTOP, "node_modules", ".bin", "electron"),
+  args: process.env.EXE ? swArgs : [path.join(DESKTOP, "main.cjs"), ...swArgs],
   env: { ...process.env, ZOOMIES_QUERY: "webgl=1&nowd=1" },
 });
 

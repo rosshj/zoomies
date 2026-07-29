@@ -47,6 +47,11 @@ buttons too. Verified headlessly at the repo root by `npm run check:gamepad`
 npm run dist       # electron-builder → desktop/out/ (zip per OS)
 ```
 
+(`--linux dir` gives the unpacked build; the binary is named
+`zoomies-desktop` after the package. Smoke-test a packaged build with
+`EXE=desktop/out/linux-unpacked/zoomies-desktop xvfb-run -a node
+tools/electron-smoke.mjs` — it exercises the packaged resources path.)
+
 Build on (or cross-compile for) each Steam depot platform: win64 is the one
 depot Steam requires; a native linux64 depot is worth shipping for Steam Deck
 (Electron runs there natively; the Windows build under Proton also works).
