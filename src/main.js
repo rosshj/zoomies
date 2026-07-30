@@ -784,13 +784,23 @@ let input2 = null;
 let camS1 = null, camS2 = null; // per-player chase cams (lazy)
 let _splitChipLast1 = "", _splitChipLast2 = ""; // change-gated chip writes
 let _p1FinishToasted = false, _p2FinishToasted = false; // per-half FINISH banners
-window.__zoomies.split = () => ({ active: splitActive, p2: !!player2 }); // debug hook
+// Once ONE human finishes, the other gets a grace window to bring it home —
+// otherwise an idle (or rage-quit) partner deadlocks the race forever. null =
+// not started; counts down in the RACING block; expiry ends the race with the
+// unfinished half scored DNF.
+const SPLIT_FINISH_GRACE = 30;
+let _splitGrace = null;
+let _splitGrace10 = false;
+window.__zoomies.split = () => ({ active: splitActive, p2: !!player2, grace: _splitGrace }); // debug hook
+window.__zoomies.debugGrace = (s) => { if (_splitGrace !== null) _splitGrace = s; }; // headless check fast-forwards the finish grace
 window.__zoomies.splitCams = () => (camS1 ? { c1: camS1.camera, c2: camS2.camera } : null); // debug hook
 
 // Per-half status chips: lap · place · held items, change-gated like every
 // other per-frame HUD write. The items matter — P2 has no powerups row.
 function _splitChipText(kart) {
+  if (kart.finished) return `🏁 ${ordinal(kart.place || 1)}!`;
   let s = `Lap ${kart.displayLap(track.totalLaps)}/${track.totalLaps} · ${ordinal(kart.place || 1)}`;
+  if (kart.lives > 0) s += ` ❤️${kart.lives}`;
   if (kart.shieldTimer > 0) s += " 🛡";
   if (kart.triShots > 0) s += ` 🐾${kart.triShots}`;
   if (kart.catnipTimer > 0) s += " 🌿";
@@ -838,7 +848,10 @@ function updateSplitChips() {
   }
 }
 function setupSplitInputs() {
-  if (!input2) input2 = new Input({ touch: false, keyboard: false, pads: [] });
+  if (!input2) {
+    input2 = new Input({ touch: false, keyboard: false, pads: [] });
+    window.__zoomies.input2 = input2; // debug hook (split probes read P2's channel)
+  }
   const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])]
     .filter((p) => p && p.connected).map((p) => p.index);
   if (pads.length >= 2) {
@@ -1921,7 +1934,11 @@ function renderFrame() {
             dst.width = src.width;
             dst.height = src.height;
           }
-          dst.getContext("2d").drawImage(src, 0, 0);
+          const c2 = dst.getContext("2d");
+          // Clear first: blitting a translucent canvas over the previous blit
+          // ACCUMULATES alpha every refresh — the map washed out to a grey slab.
+          c2.clearRect(0, 0, dst.width, dst.height);
+          c2.drawImage(src, 0, 0);
         }
       }
       _seg.minimap += performance.now() - _t;
@@ -5586,6 +5603,8 @@ function prepareRace() {
   document.getElementById("split-hud")?.classList.toggle("hidden", !splitActive);
   _splitChipLast1 = _splitChipLast2 = ""; // re-write the chips on first frame
   _p1FinishToasted = _p2FinishToasted = false;
+  _splitGrace = null;
+  _splitGrace10 = false;
 
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
@@ -7455,14 +7474,30 @@ function loop(now) {
       // (their kart switches to autopilot via the finished-karts AI pass).
       if (player.finished && !_p1FinishToasted) { _p1FinishToasted = true; hud.showToast("🏁 P1 FINISHED!"); }
       if (player2.finished && !_p2FinishToasted) { _p2FinishToasted = true; hud.showToast("🏁 P2 FINISHED!"); }
+      // One home, one still out: run the finish-grace clock so an idle partner
+      // can't hold the results hostage. Expiry scores the straggler DNF.
+      if (player.finished !== player2.finished) {
+        if (_splitGrace === null) {
+          _splitGrace = SPLIT_FINISH_GRACE;
+          hud.showToast(`⏱ ${player.finished ? "P2" : "P1"}: ${SPLIT_FINISH_GRACE}s to finish!`);
+        }
+        _splitGrace -= dt;
+        if (_splitGrace <= 10 && !_splitGrace10) { _splitGrace10 = true; hud.showToast("⏱ 10 seconds!"); }
+      }
     } else {
       updateCamera(dt);
     }
 
     // Hand off to the victory lap once the player finishes (BOTH humans in
-    // Versus); show results after a celebratory beat (camera orbits the kart,
-    // fireworks pop) rather than instantly.
-    const humansFinished = player.finished && (!splitActive || !player2 || player2.finished);
+    // Versus — or one plus the expired grace clock); show results after a
+    // celebratory beat (camera orbits the kart, fireworks pop).
+    let humansFinished;
+    if (splitActive && player2) {
+      humansFinished = (player.finished && player2.finished) ||
+        ((player.finished || player2.finished) && _splitGrace !== null && _splitGrace <= 0);
+    } else {
+      humansFinished = player.finished;
+    }
     if (humansFinished) {
       audio.finish();
       audio.setSkid(false);

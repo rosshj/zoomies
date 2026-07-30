@@ -155,16 +155,63 @@ if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(()
 await page.keyboard.up("ArrowUp");
 await page.evaluate(() => { const b = window.__pad.buttons[7]; b.pressed = false; b.value = 0; });
 
-// Finish both humans → Versus results: winner title, both rows lit, no payout.
-await page.evaluate(() => window.__zoomies.debugFinish());
-await page.waitForTimeout(1500);
+// Placement must respond to real progress: warp P2 a third of a lap ahead of
+// the pack and the place chip must read 1st (the machinery the 'always 6th'
+// report questioned).
+// Move the kart bodily along the track (position only — placeAt is a GRID
+// call that resets the lap counter). The real per-frame lap detector then
+// sees the wrap-around crossing exactly as it would from driving.
+const warp = async (dt) => page.evaluate((d) => {
+  const z = window.__zoomies;
+  const p2 = z.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name));
+  const t = ((p2.trackT ?? 0) + d) % 1;
+  const a = z.track.getPointAt(t);
+  const b = z.track.getPointAt((t + 0.002) % 1);
+  p2.position.set(a.x, a.y + 0.5, a.z);
+  p2.heading = Math.atan2(b.x - a.x, b.z - a.z);
+  p2.speed = 20;
+}, dt);
+await warp(0.35);
+await page.waitForTimeout(1200);
+const placed = await page.evaluate(() => {
+  const p2 = window.__zoomies.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name));
+  return { place: p2.place, prog: +p2.totalProgress.toFixed(2), chip: document.getElementById("split-p2").textContent };
+});
+check("warped-ahead P2 is ranked 1st", placed.place === 1 && /1st/.test(placed.chip), placed);
+
+// Bring P2 one line-crossing from home (lap preset), then warp it across so
+// the NATURAL finish path runs (crossing detector → finished → grace clock
+// arms for the still-racing P1; expiry ends the race, P1 scored DNF).
+await page.evaluate(() => {
+  const z = window.__zoomies;
+  const p2 = z.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name));
+  p2.lap = z.track.totalLaps - 1;
+});
+for (let i = 0; i < 30; i++) {
+  await warp(0.22);
+  await page.waitForTimeout(350);
+  const fin = await page.evaluate(() =>
+    window.__zoomies.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name)).finished);
+  if (fin) break;
+}
+const gr = await page.evaluate(() => window.__zoomies.split());
+check("P2 finished naturally and the grace clock armed", gr.grace !== null && gr.grace > 0, gr);
+await page.evaluate(() => window.__zoomies.debugGrace(-0.1)); // expire NOW (SwiftShader frames are ~1fps by this point)
+for (let i = 0; i < 30; i++) {
+  await page.waitForTimeout(1000);
+  const done = await page.evaluate(() =>
+    !document.getElementById("results").classList.contains("hidden"));
+  if (done) break;
+}
 const fin = await page.evaluate(() => ({
   results: !document.getElementById("results").classList.contains("hidden"),
   title: document.getElementById("results-title").textContent,
+  rows: [...document.querySelectorAll("#results-list li")].map((li) => li.textContent),
   youRows: document.querySelectorAll("#results-list .you").length,
   earningsHidden: document.getElementById("results-earnings")?.classList.contains("hidden") ?? true,
 }));
-check("versus results with a winner title", fin.results && /Player [12] Wins/.test(fin.title), fin);
+check("grace expiry ends the race with P2 the winner", fin.results && /Player 2 Wins/.test(fin.title), fin);
+check("idle P1 scored DNF", fin.rows.some((r) => /Player 1/.test(r) && /DNF/.test(r)), fin);
 check("both human rows highlighted", fin.youRows === 2, fin);
 check("no treats paid for a couch match", fin.earningsHidden, fin);
 
