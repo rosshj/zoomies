@@ -225,8 +225,9 @@ export function createScene() {
     hemi.intensity = m.hemiI;
     scene.background.set(m.bg);
     scene.fog.color.set(m.fog);
-    scene.fog.near = m.fogNear;
-    scene.fog.far = m.fogFar;
+    _moodFog.near = m.fogNear;
+    _moodFog.far = m.fogFar;
+    _applyFog();
     renderer.toneMappingExposure = m.exposure;
     cloudMat.color.set(m.cloud);
     const starI = m.starI ?? 0;
@@ -237,13 +238,28 @@ export function createScene() {
     rebakeEnv();
   }
 
+  // Draw-distance scale (High graphics): >1 pushes the fog out so the far
+  // world is VISIBLE instead of hazed — the far boundary scales fully, the
+  // near edge partially (the close haze is part of the look). The mood's own
+  // numbers are kept so tiers can switch live.
+  const _moodFog = { near: 360, far: 1300 };
+  let _fogScale = 1;
+  function _applyFog() {
+    scene.fog.near = _moodFog.near * (1 + (_fogScale - 1) * 0.6);
+    scene.fog.far = _moodFog.far * _fogScale;
+  }
+  function setFogScale(k) {
+    _fogScale = k;
+    _applyFog();
+  }
+
   applyMood(MOODS[0]);
 
   // WebGPURenderer initialises asynchronously (it picks/spins up the backend).
   // Expose the promise so the main loop only starts rendering once it's ready.
   const ready = renderer.init ? renderer.init() : Promise.resolve();
 
-  return { renderer, scene, camera, sun, applyMood, ready, skyMesh: sky.mesh, starField: stars };
+  return { renderer, scene, camera, sun, applyMood, setFogScale, ready, skyMesh: sky.mesh, starField: stars };
 }
 
 // Gradient sky dome with a warm glow around the sun direction.

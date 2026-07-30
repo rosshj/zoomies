@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
+// (setFogScale arrives via the createScene() destructure below.)
 import { initGpuParticles } from "./gpuparticles.js";
 import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
@@ -22,7 +23,7 @@ import { ChaseCam } from "./split.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal, formatTime } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
@@ -342,7 +343,7 @@ const DIFF_KEY = "zoomies-difficulty";
 let DIFFICULTY = "hard"; // default = the current tuned field
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
-const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
+const { renderer, scene, camera, sun, applyMood, setFogScale, ready: rendererReady, skyMesh, starField } = createScene();
 // Debug hook (console / headless tooling): inspect the live scene graph and
 // renderer counters without instrumenting a build.
 window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
@@ -553,7 +554,13 @@ track.totalLaps = TOTAL_LAPS;
 track.raceTime = 0;
 scene.add(track.group);
 
-const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+// High graphics builds a denser world (grass verges, ambling-critter budget).
+// Read straight from storage: the world builds long before the quality module
+// initialises (same pattern as the shadow-map size in scene.js).
+const _worldDetail = (() => {
+  try { return localStorage.getItem("zoomies-quality-v2") === "high" ? 1.7 : 1; } catch { return 1; }
+})();
+const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 window.__zoomies.wind = { uWindStr, uWindAir, biomeWindAt }; // debug hook: force a shot was taken at + the per-biome target
@@ -1094,6 +1101,7 @@ function buildKarts() {
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
     });
     toonify(kart.group); // cel-shade the kart + cat
+    applyKartShadowMode(kart); // High: real cast shadows; else the projected quad
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) {
@@ -2306,10 +2314,47 @@ const qualityHighBtn = document.getElementById("set-quality-high");
 //   • GPU ambient motes hidden (skips their compute), grass hidden,
 //   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
 const qualityMedBtn = document.getElementById("set-quality-medium");
+// Real-shadow mode for a kart (High): the whole kart casts into the (now
+// per-frame) sun shadow map and the fake projected quad hides; Medium/Low
+// keep the quad and cast nothing. Skips the transparent add-ons (shield orb)
+// and the quad itself — a shadow-casting shadow is an Escher print.
+function applyKartShadowMode(kart) {
+  if (!kart || !kart.group) return;
+  const real = quality === "high";
+  if (kart.groundShadow) kart.groundShadow.visible = !real;
+  kart.group.traverse((o) => {
+    if (!o.isMesh || o === kart.shadowQuad || o === kart.shieldMesh) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (m && m.transparent) return;
+    o.castShadow = real;
+  });
+}
+
 function applyQuality(q, persist = true) {
   quality = q;
   const fullFx = q !== "low"; // medium + high get the full effect stack; only low dials it back
   if (persist) { try { localStorage.setItem(QUALITY_KEY_V2, q); } catch {} }
+  // --- High = same 60fps, spent on the WORLD (see the loop's frame cap) ---
+  const high = q === "high";
+  // Real-time shadows: the frustum stays world-fitted (a moving boundary
+  // pops long shadows — tried and rejected, see updateAtmosphere), but on
+  // High the MAP re-renders every frame, so karts cast true shadows (their
+  // quads hide) and the canopies' wind sway animates in the shadows too.
+  sun.shadow.autoUpdate = high;
+  if (!high) sun.shadow.needsUpdate = true; // freeze back onto one fresh static map
+  for (const k of karts) applyKartShadowMode(k);
+  // Draw distance: push the fog out ~35% and the far plane with it — the
+  // distant world becomes VISIBLE rather than hazed.
+  setFogScale(high ? 1.35 : 1);
+  camera.far = high ? 2600 : 2050;
+  if (camS1) { camS1.camera.far = camera.far; camS2.camera.far = camera.far; }
+  // Animals stay lively much further out (critter amble + pigeon flocks).
+  setSceneryRanges(high ? 1.9 : 1);
+  // Build-time density (grass verges, critter budget) is baked per launch —
+  // tell the player when their switch lands.
+  if (persist && high !== (_worldDetail > 1)) {
+    hud.showToast?.(high ? "🌿 Extra world detail on the next launch" : "World detail returns to standard next launch");
+  }
   bloomPass.enabled = true; // marquee glow on every tier
   postProcessing.outputNode = fullFx ? _highOutput : _lowOutput;
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
@@ -5528,6 +5573,9 @@ function prepareRace() {
       camS1.camera.layers.mask = camera.layers.mask;
       camS2.camera.layers.mask = camera.layers.mask;
     }
+    // Match the tier's draw distance (High pushes the far plane out).
+    camS1.camera.far = camera.far;
+    camS2.camera.far = camera.far;
     camS1.snap();
     camS2.snap();
     layoutStage(); // refresh the half-height aspects on the split cams
@@ -6799,8 +6847,10 @@ let prevPlayerSpin = 0;
 // UP, pegging the GPU. That's the "phone runs hot / battery dies fast" report.
 // 60fps is smooth for a kart racer and graphically identical (same resolution,
 // same effects) — only the extra frames are dropped. Threshold sits below the
-// 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. Opt out
-// (e.g. a 120Hz desktop) with ?uncap=1.
+// 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. EVERY
+// tier is capped at ~60fps now — High spends its headroom on world detail
+// (dynamic shadows, draw distance, density) instead of 120fps. ?uncap=1
+// still lifts the cap for A/B runs.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
 const FRAME_MIN_MS = 15;
 // Idle-render savings (see the loop): draw the paused scene once (not 60×/s), run
@@ -6819,10 +6869,10 @@ const MENU_DRAW_MS = window.zoomiesDesktop ? 0 : 32;
 
 function loop(now) {
   requestAnimationFrame(loop);
-  // Cap: unless the High graphics tier (or ?uncap=1) opts into uncapped ~120fps,
-  // skip this rAF tick when too little time has passed since the last RENDERED
-  // frame (leaving `last` untouched so dt still spans to the real last frame).
-  if (quality !== "high" && !_uncapParam && now - last < FRAME_MIN_MS) return;
+  // Cap: unless ?uncap=1 opts into uncapped ~120fps, skip this rAF tick when
+  // too little time has passed since the last RENDERED frame (leaving `last`
+  // untouched so dt still spans to the real last frame).
+  if (!_uncapParam && now - last < FRAME_MIN_MS) return;
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;

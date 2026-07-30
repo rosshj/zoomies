@@ -411,7 +411,13 @@ function biomeGround(x, z, out, y) {
 // Builds the world around the track: rolling hills, distant mountains, a small
 // town of buildings, forests, rocks, hero landmarks, hot-air balloons and birds.
 // Returns { grass, update(time) } for the animated bits.
+// World-detail multiplier (High graphics): scales the BUILD-TIME densities —
+// grass sprigs, the ambling-critter budget — set once per world build. Live
+// tiers can't change it mid-session (instanced counts are baked); main.js
+// toasts that a tier switch lands on the next launch.
+let _detail = 1;
 export function buildWorld(scene, track, opts = {}) {
+  _detail = Math.max(0.5, Math.min(2.5, opts.detail || 1));
   const night = opts.timeOfDay === "night";
   // Lamps / string lights / bridge lantern come on at NIGHT and at SUNSET (dusk),
   // dimmer at dusk. `lit` = are they on at all; `litLevel` = how bright (0.55 dusk,
@@ -580,9 +586,10 @@ export function buildWorld(scene, track, opts = {}) {
       for (const fl of birds.flocks) updateFlock(fl, time);
       syncBirdWings(birds);
       for (const c of _critters) {
-        // Far-off animals freeze in place — an amble is invisible from 220u+,
-        // and freezing (vs culling) means they're right there when you return.
-        if (!nearAny(c.base.x, c.base.z, 220)) continue;
+        // Far-off animals freeze in place — an amble is invisible from far
+        // enough away, and freezing (vs culling) means they're right there
+        // when you return. High extends the live range (setSceneryRanges).
+        if (!nearAny(c.base.x, c.base.z, _rangeCritter)) continue;
         updateCritter(c, dt, time, heightAt);
       }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, ppos);
@@ -1114,7 +1121,7 @@ function flowerHeadGeo() {
 
 // Instanced roadside cover along the verge, swaying in the shared wind.
 function buildGrass(scene, track, heightAt) {
-  const COUNT = 26000; // instanced 4-triangle cards — cheap to raise
+  const COUNT = Math.round(26000 * _detail); // instanced 4-triangle cards — cheap to raise (High builds denser verges)
   const halfW = track.halfWidth;
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
@@ -3517,7 +3524,7 @@ function buildRoadside(scene, track, heightAt) {
     // windmill sails) keep their own meshes.
     if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
-    if (prop.userData.wander && _critters.length < 48) {
+    if (prop.userData.wander && _critters.length < Math.round(48 * _detail)) {
       _critters.push({
         obj: prop,
         base: prop.position.clone(),
@@ -5276,6 +5283,15 @@ function buildPigeons(scene, track, heightAt) {
 
 // `ppos`: null or an ARRAY of positions — every human counts (split screen),
 // so a flock wakes/scatters for whichever player reaches it.
+// Live wake ranges (scaled up on High so the world is animated further out:
+// critters keep ambling and pigeon flocks stay live/scatter from further away).
+let _rangeCritter = 220;
+let _rangePigeon = 60;
+export function setSceneryRanges(k = 1) {
+  _rangeCritter = 220 * k;
+  _rangePigeon = 60 * k;
+}
+
 function _pigeonNearest(flock, ppos) {
   let best = Infinity;
   for (const p of ppos) {
@@ -5292,7 +5308,7 @@ function updatePigeons(flock, dt, time, ppos) {
     // only swap in close up (past the scatter trigger's reach, so the handoff
     // is never visible mid-burst). A scattered flock keeps its live birds
     // until it lands, wherever the players are.
-    const near = !ppos || _pigeonNearest(flock, ppos) < 60 * 60;
+    const near = !ppos || _pigeonNearest(flock, ppos) < _rangePigeon * _rangePigeon;
     if (near !== flock.liveOn) {
       flock.liveOn = near;
       flock.group.visible = near;
@@ -5322,7 +5338,8 @@ function updatePigeons(flock, dt, time, ppos) {
       b.group.rotation.y = Math.atan2(b.vel.x, b.vel.z);
     }
     if (flock.timer > 4 && ppos) {
-      if (_pigeonNearest(flock, ppos) > 80 * 80) {
+      const landR = _rangePigeon + 20; // must exceed the live range or a flock lands while still "near"
+      if (_pigeonNearest(flock, ppos) > landR * landR) {
         flock.scattered = false;
         for (const b of flock.birds) {
           b.group.position.copy(b.home);
