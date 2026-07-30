@@ -3048,9 +3048,17 @@ button.small { white-space: nowrap; }
   background: linear-gradient(90deg, rgba(255, 194, 75, 0), rgba(255, 194, 75, 0.9) 18%, rgba(255, 194, 75, 0.9) 82%, rgba(255, 194, 75, 0));
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
 }
-.split-chip {
+.split-panel {
   position: absolute;
   right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+#split-panel1 { top: 10px; }
+#split-panel2 { top: calc(50% + 10px); }
+.split-chip {
   padding: 4px 12px;
   border-radius: 999px;
   background: rgba(14, 19, 32, 0.72);
@@ -3060,8 +3068,36 @@ button.small { white-space: nowrap; }
   font-size: clamp(12px, 2.2vh, 16px);
   white-space: nowrap;
 }
-#split-p1 { top: 10px; }
-#split-p2 { top: calc(50% + 10px); }
+.split-chip-sub {
+  font-weight: 600;
+  font-size: clamp(11px, 1.8vh, 13px);
+  opacity: 0.92;
+}
+.split-boost {
+  width: 128px;
+  height: 9px;
+  border-radius: 5px;
+  background: rgba(14, 19, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+.split-boost-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #ffb300, #ff5722);
+}
+#minimap2 {
+  position: absolute;
+  bottom: calc(50% + 12px); /* bottom-left of the TOP (P1) half */
+  left: max(150px, calc(var(--safe-left, 0px) + 122px));
+  width: 132px;
+  height: 132px;
+  border-radius: 12px;
+  background: rgba(10, 16, 32, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
 /* The solo HUD pieces that are P1-anchored or meaningless with two drivers:
    rear-threat + shoot-lock point at ONE player, the tilt steering readout and
    the touch controls have no seat on a desktop couch, and the solo info /

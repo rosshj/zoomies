@@ -21,7 +21,7 @@ import { MenuPad } from "./menupad.js";
 import { ChaseCam } from "./split.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
-import { HUD, ordinal } from "./hud.js";
+import { HUD, ordinal, formatTime } from "./hud.js";
 import { buildWorld, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
@@ -791,6 +791,12 @@ function _splitChipText(kart) {
   if (kart.milkBottles > 0) s += " 🥛";
   return s;
 }
+let _splitStatsLast1 = "", _splitStatsLast2 = "";
+let _splitBoostLast1 = -1, _splitBoostLast2 = -1;
+function _splitStats(kart) {
+  // Same speed scale + clock as the solo HUD, one line per half.
+  return `${Math.round(Math.abs(kart.speed) * 3.0)} km/h · ${formatTime(raceTime)}`;
+}
 function updateSplitChips() {
   const t1 = "P1 · " + _splitChipText(player);
   if (t1 !== _splitChipLast1) {
@@ -801,6 +807,27 @@ function updateSplitChips() {
   if (t2 !== _splitChipLast2) {
     _splitChipLast2 = t2;
     document.getElementById("split-p2").textContent = t2;
+  }
+  const s1 = _splitStats(player);
+  if (s1 !== _splitStatsLast1) {
+    _splitStatsLast1 = s1;
+    document.getElementById("split-p1-stats").textContent = s1;
+  }
+  const s2 = _splitStats(player2);
+  if (s2 !== _splitStatsLast2) {
+    _splitStatsLast2 = s2;
+    document.getElementById("split-p2-stats").textContent = s2;
+  }
+  // Boost meters (whole-percent gated so the style write isn't per-frame).
+  const b1 = Math.round(Math.min(1, player.boostMeter) * 100);
+  if (b1 !== _splitBoostLast1) {
+    _splitBoostLast1 = b1;
+    document.getElementById("split-boost1").style.width = b1 + "%";
+  }
+  const b2 = Math.round(Math.min(1, player2.boostMeter) * 100);
+  if (b2 !== _splitBoostLast2) {
+    _splitBoostLast2 = b2;
+    document.getElementById("split-boost2").style.width = b2 + "%";
   }
 }
 function setupSplitInputs() {
@@ -1876,6 +1903,19 @@ function renderFrame() {
     if (_t - _lastMiniDraw >= 50) {
       _lastMiniDraw = _t;
       drawMinimap();
+      // Versus: P1's half gets a copy — one draw, blitted to the second
+      // canvas (drawImage of a small 2D canvas is ~free).
+      if (splitActive) {
+        const src = document.getElementById("minimap");
+        const dst = document.getElementById("minimap2");
+        if (src && dst) {
+          if (dst.width !== src.width || dst.height !== src.height) {
+            dst.width = src.width;
+            dst.height = src.height;
+          }
+          dst.getContext("2d").drawImage(src, 0, 0);
+        }
+      }
       _seg.minimap += performance.now() - _t;
     }
   }

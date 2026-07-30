@@ -215,8 +215,22 @@
          chip anchored just below the divider. -->
     <div id="split-hud" class="hidden">
       <div id="split-divider"></div>
-      <div class="split-chip" id="split-p1">P1</div>
-      <div class="split-chip" id="split-p2">P2</div>
+      <!-- Per-half mini-HUD: lap · place · items, speed + race clock, and a
+           boost meter — the solo HUD's essentials, one cluster per player. -->
+      <div class="split-panel" id="split-panel1">
+        <div class="split-chip" id="split-p1">P1</div>
+        <div class="split-chip split-chip-sub" id="split-p1-stats">0 km/h</div>
+        <div class="split-boost"><div class="split-boost-fill" id="split-boost1"></div></div>
+      </div>
+      <div class="split-panel split-panel-p2" id="split-panel2">
+        <div class="split-chip" id="split-p2">P2</div>
+        <div class="split-chip split-chip-sub" id="split-p2-stats">0 km/h</div>
+        <div class="split-boost"><div class="split-boost-fill" id="split-boost2"></div></div>
+      </div>
+      <!-- P1's copy of the minimap (top half); the solo #minimap already sits
+           bottom-left, which lands in P2's half. Refreshed by a cheap blit of
+           the main minimap canvas — one draw, two screens. -->
+      <canvas id="minimap2" width="150" height="150"></canvas>
     </div>
 
     <div id="toast"></div>
