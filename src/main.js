@@ -1839,27 +1839,20 @@ function renderFrame() {
     renderer.shadowMap.needsUpdate = true; // exactly one shadow pass, on P1's render
     renderer.setScissorTest(true);
     if (splitFxOn) {
-      // "Versus effects": drive the SOLO post graph once per half. The graph
-      // is built around the shared camera, so each half walks that camera to
-      // its view and replays the full chain; the scissored viewport keeps
-      // each result in its own half (clears respect the scissor). Cost is
-      // two full-res post stacks — the opt-in experiment, DRS refereeing.
-      // (The sun-view uniforms were computed for P1's pose; P2's rim/shafts
-      // aim a touch off — invisible in play, noted for honesty.)
-      const renderHalf = (cam, y, h) => {
-        camera.position.copy(cam.position);
-        camera.quaternion.copy(cam.quaternion);
-        camera.fov = cam.fov;
-        camera.aspect = cam.aspect;
-        camera.updateProjectionMatrix();
-        renderer.setViewport(0, y, W, h);
-        renderer.setScissor(0, y, W, h);
-        composer.render();
-      };
-      renderHalf(camS1.camera, halfH, H - halfH); // P1 top
-      renderHalf(camS2.camera, 0, halfH); // P2 bottom
-      camera.aspect = W / H; // hand the shared camera back to the solo shape
-      camera.updateProjectionMatrix();
+      // "Versus effects": each half renders through its OWN post graph
+      // (scene pass + bloom + grade/vignette) into its scissored viewport.
+      // Cost is two full-res post stacks — the opt-in experiment, DRS
+      // refereeing. See buildSplitFx for why the solo graph can't be shared.
+      if (!_splitFx1) {
+        _splitFx1 = buildSplitFx(camS1.camera);
+        _splitFx2 = buildSplitFx(camS2.camera);
+      }
+      renderer.setViewport(0, halfH, W, H - halfH);
+      renderer.setScissor(0, halfH, W, H - halfH);
+      _splitFx1.render(); // P1 top
+      renderer.setViewport(0, 0, W, halfH);
+      renderer.setScissor(0, 0, W, halfH);
+      _splitFx2.render(); // P2 bottom
     } else {
       renderer.setViewport(0, halfH, W, H - halfH);
       renderer.setScissor(0, halfH, W, H - halfH);
@@ -2908,6 +2901,22 @@ applyFpsSetting();
 // GPUs can have the pretty version and the FPS counter can referee.
 const SPLITFX_KEY = "zoomies-splitfx";
 let splitFxOn = false;
+// One post graph PER split camera, built lazily on the first effects race.
+// The solo graph can't be reused by walking its camera between two renders:
+// its scene pass caches per frame, so the second half replayed the first
+// half's texture (both players saw one view). Each graph owns its scene pass
+// + bloom and shares the LIVE grade uniforms (sat/contrast/vignette), so the
+// biome grade drives both halves. God rays stay solo-only (heaviest pass,
+// and its sun uniforms are single-view).
+let _splitFx1 = null, _splitFx2 = null;
+function buildSplitFx(cam) {
+  const p = new THREE.PostProcessing(renderer);
+  const sp = pass(scene, cam);
+  const tex = sp.getTextureNode("output");
+  const bl = bloom(tex, 0.32, 0.5, 0.9); // same tuning as the solo bloom
+  p.outputNode = gradeOutput(vec3(tex.sample(viewportUV).rgb).add(bl));
+  return p;
+}
 try { splitFxOn = localStorage.getItem(SPLITFX_KEY) === "1"; } catch { /* default off */ }
 const splitFxToggle = document.getElementById("set-splitfx-toggle");
 function applySplitFxSetting() {

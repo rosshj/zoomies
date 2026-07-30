@@ -124,6 +124,33 @@ const drive = await page.evaluate(() => {
 });
 check("both humans accelerate independently", drive.s1 > 3 && drive.s2 > 3, drive);
 check("per-half chips are live", /^P1 · Lap/.test(drive.chip1) && /^P2 · Lap/.test(drive.chip2), drive);
+
+// The two halves must be DIFFERENT views (a per-frame pass cache once served
+// P1's render to both halves). Capture the canvas in the same rAF task as
+// the render (post-composite readback is blank) and compare the halves.
+const halvesDiff = await page.evaluate(() => new Promise((resolve) => {
+  requestAnimationFrame(() => {
+    const gl = window.__zoomies.renderer.domElement;
+    const c = document.createElement("canvas");
+    c.width = Math.max(64, Math.floor(gl.width / 4));
+    c.height = Math.max(64, Math.floor(gl.height / 4));
+    const x = c.getContext("2d");
+    x.drawImage(gl, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height).data;
+    const h = Math.floor(c.height / 2);
+    let sum = 0, n = 0;
+    for (let y = 8; y < h - 8; y++) {
+      for (let px = 10; px < c.width - 10; px++) {
+        const a = (y * c.width + px) * 4;
+        const b = ((y + h) * c.width + px) * 4;
+        sum += Math.abs(d[a] - d[b]) + Math.abs(d[a + 1] - d[b + 1]);
+        n++;
+      }
+    }
+    resolve(sum / Math.max(1, n));
+  });
+}));
+check("the two halves show different views", halvesDiff > 4, { halvesDiff: Math.round(halvesDiff * 100) / 100 });
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 await page.keyboard.up("ArrowUp");
 await page.evaluate(() => { const b = window.__pad.buttons[7]; b.pressed = false; b.value = 0; });
