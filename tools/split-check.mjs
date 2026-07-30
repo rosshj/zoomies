@@ -41,7 +41,8 @@ const page = await ctx.newPage();
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 
-await ctx.addInitScript(() => {
+const SPLITFX = process.env.SPLITFX === "1";
+await ctx.addInitScript((fx) => {
   try { localStorage.setItem("zoomies-fps", "1"); } catch {}
   try { localStorage.setItem("zoomies-mode-v1", "split"); } catch {}
   // P2's startline pick (persisted): Snow (cat 3) in Clover (kart 2).
@@ -55,7 +56,9 @@ await ctx.addInitScript(() => {
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
   };
   navigator.getGamepads = () => [window.__pad];
-});
+  // SPLITFX=1: exercise the full-post-chain split path ("Versus effects").
+  if (fx) try { localStorage.setItem("zoomies-splitfx", "1"); } catch {}
+}, SPLITFX);
 
 await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, { waitUntil: "load", timeout: 150000 });
 await page.waitForSelector("#start-btn", { timeout: 60000 });

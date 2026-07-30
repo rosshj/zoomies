@@ -1838,12 +1838,36 @@ function renderFrame() {
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true; // exactly one shadow pass, on P1's render
     renderer.setScissorTest(true);
-    renderer.setViewport(0, halfH, W, H - halfH);
-    renderer.setScissor(0, halfH, W, H - halfH);
-    renderer.render(scene, camS1.camera); // P1 top
-    renderer.setViewport(0, 0, W, halfH);
-    renderer.setScissor(0, 0, W, halfH);
-    renderer.render(scene, camS2.camera); // P2 bottom
+    if (splitFxOn) {
+      // "Versus effects": drive the SOLO post graph once per half. The graph
+      // is built around the shared camera, so each half walks that camera to
+      // its view and replays the full chain; the scissored viewport keeps
+      // each result in its own half (clears respect the scissor). Cost is
+      // two full-res post stacks — the opt-in experiment, DRS refereeing.
+      // (The sun-view uniforms were computed for P1's pose; P2's rim/shafts
+      // aim a touch off — invisible in play, noted for honesty.)
+      const renderHalf = (cam, y, h) => {
+        camera.position.copy(cam.position);
+        camera.quaternion.copy(cam.quaternion);
+        camera.fov = cam.fov;
+        camera.aspect = cam.aspect;
+        camera.updateProjectionMatrix();
+        renderer.setViewport(0, y, W, h);
+        renderer.setScissor(0, y, W, h);
+        composer.render();
+      };
+      renderHalf(camS1.camera, halfH, H - halfH); // P1 top
+      renderHalf(camS2.camera, 0, halfH); // P2 bottom
+      camera.aspect = W / H; // hand the shared camera back to the solo shape
+      camera.updateProjectionMatrix();
+    } else {
+      renderer.setViewport(0, halfH, W, H - halfH);
+      renderer.setScissor(0, halfH, W, H - halfH);
+      renderer.render(scene, camS1.camera); // P1 top
+      renderer.setViewport(0, 0, W, halfH);
+      renderer.setScissor(0, 0, W, halfH);
+      renderer.render(scene, camS2.camera); // P2 bottom
+    }
     renderer.setScissorTest(false);
     renderer.setViewport(0, 0, W, H);
     renderer.shadowMap.autoUpdate = true; // solo/menu path expects the default
@@ -2876,6 +2900,28 @@ fpsToggle?.addEventListener("click", () => {
   applyFpsSetting();
 });
 applyFpsSetting();
+
+// --- Versus effects setting (Display; persisted, default OFF) ---
+// Routes each split-screen half through the FULL post chain (bloom, god
+// rays, biome grade, vignette) instead of the plain two-pass render. Costs
+// two full-resolution post stacks per frame — offered as an opt-in so big
+// GPUs can have the pretty version and the FPS counter can referee.
+const SPLITFX_KEY = "zoomies-splitfx";
+let splitFxOn = false;
+try { splitFxOn = localStorage.getItem(SPLITFX_KEY) === "1"; } catch { /* default off */ }
+const splitFxToggle = document.getElementById("set-splitfx-toggle");
+function applySplitFxSetting() {
+  if (splitFxToggle) {
+    splitFxToggle.textContent = splitFxOn ? "On" : "Off";
+    splitFxToggle.classList.toggle("off", !splitFxOn);
+  }
+}
+splitFxToggle?.addEventListener("click", () => {
+  splitFxOn = !splitFxOn;
+  try { localStorage.setItem(SPLITFX_KEY, splitFxOn ? "1" : "0"); } catch { /* ignore */ }
+  applySplitFxSetting();
+});
+applySplitFxSetting();
 
 // --- Controller rumble setting (Controls; persisted, default ON) ---
 // The web platform adapter checks the same key before firing the pad's
