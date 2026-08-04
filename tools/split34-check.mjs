@@ -148,6 +148,42 @@ for (const COUNT of [3, 4]) {
   check(`${COUNT}P: per-quadrant chips are live`,
     /^P1 · Lap/.test(drive.chips[0]) && /^P3 · Lap/.test(drive.chips[2]), drive);
   await page.keyboard.up("ArrowUp");
+
+  // PAIRING: with only P1 (pad) still driving and P2 idle beside it, the
+  // TOP-LEFT quadrant must be the one that keeps changing — the fence for
+  // the setViewport y-origin flip that put every view in the wrong quadrant
+  // (and left one quadrant black in 3P).
+  for (let t = 0; t < 30; t++) {
+    const s3 = await page.evaluate(() =>
+      Math.abs(window.__zoomies.karts.filter((k) => k.isPlayer)[2].speed));
+    if (s3 < 2) break;
+    await page.waitForTimeout(1000);
+  }
+  const snap = () => page.evaluate(() => new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      const gl = window.__zoomies.renderer.domElement;
+      const c = document.createElement("canvas");
+      c.width = 160; c.height = 100;
+      c.getContext("2d").drawImage(gl, 0, 0, 160, 100);
+      resolve([...c.getContext("2d").getImageData(0, 0, 160, 100).data]);
+    });
+  }));
+  const snapA = await snap();
+  await page.waitForTimeout(3000);
+  const snapB = await snap();
+  const tdiff = (x0, y0) => {
+    let sum = 0, n = 0;
+    for (let y = y0 + 4; y < y0 + 46; y++) {
+      for (let px = x0 + 6; px < x0 + 74; px++) {
+        const a = (y * 160 + px) * 4;
+        sum += Math.abs(snapA[a] - snapB[a]) + Math.abs(snapA[a + 1] - snapB[a + 1]);
+        n++;
+      }
+    }
+    return +(sum / Math.max(1, n)).toFixed(2);
+  };
+  const pairing = { tl: tdiff(0, 0), tr: tdiff(80, 0) };
+  check(`${COUNT}P: P1's (driving) view is the TOP-LEFT quadrant`, pairing.tl > pairing.tr * 1.25, pairing);
   await page.evaluate(() => { const b = window.__pads[0].buttons[7]; b.pressed = false; b.value = 0; });
 
   // The rendered quadrants must be DIFFERENT views (each seat its own cam).

@@ -153,6 +153,45 @@ const halvesDiff = await page.evaluate(() => new Promise((resolve) => {
 check("the two halves show different views", halvesDiff > 4, { halvesDiff: Math.round(halvesDiff * 100) / 100 });
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 await page.keyboard.up("ArrowUp");
+
+// PAIRING: P1's view must be the TOP half. With only P1 (pad) driving, the
+// top half's image changes far more over time than idle P2's bottom half —
+// a translating chase cam vs a parked one. This is the fence for the
+// setViewport y-origin flip (WebGPU measures y from the TOP; GL-convention
+// rects rendered every view into the OTHER half, so the player read the
+// other seat's chip — the reported "always 6th").
+const snap = () => page.evaluate(() => new Promise((resolve) => {
+  requestAnimationFrame(() => {
+    const gl = window.__zoomies.renderer.domElement;
+    const c = document.createElement("canvas");
+    c.width = 160; c.height = 100;
+    c.getContext("2d").drawImage(gl, 0, 0, 160, 100);
+    resolve([...c.getContext("2d").getImageData(0, 0, 160, 100).data]);
+  });
+}));
+// Let P2 coast to a stop first (only P1's throttle is still held).
+for (let t = 0; t < 30; t++) {
+  const s2 = await page.evaluate(() =>
+    Math.abs(window.__zoomies.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name)).speed));
+  if (s2 < 2) break;
+  await page.waitForTimeout(1000);
+}
+const snapA = await snap();
+await page.waitForTimeout(3000);
+const snapB = await snap();
+const tdiff = (y0, y1) => {
+  let sum = 0, n = 0;
+  for (let y = y0; y < y1; y++) {
+    for (let px = 8; px < 152; px++) {
+      const a = (y * 160 + px) * 4;
+      sum += Math.abs(snapA[a] - snapB[a]) + Math.abs(snapA[a + 1] - snapB[a + 1]);
+      n++;
+    }
+  }
+  return sum / Math.max(1, n);
+};
+const pairing = { top: +tdiff(4, 46).toFixed(2), bottom: +tdiff(54, 96).toFixed(2) };
+check("P1's (driving) view is the TOP half", pairing.top > pairing.bottom * 1.25, pairing);
 await page.evaluate(() => { const b = window.__pad.buttons[7]; b.pressed = false; b.value = 0; });
 
 // Placement must respond to real progress: warp P2 a third of a lap ahead of

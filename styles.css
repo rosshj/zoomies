@@ -3103,6 +3103,7 @@ button.small { white-space: nowrap; }
   transform: translate(50%, 14%);
   width: min(34vh, 23vw);
   height: min(34vh, 23vw);
+  z-index: 2; /* above the opaque spectator panel (#split-spect follows it in the DOM) */
 }
 /* 4P: one shared map, small, on the crosshair where the four views meet. */
 #hud.split-4 #minimap {

@@ -891,7 +891,14 @@ function teardownSplit() {
   document.getElementById("split-hud")?.classList.add("hidden");
   layoutStage(); // release the 3-4 seat DPR cap (baseDpr reads splitActive)
 }
-// Viewport rectangles per seat, in GL coordinates (origin bottom-left).
+// Viewport rectangles per seat. IMPORTANT: WebGPURenderer.setViewport /
+// setScissor measure y from the TOP of the canvas (WebGPU convention — the
+// WebGL2 backend flips it internally: `state.viewport(x, H - h - y, …)`),
+// NOT WebGL's bottom-left origin. Writing these in GL convention silently
+// swapped every view vertically against its HUD chip — in 2P the "top" half
+// was really P2's view, which is exactly the reported "I drove the bottom
+// seat and it always said 6th": the player watched the half that followed
+// their kart while reading the OTHER seat's chip.
 // 2 seats: stacked full-width rows (P1 top). 3-4 seats: quadrants reading
 // TL → TR → BL → BR; with 3 the BR quadrant is free — the HUD parks an
 // enlarged shared minimap there (the classic couch-racer spectator corner).
@@ -900,16 +907,16 @@ function splitRects(count) {
   const halfH = Math.floor(H / 2);
   if (count <= 2) {
     return [
-      { x: 0, y: halfH, w: W, h: H - halfH },
-      { x: 0, y: 0, w: W, h: halfH },
+      { x: 0, y: 0, w: W, h: halfH },                    // P1 top row
+      { x: 0, y: halfH, w: W, h: H - halfH },            // P2 bottom row
     ];
   }
   const halfW = Math.floor(W / 2);
   return [
-    { x: 0, y: halfH, w: halfW, h: H - halfH },          // P1 top-left
-    { x: halfW, y: halfH, w: W - halfW, h: H - halfH },  // P2 top-right
-    { x: 0, y: 0, w: halfW, h: halfH },                  // P3 bottom-left
-    { x: halfW, y: 0, w: W - halfW, h: halfH },          // P4 bottom-right
+    { x: 0, y: 0, w: halfW, h: halfH },                  // P1 top-left
+    { x: halfW, y: 0, w: W - halfW, h: halfH },          // P2 top-right
+    { x: 0, y: halfH, w: halfW, h: H - halfH },          // P3 bottom-left
+    { x: halfW, y: halfH, w: W - halfW, h: H - halfH },  // P4 bottom-right
   ].slice(0, count);
 }
 const hairballs = new HairballManager(scene);
