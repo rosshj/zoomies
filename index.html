@@ -215,8 +215,10 @@
          chip anchored just below the divider. -->
     <div id="split-hud" class="hidden">
       <div id="split-divider"></div>
-      <!-- Per-half mini-HUD: lap · place · items, speed + race clock, and a
-           boost meter — the solo HUD's essentials, one cluster per player. -->
+      <div id="split-divider-v"></div>
+      <!-- Per-view mini-HUD: lap · place · items, speed + race clock, and a
+           boost meter — the solo HUD's essentials, one cluster per player.
+           Panels 3/4 only show in quadrant layouts (#hud.split-3/.split-4). -->
       <div class="split-panel" id="split-panel1">
         <div class="split-chip" id="split-p1">P1</div>
         <div class="split-chip split-chip-sub" id="split-p1-stats">0 km/h</div>
@@ -227,9 +229,23 @@
         <div class="split-chip split-chip-sub" id="split-p2-stats">0 km/h</div>
         <div class="split-boost"><div class="split-boost-fill" id="split-boost2"></div></div>
       </div>
-      <!-- P1's copy of the minimap (top half); the solo #minimap already sits
-           bottom-left, which lands in P2's half. Refreshed by a cheap blit of
-           the main minimap canvas — one draw, two screens. -->
+      <div class="split-panel split-panel-q" id="split-panel3">
+        <div class="split-chip" id="split-p3">P3</div>
+        <div class="split-chip split-chip-sub" id="split-p3-stats">0 km/h</div>
+        <div class="split-boost"><div class="split-boost-fill" id="split-boost3"></div></div>
+      </div>
+      <div class="split-panel split-panel-q" id="split-panel4">
+        <div class="split-chip" id="split-p4">P4</div>
+        <div class="split-chip split-chip-sub" id="split-p4-stats">0 km/h</div>
+        <div class="split-boost"><div class="split-boost-fill" id="split-boost4"></div></div>
+      </div>
+      <!-- 3P only: the free bottom-right quadrant becomes the spectator
+           corner — an opaque panel holding the shared (enlarged) minimap. -->
+      <div id="split-spect"><span class="split-spect-title">🏁 Zoomies GP</span></div>
+      <!-- P1's copy of the minimap (2P top half); the solo #minimap already
+           sits bottom-left, which lands in P2's half. Refreshed by a cheap
+           blit of the main minimap canvas — one draw, two screens. 3-4P hide
+           this and share the single #minimap instead (repositioned by CSS). -->
       <canvas id="minimap2" width="150" height="150"></canvas>
     </div>
 
@@ -360,7 +376,7 @@
                P2 on a second controller or the keyboard. -->
           <button id="mode-split" class="tap-card mode-tap hidden">
             <span class="tap-chip" style="background:#f472b6">🛋️</span>
-            <span class="tap-text"><span class="tap-title">Versus (2P)</span><span class="tap-sub">Split screen on this machine — controller vs controller or keyboard</span></span>
+            <span class="tap-text"><span class="tap-title">Versus (2–4P)</span><span class="tap-sub">Split screen on this machine — controllers and the keyboard share one screen</span></span>
             <span class="tap-chev">›</span>
           </button>
           <button id="mode-daily" class="tap-card mode-tap mode-daily">
@@ -606,9 +622,20 @@
             </span>
             <button id="startline-edit" class="btn-cream small-pill">Edit</button>
           </div>
-          <!-- Versus only (revealed in split mode): Player 2 picks a named
-               cat + kart right here — the garage flow belongs to P1, and the
-               roster presets keep P2's pick one-tap on the shared screen. -->
+          <!-- Versus only (revealed in split mode): how many humans share the
+               screen (2 rows / quadrants), then one pick tile per extra seat —
+               the garage flow belongs to P1, and the roster presets keep each
+               seat's pick one-tap on the shared screen. -->
+          <div class="sticker-deep start-opts hidden" id="split-count-row">
+            <div class="mode-opt-row">
+              <span class="mode-opt-label">Players</span>
+              <div class="seg-toggle" id="split-count-seg">
+                <button class="seg-btn" id="split-count-2">2</button>
+                <button class="seg-btn" id="split-count-3">3</button>
+                <button class="seg-btn" id="split-count-4">4</button>
+              </div>
+            </div>
+          </div>
           <div class="sticker-deep start-racer p2-racer hidden" id="p2-racer">
             <span class="start-racer-text">
               <span class="start-racer-label">Player 2</span>
@@ -626,6 +653,42 @@
               </span>
             </span>
             <button id="p2-edit" class="btn-cream small-pill">Edit</button>
+          </div>
+          <div class="sticker-deep start-racer p2-racer hidden" id="p3-racer">
+            <span class="start-racer-text">
+              <span class="start-racer-label">Player 3</span>
+              <span class="p2-pick-row">
+                <span class="tile-swatch" id="p3-swatch-cat"></span>
+                <button id="p3-cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
+                <span class="mini-name" id="p3-cat-name">Snow</span>
+                <button id="p3-cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
+              </span>
+              <span class="p2-pick-row">
+                <span class="tile-swatch" id="p3-swatch-kart"></span>
+                <button id="p3-kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
+                <span class="mini-name" id="p3-kart-name">Clover</span>
+                <button id="p3-kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
+              </span>
+            </span>
+            <button id="p3-edit" class="btn-cream small-pill">Edit</button>
+          </div>
+          <div class="sticker-deep start-racer p2-racer hidden" id="p4-racer">
+            <span class="start-racer-text">
+              <span class="start-racer-label">Player 4</span>
+              <span class="p2-pick-row">
+                <span class="tile-swatch" id="p4-swatch-cat"></span>
+                <button id="p4-cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
+                <span class="mini-name" id="p4-cat-name">Tuxedo</span>
+                <button id="p4-cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
+              </span>
+              <span class="p2-pick-row">
+                <span class="tile-swatch" id="p4-swatch-kart"></span>
+                <button id="p4-kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
+                <span class="mini-name" id="p4-kart-name">Sunbeam</span>
+                <button id="p4-kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
+              </span>
+            </span>
+            <button id="p4-edit" class="btn-cream small-pill">Edit</button>
           </div>
           <div class="sticker-deep start-opts">
             <div class="mode-opt-row" id="laps-row">
@@ -968,11 +1031,12 @@
             <span class="setting-label">Graphics</span>
             <div id="quality-toggle" class="seg-toggle">
               <button id="set-quality-low" class="seg-btn">Low</button>
+              <button id="set-quality-balanced" class="seg-btn">Balanced</button>
               <button id="set-quality-medium" class="seg-btn is-active">Medium</button>
               <button id="set-quality-high" class="seg-btn">High</button>
             </div>
           </div>
-          <p class="setting-note"><b>Low</b> — older phones (simpler effects). <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
+          <p class="setting-note"><b>Low</b> — older phones (simplest effects, bare verges). <b>Balanced</b> — most phones: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
           <div class="setting-row">
             <span class="setting-label">Versus effects</span>
             <button id="set-splitfx-toggle" class="secondary small toggle off">Off</button>

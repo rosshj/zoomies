@@ -332,6 +332,10 @@ export class MpSession {
       player.knock.x -= nx * power * sp;
       player.knock.z -= nz * power * sp;
       player.speed *= 0.99; // same tiny scrub as single-player
+      // Same thud as a single-player contact (the session is DOM/audio-free,
+      // so the shell injects the hook). Without it every online bump is mute —
+      // the most tactile moment in the game, silently missing.
+      this.onBump?.(power);
 
       // Cosmetic-only nudge on the ghost (instant local feedback) at the ghost's
       // mass share — the authoritative slide arrives over the network shortly after.

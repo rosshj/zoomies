@@ -104,17 +104,30 @@ Known caveat: the **Steam overlay** frequently fails to render inside
 Electron. `main.cjs` calls `electronEnableSteamOverlay()` best-effort, but
 treat the overlay as unsupported — nothing in the game may depend on it.
 
-## Versus (2P split screen)
+## Versus (2–4P split screen)
 
-Desktop-only mode (the card appears when the shell bridge is present): two
-stacked full-width views, P1 on top. Two humans + four rivals — the same
-six-kart field as solo. Pads: with two controllers each player gets one;
-with one, the controller is P1's and the keyboard is P2's (full bindings,
-same as solo keyboard). Perf posture: the post stack (bloom/god rays/grade)
-is bypassed in split — two scene passes replace one scene pass + post — and
-the dynamic resolution scaler stays in charge of the total frame cost.
-No treats are paid in Versus; the podium is the prize. Verified headlessly
-by `npm run check:split`.
+Desktop-only mode (the card appears when the shell bridge is present). The
+start line has a Players segment (2/3/4, persisted) plus a pick tile per
+seat; each extra seat can also run the full cat/kart card screens. Layouts:
+2P = two stacked full-width rows (P1 on top); 3P = quadrants with the free
+bottom-right corner showing an enlarged shared minimap; 4P = four quadrants
+with the shared map on the centre crosshair. Humans + AI always total the
+same six-kart field as solo.
+
+Controllers: pads are dealt in seat order (P1 first); the first seat left
+without a pad gets the keyboard (full bindings, same as solo). So 4P wants
+three pads + keyboard, or four pads.
+
+Perf posture: the post stack (bloom/god rays/grade) is bypassed in split —
+N scene passes replace one scene pass + post — shadows render once per frame
+for all views, and at 3-4 seats the per-view far plane is reined in (1800)
+and the backing DPR capped at 1.5 (per-pane sharpness matches solo at a sane
+fill bill). The dynamic resolution scaler stays in charge of the total frame
+cost. The optional "Versus effects" toggle (per-view post) applies to 2P
+only. No treats are paid in Versus; the podium is the prize. Verified
+headlessly by `npm run check:split` (2P flow: independence, placement,
+finish grace, DNF results) and `node tools/split34-check.mjs` (3P/4P:
+quadrant cams/HUD, seat picks, input dealing, lean posture).
 
 ## Smoke test
 
