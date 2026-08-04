@@ -149,42 +149,55 @@ for (const COUNT of [3, 4]) {
     /^P1 · Lap/.test(drive.chips[0]) && /^P3 · Lap/.test(drive.chips[2]), drive);
   await page.keyboard.up("ArrowUp");
 
-  // PAIRING: with only P1 (pad) still driving and P2 idle beside it, the
-  // TOP-LEFT quadrant must be the one that keeps changing — the fence for
-  // the setViewport y-origin flip that put every view in the wrong quadrant
-  // (and left one quadrant black in 3P).
-  for (let t = 0; t < 30; t++) {
-    const s3 = await page.evaluate(() =>
-      Math.abs(window.__zoomies.karts.filter((k) => k.isPlayer)[2].speed));
-    if (s3 < 2) break;
+  await page.evaluate(() => { const b = window.__pads[0].buttons[7]; b.pressed = false; b.value = 0; });
+
+  // PAIRING: every chase cam frames its OWN kart at the bottom-centre of its
+  // pane, and the seat picks wear four distinct hues — so once the humans
+  // have coasted to a stop (and the AI pack has raced away from the grid),
+  // the bottom-centre patch of quadrant i must classify to seat i's kart
+  // colour. This is the fence for the setViewport y-origin flip that put
+  // every view in the wrong quadrant (temporal-diff fences drowned in AI
+  // traffic; a colour match is single-frame and deterministic).
+  for (let t = 0; t < 40; t++) {
+    const settled = await page.evaluate(() =>
+      window.__zoomies.karts.filter((k) => k.isPlayer).every((k) => Math.abs(k.speed) < 2));
+    if (settled) break;
     await page.waitForTimeout(1000);
   }
-  const snap = () => page.evaluate(() => new Promise((resolve) => {
+  await page.waitForTimeout(4000); // let the chase cams swing in behind the parked karts
+  const pairing = await page.evaluate((count) => new Promise((resolve) => {
     requestAnimationFrame(() => {
-      const gl = window.__zoomies.renderer.domElement;
+      const z = window.__zoomies;
+      const gl = z.renderer.domElement;
       const c = document.createElement("canvas");
-      c.width = 160; c.height = 100;
-      c.getContext("2d").drawImage(gl, 0, 0, 160, 100);
-      resolve([...c.getContext("2d").getImageData(0, 0, 160, 100).data]);
-    });
-  }));
-  const snapA = await snap();
-  await page.waitForTimeout(3000);
-  const snapB = await snap();
-  const tdiff = (x0, y0) => {
-    let sum = 0, n = 0;
-    for (let y = y0 + 4; y < y0 + 46; y++) {
-      for (let px = x0 + 6; px < x0 + 74; px++) {
-        const a = (y * 160 + px) * 4;
-        sum += Math.abs(snapA[a] - snapB[a]) + Math.abs(snapA[a + 1] - snapB[a + 1]);
-        n++;
+      c.width = 320; c.height = 200;
+      const x = c.getContext("2d");
+      x.drawImage(gl, 0, 0, 320, 200);
+      const humans = z.karts.filter((k) => k.isPlayer);
+      const cols = humans.map((k) => [(k.color >> 16) & 255, (k.color >> 8) & 255, k.color & 255]);
+      const Q = [
+        { x0: 0, y0: 0 }, { x0: 160, y0: 0 },
+        { x0: 0, y0: 100 }, { x0: 160, y0: 100 },
+      ];
+      const out = [];
+      for (let i = 0; i < count; i++) {
+        // Bottom-centre patch of pane i: own kart's bodywork.
+        const d = x.getImageData(Q[i].x0 + 64, Q[i].y0 + 66, 32, 22).data;
+        let r = 0, g = 0, b = 0, n = 0;
+        for (let p = 0; p < d.length; p += 4) { r += d[p]; g += d[p + 1]; b += d[p + 2]; n++; }
+        r /= n; g /= n; b /= n;
+        let best = -1, bestD = Infinity;
+        cols.forEach((cc, j) => {
+          const dd = (cc[0] - r) ** 2 + (cc[1] - g) ** 2 + (cc[2] - b) ** 2;
+          if (dd < bestD) { bestD = dd; best = j; }
+        });
+        out.push({ pane: i, mean: [r, g, b].map(Math.round), matchesSeat: best });
       }
-    }
-    return +(sum / Math.max(1, n)).toFixed(2);
-  };
-  const pairing = { tl: tdiff(0, 0), tr: tdiff(80, 0) };
-  check(`${COUNT}P: P1's (driving) view is the TOP-LEFT quadrant`, pairing.tl > pairing.tr * 1.25, pairing);
-  await page.evaluate(() => { const b = window.__pads[0].buttons[7]; b.pressed = false; b.value = 0; });
+      resolve({ cols, out });
+    });
+  }), COUNT);
+  check(`${COUNT}P: every pane frames its own seat's kart (colour match)`,
+    pairing.out.every((o) => o.matchesSeat === o.pane), pairing);
 
   // The rendered quadrants must be DIFFERENT views (each seat its own cam).
   const quads = await page.evaluate(() => new Promise((resolve) => {
