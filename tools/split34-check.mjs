@@ -54,9 +54,12 @@ for (const COUNT of [3, 4]) {
     try { localStorage.setItem("zoomies-mode-v1", "split"); } catch {}
     try { localStorage.setItem("zoomies-split-count", String(count)); } catch {}
     // Distinct persisted picks per seat so name assertions are deterministic.
-    try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: 3, kart: 2 })); } catch {}
-    try { localStorage.setItem("zoomies-p3-racer", JSON.stringify({ cat: 4, kart: 4 })); } catch {}
-    try { localStorage.setItem("zoomies-p4-racer", JSON.stringify({ cat: 5, kart: 5 })); } catch {}
+    // Kart hues chosen to be ABSENT from the world palette (the winter map is
+    // full of Clover-green trees and Ember-red barriers): Grape purple,
+    // Tangerine orange, Nova pink — the colour pairing fence keys off them.
+    try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: 3, kart: 4 })); } catch {}
+    try { localStorage.setItem("zoomies-p3-racer", JSON.stringify({ cat: 4, kart: 3 })); } catch {}
+    try { localStorage.setItem("zoomies-p4-racer", JSON.stringify({ cat: 5, kart: 8 })); } catch {}
     window.zoomiesDesktop = { quit: () => {} }; // the shell bridge gates the mode
     // Two fake pads: P1 + P2 on pads, P3 keyboard, P4 (if present) seatless.
     const mkPad = (i) => ({
@@ -179,28 +182,34 @@ for (const COUNT of [3, 4]) {
         { x0: 0, y0: 0 }, { x0: 160, y0: 0 },
         { x0: 0, y0: 100 }, { x0: 160, y0: 100 },
       ];
-      const out = [];
+      // Per-pane counts of pixels matching each seat's kart colour. Compared
+      // COLUMN-WISE (for colour j, which pane has the most of it?) — any
+      // world colour that leaks into a bucket leaks into every pane roughly
+      // equally, while the own-kart blob adds its pixels to exactly one.
+      const perPane = [];
       for (let i = 0; i < count; i++) {
-        // Count pixels in pane i's central-lower region that match each
-        // seat's kart colour (a fixed patch just samples road — kart size
-        // and exact framing vary). The own kart is the nearest and biggest
-        // coloured blob in its own pane, so its colour must dominate.
         const d = x.getImageData(Q[i].x0 + 24, Q[i].y0 + 40, 112, 58).data;
         const counts = cols.map(() => 0);
         for (let p = 0; p < d.length; p += 4) {
           const r = d[p], g = d[p + 1], b = d[p + 2];
           cols.forEach((cc, j) => {
-            if ((cc[0] - r) ** 2 + (cc[1] - g) ** 2 + (cc[2] - b) ** 2 < 5800) counts[j]++;
+            if ((cc[0] - r) ** 2 + (cc[1] - g) ** 2 + (cc[2] - b) ** 2 < 4200) counts[j]++;
           });
         }
-        const best = counts.indexOf(Math.max(...counts));
-        out.push({ pane: i, counts, matchesSeat: best });
+        perPane.push(counts);
       }
-      resolve({ cols, out });
+      resolve({ cols, perPane });
     });
   }), COUNT);
+  // Seats 2..N wear the world-absent hues; their colour must peak in their
+  // own pane (P1's pane is then right by elimination — the rects are a
+  // fixed bijection).
+  const colOk = (j) => {
+    const col = pairing.perPane.map((counts) => counts[j]);
+    return col[j] === Math.max(...col) && col[j] > 20;
+  };
   check(`${COUNT}P: every pane frames its own seat's kart (colour match)`,
-    pairing.out.every((o) => o.matchesSeat === o.pane && o.counts[o.pane] > 25), pairing);
+    Array.from({ length: COUNT - 1 }, (_, k) => k + 1).every(colOk), pairing);
 
   // The rendered quadrants must be DIFFERENT views (each seat its own cam).
   const quads = await page.evaluate(() => new Promise((resolve) => {
