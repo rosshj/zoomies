@@ -181,23 +181,26 @@ for (const COUNT of [3, 4]) {
       ];
       const out = [];
       for (let i = 0; i < count; i++) {
-        // Bottom-centre patch of pane i: own kart's bodywork.
-        const d = x.getImageData(Q[i].x0 + 64, Q[i].y0 + 66, 32, 22).data;
-        let r = 0, g = 0, b = 0, n = 0;
-        for (let p = 0; p < d.length; p += 4) { r += d[p]; g += d[p + 1]; b += d[p + 2]; n++; }
-        r /= n; g /= n; b /= n;
-        let best = -1, bestD = Infinity;
-        cols.forEach((cc, j) => {
-          const dd = (cc[0] - r) ** 2 + (cc[1] - g) ** 2 + (cc[2] - b) ** 2;
-          if (dd < bestD) { bestD = dd; best = j; }
-        });
-        out.push({ pane: i, mean: [r, g, b].map(Math.round), matchesSeat: best });
+        // Count pixels in pane i's central-lower region that match each
+        // seat's kart colour (a fixed patch just samples road — kart size
+        // and exact framing vary). The own kart is the nearest and biggest
+        // coloured blob in its own pane, so its colour must dominate.
+        const d = x.getImageData(Q[i].x0 + 24, Q[i].y0 + 40, 112, 58).data;
+        const counts = cols.map(() => 0);
+        for (let p = 0; p < d.length; p += 4) {
+          const r = d[p], g = d[p + 1], b = d[p + 2];
+          cols.forEach((cc, j) => {
+            if ((cc[0] - r) ** 2 + (cc[1] - g) ** 2 + (cc[2] - b) ** 2 < 5800) counts[j]++;
+          });
+        }
+        const best = counts.indexOf(Math.max(...counts));
+        out.push({ pane: i, counts, matchesSeat: best });
       }
       resolve({ cols, out });
     });
   }), COUNT);
   check(`${COUNT}P: every pane frames its own seat's kart (colour match)`,
-    pairing.out.every((o) => o.matchesSeat === o.pane), pairing);
+    pairing.out.every((o) => o.matchesSeat === o.pane && o.counts[o.pane] > 25), pairing);
 
   // The rendered quadrants must be DIFFERENT views (each seat its own cam).
   const quads = await page.evaluate(() => new Promise((resolve) => {
