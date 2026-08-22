@@ -58,7 +58,7 @@ export function resolveIceServers() {
 // └──────────────────────────────────────────────────────────────────────────────┘
 // Until the placeholder is replaced the referee stays OFF (Settings shows "Not set")
 // and nothing tries to connect. (?ref=wss://… still works for a desktop test.)
-export const REFEREE_URL = "wss://PASTE_YOUR_WORKER_URL_HERE.workers.dev";
+export const REFEREE_URL = "https://zoomies-referee.rosshj.workers.dev";
 
 // Treat the untouched placeholder as "not configured" so a fresh checkout never
 // tries to reach a fake host — the referee only turns on once you paste a real URL.
