@@ -129,6 +129,33 @@ headlessly by `npm run check:split` (2P flow: independence, placement,
 finish grace, DNF results) and `node tools/split34-check.mjs` (3P/4P:
 quadrant cams/HUD, seat picks, input dealing, lean posture).
 
+## Steam Deck
+
+Build a Deck package from any machine (the Deck is plain x86_64 Linux):
+
+```sh
+npm run dist:deck    # → out/ zip with the linux build
+```
+
+Get the zip onto the Deck (USB stick, scp, or `npx serve desktop/out` on
+the build machine and download it with the Deck's browser in Desktop Mode),
+extract it anywhere (e.g. `~/Zoomies`), then in desktop Steam:
+**Games → Add a Non-Steam Game → Browse** → `zoomies-desktop`. Launch from
+Gaming Mode; pick the **Gamepad** controller template so the Deck presents
+as a standard pad (the Gamepad API path the game already uses — press any
+button once, the browser hides a pad until its first input).
+
+The shell detects Gaming Mode's `SteamDeck=1` env and adapts itself:
+Chromium's SUID sandbox helper can't work on SteamOS's immutable filesystem
+(a stock Electron launch dies at startup), so it runs `no-sandbox` there —
+the game only ever loads its own bundled app:// content — and it starts
+fullscreen. Testing from Konsole in Desktop Mode without that env: launch
+with `--no-sandbox` by hand.
+
+The screen is 1280×800 — the exact viewport every headless check runs at.
+Rumble under Steam Input's virtual pad may not reach Chromium's
+`vibrationActuator`; treat it as best-effort on Deck.
+
 ## Smoke test
 
 `xvfb-run -a node tools/electron-smoke.mjs` (repo root) launches THIS shell

@@ -7,7 +7,8 @@
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist": "npm --prefix .. run build:web && electron-builder --config electron-builder.json"
+    "dist": "npm --prefix .. run build:web && electron-builder --config electron-builder.json",
+    "dist:deck": "npm --prefix .. run build:web && electron-builder --config electron-builder.json --linux zip --x64"
   },
   "devDependencies": {
     "electron": "^33.2.0",

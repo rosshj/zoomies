@@ -20,6 +20,16 @@ const DIST = app.isPackaged
   ? path.join(process.resourcesPath, "dist")
   : path.join(__dirname, "..");
 
+// Steam Deck: Gaming Mode launches set SteamDeck=1 in the environment.
+// Two accommodations, both scoped to that env so nothing else changes:
+//  • Chromium's SUID sandbox helper can't get its setuid bit on SteamOS's
+//    immutable filesystem, so a stock launch dies at startup — run without
+//    the sandbox there (the game loads only its own bundled app:// content).
+//  • Start fullscreen: the Deck is a handheld console, a floating 1280x800
+//    window in Desktop Mode test launches is never what you want either.
+const ON_DECK = !!process.env.SteamDeck;
+if (ON_DECK) app.commandLine.appendSwitch("no-sandbox");
+
 // app:// must be registered standard+secure BEFORE app ready so module
 // scripts, fetch and localStorage all behave like a normal https origin.
 protocol.registerSchemesAsPrivileged([
@@ -101,7 +111,7 @@ function createWindow() {
     height: saved?.height || 800,
     minWidth: 960,
     minHeight: 600,
-    fullscreen: !!saved?.fullscreen,
+    fullscreen: ON_DECK || !!saved?.fullscreen,
     backgroundColor: "#0e1320", // matches the game's loading screen
     autoHideMenuBar: true,
     webPreferences: {
