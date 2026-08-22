@@ -122,6 +122,51 @@ src/
                   # interpolation, shared clock (see NETWORKING.md)
 ```
 
+### Is a track playable? (`npm run check:tracks`)
+
+Most of the checks assert that a **feature** works — the game boots, the HUD
+ticks, the item roll is fairly weighted. `tools/track-audit.mjs` asks a
+different question: **is this track playable at all?** It races a full AI field
+and counts the things that are broken no matter what the track was going for:
+
+| Signal | What it means |
+| --- | --- |
+| **wedged** | a kart that wants to drive forward and covers no ground — caught on a barrier, a feature wall, a prop |
+| **grind** | share of race time spent scraping barriers; effectively a corner-quality score, since a spike is a bend the AI can't take cleanly |
+| **stalled** | a kart whose lap progress stops advancing — it can't get round |
+| **offroad** | a kart outside the barriers (containment clamp failing) |
+| **pace** | the field's mean speed; well under top speed means they're fighting the geometry all the way round |
+| **air / NaN** | absurd hang time off a crest, or non-finite kart state |
+
+None of these need a judgement about whether a track is *fun*, so they can gate
+CI. That matters most for the **procedural generator**: custom tracks come from
+a seed plus a handful of knobs, and nobody has driven the overwhelming majority
+of what it can produce. Sweeping seeds and gating on pathologies turns "the
+generator is probably fine" into something measured.
+
+```bash
+npm run check:tracks           # the shipped featured tracks
+npm run check:tracks:random    # 6 random generator recipes
+TRACKS=extreme SEEDS=5 node tools/track-audit.mjs    # every slider maxed
+TRACKS="Whisker Canyon" node tools/track-audit.mjs   # re-run one failure
+```
+
+There are three outcomes, kept deliberately distinct: **pass**, **fail** (a
+pathology was found), and **inconclusive** (the run hit its wall-clock budget
+before gathering enough racing to judge). Only a real failure sets the exit
+code — a harness that reports its own slowness as a broken track trains you to
+ignore red. Maxed-out recipes are the biggest thing the generator makes and
+need a bigger budget: raise it with `WALLCAP=900`.
+
+Timings are in **simulated race seconds**, not wall-clock: under the headless
+software renderer the sim runs several times slower than real time, so
+wall-clock thresholds would flag a healthy kart as wedged just because the
+renderer is slow. Budget roughly three wall minutes per track at the default
+30s.
+
+It measures the **absence of bad, not the presence of good** — a track can pass
+every gate here and still be dull.
+
 ### Ideas for later
 
 - More tracks and biomes

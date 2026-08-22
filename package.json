@@ -25,7 +25,9 @@
     "check:codec": "node tools/codec-check.mjs",
     "check:sim": "node tools/sim-check.mjs",
     "check:referee": "node tools/referee-check.mjs",
-    "check:worldcfg": "node tools/worldcfg-check.mjs"
+    "check:worldcfg": "node tools/worldcfg-check.mjs",
+    "check:tracks": "node tools/track-audit.mjs",
+    "check:tracks:random": "TRACKS=random SEEDS=6 node tools/track-audit.mjs"
   },
   "license": "MIT",
   "dependencies": {
