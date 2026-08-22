@@ -94,7 +94,9 @@ export function toToon(m) {
     // lean at the crown as a fraction of the object's own height, so it reads
     // the same on a sapling and a giant. Only set this on materials whose every
     // mesh carries the aBend / aWindRoot attributes windBendNode reads.
-    if (ud.sway) t.positionNode = windBendNode(ud.sway);
+    // userData.swayMaxStr (optional) caps the wind force this material feels
+    // — see windLean; the canopies use it so storm seeds can't fling them.
+    if (ud.sway) t.positionNode = windBendNode(ud.sway, ud.swayMaxStr ?? null);
     // …and the same for a bush or hedge placed as its own object (see wind.js).
     else if (ud.swayLoose) t.positionNode = windBendLooseNode(ud.swayLoose);
     // A toon made from a shared source is itself shared across karts (the cache

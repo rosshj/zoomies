@@ -50,7 +50,10 @@ then reaches the treeline a beat later.
   them anchored to a home point — a mote that translates forever has to wrap,
   and the wrap always shows.
 - On a `MeshStandardMaterial`, `userData.sway = amp` is enough: `toToon` sees
-  it and wires `windBendNode` into the toon material it builds.
+  it and wires `windBendNode` into the toon material it builds. Add
+  `userData.swayMaxStr = k` to cap the force THAT material feels (stiff trees
+  don't track a gale one-for-one — the canopies cap at 1.45 so storm seeds,
+  where `uWindStr` reaches 2.4, firm the lean instead of thrashing the crown).
 
 Bending rules that keep re-appearing (the grass got both wrong first):
 - Offsets are fractions of the object's own height, never fixed world units —

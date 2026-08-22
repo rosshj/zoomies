@@ -411,7 +411,13 @@ function biomeGround(x, z, out, y) {
 // Builds the world around the track: rolling hills, distant mountains, a small
 // town of buildings, forests, rocks, hero landmarks, hot-air balloons and birds.
 // Returns { grass, update(time) } for the animated bits.
+// World-detail multiplier (High graphics): scales the BUILD-TIME densities —
+// grass sprigs, the ambling-critter budget — set once per world build. Live
+// tiers can't change it mid-session (instanced counts are baked); main.js
+// toasts that a tier switch lands on the next launch.
+let _detail = 1;
 export function buildWorld(scene, track, opts = {}) {
+  _detail = Math.max(0.5, Math.min(2.5, opts.detail || 1));
   const night = opts.timeOfDay === "night";
   // Lamps / string lights / bridge lantern come on at NIGHT and at SUNSET (dusk),
   // dimmer at dusk. `lit` = are they on at all; `litLevel` = how bright (0.55 dusk,
@@ -559,6 +565,17 @@ export function buildWorld(scene, track, opts = {}) {
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     balloons, // debug hook: headless screenshot tours fly the camera to one
     update(time, dt = 0.016, playerPos = null) {
+      // playerPos: a Vector3, an ARRAY of Vector3s (split screen — every
+      // human wakes the world around them), or null (menus: animate all).
+      const ppos = Array.isArray(playerPos) ? playerPos : playerPos ? [playerPos] : null;
+      const nearAny = (x, z, r) => {
+        if (!ppos) return true;
+        for (const p of ppos) {
+          const dx = x - p.x, dz = z - p.z;
+          if (dx * dx + dz * dz < r * r) return true;
+        }
+        return false;
+      };
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
@@ -569,15 +586,13 @@ export function buildWorld(scene, track, opts = {}) {
       for (const fl of birds.flocks) updateFlock(fl, time);
       syncBirdWings(birds);
       for (const c of _critters) {
-        // Far-off animals freeze in place — an amble is invisible from 220u+,
-        // and freezing (vs culling) means they're right there when you return.
-        if (playerPos) {
-          const dx = c.base.x - playerPos.x, dz = c.base.z - playerPos.z;
-          if (dx * dx + dz * dz > 220 * 220) continue;
-        }
+        // Far-off animals freeze in place — an amble is invisible from far
+        // enough away, and freezing (vs culling) means they're right there
+        // when you return. High extends the live range (setSceneryRanges).
+        if (!nearAny(c.base.x, c.base.z, _rangeCritter)) continue;
         updateCritter(c, dt, time, heightAt);
       }
-      for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, playerPos);
+      for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, ppos);
       // (fireflies + water animate via the TSL `time` node; node materials drop the
       // dummy .uniforms after they compile, so don't write to them.)
       if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
@@ -1106,7 +1121,7 @@ function flowerHeadGeo() {
 
 // Instanced roadside cover along the verge, swaying in the shared wind.
 function buildGrass(scene, track, heightAt) {
-  const COUNT = 26000; // instanced 4-triangle cards — cheap to raise
+  const COUNT = Math.round(26000 * _detail); // instanced 4-triangle cards — cheap to raise (High builds denser verges)
   const halfW = track.halfWidth;
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
@@ -2308,6 +2323,11 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
   // clearly from a kart at speed (0.085 was there first and all but vanished
   // in motion) while staying a breeze rather than a gale.
   foliageMat.userData.sway = 0.12;
+  // …but a stiff tree mustn't track a gale one-for-one: uWindStr peaks at 2.4
+  // on stormy seeds, which flung the crowns (~29% of their height). Cap the
+  // force the canopies feel — ordinary wind (≤1) is untouched, the top end
+  // flattens to a firm lean instead of a thrash.
+  foliageMat.userData.swayMaxStr = 1.45;
 
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
   const m = new THREE.Matrix4();
@@ -3504,7 +3524,7 @@ function buildRoadside(scene, track, heightAt) {
     // windmill sails) keep their own meshes.
     if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
-    if (prop.userData.wander && _critters.length < 48) {
+    if (prop.userData.wander && _critters.length < Math.round(48 * _detail)) {
       _critters.push({
         obj: prop,
         base: prop.position.clone(),
@@ -5261,19 +5281,34 @@ function buildPigeons(scene, track, heightAt) {
   return flocks;
 }
 
-function updatePigeons(flock, dt, time, playerPos) {
+// `ppos`: null or an ARRAY of positions — every human counts (split screen),
+// so a flock wakes/scatters for whichever player reaches it.
+// Live wake ranges (scaled up on High so the world is animated further out:
+// critters keep ambling and pigeon flocks stay live/scatter from further away).
+let _rangeCritter = 220;
+let _rangePigeon = 60;
+export function setSceneryRanges(k = 1) {
+  _rangeCritter = 220 * k;
+  _rangePigeon = 60 * k;
+}
+
+function _pigeonNearest(flock, ppos) {
+  let best = Infinity;
+  for (const p of ppos) {
+    const dx = p.x - flock.center.x, dz = p.z - flock.center.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < best) best = d2;
+  }
+  return best;
+}
+function updatePigeons(flock, dt, time, ppos) {
   if (!flock.scattered) {
-    // Perched flocks far from the player sleep as the merged proxy mesh — the
-    // 4cm idle bob is invisible from distance, and the ~42 live meshes only
-    // swap in close up (past the scatter trigger's reach, so the handoff is
-    // never visible mid-burst). A scattered flock keeps its live birds until
-    // it lands, wherever the player is.
-    let near = true;
-    if (playerPos) {
-      const dx = playerPos.x - flock.center.x;
-      const dz = playerPos.z - flock.center.z;
-      near = dx * dx + dz * dz < 60 * 60;
-    }
+    // Perched flocks far from every player sleep as the merged proxy mesh —
+    // the 4cm idle bob is invisible from distance, and the ~42 live meshes
+    // only swap in close up (past the scatter trigger's reach, so the handoff
+    // is never visible mid-burst). A scattered flock keeps its live birds
+    // until it lands, wherever the players are.
+    const near = !ppos || _pigeonNearest(flock, ppos) < _rangePigeon * _rangePigeon;
     if (near !== flock.liveOn) {
       flock.liveOn = near;
       flock.group.visible = near;
@@ -5284,10 +5319,8 @@ function updatePigeons(flock, dt, time, playerPos) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
     }
-    if (playerPos) {
-      const dx = playerPos.x - flock.center.x;
-      const dz = playerPos.z - flock.center.z;
-      if (dx * dx + dz * dz < flock.triggerR * flock.triggerR) {
+    if (ppos) {
+      if (_pigeonNearest(flock, ppos) < flock.triggerR * flock.triggerR) {
         flock.scattered = true;
         flock.timer = 0;
         for (const b of flock.birds) {
@@ -5304,10 +5337,9 @@ function updatePigeons(flock, dt, time, playerPos) {
       for (const w of b.wings) w.wg.rotation.z = w.sx * (0.3 + Math.sin(time * 24 + b.phase) * 0.8);
       b.group.rotation.y = Math.atan2(b.vel.x, b.vel.z);
     }
-    if (flock.timer > 4 && playerPos) {
-      const dx = playerPos.x - flock.center.x;
-      const dz = playerPos.z - flock.center.z;
-      if (dx * dx + dz * dz > 80 * 80) {
+    if (flock.timer > 4 && ppos) {
+      const landR = _rangePigeon + 20; // must exceed the live range or a flock lands while still "near"
+      if (_pigeonNearest(flock, ppos) > landR * landR) {
         flock.scattered = false;
         for (const b of flock.birds) {
           b.group.position.copy(b.home);

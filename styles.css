@@ -2473,6 +2473,9 @@ button.secondary.small,
 /* With Install hidden there are three visible buttons — Settings spans the
    final row. When Install shows (4 visible) the grid is a clean 2×2. */
 #install-btn.hidden ~ #open-settings { grid-column: 1 / -1; }
+/* Desktop shell: the revealed Quit makes it four visible again — back to a
+   clean 2×2 (Electron's Chromium always has :has). */
+#install-btn.hidden ~ #open-settings:has(~ #quit-btn-title:not(.hidden)) { grid-column: auto; }
 .extra-btn {
   position: relative;
   font-size: clamp(12px, 2.4vh, 14px);
@@ -3014,3 +3017,153 @@ button.small { white-space: nowrap; }
 .tod-grid.trio { grid-template-columns: repeat(3, 1fr); }
 #track-finetune { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
 .map-frame .map-reroll + .map-reroll { margin-top: 2px; }
+
+/* Gamepad focus ring (menupad.js): which button the pad will press. Outline
+   (not border) so it never shifts layout. Two-tone — a dark seat under a
+   white ring under a gold glow — so it reads on EVERY surface: a gold ring
+   alone vanished on the gold Let's Go! button and on bright snowy scenes.
+   A slow pulse keeps it findable even when nothing else moves. */
+.pad-focus {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(20, 14, 40, 0.85), 0 0 0 8px var(--accent),
+    0 0 22px rgba(255, 179, 0, 0.85);
+  animation: pad-focus-pulse 1.2s ease-in-out infinite;
+  z-index: 1;
+}
+@keyframes pad-focus-pulse {
+  50% {
+    box-shadow: 0 0 0 2px rgba(20, 14, 40, 0.85), 0 0 0 6px var(--accent),
+      0 0 30px rgba(255, 179, 0, 0.6);
+  }
+}
+
+/* --- Split screen (Versus 2P) ---------------------------------------------- */
+#split-hud { position: absolute; inset: 0; pointer-events: none; }
+#split-divider {
+  position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: 3px;
+  transform: translateY(-50%);
+  background: linear-gradient(90deg, rgba(255, 194, 75, 0), rgba(255, 194, 75, 0.9) 18%, rgba(255, 194, 75, 0.9) 82%, rgba(255, 194, 75, 0));
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+.split-panel {
+  position: absolute;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+#split-panel1 { top: 10px; }
+#split-panel2 { top: calc(50% + 10px); }
+/* Quadrant layouts (3-4 players): a vertical divider joins the horizontal
+   one, and the panels move to the four quadrant corners — P1 TL, P2 TR,
+   P3 BL, P4 BR. Panels 3/4 and the spectator corner only exist here. */
+#split-divider-v { display: none; }
+#split-panel3, #split-panel4, #split-spect { display: none; }
+#hud.split-3 #split-divider-v, #hud.split-4 #split-divider-v {
+  display: block;
+  position: absolute;
+  top: 0; bottom: 0; left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: linear-gradient(180deg, rgba(255, 194, 75, 0), rgba(255, 194, 75, 0.9) 18%, rgba(255, 194, 75, 0.9) 82%, rgba(255, 194, 75, 0));
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+#hud.split-3 .split-panel, #hud.split-4 .split-panel { right: auto; align-items: flex-start; gap: 3px; }
+#hud.split-3 #split-panel1, #hud.split-4 #split-panel1 { left: 10px; top: 8px; }
+#hud.split-3 #split-panel2, #hud.split-4 #split-panel2 { left: calc(50% + 10px); top: 8px; }
+#hud.split-3 #split-panel3, #hud.split-4 #split-panel3 { display: flex; left: 10px; top: calc(50% + 8px); }
+#hud.split-4 #split-panel4 { display: flex; left: calc(50% + 10px); top: calc(50% + 8px); }
+#hud.split-3 .split-chip, #hud.split-4 .split-chip { font-size: clamp(11px, 2vh, 14px); padding: 3px 10px; }
+#hud.split-3 .split-boost, #hud.split-4 .split-boost { width: 104px; }
+/* 3P spectator corner: the free bottom-right quadrant gets an opaque panel
+   (also hides whatever stale GL frame sits under the unrendered quadrant)
+   with the shared minimap enlarged at its centre. */
+#hud.split-3 #split-spect {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 5vh;
+  position: absolute;
+  left: 50%; top: 50%; right: 0; bottom: 0;
+  background: radial-gradient(ellipse at center, #182036 0%, #0e1320 78%);
+}
+.split-spect-title {
+  color: #ffc24b;
+  font-weight: 800;
+  font-size: clamp(14px, 2.6vh, 20px);
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+#hud.split-3 #minimap {
+  left: auto; bottom: auto;
+  right: 25%; top: 50%;
+  transform: translate(50%, 14%);
+  width: min(34vh, 23vw);
+  height: min(34vh, 23vw);
+  z-index: 2; /* above the opaque spectator panel (#split-spect follows it in the DOM) */
+}
+/* 4P: one shared map, small, on the crosshair where the four views meet. */
+#hud.split-4 #minimap {
+  left: 50%; bottom: 50%;
+  transform: translate(-50%, 50%);
+  width: 118px;
+  height: 118px;
+  opacity: 0.92;
+}
+#hud.split-3 #minimap2, #hud.split-4 #minimap2 { display: none; }
+.split-chip {
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(14, 19, 32, 0.72);
+  border: 1px solid rgba(255, 194, 75, 0.5);
+  color: #fff4dd;
+  font-weight: 700;
+  font-size: clamp(12px, 2.2vh, 16px);
+  white-space: nowrap;
+}
+.split-chip-sub {
+  font-weight: 600;
+  font-size: clamp(11px, 1.8vh, 13px);
+  opacity: 0.92;
+}
+.split-boost {
+  width: 128px;
+  height: 9px;
+  border-radius: 5px;
+  background: rgba(14, 19, 32, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+}
+.split-boost-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #ffb300, #ff5722);
+}
+#minimap2 {
+  position: absolute;
+  bottom: calc(50% + 12px); /* bottom-left of the TOP (P1) half */
+  left: max(150px, calc(var(--safe-left, 0px) + 122px));
+  width: 132px;
+  height: 132px;
+  border-radius: 12px;
+  background: rgba(10, 16, 32, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  pointer-events: none;
+}
+/* The solo HUD pieces that are P1-anchored or meaningless with two drivers:
+   rear-threat + shoot-lock point at ONE player, the tilt steering readout and
+   the touch controls have no seat on a desktop couch, and the solo info /
+   powerups blocks are replaced by the symmetric per-half chips (which carry
+   lap · place · items for each player). The minimap serves both. */
+#hud.split #rear-threat, #hud.split #shoot-lock, #hud.split #steer,
+#hud.split #throttle, #hud.split #action-buttons, #hud.split #yarn-warn,
+#hud.split #info, #hud.split #powerups { display: none; }
+
+/* Versus: Player 2's preset picker on the start line. */
+.p2-racer .start-racer-text { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.p2-pick-row { display: flex; align-items: center; gap: 8px; }
+.p2-pick-row .mini-name { flex: 1; text-align: center; }

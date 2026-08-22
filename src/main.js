@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
+// (setFogScale arrives via the createScene() destructure below.)
 import { initGpuParticles } from "./gpuparticles.js";
 import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
@@ -17,10 +18,12 @@ import { setWind, windToward, uWindStr, uWindAir } from "./wind.js";
 import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
+import { MenuPad } from "./menupad.js";
+import { ChaseCam } from "./split.js";
 import { HairballManager, TRI_FAN } from "./hairball.js";
 import { ItemManager } from "./items.js";
-import { HUD, ordinal } from "./hud.js";
-import { buildWorld, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { HUD, ordinal, formatTime } from "./hud.js";
+import { buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { MpSession, MAX_PLAYERS, KART_COLLIDE_MIN, kartBumpPower } from "./net/session.js";
@@ -340,7 +343,7 @@ const DIFF_KEY = "zoomies-difficulty";
 let DIFFICULTY = "hard"; // default = the current tuned field
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
-const { renderer, scene, camera, sun, applyMood, ready: rendererReady, skyMesh, starField } = createScene();
+const { renderer, scene, camera, sun, applyMood, setFogScale, ready: rendererReady, skyMesh, starField } = createScene();
 // Debug hook (console / headless tooling): inspect the live scene graph and
 // renderer counters without instrumenting a build.
 window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
@@ -551,7 +554,13 @@ track.totalLaps = TOTAL_LAPS;
 track.raceTime = 0;
 scene.add(track.group);
 
-const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY });
+// High graphics builds a denser world (grass verges, ambling-critter budget).
+// Read straight from storage: the world builds long before the quality module
+// initialises (same pattern as the shadow-map size in scene.js).
+const _worldDetail = (() => {
+  try { return localStorage.getItem("zoomies-quality-v2") === "high" ? 1.7 : 1; } catch { return 1; }
+})();
+const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 window.__zoomies.wind = { uWindStr, uWindAir, biomeWindAt }; // debug hook: force a shot was taken at + the per-biome target
@@ -592,11 +601,16 @@ function grantItem(kart) {
   kart.boxCooldown = BOX_COOLDOWN;
   if (kart === player && _raceStats) _raceStats.boxes++;
 
-  const n = Math.max(2, _fieldCount);
+  // Online the live field is 2-6 humans; normalizing place over a tiny field
+  // polarizes the roll (in a duel f is exactly 0 or 1 — the leader NEVER sees
+  // catnip and second place gets it half the time). Floor the divisor at the
+  // solo field size so a duel rolls like the front half of a 6-kart race and
+  // the items feel like 1P. Purely local — every client already rolls its own.
+  const n = MP.enabled ? Math.max(6, _fieldCount) : Math.max(2, _fieldCount);
   const f = Math.min(1, Math.max(0, ((kart.place || 1) - 1) / (n - 1))); // 0 leader .. 1 last
 
   effects.tootBurst(kart, 2, false); // a sparkly grab poof
-  audio.boost(kart === player ? null : kart.position);
+  audio.boost(sfxPos(kart));
   // Position-shaped roll: each item lands where it's USEFUL. The leader defends
   // (shield + milk trap — yarn/tri need a target ahead, which they don't
   // have); the mid-pack gets the targeted-offense knife fight (yarn + tri); the
@@ -690,6 +704,7 @@ window.__zoomies.grantItem = grantItem; // debug hook (headless probes verify th
 const HEADLIGHT_BUDGET = 6; // = ROSTER size; was 8 (2 wasted always-on lights at night)
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
+const _leafKarts = []; // scratch: karts + ghosts for the leaf wakes
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
 let _hlRamp = 1;
 // Hoisted beam-ranking comparator (camera XZ via module vars, no per-frame closure).
@@ -762,6 +777,148 @@ let _steerDotLast = Infinity; // last written steer value (guards the style writ
 document.getElementById("calibrate").addEventListener("click", () => input.calibrate());
 
 const input = new Input();
+window.__zoomies.input = input; // debug hook (headless gamepad probe reads steer/throttle)
+const menupad = new MenuPad(); // gamepad drives the menus; inert during play
+
+// --- Split screen (Versus 2P, desktop shell only) --------------------------
+// Local Versus: 2-4 humans, one screen. Extra input instances are created
+// lazily on the first split race and kept for the session (their window
+// listeners can't be unbound); between split races they're scoped to nothing.
+// `splitPlayers` holds every human kart in seat order (index 0 === player);
+// `player2` stays as the second seat's alias — a lot of 2P-era code reads it.
+let splitActive = false;
+let splitCount = 2; // seats in the next split race (2..4, persisted)
+const SPLIT_COUNT_KEY = "zoomies-split-count";
+try { const n = +localStorage.getItem(SPLIT_COUNT_KEY); if (n >= 2 && n <= 4) splitCount = n; } catch {}
+let splitPlayers = []; // human karts, seat order, during a split race
+let player2 = null; // alias: splitPlayers[1]
+let _extraInputs = []; // Input instances for seats 2..4 (index 0 = seat 2)
+let _sCams = []; // per-seat chase cams (lazy, index = seat - 1)
+let _splitChipLast = ["", "", "", ""]; // change-gated chip writes per seat
+let _pFinishToasted = [false, false, false, false]; // per-seat FINISH banners
+// Once ONE human finishes, the other gets a grace window to bring it home —
+// otherwise an idle (or rage-quit) partner deadlocks the race forever. null =
+// not started; counts down in the RACING block; expiry ends the race with the
+// unfinished half scored DNF.
+const SPLIT_FINISH_GRACE = 30;
+let _splitGrace = null;
+let _splitGrace10 = false;
+window.__zoomies.split = () => ({ active: splitActive, p2: !!player2, count: splitPlayers.length, grace: _splitGrace }); // debug hook
+window.__zoomies.debugGrace = (s) => { if (_splitGrace !== null) _splitGrace = s; }; // headless check fast-forwards the finish grace
+window.__zoomies.splitCams = () => (_sCams.length ? { c1: _sCams[0].camera, c2: _sCams[1]?.camera, cams: _sCams.map((c) => c.camera) } : null); // debug hook
+
+// Per-half status chips: lap · place · held items, change-gated like every
+// other per-frame HUD write. The items matter — P2 has no powerups row.
+function _splitChipText(kart) {
+  if (kart.finished) return `🏁 ${ordinal(kart.place || 1)}!`;
+  let s = `Lap ${kart.displayLap(track.totalLaps)}/${track.totalLaps} · ${ordinal(kart.place || 1)}`;
+  if (kart.lives > 0) s += ` ❤️${kart.lives}`;
+  if (kart.shieldTimer > 0) s += " 🛡";
+  if (kart.triShots > 0) s += ` 🐾${kart.triShots}`;
+  if (kart.catnipTimer > 0) s += " 🌿";
+  if (kart.yarnShots > 0) s += ` 🧶${kart.yarnShots}`;
+  if (kart.milkBottles > 0) s += " 🥛";
+  return s;
+}
+let _splitStatsLast = ["", "", "", ""];
+let _splitBoostLast = [-1, -1, -1, -1];
+function _splitStats(kart) {
+  // Same speed scale + clock as the solo HUD, one line per half.
+  return `${Math.round(Math.abs(kart.speed) * 3.0)} km/h · ${formatTime(raceTime)}`;
+}
+function updateSplitChips() {
+  for (let i = 0; i < splitPlayers.length; i++) {
+    const k = splitPlayers[i];
+    const n = i + 1;
+    const t = `P${n} · ` + _splitChipText(k);
+    if (t !== _splitChipLast[i]) {
+      _splitChipLast[i] = t;
+      document.getElementById(`split-p${n}`).textContent = t;
+    }
+    const s = _splitStats(k);
+    if (s !== _splitStatsLast[i]) {
+      _splitStatsLast[i] = s;
+      document.getElementById(`split-p${n}-stats`).textContent = s;
+    }
+    // Boost meters (whole-percent gated so the style write isn't per-frame).
+    const b = Math.round(Math.min(1, k.boostMeter) * 100);
+    if (b !== _splitBoostLast[i]) {
+      _splitBoostLast[i] = b;
+      document.getElementById(`split-boost${n}`).style.width = b + "%";
+    }
+  }
+}
+function setupSplitInputs() {
+  while (_extraInputs.length < splitCount - 1) {
+    const inp = new Input({ touch: false, keyboard: false, pads: [] });
+    _extraInputs.push(inp);
+    if (_extraInputs.length === 1) window.__zoomies.input2 = inp; // debug hook (split probes read P2's channel)
+  }
+  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])]
+    .filter((p) => p && p.connected).map((p) => p.index);
+  // Seat rule: pads are dealt in seat order; the FIRST seat left without a pad
+  // gets the keyboard; the keyboard is P1's spare when every seat has a pad.
+  // (2P with one pad: P1 pad, P2 keyboard — same as it's always been.)
+  let kbSeat = -1;
+  for (let s = 0; s < splitCount; s++) {
+    if (s >= pads.length) { kbSeat = s; break; }
+  }
+  input.setSources({ keyboard: kbSeat === 0 || kbSeat === -1, pads: pads.length ? [pads[0]] : [] });
+  for (let s = 1; s < splitCount; s++) {
+    _extraInputs[s - 1].setSources({ keyboard: kbSeat === s, pads: s < pads.length ? [pads[s]] : [] });
+  }
+  // A seat past both the pads and the keyboard has no controls — say so
+  // rather than leaving a mysteriously parked kart.
+  if (splitCount - pads.length > 1) {
+    hud.showToast?.(`🎮 Need ${splitCount - 1} controllers — P${Math.min(splitCount, pads.length + 2)}+ has none`);
+  }
+}
+// Positional-SFX anchor: a HUMAN's own sounds play flat at full volume (null
+// position) — in Versus every seat is "you", so nobody's shots/boosts/hits
+// arrive faint and panned relative to P1's listener.
+function sfxPos(kart) {
+  return kart === player || (splitActive && splitPlayers.includes(kart)) ? null : kart.position;
+}
+
+function teardownSplit() {
+  splitActive = false;
+  player2 = null;
+  splitPlayers = [];
+  input.setSources({ keyboard: true, pads: null }); // solo reads everything again
+  for (const inp of _extraInputs) inp.setSources({ keyboard: false, pads: [] });
+  const hudEl = document.getElementById("hud");
+  hudEl?.classList.remove("split", "split-3", "split-4");
+  document.getElementById("split-hud")?.classList.add("hidden");
+  layoutStage(); // release the 3-4 seat DPR cap (baseDpr reads splitActive)
+}
+// Viewport rectangles per seat. IMPORTANT: WebGPURenderer.setViewport /
+// setScissor measure y from the TOP of the canvas (WebGPU convention — the
+// WebGL2 backend flips it internally: `state.viewport(x, H - h - y, …)`),
+// NOT WebGL's bottom-left origin. Writing these in GL convention silently
+// swapped every view vertically against its HUD chip — in 2P the "top" half
+// was really P2's view, which is exactly the reported "I drove the bottom
+// seat and it always said 6th": the player watched the half that followed
+// their kart while reading the OTHER seat's chip.
+// 2 seats: stacked full-width rows (P1 top). 3-4 seats: quadrants reading
+// TL → TR → BL → BR; with 3 the BR quadrant is free — the HUD parks an
+// enlarged shared minimap there (the classic couch-racer spectator corner).
+function splitRects(count) {
+  const { W, H } = stageState;
+  const halfH = Math.floor(H / 2);
+  if (count <= 2) {
+    return [
+      { x: 0, y: 0, w: W, h: halfH },                    // P1 top row
+      { x: 0, y: halfH, w: W, h: H - halfH },            // P2 bottom row
+    ];
+  }
+  const halfW = Math.floor(W / 2);
+  return [
+    { x: 0, y: 0, w: halfW, h: halfH },                  // P1 top-left
+    { x: halfW, y: 0, w: W - halfW, h: halfH },          // P2 top-right
+    { x: 0, y: halfH, w: halfW, h: H - halfH },          // P3 bottom-left
+    { x: halfW, y: halfH, w: W - halfW, h: H - halfH },  // P4 bottom-right
+  ].slice(0, count);
+}
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
 // Scratch for the countdown effect warm-up (see startRace).
@@ -915,6 +1072,40 @@ function raceRoster() {
   const look = playerLook();
   const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (MP.enabled || timeTrial) return [playerCfg];
+  if (raceMode === "split") {
+    // Versus: 2-4 humans + AI to fill the same six-kart field (and headlight
+    // budget) as solo, so the multiplied render cost isn't compounded by
+    // extra sim/draw load. Every seat is a real isPlayer kart (human physics,
+    // no AI skill scaling) wearing its startline pick; rivals recolour away
+    // from EVERY human so nobody impersonates a player.
+    playerCfg.name = "Player 1";
+    const humanKartColors = new Set([look.color]);
+    const humanCatColors = new Set([look.catColor]);
+    const seatCfgs = [];
+    for (let seat = 2; seat <= splitCount; seat++) {
+      const { cat: sc, kart: sk } = seatLook(seat);
+      seatCfgs.push({
+        ...ROSTER[0],
+        name: `${sc.name} (P${seat})`,
+        seat,
+        color: sk.color,
+        catColor: sc.fur,
+        catPattern: sc.pattern,
+        catAccessory: sc.accessory,
+        kartStyle: sk.style,
+        kartNumber: sk.number,
+      });
+      humanKartColors.add(sk.color);
+      humanCatColors.add(sc.fur);
+    }
+    const ais = aiRoster(look).slice(0, 6 - 1 - seatCfgs.length).map((cfg) => {
+      let { color, catColor } = cfg;
+      if (humanKartColors.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), humanKartColors);
+      if (humanCatColors.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), humanCatColors);
+      return { ...cfg, color, catColor };
+    });
+    return [playerCfg, ...seatCfgs, ...ais];
+  }
   return [playerCfg, ...aiRoster(look)];
 }
 
@@ -931,6 +1122,8 @@ function buildKarts() {
     _disposeGroup(k.group);
   }
   karts = [];
+  player2 = null; // reassigned below only when the roster carries seats
+  splitPlayers = [];
   _simRng = makeRng(WORLD_SEED + "|sim"); // fresh seeded stream for this race
   _hlRamp = 0.18; // headlights start dim and ramp up once racing, to avoid a grid blowout
   // Player wears the garage pick; AI avoid clashing with it. Multiplayer is
@@ -969,10 +1162,16 @@ function buildKarts() {
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
     });
     toonify(kart.group); // cel-shade the kart + cat
+    applyKartShadowMode(kart); // High: real cast shadows; else the projected quad
     scene.add(kart.group);
     karts.push(kart);
-    if (cfg.isPlayer) player = kart;
+    if (cfg.isPlayer) {
+      if (cfg.seat) { splitPlayers[cfg.seat - 1] = kart; }
+      else { player = kart; splitPlayers[0] = kart; }
+    }
   });
+  if (!splitActive) splitPlayers = [];
+  player2 = splitPlayers[1] || null; // 2P-era alias, kept live for its many readers
   attachBoostLight(player); // reparent the persistent exhaust glow to the new player kart
   window.__zoomies.karts = karts;
 }
@@ -1200,6 +1399,10 @@ const MP = new MpSession({
     },
   },
 });
+// Ghost-kart contact plays the same thud as a solo bump (the session itself is
+// audio-free). Always from the player's seat — the player is in every remote
+// collision by construction.
+MP.onBump = (power) => audio.bump(null, Math.min(1, power / 40));
 
 // The recorder + its export chip live outside the session (they're dev UI/DOM).
 let _netRecorder = null;
@@ -1490,6 +1693,16 @@ function layoutStage() {
 
   camera.aspect = W / H;
   camera.updateProjectionMatrix();
+  // Split-view cameras take their aspect from their own viewport rectangle
+  // (full-width rows for 2 seats, quadrants for 3-4). Keyed off splitCount —
+  // prepareRace calls this before the roster (splitPlayers) is built.
+  if (_sCams.length && splitActive) {
+    const rects = splitRects(splitCount);
+    for (let i = 0; i < splitCount && i < _sCams.length; i++) {
+      _sCams[i].camera.aspect = rects[i].w / Math.max(1, rects[i].h);
+      _sCams[i].camera.updateProjectionMatrix();
+    }
+  }
   applyResolution();
 }
 
@@ -1536,7 +1749,9 @@ function updateRearThreat() {
       const aim = _rtTo.normalize().dot(_rtFwd); // 1 = pointing straight at the player
       if (aim < 0.78) return false; // not aimed at you
       // Ready + dead-on + in solid range = imminent; otherwise just a warning.
-      const ready = (k.shootCooldown ?? 0) <= 0.25;
+      // Remote ghosts don't carry a shootCooldown — default them to NOT ready
+      // (amber warn), else every rival behind you screams a permanent red lock.
+      const ready = (k.shootCooldown ?? Infinity) <= 0.25;
       if (ready && aim > 0.86 && dist < 46) { state = "lock"; return true; }
       state = "warn"; // keep scanning in case another kart is a full lock
       return false;
@@ -1704,10 +1919,63 @@ function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   let _t = performance.now();
+  // Versus (2P): the shared camera mirrors P1's view so everything that reads
+  // it (atmosphere sun-view, weather field, mote follow, headlight ranking)
+  // keeps working; P2's half accepts P1's view-space sun rim — a subtle,
+  // static offset, invisible in play.
+  if (splitActive && player2 && state !== State.MENU && _sCams.length) {
+    camera.position.copy(_sCams[0].camera.position);
+    camera.quaternion.copy(_sCams[0].camera.quaternion);
+  }
   updateAtmosphere();
   _seg.atmos += performance.now() - _t;
   _t = performance.now();
-  composer.render();
+  if (splitActive && player2 && state !== State.MENU && _sCams.length) {
+    // 2-4 scissored viewports, straight renders — the TSL post graph (bloom,
+    // god rays, grade) samples full-target viewport UVs and can't wrap
+    // multiple views, and skipping it is also the perf posture: a split race
+    // does one scene pass PER SEAT, so it sheds the post cost instead of
+    // multiplying it. Tone mapping lives on the renderer and still applies.
+    // Shadows render ONCE for all passes: the sun frustum doesn't care which
+    // view is looking, and letting each render() redo the shadow map was the
+    // hidden cost that pushed split frames over budget (DRS bottoming out +
+    // the watchdog stripping grass — the "level looks emptied" report).
+    const rects = splitRects(splitPlayers.length);
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true; // exactly one shadow pass, on P1's render
+    renderer.setScissorTest(true);
+    if (splitFxOn && splitPlayers.length === 2) {
+      // "Versus effects": each half renders through its OWN post graph
+      // (scene pass + bloom + grade/vignette) into its scissored viewport.
+      // Cost is two full-res post stacks — the opt-in experiment, DRS
+      // refereeing; 3-4 seats always take the lean path (four post stacks
+      // is over any budget). See buildSplitFx for why the solo graph can't
+      // be shared.
+      if (!_splitFx1) {
+        _splitFx1 = buildSplitFx(_sCams[0].camera);
+        _splitFx2 = buildSplitFx(_sCams[1].camera);
+      }
+      const fx = [_splitFx1, _splitFx2];
+      for (let i = 0; i < 2; i++) {
+        const r = rects[i];
+        renderer.setViewport(r.x, r.y, r.w, r.h);
+        renderer.setScissor(r.x, r.y, r.w, r.h);
+        fx[i].render();
+      }
+    } else {
+      for (let i = 0; i < splitPlayers.length; i++) {
+        const r = rects[i];
+        renderer.setViewport(r.x, r.y, r.w, r.h);
+        renderer.setScissor(r.x, r.y, r.w, r.h);
+        renderer.render(scene, _sCams[i].camera);
+      }
+    }
+    renderer.setScissorTest(false);
+    renderer.setViewport(0, 0, stageState.W, stageState.H);
+    renderer.shadowMap.autoUpdate = true; // solo/menu path expects the default
+  } else {
+    composer.render();
+  }
   _seg.render += performance.now() - _t;
   if (player && state !== State.MENU) {
     // The minimap is a tiny overview — ~20fps is plenty, and it holds its last draw
@@ -1717,6 +1985,26 @@ function renderFrame() {
     if (_t - _lastMiniDraw >= 50) {
       _lastMiniDraw = _t;
       drawMinimap();
+      // Versus 2P: P1's half gets a copy — one draw, blitted to the second
+      // canvas (drawImage of a small 2D canvas is ~free). 3-4 seats share
+      // ONE map instead (3P: enlarged in the free quadrant; 4P: centred on
+      // the crosshair) — four corner maps read as clutter, one shared map
+      // reads as the race.
+      if (splitActive && splitPlayers.length === 2) {
+        const src = document.getElementById("minimap");
+        const dst = document.getElementById("minimap2");
+        if (src && dst) {
+          if (dst.width !== src.width || dst.height !== src.height) {
+            dst.width = src.width;
+            dst.height = src.height;
+          }
+          const c2 = dst.getContext("2d");
+          // Clear first: blitting a translucent canvas over the previous blit
+          // ACCUMULATES alpha every refresh — the map washed out to a grey slab.
+          c2.clearRect(0, 0, dst.width, dst.height);
+          c2.drawImage(src, 0, 0);
+        }
+      }
       _seg.minimap += performance.now() - _t;
     }
   }
@@ -1933,11 +2221,11 @@ let gpuParticles = null; // GPU ambient motes — created async once the rendere
 // medium and high look IDENTICAL; high only unlocks the frame rate (the 60fps cap
 // keeps phones cool — see the loop). low is the only tier that dials the visuals back.
 const QUALITY_KEY = "zoomies-quality";        // legacy low/high pref — read once to migrate
-const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | medium | high
+const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | balanced | medium | high
 let quality = "medium"; // full graphics + 60fps: cool AND smooth, the safe default everywhere
 try {
   const v2 = localStorage.getItem(QUALITY_KEY_V2);
-  if (v2 === "low" || v2 === "medium" || v2 === "high") quality = v2;
+  if (v2 === "low" || v2 === "balanced" || v2 === "medium" || v2 === "high") quality = v2;
   // Migrate an old explicit "Low"; a legacy "high" maps to medium (same look, still
   // capped) so no phone silently jumps to battery-hungry 120fps — you opt into that.
   else if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low";
@@ -1946,7 +2234,13 @@ let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (s
 function baseDpr() {
   // Low caps the device-pixel-ratio harder — resolution is the biggest lever on
   // both fill cost and render-target memory (which is what tips weak GPUs over).
-  return Math.min(window.devicePixelRatio, quality === "low" ? 1.25 : 2); // medium+high = full res
+  // Balanced sits between: enough res to look crisp, still well clear of 2×.
+  const cap = quality === "low" ? 1.25 : quality === "balanced" ? 1.5 : 2;
+  // 3-4 seat split: cap the backing resolution too — each pane is quarter
+  // screen, so per-pane sharpness at 1.5× matches solo at full DPR while the
+  // fill bill stays sane across 3-4 scene passes. (2P keeps the tier's cap.)
+  const splitCap = splitActive && splitCount >= 3 ? 1.5 : Infinity;
+  return Math.min(window.devicePixelRatio, cap, splitCap);
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -2013,10 +2307,12 @@ function perfWatchdog(dt) {
     if (_wdAccum >= 5) {
       _wdAccum = 0;
       // Step DOWN one tier (session-only, no persist — next launch starts fresh on
-      // the saved tier): high → medium first caps the frame rate (halves the frame
-      // count) before medium → low sheds the effects.
-      applyQuality(quality === "high" ? "medium" : "low", false);
-      hud.showToast?.(quality === "low" ? "Graphics lowered for a smoother race" : "Frame rate capped for a smoother race");
+      // the saved tier): high → medium sheds the High extras, medium → balanced
+      // drops the god rays + some resolution, balanced → low mothballs the world
+      // dressing (grass, motes) as the last resort.
+      const down = { high: "medium", medium: "balanced", balanced: "low" };
+      applyQuality(down[quality] || "low", false);
+      hud.showToast?.("Graphics lowered for a smoother race");
     }
   } else {
     _wdAccum = Math.max(0, _wdAccum - dt * 0.6); // recover slowly from brief spikes
@@ -2107,24 +2403,74 @@ const qualityHighBtn = document.getElementById("set-quality-high");
 //   • GPU ambient motes hidden (skips their compute), grass hidden,
 //   • lower pixel-ratio cap (applied via layoutStage → baseDpr).
 const qualityMedBtn = document.getElementById("set-quality-medium");
+const qualityBalBtn = document.getElementById("set-quality-balanced");
+// Real-shadow mode for a kart (High): the whole kart casts into the (now
+// per-frame) sun shadow map and the fake projected quad hides; Medium/Low
+// keep the quad and cast nothing. Skips the transparent add-ons (shield orb)
+// and the quad itself — a shadow-casting shadow is an Escher print.
+function applyKartShadowMode(kart) {
+  if (!kart || !kart.group) return;
+  const real = quality === "high";
+  if (kart.groundShadow) kart.groundShadow.visible = !real;
+  kart.group.traverse((o) => {
+    if (!o.isMesh || o === kart.shadowQuad || o === kart.shieldMesh) return;
+    const m = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (m && m.transparent) return;
+    o.castShadow = real;
+  });
+}
+
 function applyQuality(q, persist = true) {
   quality = q;
-  const fullFx = q !== "low"; // medium + high get the full effect stack; only low dials it back
+  // Two independent axes now that Balanced sits between Low and Medium:
+  //   fullFx   — the priciest post work (god-ray target + rich composite):
+  //              Medium and High only.
+  //   liveWorld — the world dressing (grass verges, GPU ambient motes):
+  //              everything above Low. This is what makes Balanced read as
+  //              "the same place" as Medium — a bare verge is far more
+  //              noticeable than a missing light shaft.
+  const fullFx = q === "medium" || q === "high";
+  const liveWorld = q !== "low";
   if (persist) { try { localStorage.setItem(QUALITY_KEY_V2, q); } catch {} }
+  // --- High = same 60fps, spent on the WORLD (see the loop's frame cap) ---
+  const high = q === "high";
+  // Real-time shadows: the frustum stays world-fitted (a moving boundary
+  // pops long shadows — tried and rejected, see updateAtmosphere), but on
+  // High the MAP re-renders every frame, so karts cast true shadows (their
+  // quads hide) and the canopies' wind sway animates in the shadows too.
+  sun.shadow.autoUpdate = high;
+  if (!high) sun.shadow.needsUpdate = true; // freeze back onto one fresh static map
+  for (const k of karts) applyKartShadowMode(k);
+  // Draw distance: push the fog out ~35% and the far plane with it — the
+  // distant world becomes VISIBLE rather than hazed.
+  setFogScale(high ? 1.35 : 1);
+  camera.far = high ? 2600 : 2050;
+  // Split cams track the tier's far plane, with the 3-4 seat rein-in intact.
+  const _viewFar = splitActive && splitCount >= 3 ? Math.min(camera.far, 1800) : camera.far;
+  for (const c of _sCams) c.camera.far = _viewFar;
+  // Animals stay lively much further out (critter amble + pigeon flocks).
+  setSceneryRanges(high ? 1.9 : 1);
+  // Build-time density (grass verges, critter budget) is baked per launch —
+  // tell the player when their switch lands.
+  if (persist && high !== (_worldDetail > 1)) {
+    hud.showToast?.(high ? "🌿 Extra world detail on the next launch" : "World detail returns to standard next launch");
+  }
   bloomPass.enabled = true; // marquee glow on every tier
   postProcessing.outputNode = fullFx ? _highOutput : _lowOutput;
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
   _shaftTex.autoUpdate = fullFx; // don't re-render the god-ray target when it's unused
-  if (world.grass) world.grass.visible = fullFx;
-  if (gpuParticles) gpuParticles.setVisible(fullFx);
+  if (world.grass) world.grass.visible = liveWorld;
+  if (gpuParticles) gpuParticles.setVisible(liveWorld);
   renderScale = 1; // reset DRS on a manual quality change
   _drsRung = 0; // keep the rung index in sync (updateDRS owns both)
   qualityLowBtn?.classList.toggle("is-active", q === "low");
+  qualityBalBtn?.classList.toggle("is-active", q === "balanced");
   qualityMedBtn?.classList.toggle("is-active", q === "medium");
   qualityHighBtn?.classList.toggle("is-active", q === "high");
   layoutStage(); // applies the resolution (frame-rate cap is read live in the loop)
 }
 qualityLowBtn?.addEventListener("click", () => { _mpWantsHigh = false; applyQuality("low"); });
+qualityBalBtn?.addEventListener("click", () => { _mpWantsHigh = false; applyQuality("balanced"); });
 qualityMedBtn?.addEventListener("click", () => {
   if (MP.enabled) { _mpWantsHigh = true; _mpForcedLow = false; } // opt out of MP's forced-Low this session
   applyQuality("medium");
@@ -2514,6 +2860,10 @@ function toMenu() {
   MP.inLobby = false;
   MP.startAt = 0;
   state = State.MENU;
+  // Leaving a Versus race hands the keyboard/pads back to the solo reader
+  // (menus, and any next race, expect the everything-input default).
+  if (splitActive && !_raceParked) teardownSplit();
+  _pickingSeat = 0; // never leave the racer screens wired to a seat's pass
   hideRaceVeil(); // safety: never leave the race cover up over the menu
   refreshResumeBtn();
   // Leaving to the menu abandons an in-progress cup / daily run: clear the run
@@ -2730,6 +3080,65 @@ fpsToggle?.addEventListener("click", () => {
   applyFpsSetting();
 });
 applyFpsSetting();
+
+// --- Versus effects setting (Display; persisted, default OFF) ---
+// Routes each split-screen half through the FULL post chain (bloom, god
+// rays, biome grade, vignette) instead of the plain two-pass render. Costs
+// two full-resolution post stacks per frame — offered as an opt-in so big
+// GPUs can have the pretty version and the FPS counter can referee.
+const SPLITFX_KEY = "zoomies-splitfx";
+let splitFxOn = false;
+// One post graph PER split camera, built lazily on the first effects race.
+// The solo graph can't be reused by walking its camera between two renders:
+// its scene pass caches per frame, so the second half replayed the first
+// half's texture (both players saw one view). Each graph owns its scene pass
+// + bloom and shares the LIVE grade uniforms (sat/contrast/vignette), so the
+// biome grade drives both halves. God rays stay solo-only (heaviest pass,
+// and its sun uniforms are single-view).
+let _splitFx1 = null, _splitFx2 = null;
+function buildSplitFx(cam) {
+  const p = new THREE.PostProcessing(renderer);
+  const sp = pass(scene, cam);
+  const tex = sp.getTextureNode("output");
+  const bl = bloom(tex, 0.32, 0.5, 0.9); // same tuning as the solo bloom
+  p.outputNode = gradeOutput(vec3(tex.sample(viewportUV).rgb).add(bl));
+  return p;
+}
+try { splitFxOn = localStorage.getItem(SPLITFX_KEY) === "1"; } catch { /* default off */ }
+const splitFxToggle = document.getElementById("set-splitfx-toggle");
+function applySplitFxSetting() {
+  if (splitFxToggle) {
+    splitFxToggle.textContent = splitFxOn ? "On" : "Off";
+    splitFxToggle.classList.toggle("off", !splitFxOn);
+  }
+}
+splitFxToggle?.addEventListener("click", () => {
+  splitFxOn = !splitFxOn;
+  try { localStorage.setItem(SPLITFX_KEY, splitFxOn ? "1" : "0"); } catch { /* ignore */ }
+  applySplitFxSetting();
+});
+applySplitFxSetting();
+
+// --- Controller rumble setting (Controls; persisted, default ON) ---
+// The web platform adapter checks the same key before firing the pad's
+// vibrationActuator, so this toggle needs no plumbing into the seam.
+const RUMBLE_KEY = "zoomies-rumble";
+const rumbleToggle = document.getElementById("set-rumble-toggle");
+function applyRumbleSetting() {
+  let on = true;
+  try { on = localStorage.getItem(RUMBLE_KEY) !== "0"; } catch {}
+  if (rumbleToggle) {
+    rumbleToggle.textContent = on ? "On" : "Off";
+    rumbleToggle.classList.toggle("off", !on);
+  }
+}
+rumbleToggle?.addEventListener("click", () => {
+  let on = true;
+  try { on = localStorage.getItem(RUMBLE_KEY) !== "0"; } catch {}
+  try { localStorage.setItem(RUMBLE_KEY, on ? "0" : "1"); } catch {}
+  applyRumbleSetting();
+});
+applyRumbleSetting();
 
 // --- Track viewer setting (Advanced; persisted) ---
 // Gates the pause menu's TRACK VIEWER button (see enterFlyView above).
@@ -3201,26 +3610,29 @@ const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").mat
 
 // Multiplayer favours performance over looks: two extra ghost karts + the realtime
 // client on an already heavy scene means a higher, steadier frame rate (and no iOS
-// WebGPU device-loss) matters more than god-rays. So while in a multiplayer
-// race, force the memory-lean Low profile (no god-ray target, capped pixel
-// ratio, no GPU motes) on EVERY device. NON-persisted — single-player and the saved
-// preference are untouched, and it's restored when leaving multiplayer. A player
-// who bumps the Settings toggle to High mid-session opts out for that session
-// (_mpWantsHigh), so the toggle still works.
+// WebGPU device-loss) matters more than god-rays. So while in a multiplayer race,
+// force the BALANCED profile (no god-ray target, capped pixel ratio) on every
+// device — it keeps the grass and ambient motes, so an online race reads as the
+// same world as solo instead of a bare verge, while still shedding the pricey
+// render targets. (This used to force Low; the stripped world was the single
+// most visible "online feels different" tell.) A device already ON Low keeps
+// Low. NON-persisted — single-player and the saved preference are untouched,
+// and it's restored when leaving multiplayer. A player who bumps the Settings
+// toggle to Medium/High mid-session opts out for that session (_mpWantsHigh).
 let _mpForcedLow = false;
 let _mpWantsHigh = false;
 function applyMpQuality() {
-  const wantLow = MP.enabled && !_mpWantsHigh;
-  if (wantLow && quality !== "low") {
+  const wantLean = MP.enabled && !_mpWantsHigh;
+  if (wantLean && quality !== "low" && quality !== "balanced") {
     _mpForcedLow = true;
-    applyQuality("low", false);
-    hud.showToast?.("Graphics set to Low for smoother multiplayer");
-  } else if (!wantLow && _mpForcedLow) {
+    applyQuality("balanced", false);
+    hud.showToast?.("Graphics set to Balanced for smoother multiplayer");
+  } else if (!wantLean && _mpForcedLow) {
     _mpForcedLow = false;
     let saved = "medium";
     try {
       const v2 = localStorage.getItem(QUALITY_KEY_V2);
-      if (v2 === "low" || v2 === "medium" || v2 === "high") saved = v2;
+      if (v2 === "low" || v2 === "balanced" || v2 === "medium" || v2 === "high") saved = v2;
       else if (localStorage.getItem(QUALITY_KEY) === "low") saved = "low";
     } catch {}
     applyQuality(saved, false);
@@ -3711,11 +4123,6 @@ function openRacerStep() {
     };
     const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
     _garageAnchor.copy(slot.position);
-    // Kill any in-progress menu cross-dissolve: its frozen snapshot (#menu-xfade)
-    // would otherwise hang over the live preview as a doubled "ghost" of the level.
-    if (menuXfade) menuXfade.style.opacity = 0;
-    _menuPhase = "hold";
-    _menuShotT = 0;
     _garageOpen = true;
   }
   refreshRacerPreview();
@@ -3890,11 +4297,6 @@ function renderStartGrid(timeSec, dt) {
 function openStartGrid() {
   if (!_gridOpen) {
     _gridOpen = true;
-    // Kill any in-progress menu cross-dissolve (its frozen snapshot would hang
-    // over the live grid as a ghost), same as the showroom does.
-    if (menuXfade) menuXfade.style.opacity = 0;
-    _menuPhase = "hold";
-    _menuShotT = 0;
   }
   _placeGridField(); // re-place even when already open: the mode may have changed
 }
@@ -4010,12 +4412,14 @@ function renderCatCards() {
       rerender: renderCatCards,
     }));
   });
-  grid.appendChild(racerGridCard({
-    img: "assets/catalog/custom-cat.jpg",
-    name: "Custom Cat",
-    sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
-    onPick: () => flowGo("cat-edit"),
-  }));
+  if (!_pickingSeat) {
+    grid.appendChild(racerGridCard({
+      img: "assets/catalog/custom-cat.jpg",
+      name: "Custom Cat",
+      sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
+      onPick: () => flowGo("cat-edit"),
+    }));
+  }
 }
 function renderKartCards() {
   const grid = document.getElementById("kart-grid");
@@ -4030,16 +4434,54 @@ function renderKartCards() {
       rerender: renderKartCards,
     }));
   });
-  grid.appendChild(racerGridCard({
-    img: "assets/catalog/custom-kart.jpg",
-    name: "Custom Kart",
-    sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
-    onPick: () => flowGo("kart-edit"),
-  }));
+  if (!_pickingSeat) {
+    grid.appendChild(racerGridCard({
+      img: "assets/catalog/custom-kart.jpg",
+      name: "Custom Kart",
+      sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
+      onPick: () => flowGo("kart-edit"),
+    }));
+  }
 }
 // Kart chosen → the racer is complete: save it and roll on (friends-hosting
 // goes to the lobby — this tap is the fullscreen + motion gesture).
+// In Versus the SAME cat/kart screens then run a second pass for Player 2
+// (preset cards only — the custom studio designs belong to P1's save), whose
+// picks land in the P2 slot instead of the garage save.
+let _pickingSeat = 0; // 0 = P1's own (garage) pass; 2..4 = that seat's pass
+function startSeatPick(seat) {
+  _pickingSeat = seat;
+  // Seat the shared draft on this seat's current pick so the showroom preview
+  // and card grids show that racer; P1's picks are already committed/saved.
+  _garageDraft = {
+    cat: _seatPicks[seat].cat,
+    kart: _seatPicks[seat].kart,
+    customCat: garageConfig.customCat,
+    customKart: garageConfig.customKart,
+  };
+  refreshRacerEyebrows();
+  flowGo("cat");
+}
 function commitRacer() {
+  if (_pickingSeat) {
+    // Customs are never offered on a seat pass, so the draft indexes are
+    // always preset-range here.
+    _seatPicks[_pickingSeat] = {
+      cat: Math.min(_garageDraft.cat, CAT_PRESETS.length - 1),
+      kart: Math.min(_garageDraft.kart, KART_PRESETS.length - 1),
+    };
+    try { localStorage.setItem(_seatKey(_pickingSeat), JSON.stringify(_seatPicks[_pickingSeat])); } catch { /* ignore */ }
+    // More seats to dress? Run the same screens again for the next one.
+    if (_pickingSeat < splitCount) {
+      startSeatPick(_pickingSeat + 1);
+      return;
+    }
+    _pickingSeat = 0;
+    refreshRacerEyebrows();
+    refreshSeatTiles();
+    flowGo("startline");
+    return;
+  }
   garageConfig.cat = _garageDraft.cat;
   garageConfig.kart = _garageDraft.kart;
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
@@ -4047,15 +4489,17 @@ function commitRacer() {
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
   if (raceMode === "mp") hostGame();
+  else if (raceMode === "split") startSeatPick(2);
   else flowGo("startline");
 }
 // With Friends has no start line, so its racer steps drop the step count.
+// Versus labels whose racer is being picked on each pass.
 function refreshRacerEyebrows() {
   const mp = raceMode === "mp";
   const c = document.getElementById("cat-eyebrow");
-  if (c) c.textContent = mp ? "Your racer" : "Step 3 of 4";
+  if (c) c.textContent = _pickingSeat ? `Player ${_pickingSeat}` : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 3 of 4" : "Step 3 of 4";
   const k = document.getElementById("kart-eyebrow");
-  if (k) k.textContent = mp ? "Your racer" : "Step 4 of 4";
+  if (k) k.textContent = _pickingSeat ? `Player ${_pickingSeat}` : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 4 of 4" : "Step 4 of 4";
 }
 // Studio actions: Buy unlocks the creator; Use adopts the design and rolls on.
 for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
@@ -4127,6 +4571,17 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// Desktop (Electron) shell: reveal the quit buttons only when the preload
+// bridge is present — on the web and in Capacitor they stay hidden.
+if (window.zoomiesDesktop?.quit) {
+  for (const id of ["quit-btn-pause", "quit-btn-title"]) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.classList.remove("hidden");
+    btn.addEventListener("click", () => window.zoomiesDesktop.quit());
+  }
+}
+
 // --- Menu flow -----------------------------------------------------------
 // One linear road to the grid: title → mode → (track | cup | friends) →
 // racer → startline → lobby. Screens slide directionally (forward = in from
@@ -4147,6 +4602,8 @@ let raceMode = "gp";
 try {
   const m = localStorage.getItem(MODE_KEY);
   if (m === "gp" || m === "tt" || m === "cup") raceMode = m; // "mp" never persists (needs a live room)
+  // "split" persists only where it can run (the desktop shell).
+  if (m === "split" && window.zoomiesDesktop) raceMode = m;
 } catch {}
 // A cup reload chain always lands in Cup Series mode; a daily link races single.
 if (_cupState && _activeCup) raceMode = "cup";
@@ -4201,6 +4658,23 @@ function flowGo(step, dir = 1, instant = false) {
 function flowBack() {
   if (state !== State.MENU || menuFlowEl.classList.contains("hidden")) return false;
   if (flowStep === "lobby") { toMenu(); return true; }
+  // Backing out of a seat's pass through the racer screens unwinds one seat
+  // at a time: P3's cat step returns to P2's pass, P2's to P1's kart step
+  // (the seat passes sit between P1-kart and the start line).
+  if (_pickingSeat && (flowStep === "cat" || flowStep === "kart")) {
+    if (flowStep === "cat") {
+      if (_pickingSeat > 2) {
+        startSeatPick(_pickingSeat - 1);
+      } else {
+        _pickingSeat = 0;
+        refreshRacerEyebrows();
+        flowGo("kart", -1);
+      }
+    } else {
+      flowGo("cat", -1);
+    }
+    return true;
+  }
   const back = {
     mode: "title",
     track: "mode",
@@ -4223,7 +4697,7 @@ menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("cl
 function refreshTitlePlay() {
   if (!startBtn) return;
   if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
-  else startBtn.textContent = "▶  Play";
+  else startBtn.textContent = "▶  Let's Go!";
 }
 startBtn?.addEventListener("click", () => {
   audio.unlock(); // the opening tap doubles as the audio unlock
@@ -4258,6 +4732,7 @@ function refreshModeCards() {
 }
 document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
 document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
+document.getElementById("mode-split")?.addEventListener("click", () => { setRaceMode("split"); flowGo("track"); });
 document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
 document.getElementById("mode-mp")?.addEventListener("click", () => flowGo("friends"));
 // Friends: hosting picks the mode here; joining reloads into the friend's room.
@@ -4335,20 +4810,83 @@ function chooseTrackCard(cfg) {
 }
 
 // --- Start line: the only full summary — map, racer, options, one giant GO --
-const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP" };
+const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP", split: "🛋️  START VERSUS" };
 // The stakes line: what a WIN pays at the current laps/difficulty (plus the
 // daily bonus when it's still unclaimed) — so the segs read as a bet, not a
 // form. Time trial hides it (its note talks PBs instead).
 function refreshStakes() {
   const el = document.getElementById("start-stakes");
   if (!el) return;
-  const show = raceMode !== "tt";
+  const show = raceMode !== "tt" && raceMode !== "split"; // Versus pays in bragging rights
   document.getElementById("stakes-row")?.classList.toggle("hidden", !show);
   if (!show) return;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
   const top = racePayout({ place: 1, field: ROSTER.length, laps: TOTAL_LAPS, difficulty: DIFFICULTY, daily, stats: {} }).total;
   el.textContent = `Win up to 🐟 ${top}`;
 }
+// --- Versus: seat racer picks (preset roster, persisted per seat) -----------
+// Seats 2..4, one storage key each; defaults fan out across the roster so
+// four fresh seats never start as look-alikes.
+const _seatKey = (seat) => `zoomies-p${seat}-racer`;
+const _seatPicks = {}; // seat (2..4) → { cat, kart }
+for (let seat = 2; seat <= 4; seat++) {
+  let pick = { cat: (seat - 1) % CAT_PRESETS.length, kart: (seat - 1) % KART_PRESETS.length };
+  try {
+    const v = JSON.parse(localStorage.getItem(_seatKey(seat)) || "null");
+    if (v && Number.isInteger(v.cat) && Number.isInteger(v.kart)) {
+      pick = {
+        cat: ((v.cat % CAT_PRESETS.length) + CAT_PRESETS.length) % CAT_PRESETS.length,
+        kart: ((v.kart % KART_PRESETS.length) + KART_PRESETS.length) % KART_PRESETS.length,
+      };
+    }
+  } catch { /* fresh default */ }
+  _seatPicks[seat] = pick;
+}
+function seatLook(seat) {
+  return { cat: CAT_PRESETS[_seatPicks[seat].cat], kart: KART_PRESETS[_seatPicks[seat].kart] };
+}
+function refreshSeatTiles() {
+  for (let seat = 2; seat <= 4; seat++) {
+    document.getElementById(`p${seat}-racer`)?.classList.toggle("hidden", raceMode !== "split" || seat > splitCount);
+    const { cat, kart } = seatLook(seat);
+    const cs = document.getElementById(`p${seat}-swatch-cat`);
+    const ks = document.getElementById(`p${seat}-swatch-kart`);
+    if (cs) cs.style.background = "#" + cat.fur.toString(16).padStart(6, "0");
+    if (ks) ks.style.background = "#" + kart.color.toString(16).padStart(6, "0");
+    const cn = document.getElementById(`p${seat}-cat-name`);
+    if (cn) cn.textContent = cat.name;
+    const kn = document.getElementById(`p${seat}-kart-name`);
+    if (kn) kn.textContent = kart.name;
+  }
+  // The seat-count segment mirrors the persisted choice.
+  for (let n = 2; n <= 4; n++) {
+    document.getElementById(`split-count-${n}`)?.classList.toggle("is-active", splitCount === n);
+  }
+  document.getElementById("split-count-row")?.classList.toggle("hidden", raceMode !== "split");
+}
+function _seatCycle(seat, field, dir, len) {
+  _seatPicks[seat][field] = (_seatPicks[seat][field] + dir + len) % len;
+  try { localStorage.setItem(_seatKey(seat), JSON.stringify(_seatPicks[seat])); } catch { /* ignore */ }
+  refreshSeatTiles();
+}
+for (let seat = 2; seat <= 4; seat++) {
+  document.getElementById(`p${seat}-cat-prev`)?.addEventListener("click", () => _seatCycle(seat, "cat", -1, CAT_PRESETS.length));
+  document.getElementById(`p${seat}-cat-next`)?.addEventListener("click", () => _seatCycle(seat, "cat", 1, CAT_PRESETS.length));
+  document.getElementById(`p${seat}-kart-prev`)?.addEventListener("click", () => _seatCycle(seat, "kart", -1, KART_PRESETS.length));
+  document.getElementById(`p${seat}-kart-next`)?.addEventListener("click", () => _seatCycle(seat, "kart", 1, KART_PRESETS.length));
+  // Edit opens the full card screens for that seat (the same pass that runs
+  // after P1's picks); the arrows stay for one-tap tweaks on the start line.
+  document.getElementById(`p${seat}-edit`)?.addEventListener("click", () => startSeatPick(seat));
+}
+// Seat count: how many humans share the screen (2 rows / quadrants).
+for (let n = 2; n <= 4; n++) {
+  document.getElementById(`split-count-${n}`)?.addEventListener("click", () => {
+    splitCount = n;
+    try { localStorage.setItem(SPLIT_COUNT_KEY, String(n)); } catch { /* ignore */ }
+    refreshSeatTiles();
+  });
+}
+
 function refreshStartline() {
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
   refreshRacerSummary();
@@ -4358,8 +4896,9 @@ function refreshStartline() {
   const note = document.getElementById("start-note");
   const cupDef = cupById(_cupChoice);
   const midCup = raceMode === "cup" && _cupState && _activeCup;
-  document.getElementById("laps-row")?.classList.toggle("hidden", raceMode !== "gp");
-  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || (raceMode === "cup" && !midCup)));
+  document.getElementById("laps-row")?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split"));
+  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split" || (raceMode === "cup" && !midCup)));
+  refreshSeatTiles(); // seat tiles + count segment (hidden outside split)
   if (note) {
     let txt = "";
     if (_dailyActive) txt = "📅 Today's challenge — everyone races the same track. Daily bonus when you finish!";
@@ -4460,6 +4999,11 @@ function teardownMultiplayer() {
   const u = new URL(location.href);
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
+}
+// Versus (2P split screen) is a desktop-shell mode: two viewports need a big
+// screen, and the P1-pad/P2-keyboard pairing assumes one machine, two seats.
+if (window.zoomiesDesktop) {
+  document.getElementById("mode-split")?.classList.remove("hidden");
 }
 if (mpAvailable) {
   document.getElementById("mode-mp")?.classList.remove("hidden");
@@ -5150,6 +5694,46 @@ function prepareRace() {
   godrayPass.uniforms.uWeight.value = mood.rayWeight ?? 1.05;
   hud.showToast(mood.name);
 
+  // Versus (2-4P): scope the inputs BEFORE buildKarts so every seat's kart
+  // exists to drive, wire the per-view cameras, and put the HUD in its split
+  // shape (row layout for 2, quadrants for 3-4).
+  splitActive = raceMode === "split" && !!window.zoomiesDesktop;
+  if (splitActive) {
+    setupSplitInputs();
+    while (_sCams.length < splitCount) {
+      const c = new ChaseCam();
+      // See the main camera's layer setup: scenery lives on layer 1 and the
+      // grass on layer 2 (the rear-view mirror uses plain layer 0 to skip
+      // them). The split cams are full player views — they must see exactly
+      // what the shared camera sees, now and after any future layer moves.
+      // (Missing this ONE line once stripped every tree/building/animal out
+      // of Versus while the startline tableau — shared camera — looked fine.)
+      c.camera.layers.mask = camera.layers.mask;
+      _sCams.push(c);
+    }
+    // Per-seat draw distance: match the tier's far plane for 1-2 views, and
+    // REIN IT IN for 3-4 — with quadrant views each pane is small enough
+    // that the last 20% of draw distance is a couple of pixels of skyline,
+    // while the scene passes it costs are multiplied by the seat count.
+    // (Standard couch-split trick: spend per-view budget near the player.)
+    const viewFar = splitCount >= 3 ? Math.min(camera.far, 1800) : camera.far;
+    for (const c of _sCams) c.camera.far = viewFar;
+    for (const c of _sCams) c.snap();
+    layoutStage(); // refresh the per-rect aspects on the split cams
+  } else {
+    teardownSplit();
+  }
+  _hudEl.classList.toggle("split", splitActive);
+  _hudEl.classList.toggle("split-3", splitActive && splitCount === 3);
+  _hudEl.classList.toggle("split-4", splitActive && splitCount === 4);
+  document.getElementById("split-hud")?.classList.toggle("hidden", !splitActive);
+  _splitChipLast = ["", "", "", ""]; // re-write the chips on first frame
+  _splitStatsLast = ["", "", "", ""];
+  _splitBoostLast = [-1, -1, -1, -1];
+  _pFinishToasted = [false, false, false, false];
+  _splitGrace = null;
+  _splitGrace10 = false;
+
   track.totalLaps = timeTrial ? 1 : TOTAL_LAPS; // time trial is a single timed lap
   buildKarts();
   setupGhost(); // build/replay the ghost (time trial) or tear any leftover one down
@@ -5187,10 +5771,6 @@ function prepareRace() {
   _fwNext = 0;
   _finishCamAngle = 0;
   camPos.set(0, 0, 0); // force the countdown camera to snap from the menu orbit
-  // Clear any in-progress menu cross-dissolve.
-  if (menuXfade) menuXfade.style.opacity = 0;
-  _menuPhase = "hold";
-  _menuShotT = 0;
   // Clear any finish/progress state carried over from a previous race on the
   // remote ghosts (they persist across races; only local karts are rebuilt).
   if (MP.enabled) {
@@ -5293,14 +5873,20 @@ function beginSyncedRace(at) {
   input.shielding = false;
   MP.inLobby = false;
   MP.startAt = at;
+  // Cover the synchronous build (kart GC, first pipeline compiles) exactly
+  // like solo does — the clock keeps running underneath (see the COUNTDOWN
+  // veil branch), but the hitches stop being visible. A late joiner whose
+  // countdown is already inside the 3-2-1 drops the cover on the next frame.
+  showRaceVeil();
   prepareRace();
   countdown = Math.max(0.3, (at - MP.net.now()) / 1000);
   countdownCalibrated = false;
   prevCountN = 99;
   track.setStartLight?.("off"); // gantry dark until the countdown's first red
   state = State.COUNTDOWN;
-  // Same supersession as the solo start: two draw-everything frames replace the
-  // single 12-render prewarm freeze (MP has no veil, so cheaper is better).
+  // Same supersession as the solo start: two draw-everything frames replace
+  // the single 12-render prewarm freeze (the MP veil is drop-on-smooth, not
+  // clock-holding, so cheaper is still better).
   _prewarmed = true;
   beginWarmAll(2);
 }
@@ -5443,49 +6029,26 @@ const _menuShots = (() => {
   if (shots.length < 2) return [0.1, 0.35, 0.6, 0.85]; // fallback variety
   return shots;
 })();
-const SHOT_HOLD = 6.5; // seconds orbiting one biome
-const SHOT_FADE = 1.5; // seconds for the cross-dissolve
-const _menuAnchor = new THREE.Vector3(); // current/incoming biome
-const _menuAnchorPrev = new THREE.Vector3(); // outgoing biome (during a dissolve)
+const _menuAnchor = new THREE.Vector3(); // the shot this session orbits
 const _menuLook = new THREE.Vector3();
 const menuXfade = document.getElementById("menu-xfade");
-const menuXfadeCtx = menuXfade ? menuXfade.getContext("2d") : null;
-let _menuShot = 0;
-let _menuPhase = "hold"; // "hold" | "fading"
-let _menuShotT = 0; // time orbiting the current biome
-let _menuFadeT = 0; // elapsed cross-dissolve
-let _menuPrevTime = -1;
-function _setMenuAnchor(i) {
-  _menuAnchor.copy(track.getPointAt(_menuShots[i % _menuShots.length]));
-}
-
-// Advance the menu-tour clock and phase (timing only — rendering is separate so
-// the dissolve can render BOTH biomes live).
-function updateMenuCamera(timeSec) {
-  if (_menuPrevTime < 0) _setMenuAnchor(_menuShot);
-  let dt = timeSec - _menuPrevTime;
-  _menuPrevTime = timeSec;
-  if (dt < 0 || dt > 0.5) dt = 0; // first frame / tab was backgrounded
-
-  if (_menuPhase === "hold") {
-    _menuShotT += dt;
-    if (_menuShotT >= SHOT_HOLD) {
-      // Begin a dissolve: remember the outgoing biome, move to the next one.
-      _menuAnchorPrev.copy(_menuAnchor);
-      _menuShot = (_menuShot + 1) % _menuShots.length;
-      _setMenuAnchor(_menuShot);
-      _menuPhase = "fading";
-      _menuFadeT = 0;
-    }
-  } else {
-    _menuFadeT += dt;
-    if (_menuFadeT >= SHOT_FADE) {
-      _menuPhase = "hold";
-      _menuShotT = 0;
-      if (menuXfade) menuXfade.style.opacity = 0;
-    }
-  }
-}
+// The menu background is ONE calm shot per session — a slow orbit over a
+// curated anchor, world alive around it (wind, weather, critters), and
+// nothing else. It used to TOUR the biomes, changing shots every 6.5s; every
+// transition style tried (hard cut, snapshot dissolve, navy dip) read as
+// "the menu keeps flickering" on a desktop, because a background that
+// repeatedly changes IS a flicker, however gently it does it. The seed picks
+// which anchor a session features, so variety now comes across launches
+// instead of across seconds. The #menu-xfade overlay is retired; it stays in
+// the DOM at opacity 0 (styles/other code still reference it harmlessly).
+if (menuXfade) menuXfade.style.opacity = 0;
+const _menuShot = (() => {
+  let h = 0;
+  const s = String(getSeed());
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+  return Math.abs(h) % _menuShots.length;
+})();
+_menuAnchor.copy(track.getPointAt(_menuShots[_menuShot]));
 
 // Orbit the camera around an anchor and aim slightly above the road.
 function _orbitMenuCam(anchor, ang) {
@@ -5501,48 +6064,10 @@ function _orbitMenuCam(anchor, ang) {
   _uAberr.value = 0;
 }
 
-// Render the menu background. While dissolving, render the OUTGOING biome (live)
-// into the overlay and fade it out over the INCOMING biome (live) — a true
-// cross-fade with both sides still moving, no freeze and no dip to black.
+// Render the menu background: the session's one shot, orbited slowly.
 function renderMenuBackground(timeSec) {
-  const ang = timeSec * 0.07; // gentle drift
-  // The capture below (drawImage of the renderer's canvas into a 2D canvas) is
-  // a SYNCHRONOUS GPU->CPU readback of a full-res frame, every frame of the
-  // fade — on iOS/WebGPU that's a ~1s main-thread stall per menu transition
-  // (the "0 shader creates" freezes in the device log). WebGPU menus hard-cut
-  // instead: the camera drift keeps the shot change feeling deliberate. The
-  // dissolve stays on WebGL2, where the readback is cheap.
-  const canCapture = !!menuXfadeCtx && !renderer?.backend?.isWebGPUBackend;
-  if (_menuPhase === "fading" && !canCapture) {
-    _menuPhase = "hold"; // skip the fade entirely: render the incoming shot
-    _menuShotT = 0; // restart the hold timer, as a completed fade would
-    if (menuXfade) menuXfade.style.opacity = 0;
-  }
-  if (_menuPhase === "fading") {
-    const k = Math.min(1, _menuFadeT / SHOT_FADE);
-    // Outgoing biome -> capture into the overlay (fading out).
-    _orbitMenuCam(_menuAnchorPrev, ang);
-    renderFrame();
-    if (menuXfadeCtx) {
-      const gl = renderer.domElement;
-      if (menuXfade.width !== gl.width || menuXfade.height !== gl.height) {
-        menuXfade.width = gl.width;
-        menuXfade.height = gl.height;
-      }
-      try {
-        menuXfadeCtx.drawImage(gl, 0, 0, menuXfade.width, menuXfade.height);
-        menuXfade.style.opacity = (1 - k).toFixed(3);
-      } catch (e) {
-        /* capture failed (rare) — the incoming render still shows */
-      }
-    }
-    // Incoming biome -> the displayed frame.
-    _orbitMenuCam(_menuAnchor, ang);
-    renderFrame();
-  } else {
-    _orbitMenuCam(_menuAnchor, ang);
-    renderFrame();
-  }
+  _orbitMenuCam(_menuAnchor, timeSec * 0.07); // gentle drift
+  renderFrame();
 }
 
 function updateCamera(dt, snap = false) {
@@ -5674,15 +6199,12 @@ function updateCamera(dt, snap = false) {
   const caTarget = player.catnipBoosting ? 0.014 : player.boosting ? 0.011 : 0;
   _uAberr.value += (caTarget - _uAberr.value) * Math.min(1, dt * (caTarget > _uAberr.value ? 10 : 4));
 
-  // Screen shake (decays). Catnip keeps a faint constant rumble going (minor, so
-  // it reads as raw speed without fighting your steering), and the top of the
-  // plain speed range gets a smaller engine-vibration floor of its own.
+  // Screen shake (decays). Catnip keeps a faint constant rumble going (minor,
+  // so it reads as raw speed without fighting your steering). Plain top speed
+  // stays steady — an engine-vibration floor here read as jitter on big
+  // desktop screens, and the FOV/vignette work above already sells the speed.
   shakeMag *= 1 - Math.min(1, 6 * dt);
   if (player.catnipBoosting) shakeMag = Math.max(shakeMag, 0.14);
-  else if (sn > 0.75) {
-    const k = (sn - 0.75) / 0.25;
-    shakeMag = Math.max(shakeMag, 0.06 * k * k);
-  }
   camera.position.copy(camPos);
   if (shakeMag > 0.001) {
     camera.position.x += (Math.random() - 0.5) * shakeMag;
@@ -5824,6 +6346,48 @@ const SHOOT_OPENING_LOCKOUT = 15;
 // recharge. Shared by the player and the AI so the rules are identical.
 // Fire whatever the trigger is loaded with: an armed yarn ball takes over the
 // shot slot for one roll, then the button goes back to furballs.
+// One human's controls → their kart, identical for P1 and P2 (Versus). The
+// solo-only extras (steering dot, boost UI, MP milk broadcast) stay with the
+// callers. A finished kart ignores input — it's already on victory autopilot.
+function applyHumanControls(kart, inp, dt) {
+  if (kart.finished) return;
+  kart.steerInput = inp.steer;
+  kart.throttleInput = inp.throttle;
+  // Raising the shield mid-drift is the one-thumb trade: the drift ends NOW
+  // and its charge is forfeit (no mini-turbo). Letting go of jump to shoot
+  // still releases the drift normally — that path keeps its earned boost.
+  if (inp.consumeShieldEngage() && kart.drifting) {
+    kart.drifting = false;
+    kart.driftCharge = 0;
+    kart.driftRamp = 0;
+  }
+  kart.shielding = inp.shielding;
+  kart.driftHeld = inp.jumpHeld;
+  if (inp.consumeJump()) kart.jump();
+  // Hold the shoot button to charge a faster/further shot; fire on release.
+  if (inp.shootHeld && kart.shootCooldown <= 0)
+    kart.shootCharge = Math.min(kart.shootCharge + dt / SHOOT_CHARGE_TIME, 1);
+  if (inp.consumeShootRelease()) {
+    fireShot(kart, kart.shootCharge);
+    kart.shootCharge = 0;
+  }
+  if (inp.consumeMilk() && kart.milkBottles > 0 && kart.spinTimer <= 0) {
+    kart.milkBottles = 0;
+    const p = items.dropMilk(kart);
+    if (MP.enabled && MP.net && p && kart === player) MP.net.sendMilk(p.x, p.z, p.r);
+    const _seatIdx = splitActive ? splitPlayers.indexOf(kart) : (kart === player ? 0 : -1);
+    hud.showToast(_seatIdx > 0 ? `🥛 P${_seatIdx + 1} spilled!` : "🥛 Spilled!");
+  }
+  if (inp.consumeBoost() && kart.boostMeter >= 1) {
+    const _over = kart.boostMeter > 1.02; // fired with overcharge → beefier burst
+    if (kart.tootBoost(kart.boostMeter)) {
+      kart.boostMeter = 0; // fully deplete on use
+      effects.tootBurst(kart, _over ? 3.5 : 2);
+      audio.toot();
+    }
+  }
+}
+
 function fireShot(kart, charge = 0) {
   if (kart.yarnShots > 0) return fireYarn(kart);
   return fireHairball(kart, charge);
@@ -5860,7 +6424,7 @@ function fireYarn(kart) {
   }
   const y = items.spawnYarn(kart, target);
   effects.tootBurst(kart, 1.4, false); // launch kick: the ball leaves in a puff
-  audio.shoot(kart === player ? null : kart.position);
+  audio.shoot(sfxPos(kart));
   kart.shootCooldown = SHOOT_RECHARGE;
   // Replicate the ball (exact values read back from the record) so every client
   // renders a homing ghost; the hit rides sendHit from items.update, like hairballs.
@@ -5879,7 +6443,7 @@ function fireHairball(kart, charge = 0) {
   if (kart.shootCooldown > 0 || kart.spinTimer > 0 || kart.finished) return false;
   const wasTri = kart.triShots > 0; // capture before spawn() consumes the charge
   hairballs.spawn(kart, charge);
-  audio.shoot(kart === player ? null : kart.position);
+  audio.shoot(sfxPos(kart));
   kart.shootCooldown = SHOOT_RECHARGE;
   // Tell other players about the shot so they can see the projectile fly (and fan
   // it into three on their side when it was a tri-furball).
@@ -5904,7 +6468,11 @@ function aiActions(dt) {
 
     // Rubber-band: trailing karts run a little faster, leaders a little slower,
     // to keep the pack competitive.
-    const gap = player.totalProgress - k.totalProgress;
+    // Rubber-band against the LEADING human (Versus has two): banding to a
+    // trailing P2 would let the pack idle while P1 runs away.
+    const gap = (splitActive && splitPlayers.length
+      ? Math.max(...splitPlayers.map((h) => h.totalProgress))
+      : player.totalProgress) - k.totalProgress;
     // Catch up strongly when behind, but barely ease off when leading, so the
     // front-runners stay competitive instead of waiting for the player.
     const _rb = k.diff ? k.diff.rubber : 1; // easier modes catch up less
@@ -6110,6 +6678,9 @@ function fieldSnapshot() {
 // counters into the career stats, pays treats, scores the cup, and fires any
 // newly earned achievements. Returns everything the earnings panel renders.
 function settleRaceRewards() {
+  // Versus is a couch match, not an economy run: no treats, no stats — the
+  // podium is the prize (and P2 farming P1's profile would be too easy).
+  if (splitActive) return null;
   if (_racePaid || timeTrial || !player || !player.finished || !_raceStats) return null;
   _racePaid = true;
   updatePlacement();
@@ -6127,8 +6698,13 @@ function settleRaceRewards() {
   s.boxes += _raceStats.boxes;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
   if (daily) { profile.dailyPaid = todayStr(); s.dailies++; }
+  // Online rooms are 2-6 humans; the payout formula scales with field size,
+  // which quietly made an online win worth less than half a solo one. Floor
+  // the field at the solo size so beating real people never pays worse than
+  // beating the AI. (Local economy only — nothing crosses the wire.)
   const payout = racePayout({
-    place: player.place, field: raceField().length, laps: TOTAL_LAPS,
+    place: player.place, field: MP.enabled ? Math.max(6, raceField().length) : raceField().length,
+    laps: TOTAL_LAPS,
     difficulty: DIFFICULTY, daily, stats: _raceStats,
   });
   profile.treats += payout.total;
@@ -6229,6 +6805,9 @@ window.__zoomies.debugFinish = () => {
   if (!player || player.finished) return false;
   player.finished = true;
   player.finishTime = raceTime;
+  splitPlayers.forEach((k, i) => {
+    if (i > 0 && !k.finished) { k.finished = true; k.finishTime = raceTime + 0.5 * i; }
+  });
   showResults();
   return true;
 };
@@ -6259,10 +6838,19 @@ function renderResults() {
       ? formatClock(k.finishTime)
       : MP.enabled ? "racing…" : "DNF";
     const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
-    list.appendChild(resultRow(medal, k.name, time, k === player));
+    list.appendChild(resultRow(medal, k.name, time, k === player || splitPlayers.includes(k)));
   });
-  document.getElementById("results-title").textContent =
-    player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
+  let _title;
+  if (splitActive && player2) {
+    let best = 0;
+    for (let i = 1; i < splitPlayers.length; i++) {
+      if (splitPlayers[i].place < splitPlayers[best].place) best = i;
+    }
+    _title = `🏆 Player ${best + 1} Wins!`;
+  } else {
+    _title = player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
+  }
+  document.getElementById("results-title").textContent = _title;
 }
 // One standings row: rank (medal for the podium) | name | time, so the columns
 // line up instead of reading as a text blob. `you` lights the player's row gold.
@@ -6428,8 +7016,10 @@ let prevPlayerSpin = 0;
 // UP, pegging the GPU. That's the "phone runs hot / battery dies fast" report.
 // 60fps is smooth for a kart racer and graphically identical (same resolution,
 // same effects) — only the extra frames are dropped. Threshold sits below the
-// 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. Opt out
-// (e.g. a 120Hz desktop) with ?uncap=1.
+// 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. EVERY
+// tier is capped at ~60fps now — High spends its headroom on world detail
+// (dynamic shadows, draw distance, density) instead of 120fps. ?uncap=1
+// still lifts the cap for A/B runs.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
 const FRAME_MIN_MS = 15;
 // Idle-render savings (see the loop): draw the paused scene once (not 60×/s), run
@@ -6438,13 +7028,20 @@ const FRAME_MIN_MS = 15;
 let _pauseDrawn = false;
 let _lastMenuDraw = 0;
 let _lastMiniDraw = 0;
+// Menu/tableau render cadence. Phones throttle to ~30fps to save battery, but
+// 32ms doesn't divide a 120Hz display's 8.3ms vsync — rendered frames land
+// alternately 3 and 4 ticks apart, and that uneven pacing reads as constant
+// background judder ("the menus flicker"; measured in a ProMotion screen
+// recording as alternating step sizes at a 4:3 ratio). The desktop shell is
+// plugged in: render menus at full rate there and keep pacing even.
+const MENU_DRAW_MS = window.zoomiesDesktop ? 0 : 32;
 
 function loop(now) {
   requestAnimationFrame(loop);
-  // Cap: unless the High graphics tier (or ?uncap=1) opts into uncapped ~120fps,
-  // skip this rAF tick when too little time has passed since the last RENDERED
-  // frame (leaving `last` untouched so dt still spans to the real last frame).
-  if (quality !== "high" && !_uncapParam && now - last < FRAME_MIN_MS) return;
+  // Cap: unless ?uncap=1 opts into uncapped ~120fps, skip this rAF tick when
+  // too little time has passed since the last RENDERED frame (leaving `last`
+  // untouched so dt still spans to the real last frame).
+  if (!_uncapParam && now - last < FRAME_MIN_MS) return;
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
@@ -6465,10 +7062,14 @@ function loop(now) {
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
+  menupad.update(); // before the PAUSED early-out — the pad must resume too
   if (state !== State.PAUSED) {
     _pauseDrawn = false; // any live frame → the next pause redraws its frozen shot once
     const _t = performance.now();
-    world.update(now / 1000, dt, player ? player.position : null); // balloons, critters, fireflies, pigeons
+    // Both humans wake the world around them in Versus (critters amble,
+    // pigeon flocks go live/scatter for whichever player gets close).
+    world.update(now / 1000, dt,
+      splitActive && player2 ? splitPlayers.map((k) => k.position) : player ? player.position : null);
     if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
     _seg.world = performance.now() - _t;
   }
@@ -6477,6 +7078,11 @@ function loop(now) {
     // Paused = a frozen scene, so draw it ONCE (the canvas keeps showing that frame)
     // then idle — re-rendering an unchanging image 60×/s behind the pause menu (or a
     // backgrounded app) is pure wasted GPU/battery. Ambient sim is skipped above too.
+    // ONLINE the world doesn't pause with you: keep broadcasting our (parked)
+    // pose so rivals see us stopped instead of vanishing after 2.5s of silence,
+    // and keep interpolating theirs so resume continues smoothly instead of
+    // snapping every ghost forward across the pause.
+    if (MP.enabled) updateMultiplayer(dt);
     if (!_pauseDrawn) { renderFrame(); _pauseDrawn = true; }
     return;
   }
@@ -6488,7 +7094,15 @@ function loop(now) {
   }
 
   weather.update(dt, camera.position); // rain/snow follows the player
-  if (world.groundLeaves) world.groundLeaves.update(karts, camera.position, dt); // kick up leaves in the karts' wake
+  if (world.groundLeaves) {
+    // Ghost karts stir the leaves too (alloc-free scratch — same pattern as
+    // the headlight candidates): a rival blasting past you should kick the
+    // carpet exactly as it does in solo.
+    _leafKarts.length = 0;
+    for (const k of karts) _leafKarts.push(k);
+    if (MP.enabled) for (const r of MP.remotes.values()) if (r.kart) _leafKarts.push(r.kart);
+    world.groundLeaves.update(_leafKarts, camera.position, dt); // kick up leaves in the karts' wake
+  }
   updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
   // Assign the small headlight-beam pool to the player + the nearest karts each
@@ -6556,7 +7170,7 @@ function loop(now) {
     if (_gridOpen) {
       // Start line: hold on the starting-grid tableau (throttled like the menu
       // drift — the shot barely moves, no need to burn battery at 60).
-      if (now - _lastMenuDraw >= 32) {
+      if (now - _lastMenuDraw >= MENU_DRAW_MS) {
         _lastMenuDraw = now;
         renderStartGrid(now / 1000, dt);
       }
@@ -6564,13 +7178,11 @@ function loop(now) {
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
-    updateMenuCamera(now / 1000); // advance tour timing/phase (cheap; keeps the drift smooth)
-    // The menu is a slow ambient drift — render it at ~30fps (halves the idle GPU/
-    // battery you spend sitting in menus) but keep the brief shot cross-fade at full
-    // rate so transitions stay smooth. The canvas holds the last frame between draws.
-    if (_menuPhase === "fading" || now - _lastMenuDraw >= 32) {
+    // A slow ambient drift — render at ~30fps (halves the idle GPU/battery spent
+    // sitting in menus); the canvas holds the last frame between draws.
+    if (now - _lastMenuDraw >= MENU_DRAW_MS) {
       _lastMenuDraw = now;
-      renderMenuBackground(now / 1000); // single render, or dual-render cross-dissolve
+      renderMenuBackground(now / 1000);
     }
     return;
   }
@@ -6582,7 +7194,17 @@ function loop(now) {
     // after an uninterrupted stretch of smooth frames, or at the hard cap.
     if (_veilActive) {
       if (MP.enabled && MP.startAt) {
-        hideRaceVeil(); // shared-clock countdown can't be held (belt & braces)
+        // The shared-clock countdown can't be FROZEN for one client, but the
+        // cover still works as a cover: the kart-build GC and first-view
+        // pipeline compiles burn off behind it instead of landing as visible
+        // hitches inside a running countdown (solo hides these; online used
+        // to show them raw). Drop it on the first smooth stretch — and
+        // unconditionally before the 3-beep so it never eats the count.
+        _veilStableMs = rawMs < VEIL_STABLE_FRAME_MS ? _veilStableMs + rawMs : 0;
+        if (_veilStableMs >= 450 || (MP.startAt - MP.net.now()) / 1000 <= 3.2) {
+          hideRaceVeil();
+          audio.startEngine(); // same idle-at-the-line spin-up as solo
+        }
       } else {
         _veilStableMs = rawMs < VEIL_STABLE_FRAME_MS ? _veilStableMs + rawMs : 0;
         const held = performance.now() - _veilStartedAt;
@@ -6601,7 +7223,11 @@ function loop(now) {
     // client reaches GO at the same instant regardless of local frame timing.
     if (MP.enabled && MP.startAt) countdown = (MP.startAt - MP.net.now()) / 1000;
     else if (!_veilActive) countdown -= dt;
-    updateCamera(dt, camPos.lengthSq() === 0);
+    if (splitActive && player2) {
+      for (let i = 0; i < splitPlayers.length; i++) _sCams[i].update(splitPlayers[i], track, dt);
+    } else {
+      updateCamera(dt, camPos.lengthSq() === 0);
+    }
     prewarmPipelines(); // one-time (during the first countdown): warm scenery pipelines so a spin-out doesn't compile-hitch
     // The whole GO moment — toast, chirp, GREEN light — fires at the actual
     // race start below. The old formula (ceil(countdown-1)) showed "GO!" (and
@@ -6610,6 +7236,10 @@ function loop(now) {
     // hears lines up with the first "3" they can actually see.
     const n = Math.ceil(countdown);
     if (!_veilActive && n >= 1 && n <= 3) hud.showToast(`${n}`);
+    // MP's shared-clock lead is 4s, so the first ~1s sits above the 3-2-1
+    // gate — fill it instead of opening the race on dead air (no toast, no
+    // beep, dark gantry was the 1P-vs-MP tell).
+    if (!_veilActive && n === 4) hud.showToast("GET READY…");
     // A beep on each 3/2/1 as the number changes, and the start-light gantry
     // steps with it: red through 3/2, amber at 1. Green comes with GO.
     if (!_veilActive && n !== prevCountN && n >= 1 && n <= 3) {
@@ -6643,46 +7273,22 @@ function loop(now) {
     raceTime += dt;
     track.raceTime = raceTime;
 
-    // Player controls
+    // Player controls (both humans in Versus; the helper mirrors the solo
+    // handling exactly — see applyHumanControls).
     input.update(dt);
-    player.steerInput = input.steer;
-    player.throttleInput = input.throttle;
-    // Raising the shield mid-drift is the one-thumb trade: the drift ends NOW
-    // and its charge is forfeit (no mini-turbo). Letting go of jump to shoot
-    // still releases the drift normally — that path keeps its earned boost.
-    if (input.consumeShieldEngage() && player.drifting) {
-      player.drifting = false;
-      player.driftCharge = 0;
-      player.driftRamp = 0;
-    }
-    player.shielding = input.shielding;
-    player.driftHeld = input.jumpHeld;
+    applyHumanControls(player, input, dt);
     // Steering dot: skip the style write (string build + composite) when the
     // needle hasn't visibly moved (~0.4px at the 80px throw).
     if (Math.abs(input.steer - _steerDotLast) > 0.005) {
       _steerDotLast = input.steer;
       steerDot.style.transform = `translateX(${input.steer * 80}px)`;
     }
-    if (input.consumeJump()) player.jump();
-    // Hold the shoot button to charge a faster/further shot; fire on release.
-    if (input.shootHeld && player.shootCooldown <= 0)
-      player.shootCharge = Math.min(player.shootCharge + dt / SHOOT_CHARGE_TIME, 1);
-    if (input.consumeShootRelease()) {
-      fireShot(player, player.shootCharge);
-      player.shootCharge = 0;
-    }
-    if (input.consumeMilk() && player.milkBottles > 0 && player.spinTimer <= 0) {
-      player.milkBottles = 0;
-      const p = items.dropMilk(player);
-      if (MP.enabled && MP.net && p) MP.net.sendMilk(p.x, p.z, p.r);
-      hud.showToast("🥛 Spilled!");
-    }
-    if (input.consumeBoost() && player.boostMeter >= 1) {
-      const _over = player.boostMeter > 1.02; // fired with overcharge → beefier burst
-      if (player.tootBoost(player.boostMeter)) {
-        player.boostMeter = 0; // fully deplete on use
-        effects.tootBurst(player, _over ? 3.5 : 2);
-        audio.toot();
+    if (splitActive && player2) {
+      for (let i = 1; i < splitPlayers.length; i++) {
+        const inp = _extraInputs[i - 1];
+        if (!inp) continue;
+        inp.update(dt);
+        applyHumanControls(splitPlayers[i], inp, dt);
       }
     }
     updateBoostUI();
@@ -6695,11 +7301,19 @@ function loop(now) {
       Math.sin(player.heading),
       Math.cos(player.heading)
     );
-    audio.setEngine(Math.min(1, Math.abs(player.speed) / player.maxSpeed), player.boosting);
+    // Engine pitch follows the FASTER human in Versus (one shared engine bed;
+    // idling it on a stopped P1 while P2 flies read as "P2 has no sound").
+    const _engK = splitActive && splitPlayers.length
+      ? Math.max(...splitPlayers.map((k) => Math.abs(k.speed) / k.maxSpeed))
+      : Math.abs(player.speed) / player.maxSpeed;
+    audio.setEngine(Math.min(1, _engK), splitActive ? splitPlayers.some((k) => k.boosting) : player.boosting);
     // Tires screech while drifting (full) and chatter through hard turns at speed
-    // (lighter), so cornering has grip feedback even without a drift.
+    // (lighter), so cornering has grip feedback even without a drift — from
+    // EITHER human's kart.
     const _sp = Math.abs(player.speed);
-    const _drift = player.drifting && _sp > 8;
+    const _drift = splitActive && splitPlayers.length
+      ? splitPlayers.some((k) => k.drifting && Math.abs(k.speed) > 8)
+      : player.drifting && _sp > 8;
     const _hardTurn = !player.drifting && Math.abs(player.steerInput) > 0.62 && _sp > 24;
     audio.setSkid(_drift || _hardTurn, _drift ? 1 : 0.45);
 
@@ -6810,12 +7424,12 @@ function loop(now) {
       },
       onYarnHit: (k) => {
         effects.tootBurst(k, 2, false);
-        audio.shoot(k === player ? null : k.position);
+        audio.shoot(sfxPos(k));
       },
       onYarnBlocked: (k) => effects.tootBurst(k, 1, false),
       onMilkHit: (k, p) => {
         effects.tootBurst(k, 2, false);
-        audio.shoot(k === player ? null : k.position);
+        audio.shoot(sfxPos(k));
         // Gloat: whoever's milk this was gets to look back and laugh.
         if (p && p.owner && p.owner !== k) {
           p.owner.gloat(); // local puddle (single-player / AI) — the dropper is right here
@@ -6850,7 +7464,7 @@ function loop(now) {
     for (const k of fxKarts) {
       if (k.wallHit) {
         effects.wallSparks(k);
-        audio.scrape(k === player ? null : k.position);
+        audio.scrape(sfxPos(k));
         k.wallHit = false;
       }
       // Slipstream: wind streaks on a kart drafting in a wake, a faint wake off a
@@ -6862,7 +7476,7 @@ function loop(now) {
       if (k.lifePulse) {
         k.lifePulse = false;
         effects.tootBurst(k, 1, false);
-        audio.boost(k === player ? null : k.position);
+        audio.boost(sfxPos(k));
         if (k === player) { hud.showToast("😻 Saved by a life!"); if (_raceStats) _raceStats.heartSaves++; }
       }
       if (k.spinTimer > 0) effects.skid(k);
@@ -6883,13 +7497,13 @@ function loop(now) {
       }
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
-        audio.hit(k.position);
+        audio.hit(sfxPos(k));
         audio.skidBurst(k.position, 0.8);
       }
       k._prevSpin = k.spinTimer;
       if (k.boostPuff >= 0) {
         effects.tootBurst(k, k.boostPuff);
-        audio.boost(k === player ? null : k.position);
+        audio.boost(sfxPos(k));
         if (k === player && _raceStats) _raceStats.driftBoosts++;
         k.boostPuff = -1;
       }
@@ -6901,24 +7515,35 @@ function loop(now) {
     // Weather follows the BIOME (snow in alpine, rain in the wet forest), not
     // altitude — so a procedural track's hills don't sprinkle snow into warm
     // biomes. The Weather class crossfades smoothly as you cross between them.
-    const where = biomeWeatherAt(player.position.x, player.position.z);
+    // Versus samples the midpoint between the two humans: the field is one
+    // shared sky, and the midpoint keeps it from whipsawing when the players
+    // split across a biome seam.
+    let _wx = player.position.x, _wz = player.position.z;
+    if (splitActive && splitPlayers.length) {
+      _wx = _wz = 0;
+      for (const k of splitPlayers) { _wx += k.position.x; _wz += k.position.z; }
+      _wx /= splitPlayers.length; _wz /= splitPlayers.length;
+    }
+    const where = biomeWeatherAt(_wx, _wz);
     weather.setWeather(where);
     // The wind crossfades with the weather: a snowbound pass blows a gale, a
     // desert is dead air. Eased inside windToward so it arrives over seconds.
-    windToward(biomeWindAt(player.position.x, player.position.z), dt);
+    windToward(biomeWindAt(_wx, _wz), dt);
     // Sell the rain: ease saturation/exposure down a touch as it picks up.
     const wet = weather.rainAmount;
-    // Kick up a splash when driving through a puddle while it's raining.
-    if (track.puddles && wet > 0.2 && Math.abs(player.speed) > 6) {
-      player._puddleCd = (player._puddleCd || 0) - dt;
-      if (player._puddleCd <= 0) {
+    // Kick up a splash when driving through a puddle while it's raining —
+    // for each human kart (both halves deserve their splash in Versus).
+    for (const hk of splitActive && splitPlayers.length ? splitPlayers : [player]) {
+      if (!(track.puddles && wet > 0.2 && Math.abs(hk.speed) > 6)) continue;
+      hk._puddleCd = (hk._puddleCd || 0) - dt;
+      if (hk._puddleCd <= 0) {
         for (const pd of track.puddles) {
-          const dx = player.position.x - pd.x;
-          const dz = player.position.z - pd.z;
+          const dx = hk.position.x - pd.x;
+          const dz = hk.position.z - pd.z;
           if (dx * dx + dz * dz < pd.r * pd.r) {
-            effects.splash(player.position);
+            effects.splash(hk.position);
             audio.splash();
-            player._puddleCd = 0.14;
+            hk._puddleCd = 0.14;
             break;
           }
         }
@@ -7027,11 +7652,46 @@ function loop(now) {
       timerEl?.classList.toggle("behind", !ahead);
     }
 
-    updateCamera(dt);
+    if (splitActive && player2) {
+      for (let i = 0; i < splitPlayers.length; i++) _sCams[i].update(splitPlayers[i], track, dt);
+      updateSplitChips();
+      // A human crossing the line gets their banner while the rest race on
+      // (their kart switches to autopilot via the finished-karts AI pass).
+      for (let i = 0; i < splitPlayers.length; i++) {
+        if (splitPlayers[i].finished && !_pFinishToasted[i]) {
+          _pFinishToasted[i] = true;
+          hud.showToast(`🏁 P${i + 1} FINISHED!`);
+        }
+      }
+      // Somebody home, somebody still out: run the finish-grace clock so an
+      // idle partner can't hold the results hostage. Expiry scores every
+      // straggler DNF.
+      const finCount = splitPlayers.filter((k) => k.finished).length;
+      if (finCount > 0 && finCount < splitPlayers.length) {
+        if (_splitGrace === null) {
+          _splitGrace = SPLIT_FINISH_GRACE;
+          const out = splitPlayers.map((k, i) => (k.finished ? null : `P${i + 1}`)).filter(Boolean).join("+");
+          hud.showToast(`⏱ ${out}: ${SPLIT_FINISH_GRACE}s to finish!`);
+        }
+        _splitGrace -= dt;
+        if (_splitGrace <= 10 && !_splitGrace10) { _splitGrace10 = true; hud.showToast("⏱ 10 seconds!"); }
+      }
+    } else {
+      updateCamera(dt);
+    }
 
-    // Hand off to the victory lap once the player finishes; show results after a
-    // celebratory beat (camera orbits the kart, fireworks pop) rather than instantly.
-    if (player.finished) {
+    // Hand off to the victory lap once the player finishes (EVERY human in
+    // Versus — or at least one plus the expired grace clock); show results
+    // after a celebratory beat (camera orbits the kart, fireworks pop).
+    let humansFinished;
+    if (splitActive && player2) {
+      const finCount = splitPlayers.filter((k) => k.finished).length;
+      humansFinished = finCount === splitPlayers.length ||
+        (finCount > 0 && _splitGrace !== null && _splitGrace <= 0);
+    } else {
+      humansFinished = player.finished;
+    }
+    if (humansFinished) {
       audio.finish();
       audio.setSkid(false);
       // Fade the racing HUD out for the victory lap so the camera orbit + fireworks
@@ -7047,7 +7707,7 @@ function loop(now) {
         hud.showToast(_ttResult.top[0] === _ttResult.entry ? "🏁 NEW BEST!" : "LAP DONE!");
         setTimeout(showResults, 4000);
       } else {
-        hud.showToast("FINISH!");
+        hud.showToast(splitActive ? "🏁 RACE OVER!" : "FINISH!");
         if (MP.enabled && MP.net) {
           // Stamp the finish on the shared clock so every client ranks it the
           // same way (local elapsed time drifts apart over a long race).
@@ -7065,13 +7725,18 @@ function loop(now) {
 
   if (state === State.FINISHED) {
     // Victory lap: every kart auto-pilots around the circuit and the camera orbits
-    // the player's kart; fireworks keep popping from the arch.
+    // the player's kart (each half keeps chasing its own kart in Versus);
+    // fireworks keep popping from the arch.
     for (const k of karts) k.driveAI(track, dt);
     for (const k of karts) k.update(dt, track);
     resolveCollisions();
     updateFireworks(dt);
     effects.update(dt);
-    updateCamera(dt);
+    if (splitActive && player2) {
+      for (let i = 0; i < splitPlayers.length; i++) _sCams[i].update(splitPlayers[i], track, dt);
+    } else {
+      updateCamera(dt);
+    }
   }
 
   renderFrame();

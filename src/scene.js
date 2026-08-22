@@ -118,7 +118,12 @@ export function createScene() {
   // Far plane sits just past the farthest fog (max fogFar ~1850): everything beyond
   // is 100% fog anyway, so rendering it to 3000 was pure waste. 2050 culls that
   // invisible distance with zero visual change — a free draw-call cut on open views.
-  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 2050);
+  // Near plane 0.3, not 0.1: depth precision scales with 1/near, and at 0.1
+  // the buffer resolved only ~15cm at 500u out — distant road layers and
+  // object silhouettes flickered per-pixel as the camera moved (worst in the
+  // menus, which stare across the whole map). Nothing flies closer than
+  // ~0.3u to the third-person/menu cameras, so the 3× precision is free.
+  const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.3, 2050);
   camera.position.set(0, 12, -18);
 
   const sunDir = new THREE.Vector3(0.4, 0.82, 0.55).normalize();
@@ -220,8 +225,9 @@ export function createScene() {
     hemi.intensity = m.hemiI;
     scene.background.set(m.bg);
     scene.fog.color.set(m.fog);
-    scene.fog.near = m.fogNear;
-    scene.fog.far = m.fogFar;
+    _moodFog.near = m.fogNear;
+    _moodFog.far = m.fogFar;
+    _applyFog();
     renderer.toneMappingExposure = m.exposure;
     cloudMat.color.set(m.cloud);
     const starI = m.starI ?? 0;
@@ -232,13 +238,28 @@ export function createScene() {
     rebakeEnv();
   }
 
+  // Draw-distance scale (High graphics): >1 pushes the fog out so the far
+  // world is VISIBLE instead of hazed — the far boundary scales fully, the
+  // near edge partially (the close haze is part of the look). The mood's own
+  // numbers are kept so tiers can switch live.
+  const _moodFog = { near: 360, far: 1300 };
+  let _fogScale = 1;
+  function _applyFog() {
+    scene.fog.near = _moodFog.near * (1 + (_fogScale - 1) * 0.6);
+    scene.fog.far = _moodFog.far * _fogScale;
+  }
+  function setFogScale(k) {
+    _fogScale = k;
+    _applyFog();
+  }
+
   applyMood(MOODS[0]);
 
   // WebGPURenderer initialises asynchronously (it picks/spins up the backend).
   // Expose the promise so the main loop only starts rendering once it's ready.
   const ready = renderer.init ? renderer.init() : Promise.resolve();
 
-  return { renderer, scene, camera, sun, applyMood, ready, skyMesh: sky.mesh, starField: stars };
+  return { renderer, scene, camera, sun, applyMood, setFogScale, ready, skyMesh: sky.mesh, starField: stars };
 }
 
 // Gradient sky dome with a warm glow around the sun direction.

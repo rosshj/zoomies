@@ -1,0 +1,17 @@
+{
+  "name": "zoomies-desktop",
+  "productName": "Zoomies GP",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Electron desktop shell for Zoomies GP — the Steam build.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist": "npm --prefix .. run build:web && electron-builder --config electron-builder.json",
+    "dist:deck": "npm --prefix .. run build:web && electron-builder --config electron-builder.json --linux zip --x64"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  }
+}

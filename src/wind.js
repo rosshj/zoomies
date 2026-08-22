@@ -41,10 +41,16 @@ function gustAt(px, pz) {
 // OBJECT'S OWN HEIGHT, so the same number bends a grass blade and an oak by the
 // same angle. Always leans downwind — gusts only vary how hard — with a small
 // cross-wind wobble so a field never looks like one rigid shove.
-export function windLean(px, pz, amp) {
+// `maxStr` (optional) caps the force THIS caller feels: a stiff tree doesn't
+// respond linearly to a gale the way grass does, so canopies pass ~1.45 and
+// keep their ordinary-wind motion while storm-seed peaks (uWindStr can reach
+// 2.4) stop flinging the crown around. Capping strength rather than amp keeps
+// gust timing and the lean/wobble ratio identical — it only flattens the top.
+export function windLean(px, pz, amp, maxStr = null) {
+  const str = maxStr != null ? uWindStr.min(maxStr) : uWindStr;
   const { gust, along } = gustAt(px, pz);
-  const lean = gust.mul(0.42).add(0.58).mul(uWindStr).mul(amp);
-  const cross = along.mul(0.043).add(_phase.mul(1.6)).cos().mul(0.2).mul(uWindStr).mul(amp);
+  const lean = gust.mul(0.42).add(0.58).mul(str).mul(amp);
+  const cross = along.mul(0.043).add(_phase.mul(1.6)).cos().mul(0.2).mul(str).mul(amp);
   return vec2(
     uWindDir.x.mul(lean).sub(uWindDir.y.mul(cross)),
     uWindDir.y.mul(lean).add(uWindDir.x.mul(cross))
@@ -95,13 +101,13 @@ export function windGustDrift(px, pz, amp, jitter, lift = 0) {
 //
 // Same length-preserving arc the grass uses: lean a tip out by s and it loses
 // ~s²/2 of reach, so the crown bows over its trunk instead of growing taller.
-export function windBendNode(amp) {
+export function windBendNode(amp, maxStr = null) {
   const root = attribute("aWindRoot");
   const w = attribute("aBend");
   const tall = w.mul(root.z).max(0.001); // the object's height in WORLD units
   const norm = positionGeometry.y.div(w.max(0.001)).clamp(0, 1); // 0 base -> 1 crown
   const reach = norm.mul(norm).mul(tall); // world units at amp = 1
-  const lean = windLean(root.x, root.y, amp); // aWindRoot is (x, z, scale)
+  const lean = windLean(root.x, root.y, amp, maxStr); // aWindRoot is (x, z, scale)
   const ox = lean.x.mul(reach);
   const oz = lean.y.mul(reach);
   const oy = ox.mul(ox).add(oz.mul(oz)).mul(-0.5).div(tall);
