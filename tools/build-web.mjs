@@ -24,6 +24,7 @@ const dist = join(root, "dist");
 const INCLUDE = [
   "index.html",
   "viewer.html", // dev asset viewer (/viewer.html) — shares src/ + vendor/ below
+  "download", // static /download/ page (desktop builds live on the zoomies-releases repo)
   "styles.css",
   "sw.js",
   "manifest.json",

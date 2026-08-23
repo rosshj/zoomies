@@ -4571,6 +4571,17 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
+// Web only: reveal the downloads link (Steam Deck / desktop builds live at
+// /download). The Electron shell IS the app and the native mobile shells
+// can't sideload, so both keep it hidden.
+if (!window.zoomiesDesktop && !_isNativeApp) {
+  const dlBtn = document.getElementById("download-btn");
+  if (dlBtn) {
+    dlBtn.classList.remove("hidden");
+    dlBtn.addEventListener("click", () => window.open("download/", "_blank"));
+  }
+}
+
 // Desktop (Electron) shell: reveal the quit buttons only when the preload
 // bridge is present — on the web and in Capacitor they stay hidden.
 if (window.zoomiesDesktop?.quit) {
