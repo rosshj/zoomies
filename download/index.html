@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download — Zoomies GP</title>
+  <meta name="description" content="Download Zoomies GP for Steam Deck and Linux, or play free in your browser." />
+  <link rel="icon" href="../icon-192.png" />
+  <style>
+    /* Self-contained on purpose: this page must not pull the game's CSS
+       (styles.css is the HUD/menus, full of absolute positioning). Palette
+       matches the game: navy stage, cream stickers, gold marquee. */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0e1320;
+      color: #fff4dd;
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 18px 60px;
+      background-image: radial-gradient(ellipse at 50% -10%, #1c2742 0%, #0e1320 62%);
+    }
+    header { text-align: center; margin-bottom: 34px; }
+    h1 {
+      font-size: clamp(30px, 6vw, 46px);
+      color: #ffc24b;
+      letter-spacing: 0.02em;
+      text-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
+    }
+    .tagline {
+      margin-top: 6px;
+      font-size: clamp(13px, 2.4vw, 16px);
+      opacity: 0.85;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    main { width: 100%; max-width: 760px; display: flex; flex-direction: column; gap: 18px; }
+    .card {
+      background: #1a2138;
+      border: 1px solid rgba(255, 194, 75, 0.28);
+      border-radius: 18px;
+      padding: 22px 24px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    }
+    .card h2 { color: #ffc24b; font-size: 20px; margin-bottom: 6px; }
+    .card p { font-size: 14.5px; line-height: 1.55; opacity: 0.92; }
+    .btn {
+      display: inline-block;
+      margin-top: 14px;
+      padding: 12px 26px;
+      border-radius: 999px;
+      background: linear-gradient(180deg, #ffd777, #ffb300);
+      color: #3a2504;
+      font-weight: 800;
+      font-size: 16px;
+      text-decoration: none;
+      box-shadow: 0 3px 0 #7a5310, 0 6px 16px rgba(0, 0, 0, 0.35);
+    }
+    .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #7a5310; }
+    .btn.secondary {
+      background: #fff6e3;
+      color: #33261a;
+      box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+    }
+    .meta { display: inline-block; margin-left: 10px; font-size: 12.5px; opacity: 0.65; }
+    ol { margin: 12px 0 0 20px; font-size: 14px; line-height: 1.7; }
+    ol li::marker { color: #ffc24b; font-weight: 700; }
+    code {
+      background: rgba(0, 0, 0, 0.35);
+      border-radius: 6px;
+      padding: 1px 7px;
+      font-size: 13px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+    }
+    .soon { opacity: 0.55; }
+    .soon .pill,
+    .pill {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 10px;
+      border-radius: 999px;
+      background: rgba(255, 194, 75, 0.16);
+      color: #ffc24b;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      vertical-align: middle;
+    }
+    details { margin-top: 10px; }
+    summary { cursor: pointer; color: #ffc24b; font-size: 14px; font-weight: 600; }
+    footer { margin-top: 38px; font-size: 13px; opacity: 0.6; text-align: center; line-height: 1.7; }
+    footer a { color: #ffc24b; }
+    @media (max-width: 520px) { .card { padding: 18px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>😺 Zoomies GP</h1>
+    <div class="tagline">🏁 Cat kart racing — downloads</div>
+  </header>
+  <main>
+    <div class="card">
+      <h2>Play in your browser <span class="pill">Free</span></h2>
+      <p>The whole game runs right here — phone or desktop, nothing to install.
+         Saves live on your device.</p>
+      <a class="btn" href="../">▶&nbsp; Play now</a>
+    </div>
+
+    <div class="card">
+      <h2>Steam Deck &amp; Linux <span class="pill">Free beta</span></h2>
+      <p>The desktop app: the same game with local split screen for 2–4 players
+         (controllers + keyboard on one screen), ready for the Deck's controls
+         and screen.</p>
+      <a class="btn" href="https://github.com/rosshj/zoomies-releases/releases/latest/download/zoomies-gp-linux-x64.zip">⬇&nbsp; Download for Steam Deck / Linux</a>
+      <span class="meta">.zip · x86_64 · ~110&nbsp;MB</span>
+      <details>
+        <summary>Install on Steam Deck (one-time, ~5 minutes)</summary>
+        <ol>
+          <li>Hold the power button → <b>Switch to Desktop</b>, and download the
+              zip with the browser (or copy it over on a USB stick).</li>
+          <li>Extract it somewhere like <code>~/Zoomies</code> (right-click →
+              Extract).</li>
+          <li>Open Steam (still in Desktop Mode) → <b>Games → Add a Non-Steam
+              Game → Browse</b> → pick <code>zoomies-desktop</code> from that
+              folder.</li>
+          <li>Switch back to Gaming Mode and launch it from your library. In
+              the game's controller settings, pick the <b>Gamepad</b> template.
+              Tap any button if the menu cursor doesn't show at first.</li>
+        </ol>
+        <p style="margin-top:10px">Updating later = replace the folder contents
+           with a newer zip. Launching from a terminal instead of Steam? Add
+           <code>--no-sandbox</code>.</p>
+      </details>
+    </div>
+
+    <div class="card soon">
+      <h2>macOS &amp; Windows <span class="pill">Coming soon</span></h2>
+      <p>Desktop builds are on the way. In the meantime the browser version runs
+         great on both.</p>
+    </div>
+
+    <div class="card soon">
+      <h2>Steam <span class="pill">In the works</span></h2>
+      <p>Zoomies GP is headed to Steam — achievements, cloud saves and the
+         easy one-click install. The site beta stays free while we get there.</p>
+    </div>
+  </main>
+  <footer>
+    <a href="../">← Back to the game</a><br />
+    Made with too much catnip. Saves stay on your device; no accounts, no tracking.
+  </footer>
+</body>
+</html>
