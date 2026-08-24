@@ -118,7 +118,13 @@ function createWindow() {
     height: saved?.height || 800,
     minWidth: 960,
     minHeight: 600,
-    fullscreen: ON_DECK || !!saved?.fullscreen,
+    // NEVER fullscreen-at-creation on the Deck: Gaming Mode's compositor
+    // fullscreens the window itself, and fullscreen-at-creation in the
+    // Deck's sessions produced a stuck black window (field-reported in both
+    // modes — and once it happened, the saved window-state re-armed it on
+    // every later launch, so the saved flag is ignored there too). Plain
+    // window, F11 as ever.
+    fullscreen: !ON_DECK && !!saved?.fullscreen,
     backgroundColor: "#0e1320", // matches the game's loading screen
     autoHideMenuBar: true,
     webPreferences: {
