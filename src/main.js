@@ -2356,7 +2356,15 @@ function updateDRS(rawMs, dt) {
   }
   _drsCooldown -= dt;
   if (_drsCooldown > 0) return;
-  if (_frameMs > 18.6 && _drsRung < DRS_RUNGS.length - 1) {
+  // Budgets derive from the MEASURED render cadence (see _renderBudgetMs):
+  // on a 60Hz display these come out at the long-tuned 18.6/17.2ms, on a
+  // 90Hz Steam Deck at ~12.4/11.4, on a half-rated 120Hz phone back at ~60.
+  // A fixed 18.6 on 90Hz read every healthy 22ms-capped frame as overload
+  // and parked the game at minimum resolution ("smooth but blurry").
+  const _budget = _renderBudgetMs();
+  const _over = _budget * 1.11 + 0.1;
+  const _under = _budget * 1.03;
+  if (_frameMs > _over && _drsRung < DRS_RUNGS.length - 1) {
     // Only step down after the budget has been blown for a SUSTAINED beat. A
     // transient spike — a jump's brief draw-call burst, a first-use shader
     // compile — recovers on its own.
@@ -2365,7 +2373,7 @@ function updateDRS(rawMs, dt) {
     if (_drsOverT < 0.5) return;
     _drsOverT = 0;
     // Genuinely sustained overload drops two rungs in one move.
-    _drsRung = Math.min(DRS_RUNGS.length - 1, _drsRung + (_frameMs / 18.6 > 1.5 ? 2 : 1));
+    _drsRung = Math.min(DRS_RUNGS.length - 1, _drsRung + (_frameMs > _budget * 1.67 ? 2 : 1));
     renderScale = DRS_RUNGS[_drsRung];
     applyResolution();
     _drsCooldown = 1.0;
@@ -2374,10 +2382,10 @@ function updateDRS(rawMs, dt) {
     // Recover a rung only after SUSTAINED comfortable headroom — not on the
     // first good window — and with a long cooldown, so the scaler can't
     // oscillate between rungs (each swing is a realloc + hitch). Threshold
-    // sits just above the 60Hz vsync floor (~16.7ms): a capped-at-60 device
-    // CAN reach it (16.0 was unreachable — the scale ratcheted down and
-    // stayed blurry for the rest of the session).
-    if (_frameMs < 17.2 && _drsRung > 0) {
+    // sits just above the display's own vsync floor: a vsynced device CAN
+    // reach it (a threshold below the floor was unreachable — the scale
+    // ratcheted down and stayed blurry for the rest of the session).
+    if (_frameMs < _under && _drsRung > 0) {
       _drsUnderT += dt;
       // 2s sustained + 2s cooldown ≈ up to ~15s from the bottom rung back to
       // full res after a heavy stretch (a sunset race start read as "blurry
@@ -2389,7 +2397,7 @@ function updateDRS(rawMs, dt) {
       renderScale = DRS_RUNGS[_drsRung];
       applyResolution();
       _drsCooldown = 2.0;
-    } else if (_frameMs >= 17.2) {
+    } else if (_frameMs >= _under) {
       _drsUnderT = 0;
     }
   }
@@ -7026,13 +7034,27 @@ let prevPlayerSpin = 0;
 // scaler saw the resulting ~8ms frames as spare headroom and cranked resolution
 // UP, pegging the GPU. That's the "phone runs hot / battery dies fast" report.
 // 60fps is smooth for a kart racer and graphically identical (same resolution,
-// same effects) — only the extra frames are dropped. Threshold sits below the
-// 60Hz vsync interval (16.7ms) so a 60Hz display never skips a frame. EVERY
-// tier is capped at ~60fps now — High spends its headroom on world detail
-// (dynamic shadows, draw distance, density) instead of 120fps. ?uncap=1
-// still lifts the cap for A/B runs.
+// same effects) — only the extra frames are dropped. EVERY tier spends its
+// headroom on world detail instead of >60fps. ?uncap=1 still lifts the cap
+// for A/B runs.
+//
+// The cap is REFRESH-AWARE, not a fixed 15ms gate: skipping to "about 60"
+// only works when the display's rate divides cleanly. The measured vsync
+// interval (EMA over raw rAF cadence, outliers ignored) drives it:
+//   ~120Hz+  → render every 2nd tick (a clean 60).
+//   60-90Hz  → render EVERY tick and follow the display. A fixed 15ms gate
+//              on a 90Hz Steam Deck landed on 45fps with 22ms rendered
+//              intervals — which the resolution scaler (also fixed to a
+//              60Hz budget then) read as GPU overload and answered by
+//              flooring the render scale: butter smooth, needlessly blurry.
+// The DRS budgets below derive from the same measurement, so "too slow" is
+// always judged against what this display can actually deliver.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
-const FRAME_MIN_MS = 15;
+let _vsyncEma = 16.7; // measured display interval (ms)
+let _lastRaf = 0;
+const _halfRate = () => _vsyncEma < 9.7; // ≥~103Hz: halve to a clean ~60
+const _renderBudgetMs = () => (_halfRate() ? _vsyncEma * 2 : _vsyncEma);
+window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), halfRate: _halfRate() }); // debug hook
 // Idle-render savings (see the loop): draw the paused scene once (not 60×/s), run
 // the ambient menu drift at ~30fps, and refresh the minimap at ~20fps. All hold
 // their last frame on the canvas between draws, so there's no visible change.
@@ -7049,10 +7071,15 @@ const MENU_DRAW_MS = window.zoomiesDesktop ? 0 : 32;
 
 function loop(now) {
   requestAnimationFrame(loop);
-  // Cap: unless ?uncap=1 opts into uncapped ~120fps, skip this rAF tick when
-  // too little time has passed since the last RENDERED frame (leaving `last`
-  // untouched so dt still spans to the real last frame).
-  if (!_uncapParam && now - last < FRAME_MIN_MS) return;
+  // Measure the display's real cadence from EVERY rAF tick (including the
+  // ones the cap skips): jitter-tolerant EMA, ignoring pauses/hitches.
+  const _tick = now - _lastRaf;
+  _lastRaf = now;
+  if (_tick > 3 && _tick < 35) _vsyncEma += (_tick - _vsyncEma) * 0.05;
+  // Cap: only a ~120Hz+ display skips ticks (to a clean half-rate ~60);
+  // everything else renders every vsync (leaving `last` untouched on a skip
+  // so dt still spans to the real last frame).
+  if (!_uncapParam && _halfRate() && now - last < _vsyncEma * 1.6) return;
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
