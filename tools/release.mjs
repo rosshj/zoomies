@@ -31,9 +31,12 @@ const platforms = (platIdx > 0 ? process.argv[platIdx + 1] : "linux").split(",")
 
 // Platform → electron-builder flags + the stable asset name players download.
 const PLATFORMS = {
-  linux: { flags: "--linux zip --x64", asset: "zoomies-gp-linux-x64.zip" },
-  mac: { flags: "--mac zip", asset: "zoomies-gp-macos.zip" },
-  win: { flags: "--win zip --x64", asset: "zoomies-gp-windows-x64.zip" },
+  // Linux ships as tar.gz, NOT zip: browser downloads + GUI extraction strip
+  // the executable bit out of zips (field-verified on a Steam Deck — the
+  // binary wouldn't launch until a manual chmod +x), while tar preserves it.
+  linux: { flags: "--linux tar.gz --x64", asset: "zoomies-gp-linux-x64.tar.gz", ext: ".tar.gz" },
+  mac: { flags: "--mac zip", asset: "zoomies-gp-macos.zip", ext: ".zip" },
+  win: { flags: "--win zip --x64", asset: "zoomies-gp-windows-x64.zip", ext: ".zip" },
 };
 
 const sh = (cmd, cwd = ROOT) => execSync(cmd, { cwd, stdio: "inherit" });
@@ -60,10 +63,10 @@ for (const p of platforms) {
   if (!cfg) { console.error(`unknown platform: ${p}`); process.exit(1); }
   console.log(`\n[release] packaging ${p}…`);
   sh(`npx electron-builder --config electron-builder.json ${cfg.flags}`, join(ROOT, "desktop"));
-  // electron-builder names zips by product/version; grab the newest zip and
-  // restage it under the stable asset name.
-  const zips = readdirSync(outDir).filter((f) => f.endsWith(".zip"));
-  if (!zips.length) { console.error(`no zip produced for ${p}`); process.exit(1); }
+  // electron-builder names archives by product/version; grab the newest one
+  // of this platform's type and restage it under the stable asset name.
+  const zips = readdirSync(outDir).filter((f) => f.endsWith(cfg.ext));
+  if (!zips.length) { console.error(`no ${cfg.ext} produced for ${p}`); process.exit(1); }
   const newest = zips
     .map((f) => ({ f, t: execSync(`stat -f %m "${join(outDir, f)}" 2>/dev/null || stat -c %Y "${join(outDir, f)}"`).toString().trim() }))
     .sort((a, b) => b.t - a.t)[0].f;
@@ -95,7 +98,10 @@ for (const p of platforms) {
   const upload = release.upload_url.replace(/\{.*\}$/, "") + `?name=${encodeURIComponent(asset)}`;
   await gh(upload, {
     method: "POST",
-    headers: { "Content-Type": "application/zip", "Content-Length": String(data.length) },
+    headers: {
+      "Content-Type": asset.endsWith(".tar.gz") ? "application/gzip" : "application/zip",
+      "Content-Length": String(data.length),
+    },
     body: data,
   });
   console.log(`[release] uploaded ${asset} (${(data.length / 1e6).toFixed(0)} MB)`);
