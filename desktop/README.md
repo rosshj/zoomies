@@ -134,23 +134,30 @@ quadrant cams/HUD, seat picks, input dealing, lean posture).
 Build a Deck package from any machine (the Deck is plain x86_64 Linux):
 
 ```sh
-npm run dist:deck    # → out/ zip with the linux build
+npm run dist:deck    # → out/ tar.gz with the linux build
 ```
 
-Get the zip onto the Deck (USB stick, scp, or `npx serve desktop/out` on
-the build machine and download it with the Deck's browser in Desktop Mode),
-extract it anywhere (e.g. `~/Zoomies`), then in desktop Steam:
+tar.gz, NOT zip: browser downloads + GUI extraction strip the executable
+bit out of zips (field-verified — the binary silently wouldn't launch until
+a manual `chmod +x`), while tar preserves permissions.
+
+Get the archive onto the Deck (USB stick, scp, or `npx serve desktop/out`
+on the build machine and download it with the Deck's browser in Desktop
+Mode), extract it anywhere (e.g. `~/Zoomies`), then in desktop Steam:
 **Games → Add a Non-Steam Game → Browse** → `zoomies-desktop`. Launch from
 Gaming Mode; pick the **Gamepad** controller template so the Deck presents
 as a standard pad (the Gamepad API path the game already uses — press any
 button once, the browser hides a pad until its first input).
 
-The shell detects Gaming Mode's `SteamDeck=1` env and adapts itself:
-Chromium's SUID sandbox helper can't work on SteamOS's immutable filesystem
-(a stock Electron launch dies at startup), so it runs `no-sandbox` there —
-the game only ever loads its own bundled app:// content — and it starts
-fullscreen. Testing from Konsole in Desktop Mode without that env: launch
-with `--no-sandbox` by hand.
+The shell detects SteamOS itself (`/etc/os-release`, plus the `SteamDeck`
+env belt-and-braces — Gaming Mode does NOT pass its env to non-Steam
+shortcuts) and adapts: Chromium's SUID sandbox helper can't work on the
+immutable filesystem (a stock launch dies at startup) so it runs
+`no-sandbox` — the game only ever loads its own bundled app:// content —
+and shared memory routes through /tmp (`disable-dev-shm-usage`; /dev/shm
+failures killed the renderer at birth on a real Deck: live app, black
+window). It does NOT force fullscreen: Gaming Mode fullscreens windows
+itself, and fullscreen-at-creation wedged into a stuck black window.
 
 The screen is 1280×800 — the exact viewport every headless check runs at.
 Rumble under Steam Input's virtual pad may not reach Chromium's

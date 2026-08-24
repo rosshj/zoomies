@@ -35,7 +35,14 @@ const ON_DECK = !!process.env.SteamDeck || (() => {
   try { return /^ID=steamos$/m.test(fs.readFileSync("/etc/os-release", "utf8")); }
   catch { return false; }
 })();
-if (ON_DECK) app.commandLine.appendSwitch("no-sandbox");
+if (ON_DECK) {
+  app.commandLine.appendSwitch("no-sandbox");
+  // Field-verified on a real Deck: Chromium died at renderer birth with
+  // FATAL platform_shared_memory_region_posix — /dev/shm access failing —
+  // leaving a live app with a black window in both Gaming and Desktop Mode.
+  // This canonical switch routes Chromium's shared memory through /tmp.
+  app.commandLine.appendSwitch("disable-dev-shm-usage");
+}
 
 // app:// must be registered standard+secure BEFORE app ready so module
 // scripts, fetch and localStorage all behave like a normal https origin.
