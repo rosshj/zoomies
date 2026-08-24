@@ -27,7 +27,14 @@ const DIST = app.isPackaged
 //    the sandbox there (the game loads only its own bundled app:// content).
 //  • Start fullscreen: the Deck is a handheld console, a floating 1280x800
 //    window in Desktop Mode test launches is never what you want either.
-const ON_DECK = !!process.env.SteamDeck;
+// Detect by OS identity, not just env: Gaming Mode's SteamDeck=1 does NOT
+// reach non-Steam shortcuts (field report: black screen at launch until
+// --no-sandbox was typed into Launch Options by hand), and Desktop Mode
+// never sets it at all. /etc/os-release names SteamOS on every path.
+const ON_DECK = !!process.env.SteamDeck || (() => {
+  try { return /^ID=steamos$/m.test(fs.readFileSync("/etc/os-release", "utf8")); }
+  catch { return false; }
+})();
 if (ON_DECK) app.commandLine.appendSwitch("no-sandbox");
 
 // app:// must be registered standard+secure BEFORE app ready so module
