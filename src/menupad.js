@@ -19,12 +19,17 @@ export class MenuPad {
   }
 
   update() {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-    let pad = null;
-    for (const p of pads) {
-      if (p && p.connected && p.buttons?.length) { pad = p; break; }
+    const raw = navigator.getGamepads ? navigator.getGamepads() : [];
+    const pads = [];
+    for (const p of raw) {
+      if (p && p.connected && p.buttons?.length) pads.push(p);
     }
-    if (!pad) { this._prev.length = 0; this._setFocus(null); return; }
+    if (!pads.length) { this._prev.length = 0; this._setFocus(null); return; }
+    // EVERY connected pad drives the menus, not just the first: on a couch,
+    // players 2-4 must be able to move the ring on their own seat pass (and
+    // hit Start) without the "pass pad #1 around" ritual. Buttons OR
+    // together; each axis takes the largest deflection.
+    const pad = pads.length === 1 ? pads[0] : this._merge(pads);
 
     // First contact: the Gamepad API only exposes a pad after its FIRST
     // input, so that input's edges all read as fresh presses. Seat the ring
@@ -94,6 +99,22 @@ export class MenuPad {
     this._heldDir = dir;
 
     this._commit(pad);
+  }
+
+  _merge(pads) {
+    const nb = Math.max(...pads.map((p) => p.buttons.length));
+    const buttons = [];
+    for (let i = 0; i < nb; i++) {
+      buttons.push({ pressed: pads.some((p) => !!p.buttons[i]?.pressed) });
+    }
+    const axes = [0, 0];
+    for (const p of pads) {
+      for (let a = 0; a < 2; a++) {
+        const v = p.axes?.[a] ?? 0;
+        if (Math.abs(v) > Math.abs(axes[a])) axes[a] = v;
+      }
+    }
+    return { buttons, axes };
   }
 
   _commit(pad) {

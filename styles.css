@@ -795,19 +795,6 @@ body {
 }
 
 
-.tile-swatches {
-  flex: 0 0 auto;
-  display: flex;
-  gap: 4px;
-}
-.tile-swatch {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.75);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
-}
-
 /* "Something's waiting for you" bubble on the Cat-alog tile. */
 .tile-alert {
   flex: 0 0 auto;
@@ -1115,9 +1102,10 @@ kbd {
 }
 
 /* Victory lap: gently fade the racing controls + readouts out so the camera
-   orbit and fireworks play unobstructed. The FINISH toast (and the invisible
-   hit-flash layer) are kept. Cleared when the results screen or next race starts. */
-#hud.victory-hidden > *:not(#toast):not(#flash) {
+   orbit and fireworks play unobstructed. The invisible hit-flash layer is
+   kept (the FINISH toast lives outside #hud and is untouched). Cleared when
+   the results screen or next race starts. */
+#hud.victory-hidden > *:not(#flash) {
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.9s ease;
@@ -1848,6 +1836,9 @@ button.small {
 /* Lap toast */
 #toast {
   position: absolute;
+  /* A body-level layer of its own (not inside #hud any more): toasts must
+     show over the menus too, but stay under the race veil (60). */
+  z-index: 59;
   top: 38%;
   left: 50%;
   transform: translate(-50%, -50%) scale(0.6);
@@ -2204,7 +2195,11 @@ button.secondary.small,
   position: absolute;
   inset: 0;
   z-index: 50;
-  overflow: hidden;
+  /* clip, not hidden: hidden boxes still scroll PROGRAMMATICALLY, and Chrome
+     scrolls one sideways on its own to chase a focused (outlined) button
+     while its flow screen slides away — the menu then sticks 55% off-screen.
+     clip forbids all scrolling, so no repair dance is needed. */
+  overflow: clip;
   touch-action: pan-y;
   /* legibility scrim over the live world (same intent as the old menu bg) */
   background: radial-gradient(circle at 50% 42%, rgba(7, 10, 18, 0.12), rgba(6, 9, 16, 0.7) 95%);
@@ -2667,6 +2662,55 @@ button.secondary.small,
   gap: clamp(7px, 1.6vh, 12px);
   width: clamp(300px, 42vw, 400px);
   max-height: 100%;
+  min-height: 0;
+}
+/* The rows above GO scroll when the couch lobby outgrows the window (4P at
+   720p); GO is a sibling BELOW this, so it stays pinned and reachable. */
+.start-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(7px, 1.6vh, 12px);
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.seat-thumbs { display: flex; gap: 4px; flex: 0 0 auto; }
+.seat-thumb {
+  width: clamp(30px, 5.6vh, 40px);
+  height: clamp(30px, 5.6vh, 40px);
+  border-radius: 8px;
+  object-fit: cover;
+  border: 2px solid rgba(43, 26, 78, 0.6);
+  background: rgba(0, 0, 0, 0.25);
+}
+/* Which pad / keyboard drives this seat — refreshed live on pad connects. */
+.seat-input {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: normal;
+  text-transform: none;
+  background: rgba(255, 248, 238, 0.12);
+  color: #ffe9c9;
+}
+.seat-input.warn { background: rgba(255, 90, 90, 0.2); color: #ffb3a7; }
+.seat-names {
+  font-size: clamp(12.5px, 2.4vh, 15px);
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.seat-row { padding: 7px 10px; }
+.start-input-warn {
+  margin: 0 2px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: #ffb3a7;
+  text-align: left;
 }
 .map-chip {
   position: absolute;
@@ -2703,7 +2747,6 @@ button.secondary.small,
   gap: 10px;
   padding: 9px 12px;
 }
-.start-racer .tile-swatches { flex: 0 0 auto; }
 .start-racer-text {
   flex: 1;
   min-width: 0;
@@ -2988,6 +3031,28 @@ button.small { white-space: nowrap; }
 }
 #kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 880px; }
 #kart-grid .racer-shot { aspect-ratio: 3 / 2; }
+/* The card matching the current selection: a gold ring + corner check, so
+   every pass shows where you already are before you tap anything. */
+.racer-tap.is-current {
+  border-color: var(--f-gold, #ffc24b);
+  box-shadow: 0 0 0 2px rgba(255, 194, 75, 0.75), 0 3px 0 rgba(43, 26, 78, 0.5);
+}
+.racer-tap.is-current .racer-shot::after {
+  content: "✓";
+  position: absolute;
+  left: 5px;
+  top: 3px;
+  font-size: 15px;
+  font-weight: 900;
+  color: #1d1636;
+  background: var(--f-gold, #ffc24b);
+  border-radius: 999px;
+  width: 21px;
+  height: 21px;
+  line-height: 21px;
+  text-align: center;
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.45);
+}
 .racer-tap.shake { animation: racer-shake 0.4s ease; }
 @keyframes racer-shake {
   25% { transform: translateX(-5px); }
@@ -3036,6 +3101,14 @@ button.small { white-space: nowrap; }
     box-shadow: 0 0 0 2px rgba(20, 14, 40, 0.85), 0 0 0 6px var(--accent),
       0 0 30px rgba(255, 179, 0, 0.6);
   }
+}
+/* Keyboard users tabbing the menus get the same visible ring the pad draws
+   (quieter: no pulse). Mouse/touch clicks stay ringless (:focus-visible). */
+button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(20, 14, 40, 0.85), 0 0 0 8px var(--accent);
+  z-index: 1;
 }
 
 /* --- Split screen (Versus 2P) ---------------------------------------------- */
@@ -3162,8 +3235,3 @@ button.small { white-space: nowrap; }
 #hud.split #rear-threat, #hud.split #shoot-lock, #hud.split #steer,
 #hud.split #throttle, #hud.split #action-buttons, #hud.split #yarn-warn,
 #hud.split #info, #hud.split #powerups { display: none; }
-
-/* Versus: Player 2's preset picker on the start line. */
-.p2-racer .start-racer-text { display: flex; flex-direction: column; gap: 6px; width: 100%; }
-.p2-pick-row { display: flex; align-items: center; gap: 8px; }
-.p2-pick-row .mini-name { flex: 1; text-align: center; }

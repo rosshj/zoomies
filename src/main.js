@@ -4105,25 +4105,29 @@ function syncGarageUI() {
   syncCreators();
   refreshEditorLocks();
 }
-// The main menu's Racer tile: current cat + kart by name, with their colours as
-// two little swatch dots, so the choice reads without opening the garage.
+// The start line's Racer tile: current cat + kart by name, with their real
+// catalog renders as thumbnails, so the choice reads without opening the
+// garage (a colour dot can't tell two same-coloured cats apart).
 function refreshRacerSummary() {
   const el = document.getElementById("racer-summary");
   if (!el) return;
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
   el.textContent = `${cat.name} · ${kart.name}`;
-  const cs = document.getElementById("racer-swatch-cat");
-  if (cs) cs.style.background = _hex6(cat.fur);
-  const ks = document.getElementById("racer-swatch-kart");
-  if (ks) ks.style.background = _hex6(kart.color);
+  const ct = document.getElementById("racer-thumb-cat");
+  if (ct) ct.src = garageConfig.cat === CUSTOM_CAT_IDX ? "assets/catalog/custom-cat.jpg" : `assets/catalog/cat-${garageConfig.cat}.jpg`;
+  const kt = document.getElementById("racer-thumb-kart");
+  if (kt) kt.src = garageConfig.kart === CUSTOM_KART_IDX ? "assets/catalog/custom-kart.jpg" : `assets/catalog/kart-${garageConfig.kart}.jpg`;
 }
 // Entering any racer-family screen (cat / kart / the two studios): open the
 // showroom once — the draft persists across the whole family and commits when
 // the kart is chosen.
 function openRacerStep() {
   if (!_garageOpen) {
-    _garageDraft = {
+    // A seat pass (startSeatPick) has already seated the draft on that seat's
+    // racer before arriving here — reseeding from P1's save would clobber it
+    // and quietly run the whole pass on P1's picks instead.
+    if (!_pickingSeat) _garageDraft = {
       cat: garageConfig.cat,
       kart: garageConfig.kart,
       customCat: { ...garageConfig.customCat },
@@ -4353,10 +4357,11 @@ document.getElementById("kart-randomize")?.addEventListener("click", () => editC
 // --- Racer grids: one card per cat/kart (real catalog renders), doors that
 // advance. Locked priced cards buy in place with a tap-again confirm; cup and
 // difficulty prizes shake and say how to win them. ---
-function racerGridCard({ img, name, sub, buyId, onPick, rerender }) {
+function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
   const owned = !buyId || isUnlocked(profile, buyId);
   const b = document.createElement("button");
-  b.className = "tap-card racer-tap" + (owned ? "" : " locked");
+  b.className = "tap-card racer-tap" + (owned ? "" : " locked") + (current ? " is-current" : "");
+  if (current) b.setAttribute("aria-current", "true");
   const shot = document.createElement("span");
   shot.className = "racer-shot";
   const im = document.createElement("img");
@@ -4415,7 +4420,10 @@ function renderCatCards() {
     grid.appendChild(racerGridCard({
       img: `assets/catalog/cat-${i}.jpg`,
       name: c.name,
-      buyId: `cat.${i}`,
+      // Couch rule: a guest's seat pass rides any preset free — Versus pays
+      // no treats, and P1's locks/prices (and wallet!) are P1's alone.
+      buyId: _pickingSeat ? null : `cat.${i}`,
+      current: _garageDraft?.cat === i,
       onPick: () => { _garageDraft.cat = i; flowGo("kart"); },
       rerender: renderCatCards,
     }));
@@ -4425,6 +4433,7 @@ function renderCatCards() {
       img: "assets/catalog/custom-cat.jpg",
       name: "Custom Cat",
       sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
+      current: _garageDraft?.cat === CUSTOM_CAT_IDX,
       onPick: () => flowGo("cat-edit"),
     }));
   }
@@ -4437,7 +4446,9 @@ function renderKartCards() {
     grid.appendChild(racerGridCard({
       img: `assets/catalog/kart-${i}.jpg`,
       name: k.name,
-      buyId: `kart.${i}`,
+      // Same couch rule as the cats: seat passes never see locks or prices.
+      buyId: _pickingSeat ? null : `kart.${i}`,
+      current: _garageDraft?.kart === i,
       onPick: () => { _garageDraft.kart = i; commitRacer(); },
       rerender: renderKartCards,
     }));
@@ -4447,20 +4458,24 @@ function renderKartCards() {
       img: "assets/catalog/custom-kart.jpg",
       name: "Custom Kart",
       sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
+      current: _garageDraft?.kart === CUSTOM_KART_IDX,
       onPick: () => flowGo("kart-edit"),
     }));
   }
 }
 // Kart chosen → the racer is complete: save it and roll on (friends-hosting
 // goes to the lobby — this tap is the fullscreen + motion gesture).
-// In Versus the SAME cat/kart screens then run a second pass for Player 2
-// (preset cards only — the custom studio designs belong to P1's save), whose
-// picks land in the P2 slot instead of the garage save.
+// In Versus the SAME cat/kart screens can run a pass for one guest seat at a
+// time (preset cards only — the custom studio designs belong to P1's save),
+// whose picks land in that seat's slot instead of the garage save. Each pass
+// is opened from that seat's Edit on the start line and hands straight back —
+// no P2→P3→P4 chain forcing everyone through the card screens.
 let _pickingSeat = 0; // 0 = P1's own (garage) pass; 2..4 = that seat's pass
 function startSeatPick(seat) {
   _pickingSeat = seat;
   // Seat the shared draft on this seat's current pick so the showroom preview
   // and card grids show that racer; P1's picks are already committed/saved.
+  // (openRacerStep sees _pickingSeat and leaves this draft alone.)
   _garageDraft = {
     cat: _seatPicks[seat].cat,
     kart: _seatPicks[seat].kart,
@@ -4479,11 +4494,9 @@ function commitRacer() {
       kart: Math.min(_garageDraft.kart, KART_PRESETS.length - 1),
     };
     try { localStorage.setItem(_seatKey(_pickingSeat), JSON.stringify(_seatPicks[_pickingSeat])); } catch { /* ignore */ }
-    // More seats to dress? Run the same screens again for the next one.
-    if (_pickingSeat < splitCount) {
-      startSeatPick(_pickingSeat + 1);
-      return;
-    }
+    // One seat per visit, straight back to the start line. Leaving the racer
+    // family closes the showroom, so the next entry reseeds the shared draft
+    // from P1's save — a finished seat pass can't leak its picks into P1's.
     _pickingSeat = 0;
     refreshRacerEyebrows();
     refreshSeatTiles();
@@ -4497,7 +4510,6 @@ function commitRacer() {
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
   if (raceMode === "mp") hostGame();
-  else if (raceMode === "split") startSeatPick(2);
   else flowGo("startline");
 }
 // With Friends has no start line, so its racer steps drop the step count.
@@ -4505,9 +4517,9 @@ function commitRacer() {
 function refreshRacerEyebrows() {
   const mp = raceMode === "mp";
   const c = document.getElementById("cat-eyebrow");
-  if (c) c.textContent = _pickingSeat ? `Player ${_pickingSeat}` : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 3 of 4" : "Step 3 of 4";
+  if (c) c.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your cat` : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 3 of 4" : "Step 3 of 4";
   const k = document.getElementById("kart-eyebrow");
-  if (k) k.textContent = _pickingSeat ? `Player ${_pickingSeat}` : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 4 of 4" : "Step 4 of 4";
+  if (k) k.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your kart` : mp ? "Your racer" : raceMode === "split" ? "Player 1 · Step 4 of 4" : "Step 4 of 4";
 }
 // Studio actions: Buy unlocks the creator; Use adopts the design and rolls on.
 for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
@@ -4660,6 +4672,10 @@ function flowGo(step, dir = 1, instant = false) {
   if (changing) {
     if (instant) menuFlowEl.classList.add("flow-instant");
     if (cur) {
+      // The click that navigated may leave browser focus on the departing
+      // screen's button — stranded there, Enter keeps activating an
+      // invisible control (and the browser chases the focus ring around).
+      if (cur.contains(document.activeElement)) document.activeElement.blur();
       cur.classList.remove("is-active");
       cur.style.setProperty("--fx", dir > 0 ? "-55%" : "55%"); // exit opposite the entry side
     }
@@ -4677,21 +4693,15 @@ function flowGo(step, dir = 1, instant = false) {
 function flowBack() {
   if (state !== State.MENU || menuFlowEl.classList.contains("hidden")) return false;
   if (flowStep === "lobby") { toMenu(); return true; }
-  // Backing out of a seat's pass through the racer screens unwinds one seat
-  // at a time: P3's cat step returns to P2's pass, P2's to P1's kart step
-  // (the seat passes sit between P1-kart and the start line).
+  // Backing out of a seat's pass cancels it back to the start line it was
+  // opened from, keeping that seat's saved pick. (It must NOT land on P1's
+  // kart step: the shared draft still holds the guest's picks there, and
+  // committing would silently overwrite P1's saved garage with them.)
   if (_pickingSeat && (flowStep === "cat" || flowStep === "kart")) {
-    if (flowStep === "cat") {
-      if (_pickingSeat > 2) {
-        startSeatPick(_pickingSeat - 1);
-      } else {
-        _pickingSeat = 0;
-        refreshRacerEyebrows();
-        flowGo("kart", -1);
-      }
-    } else {
-      flowGo("cat", -1);
-    }
+    if (flowStep === "kart") { flowGo("cat", -1); return true; }
+    _pickingSeat = 0;
+    refreshRacerEyebrows();
+    flowGo("startline", -1);
     return true;
   }
   const back = {
@@ -4864,38 +4874,74 @@ for (let seat = 2; seat <= 4; seat++) {
 function seatLook(seat) {
   return { cat: CAT_PRESETS[_seatPicks[seat].cat], kart: KART_PRESETS[_seatPicks[seat].kart] };
 }
+// Which input drives each seat, mirroring setupSplitInputs' dealing rule
+// EXACTLY (pads in seat order, first pad-less seat gets the keyboard): the
+// start line shows the deal so a missing controller is discovered here, not
+// as two parked karts after GO. Returns one label per seat (0-based); "" =
+// that seat has nothing.
+function _seatInputLabels() {
+  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])]
+    .filter((p) => p && p.connected);
+  let kbSeat = -1;
+  for (let s = 0; s < splitCount; s++) {
+    if (s >= pads.length) { kbSeat = s; break; }
+  }
+  const labels = [];
+  for (let s = 0; s < splitCount; s++) {
+    labels.push(s < pads.length ? `🎮 Pad ${s + 1}` : s === kbSeat ? "⌨️ Keyboard" : "");
+  }
+  return labels;
+}
 function refreshSeatTiles() {
+  const split = raceMode === "split";
+  const labels = split ? _seatInputLabels() : [];
+  const setBadge = (seat) => {
+    const el = document.getElementById(`p${seat}-input`);
+    if (!el) return;
+    const label = labels[seat - 1] ?? "";
+    el.textContent = label || "⚠️ No controller";
+    el.classList.toggle("warn", !label);
+  };
+  // P1's badge only appears in Versus — solo always reads every input.
+  document.getElementById("p1-input")?.classList.toggle("hidden", !split);
+  if (split) setBadge(1);
   for (let seat = 2; seat <= 4; seat++) {
-    document.getElementById(`p${seat}-racer`)?.classList.toggle("hidden", raceMode !== "split" || seat > splitCount);
+    document.getElementById(`p${seat}-racer`)?.classList.toggle("hidden", !split || seat > splitCount);
+    if (!split || seat > splitCount) continue;
+    const pick = _seatPicks[seat];
     const { cat, kart } = seatLook(seat);
-    const cs = document.getElementById(`p${seat}-swatch-cat`);
-    const ks = document.getElementById(`p${seat}-swatch-kart`);
-    if (cs) cs.style.background = "#" + cat.fur.toString(16).padStart(6, "0");
-    if (ks) ks.style.background = "#" + kart.color.toString(16).padStart(6, "0");
-    const cn = document.getElementById(`p${seat}-cat-name`);
-    if (cn) cn.textContent = cat.name;
-    const kn = document.getElementById(`p${seat}-kart-name`);
-    if (kn) kn.textContent = kart.name;
+    const ct = document.getElementById(`p${seat}-thumb-cat`);
+    if (ct) ct.src = `assets/catalog/cat-${pick.cat}.jpg`;
+    const kt = document.getElementById(`p${seat}-thumb-kart`);
+    if (kt) kt.src = `assets/catalog/kart-${pick.kart}.jpg`;
+    const nm = document.getElementById(`p${seat}-names`);
+    if (nm) nm.textContent = `${cat.name} · ${kart.name}`;
+    setBadge(seat);
   }
   // The seat-count segment mirrors the persisted choice.
   for (let n = 2; n <= 4; n++) {
     document.getElementById(`split-count-${n}`)?.classList.toggle("is-active", splitCount === n);
   }
-  document.getElementById("split-count-row")?.classList.toggle("hidden", raceMode !== "split");
-}
-function _seatCycle(seat, field, dir, len) {
-  _seatPicks[seat][field] = (_seatPicks[seat][field] + dir + len) % len;
-  try { localStorage.setItem(_seatKey(seat), JSON.stringify(_seatPicks[seat])); } catch { /* ignore */ }
-  refreshSeatTiles();
+  document.getElementById("split-count-row")?.classList.toggle("hidden", !split);
+  // The pre-GO controller check, next to the button that would start anyway.
+  const warn = document.getElementById("start-input-warn");
+  if (warn) {
+    const missing = [];
+    if (split) for (let s = 0; s < splitCount; s++) if (!labels[s]) missing.push(`Player ${s + 1}`);
+    warn.textContent = missing.length
+      ? `⚠️ ${missing.join(" and ")} ${missing.length > 1 ? "have" : "has"} no controller — connect a pad and press any button on it`
+      : "";
+    warn.classList.toggle("hidden", !missing.length);
+  }
 }
 for (let seat = 2; seat <= 4; seat++) {
-  document.getElementById(`p${seat}-cat-prev`)?.addEventListener("click", () => _seatCycle(seat, "cat", -1, CAT_PRESETS.length));
-  document.getElementById(`p${seat}-cat-next`)?.addEventListener("click", () => _seatCycle(seat, "cat", 1, CAT_PRESETS.length));
-  document.getElementById(`p${seat}-kart-prev`)?.addEventListener("click", () => _seatCycle(seat, "kart", -1, KART_PRESETS.length));
-  document.getElementById(`p${seat}-kart-next`)?.addEventListener("click", () => _seatCycle(seat, "kart", 1, KART_PRESETS.length));
-  // Edit opens the full card screens for that seat (the same pass that runs
-  // after P1's picks); the arrows stay for one-tap tweaks on the start line.
+  // Edit opens the full card screens for that one seat and returns here.
   document.getElementById(`p${seat}-edit`)?.addEventListener("click", () => startSeatPick(seat));
+}
+// Pads announce themselves on their first button press — re-deal the badges
+// live so plugging in / waking a pad updates the lobby while it's open.
+for (const ev of ["gamepadconnected", "gamepaddisconnected"]) {
+  window.addEventListener(ev, () => { if (flowStep === "startline") refreshSeatTiles(); });
 }
 // Seat count: how many humans share the screen (2 rows / quadrants).
 for (let n = 2; n <= 4; n++) {
@@ -5019,10 +5065,16 @@ function teardownMultiplayer() {
   u.searchParams.delete("mp");
   history.replaceState(null, "", u);
 }
-// Versus (2P split screen) is a desktop-shell mode: two viewports need a big
-// screen, and the P1-pad/P2-keyboard pairing assumes one machine, two seats.
+// Versus (2-4P split screen) is a desktop-shell mode: multiple viewports need
+// a big screen, and the pad-dealing assumes one machine with several seats.
+// Where the mode doesn't exist, its Settings rows go too — a toggle and a
+// controls note for an invisible mode only raise questions.
 if (window.zoomiesDesktop) {
   document.getElementById("mode-split")?.classList.remove("hidden");
+} else {
+  for (const id of ["splitfx-row", "splitfx-note", "versus-controls-note"]) {
+    document.getElementById(id)?.classList.add("hidden");
+  }
 }
 if (mpAvailable) {
   document.getElementById("mode-mp")?.classList.remove("hidden");

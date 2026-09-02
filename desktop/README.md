@@ -43,7 +43,9 @@ bindings.
 
 In the menus the pad navigates too (`src/menupad.js`): stick/d-pad moves a
 focus ring spatially between buttons, A activates, B backs out (sheets first,
-then one flow step) — every screen works without registering anything.
+then one flow step) — every screen works without registering anything. Every
+connected pad drives the menus (and can pause mid-race), so on a couch
+nobody has to pass controller #1 around.
 
 The one-action-at-a-time rule from the touch controls applies to the face
 buttons too. Verified headlessly at the repo root by `npm run check:gamepad`
@@ -107,8 +109,14 @@ treat the overlay as unsupported — nothing in the game may depend on it.
 ## Versus (2–4P split screen)
 
 Desktop-only mode (the card appears when the shell bridge is present). The
-start line has a Players segment (2/3/4, persisted) plus a pick tile per
-seat; each extra seat can also run the full cat/kart card screens. Layouts:
+start line is the couch lobby: a Players segment (2/3/4, persisted), one
+compact row per seat (catalog thumbnails + a live input badge showing which
+pad or keyboard drives that seat, re-dealt as pads connect), a pre-GO
+warning when seats outnumber inputs, and GO pinned below the scrolling
+panel so it always fits (4P used to push it off a 720p window). Each seat's
+Edit runs the cat/kart card screens for that one seat and returns to the
+lobby; guests pick from every preset free of charge (locks, prices and the
+custom studios belong to P1's own garage flow). Layouts:
 2P = two stacked full-width rows (P1 on top); 3P = quadrants with the free
 bottom-right corner showing an enlarged shared minimap; 4P = four quadrants
 with the shared map on the centre crosshair. Humans + AI always total the
