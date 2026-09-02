@@ -37,10 +37,14 @@ const ON_DECK = !!process.env.SteamDeck || (() => {
 })();
 if (ON_DECK) {
   app.commandLine.appendSwitch("no-sandbox");
-  // Field-verified on a real Deck: Chromium died at renderer birth with
-  // FATAL platform_shared_memory_region_posix — /dev/shm access failing —
-  // leaving a live app with a black window in both Gaming and Desktop Mode.
-  // This canonical switch routes Chromium's shared memory through /tmp.
+  // Field-tested on a real Deck (candidate flag sets A/B/C'd by hand in
+  // Konsole): the ZYGOTE's child processes are the ones denied shared
+  // memory on SteamOS — every shm create failed with ESRCH in /dev/shm and
+  // /tmp alike, killing the renderer at birth (live app, black window, both
+  // modes). Skipping the zygote so children spawn directly (legal only
+  // with no-sandbox, which the Deck path already runs) is the combination
+  // that showed the game. shm stays routed to /tmp belt-and-braces.
+  app.commandLine.appendSwitch("no-zygote");
   app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
