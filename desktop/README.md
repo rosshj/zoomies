@@ -153,11 +153,13 @@ The shell detects SteamOS itself (`/etc/os-release`, plus the `SteamDeck`
 env belt-and-braces — Gaming Mode does NOT pass its env to non-Steam
 shortcuts) and adapts: Chromium's SUID sandbox helper can't work on the
 immutable filesystem (a stock launch dies at startup) so it runs
-`no-sandbox` — the game only ever loads its own bundled app:// content —
-and shared memory routes through /tmp (`disable-dev-shm-usage`; /dev/shm
-failures killed the renderer at birth on a real Deck: live app, black
-window). It does NOT force fullscreen: Gaming Mode fullscreens windows
-itself, and fullscreen-at-creation wedged into a stuck black window.
+`no-sandbox` — the game only ever loads its own bundled app:// content.
+The decisive fix (field-A/B'd on a real Deck) is `no-zygote`: the zygote's
+children were denied shared memory (ESRCH in /dev/shm AND /tmp), killing
+the renderer at birth — live app, black window, both modes — so children
+spawn directly instead; `disable-dev-shm-usage` stays as belt-and-braces.
+It does NOT force fullscreen: Gaming Mode fullscreens windows itself, and
+fullscreen-at-creation wedged into a stuck black window.
 
 The screen is 1280×800 — the exact viewport every headless check runs at.
 Rumble under Steam Input's virtual pad may not reach Chromium's
