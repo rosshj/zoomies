@@ -249,11 +249,14 @@
       <canvas id="minimap2" width="150" height="150"></canvas>
     </div>
 
-    <div id="toast"></div>
-
     <!-- White hit flash -->
     <div id="flash"></div>
   </div>
+
+  <!-- Toasts live OUTSIDE #hud: menus hide the HUD, and a toast fired from a
+       menu surface ("Extra world detail on the next launch") was invisible
+       there. Above menus/sheets, still under the race veil. -->
+  <div id="toast"></div>
 
   <!-- ===== Rotate-to-landscape gate ===== -->
   <!-- Persistent menu chrome: the treats balance and the settings gear ride
@@ -376,8 +379,8 @@
             <span class="tap-chev">›</span>
           </button>
           <!-- Desktop (Electron) only — revealed by JS when the shell bridge
-               exists. Two stacked views on one screen; P1 on the controller,
-               P2 on a second controller or the keyboard. -->
+               exists. 2P stacks two rows, 3-4P run quadrants; pads deal in
+               player order and the first pad-less seat gets the keyboard. -->
           <button id="mode-split" class="tap-card mode-tap hidden">
             <span class="tap-chip" style="background:#f472b6">🛋️</span>
             <span class="tap-text"><span class="tap-title">Versus (2–4P)</span><span class="tap-sub">Split screen on this machine — controllers and the keyboard share one screen</span></span>
@@ -615,21 +618,26 @@
           <span class="map-edit-hint">Edit ›</span>
         </button>
         <div class="start-side">
+          <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
+               720p window); GO itself stays pinned below the scroll region so
+               the primary action can never be pushed off-screen. -->
+          <div class="start-scroll">
           <div class="sticker-deep start-racer">
-            <span class="tile-swatches">
-              <span class="tile-swatch" id="racer-swatch-cat"></span>
-              <span class="tile-swatch" id="racer-swatch-kart"></span>
+            <span class="seat-thumbs">
+              <img class="seat-thumb" id="racer-thumb-cat" alt="" />
+              <img class="seat-thumb" id="racer-thumb-kart" alt="" />
             </span>
             <span class="start-racer-text">
-              <span class="start-racer-label">Your racer</span>
+              <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
               <span id="racer-summary">Marmalade · Ember</span>
             </span>
-            <button id="startline-edit" class="btn-cream small-pill">Edit</button>
+            <button id="startline-edit" class="btn-cream small-pill" aria-label="Edit your racer">Edit</button>
           </div>
           <!-- Versus only (revealed in split mode): how many humans share the
-               screen (2 rows / quadrants), then one pick tile per extra seat —
-               the garage flow belongs to P1, and the roster presets keep each
-               seat's pick one-tap on the shared screen. -->
+               screen (2 rows / quadrants), then one compact row per extra seat
+               — catalog thumbnails + a live input badge (which pad / keyboard
+               drives that seat), Edit opens the full card screens for that one
+               seat and returns here. -->
           <div class="sticker-deep start-opts hidden" id="split-count-row">
             <div class="mode-opt-row">
               <span class="mode-opt-label">Players</span>
@@ -640,59 +648,38 @@
               </div>
             </div>
           </div>
-          <div class="sticker-deep start-racer p2-racer hidden" id="p2-racer">
-            <span class="start-racer-text">
-              <span class="start-racer-label">Player 2</span>
-              <span class="p2-pick-row">
-                <span class="tile-swatch" id="p2-swatch-cat"></span>
-                <button id="p2-cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
-                <span class="mini-name" id="p2-cat-name">Smokey</span>
-                <button id="p2-cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
-              </span>
-              <span class="p2-pick-row">
-                <span class="tile-swatch" id="p2-swatch-kart"></span>
-                <button id="p2-kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
-                <span class="mini-name" id="p2-kart-name">Lagoon</span>
-                <button id="p2-kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
-              </span>
+          <div class="sticker-deep start-racer seat-row hidden" id="p2-racer">
+            <span class="seat-thumbs">
+              <img class="seat-thumb" id="p2-thumb-cat" alt="" />
+              <img class="seat-thumb" id="p2-thumb-kart" alt="" />
             </span>
-            <button id="p2-edit" class="btn-cream small-pill">Edit</button>
+            <span class="start-racer-text">
+              <span class="start-racer-label">Player 2 <span class="seat-input" id="p2-input"></span></span>
+              <span class="seat-names" id="p2-names">Smokey · Lagoon</span>
+            </span>
+            <button id="p2-edit" class="btn-cream small-pill" aria-label="Edit Player 2's racer">Edit</button>
           </div>
-          <div class="sticker-deep start-racer p2-racer hidden" id="p3-racer">
-            <span class="start-racer-text">
-              <span class="start-racer-label">Player 3</span>
-              <span class="p2-pick-row">
-                <span class="tile-swatch" id="p3-swatch-cat"></span>
-                <button id="p3-cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
-                <span class="mini-name" id="p3-cat-name">Snow</span>
-                <button id="p3-cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
-              </span>
-              <span class="p2-pick-row">
-                <span class="tile-swatch" id="p3-swatch-kart"></span>
-                <button id="p3-kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
-                <span class="mini-name" id="p3-kart-name">Clover</span>
-                <button id="p3-kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
-              </span>
+          <div class="sticker-deep start-racer seat-row hidden" id="p3-racer">
+            <span class="seat-thumbs">
+              <img class="seat-thumb" id="p3-thumb-cat" alt="" />
+              <img class="seat-thumb" id="p3-thumb-kart" alt="" />
             </span>
-            <button id="p3-edit" class="btn-cream small-pill">Edit</button>
+            <span class="start-racer-text">
+              <span class="start-racer-label">Player 3 <span class="seat-input" id="p3-input"></span></span>
+              <span class="seat-names" id="p3-names">Snow · Clover</span>
+            </span>
+            <button id="p3-edit" class="btn-cream small-pill" aria-label="Edit Player 3's racer">Edit</button>
           </div>
-          <div class="sticker-deep start-racer p2-racer hidden" id="p4-racer">
-            <span class="start-racer-text">
-              <span class="start-racer-label">Player 4</span>
-              <span class="p2-pick-row">
-                <span class="tile-swatch" id="p4-swatch-cat"></span>
-                <button id="p4-cat-prev" class="garage-arrow" aria-label="Previous cat">◀</button>
-                <span class="mini-name" id="p4-cat-name">Tuxedo</span>
-                <button id="p4-cat-next" class="garage-arrow" aria-label="Next cat">▶</button>
-              </span>
-              <span class="p2-pick-row">
-                <span class="tile-swatch" id="p4-swatch-kart"></span>
-                <button id="p4-kart-prev" class="garage-arrow" aria-label="Previous kart">◀</button>
-                <span class="mini-name" id="p4-kart-name">Sunbeam</span>
-                <button id="p4-kart-next" class="garage-arrow" aria-label="Next kart">▶</button>
-              </span>
+          <div class="sticker-deep start-racer seat-row hidden" id="p4-racer">
+            <span class="seat-thumbs">
+              <img class="seat-thumb" id="p4-thumb-cat" alt="" />
+              <img class="seat-thumb" id="p4-thumb-kart" alt="" />
             </span>
-            <button id="p4-edit" class="btn-cream small-pill">Edit</button>
+            <span class="start-racer-text">
+              <span class="start-racer-label">Player 4 <span class="seat-input" id="p4-input"></span></span>
+              <span class="seat-names" id="p4-names">Tuxedo · Sunbeam</span>
+            </span>
+            <button id="p4-edit" class="btn-cream small-pill" aria-label="Edit Player 4's racer">Edit</button>
           </div>
           <div class="sticker-deep start-opts">
             <div class="mode-opt-row" id="laps-row">
@@ -719,6 +706,10 @@
             </div>
             <p id="start-note" class="start-note hidden"></p>
           </div>
+          </div>
+          <!-- Pre-GO controller check (Versus): who's missing an input, said
+               HERE where it can be fixed — not as a toast after the veil. -->
+          <p id="start-input-warn" class="start-input-warn hidden"></p>
           <button id="go-btn" class="btn-gold go-btn">🏁&nbsp; START RACE</button>
         </div>
       </div>
@@ -1041,11 +1032,11 @@
             </div>
           </div>
           <p class="setting-note"><b>Low</b> — older phones (simplest effects, bare verges). <b>Balanced</b> — most phones: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
-          <div class="setting-row">
-            <span class="setting-label">Versus effects</span>
+          <div class="setting-row" id="splitfx-row">
+            <span class="setting-label">Versus effects (2P only)</span>
             <button id="set-splitfx-toggle" class="secondary small toggle off">Off</button>
           </div>
-          <p class="setting-note">Full glow, sun rays &amp; colour grade in split screen. Heavier: both halves run the whole effect stack — watch the FPS counter and see if your machine holds up.</p>
+          <p class="setting-note" id="splitfx-note">Full glow, sun rays &amp; colour grade in 2-player split screen (3–4 players always run lean). Heavier: both halves run the whole effect stack — watch the FPS counter and see if your machine holds up.</p>
           <div class="setting-row">
             <span class="setting-label">Compatibility mode</span>
             <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
@@ -1061,7 +1052,7 @@
           <p class="setting-note"><b>Controller</b> — stick/d-pad steer (and browse the menus) · RT gas · LT brake · A hop &amp; drift · X shoot (hold to charge) · B boost · Y milk · LB/RB shield · Start pause.</p>
           <p class="setting-note"><b>Keyboard</b> — A/D or ◀▶ steer · W/S or ▲▼ gas/brake · Space hop &amp; drift · F shoot · B boost · M milk · Shift shield · P or Esc pause.</p>
           <p class="setting-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks.</p>
-          <p class="setting-note"><b>Versus (2P, desktop)</b> — P1 controller, P2 keyboard; with two controllers each player gets their own.</p>
+          <p class="setting-note" id="versus-controls-note"><b>Versus (2–4P, desktop)</b> — controllers are dealt in player order (P1 gets the first pad), and the first player without a pad gets the keyboard. The start line shows who has what.</p>
         </section>
         <section class="settings-card">
           <h2 class="settings-section">💾 Progress</h2>
