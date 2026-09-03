@@ -2058,10 +2058,9 @@ document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
     refreshRaceOptSegs();
     refreshStakes();
   }));
-// EXPERT_SEG: the Rivals segment is hard-coded in index.html (#diff-seg). Add
-// one button after Hard: `<button class="seg-btn" data-diff="expert">Expert</button>`
-// — this handler + refreshRaceOptSegs are data-driven off data-diff, so nothing
-// else changes. (AI_DIFFICULTY.expert already exists: full pace, 1.2s shot gap.)
+// Rivals segment (#diff-seg in index.html: Easy / Medium / Hard / Expert). The
+// handler + refreshRaceOptSegs are data-driven off data-diff, so adding a tier
+// is one button plus its AI_DIFFICULTY row.
 document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     DIFFICULTY = b.dataset.diff;
