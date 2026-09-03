@@ -4,8 +4,8 @@
 // lake placement — draws from this single shared stream instead of Math.random.
 // Given the same seed, the build runs the same calls in the same order and so
 // produces an identical world on every device. That is the foundation for
-// multiplayer: each player in a lobby seeds with the same value and races on the
-// same track and landscape. (Per-frame visual effects and AI keep using
+// shared seeds: the daily challenge and cup rounds seed with the same value and
+// race on the same track and landscape. (Per-frame visual effects and AI keep using
 // Math.random — they're local and cosmetic, and don't need to match.)
 
 let _state = 0x9e3779b9 >>> 0; // current generator state (mutated on each draw)
@@ -67,7 +67,7 @@ export function makeRng(seed) {
   };
 }
 
-// A fresh, shareable seed (short, URL-friendly, easy to read aloud in a lobby).
+// A fresh, shareable seed (short, URL-friendly, easy to read aloud).
 export function randomSeed() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no easily-confused chars
   let s = "";

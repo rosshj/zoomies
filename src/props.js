@@ -3,8 +3,8 @@
 // road surface every frame (so it never floats or falls through the curved/sloped
 // track), bounces off the ground and the barriers, and tumbles when launched. The
 // kart isn't simulated — when it drives near a prop we fling the prop along its
-// motion. Cosmetic + local (placement is seeded, so a lobby sees the same props;
-// their tumble is local, so multiplayer needs no physics sync).
+// motion. Cosmetic (placement is seeded, so a seed always lays out the same
+// props; their tumble is per-frame and never needs to reproduce).
 import * as THREE from "three";
 import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";

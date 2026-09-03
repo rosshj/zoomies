@@ -75,7 +75,7 @@ export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false,
   const finalGeo = perMat.length === 1 ? perMat[0] : mergeGeometries(perMat, true);
   if (geoKey) {
     finalGeo.userData.shared = true; // disposeGroup must not free it between races
-    // Soft cap (multiplayer can mint arbitrary accessory-colour variants):
+    // Soft cap (the creator can mint arbitrary accessory-colour variants):
     // evict oldest-inserted. Live meshes keep their reference; GC reclaims later.
     if (_geoCache.size >= 96) _geoCache.delete(_geoCache.keys().next().value);
     _geoCache.set(geoKey, finalGeo);
@@ -197,7 +197,7 @@ const PATTERN_ACCESSORY = {
 // Cat colour/pattern templates. Each cat is more than a recolour: a base fur, a
 // pattern (tabby stripes / tuxedo bib / colour-points / mittens), and an eye
 // colour, all chosen from the fur tone — so any colour, including recoloured
-// AI/multiplayer cats, still reads as an intentional breed. `override` forces a
+// AI/custom cats, still reads as an intentional breed. `override` forces a
 // named pattern; otherwise it's derived from how light/dark the fur is.
 function _lum(c) { return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; }
 function catPalette(furColor, override) {
@@ -240,7 +240,7 @@ function _finishTex(c) {
 // classic body/head look); "v" → rings around the tail. Each stripe is broken
 // into a few jittered dashes so it reads hand-painted, not like a barcode.
 // Both caches are insertion-ordered Maps capped by evicting the OLDEST entry —
-// without a cap, arbitrary multiplayer colours would grow them forever (each coat
+// without a cap, arbitrary custom colours would grow them forever (each coat
 // texture is a 256² canvas). Evicted entries are NOT disposed: a kart still on
 // track may reference them; once unreferenced, GC reclaims them.
 const _coatTexCache = new Map();

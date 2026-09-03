@@ -4,7 +4,7 @@
 // and the built world matches the cup race config (custom track, right seed).
 import { chromium } from "playwright-core";
 import { CUPS } from "../src/progress.js";
-import { encodeWorld } from "../src/net/worldcfg.js";
+import { encodeWorld } from "../src/worldcfg.js";
 import http from "node:http"; import fs from "node:fs"; import path from "node:path";
 const ROOT = "/home/user/zoomies", PORT = 8089;
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".svg": "image/svg+xml", ".ico": "image/x-icon" };

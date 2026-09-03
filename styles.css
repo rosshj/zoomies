@@ -274,8 +274,8 @@ body {
 
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
    orbit renders behind), so darken it just enough for legibility instead of
-   hiding it. Pause holds the frozen race behind its card, the lobby floats over
-   the world tour, and results float over the victory lap + fireworks. */
+   hiding it. Pause holds the frozen race behind its card, and results float
+   over the victory lap + fireworks. */
 #howto,
 #settings,
 #install-help,
@@ -682,37 +682,6 @@ body {
   margin: 0 auto;
 }
 
-/* Multiplayer join (lobby code) */
-.mp-join-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-#mp-code {
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: bold;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  text-align: center;
-  width: 170px;
-  padding: 8px 10px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--pill);
-  outline: none;
-}
-#mp-code::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-  text-transform: none;
-  letter-spacing: 0.5px;
-  font-weight: normal;
-}
-#mp-code:focus {
-  border-color: var(--accent);
-}
-
 /* Add-to-Home-Screen instructions */
 .install-gate-note {
   margin: 10px auto 4px;
@@ -761,8 +730,8 @@ body {
   height: 100%;
 }
 
-/* Solo / Multiplayer segmented toggle — two pills in one track; the selected
-   side is filled so it's obvious which mode is active. */
+/* Segmented toggle — pills in one track; the selected side is filled so it's
+   obvious which option is active. */
 .seg-toggle {
   display: inline-flex;
   margin-top: 10px;
@@ -1018,79 +987,6 @@ kbd {
 #restart-btn {
   font-size: 17px;
   padding: 11px 34px;
-}
-
-#lobby-players {
-  list-style: none;
-  padding: 0;
-  margin: 4px 0 6px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  text-align: left;
-  font-size: 14px;
-}
-#lobby-players li {
-  padding: 6px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: var(--pill);
-  background: rgba(255, 255, 255, 0.045);
-  font-weight: 600;
-}
-#lobby-players .you {
-  color: var(--accent);
-  font-weight: 800;
-  border-color: rgba(255, 179, 0, 0.7);
-  background: rgba(255, 179, 0, 0.1);
-}
-#lobby-code {
-  letter-spacing: 2px;
-  color: var(--accent);
-}
-/* Big, copyable share code in the lobby. */
-.lobby-code-big {
-  display: inline-block;
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: 6px;
-  color: var(--accent);
-  background: rgba(255, 179, 0, 0.1);
-  border: 1px dashed rgba(255, 179, 0, 0.55);
-  border-radius: 12px;
-  padding: 6px 16px;
-  margin: 2px auto 10px;
-  user-select: all;
-  -webkit-user-select: all;
-}
-.lobby-track-tag {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: rgba(255, 255, 255, 0.6);
-  margin: -4px auto 8px;
-  min-height: 14px;
-}
-.lobby-track-tag.mismatch {
-  color: #ff7b7b;
-}
-.lobby-share-label,
-.lobby-players-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.6px;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
-  margin: 8px 0 4px;
-}
-.lobby-players-label span {
-  color: var(--accent);
-}
-.mp-share-row {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
 }
 
 /* ===== HUD ===== */
@@ -1888,7 +1784,6 @@ button.small {
 /* Every secondary/small pill meets the tap target and centres its label. */
 button.small,
 button.secondary.small,
-.mp-join-row button.small,
 .seg-btn,
 .setting-row .toggle {
   min-height: var(--tap);
@@ -2485,7 +2380,7 @@ button.secondary.small,
   margin: 0;
 }
 
-/* --- Mode / cup / friends grids --------------------------------------------- */
+/* --- Mode / cup grids --------------------------------------------- */
 .mode-grid,
 .cup-grid {
   display: grid;
@@ -2497,56 +2392,8 @@ button.secondary.small,
   align-content: center;
   align-content: safe center;
 }
-.friends-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(8px, 1.8vh, 14px);
-  max-width: 800px;
-  margin: 0 auto;
-  min-height: 100%;
-  align-content: center;
-  align-content: safe center;
-  align-items: stretch;
-}
 .mode-tap { min-height: clamp(64px, 13vh, 92px); }
 .mode-daily { grid-column: 1 / -1; min-height: clamp(56px, 10vh, 76px); }
-.friends-card { min-height: clamp(88px, 18vh, 120px); }
-.mp-join-row { display: flex; gap: 8px; margin-top: 6px; }
-#mp-code {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  min-height: 44px;
-  padding: 6px 14px;
-  border: 2px solid var(--f-ink);
-  border-radius: var(--pill);
-  background: #fff;
-  color: var(--f-ink);
-  font: inherit;
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  text-align: center;
-  box-shadow: inset 0 2px 0 rgba(43, 26, 78, 0.15);
-  -webkit-user-select: text;
-  user-select: text;
-}
-#mp-code::placeholder {
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  color: var(--f-ink-soft);
-  text-transform: none;
-}
-.join-go { min-height: 44px; padding: 6px 20px; font-size: 15px; }
-.join-status {
-  display: block;
-  margin-top: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--f-ink-soft);
-}
-
 /* cup cards (rendered by JS into #cup-list) */
 .cup-tap { flex-wrap: wrap; }
 .cup-tap .cup-meta {
@@ -2790,71 +2637,6 @@ button.secondary.small,
   letter-spacing: 0.05em;
 }
 
-/* --- Lobby (flow) ------------------------------------------------------------------ */
-.lobby-flow-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: clamp(10px, 2vw, 18px);
-  max-width: 860px;
-  margin: 0 auto;
-  width: 100%;
-  align-content: center;
-  align-content: safe center;
-  align-items: center;
-  align-items: safe center;
-  min-height: 100%;
-}
-.lobby-left {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(7px, 1.6vh, 12px);
-}
-.lobby-code-card { padding: 10px 14px 12px; text-align: center; }
-.lobby-code-card .lobby-share-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--f-ink-soft);
-  margin: 0;
-}
-.lobby-code-card .lobby-code-big {
-  /* chunky gold code, like the logo */
-  background: linear-gradient(180deg, #ffb300 0%, #f57f17 60%, #e64a19 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0 rgba(43, 26, 78, 0.85));
-  font-size: clamp(38px, 11vh, 58px);
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  line-height: 1.1;
-  border: none;
-  padding: 0;
-  margin: 2px 0 0;
-  background-color: transparent;
-}
-.lobby-code-card .lobby-track-tag { margin: 0 0 6px; color: var(--f-ink-soft); }
-.lobby-code-card .lobby-track-tag.mismatch { color: #d43a3a; }
-.lobby-code-card .mp-share-row { justify-content: center; margin-top: 2px; }
-.lobby-players-card { padding: 10px 14px; align-self: stretch; display: flex; flex-direction: column; }
-.lobby-players-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(255, 248, 238, 0.65);
-  margin: 0 0 6px;
-  text-align: left;
-}
-.lobby-waiting {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 248, 238, 0.75);
-  text-align: center;
-}
-
 /* --- Segmented controls: white thumb + ink outline (one style everywhere) ---- */
 .seg-btn.is-active {
   background: #fff;
@@ -2885,13 +2667,13 @@ button.secondary.small,
 }
 #menu.flow-instant .flow-screen .tap-card { animation: none !important; }
 
-/* Connection status colours ride the lobby eyebrow + the join row's note
-   (setMpStatus toggles .ok/.error on both). */
-.flow-eyebrow.ok { color: #7ee08a; }
-.flow-eyebrow.error { color: #ff8a7a; }
-.join-status.ok { color: #3f9a2f; }
-.join-status.error { color: #d43a3a; }
-
+/* A row of small pills (the profile backup's Copy code / Restore). */
+.share-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
 /* Small pills never wrap their labels (Copy code / Restore etc.). */
 button.small { white-space: nowrap; }
 

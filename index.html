@@ -25,12 +25,10 @@
   <link rel="stylesheet" href="./styles.css" />
   <!-- Import map: every dependency is vendored LOCALLY — three under
        vendor/three/ (removes the unpkg dependency AND the external
-       greggman.github.io debug import the non-min build pulls in), and the
-       multiplayer SDKs under vendor/net/ (bundled by tools/vendor-net.mjs).
+       greggman.github.io debug import the non-min build pulls in).
        No CDN fetches at runtime: the game loads reliably offline once the
        service worker has cached it, and the native app bundle ships the same
-       bytes. Multiplayer still needs the network to CONNECT — just not to
-       load its code. -->
+       bytes. -->
   <script type="importmap">
     {
       "imports": {
@@ -38,8 +36,6 @@
         "three/webgpu": "./vendor/three/three.webgpu.min.js",
         "three/tsl": "./vendor/three/three.tsl.min.js",
         "three/addons/": "./vendor/three/addons/",
-        "partysocket": "./vendor/net/partysocket.min.js",
-        "ably": "./vendor/net/ably.min.js",
         "cuelume": "./vendor/cuelume/index.js"
       }
     }
@@ -260,7 +256,7 @@
 
   <!-- ===== Rotate-to-landscape gate ===== -->
   <!-- Persistent menu chrome: the treats balance and the settings gear ride
-       above every menu sub-screen (garage, Cat-alog, mode, track, lobby…),
+       above every menu sub-screen (garage, Cat-alog, mode, track, start line…),
        so prices always have a visible balance and Settings is one tap away.
        Hidden during racing and on the results/claim flow. -->
   <div id="menu-chrome" class="hidden">
@@ -373,11 +369,6 @@
             <span class="tap-text"><span class="tap-title">Time Trial</span><span class="tap-sub">One flying lap against the clock — beat your PB</span></span>
             <span class="tap-chev">›</span>
           </button>
-          <button id="mode-mp" class="tap-card mode-tap hidden">
-            <span class="tap-chip" style="background:#a4e022">🎮</span>
-            <span class="tap-text"><span class="tap-title">With Friends</span><span class="tap-sub">Make a room, share the code — race your pals</span></span>
-            <span class="tap-chev">›</span>
-          </button>
           <!-- Desktop (Electron) only — revealed by JS when the shell bridge
                exists. 2P stacks two rows, 3-4P run quadrants; pads deal in
                player order and the first pad-less seat gets the keyboard. -->
@@ -423,40 +414,6 @@
       </header>
       <div class="flow-body">
         <div id="cup-list" class="cup-grid"></div>
-      </div>
-    </section>
-
-    <!-- Friends: host (→ racer → lobby) or join by code (reloads into the
-         friend's world and lands in their lobby). -->
-    <section id="flow-friends" class="flow-screen">
-      <header class="flow-head">
-        <button class="flow-back" data-back aria-label="Go back">←</button>
-        <div class="flow-head-text">
-          <div class="flow-eyebrow">With friends</div>
-          <h2 class="flow-h">Race together</h2>
-        </div>
-        <div class="flow-head-right"></div>
-      </header>
-      <div class="flow-body">
-        <div class="friends-grid">
-          <button id="mp-host-btn" class="tap-card friends-card">
-            <span class="tap-chip" style="background:#a4e022">🏠</span>
-            <span class="tap-text"><span class="tap-title">Host a room</span><span class="tap-sub">Make a room and share the code — you bring the track</span></span>
-            <span class="tap-chev">›</span>
-          </button>
-          <div class="tap-card friends-card is-static">
-            <span class="tap-chip" style="background:#4cc9f0">🔑</span>
-            <span class="tap-text">
-              <span class="tap-title">Join a friend</span>
-              <span id="mp-join" class="mp-join-row">
-                <input id="mp-code" type="text" inputmode="text" autocapitalize="characters"
-                  autocomplete="off" spellcheck="false" maxlength="4" placeholder="Room code" />
-                <button id="mp-join-btn" class="btn-gold join-go">Join</button>
-              </span>
-              <span id="mp-menu-status" class="join-status hidden"></span>
-            </span>
-          </div>
-        </div>
       </div>
     </section>
 
@@ -711,43 +668,6 @@
                HERE where it can be fixed — not as a toast after the veil. -->
           <p id="start-input-warn" class="start-input-warn hidden"></p>
           <button id="go-btn" class="btn-gold go-btn">🏁&nbsp; START RACE</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- Lobby: room code + who's here, floating over the world tour. -->
-    <section id="flow-lobby" class="flow-screen">
-      <header class="flow-head">
-        <button class="flow-back" data-back aria-label="Leave the room">←</button>
-        <div class="flow-head-text">
-          <div class="flow-eyebrow" id="lobby-status">Connecting…</div>
-          <h2 class="flow-h">Lobby</h2>
-        </div>
-        <div class="flow-head-right"></div>
-      </header>
-      <div class="flow-body lobby-flow-body">
-        <div class="lobby-left">
-          <div class="sticker lobby-code-card">
-            <p class="lobby-share-label">Room code — friends type this</p>
-            <div id="lobby-code" class="lobby-code-big">—</div>
-            <!-- Track fingerprint: every player should see the SAME line. If two
-                 phones show different tracks/codes here, they're not on the same
-                 map (world sync didn't take) — the fastest way to spot a desync. -->
-            <p id="lobby-track" class="lobby-track-tag"></p>
-            <div class="mp-share-row">
-              <button id="lobby-share" class="btn-cream small-pill hidden">📤 Share invite</button>
-              <button id="lobby-copy" class="btn-cream small-pill">📋 Copy invite link</button>
-            </div>
-          </div>
-          <button id="lobby-start" class="btn-gold go-btn">🏁&nbsp; START RACE</button>
-          <!-- Non-host: a one-tap gesture to (re-)enable tilt + fullscreen before the
-               host launches (the join reload drops fullscreen). -->
-          <button id="lobby-ready" class="btn-cream hidden">🎮 Enable tilt controls</button>
-          <p id="lobby-waiting" class="lobby-waiting">Waiting for the host to start…</p>
-        </div>
-        <div class="sticker-deep lobby-players-card">
-          <p class="lobby-players-label">Players · <span id="lobby-count">1 / 6</span></p>
-          <ol id="lobby-players"></ol>
         </div>
       </div>
     </section>
@@ -1058,7 +978,7 @@
           <h2 class="settings-section">💾 Progress</h2>
           <div class="setting-row">
             <span class="setting-label">Backup</span>
-            <div class="mp-share-row">
+            <div class="share-row">
               <button id="backup-copy" class="secondary small">📋 Copy code</button>
               <button id="backup-restore" class="secondary small">↩ Restore</button>
             </div>
@@ -1085,20 +1005,10 @@
               <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
             </div>
             <div class="setting-row">
-              <span class="setting-label">P2P multiplayer</span>
-              <button id="set-rtc-toggle" class="secondary small toggle off">Off</button>
-            </div>
-            <div class="setting-row">
-              <span class="setting-label">Referee</span>
-              <button id="set-referee-toggle" class="secondary small toggle off">Off</button>
-            </div>
-            <div class="setting-row">
               <span class="setting-label">Track viewer</span>
               <button id="set-trackview-toggle" class="secondary small toggle off">Off</button>
             </div>
             <p class="setting-note">Adds a Track Viewer to the pause menu: fly the camera freely around the world — drag to look, pinch to move, two fingers to pan.</p>
-            <p class="setting-note">Experimental: routes multiplayer directly between players for lower lag (best on the same Wi-Fi). Takes effect next time you Host or Join.</p>
-            <p class="setting-note">Referee: keeps hits, laps and finish order in sync across players via your own free server. Needs a referee URL set up first (see workers/referee/DEPLOY.md); reads “Not set” until then. Takes effect next time you Host or Join.</p>
           </div>
         </section>
       </div>

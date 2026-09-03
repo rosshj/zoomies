@@ -1,15 +1,13 @@
-// Multiplayer world-config sync (pure, dependency-free so it unit-tests in node).
+// Encoded world token (pure, dependency-free so it unit-tests in node).
 //
-// THE BUG THIS FIXES: the room code / invite only ever carried the world SEED, but a
-// track is built from the seed PLUS a full per-device config (track mode + curve
-// knobs + biomes + width + lap count) read from localStorage. So two players could
-// share a room — connected, seeing each other — yet build completely different maps
-// (e.g. host on a custom track, joiner on classic). This module packs the host's
-// whole world into a compact token that rides the invite link and the host's hello,
-// so every client builds the exact same map.
+// A track is built from its seed PLUS a full per-device config (track mode +
+// curve knobs + biomes + width + lap count) normally read from localStorage. A
+// cup is a reload chain, and each round must build EXACTLY the cup's track
+// whatever the player's saved settings — so cupRaceURL (main.js) packs the whole
+// world into this compact `?w=` token and the boot path decodes it.
 //
 // A "world" is { cfg, laps, seed }: `cfg` is the trackConfig object (mode + knobs),
-// `laps` the race length, `seed` the shared world/room seed.
+// `laps` the race length, `seed` the world seed.
 
 // Encode a world object to a URL-safe token (base64url of its JSON). Track configs
 // are pure ASCII (mode names, numbers, A–Z0–9 seeds), so btoa is safe. Returns "" on

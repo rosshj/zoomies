@@ -1,6 +1,6 @@
-// Tests for the multiplayer world-config codec (src/net/worldcfg.js) — the fix for
-// "host and joiner build different maps". Run: `npm run check:worldcfg`.
-import { encodeWorld, decodeWorld, sameWorld, worldSig } from "../src/net/worldcfg.js";
+// Tests for the encoded-world codec (src/worldcfg.js) that carries a cup round's
+// exact map through its `?w=` reload. Run: `npm run check:worldcfg`.
+import { encodeWorld, decodeWorld, sameWorld, worldSig } from "../src/worldcfg.js";
 
 let failures = 0;
 const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };

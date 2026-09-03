@@ -120,18 +120,15 @@ Sequenced so each step de-risks the next:
 2. **Native chrome** — adopt `platform.ready()` in `main.js` boot (landscape
    lock, status-bar hide, splash dismiss) and route steering through CoreMotion,
    retiring the `DeviceOrientation.requestPermission()` / HTTPS dance.
-3. ~~**Bundle the CDN deps**~~ — done. `ably` / `partysocket` are vendored
-   under `vendor/net/` (single-file ESM bundles built by `npm run vendor:net`),
-   mirroring the vendored three.js. No runtime CDN fetches on any platform; a
-   full Vite migration wasn't needed and stays optional (minification/TS,
-   should we ever want them).
+3. ~~**Bundle the CDN deps**~~ — done. three.js is vendored under
+   `vendor/three/`. No runtime CDN fetches on any platform; a full Vite
+   migration wasn't needed and stays optional (minification/TS, should we
+   ever want them).
 4. **Monetisation** — add `@revenuecat/purchases-capacitor`, implement
    `src/platform/*` `purchases`, gate premium levels/cats on entitlements
    (free = 1 level + default cats). RevenueCat fronts StoreKit *and* Google Play
    Billing, so this is one integration for both stores.
-5. **Android** — `npx cap add android` from the same `dist/`. The web netcode is
-   identical on both, so cross-platform multiplayer (the stretch goal) comes
-   nearly for free.
+5. **Android** — `npx cap add android` from the same `dist/`.
 
 ## Why this shape
 

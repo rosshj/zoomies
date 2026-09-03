@@ -2,7 +2,6 @@ import * as THREE from "three";
 
 const UP = new THREE.Vector3(0, 1, 0);
 // Tri-furball fan: a centre shot plus two spread either side (radians off-centre).
-// Exported so the multiplayer replication path fans identically to the local shot.
 export const TRI_FAN = [-0.2, 0, 0.2];
 
 // Manages flying hairballs and their collisions with karts.
@@ -28,20 +27,20 @@ export class HairballManager {
     if (owner.triShots > 0) {
       owner.triShots--;
       for (const a of TRI_FAN) {
-        this._add(pos, dir.clone().applyAxisAngle(UP, a), charge, owner, false);
+        this._add(pos, dir.clone().applyAxisAngle(UP, a), charge, owner);
       }
     } else {
-      this._add(pos, dir, charge, owner, false);
+      this._add(pos, dir, charge, owner);
     }
   }
 
-  // A network-replicated hairball from a remote player: visual only (the firing
-  // client is authoritative over its own shots, so this never collides here).
+  // An ownerless, visual-only hairball (the countdown pipeline warm-up shot):
+  // it flies and expires but never collides with anyone.
   spawnAt(pos, dir, charge = 0) {
     this._add(pos, dir, charge, null, true);
   }
 
-  _add(pos, dir, charge, owner, ghost) {
+  _add(pos, dir, charge, owner, ghost = false) {
     const mesh = new THREE.Mesh(this.geo, this.mat);
     mesh.position.copy(pos);
     mesh.castShadow = true;
@@ -61,10 +60,7 @@ export class HairballManager {
     });
   }
 
-  // `remotes` (a Map of RemoteKart) and `onRemoteHit(id, dir)` are supplied in
-  // multiplayer: our own hairballs can hit remote ghosts, and we report the hit
-  // to that client (shooter-authoritative) so it spins its own kart out.
-  update(dt, karts, remotes = null, onRemoteHit = null) {
+  update(dt, karts) {
     for (let i = this.balls.length - 1; i >= 0; i--) {
       const b = this.balls[i];
       b.life -= dt;
@@ -74,26 +70,13 @@ export class HairballManager {
       b.mesh.rotation.y += dt * 7;
 
       let hit = false;
-      // Ghost balls are network-replicated visuals only — they never collide.
-      if (b.life > 0 && !b.ghost) {
+      if (b.life > 0 && !b.ghost) { // the warm-up ghost ball never collides
         for (const k of karts) {
           if (k === b.owner || k.finished) continue;
           if (this._overlaps(b, k)) {
             if (!k.shielding) k.spinOut(this._travelDir(b));
             hit = true; // shield blocks & destroys the hairball
             break;
-          }
-        }
-        // Remote ghosts (multiplayer): report the hit; the target spins itself.
-        if (!hit && remotes) {
-          for (const r of remotes.values()) {
-            if (!r._ready) continue;
-            const k = r.kart;
-            if (this._overlaps(b, k)) {
-              if (!k.shielding && onRemoteHit) onRemoteHit(r.id, this._travelDir(b));
-              hit = true;
-              break;
-            }
           }
         }
       }

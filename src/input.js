@@ -73,8 +73,8 @@ export class Input {
 
   // Ask for motion permission (iOS 13+) and start listening to DeviceMotion.
   // Idempotent: the listener is attached at most once per page load, so this can
-  // be called from several gestures (host START, lobby "enable tilt", a guest's
-  // first lobby touch, race start) without stacking duplicate handlers.
+  // be called from several gestures (START, GO, cup start, race start) without
+  // stacking duplicate handlers.
   async enableMotion() {
     if (this._motionBound) return true;
     const DME = window.DeviceMotionEvent;

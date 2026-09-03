@@ -5,9 +5,8 @@
 //     FIRST with a cache fallback. Online players always get the freshest deploy;
 //     offline players get the last-cached copy. Every successful response is
 //     cached, so one online visit is enough to make the whole game work offline.
-//   • Cross-origin CDN modules (ably / partysocket): CACHE-FIRST (versioned URLs
-//     are immutable). These only matter for multiplayer, which needs the network
-//     anyway, but caching them keeps the menu from erroring out offline.
+//   • Cross-origin requests are passed straight to the network (the game is
+//     fully same-origin, so nothing else needs caching).
 //   • Range requests (the music <audio>): served as a 206 sliced from the cached
 //     full body, so audio plays offline too.
 //
@@ -82,25 +81,9 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(rangeResponse(req));
     return;
   }
-  if (url.origin !== self.location.origin) {
-    event.respondWith(cacheFirst(req)); // immutable CDN modules
-    return;
-  }
+  if (url.origin !== self.location.origin) return; // cross-origin: plain network
   event.respondWith(networkFirst(req)); // same-origin app files
 });
-
-async function cacheFirst(req) {
-  const cache = await caches.open(CACHE);
-  const hit = await cache.match(req);
-  if (hit) return hit;
-  try {
-    const res = await fetch(req);
-    if (res && (res.ok || res.type === "opaque")) cache.put(req, res.clone());
-    return res;
-  } catch {
-    return hit || Response.error();
-  }
-}
 
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);

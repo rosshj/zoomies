@@ -321,7 +321,7 @@ export function dailySeedFor(dateStr) {
 
 // ---------------------------------------------------------------------------
 // Backup token — the whole profile as a compact copy-paste code (same base64url
-// idea as the multiplayer world token, but unicode-safe for custom names).
+// idea as the cup's encoded-world token, but unicode-safe for custom names).
 // ---------------------------------------------------------------------------
 
 export function encodeProfileToken(profile) {
