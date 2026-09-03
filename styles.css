@@ -1247,30 +1247,36 @@ kbd {
 
 /* Drafting: the meter is charging faster — pulse a cyan rim + brighten the fill so
    the slipstream speedup is legible on the HUD. */
+/* The pulses animate transform/opacity only: an infinite keyframe on
+   box-shadow re-rasterises the button every frame on the main thread, which
+   showed up as a steady CPU tick even while nothing else moved. The glow is a
+   static shadow; the pulse is a compositor-only scale. */
 #btn-boost.drafting {
   border-color: rgba(160, 232, 255, 0.95);
+  box-shadow: 0 0 12px 3px rgba(120, 220, 255, 0.7);
   animation: boost-draft 0.6s ease-in-out infinite;
 }
 #btn-boost.drafting #boost-fill {
   background: linear-gradient(0deg, #4fc3f7, #b3e5fc);
 }
 @keyframes boost-draft {
-  0%, 100% { box-shadow: 0 0 6px 1px rgba(120, 220, 255, 0.45); }
-  50% { box-shadow: 0 0 14px 4px rgba(120, 220, 255, 0.85); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
 }
 
 /* Overcharged: drafted past full — a gold pulse + gold fill so the beefier toot
    reads on the HUD (echoes the drift charge's gold tier). */
 #btn-boost.overcharged {
   border-color: rgba(255, 213, 79, 0.95);
+  box-shadow: 0 0 16px 5px rgba(255, 193, 7, 0.8);
   animation: boost-over 0.5s ease-in-out infinite;
 }
 #btn-boost.overcharged #boost-fill {
   background: linear-gradient(0deg, #ffb300, #ffe082);
 }
 @keyframes boost-over {
-  0%, 100% { box-shadow: 0 0 8px 2px rgba(255, 193, 7, 0.55); }
-  50% { box-shadow: 0 0 18px 6px rgba(255, 193, 7, 0.95); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
 }
 
 #btn-milk {
@@ -1529,11 +1535,12 @@ button.secondary:active {
   border-color: #ff3b30;
   color: #ffd0cc;
   background: rgba(40, 8, 6, 0.72);
+  box-shadow: 0 0 12px 3px rgba(255, 59, 48, 0.75); /* static glow; the pulse below is transform-only */
   animation: rtPulse 0.5s ease-in-out infinite;
 }
 @keyframes rtPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.55); }
-  50% { box-shadow: 0 0 14px 4px rgba(255, 59, 48, 0.85); transform: translateX(-50%) scale(1.06); }
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.06); }
 }
 
 /* Opening furball-charge countdown (top center). Shares the rear-threat pill
@@ -1657,6 +1664,12 @@ button.small {
   grid-column: 2 / 4;
   justify-self: start;
   margin-top: 0; /* the seg-toggle's default top margin is for the menu, not here */
+}
+/* Frame-rate cap: same segmented layout as the Graphics row. */
+#set-fps-cap-seg {
+  grid-column: 2 / 4;
+  justify-self: start;
+  margin-top: 0;
 }
 
 /* A small explanatory line under a setting row (e.g. Compatibility mode). */

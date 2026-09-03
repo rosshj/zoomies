@@ -351,9 +351,9 @@ camera.layers.enable(2);
 // --- Post-processing (M4/M4b WebGPU): TSL node graph ---
 // PostProcessing runs a node graph instead of the legacy EffectComposer. The graph
 // is: scene pass -> + god-ray shafts -> + bloom -> saturation -> contrast ->
-// warm/cool split-tone -> vignette. (Lens-flare + radial-blur/aberration are still
-// deferred stubs.) bloomPass exposes strength/threshold as getter/setters onto the
-// bloom node's uniforms so the existing snow-blend modulation keeps working.
+// warm/cool split-tone -> vignette. (Lens-flare + radial-blur are still deferred
+// stubs.) The snow-blend modulation writes the bloom node's strength/threshold
+// uniforms directly.
 const postProcessing = new THREE.PostProcessing(renderer);
 const _scenePass = pass(scene, camera);
 // No MRT: the scene renders a single colour attachment (+ depth for the god
@@ -368,6 +368,11 @@ const _scenePass = pass(scene, camera);
 const _sceneTex = _scenePass.getTextureNode("output");
 const _sceneDepthTex = _scenePass.getTextureNode("depth");
 const _bloomNode = bloom(_sceneTex, 0.32, 0.5, 0.9); // strength 0.45->0.32, threshold 0.85->0.9: less midday wash
+// Bloom runs its own mip pyramid at a fraction of the drawing buffer — it's
+// heavily blurred anyway, so half res looks the same for ~a quarter of the
+// cost. Set EXPLICITLY (the old `bloomPass.setSize` shim was an empty stub
+// that never reached the node). Low drops it to quarter res (see applyQuality).
+_bloomNode.setResolutionScale(0.5);
 // Grade: the scene was reading washed out (esp. midday), so push saturation +
 // contrast and pull the shadow-lift back to a sliver — punchier without crushing.
 const _uSat = uniform(MOOD.sat * 1.14);
@@ -469,11 +474,17 @@ const _caScene = Fn(() => {
   });
   return c;
 })();
-// High: scene + god-ray shafts + bloom. Low: scene + bloom only — drops the
-// per-pixel god-ray pass, the big GPU/memory win on weak devices (see
-// applyQuality()).
+// Plain scene sample for Low: no aberration branch at all (even a coherent
+// uniform `If` still compiles the extra samplers into the fragment stage).
+const _plainScene = vec3(_sceneTex.sample(viewportUV).rgb);
+// Three composites, picked by applyQuality():
+//   high — scene(+CA) + god-ray shafts + bloom      (Medium/High)
+//   mid  — scene(+CA) + bloom, no god rays          (Balanced; Battery saver on Medium/High)
+//   low  — plain scene + bloom (quarter res), no CA (Low)
+// Dropping the per-pixel god-ray pass is the big GPU/memory win on weak devices.
 const _highOutput = gradeOutput(_caScene.add(_shaftTex).add(_bloomNode));
-const _lowOutput = gradeOutput(_caScene.add(_bloomNode));
+const _midOutput = gradeOutput(_caScene.add(_bloomNode));
+const _lowOutput = gradeOutput(_plainScene.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
@@ -482,16 +493,8 @@ const composer = {
   setPixelRatio() {},
   addPass() {},
 };
-const bloomPass = {
-  enabled: true,
-  setSize() {},
-  get strength() { return _bloomNode.strength.value; },
-  set strength(v) { _bloomNode.strength.value = v; },
-  get threshold() { return _bloomNode.threshold.value; },
-  set threshold(v) { _bloomNode.threshold.value = v; },
-};
-const BLOOM_STRENGTH = bloomPass.strength; // base values; eased down on bright snow
-const BLOOM_THRESHOLD = bloomPass.threshold;
+const BLOOM_STRENGTH = _bloomNode.strength.value; // base values; eased down on bright snow
+const BLOOM_THRESHOLD = _bloomNode.threshold.value;
 // Per-biome colour grade: a SUBTLE atmosphere shift as you drive between
 // biomes, so each one reads different beyond its props — desert bakes a touch
 // warmer/brighter, alpine goes cool and crisp, the forest closes in darker and
@@ -678,7 +681,30 @@ window.__zoomies.grantItem = grantItem; // debug hook (headless probes verify th
 // Sized to the AI roster (6) so every kart in a normal race gets its own beam with
 // ZERO spare lights — a budget of 8 left 2 spotlights always allocated but unused,
 // and every dynamic light costs per-pixel even at zero intensity.
-const HEADLIGHT_BUDGET = 6; // = ROSTER size; was 8 (2 wasted always-on lights at night)
+// The graphics tier is needed HERE, before the quality module initialises
+// (same reason scene.js reads the shadow-map size straight from storage): the
+// night light pool is sized at boot and never changes afterwards — see the
+// pipeline-invalidation note at _boostLight below.
+const IS_DECK = !!window.zoomiesDesktop?.deck;
+const _bootQuality = (() => {
+  try {
+    const v2 = localStorage.getItem("zoomies-quality-v2");
+    if (v2 === "low" || v2 === "balanced" || v2 === "medium" || v2 === "high") return v2;
+    // Migrate an old explicit "Low"; a legacy "high" maps to medium (same look,
+    // still capped) so no phone silently jumps to battery-hungry 120fps.
+    if (localStorage.getItem("zoomies-quality") === "low") return "low";
+  } catch {}
+  // Steam Deck with nothing saved: Balanced (the full living world without the
+  // priciest post work) is the tier its GPU holds at 90Hz without the fans.
+  return IS_DECK ? "balanced" : "medium";
+})();
+// Tiered by graphics tier at boot: every dynamic light costs per-pixel at night.
+//   Low/Balanced — 2 beams (the player's + the nearest rival), no string-light points
+//   Medium       — 4 beams
+//   High         — 6 = ROSTER size, every kart in a normal race keeps its own beam
+// (was a flat 8: 2 wasted always-on lights at night). Extras beyond the budget
+// fall back to bulbs, exactly as before.
+const HEADLIGHT_BUDGET = _bootQuality === "high" ? 6 : _bootQuality === "medium" ? 4 : 2;
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
 const _leafKarts = []; // scratch: karts for the leaf wakes
@@ -709,6 +735,16 @@ function buildHeadlightPool() {
   }
 }
 buildHeadlightPool();
+// Low/Balanced: the festive string lights keep their emissive bulbs + bloom but
+// lose their real point lights (scenery.js adds one per second span at night).
+// Done here, before the boot warm pass, so the compiled pipelines match — the
+// only PointLights in the scene at this point are those string-light points.
+if (_bootQuality === "low" || _bootQuality === "balanced") {
+  const drop = [];
+  scene.traverse((o) => { if (o.isPointLight) drop.push(o); });
+  for (const l of drop) l.parent?.remove(l);
+  if (drop.length) console.log(`[zoomies] ${_bootQuality}: dropped ${drop.length} string-light points`);
+}
 
 // A warm point light at the player's exhaust that flares while boosting, so a
 // boost actually throws coloured light on the road and nearby props. Player-only
@@ -721,12 +757,15 @@ buildHeadlightPool();
 // recompiled piece-by-piece as it first entered view during the opening
 // stretch of the race (the reported "stalls at the start"). With the light
 // permanent (idle at zero intensity), the boot-compiled pipelines stay valid.
-const _boostLight = new THREE.PointLight(0xff8a2e, 0, 26, 1.6);
-_boostLight.position.set(0, 0.7, -2.7);
-_boostLight.castShadow = false;
-scene.add(_boostLight);
+// Low skips it entirely (one fewer per-pixel light on the weakest devices).
+const _boostLight = _bootQuality === "low" ? null : new THREE.PointLight(0xff8a2e, 0, 26, 1.6);
+if (_boostLight) {
+  _boostLight.position.set(0, 0.7, -2.7);
+  _boostLight.castShadow = false;
+  scene.add(_boostLight);
+}
 function attachBoostLight(playerKart) {
-  if (!playerKart || !playerKart.group) return;
+  if (!_boostLight || !playerKart || !playerKart.group) return;
   _boostLight.position.set(0, 0.7, -2.7);
   playerKart.group.add(_boostLight); // add() re-parents from the previous kart
 }
@@ -1772,25 +1811,52 @@ let gpuParticles = null; // GPU ambient motes — created async once the rendere
 // keeps phones cool — see the loop). low is the only tier that dials the visuals back.
 const QUALITY_KEY = "zoomies-quality";        // legacy low/high pref — read once to migrate
 const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | balanced | medium | high
-let quality = "medium"; // full graphics + 60fps: cool AND smooth, the safe default everywhere
-try {
-  const v2 = localStorage.getItem(QUALITY_KEY_V2);
-  if (v2 === "low" || v2 === "balanced" || v2 === "medium" || v2 === "high") quality = v2;
-  // Migrate an old explicit "Low"; a legacy "high" maps to medium (same look, still
-  // capped) so no phone silently jumps to battery-hungry 120fps — you opt into that.
-  else if (localStorage.getItem(QUALITY_KEY) === "low") quality = "low";
-} catch {}
+// Read once at boot (with the legacy-key migration + the Deck default) — see
+// _bootQuality by the night light pool, which needs the tier before this module.
+let quality = _bootQuality;
+// --- Frame-rate cap + Battery saver (Display settings; persisted) ---
+// The cap is a TARGET the loop turns into an integer divisor of the measured
+// refresh (see _frameDiv). "auto" keeps today's behaviour: 60 on 100Hz+
+// displays, the display's own rate below that.
+const FPS_CAP_KEY = "zoomies-fps-cap"; // auto | 60 | 45 | 40 | 30
+const FPS_CAPS = ["auto", "60", "45", "40", "30"];
+let fpsCap = "auto";
+try { const v = localStorage.getItem(FPS_CAP_KEY); if (FPS_CAPS.includes(v)) fpsCap = v; } catch {}
+// Battery saver: one switch for the handheld posture — a lower frame cap (45
+// on Deck, 30 elsewhere, unless an explicit cap is set), 20fps menus, a 1.25×
+// / 1.6MP resolution ceiling, a frozen 2048² sun shadow map, the no-god-rays
+// composite (bloom kept), no ambient motes, half the weather particles, and
+// pause-on-blur. ON by default on Steam Deck, off elsewhere.
+const SAVER_KEY = "zoomies-saver";
+let saverOn = IS_DECK;
+try { const v = localStorage.getItem(SAVER_KEY); if (v === "1") saverOn = true; else if (v === "0") saverOn = false; } catch {}
+// High-tier real-time shadows are throttled in the loop (see _tickShadow);
+// this flag is what applyQuality hands it. Declared here, before the boot-time
+// applyQuality call below.
+let _shadowLive = false;
+// Shadow-map size is chosen at boot in scene.js from the saved tier (Low 1024,
+// Balanced/Medium 2048, High 4096). The Deck's GPU and Battery saver both cap
+// it at 2048² — set BEFORE the first frame, so the map is allocated at this
+// size (the shadow node re-reads mapSize on every map render).
+if (IS_DECK || saverOn) sun.shadow.mapSize.setScalar(Math.min(sun.shadow.mapSize.x, 2048));
 let renderScale = 1; // dynamic-resolution multiplier on the base pixel ratio (see updateDRS)
 function baseDpr() {
   // Low caps the device-pixel-ratio harder — resolution is the biggest lever on
   // both fill cost and render-target memory (which is what tips weak GPUs over).
   // Balanced sits between: enough res to look crisp, still well clear of 2×.
-  const cap = quality === "low" ? 1.25 : quality === "balanced" ? 1.5 : 2;
+  const cap = saverOn || quality === "low" ? 1.25 : quality === "balanced" ? 1.5 : 2;
   // 3-4 seat split: cap the backing resolution too — each pane is quarter
   // screen, so per-pane sharpness at 1.5× matches solo at full DPR while the
   // fill bill stays sane across 3-4 scene passes. (2P keeps the tier's cap.)
   const splitCap = splitActive && splitCount >= 3 ? 1.5 : Infinity;
-  return Math.min(window.devicePixelRatio, cap, splitCap);
+  // Absolute pixel ceiling: ~2.1MP (a 1920×1080 buffer) on every tier but
+  // High (4.1MP), 1.6MP in Battery saver. A DPR cap alone let 4K/5K desktops
+  // open at 8-15MP — DRS then spent the first seconds of every race clawing
+  // that back. Renders scale up to the CSS size; the HUD stays crisp.
+  const maxPx = saverOn ? 1.6e6 : quality === "high" ? 4.1e6 : 2.1e6;
+  const cssPx = Math.max(1, (stageState?.W || window.innerWidth) * (stageState?.H || window.innerHeight));
+  const pxCap = Math.sqrt(maxPx / cssPx);
+  return Math.max(0.5, Math.min(window.devicePixelRatio, cap, splitCap, pxCap));
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
@@ -1798,11 +1864,8 @@ function applyResolution() {
   renderer.setSize(stageState.W, stageState.H);
   composer.setPixelRatio(pr);
   composer.setSize(stageState.W, stageState.H);
-  // Run bloom at half resolution — it's heavily blurred anyway, so it looks the
-  // same for ~a quarter of the cost. (composer.setSize set it to full; override.)
-  const bw = Math.max(1, Math.round(stageState.W * pr * 0.5));
-  const bh = Math.max(1, Math.round(stageState.H * pr * 0.5));
-  bloomPass.setSize(bw, bh);
+  // (Bloom sizes itself from the drawing buffer × its own resolutionScale each
+  // frame — half res, quarter on Low; see _bloomNode / applyQuality.)
   // God-ray shaft target: explicit size (0.42× the drawing buffer) so RTTNode's
   // autoSize path — which stomps .pixelRatio back to the renderer's every frame —
   // never runs. See the note at _shaftTex's creation.
@@ -1890,15 +1953,16 @@ function updateDRS(rawMs, dt) {
   // a needlessly blurry opening stretch. Freeze rung decisions until it's down.
   // The MENU screens are not a race and must never cost the race resolution.
   // They deliberately render at ~30fps (the drift and the start-line tableau
-  // both throttle to a 32ms draw to save battery) and they are where the bulk
+  // both run on the menu cadence to save battery) and they are where the bulk
   // of the world's pipelines compile for the first time — so every menu frame
   // looks like a blown budget to the scaler. It duly dropped two rungs on the
   // TITLE screen, and the player then walked through the racer tableau, the
   // veil and the countdown already blurred, with the recovery ladder only
   // clawing it back seconds into the race. Same for PAUSED, which draws once
   // and holds: those free frames read as headroom and would ratchet the scale
-  // UP, so un-pausing hitched. Judge resolution on racing frames only.
-  if (_veilActive || state === State.MENU || state === State.PAUSED) {
+  // UP, so un-pausing hitched. Same for FINISHED: the victory lap is not a
+  // race and the results screen draws once. Judge resolution on racing frames only.
+  if (_veilActive || state === State.MENU || state === State.PAUSED || state === State.FINISHED) {
     _drsOverT = 0;
     _drsUnderT = 0;
     _drsCooldown = Math.max(_drsCooldown, 0.5); // and give the first live frames a beat
@@ -1987,17 +2051,23 @@ function applyQuality(q, persist = true) {
   //              everything above Low. This is what makes Balanced read as
   //              "the same place" as Medium — a bare verge is far more
   //              noticeable than a missing light shaft.
-  const fullFx = q === "medium" || q === "high";
+  // Battery saver sheds the priciest post work (god rays) and the ambient
+  // motes on top of whatever tier is set; the tier's world dressing (grass)
+  // and its look otherwise stay.
+  const fullFx = (q === "medium" || q === "high") && !saverOn;
   const liveWorld = q !== "low";
   if (persist) { try { localStorage.setItem(QUALITY_KEY_V2, q); } catch {} }
   // --- High = same 60fps, spent on the WORLD (see the loop's frame cap) ---
   const high = q === "high";
   // Real-time shadows: the frustum stays world-fitted (a moving boundary
   // pops long shadows — tried and rejected, see updateAtmosphere), but on
-  // High the MAP re-renders every frame, so karts cast true shadows (their
-  // quads hide) and the canopies' wind sway animates in the shadows too.
-  sun.shadow.autoUpdate = high;
-  if (!high) sun.shadow.needsUpdate = true; // freeze back onto one fresh static map
+  // High the MAP re-renders — at most 30Hz, and only while a kart is moving
+  // (see _tickShadow) — so karts cast true shadows (their quads hide) and the
+  // canopies' wind sway animates in the shadows too. The map is never on
+  // three's per-frame autoUpdate; Battery saver keeps it fully static.
+  sun.shadow.autoUpdate = false;
+  _shadowLive = high && !saverOn;
+  sun.shadow.needsUpdate = true; // one fresh map for the new mode (static tiers hold it)
   for (const k of karts) applyKartShadowMode(k);
   // Draw distance: push the fog out ~35% and the far plane with it — the
   // distant world becomes VISIBLE rather than hazed.
@@ -2013,12 +2083,17 @@ function applyQuality(q, persist = true) {
   if (persist && high !== (_worldDetail > 1)) {
     hud.showToast?.(high ? "🌿 Extra world detail on the next launch" : "World detail returns to standard next launch");
   }
-  bloomPass.enabled = true; // marquee glow on every tier
-  postProcessing.outputNode = fullFx ? _highOutput : _lowOutput;
+  // Marquee glow on every tier; Low runs the bloom pyramid at quarter res and
+  // takes the plain composite (no aberration branch), see the post-stack setup.
+  _bloomNode.setResolutionScale(q === "low" ? 0.25 : 0.5);
+  postProcessing.outputNode = q === "low" ? _lowOutput : fullFx ? _highOutput : _midOutput;
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
   _shaftTex.autoUpdate = fullFx; // don't re-render the god-ray target when it's unused
   if (world.grass) world.grass.visible = liveWorld;
-  if (gpuParticles) gpuParticles.setVisible(liveWorld);
+  if (gpuParticles) gpuParticles.setVisible(liveWorld && !saverOn); // hidden = its compute is skipped too
+  // Weather: draw half the rain/snow instances in Battery saver (the field is
+  // random-scattered, so any prefix is an even subset).
+  for (const f of [weather.rainField, weather.snowField]) if (f?.mesh) f.mesh.count = saverOn ? Math.round(weather.count / 2) : weather.count;
   renderScale = 1; // reset DRS on a manual quality change
   _drsRung = 0; // keep the rung index in sync (updateDRS owns both)
   qualityLowBtn?.classList.toggle("is-active", q === "low");
@@ -2032,6 +2107,33 @@ qualityBalBtn?.addEventListener("click", () => applyQuality("balanced"));
 qualityMedBtn?.addEventListener("click", () => applyQuality("medium"));
 qualityHighBtn?.addEventListener("click", () => applyQuality("high"));
 applyQuality(quality, false); // honour the persisted choice without re-writing it
+// Frame-rate cap + Battery saver rows (Display). The cap is read live by the
+// loop; the saver re-applies the tier so every knob it touches lands at once.
+const fpsCapSeg = document.getElementById("set-fps-cap-seg");
+const saverToggle = document.getElementById("set-saver-toggle");
+function refreshPaceUI() {
+  fpsCapSeg?.querySelectorAll(".seg-btn").forEach((b) => b.classList.toggle("is-active", b.dataset.cap === fpsCap));
+  if (saverToggle) {
+    saverToggle.textContent = saverOn ? "On" : "Off";
+    saverToggle.classList.toggle("off", !saverOn);
+  }
+}
+fpsCapSeg?.querySelectorAll(".seg-btn").forEach((b) =>
+  b.addEventListener("click", () => {
+    if (!FPS_CAPS.includes(b.dataset.cap)) return;
+    fpsCap = b.dataset.cap;
+    try { localStorage.setItem(FPS_CAP_KEY, fpsCap); } catch {}
+    refreshPaceUI();
+  }));
+saverToggle?.addEventListener("click", () => {
+  saverOn = !saverOn;
+  try { localStorage.setItem(SAVER_KEY, saverOn ? "1" : "0"); } catch {}
+  applyQuality(quality, false);
+  refreshPaceUI();
+});
+refreshPaceUI();
+window.__zoomies.setSaver = (on) => { saverOn = !!on; applyQuality(quality, false); refreshPaceUI(); }; // debug hook (pacing probe)
+window.__zoomies.setFpsCap = (c) => { if (FPS_CAPS.includes(c)) { fpsCap = c; refreshPaceUI(); } }; // debug hook (pacing probe)
 
 // Lap count + difficulty live on the Game Mode screen as segmented rows (inside
 // the Grand Prix card), replacing the old cycle-tap buttons. Laps persist like
@@ -2470,6 +2572,18 @@ document.getElementById("resume-race-btn")?.addEventListener("click", resumePark
 document.addEventListener("visibilitychange", () => {
   if (document.hidden && state === State.RACING) pauseGame();
 });
+// Losing window focus pauses too (desktop: alt-tab, the Steam overlay, a
+// second monitor): a race nobody is looking at burns GPU and, worse, keeps
+// driving. The desktop shell relays its window blur as `zoomies:blur`; plain
+// `blur` is the browser fallback. Every mode pauses — in Versus the other
+// player's pad is still on THIS window, so a blur means neither is watching.
+function pauseOnBlur() {
+  if (state !== State.RACING) return;
+  pauseGame();
+  hud.showToast?.("Paused — window lost focus");
+}
+window.addEventListener("zoomies:blur", pauseOnBlur);
+window.addEventListener("blur", pauseOnBlur);
 // Badges block the exit: leaving the results for the menu detours through the
 // claim interstitial whenever any badge is still unclaimed (it no-ops straight
 // to the menu when there's nothing to claim).
@@ -6539,52 +6653,143 @@ let prevPlayerSpin = 0;
 // headroom on world detail instead of >60fps. ?uncap=1 still lifts the cap
 // for A/B runs.
 //
-// The cap is REFRESH-AWARE, not a fixed 15ms gate: skipping to "about 60"
-// only works when the display's rate divides cleanly. The measured vsync
-// interval (EMA over raw rAF cadence, outliers ignored) drives it:
-//   ~120Hz+  → render every 2nd tick (a clean 60).
-//   60-90Hz  → render EVERY tick and follow the display. A fixed 15ms gate
-//              on a 90Hz Steam Deck landed on 45fps with 22ms rendered
-//              intervals — which the resolution scaler (also fixed to a
-//              60Hz budget then) read as GPU overload and answered by
-//              flooring the render scale: butter smooth, needlessly blurry.
-// The DRS budgets below derive from the same measurement, so "too slow" is
-// always judged against what this display can actually deliver.
+// The cap is REFRESH-AWARE, not a fixed-ms gate: skipping to "about N" only
+// works when the display's rate divides cleanly. The measured vsync interval
+// (EMA over raw rAF cadence, outliers ignored) is turned into an INTEGER tick
+// divisor for the target (see _frameDiv):
+//   auto     → 60 on a 100Hz+ display (120Hz renders every 2nd tick), else
+//              the display's own rate. A fixed 15ms gate on a 90Hz Steam Deck
+//              landed on 45fps with 22ms rendered intervals — which the
+//              resolution scaler (also fixed to a 60Hz budget then) read as
+//              GPU overload and answered by flooring the render scale:
+//              butter smooth, needlessly blurry.
+//   60/45/40/30 (Settings) → the nearest divisor: 90Hz÷45 = every 2nd tick,
+//              120Hz÷40 = every 3rd, 60Hz÷30 = every 2nd.
+// The DRS budgets derive from the same measurement × divisor, so "too slow"
+// is always judged against what this display is actually being asked for.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
 let _vsyncEma = 16.7; // measured display interval (ms)
 let _lastRaf = 0;
-const _halfRate = () => _vsyncEma < 9.7; // ≥~103Hz: halve to a clean ~60
-const _renderBudgetMs = () => (_halfRate() ? _vsyncEma * 2 : _vsyncEma);
-window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), halfRate: _halfRate() }); // debug hook
-// Idle-render savings (see the loop): draw the paused scene once (not 60×/s), run
-// the ambient menu drift at ~30fps, and refresh the minimap at ~20fps. All hold
-// their last frame on the canvas between draws, so there's no visible change.
+let _rafTick = 0; // every rAF tick, including the ones the cap skips (menu cadence counts these)
+const _vsyncHz = () => 1000 / _vsyncEma;
+function _targetFps() {
+  if (fpsCap !== "auto") return Number(fpsCap);
+  if (saverOn) return IS_DECK ? 45 : 30; // Battery saver's cap, unless an explicit one is set
+  const hz = _vsyncHz();
+  return hz >= 100 ? 60 : hz;
+}
+// Render every Nth vsync — the nearest integer divisor of the refresh, so
+// rendered frames land on an even beat (a gate that doesn't divide the
+// refresh alternates 3- and 4-tick gaps and reads as judder). Clamped to 4:
+// below a quarter of the refresh the display's pacing is lost anyway.
+const _frameDiv = () => Math.max(1, Math.min(4, Math.round(_vsyncHz() / _targetFps())));
+const _renderBudgetMs = () => _vsyncEma * _frameDiv();
+// Menu/tableau cadence, in rAF ticks: ~30fps (20 in Battery saver), and
+// 10fps once nothing has been touched for 30s. Dividing the measured vsync
+// keeps the pacing even on every display: a fixed 32ms gate doesn't divide a
+// 120Hz display's 8.3ms vsync, so rendered frames landed alternately 3 and 4
+// ticks apart — constant background judder ("the menus flicker"; measured in
+// a ProMotion screen recording as alternating step sizes at a 4:3 ratio). The
+// desktop shell used to render menus at full rate to dodge that; it now
+// divides like everything else.
+const MENU_FPS = 30, MENU_FPS_SAVER = 20, IDLE_FPS = 10, IDLE_AFTER_MS = 30000;
+let _lastInputAt = 0; // performance.now() of the last key / pointer / pad input
+const _isIdle = () => performance.now() - _lastInputAt > IDLE_AFTER_MS;
+function _menuDiv() {
+  const fps = _isIdle() ? IDLE_FPS : saverOn ? MENU_FPS_SAVER : MENU_FPS;
+  return Math.max(1, Math.round(_vsyncHz() / fps));
+}
+window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), div: _frameDiv(), target: +_targetFps().toFixed(1), menuDiv: _menuDiv(), idle: _isIdle(), saver: saverOn, cap: fpsCap, halfRate: _frameDiv() > 1, state }); // debug hook
+const _noteInput = () => { _lastInputAt = performance.now(); };
+window.__zoomies.noteInput = _noteInput; // debug hook (the pacing probe wakes / ages the idle throttle)
+window.__zoomies.setIdleAt = (t) => { _lastInputAt = t; }; // debug hook
+for (const ev of ["keydown", "pointerdown", "pointermove", "wheel", "touchstart"]) {
+  window.addEventListener(ev, _noteInput, { passive: true, capture: true });
+}
+_noteInput();
+// Gamepad activity has no events — poll for a pressed button / deflected
+// stick (menu + results ticks only; the race reads pads through input.js).
+function _padActive() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of pads) {
+    if (!p || !p.connected) continue;
+    for (const b of p.buttons) if (b.pressed) return true;
+    for (const a of p.axes) if (Math.abs(a) > 0.3) return true;
+  }
+  return false;
+}
+// Racing: menupad only has to notice Start (pause) — its per-tick DOM scope
+// query (querySelectorAll over the overlays) is skipped unless a pad holds Start.
+function _padStartDown() {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const p of pads) if (p && p.connected && p.buttons[9]?.pressed) return true;
+  return false;
+}
+// Idle-render savings (see the loop): draw the paused scene once (not 60×/s),
+// the results tableau once, run the ambient menu drift at the menu cadence and
+// refresh the minimap at ~20fps. All hold their last frame on the canvas
+// between draws, so there's no visible change.
 let _pauseDrawn = false;
 // A resize (window drag, F11 / the shell's fullscreen toggle) clears the
 // canvas — redraw the frozen frame once instead of leaving the pause card
 // over black.
-window.addEventListener("resize", () => { _pauseDrawn = false; });
-let _lastMenuDraw = 0;
+window.addEventListener("resize", () => { _pauseDrawn = false; _resultsDrawn = false; });
+let _resultsDrawn = false;
+let _lastMenuTick = 0;
 let _lastMiniDraw = 0;
-// Menu/tableau render cadence. Phones throttle to ~30fps to save battery, but
-// 32ms doesn't divide a 120Hz display's 8.3ms vsync — rendered frames land
-// alternately 3 and 4 ticks apart, and that uneven pacing reads as constant
-// background judder ("the menus flicker"; measured in a ProMotion screen
-// recording as alternating step sizes at a 4:3 ratio). The desktop shell is
-// plugged in: render menus at full rate there and keep pacing even.
-const MENU_DRAW_MS = window.zoomiesDesktop ? 0 : 32;
+const _resultsEl = document.getElementById("results");
+// High-tier real-time shadows, throttled: the sun map re-renders at most 30Hz,
+// and only once a kart has moved more than a shadow texel (or the scene's
+// population changed — a kart built, the showroom preview placed). A parked
+// grid or an idle menu never re-renders the world-sized map.
+let _shadowAt = 0;
+let _shadowChildren = -1;
+const _shadowPos = []; // per-kart x,z at the last map render
+function _tickShadow(now) {
+  if (!_shadowLive || now - _shadowAt < 33) return;
+  const cam = sun.shadow.camera;
+  const texel = (cam.right - cam.left) / Math.max(1, sun.shadow.mapSize.x);
+  let moved = scene.children.length !== _shadowChildren;
+  for (let i = 0; i < karts.length && !moved; i++) {
+    const p = karts[i]?.position;
+    if (!p) continue;
+    const dx = p.x - (_shadowPos[i * 2] ?? 1e9), dz = p.z - (_shadowPos[i * 2 + 1] ?? 1e9);
+    if (dx * dx + dz * dz > texel * texel) moved = true;
+  }
+  if (!moved) return;
+  _shadowAt = now;
+  _shadowChildren = scene.children.length;
+  for (let i = 0; i < karts.length; i++) {
+    const p = karts[i]?.position;
+    if (p) { _shadowPos[i * 2] = p.x; _shadowPos[i * 2 + 1] = p.z; }
+  }
+  sun.shadow.needsUpdate = true;
+}
 
 function loop(now) {
   requestAnimationFrame(loop);
+  _rafTick++;
   // Measure the display's real cadence from EVERY rAF tick (including the
   // ones the cap skips): jitter-tolerant EMA, ignoring pauses/hitches.
   const _tick = now - _lastRaf;
   _lastRaf = now;
   if (_tick > 3 && _tick < 35) _vsyncEma += (_tick - _vsyncEma) * 0.05;
-  // Cap: only a ~120Hz+ display skips ticks (to a clean half-rate ~60);
-  // everything else renders every vsync (leaving `last` untouched on a skip
-  // so dt still spans to the real last frame).
-  if (!_uncapParam && _halfRate() && now - last < _vsyncEma * 1.6) return;
+  if (state === State.MENU) {
+    // Menu screens (title drift, showroom, start-line tableau) run on their
+    // own vsync-dividing cadence. The pad stays live on every tick so a tap is
+    // never missed and any input lifts the idle throttle; nothing else — no
+    // sim step, no draw — runs on a skipped menu tick.
+    menupad.update();
+    if (_padActive()) _noteInput();
+    if (_rafTick - _lastMenuTick < _menuDiv()) return;
+    _lastMenuTick = _rafTick;
+  } else if (!_uncapParam) {
+    // Cap: render every Nth vsync (see _frameDiv), leaving `last` untouched
+    // on a skip so dt still spans to the real last frame. The 0.4-tick slack
+    // tolerates rAF jitter without ever letting a tick through early.
+    const div = _frameDiv();
+    if (div > 1 && now - last < _vsyncEma * (div - 0.4)) return;
+  }
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
   last = now;
@@ -6605,10 +6810,23 @@ function loop(now) {
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
-  menupad.update(); // before the PAUSED early-out — the pad must resume too
+  if (state !== State.MENU) {
+    // (MENU polled the pad at the top.) Before the PAUSED early-out — the pad
+    // must resume too. While RACING only Start matters, and only a held Start
+    // pays for menupad's DOM scope query.
+    if (state !== State.RACING || _padStartDown()) menupad.update();
+    if (state === State.FINISHED && _padActive()) _noteInput();
+  }
   refreshInputSurfaces(); // pad legend, touch HUD gating, How-to cards
-  if (state !== State.PAUSED) {
+  // Results up = the celebration is over: draw the tableau ONCE and idle like
+  // PAUSED (the sheet is HTML; nothing behind it moves). The victory lap before
+  // it (~6.5s of orbit + fireworks) runs live.
+  const resultsUp = state === State.FINISHED && _resultsEl && !_resultsEl.classList.contains("hidden");
+  const frozen = state === State.PAUSED || resultsUp;
+  if (!frozen) {
     _pauseDrawn = false; // any live frame → the next pause redraws its frozen shot once
+    _resultsDrawn = false;
+    _tickShadow(now); // High: queue a sun-map refresh (≤30Hz, only when something moved)
     const _t = performance.now();
     // Both humans wake the world around them in Versus (critters amble,
     // pigeon flocks go live/scatter for whichever player gets close).
@@ -6623,6 +6841,10 @@ function loop(now) {
     // then idle — re-rendering an unchanging image 60×/s behind the pause menu (or a
     // backgrounded app) is pure wasted GPU/battery. Ambient sim is skipped above too.
     if (!_pauseDrawn) { renderFrame(); _pauseDrawn = true; }
+    return;
+  }
+  if (resultsUp) {
+    if (!_resultsDrawn) { renderFrame(); _resultsDrawn = true; }
     return;
   }
 
@@ -6685,6 +6907,9 @@ function loop(now) {
   if (world.stringLights) world.stringLights.update(dt, fieldNow);
 
   if (state === State.MENU) {
+    // Every MENU tick that reaches here is a draw tick (the cadence gate is at
+    // the top of the loop): showroom, tableau and drift all draw at ~30fps
+    // (20 in Battery saver, 10 when idle) and the canvas holds the frame between.
     if (_garageOpen) {
       // Garage sub-screen: orbit the camera around the parked preview kart so the
       // player can inspect their chosen cat + kart in 3D.
@@ -6702,22 +6927,14 @@ function loop(now) {
       return;
     }
     if (_gridOpen) {
-      // Start line: hold on the starting-grid tableau (throttled like the menu
-      // drift — the shot barely moves, no need to burn battery at 60).
-      if (now - _lastMenuDraw >= MENU_DRAW_MS) {
-        _lastMenuDraw = now;
-        renderStartGrid(now / 1000, dt);
-      }
+      // Start line: hold on the starting-grid tableau (the shot barely moves,
+      // no need to burn battery at 60).
+      renderStartGrid(now / 1000, dt);
       return;
     }
     // Cinematic: slowly orbit the camera over the track so the menu floats above
     // the real world (the menu/how-to overlays are glassy and let it show through).
-    // A slow ambient drift — render at ~30fps (halves the idle GPU/battery spent
-    // sitting in menus); the canvas holds the last frame between draws.
-    if (now - _lastMenuDraw >= MENU_DRAW_MS) {
-      _lastMenuDraw = now;
-      renderMenuBackground(now / 1000);
-    }
+    renderMenuBackground(now / 1000);
     return;
   }
 
@@ -7035,8 +7252,8 @@ function loop(now) {
     // whole frame out. Ease bloom down + raise its threshold + pull exposure
     // back in proportion to how deep into the snow we are (smoothed, not snapped).
     _snowBlend += ((where === "snow" ? 1 : 0) - _snowBlend) * Math.min(1, dt * 1.2);
-    bloomPass.strength = BLOOM_STRENGTH * (1 - 0.55 * _snowBlend);
-    bloomPass.threshold = BLOOM_THRESHOLD + 0.1 * _snowBlend;
+    _bloomNode.strength.value = BLOOM_STRENGTH * (1 - 0.55 * _snowBlend);
+    _bloomNode.threshold.value = BLOOM_THRESHOLD + 0.1 * _snowBlend;
     // Lightning: in proper rain, fire an occasional whole-scene flash (just a
     // brief exposure punch — no real light — with a flicker so it reads as a
     // double strike). Self-restoring since exposure is recomputed each frame.
@@ -7237,7 +7454,7 @@ rendererReady
       // A touch more opaque so the (now fewer) specks actually catch the light.
       opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
       size: night ? 0.52 : 0.42,
-    }).then((p) => { gpuParticles = p; if (p && quality === "low") p.setVisible(false); });
+    }).then((p) => { gpuParticles = p; if (p) p.setVisible(quality !== "low" && !saverOn); }); // Low and Battery saver hide the motes (and skip their compute)
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => {
@@ -7249,6 +7466,7 @@ rendererReady
       // the warm frames' compile stall must happen BEHIND the splash, not under
       // a frozen first frame. No-op on the web.
       getPlatform().then((p) => p.ready()).catch(() => {});
+      _noteInput(); // the menu appearing is where the 30s idle clock starts, not module load
       // A beat later (menu idle), warm the kart/cat material family too — the
       // garage's first open otherwise compiles it on-screen (~0.8s pause).
       setTimeout(warmGarageKart, 1200);
