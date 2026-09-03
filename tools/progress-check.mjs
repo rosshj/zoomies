@@ -39,8 +39,19 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("locked preset reads locked", !isUnlocked(p, "cat.5"));
   check("can't buy while broke", !buyUnlock(p, "cat.3") && !p.unlocked.includes("cat.3"));
   p.treats = 200;
-  check("buying deducts and unlocks", buyUnlock(p, "cat.3") && p.treats === 50 && isUnlocked(p, "cat.3"));
-  check("can't buy twice", !buyUnlock(p, "cat.3") && p.treats === 50);
+  check("buying deducts and unlocks", buyUnlock(p, "cat.3") && p.treats === 100 && isUnlocked(p, "cat.3"));
+  check("can't buy twice", !buyUnlock(p, "cat.3") && p.treats === 100);
+  // The price ladder: ~2,400 treats for the whole catalog, cheapest tiles at
+  // 100-150, each column climbing to a ~400 goal, creators at 250 apiece.
+  const priced = CATALOG.filter((c) => typeof c.price === "number" && c.price > 0);
+  const total = priced.reduce((s, c) => s + c.price, 0);
+  check(`catalog totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
+  check("cheapest cat and kart are 100-150", catalogEntry("cat.3").price <= 150 && catalogEntry("kart.3").price <= 150 && catalogEntry("cat.3").price >= 100);
+  check("top of the cat ladder is ~400", Math.max(...priced.filter((c) => c.id.startsWith("cat.")).map((c) => c.price)) === 400);
+  check("custom creators cost 250 each", catalogEntry("custom.cat").price === 250 && catalogEntry("custom.kart").price === 250);
+  const ladder = (prefix) => priced.filter((c) => c.id.startsWith(prefix)).map((c) => c.price);
+  const climbs = (a) => a.every((v, i) => i === 0 || v >= a[i - 1]);
+  check("cat and kart prices climb monotonically", climbs(ladder("cat.")) && climbs(ladder("kart.")));
   p.treats = 9999;
   check("cup exclusives can't be bought", !buyUnlock(p, "cat.9") && !isUnlocked(p, "cat.9"));
   check("difficulty prizes can't be bought", !buyUnlock(p, "cat.13") && !isUnlocked(p, "cat.13"));
@@ -63,6 +74,8 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("moment caps hold (no farming)", capped.total === 50 + 20 + 20 + 15 + 25 + 9);
   const daily = racePayout({ place: 3, field: 6, laps: 3, difficulty: "medium", daily: true, stats: {} });
   check("daily bonus rides the payout", daily.lines.some((l) => l.label === "Daily challenge" && l.amt === 100));
+  const expert = racePayout({ place: 1, field: 6, laps: 3, difficulty: "expert", stats: {} });
+  check("expert pays more than hard", expert.total > racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: {} }).total);
 }
 
 // --- Achievements ---
@@ -123,6 +136,11 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   check("easier re-win never downgrades the trophy", down && !down.upgraded && p.trophies.meadows === "hard");
   const lost = awardCup(p, "sandypaws", cupStandings({ Mittens: 30, You: 20 }), "You", "hard");
   check("losing the cup awards nothing", lost === null && !p.trophies.sandypaws);
+  const x = defaultProfile();
+  const xp = awardCup(x, "meowtain", cupStandings({ You: 28, Mittens: 20 }), "You", "expert");
+  check("an Expert cup win grants both the Medium+ and Hard prizes and out-ranks a Hard trophy",
+    xp && xp.extraUnlocks.includes("cat.12") && xp.extraUnlocks.includes("cat.13") && x.trophies.meowtain === "expert" &&
+    !awardCup(x, "meowtain", cupStandings({ You: 28, Mittens: 20 }), "You", "hard").upgraded);
 }
 
 // --- Daily seed ---

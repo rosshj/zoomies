@@ -204,7 +204,7 @@ export class ItemManager {
       // Contact test against every live kart near its arc position.
       let dead = false;
       for (const k of karts) {
-        if (k === y.owner || k.finished || k.spinTimer > 0) continue;
+        if (k === y.owner || k.finished || k.spinTimer > 0 || k.spinImmune > 0) continue;
         let gap = (k.trackT - y.t) % 1;
         if (gap < 0) gap += 1;
         if (gap > 0.5) gap -= 1;
@@ -215,7 +215,7 @@ export class ItemManager {
         if (arc < -1.2 || arc > 2.5) continue;
         const kl = k._proj ? k._proj.lateral : 0;
         if (Math.abs(kl - y.lat) > 3.1) continue;
-        if (k.y > 0.9) continue; // hopped it — clean dodge (same bar as milk)
+        if (k.y > 0.6) continue; // hopped it — clean dodge (same bar as milk)
         if (k.shielding || k.catnipBoosting) {
           dead = true; // blocked: the ball unravels on the bubble
           if (callbacks.onYarnBlocked) callbacks.onYarnBlocked(k, y);
@@ -269,7 +269,8 @@ export class ItemManager {
       for (const k of karts) {
         if (k.finished || k.spinTimer > 0) continue;
         if (k === p.owner && p.grace > 0) continue;
-        if (k.y > 0.9) continue; // airborne clears it
+        if (k.spinImmune > 0) continue; // just recovered from a spin — the puddle waits
+        if (k.y > 0.6) continue; // airborne clears it
         if (k.catnipBoosting) continue; // invincible: plows straight through
         const dx = k.position.x - p.x;
         const dz = k.position.z - p.z;
