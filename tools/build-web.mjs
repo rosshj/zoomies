@@ -10,6 +10,14 @@
 // It is intentionally dependency-free (pure Node, no bundler) so it runs
 // anywhere with zero install. Adopting a real bundler (Vite) later is a drop-in
 // replacement for this file — see IOS_SETUP.md.
+//
+// Targets:
+//   node tools/build-web.mjs                    # web (default): everything
+//   node tools/build-web.mjs --target=desktop   # Electron/Steam: game only
+//   ZOOMIES_TARGET=desktop node tools/build-web.mjs
+// The desktop target drops the web-only surface — the PWA manifest + icons,
+// the service worker (the shell boots with nosw=1 anyway), the dev asset
+// viewer and the /download page (a desktop build IS the download).
 
 import { existsSync, rmSync, mkdirSync, cpSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -17,6 +25,14 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dist = join(root, "dist");
+
+const TARGETS = ["web", "desktop"];
+const argTarget = process.argv.find((a) => a.startsWith("--target="))?.slice("--target=".length);
+const target = argTarget || process.env.ZOOMIES_TARGET || "web";
+if (!TARGETS.includes(target)) {
+  console.error(`[build-web] unknown target "${target}" (expected ${TARGETS.join(" | ")})`);
+  process.exit(1);
+}
 
 // Everything the running game needs at runtime, and nothing else. Directories
 // are copied recursively. Keep this list in sync with the assets index.html and
@@ -30,17 +46,20 @@ const INCLUDE = [
   "manifest.json",
   "apple-touch-icon.png",
   "icon-192.png",
-  "icon-512.png",
+  "icon-512.png", // also the desktop shell's window/dock icon — every target
   "src",
   "vendor",
   "assets",
 ];
+// Web-only entries the desktop target leaves out.
+const WEB_ONLY = new Set(["viewer.html", "download", "sw.js", "manifest.json", "apple-touch-icon.png", "icon-192.png"]);
+const entries = target === "desktop" ? INCLUDE.filter((e) => !WEB_ONLY.has(e)) : INCLUDE;
 
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 let copied = 0;
-for (const entry of INCLUDE) {
+for (const entry of entries) {
   const from = join(root, entry);
   if (!existsSync(from)) {
     console.warn(`[build-web] skip (missing): ${entry}`);
@@ -62,4 +81,4 @@ const html = readFileSync(indexPath, "utf8").replace(
 );
 writeFileSync(indexPath, html);
 
-console.log(`[build-web] assembled ${copied}/${INCLUDE.length} entries → dist/ (build ${stamp})`);
+console.log(`[build-web] assembled ${copied}/${entries.length} entries → dist/ (target ${target}, build ${stamp})`);
