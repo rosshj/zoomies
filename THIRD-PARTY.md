@@ -11,8 +11,6 @@ Capacitor) include them as noted.
 | [cuelume](https://github.com/cuelume) | vendored | MIT | `vendor/cuelume/` — all builds |
 | [Electron](https://github.com/electron/electron) | see `desktop/package.json` | MIT | desktop (Steam) build runtime |
 | [Capacitor](https://github.com/ionic-team/capacitor) | 6.x | MIT | iOS/Android shells (`@capacitor/*`) |
-| [Ably JavaScript SDK](https://github.com/ably/ably-js) | 2.x | Apache-2.0 | `vendor/net/ably.min.js` — web multiplayer only |
-| [partysocket](https://github.com/partykit/partykit) | 1.x | ISC / MIT (bundled `LICENSE.txt`) | `vendor/net/partysocket.min.js` — web multiplayer only |
 
 Build-time tooling (electron-builder, Playwright, esbuild, PartyKit CLI) is not
 redistributed with the game and is not listed here.
