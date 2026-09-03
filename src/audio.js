@@ -699,6 +699,11 @@ class AudioEngine {
   // Call each frame with whether the player is drifting; the level eases in/out.
   setSkid(on, intensity = 1) {
     if (!this.ctx) return;
+    // The graph (looping noise source + two biquads + an LFO) used to live for
+    // the whole session once created — five nodes ticking at idle, on the grid,
+    // in the menus. Tear it down 2s after the last skid ends (the gain has long
+    // eased to silence by then) and rebuild lazily on the next drift.
+    if (on && this._skidKill) { clearTimeout(this._skidKill); this._skidKill = null; }
     if (on && !this._skid) {
       const t = this.ctx.currentTime;
       const src = this._noiseSource();
@@ -726,7 +731,7 @@ class AudioEngine {
       g.connect(this.sfxGain);
       src.start(t);
       lfo.start(t);
-      this._skid = { src, g };
+      this._skid = { src, g, lfo };
       this._skidTgt = undefined; // fresh node: don't let a stale target skip the ramp-in
     }
     if (this._skid) {
@@ -736,7 +741,22 @@ class AudioEngine {
         this._skidTgt = tgt;
         this._skid.g.gain.setTargetAtTime(tgt, this.ctx.currentTime, 0.05);
       }
+      if (!on && !this._skidKill) this._skidKill = setTimeout(() => this._teardownSkid(), 2000);
     }
+  }
+
+  _teardownSkid() {
+    this._skidKill = null;
+    const s = this._skid;
+    if (!s) return;
+    this._skid = null;
+    this._skidTgt = undefined;
+    try {
+      const t = this.ctx ? this.ctx.currentTime : 0;
+      s.src.stop(t);
+      s.lfo.stop(t);
+      s.g.disconnect();
+    } catch { /* already stopped (context closed on the way out) */ }
   }
 
   // A one-shot tire screech voice: friction hiss + a wobbling resonant squeal,

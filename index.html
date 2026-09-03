@@ -952,6 +952,22 @@
             </div>
           </div>
           <p class="setting-note"><b>Low</b> — older phones (simplest effects, bare verges). <b>Balanced</b> — most phones: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
+          <div class="setting-row" id="fps-cap-row">
+            <span class="setting-label">Frame rate</span>
+            <div id="set-fps-cap-seg" class="seg-toggle">
+              <button class="seg-btn is-active" data-cap="auto">Auto</button>
+              <button class="seg-btn" data-cap="60">60</button>
+              <button class="seg-btn" data-cap="45">45</button>
+              <button class="seg-btn" data-cap="40">40</button>
+              <button class="seg-btn" data-cap="30">30</button>
+            </div>
+          </div>
+          <p class="setting-note" id="fps-cap-note"><b>Auto</b> follows the display (60 on 100Hz+ screens). A lower cap runs cooler and longer on battery — the game picks the nearest even divisor of your screen's refresh so pacing stays smooth.</p>
+          <div class="setting-row" id="saver-row">
+            <span class="setting-label">Battery saver</span>
+            <button id="set-saver-toggle" class="secondary small toggle off">Off</button>
+          </div>
+          <p class="setting-note" id="saver-note">Caps the frame rate (45 on Steam Deck, 30 elsewhere, unless you set one above), renders menus at 20fps, lowers the resolution ceiling, freezes the sun shadow map, skips the sun rays and ambient motes and pauses when the window loses focus. On by default on Steam Deck.</p>
           <div class="setting-row" id="splitfx-row">
             <span class="setting-label">Versus effects (2P only)</span>
             <button id="set-splitfx-toggle" class="secondary small toggle off">Off</button>
