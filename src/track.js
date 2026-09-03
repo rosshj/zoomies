@@ -1,9 +1,74 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler, planBiomeWedges } from "./scenery.js";
+import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler, planBiomeWedges, chunkByCell, fitInstanceBounds } from "./scenery.js";
 import { planFeatures } from "./features.js";
 import { rand, makeRng } from "./rng.js";
+
+// Scratch record every projection writes into (see _projectArr).
+const _pr = { dist: 0, y: 0, i: 0, u: 0, cx: 0, cz: 0 };
+
+// ---- Nearest-sample candidate grid ------------------------------------------
+// The scenery queries (groundInfo / groundInfoTerrain / distanceToCenter) are
+// XZ-nearest searches over the ~250 coarse samples, and the terrain build alone
+// fires ~80-150k of them (one per sheet vertex, three scans each) — most of
+// the world-build time. This is an EXACT accelerator: the world is cut into
+// CELL-unit cells and, on first touch, each cell records every sample that can
+// be nearest to ANY point inside it. With c the cell centre, r its half
+// diagonal and dmin the distance from c to its nearest sample, a point p in
+// the cell has its nearest sample within dmin + r, and a sample at distance D
+// from c is at least D - r from p — so only samples with D <= dmin + 2r can
+// ever win. The list is widened by WIDEN so groundInfoTerrain's second-strand
+// search (anything within 70u of the winner's distance) is exact off the same
+// list. Lists are built lazily per cell, so a query far off the terrain sheet
+// costs one cell's scan; outside the padded track bounds it falls back to the
+// full scan. Keyed on the sample array itself: the ground list may alias the
+// plain coarse list, and both stay fixed for the track's life.
+const NEAR_CELL = 32;
+const NEAR_WIDEN = 70;
+const _nearGrids = new WeakMap();
+function nearCandidates(pts, x, z) {
+  let g = _nearGrids.get(pts);
+  if (!g) {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const p of pts) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+      if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+    }
+    const PAD = 1400; // the terrain sheet / mountain ring reach ~1000-1300u past the loop
+    const x0 = minX - PAD, z0 = minZ - PAD;
+    const nx = Math.ceil((maxX + PAD - x0) / NEAR_CELL);
+    const nz = Math.ceil((maxZ + PAD - z0) / NEAR_CELL);
+    g = { x0, z0, nx, nz, cells: new Array(nx * nz).fill(null) };
+    _nearGrids.set(pts, g);
+  }
+  const cx = Math.floor((x - g.x0) / NEAR_CELL);
+  const cz = Math.floor((z - g.z0) / NEAR_CELL);
+  if (cx < 0 || cz < 0 || cx >= g.nx || cz >= g.nz) return null;
+  const k = cz * g.nx + cx;
+  let list = g.cells[k];
+  if (!list) {
+    const ccx = g.x0 + (cx + 0.5) * NEAR_CELL;
+    const ccz = g.z0 + (cz + 0.5) * NEAR_CELL;
+    const r = NEAR_CELL * Math.SQRT1_2;
+    const N = pts.length;
+    const d = new Float64Array(N);
+    let dmin = Infinity;
+    for (let i = 0; i < N; i++) {
+      const dx = pts[i].x - ccx, dz = pts[i].z - ccz;
+      d[i] = Math.sqrt(dx * dx + dz * dz);
+      if (d[i] < dmin) dmin = d[i];
+    }
+    const thr = dmin + 2 * r + NEAR_WIDEN;
+    let n = 0;
+    for (let i = 0; i < N; i++) if (d[i] <= thr) n++;
+    list = new Int32Array(n);
+    n = 0;
+    for (let i = 0; i < N; i++) if (d[i] <= thr) list[n++] = i; // ascending — keeps the scan's tie order
+    g.cells[k] = list;
+  }
+  return list;
+}
 
 const TAU = Math.PI * 2;
 const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0.5));
@@ -1749,9 +1814,12 @@ export class Track {
       posts.userData.barrier = "posts";
       this.group.add(posts);
     }
-    // Every upright on the track in ONE instanced draw. There are thousands of
-    // them at half-metre spacing, so merging (as the sparse fence posts do)
-    // would be a lot of duplicated vertex data for no gain.
+    // Every upright on the track, instanced. There are thousands of them at
+    // half-metre spacing, so merging (as the sparse fence posts do) would be a
+    // lot of duplicated vertex data for no gain. One mesh PER WORLD CELL
+    // rather than one for the lap: a lap-wide mesh has a map-sized bounding
+    // sphere and never culls, so every slat on the loop went through the
+    // vertex AND shadow-map passes from every camera.
     if (slats.length) {
       const sg = new THREE.BoxGeometry(0.11, 1, 0.06);
       sg.translate(0, 0.5, 0); // stand on y=0 so the instance scale IS the height
@@ -1760,28 +1828,32 @@ export class Track {
       for (let v = 0; v < gp.count; v++) cols.push(1, 1, 1); // tinted per instance
       sg.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
       const slatMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
-      const mesh = new THREE.InstancedMesh(sg, slatMat, slats.length);
       const m = new THREE.Matrix4();
       const q = new THREE.Quaternion();
       const e = new THREE.Euler();
       const v3 = new THREE.Vector3();
       const t3 = new THREE.Vector3();
       const col = new THREE.Color();
-      slats.forEach((sl, i) => {
-        e.set(sl.lean, sl.yaw, sl.lean * 0.7);
-        q.setFromEuler(e);
-        m.compose(t3.set(sl.x, sl.y, sl.z), q, v3.set(1, sl.h, 1));
-        mesh.setMatrixAt(i, m);
-        // A hint of the cap colour mixed in so the top edge of a palisade still
-        // reads as a line, the same job the capstones do on the wall.
-        mesh.setColorAt(i, col.set(sl.slat).lerp(new THREE.Color(sl.cap), 0.18));
-      });
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      mesh.castShadow = true;
-      mesh.receiveShadow = false;
-      mesh.userData.barrier = "slats";
-      this.group.add(mesh);
+      const cap = new THREE.Color();
+      for (const chunk of chunkByCell(slats)) {
+        const mesh = new THREE.InstancedMesh(sg, slatMat, chunk.length);
+        chunk.forEach((sl, i) => {
+          e.set(sl.lean, sl.yaw, sl.lean * 0.7);
+          q.setFromEuler(e);
+          m.compose(t3.set(sl.x, sl.y, sl.z), q, v3.set(1, sl.h, 1));
+          mesh.setMatrixAt(i, m);
+          // A hint of the cap colour mixed in so the top edge of a palisade still
+          // reads as a line, the same job the capstones do on the wall.
+          mesh.setColorAt(i, col.set(sl.slat).lerp(cap.set(sl.cap), 0.18));
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        fitInstanceBounds(mesh);
+        mesh.castShadow = true;
+        mesh.receiveShadow = false;
+        mesh.userData.barrier = "slats";
+        this.group.add(mesh);
+      }
     }
   }
 
@@ -2126,31 +2198,60 @@ export class Track {
   // crossing, and only the kart's own height says which road it is on. The
   // deck clearance (13u → 26u weighted) dwarfs any wheel-contact wobble, so
   // karts, wheels probes and lap progress all stay glued to their own strand.
+  // The result is written into ONE shared scratch record (`_pr`) — every caller
+  // consumes it immediately, and the karts call this several times per frame
+  // (position, front and rear wheel probes), so a fresh object per call was
+  // steady garbage. The XZ-only queries (no `py`) run over an exact cell
+  // candidate list instead of the whole sample list — see nearCandidates().
   _projectArr(pts, x, z, py) {
     const N = pts.length;
     let best = 0;
     let bestD = Infinity;
     const useY = py !== undefined;
-    for (let i = 0; i < N; i++) {
-      const dx = pts[i].x - x;
-      const dz = pts[i].z - z;
-      let d = dx * dx + dz * dz;
-      if (useY) {
-        const dy = pts[i].y - py;
-        d += dy * dy * 4;
+    const cand = useY ? null : nearCandidates(pts, x, z);
+    if (cand) {
+      // Same `<` test in ascending index order as the full scan, over a list
+      // that provably holds every sample that can be nearest here — so the
+      // winner (ties included) is exactly the full scan's.
+      for (let k = 0; k < cand.length; k++) {
+        const i = cand[k];
+        const dx = pts[i].x - x;
+        const dz = pts[i].z - z;
+        const d = dx * dx + dz * dz;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
       }
-      if (d < bestD) {
-        bestD = d;
-        best = i;
+    } else {
+      for (let i = 0; i < N; i++) {
+        const dx = pts[i].x - x;
+        const dz = pts[i].z - z;
+        let d = dx * dx + dz * dz;
+        if (useY) {
+          const dy = pts[i].y - py;
+          d += dy * dy * 4;
+        }
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
       }
     }
+    return this._segRefine(pts, best, x, z);
+  }
+
+  // Second phase of a projection: slide along the two segments meeting at the
+  // nearest sample `best` for the continuous closest point. Writes `_pr`.
+  _segRefine(pts, best, x, z) {
+    const N = pts.length;
     let rDist = Infinity;
     let ry = pts[best].y;
     let ri = best;
     let ru = 0;
     let cx = pts[best].x;
     let cz = pts[best].z;
-    for (const di of [-1, 0]) {
+    for (let di = -1; di <= 0; di++) {
       const a = (best + di + N) % N;
       const b = (a + 1) % N;
       const ax = pts[a].x;
@@ -2174,7 +2275,14 @@ export class Track {
         cz = pz;
       }
     }
-    return { dist: Math.sqrt(rDist), y: ry, i: ri, u: ru, cx, cz };
+    const r = _pr;
+    r.dist = Math.sqrt(rDist);
+    r.y = ry;
+    r.i = ri;
+    r.u = ru;
+    r.cx = cx;
+    r.cz = cz;
+    return r;
   }
 
   // Projection onto the centerline with an interpolated ground height:
@@ -2186,14 +2294,67 @@ export class Track {
     return this._projectArr(this._pts, x, z, y).y;
   }
 
-  project(pos) {
-    const r = this._projectArr(this._pts, pos.x, pos.z, pos.y);
+  // Cached lateral unit vector per sample. Shared across callers (the
+  // projections hand it out read-only); _sideAt keeps returning a fresh vector
+  // for the builders that may edit theirs.
+  _sideCached(i) {
+    if (!this._sides) {
+      this._sides = new Array(this.samples);
+      for (let k = 0; k < this.samples; k++) this._sides[k] = this._sideAt(k);
+    }
+    return this._sides[i];
+  }
+
+  // Assemble the public projection record from a scratch `_pr`. The record and
+  // its `point` are the only allocations left: karts keep their `_proj`
+  // between frames and items read it, so they cannot alias one scratch object.
+  _projResult(r, pos) {
     const t = (r.i + r.u) / this.samples;
     const point = new THREE.Vector3(r.cx, r.y, r.cz);
     const tangent = this._tans[r.i];
-    const side = this._sideAt(r.i);
+    const side = this._sideCached(r.i);
     const lateral = (pos.x - r.cx) * side.x + (pos.z - r.cz) * side.z;
-    return { t, point, tangent, side, lateral, distance: r.dist, groundY: r.y };
+    return { t, point, tangent, side, lateral, distance: r.dist, groundY: r.y, i: r.i };
+  }
+
+  project(pos) {
+    return this._projResult(this._projectArr(this._pts, pos.x, pos.z, pos.y), pos);
+  }
+
+  // Local-search projection for a caller that tracks something along the
+  // road frame to frame (a kart): starts at the sample it was on last time
+  // (`lastIndex` — the `i` of the previous result, or `t * samples`) and
+  // hill-climbs the sample list both ways under the same height-weighted
+  // metric as project(), so it costs a handful of samples instead of all 500
+  // and stays glued to its own strand at a crossover. A caller that jumped
+  // (respawn, rescue) lands far from the local minimum and falls back to the
+  // global search. Same result shape as project().
+  projectNear(pos, lastIndex) {
+    const pts = this._pts;
+    const N = pts.length;
+    if (!(lastIndex >= 0) || !Number.isFinite(lastIndex)) return this.project(pos);
+    const x = pos.x, z = pos.z, py = pos.y;
+    const dAt = (i) => {
+      const p = pts[i];
+      const dx = p.x - x, dz = p.z - z, dy = p.y - py;
+      return dx * dx + dz * dz + dy * dy * 4;
+    };
+    let best = ((Math.round(lastIndex) % N) + N) % N;
+    let bestD = dAt(best);
+    for (let dir = -1; dir <= 1; dir += 2) {
+      let i = best, d = bestD, steps = 0;
+      for (;;) {
+        const j = (i + dir + N) % N;
+        const dj = dAt(j);
+        if (!(dj < d) || ++steps > N) break;
+        i = j;
+        d = dj;
+      }
+      if (d < bestD) { bestD = d; best = i; }
+    }
+    const far = this.halfWidth * 4;
+    if (bestD > far * far) return this.project(pos);
+    return this._projResult(this._segRefine(pts, best, x, z), pos);
   }
 
   // Nearest XZ distance + interpolated height (coarse, for scenery).
@@ -2216,7 +2377,14 @@ export class Track {
     const n = pts.length;
     const win = Math.max(6, Math.ceil(((170 / this.length) * this.samples) / 2)); // arc window, in coarse indices
     let d2 = Infinity, y2 = r.y;
-    for (let i = 0; i < n; i++) {
+    // Only a strand within 70u of the winner's distance can blend (gap < 70
+    // below), and the cell candidate list is widened by exactly that — so the
+    // scan over it finds the same second strand as the full one whenever the
+    // blend fires, and merely a farther (non-blending) one otherwise.
+    const cand = nearCandidates(pts, x, z);
+    const m = cand ? cand.length : n;
+    for (let k = 0; k < m; k++) {
+      const i = cand ? cand[k] : k;
       const ad = Math.abs(i - r.i);
       if (Math.min(ad, n - ad) <= win) continue; // same strand as the winner
       const dx = pts[i].x - x, dz = pts[i].z - z;
