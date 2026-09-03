@@ -234,17 +234,21 @@ export class EffectsManager {
   // payoff is telegraphed.
   driftSparks(kart) {
     const charge = kart.driftCharge;
-    const maxed = charge > 1.5;
-    // Emission rate climbs with charge.
-    const rate = maxed ? 0.92 : charge > 0.8 ? 0.7 : 0.42;
+    // Colour steps follow the kart's mini-turbo TIER (kart.js DRIFT_TIERS) so
+    // the sparks promise exactly the boost the release will pay: blue below
+    // tier 2, gold at tier 2, rainbow at tier 3.
+    const tier = kart.driftTier ?? (charge > 2.4 ? 3 : charge > 1.4 ? 2 : charge > 0.6 ? 1 : 0);
+    const maxed = tier >= 3;
+    // Emission rate climbs with the tier.
+    const rate = maxed ? 0.92 : tier >= 2 ? 0.7 : 0.42;
     if (Math.random() > rate) return;
 
-    let size = 0.6 + Math.min(charge, 2) * 0.18;
+    let size = 0.6 + Math.min(charge, 2.4) * 0.15;
     if (maxed) {
       this._hue = (this._hue + 0.07) % 1;
       _col.setHSL(this._hue, 1, 0.62);
       size += 0.25;
-    } else if (charge > 0.8) {
+    } else if (tier >= 2) {
       _col.setHex(0xffd54f);
     } else {
       _col.setHex(0xbfe3ff);

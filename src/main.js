@@ -307,17 +307,21 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
-// AI difficulty. The hand-tuned field IS "hard"; easy/medium dial the AI down
-// across a few knobs (top speed, rubber-band catch-up, how often they shoot, how
-// well they shield, and how far they'll detour for catnip). Persisted so it sticks.
+// AI difficulty. The hand-tuned field IS "expert" (full pace); easy/medium/hard
+// dial the AI down across a few knobs: top speed, rubber-band catch-up (and how
+// much a leader eases off — `lead`), the minimum gap between shots (`shootGap`,
+// seconds), how well they shield, and how far they'll detour for catnip.
+// Persisted so it sticks. Classic-circuit flying laps (tools: AI pace probe):
+// easy ≈ 80+s, medium ≈ 73-76s, hard ≈ 70-72s, expert ≈ 67-70s.
 const AI_DIFFICULTY = {
-  easy: { label: "Easy", speed: 0.82, rubber: 0.35, shoot: 0.5, shield: 0.5, catnip: 0.4 },
-  medium: { label: "Medium", speed: 0.92, rubber: 0.7, shoot: 0.8, shield: 0.8, catnip: 0.75 },
-  hard: { label: "Hard", speed: 1.0, rubber: 1.0, shoot: 1.0, shield: 1.0, catnip: 1.0 },
+  easy: { label: "Easy", speed: 0.78, rubber: 0.35, lead: 0.05, shootGap: 4.0, shield: 0.5, catnip: 0.4 },
+  medium: { label: "Medium", speed: 0.88, rubber: 0.7, lead: 0.05, shootGap: 2.5, shield: 0.8, catnip: 0.75 },
+  hard: { label: "Hard", speed: 0.96, rubber: 1.0, lead: 0.02, shootGap: 1.6, shield: 1.0, catnip: 1.0 },
+  expert: { label: "Expert", speed: 1.0, rubber: 1.0, lead: 0.02, shootGap: 1.2, shield: 1.0, catnip: 1.0 },
 };
-const DIFF_ORDER = ["easy", "medium", "hard"];
+const DIFF_ORDER = ["easy", "medium", "hard", "expert"];
 const DIFF_KEY = "zoomies-difficulty";
-let DIFFICULTY = "hard"; // default = the current tuned field
+let DIFFICULTY = "medium"; // default for a fresh profile: the middle of the ladder
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
 const { renderer, scene, camera, sun, applyMood, setFogScale, ready: rendererReady, skyMesh, starField } = createScene();
@@ -589,8 +593,8 @@ function grantItem(kart) {
   for (let i = 0; i < ITEM_ROLL.length; i++) { acc += w[i]; if (r < acc) { pick = i; break; } }
   switch (ITEM_ROLL[pick].name) {
     case "shield":
-      kart.giveShield(15);
-      if (kart === player) hud.showToast("🛡️ Shield — 15s of protection!");
+      kart.giveShield(10);
+      if (kart === player) hud.showToast("🛡️ Shield — 10s of protection!");
       break;
     case "milk":
       kart.giveMilk();
@@ -611,6 +615,12 @@ function grantItem(kart) {
     default:
       kart.giveCatnip();
       if (kart === player) hud.showToast("🌿 Catnip boost!");
+      else if (player && !player.finished && player.position && kart.totalProgress < player.totalProgress &&
+               kart.position.distanceToSquared(player.position) < 60 * 60) {
+        // A rival close behind just armed the comeback item — a heads-up so
+        // the green blur past your shoulder isn't a mystery.
+        hud.showToast(`🌿 ${kart.name} has catnip!`);
+      }
       break;
   }
   return true;
@@ -618,16 +628,17 @@ function grantItem(kart) {
 
 // Per-item roll weights anchored at FRONT (f=0), MID (f=0.5) and BACK (f=1),
 // interpolated linearly between anchors — each anchor column sums to 1, so any
-// interpolated row does too. Design: the leader DEFENDS (shield/milk), the
-// mid-pack BRAWLS (yarn/tri strongest where a target is always just ahead),
-// the back gets RESCUED (catnip half their rolls, hearts steady).
+// interpolated row does too. Design: the leader DEFENDS (shield/milk/hearts —
+// never yarn, which has no target ahead), the mid-pack BRAWLS (yarn/tri
+// strongest where a target is always just ahead), the back gets RESCUED
+// (catnip 40% of their rolls, hearts a steady 10%).
 const ITEM_ROLL = [
-  { name: "shield", w: [0.30, 0.06, 0.00] },
-  { name: "milk",   w: [0.34, 0.17, 0.06] },
-  { name: "yarn",   w: [0.09, 0.30, 0.15] },
-  { name: "tri",    w: [0.11, 0.25, 0.14] },
-  { name: "life",   w: [0.16, 0.16, 0.15] },
-  { name: "catnip", w: [0.00, 0.06, 0.50] },
+  { name: "shield", w: [0.28, 0.06, 0.00] },
+  { name: "milk",   w: [0.40, 0.20, 0.06] },
+  { name: "yarn",   w: [0.00, 0.32, 0.20] },
+  { name: "tri",    w: [0.06, 0.26, 0.24] },
+  { name: "life",   w: [0.26, 0.10, 0.10] },
+  { name: "catnip", w: [0.00, 0.06, 0.40] },
 ];
 function rollWeights(f) {
   const a = f < 0.5 ? 0 : 1;
@@ -995,13 +1006,18 @@ function updateSlipstream(field) {
 
 
 // --- Karts: 1 player + 5 AI rivals ---
+// `skill` is a narrow pace spread (1.00-1.06: the difficulty table sets the
+// field's pace, not the roster). PERSONALITY lives in `lane` (the preferred
+// line across the road, -1 left .. 1 right — hugs an inside or swings wide)
+// and `aggro` (how eagerly they shoot / chase boxes: 1 = the tier's baseline,
+// >1 trigger-happy, <1 a clean racer who rarely bothers).
 const ROSTER = [
   { name: "You", color: 0xe53935, catColor: 0xf0a830, isPlayer: true, skill: 1.0 },
-  { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 1.07 },
-  { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 1.09 },
-  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.05 },
-  { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.11 },
-  { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 1.06 },
+  { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 1.03, lane: -0.35, aggro: 0.8 },
+  { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 1.05, lane: 0.45, aggro: 1.25 },
+  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.00, lane: 0.1, aggro: 1.1 },
+  { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.06, lane: -0.5, aggro: 0.7 },
+  { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 1.02, lane: 0.3, aggro: 1.4 },
 ];
 
 let karts = [];
@@ -1112,6 +1128,10 @@ function buildKarts() {
       kart.baseMaxSpeed *= diff.speed;
       kart.maxSpeed = kart.baseMaxSpeed;
       kart.shieldSkill *= diff.shield;
+      // Roster personality: a fixed preferred line + shooting eagerness (the
+      // seeded lane draw still happens in the constructor, so replays hold).
+      if (typeof cfg.lane === "number") kart.laneBias = cfg.lane;
+      kart.aggro = typeof cfg.aggro === "number" ? cfg.aggro : 1;
     }
     const slot = track.gridSlot(slots[i]);
     kart.placeAt(slot.position, slot.heading, track);
@@ -1169,7 +1189,12 @@ const timerEl = document.getElementById("timer");
 // ttGhost is the loaded best lap being replayed.
 // v2: time trials no longer have power-ups, so any v1 ghost/PB recorded with them
 // is invalid — bumping the key drops the old saves and starts these clean.
-const TT_GHOST_KEY = "zoomies-ttghost-v2";
+// v3: ONE ghost PER TRACK — a map keyed by ttTrackKey(), capped at TT_GHOST_MAX
+// tracks (the least recently set is evicted). A v2 {key, samples} record
+// migrates under its own key on first read.
+const TT_GHOST_KEY = "zoomies-ttghost-v3";
+const TT_GHOST_KEY_V2 = "zoomies-ttghost-v2";
+const TT_GHOST_MAX = 10;
 let ttRecord = null; // flat array being recorded this lap (null outside time trial)
 let _lastGhostSample = -1;
 let ttGhost = null; // { samples, n, cursor } currently being replayed
@@ -2034,6 +2059,10 @@ document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
     refreshRaceOptSegs();
     refreshStakes();
   }));
+// EXPERT_SEG: the Rivals segment is hard-coded in index.html (#diff-seg). Add
+// one button after Hard: `<button class="seg-btn" data-diff="expert">Expert</button>`
+// — this handler + refreshRaceOptSegs are data-driven off data-diff, so nothing
+// else changes. (AI_DIFFICULTY.expert already exists: full pace, 1.2s shot gap.)
 document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     DIFFICULTY = b.dataset.diff;
@@ -3033,8 +3062,9 @@ function updateHaptics(nowMs) {
   const spinning = player.spinTimer > 0;
   if (spinning && !_feel.spin) fire("heavy");
   _feel.spin = spinning;
-  // Drift mini-turbo charging up a tier (mirrors the spark colours blue→gold→rainbow).
-  const tier = player.drifting ? (player.driftCharge > 1.5 ? 2 : player.driftCharge > 0.8 ? 1 : 0) : 0;
+  // Drift mini-turbo charging up a tier (kart.driftTier, the same 0.6/1.4/2.4s
+  // thresholds the release boost + spark colours use, blue→gold→rainbow).
+  const tier = player.drifting ? player.driftTier : 0;
   if (tier > _feel.tier) fire("light");
   _feel.tier = tier;
   // Boost engages (drift release, toot button, or catnip pickup).
@@ -3540,11 +3570,11 @@ function refreshEditorLocks() {
     const entry = catalogEntry(id);
     buy.classList.toggle("hidden", owned);
     if (owned) { note.textContent = ""; continue; }
-    buy.textContent = `🐟 Buy the ${label} creator · ${entry.price}`;
+    buy.textContent = `🐟 Unlock the ${label} creator · ${entry.price}`;
     buy.disabled = profile.treats < entry.price;
     note.textContent = profile.treats < entry.price
-      ? `🔒 Design freely — buying the creator lets you race it. You have 🐟 ${profile.treats}, earn ${entry.price - profile.treats} more by racing.`
-      : `🔒 Design freely — buy the creator to race your design.`;
+      ? `🔒 Design freely — unlocking the creator lets you race it. Unlocks at 🐟 ${entry.price} — you have 🐟 ${profile.treats}.`
+      : `🔒 Design freely — unlock the creator to race your design.`;
   }
 }
 function syncGarageUI() {
@@ -3842,11 +3872,11 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
           rerender();
         } else {
           uiCue("error");
-          sb.textContent = `You have 🐟 ${profile.treats} — earn ${entry.price - profile.treats} more by racing`;
+          sb.textContent = `Unlocks at 🐟 ${entry.price} — you have 🐟 ${profile.treats}`;
         }
       } else {
         b.dataset.confirm = "1";
-        sb.textContent = `Tap again to buy · 🐟 ${entry.price}`;
+        sb.textContent = `Tap again to unlock · 🐟 ${entry.price}`;
         setTimeout(() => { delete b.dataset.confirm; sb.textContent = prizeHow(buyId); }, 4000);
       }
       return;
@@ -3963,7 +3993,7 @@ function refreshRacerEyebrows() {
   const k = document.getElementById("kart-eyebrow");
   if (k) k.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your kart` : raceMode === "split" ? "Player 1 · Step 4 of 4" : "Step 4 of 4";
 }
-// Studio actions: Buy unlocks the creator; Use adopts the design and rolls on.
+// Studio actions: Unlock buys the creator; Use adopts the design and rolls on.
 for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
   document.getElementById(which + "-edit-buy")?.addEventListener("click", () => {
     if (buyUnlock(profile, id)) {
@@ -4281,7 +4311,20 @@ function refreshStakes() {
   if (!show) return;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
   const top = racePayout({ place: 1, field: ROSTER.length, laps: TOTAL_LAPS, difficulty: DIFFICULTY, daily, stats: {} }).total;
-  el.textContent = `Win up to 🐟 ${top}`;
+  const est = estimatedRaceMinutes();
+  el.textContent = (est ? `≈ ${est} min · ` : "") + `Win up to 🐟 ${top}`;
+}
+// Rough race length for the stakes line: a mid-pack lap of the classic circuit
+// (2811u) runs ~73s, scaled by this track's length, plus the standing start.
+// Rounded to the half minute so it reads as a promise ("about 4 minutes"), not
+// a stopwatch. Null when the track isn't built yet (menu boot order).
+function estimatedRaceMinutes() {
+  let len = 0;
+  try { len = track.length; } catch { return null; }
+  if (!(len > 0)) return null;
+  const secs = TOTAL_LAPS * 73 * (len / 2811) + 4;
+  const halves = Math.max(1, Math.round(secs / 30)) / 2;
+  return Number.isInteger(halves) ? String(halves) : halves.toFixed(1);
 }
 // --- Versus: seat racer picks (preset roster, persisted per seat) -----------
 // Seats 2..4, one storage key each; defaults fan out across the roster so
@@ -5489,12 +5532,13 @@ function resolveCollisions() {
       a.speed *= 0.99;
       b.speed *= 0.99;
 
-      // Catnip ram: a kart boosting on catnip bowls over a rival on contact (like
-      // a hairball hit), unless the rival is shielding. The catnip kart keeps going.
+      // Catnip ram: a kart boosting on catnip BUMPS a rival hard on contact (a
+      // heavy shove + speed scrub, not a wipeout — the item is a comeback, not
+      // a weapon), unless the rival is shielding. The catnip kart keeps going.
       if (a.catnipBoosting && !b.catnipBoosting && !b.shielding && b.spinTimer <= 0) {
-        b.spinOut(new THREE.Vector3(nx, 0, nz));
+        b.knock.x += nx * 14; b.knock.z += nz * 14; b.speed *= 0.8;
       } else if (b.catnipBoosting && !a.catnipBoosting && !a.shielding && a.spinTimer <= 0) {
-        a.spinOut(new THREE.Vector3(-nx, 0, -nz));
+        a.knock.x -= nx * 14; a.knock.z -= nz * 14; a.speed *= 0.8;
       }
     }
   }
@@ -5505,9 +5549,14 @@ function resolveCollisions() {
 // old spread + closure pair allocated on each call.
 const _placeField = [];
 function _placeCmp(a, b) {
-  if (a.finished && b.finished) return a.finishTime - b.finishTime;
-  if (a.finished) return -1;
-  if (b.finished) return 1;
+  // Real finishers by time, then karts still running by progress, then the
+  // DNFs (settled by the finish clock) by progress — a kart that timed out
+  // never out-ranks one that's still racing.
+  const fa = a.finished && !a.dnf, fb = b.finished && !b.dnf;
+  if (fa && fb) return a.finishTime - b.finishTime;
+  if (fa) return -1;
+  if (fb) return 1;
+  if (a.dnf !== b.dnf) return a.dnf ? 1 : -1;
   return b.totalProgress - a.totalProgress;
 }
 function updatePlacement() {
@@ -5634,10 +5683,12 @@ function aiActions(dt) {
     const gap = (splitActive && splitPlayers.length
       ? Math.max(...splitPlayers.map((h) => h.totalProgress))
       : player.totalProgress) - k.totalProgress;
-    // Catch up strongly when behind, but barely ease off when leading, so the
-    // front-runners stay competitive instead of waiting for the player.
+    // Catch up strongly when behind, and ease off a LITTLE when leading (5% on
+    // easy/medium so a runaway rival waits; 2% on hard/expert, where the
+    // front-runners stay honest instead of waiting for the player).
     const _rb = k.diff ? k.diff.rubber : 1; // easier modes catch up less
-    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-0.02, Math.min(0.16, gap * 0.12)) * _rb);
+    const _lead = k.diff ? k.diff.lead : 0.02;
+    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-_lead, Math.min(0.16, gap * 0.12)) * _rb);
 
     if (k.boosting) effects.trickle(k, k.catnipBoosting);
     if (k.finished || k.spinTimer > 0) {
@@ -5761,14 +5812,18 @@ function aiActions(dt) {
     // as the player letting go of jump to shoot). ---
     k._aiShootTimer -= dt;
     if (k.shootCooldown <= 0 && k._aiShootTimer <= 0 && !k.shielding) {
-      k._aiShootTimer = (1.0 + Math.random() * 2.2) / (k.diff ? k.diff.shoot : 1); // easier = longer gaps
+      // Cadence: the tier's MINIMUM gap between shots (easy 4s … expert 1.2s)
+      // plus a random stretch, divided by this driver's aggression.
+      const _gap = k.diff ? k.diff.shootGap : 1.6;
+      k._aiShootTimer = (_gap + Math.random() * _gap * 0.8) / (k.aggro || 1);
       // Don't burn a fat drift charge on a pot-shot; wait for the release.
       const driftWorth = k.drifting && k.driftCharge > 0.8;
       if (k.yarnShots > 0 && !driftWorth) {
         // The yarn homes along the track — any rival in the window is a roll.
+        // (A rival mid-spin isn't worth a ball — it'd roll past the wreck.)
         let gap = 1;
         for (const other of karts) {
-          if (other === k || other.finished) continue;
+          if (other === k || other.finished || other.spinTimer > 0) continue;
           let g = (other.trackT - k.trackT) % 1;
           if (g < 0) g += 1;
           gap = Math.min(gap, g);
@@ -5776,7 +5831,8 @@ function aiActions(dt) {
         if (gap < 0.24 && fireShot(k)) k.driftHeld = false;
       } else if (!driftWorth) {
         for (const other of karts) {
-          if (other === k || other.finished) continue;
+          // Never pile onto a kart that's already spinning out.
+          if (other === k || other.finished || other.spinTimer > 0) continue;
           _aiTo.subVectors(other.position, k.position);
           const dist = _aiTo.length();
           if (dist > 3 && dist < 46 && _aiTo.normalize().dot(_aiFwd) > 0.8) {
@@ -5845,7 +5901,7 @@ function settleRaceRewards() {
   s.races++;
   const won = player.place === 1;
   if (won) s.wins++;
-  if (won && DIFFICULTY === "hard") s.winsHard++;
+  if (won && (DIFFICULTY === "hard" || DIFFICULTY === "expert")) s.winsHard++;
   if (won && TIME_OF_DAY === "night") s.winsNight++;
   if (trackConfig.mode === "custom") s.racesCustom++;
   s.driftBoosts += _raceStats.driftBoosts;
@@ -5975,18 +6031,80 @@ function showResults() {
   document.getElementById("results").classList.remove("hidden");
 }
 
+// --- Finish clock ------------------------------------------------------------
+// Once the human(s) are home the rest of the field keeps racing through the
+// victory lap and the results screen (the race clock runs on so their real
+// finish times land in the standings). FINISH_CLOCK seconds after the first
+// human finished, whoever is still out is SETTLED as a DNF — until then a
+// running kart shows a projected "+N.Ns" gap from its progress and pace, not a
+// premature DNF. Versus stragglers whose 30s grace expired are DNF at once.
+const FINISH_CLOCK = 45;
+let _finishClock = null;
+let _finishClockRace = null; // the _raceStats object of the race the clock belongs to
+let _resultsRefresh = 0;
+function markDNF(k) {
+  k.finished = true;
+  k.dnf = true;
+  k.finishTime = 1e9; // sorts after every real time (placement also checks .dnf)
+}
+// Apply the DNF rules that are already decided (idempotent; safe from render).
+function settleStragglers() {
+  if (splitActive && _splitGrace !== null && _splitGrace <= 0) {
+    for (const k of splitPlayers) if (!k.finished) markDNF(k);
+  }
+  if (_finishClock !== null && _finishClock <= 0) {
+    for (const k of karts) if (!k.finished) markDNF(k);
+  }
+}
+// Called every FINISHED-state frame (after the karts step).
+function tickFinishClock(dt) {
+  if (timeTrial || !_raceStats) return;
+  if (_finishClockRace !== _raceStats) {
+    _finishClockRace = _raceStats;
+    _finishClock = FINISH_CLOCK;
+    _resultsRefresh = 0;
+  }
+  // The race clock keeps running for the field still out there.
+  raceTime += dt;
+  track.raceTime = raceTime;
+  if (_finishClock > 0) _finishClock -= dt;
+  settleStragglers();
+  // Keep the standings live while the results are up: real times replace the
+  // projections as karts cross the line, DNFs land when the clock expires.
+  _resultsRefresh -= dt;
+  if (_resultsRefresh <= 0) {
+    _resultsRefresh = 1;
+    if (!document.getElementById("results")?.classList.contains("hidden")) renderResults();
+  }
+}
+window.__zoomies.finishClock = () => _finishClock; // debug hook
+window.__zoomies.debugFinishClock = (s) => { if (_finishClock !== null) _finishClock = s; }; // headless checks fast-forward the settle
+// Projected finish gap for a kart still racing: remaining distance at its own
+// average pace so far (falls back to a mid-pack estimate off the line), against
+// the first real finisher. Never negative — it hasn't finished yet.
+function projectedGap(k) {
+  let leader = Infinity;
+  for (const o of karts) if (o.finished && !o.dnf) leader = Math.min(leader, o.finishTime);
+  if (!Number.isFinite(leader)) leader = raceTime;
+  const remaining = Math.max(0, track.totalLaps - k.totalProgress) * track.length;
+  const covered = Math.max(0, k.totalProgress) * track.length;
+  const pace = raceTime > 5 && covered > 40 ? covered / raceTime : (k.baseMaxSpeed || 30) * 0.8;
+  const eta = raceTime + remaining / Math.max(6, pace);
+  return Math.max(0.1, eta - leader);
+}
 // Built separately from showResults so the standings can be re-rendered on demand.
 function renderResults() {
   if (timeTrial) {
     renderTimeTrialResults();
     return;
   }
+  settleStragglers();
   updatePlacement();
   const order = raceField().sort((a, b) => a.place - b.place);
   const list = document.getElementById("results-list");
   list.innerHTML = "";
   order.forEach((k) => {
-    const time = k.finished ? formatClock(k.finishTime) : "DNF";
+    const time = k.finished ? (k.dnf ? "DNF" : formatClock(k.finishTime)) : `+${projectedGap(k).toFixed(1)}s`;
     const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
     list.appendChild(resultRow(medal, k.name, time, k === player || splitPlayers.includes(k)));
   });
@@ -6026,24 +6144,47 @@ function formatClock(sec) {
   return `${m}:${s}`;
 }
 
-// --- Time trial: local best-lap leaderboard (localStorage; swap for a DB later) ---
-const TT_KEY = "zoomies-timetrial-v2"; // v2: reset — TT lap times pre-date the no-power-ups change
-function loadTimeTrial() {
+// --- Time trial: local best-lap leaderboards (localStorage; swap for a DB later) ---
+// v3: ONE top-10 board PER TRACK, keyed by ttTrackKey() (a generated map's seed,
+// or "classic"), so a PB on a short custom loop never headlines the classic
+// circuit. The v2 single list (recorded on the classic circuit — custom maps
+// never kept a board) migrates under the classic key on first read.
+const TT_KEY = "zoomies-timetrial-v3";
+const TT_KEY_V2 = "zoomies-timetrial-v2";
+const TT_TOP = 10;
+const _validTT = (v) => Array.isArray(v) ? v.filter((e) => e && Number.isFinite(e.time) && e.time > 0) : [];
+function loadTimeTrialBoards() {
+  let boards = null;
   try {
     const v = JSON.parse(localStorage.getItem(TT_KEY));
-    return Array.isArray(v) ? v : [];
-  } catch {
-    return [];
-  }
+    if (v && typeof v === "object" && !Array.isArray(v)) boards = v;
+  } catch { /* fall through to a fresh store */ }
+  if (boards) return boards;
+  boards = {};
+  try {
+    const old = _validTT(JSON.parse(localStorage.getItem(TT_KEY_V2)));
+    if (old.length) {
+      boards.classic = old.sort((a, b) => a.time - b.time).slice(0, TT_TOP);
+      localStorage.setItem(TT_KEY, JSON.stringify(boards));
+      localStorage.removeItem(TT_KEY_V2); // migrated (only once the new store is written)
+    }
+  } catch { /* nothing to migrate, or storage unavailable */ }
+  return boards;
+}
+function loadTimeTrial() {
+  return _validTT(loadTimeTrialBoards()[ttTrackKey()]);
 }
 function recordTimeTrial(time) {
-  const list = loadTimeTrial();
+  const boards = loadTimeTrialBoards();
+  const key = ttTrackKey();
+  const list = _validTT(boards[key]);
   const entry = { time, date: Date.now() };
   list.push(entry);
   list.sort((a, b) => a.time - b.time);
-  const top = list.slice(0, 10);
+  const top = list.slice(0, TT_TOP);
+  boards[key] = top;
   try {
-    localStorage.setItem(TT_KEY, JSON.stringify(top));
+    localStorage.setItem(TT_KEY, JSON.stringify(boards));
   } catch {
     /* storage may be unavailable (private mode); leaderboard is best-effort */
   }
@@ -6063,18 +6204,35 @@ function formatLap(sec) {
 function ttTrackKey() {
   return trackConfig.mode === "custom" ? "c:" + (trackConfig.seed || "") : "classic";
 }
-function loadGhostData() {
+// The per-track ghost store: { [trackKey]: { samples, at } }.
+function loadGhostStore() {
   try {
     const g = JSON.parse(localStorage.getItem(TT_GHOST_KEY));
-    if (g && g.key === ttTrackKey() && Array.isArray(g.samples) && g.samples.length >= 10) return g.samples;
-  } catch {
-    /* ignore */
-  }
-  return null;
+    if (g && typeof g === "object" && !Array.isArray(g)) return g;
+  } catch { /* fall through */ }
+  const store = {};
+  try {
+    const old = JSON.parse(localStorage.getItem(TT_GHOST_KEY_V2));
+    if (old && typeof old.key === "string" && Array.isArray(old.samples) && old.samples.length >= 10) {
+      store[old.key] = { samples: old.samples, at: Date.now() };
+      localStorage.setItem(TT_GHOST_KEY, JSON.stringify(store));
+      localStorage.removeItem(TT_GHOST_KEY_V2);
+    }
+  } catch { /* nothing to migrate, or storage unavailable */ }
+  return store;
+}
+function loadGhostData() {
+  const g = loadGhostStore()[ttTrackKey()];
+  return g && Array.isArray(g.samples) && g.samples.length >= 10 ? g.samples : null;
 }
 function saveGhostData(samples) {
   try {
-    localStorage.setItem(TT_GHOST_KEY, JSON.stringify({ key: ttTrackKey(), samples }));
+    const store = loadGhostStore();
+    store[ttTrackKey()] = { samples, at: Date.now() };
+    // Cap the store: drop the least recently set tracks beyond TT_GHOST_MAX.
+    const keys = Object.keys(store).sort((a, b) => (store[b].at || 0) - (store[a].at || 0));
+    for (const k of keys.slice(TT_GHOST_MAX)) delete store[k];
+    localStorage.setItem(TT_GHOST_KEY, JSON.stringify(store));
   } catch {
     /* storage may be unavailable; the ghost is best-effort */
   }
@@ -6820,6 +6978,7 @@ function loop(now) {
     // fireworks keep popping from the arch.
     for (const k of karts) k.driveAI(track, dt);
     for (const k of karts) k.update(dt, track);
+    tickFinishClock(dt); // race clock + straggler settlement + live standings
     resolveCollisions();
     updateFireworks(dt);
     effects.update(dt);

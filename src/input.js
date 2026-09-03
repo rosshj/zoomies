@@ -9,6 +9,10 @@
 // pads null = any connected pad; [1] = only pad index 1. Touch bindings can't
 // be unbound (DOM listeners), so `touch` is a constructor-only opt-out —
 // split screen never wants a second slider anyway.
+
+// Seconds a steering KEY takes to ramp from 0 to full lock (see update()).
+const KB_STEER_RAMP = 0.12;
+
 export class Input {
   constructor(opts = {}) {
     this._keyboard = opts.keyboard !== false; // read WASD/arrows/etc.
@@ -35,6 +39,8 @@ export class Input {
     this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
     this._keyboardSteering = false;
+    this._kbDir = 0; // steering key direction held (-1/0/1)
+    this._kbRamp = 0; // 0..1 hold ramp toward full lock (KB_STEER_RAMP)
     this._keyboardThrottle = false; // gas/brake key held → so release can return to neutral
 
     this._padPrev = []; // last frame's gamepad button states (edge detection)
@@ -479,14 +485,21 @@ export class Input {
     this._pollGamepad();
     const k = this._keys;
 
-    if (k.ArrowLeft || k.KeyA) {
-      this._steerTarget = 1;
+    // Keyboard steering RAMPS 0→1 over ~120ms of hold (instead of an instant
+    // ±1), so a tap is a nudge and a hold is full lock — closer to a stick's
+    // feel, and the drift's inward commitment no longer snaps to max on the
+    // first frame. A direction flip restarts the ramp. Pads are untouched.
+    const kbDir = (k.ArrowLeft || k.KeyA) ? 1 : (k.ArrowRight || k.KeyD) ? -1 : 0;
+    if (kbDir !== 0) {
+      if (kbDir !== this._kbDir) this._kbRamp = 0;
+      this._kbDir = kbDir;
+      this._kbRamp = Math.min(1, (this._kbRamp || 0) + dt / KB_STEER_RAMP);
+      this._steerTarget = kbDir * this._kbRamp;
       this._keyboardSteering = true;
-    } else if (k.ArrowRight || k.KeyD) {
-      this._steerTarget = -1;
-      this._keyboardSteering = true;
-    } else if (this._keyboardSteering) {
-      this._steerTarget = 0;
+    } else {
+      this._kbDir = 0;
+      this._kbRamp = 0;
+      if (this._keyboardSteering) this._steerTarget = 0;
     }
 
     // Gas/brake: hold sets full throttle; RELEASE must return to neutral (foot off

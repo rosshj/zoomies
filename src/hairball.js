@@ -54,7 +54,9 @@ export class HairballManager {
     this.balls.push({
       mesh,
       vel: dir.clone().multiplyScalar(speed).add(new THREE.Vector3(0, 4 - charge * 1.5, 0)),
-      life: 2.2 + charge * 1.1,
+      // A charged shot flies further, but its reach is capped (2.6s) so a full
+      // charge can't snipe half a straight away.
+      life: Math.min(2.6, 2.2 + charge * 1.1),
       owner,
       ghost,
     });

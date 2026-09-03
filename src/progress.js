@@ -32,7 +32,7 @@ export function defaultProfile() {
     v: PROFILE_VERSION,
     treats: 0,
     unlocked: [...STARTER_UNLOCKS],
-    trophies: {}, // cupId -> best difficulty won ("easy" | "medium" | "hard")
+    trophies: {}, // cupId -> best difficulty won ("easy" | "medium" | "hard" | "expert")
     achievements: [], // earned achievement ids
     pendingClaims: [], // earned badges whose treats wait for the player's CLAIM tap
     stats: defaultStats(),
@@ -70,29 +70,34 @@ export function migrateProfile(raw) {
 
 export const STARTER_UNLOCKS = ["cat.0", "cat.1", "cat.2", "kart.0", "kart.1", "kart.2"];
 
+// Price ladder: a PROGRESSIVE climb totalling ~2,400 treats (was 4,800) — the
+// cheapest cats/karts land after a couple of races (100-150), the top of each
+// column is a ~400 goal, and the creators sit at 250 each so designing your own
+// racer is an early-mid milestone rather than an end-game grind. Cup and
+// difficulty exclusives are unchanged (money can't buy them).
 export const CATALOG = [
   // Cats (indices into CAT_PRESETS). First three are the free starter set.
   { id: "cat.0", price: 0 }, { id: "cat.1", price: 0 }, { id: "cat.2", price: 0 },
-  { id: "cat.3", price: 150 }, { id: "cat.4", price: 200 }, { id: "cat.5", price: 250 },
-  { id: "cat.6", price: 300 }, { id: "cat.7", price: 400 },
+  { id: "cat.3", price: 100 }, { id: "cat.4", price: 100 }, { id: "cat.5", price: 120 },
+  { id: "cat.6", price: 140 }, { id: "cat.7", price: 180 },
   { id: "cat.8", cup: "sandypaws" }, // Pepper — Sandy Paws Cup exclusive
   { id: "cat.9", cup: "zoomies" },   // Cocoa — Midnight Zoomies Cup exclusive
-  { id: "cat.10", price: 350 },      // Ziggy — golden bengal (rosettes)
-  { id: "cat.11", price: 500 },      // Moo — the cow cat
+  { id: "cat.10", price: 220 },      // Ziggy — golden bengal (rosettes)
+  { id: "cat.11", price: 400 },      // Moo — the cow cat
   { id: "cat.12", diff: "medium" },  // Misty — win any cup on Medium or harder
-  { id: "cat.13", diff: "hard" },    // Biscuit — win any cup on Hard
+  { id: "cat.13", diff: "hard" },    // Biscuit — win any cup on Hard (or Expert)
   // Karts.
   { id: "kart.0", price: 0 }, { id: "kart.1", price: 0 }, { id: "kart.2", price: 0 },
-  { id: "kart.3", price: 150 }, { id: "kart.4", price: 200 }, { id: "kart.5", price: 250 },
-  { id: "kart.6", price: 300 },
+  { id: "kart.3", price: 100 }, { id: "kart.4", price: 100 }, { id: "kart.5", price: 120 },
+  { id: "kart.6", price: 150 },
   { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
-  { id: "kart.9", price: 550 },      // Prowler — the caged off-road buggy
+  { id: "kart.9", price: 250 },      // Prowler — the caged off-road buggy
   // (Accessories carry no catalog entries: the whole wardrobe comes with the
   // Custom Cat creator. Old profiles may still hold acc.* ids — harmless.)
-  // The custom creators are features you earn.
-  { id: "custom.cat", price: 600 },
-  { id: "custom.kart", price: 600 },
+  // The custom creators are features you earn — early-mid milestones.
+  { id: "custom.cat", price: 250 },
+  { id: "custom.kart", price: 250 },
 ];
 const _catalogById = new Map(CATALOG.map((c) => [c.id, c]));
 
@@ -119,7 +124,7 @@ export function buyUnlock(profile, id) {
 // screen. `stats` is the per-race moment counters collected by main.js.
 // ---------------------------------------------------------------------------
 
-export const DIFF_MULT = { easy: 0.6, medium: 0.8, hard: 1.0 };
+export const DIFF_MULT = { easy: 0.6, medium: 0.8, hard: 1.0, expert: 1.15 };
 
 export function racePayout({ place, field, laps, difficulty, daily = false, stats = {} }) {
   const lines = [];
@@ -259,8 +264,9 @@ export function cupStandings(points) {
 }
 
 // Did the player win the cup, and is the new trophy an upgrade? Trophy records
-// the best DIFFICULTY the cup was won at (hard > medium > easy).
-const DIFF_RANK = { easy: 0, medium: 1, hard: 2 };
+// the best DIFFICULTY the cup was won at (expert > hard > medium > easy). The
+// "hard" prizes unlock on Expert too — it's harder, not a separate lane.
+const DIFF_RANK = { easy: 0, medium: 1, hard: 2, expert: 3 };
 export function awardCup(profile, cupId, standings, playerName, difficulty) {
   const winner = standings[0];
   if (!winner || winner.name !== playerName) return null;
