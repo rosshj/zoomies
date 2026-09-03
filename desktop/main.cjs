@@ -10,6 +10,67 @@ const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
 
+// productName in package.json names the packaged app; setName makes dev
+// launches match everywhere the OS takes the name from the process (userData
+// path, notifications). Known limit: the macOS MENU BAR in a dev launch
+// still says "Electron" — that string comes from Electron.app's own
+// Info.plist and only a packaged .app (npm run dist) can change it.
+// Set FIRST: everything below that touches userData (log, saves, window
+// state) must resolve to the "Zoomies GP" folder, never "Electron".
+app.setName("Zoomies GP");
+
+// --- Rolling shell log: userData/logs/main.log ------------------------------
+// Everything the shell prints (console.log/warn/error in THIS process) is also
+// appended here, so a player's "it went black and closed" report comes with
+// the renderer-gone reason, the Steam init result and the build/backend line
+// instead of a terminal nobody was watching. Capped at ~200 KB: when the file
+// grows past the cap it is cut back to its newest half, so it never grows
+// unbounded and the most recent launches are always the ones kept.
+const LOG_CAP = 200 * 1024;
+const LOG_KEEP = LOG_CAP / 2;
+let _logPath = null;
+let _logSize = 0;
+function installLog() {
+  try {
+    const dir = path.join(app.getPath("userData"), "logs");
+    fs.mkdirSync(dir, { recursive: true });
+    _logPath = path.join(dir, "main.log");
+    try { _logSize = fs.statSync(_logPath).size; } catch { _logSize = 0; }
+    rollLog();
+  } catch {
+    _logPath = null; // read-only userData? the terminal still gets everything
+  }
+  const wrap = (level, orig) => (...args) => {
+    orig(...args);
+    if (!_logPath) return;
+    const text = args.map((a) => (a instanceof Error ? a.stack || a.message : typeof a === "string" ? a : safeJson(a))).join(" ");
+    const line = `${new Date().toISOString()} ${level} ${text}\n`;
+    try {
+      fs.appendFileSync(_logPath, line);
+      _logSize += Buffer.byteLength(line);
+      if (_logSize > LOG_CAP) rollLog();
+    } catch { /* never let logging take the shell down */ }
+  };
+  console.log = wrap("info", console.log.bind(console));
+  console.warn = wrap("warn", console.warn.bind(console));
+  console.error = wrap("error", console.error.bind(console));
+}
+function rollLog() {
+  if (!_logPath || _logSize <= LOG_CAP) return;
+  try {
+    const buf = fs.readFileSync(_logPath);
+    let tail = buf.subarray(buf.length - LOG_KEEP);
+    const nl = tail.indexOf(10); // start on a whole line
+    if (nl >= 0) tail = tail.subarray(nl + 1);
+    fs.writeFileSync(_logPath, tail);
+    _logSize = tail.length;
+  } catch { /* best-effort */ }
+}
+function safeJson(v) {
+  try { return JSON.stringify(v); } catch { return String(v); }
+}
+installLog();
+
 // Packaged builds carry dist/ in resources (see electron-builder.json). Dev
 // launches serve the REPO ROOT directly — the web app runs from the working
 // tree as-is (that's how every headless check serves it), so a `git pull` is
@@ -54,19 +115,39 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "app", privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
-// Steam is optional at every layer: with steamworks.js installed and a
-// steam_appid.txt next to the executable (or a real Steam launch), the API
-// initialises; without either the game just runs. Nothing in the renderer
-// depends on Steam yet — achievements/cloud hook in here later.
+// --- Steam (optional at every layer) ----------------------------------------
+// With steamworks.js installed and a steam_appid.txt next to the executable
+// (or a real Steam launch), the API initialises; without either the game just
+// runs. Nothing in the renderer depends on Steam yet — achievements/cloud
+// hook in here later.
+//
+// Two phases, because the overlay hook is really a set of Chromium command
+// line switches (in-process-gpu, disable-direct-composition) and
+// `app.commandLine.appendSwitch` is only honoured BEFORE the app is ready:
+//  1. top level (now): require the module and apply the overlay switches;
+//  2. after ready: `init()`, which needs the running app and the Steam client.
+// The overlay inside Electron is unreliable regardless (see desktop/README.md)
+// — best-effort, the game must stay playable without it.
+let steamworks = null;
 let steam = null;
-function initSteam() {
+try {
+  steamworks = require("steamworks.js");
+} catch (err) {
+  // (First line only: a MODULE_NOT_FOUND message drags a require stack along.)
+  console.log("[steam] steamworks.js not installed:", String(err.message).split("\n")[0]);
+}
+if (steamworks) {
   try {
-    const sw = require("steamworks.js");
-    steam = sw.init();
+    steamworks.electronEnableSteamOverlay?.();
+  } catch (err) {
+    console.log("[steam] overlay switches not applied:", err.message);
+  }
+}
+function initSteam() {
+  if (!steamworks) return;
+  try {
+    steam = steamworks.init();
     console.log("[steam] running as:", steam.localplayer.getName());
-    // Best-effort overlay hook — the overlay inside Electron is unreliable
-    // (see desktop/README.md); the game must stay playable without it.
-    sw.electronEnableSteamOverlay?.();
   } catch (err) {
     console.log("[steam] not active:", err.message);
   }
@@ -75,6 +156,10 @@ function initSteam() {
 // --- Save bridge (see preload.cjs) — the file Steam Cloud syncs ------------
 const savePath = () => path.join(app.getPath("userData"), "zoomies-save.json");
 function writeSave(payload) {
+  if (!payload || typeof payload.stamp !== "number" || !payload.data || typeof payload.data !== "object") {
+    console.error("[save-bridge] refusing malformed save payload");
+    return;
+  }
   try {
     const tmp = savePath() + ".tmp"; // atomic: never leave a half-written save
     fs.writeFileSync(tmp, JSON.stringify(payload));
@@ -97,15 +182,24 @@ function readJson(p) {
 function gitHead() {
   try {
     const root = path.join(__dirname, "..");
-    const head = fs.readFileSync(path.join(root, ".git", "HEAD"), "utf8").trim();
+    // A worktree's .git is a FILE pointing at the real gitdir; its refs live
+    // in the common dir one level up (worktrees/<name>/commondir says where).
+    let gitDir = path.join(root, ".git");
+    if (fs.statSync(gitDir).isFile()) {
+      const m = fs.readFileSync(gitDir, "utf8").match(/^gitdir: (.+)$/m);
+      gitDir = path.resolve(root, m[1].trim());
+    }
+    let commonDir = gitDir;
+    try { commonDir = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim()); } catch { /* not a worktree */ }
+    const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
     const m = head.match(/^ref: (.+)$/);
     if (!m) return head.slice(0, 8); // detached HEAD: the sha itself
     const ref = m[1];
     let sha = "";
-    const refPath = path.join(root, ".git", ref);
+    const refPath = path.join(commonDir, ref);
     if (fs.existsSync(refPath)) sha = fs.readFileSync(refPath, "utf8").trim();
     else {
-      const packed = fs.readFileSync(path.join(root, ".git", "packed-refs"), "utf8");
+      const packed = fs.readFileSync(path.join(commonDir, "packed-refs"), "utf8");
       const line = packed.split("\n").find((l) => l.trim().endsWith(" " + ref) || l.trim().endsWith("\t" + ref));
       sha = line ? line.trim().split(/\s+/)[0] : "";
     }
@@ -113,6 +207,44 @@ function gitHead() {
   } catch {
     return "unknown (no .git?)";
   }
+}
+
+// The one game window. Module-level so second-instance / IPC can reach it.
+let win = null;
+
+// Shown INSTEAD of the game when the renderer has died twice in a row (one
+// automatic reload is tried first — a transient GPU hiccup usually survives
+// that). Inline data: page: it must render with nothing loading from dist/,
+// because dist/ not loading may be the very reason we are here.
+function crashPage(reason) {
+  const html = `<!doctype html><meta charset="utf-8"><title>Zoomies GP</title>
+<style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0e1320;color:#e8ecf4;font:16px/1.5 system-ui,sans-serif}
+main{max-width:34em;padding:2em;text-align:center}h1{font-size:1.4em;margin:0 0 .5em}code{color:#ffcf6b}p{margin:.6em 0}
+button{margin-top:1em;padding:.6em 1.6em;font:inherit;border:0;border-radius:.5em;background:#ffcf6b;color:#0e1320;cursor:pointer}</style>
+<main><h1>Zoomies GP hit a wall</h1>
+<p>The game's renderer stopped twice in a row (<code>${String(reason).replace(/[<>&]/g, "")}</code>).</p>
+<p>Relaunch the game from Steam. If it keeps happening, updating your graphics driver is the usual fix; the shell log is in the game's data folder under <code>logs/main.log</code>.</p>
+<button onclick="window.zoomiesDesktop&&window.zoomiesDesktop.quit()">Quit</button></main>`;
+  return "data:text/html;charset=utf-8," + encodeURIComponent(html);
+}
+
+function gameUrl() {
+  // nosw=1: the service worker exists for offline WEB play; a desktop build
+  // is already offline-complete, and a stale SW cache masking a shipped
+  // update is the exact failure mode the build stamp exists to catch.
+  //
+  // webgl=1: the shell pins the game to its WebGL2 backend. Chromium's WebGPU
+  // swap-chain in Electron on macOS presents STALE frames — a screen
+  // recording showed the compositor interleaving the live render with frames
+  // from ~37s earlier, every other frame ("the menus flicker"). That happens
+  // below the app (one render loop, one camera — verified), so the fix is to
+  // not ride that path: WebGL2 is the game's fully supported backend, the one
+  // every headless check runs, and ANGLE-on-Metal presents rock-solid.
+  // Retest WebGPU after Electron upgrades with ZOOMIES_QUERY=webgpu=1 — the
+  // pin is dropped then, because in gpu.js a webgl param always beats webgpu.
+  const extra = process.env.ZOOMIES_QUERY || "";
+  const pin = /webgpu|webgl/.test(extra) ? "" : "&webgl=1";
+  return `app://game/index.html?nosw=1${pin}${extra ? "&" + extra : ""}`;
 }
 
 function createWindow() {
@@ -123,19 +255,22 @@ function createWindow() {
   if (process.platform === "darwin" && fs.existsSync(icon)) {
     try { app.dock?.setIcon(icon); } catch { /* dev nicety only */ }
   }
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
     icon: fs.existsSync(icon) ? icon : undefined,
     width: saved?.width || 1280,
     height: saved?.height || 800,
     minWidth: 960,
     minHeight: 600,
+    // Fullscreen by default on a first launch (a Steam game opens like a
+    // game, not like a browser); after that the window remembers what the
+    // player left it in (F11 / Alt+Enter / the bridge's setFullscreen).
     // NEVER fullscreen-at-creation on the Deck: Gaming Mode's compositor
     // fullscreens the window itself, and fullscreen-at-creation in the
     // Deck's sessions produced a stuck black window (field-reported in both
     // modes — and once it happened, the saved window-state re-armed it on
     // every later launch, so the saved flag is ignored there too). Plain
     // window, F11 as ever.
-    fullscreen: !ON_DECK && !!saved?.fullscreen,
+    fullscreen: !ON_DECK && (saved?.fullscreen ?? true),
     backgroundColor: "#0e1320", // matches the game's loading screen
     autoHideMenuBar: true,
     webPreferences: {
@@ -152,26 +287,47 @@ function createWindow() {
       }));
     } catch { /* best-effort */ }
   });
+  win.on("closed", () => { win = null; });
 
-  // nosw=1: the service worker exists for offline WEB play; a desktop build
-  // is already offline-complete, and a stale SW cache masking a shipped
-  // update is the exact failure mode the build stamp exists to catch.
-  //
-  // webgl=1: the shell pins the game to its WebGL2 backend. Chromium's WebGPU
-  // swap-chain in Electron on macOS presents STALE frames — a screen
-  // recording showed the compositor interleaving the live render with frames
-  // from ~37s earlier, every other frame ("the menus flicker"). That happens
-  // below the app (one render loop, one camera — verified), so the fix is to
-  // not ride that path: WebGL2 is the game's fully supported backend, the one
-  // every headless check runs, and ANGLE-on-Metal presents rock-solid.
-  // Retest WebGPU after Electron upgrades with ZOOMIES_QUERY=webgpu=1 — the
-  // pin is dropped then, because in gpu.js a webgl param always beats webgpu.
-  const extra = process.env.ZOOMIES_QUERY || "";
-  const pin = /webgpu/.test(extra) ? "" : "&webgl=1";
-  const url = `app://game/index.html?nosw=1${pin}${extra ? "&" + extra : ""}`;
+  // Focus tracking → renderer (pause on focus loss lives in the game; the
+  // preload turns these into zoomies:blur / zoomies:focus window events).
+  const tell = (ch) => { if (win && !win.webContents.isDestroyed()) win.webContents.send(ch); };
+  win.on("blur", () => tell("zoomies:blur"));
+  win.on("focus", () => tell("zoomies:focus"));
+
+  // Renderer health. A crashed renderer gets ONE automatic reload; a second
+  // death within the next few minutes lands on the inline error page instead
+  // of looping forever. A game that then stays up for 5 minutes has earned
+  // its strike back, so an isolated crash an hour later gets a free reload
+  // too.
+  let rendererDeaths = 0;
+  let healthyTimer = null;
+  win.webContents.on("render-process-gone", (_e, details) => {
+    console.error(`[shell] renderer gone: ${details.reason} (exit ${details.exitCode})`);
+    if (details.reason === "clean-exit" || !win) return;
+    clearTimeout(healthyTimer);
+    rendererDeaths++;
+    if (rendererDeaths === 1) {
+      console.log("[shell] reloading the game once");
+      win.loadURL(gameUrl());
+    } else {
+      console.error("[shell] renderer died again — showing the error page");
+      win.loadURL(crashPage(details.reason));
+    }
+  });
+  win.webContents.on("did-finish-load", () => {
+    clearTimeout(healthyTimer);
+    if (win.webContents.getURL().startsWith("app://")) {
+      healthyTimer = setTimeout(() => { rendererDeaths = 0; }, 5 * 60 * 1000);
+    }
+  });
+  win.on("unresponsive", () => console.error("[shell] renderer unresponsive (hung > 30s of no input handling)"));
+  win.on("responsive", () => console.log("[shell] renderer responsive again"));
+
+  const url = gameUrl();
   // Printed to the npm-start terminal so "which build/backend am I actually
   // running?" is answerable at a glance (a stale build once burned a tester).
-  console.log(`[shell] loading ${url} (packaged=${app.isPackaged})`);
+  console.log(`[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}, electron=${process.versions.electron})`);
   if (!app.isPackaged) console.log(`[shell] source ${gitHead()}`);
   win.loadURL(url);
 
@@ -186,15 +342,25 @@ function createWindow() {
   return win;
 }
 
-// productName in package.json names the packaged app; setName makes dev
-// launches match everywhere the OS takes the name from the process (userData
-// path, notifications). Known limit: the macOS MENU BAR in a dev launch
-// still says "Electron" — that string comes from Electron.app's own
-// Info.plist and only a packaged .app (npm run dist) can change it.
-app.setName("Zoomies GP");
+// Steam relaunches the same executable if the player hits PLAY again: the
+// second copy quits, and the first one comes to the front.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+}
 
-// Steam relaunches the same executable if the player hits PLAY again.
-if (!app.requestSingleInstanceLock()) app.quit();
+// GPU / utility / other child processes dying is logged; Chromium restarts
+// the GPU process itself, and the render-process-gone handler above covers
+// the renderer, so there is nothing more to do here than leave a trace.
+app.on("child-process-gone", (_e, details) => {
+  console.error(`[shell] child process gone: ${details.type} ${details.name || ""} ${details.reason} (exit ${details.exitCode})`);
+});
 
 app.whenReady().then(() => {
   if (!fs.existsSync(path.join(DIST, "index.html"))) {
@@ -203,13 +369,17 @@ app.whenReady().then(() => {
     return;
   }
 
-  // Serve dist/ over app://game/, resolving strictly INSIDE dist.
+  // Serve dist/ over app://game/, resolving strictly INSIDE dist. A missing
+  // file is a plain 404 (net.fetch on a nonexistent file: URL rejects, which
+  // would surface as a protocol error instead of the ordinary resource miss a
+  // desktop dist — no manifest.json, no sw.js — legitimately produces).
   protocol.handle("app", (req) => {
     const url = new URL(req.url);
     let p = decodeURIComponent(url.pathname);
     if (p === "/" || p === "") p = "/index.html";
     const file = path.normalize(path.join(DIST, p));
     if (!file.startsWith(DIST + path.sep)) return new Response("forbidden", { status: 403 });
+    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) return new Response("not found", { status: 404 });
     return net.fetch(pathToFileURL(file).toString());
   });
 
@@ -218,6 +388,16 @@ app.whenReady().then(() => {
   ipcMain.on("zoomies:load-save", (e) => { e.returnValue = readJson(savePath()); });
   ipcMain.on("zoomies:save", (_e, payload) => writeSave(payload));
   ipcMain.on("zoomies:save-flush", (e, payload) => { writeSave(payload); e.returnValue = true; });
+  // Bridge queries (sync so game code can read them like plain properties).
+  ipcMain.on("zoomies:deck", (e) => { e.returnValue = ON_DECK; });
+  ipcMain.on("zoomies:is-fullscreen", (e) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    e.returnValue = !!(w && w.isFullScreen());
+  });
+  ipcMain.on("zoomies:set-fullscreen", (e, on) => {
+    const w = BrowserWindow.fromWebContents(e.sender);
+    if (w) w.setFullScreen(!!on);
+  });
   createWindow();
 });
 

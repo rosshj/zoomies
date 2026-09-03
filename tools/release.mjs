@@ -10,7 +10,7 @@
 // site's links with zero site changes. The token needs repo scope on
 // zoomies-releases only.
 import { execSync } from "node:child_process";
-import { readFileSync, readdirSync, copyFileSync, mkdirSync } from "node:fs";
+import { readFileSync, readdirSync, copyFileSync, mkdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,6 +22,16 @@ const API = `https://api.github.com/repos/${OWNER}/${REPO}`;
 const tag = process.argv[2];
 if (!/^v\d+\.\d+/.test(tag || "")) {
   console.error("usage: GITHUB_TOKEN=... node tools/release.mjs vX.Y.Z [--platforms linux,mac,win]");
+  process.exit(1);
+}
+// The tag must be the version electron-builder stamps into the archives
+// (desktop/package.json) — a v0.2.0 release carrying 0.1.0 binaries is the
+// kind of mismatch nobody notices until a player reports the "old" build.
+// `v0.1.1` and `0.1.1` both match version 0.1.1.
+const desktopPkg = JSON.parse(readFileSync(join(ROOT, "desktop", "package.json"), "utf8"));
+if (tag.replace(/^v/, "") !== String(desktopPkg.version).replace(/^v/, "")) {
+  console.error(`[release] tag ${tag} does not match desktop/package.json version ${desktopPkg.version}`);
+  console.error("[release] bump desktop/package.json (and commit) or pass the matching tag — refusing to build.");
   process.exit(1);
 }
 const token = process.env.GITHUB_TOKEN;
@@ -53,8 +63,9 @@ const gh = async (url, opts = {}) => {
   return res.status === 404 ? null : res.json();
 };
 
-// 1. Build the web bundle once, then package each requested platform.
-sh("node tools/build-web.mjs");
+// 1. Build the desktop bundle once (game only — no PWA/service-worker
+//    surface, see build-web.mjs), then package each requested platform.
+sh("node tools/build-web.mjs --target=desktop");
 const outDir = join(ROOT, "desktop", "out");
 const staging = join(outDir, "release-assets");
 mkdirSync(staging, { recursive: true });
@@ -68,7 +79,7 @@ for (const p of platforms) {
   const zips = readdirSync(outDir).filter((f) => f.endsWith(cfg.ext));
   if (!zips.length) { console.error(`no ${cfg.ext} produced for ${p}`); process.exit(1); }
   const newest = zips
-    .map((f) => ({ f, t: execSync(`stat -f %m "${join(outDir, f)}" 2>/dev/null || stat -c %Y "${join(outDir, f)}"`).toString().trim() }))
+    .map((f) => ({ f, t: statSync(join(outDir, f)).mtimeMs }))
     .sort((a, b) => b.t - a.t)[0].f;
   copyFileSync(join(outDir, newest), join(staging, cfg.asset));
   console.log(`[release] ${newest} → ${cfg.asset}`);

@@ -24,9 +24,56 @@ WebGPU swap-chain on macOS interleaves stale frames into the present queue
 alternating with ~37s-old frames — the reported "menu flicker"). Retest
 WebGPU on a newer Electron with `ZOOMIES_QUERY=webgpu=1 npm start`.
 
-`F11` or `Alt+Enter` toggles fullscreen. Gamepads work through the standard
-browser Gamepad API (see the mapping below), keyboard through the existing
-bindings.
+## Window, focus, fullscreen
+
+- **Fullscreen by default.** A first launch opens fullscreen (a Steam game
+  opens like a game); after that the window remembers the size and
+  fullscreen state the player left it in (`userData/window-state.json`).
+  `F11` or `Alt+Enter` toggles fullscreen; the game can also drive it
+  through the bridge (below). The Steam Deck never fullscreens at creation
+  — see the Deck section.
+- **Single instance.** Hitting PLAY in Steam while the game is running
+  focuses (and un-minimizes) the existing window instead of opening a
+  second one.
+- **Focus loss** is pushed to the renderer as `zoomies:blur` /
+  `zoomies:focus` window events so the game can pause when the player
+  alt-tabs away.
+- **Renderer health.** If the renderer process dies (GPU driver crash, OOM),
+  the shell reloads the game once; a second death in the same stretch lands
+  on a plain inline error page instead of a black window or a reload loop.
+  Child-process deaths and a hung renderer are logged.
+
+Gamepads work through the standard browser Gamepad API (see the mapping
+below), keyboard through the existing bindings.
+
+## Bridge API (`window.zoomiesDesktop`)
+
+`preload.cjs` exposes exactly this object (context isolation stays on; the
+renderer never sees `require` or `ipcRenderer`). Every field is optional
+from the game's point of view — the same bundle runs on the web and in
+Capacitor, so feature-detect (`window.zoomiesDesktop?.deck`), never assume.
+
+| Member | Type | Meaning |
+| --- | --- | --- |
+| `quit()` | `() => void` | Quit the app (the title screen's Quit button). |
+| `deck` | `boolean` | `true` when the shell detected a Steam Deck / SteamOS at launch. |
+| `isFullscreen()` | `() => boolean` | Current fullscreen state (synchronous IPC). |
+| `setFullscreen(on)` | `(boolean) => void` | Enter/leave fullscreen (same as F11). |
+| `onBlur(cb)` | `(fn) => unsubscribe` | Called when the window loses focus. Returns a function that removes the listener. |
+| `onFocus(cb)` | `(fn) => unsubscribe` | Called when the window regains focus. |
+
+Blur/focus also fire as DOM events on `window` — `zoomies:blur` and
+`zoomies:focus` — for code that prefers `addEventListener`.
+
+## Shell log
+
+Everything the main process prints (the build/backend line, Steam init
+result, renderer-gone reasons, save-bridge write failures) is appended to
+`userData/logs/main.log`, capped at ~200 KB (it is cut back to its newest
+half when it grows past that). `userData` is the productName folder:
+`%APPDATA%\Zoomies GP` on Windows, `~/Library/Application Support/Zoomies GP`
+on macOS, `~/.config/Zoomies GP` on Linux/Deck. First thing to ask a
+tester for.
 
 ## Controller mapping (standard/Xbox layout, `src/input.js`)
 
@@ -58,6 +105,16 @@ buttons too. Verified headlessly at the repo root by `npm run check:gamepad`
 npm run dist       # electron-builder → desktop/out/ (zip per OS)
 ```
 
+`dist` (and `dist:deck`) first run `node ../tools/build-web.mjs
+--target=desktop`, which assembles a **desktop-only `dist/`**: the game
+(`index.html`, `styles.css`, `src/`, `vendor/`, `assets/`, `icon-512.png`)
+without the web-only surface — no `sw.js`, `manifest.json`, PWA icons,
+`viewer.html` or `/download` page. `ZOOMIES_TARGET=desktop` does the same
+thing for scripts that can't pass a flag. The default (web) build is
+unchanged. `tools/release.mjs` uses the desktop target too, and refuses to
+run when the tag it is given doesn't match the `version` in `package.json`
+here (`v0.1.1` and `0.1.1` both match `0.1.1`) — bump the version first.
+
 (`--linux dir` gives the unpacked build; the binary is named
 `zoomies-desktop` after the package. Smoke-test a packaged build with
 `EXE=desktop/out/linux-unpacked/zoomies-desktop xvfb-run -a node
@@ -74,26 +131,40 @@ The shell boots fine with no Steam present. To light Steam up:
 1. Pay the one-time [Steam Direct](https://partner.steamgames.com/steamdirect)
    fee ($100 per app), create the app, note the **App ID**.
 2. `npm install steamworks.js` in this directory — `main.cjs` already
-   try-requires it and calls `init()`.
+   try-requires it at the top level (so the overlay's Chromium switches are
+   applied BEFORE the app is ready, the only time they take effect) and
+   calls `init()` after ready. `electron-builder.json` unpacks the module
+   (and every `.node` binary) out of the asar so the native addon loads in
+   a packaged build.
 3. For dev launches outside Steam, put the App ID in `desktop/steam_appid.txt`
    (gitignored). Real Steam launches don't need it.
 4. Upload with SteamPipe: one depot per OS containing the unpacked build from
    `out/`. Launch option = the executable, no arguments.
 
 **Saves are already file-backed for Steam Cloud.** The game saves through
-localStorage (`zoomies-*` keys); `preload.cjs` mirrors those keys into
-`userData/zoomies-save.json` every 5s and flushes synchronously on close, and
-hydrates them back at boot when the file carries a newer stamp (so a
-cloud-synced file from another machine wins over an older local profile,
-never the reverse). Point Steam **Auto-Cloud** at that file — root
-`WinAppDataRoaming`, path `Zoomies GP/zoomies-save.json` (macOS:
-`~/Library/Application Support/Zoomies GP/`; Linux: the `XDG_CONFIG_HOME`
-equivalent) — and cloud saves work with no further code. (The folder is the
-app's productName — it moved from `zoomies-desktop/` when the app got its
-real name; dev-run saves from before that rename start fresh.)
+localStorage; `preload.cjs` mirrors an **allowlist of profile keys** into
+`userData/zoomies-save.json` — checked every 30s and written only when the
+content changed, flushed synchronously on close — and hydrates them back at
+boot when the file carries a newer stamp. The keys that follow the player:
 
-The window remembers its size and fullscreen state across launches
-(`userData/window-state.json`).
+```
+zoomies-profile-v1   zoomies-garage-v1   zoomies-track-v1
+zoomies-timetrial-v2 zoomies-ttghost-v2  zoomies-audio-v2
+zoomies-laps         zoomies-difficulty  zoomies-mode-v1
+zoomies-cup-choice
+```
+
+Per-device state (quality tier, WebGL preference, fps overlay, dev/debug
+flags, crash log, rumble, split-screen seat picks, track view, …) is
+deliberately NOT synced — it describes the machine, not the player. The
+stamp is a monotonic counter (`max(file, local) + 1` per write), not the
+wall clock, so a skewed clock on one machine can't win every merge forever.
+Point Steam **Auto-Cloud** at that file — root `WinAppDataRoaming`, path
+`Zoomies GP/zoomies-save.json` (macOS: `~/Library/Application Support/Zoomies
+GP/`; Linux: the `XDG_CONFIG_HOME` equivalent) — and cloud saves work with
+no further code. (The folder is the app's productName — it moved from
+`zoomies-desktop/` when the app got its real name; dev-run saves from before
+that rename start fresh.)
 
 **Rumble** works out of the box: the web platform adapter routes the game's
 discrete haptic moments (spin-outs, landings, boosts) to the connected pad's
@@ -139,6 +210,11 @@ quadrant cams/HUD, seat picks, input dealing, lean posture).
 
 ## Steam Deck
 
+Runs via the linux64 depot (preferred) or Proton. Racing and the menus are
+both fully pad-drivable; the remaining Verified-rating blocker is on-screen
+keyboard invocation for the text fields (custom cat/kart names). The bridge
+reports `zoomiesDesktop.deck === true` there so the game can adapt its UI.
+
 Build a Deck package from any machine (the Deck is plain x86_64 Linux):
 
 ```sh
@@ -166,7 +242,8 @@ The decisive fix (field-A/B'd on a real Deck) is `no-zygote`: the zygote's
 children were denied shared memory (ESRCH in /dev/shm AND /tmp), killing
 the renderer at birth — live app, black window, both modes — so children
 spawn directly instead; `disable-dev-shm-usage` stays as belt-and-braces.
-It does NOT force fullscreen: Gaming Mode fullscreens windows itself, and
+It does NOT force fullscreen (the fullscreen-by-default rule above is
+skipped on the Deck): Gaming Mode fullscreens windows itself, and
 fullscreen-at-creation wedged into a stuck black window.
 
 The screen is 1280×800 — the exact viewport every headless check runs at.
@@ -179,10 +256,3 @@ Rumble under Steam Input's virtual pad may not reach Chromium's
 for real via Playwright's Electron driver and asserts the app:// chain boots
 the game to the title screen with the preload bridge live. `SHOT=/path.png`
 grabs a screenshot. Prereq: `npm install` here.
-
-## Steam Deck
-
-Runs via the linux64 depot (preferred) or Proton. Racing and the menus are
-both fully pad-drivable now; the remaining Verified-rating blocker is
-on-screen keyboard invocation for the text fields (multiplayer room code,
-custom cat/kart names).

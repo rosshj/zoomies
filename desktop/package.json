@@ -4,14 +4,16 @@
   "version": "0.1.0",
   "private": true,
   "description": "Electron desktop shell for Zoomies GP — the Steam build.",
+  "author": "Ross Howard-Jones",
+  "license": "MIT",
   "main": "main.cjs",
   "scripts": {
     "start": "electron .",
-    "dist": "npm --prefix .. run build:web && electron-builder --config electron-builder.json",
-    "dist:deck": "npm --prefix .. run build:web && electron-builder --config electron-builder.json --linux tar.gz --x64"
+    "dist": "node ../tools/build-web.mjs --target=desktop && electron-builder --config electron-builder.json",
+    "dist:deck": "node ../tools/build-web.mjs --target=desktop && electron-builder --config electron-builder.json --linux tar.gz --x64"
   },
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron": "^44.1.1",
+    "electron-builder": "^26.15.3"
   }
 }

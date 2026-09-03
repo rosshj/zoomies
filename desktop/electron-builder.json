@@ -3,6 +3,7 @@
   "productName": "Zoomies GP",
   "directories": { "output": "out" },
   "files": ["main.cjs", "preload.cjs", "package.json"],
+  "asarUnpack": ["**/node_modules/steamworks.js/**", "**/*.node"],
   "extraResources": [{ "from": "../dist", "to": "dist" }],
   "win": { "target": "zip", "icon": "../icon-512.png" },
   "linux": { "target": "zip", "category": "Game", "icon": "../icon-512.png", "executableName": "zoomies-desktop" },
