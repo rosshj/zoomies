@@ -22,6 +22,66 @@ const _critters = []; // wandering ground animals: { obj, base, ... }
 // Set per build: true where a lake basin sits, so scatter/grass/props avoid it.
 let _inLake = () => false;
 
+// ---- Spatial chunking for instanced scenery ---------------------------------
+// One InstancedMesh for every fence slat / lamp / sprig on the lap has a
+// bounding sphere the size of the map, so frustum culling never rejects it and
+// every instance is transformed every frame from every camera. Bucketing the
+// placement records by world cell and emitting one mesh per bucket gives each
+// a tight sphere (three unions the instance spheres in computeBoundingSphere),
+// so a chase camera draws only the cells around it. Bucket AFTER every rand()
+// call for the batch has been made in the original order — the world must
+// stay identical per seed, and chunking only reorders the GPU upload.
+export function chunkByCell(items, cell = 160, getX = (s) => s.x, getZ = (s) => s.z) {
+  const buckets = new Map();
+  for (const it of items) {
+    const key = Math.floor(getX(it) / cell) + "_" + Math.floor(getZ(it) / cell);
+    let arr = buckets.get(key);
+    if (!arr) buckets.set(key, (arr = []));
+    arr.push(it);
+  }
+  return [...buckets.values()];
+}
+// Tight bounds for a finished InstancedMesh (call after the matrices are set),
+// padded for anything the vertex shader moves past the rest pose — a wind lean
+// or a bow-wave reaches outside the planted card's sphere.
+export function fitInstanceBounds(mesh, pad = 0) {
+  mesh.computeBoundingSphere();
+  if (pad) mesh.boundingSphere.radius += pad;
+  return mesh;
+}
+
+// Flat lighting level for the unlit roadside cover — see buildGrass. Written
+// once per frame from the scene's live hemisphere + sun lights (buildWorld's
+// update), so the verge follows every mood the same way a lit material would.
+const uGrassLight = uniform(new THREE.Color(1, 1, 1));
+const _grassLights = { hemi: null, sun: null };
+const _gl = new THREE.Vector3();
+function refreshGrassLight() {
+  const c = uGrassLight.value;
+  c.setRGB(0, 0, 0);
+  const { hemi, sun } = _grassLights;
+  const RPI = 1 / Math.PI; // Lambert: irradiance / π, as the lit material did
+  if (hemi) {
+    // A vertical card's normal is horizontal: half sky, half ground.
+    c.r += 0.5 * (hemi.color.r + hemi.groundColor.r) * hemi.intensity * RPI;
+    c.g += 0.5 * (hemi.color.g + hemi.groundColor.g) * hemi.intensity * RPI;
+    c.b += 0.5 * (hemi.color.b + hemi.groundColor.b) * hemi.intensity * RPI;
+  }
+  if (sun) {
+    // Random-yaw cards facing the sun both ways: N·L averages to 2/π of the
+    // sun direction's horizontal component. Nudged a little toward the lit
+    // face (0.3 of the way from that mean to the peak) — matched by eye
+    // against the lit verge; further up it reads lime rather than grass.
+    _gl.copy(sun.position).sub(sun.target.position).normalize();
+    const horiz = Math.hypot(_gl.x, _gl.z);
+    const mean = horiz * (2 / Math.PI);
+    const k = sun.intensity * (mean + (horiz - mean) * 0.3) * RPI;
+    c.r += sun.color.r * k;
+    c.g += sun.color.g * k;
+    c.b += sun.color.b * k;
+  }
+}
+
 // ---- Biomes ----
 // Five themed sectors radiating around the map. Since the track loops through
 // every angle, you drive through each biome as you lap. Cheap to evaluate
@@ -568,6 +628,7 @@ export function buildWorld(scene, track, opts = {}) {
       // playerPos: a Vector3, an ARRAY of Vector3s (split screen — every
       // human wakes the world around them), or null (menus: animate all).
       const ppos = Array.isArray(playerPos) ? playerPos : playerPos ? [playerPos] : null;
+      refreshGrassLight(); // the unlit verge tracks the live hemi/sun (moods restyle them)
       const nearAny = (x, z, r) => {
         if (!ppos) return true;
         for (const p of ppos) {
@@ -1137,12 +1198,24 @@ function buildGrass(scene, track, heightAt) {
   // speed — the roadside physically parts as you blast past. uKart is
   // (x, y, z, strength), written once per frame from the main loop.
   const uKart = uKartPos; // shared: the petal flurry reads the same kart
-  const mat = new THREE.MeshStandardNodeMaterial({
+  // UNLIT. Tens of thousands of double-sided cards through the full PBR
+  // fragment path was the meadow's real cost, and the toon world wants flat
+  // grass anyway. The lighting level a lit card would have received (hemi
+  // ambient + the sun on a random-yaw vertical card, both Lambert) is folded
+  // into ONE colour uniform refreshed per frame from the live lights
+  // (refreshGrassLight), so moods still darken the verge; the vertex gradient,
+  // per-instance biome tint and sun backlight ride on top exactly as before.
+  // A per-blade ±10% hash stands in for the light-and-shade the random yaws
+  // used to give, so a tuft doesn't flatten into one solid colour.
+  _grassLights.hemi = scene.children.find((o) => o.isHemisphereLight) || null;
+  _grassLights.sun = scene.children.find((o) => o.isDirectionalLight) || null;
+  refreshGrassLight();
+  const mat = new THREE.MeshBasicNodeMaterial({
     vertexColors: true,
     side: THREE.DoubleSide,
-    roughness: 1,
   });
   mat.userData.skipToon = true; // keep the custom position/emissive nodes
+  mat.colorNode = uGrassLight.mul(hash(instanceIndex).mul(0.2).add(0.9));
   {
     const root = attribute("aRoot"); // blade base, world space
     const yawScale = attribute("aYawScale"); // instance yaw + scale
@@ -1249,36 +1322,47 @@ function buildGrass(scene, track, heightAt) {
     }
   }
 
-  // One instanced mesh per sprig kind (plus a second for flower heads).
-  const addMesh = (geo, recs, colourOf, tag) => {
-    const aRoot = new Float32Array(recs.length * 3);
-    const aYawScale = new Float32Array(recs.length * 2);
-    geo.setAttribute("aRoot", new THREE.InstancedBufferAttribute(aRoot, 3));
-    geo.setAttribute("aYawScale", new THREE.InstancedBufferAttribute(aYawScale, 2));
-    const mesh = new THREE.InstancedMesh(geo, mat, recs.length);
-    recs.forEach((r, i) => {
-      dummy.position.set(r.x, r.y, r.z);
-      dummy.rotation.set(r.tilt[0], r.yaw, r.tilt[1]);
-      dummy.scale.setScalar(r.scale);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, tint.set(colourOf(r)));
-      aRoot[i * 3] = r.x; aRoot[i * 3 + 1] = r.y; aRoot[i * 3 + 2] = r.z;
-      aYawScale[i * 2] = r.yaw; aYawScale[i * 2 + 1] = r.scale;
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.layers.set(2); // own layer: out of the mirror AND the outline pass
-    mesh.userData.sprig = tag; // which biome signature this is (probes frame by it)
-    group.add(mesh);
+  // One instanced mesh per sprig kind PER WORLD CELL (plus flower heads). A
+  // single lap-wide mesh per kind had a map-sized bounding sphere, so every
+  // sprig on the loop was drawn from every camera; cells cull as a group. The
+  // card geometry is built fresh per batch — aRoot/aYawScale are per-instance
+  // attributes, so batches cannot share one geometry.
+  const GRASS_CELL = 160;
+  const addMesh = (geoFor, recs, colourOf, tag) => {
+    for (const chunk of chunkByCell(recs, GRASS_CELL)) {
+      const geo = geoFor();
+      const aRoot = new Float32Array(chunk.length * 3);
+      const aYawScale = new Float32Array(chunk.length * 2);
+      geo.setAttribute("aRoot", new THREE.InstancedBufferAttribute(aRoot, 3));
+      geo.setAttribute("aYawScale", new THREE.InstancedBufferAttribute(aYawScale, 2));
+      const mesh = new THREE.InstancedMesh(geo, mat, chunk.length);
+      chunk.forEach((r, i) => {
+        dummy.position.set(r.x, r.y, r.z);
+        dummy.rotation.set(r.tilt[0], r.yaw, r.tilt[1]);
+        dummy.scale.setScalar(r.scale);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i, dummy.matrix);
+        mesh.setColorAt(i, tint.set(colourOf(r)));
+        aRoot[i * 3] = r.x; aRoot[i * 3 + 1] = r.y; aRoot[i * 3 + 2] = r.z;
+        aYawScale[i * 2] = r.yaw; aYawScale[i * 2 + 1] = r.scale;
+      });
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // Tight sphere + headroom: the wind and bow-wave lean a tip out by up to
+      // ~half its height, and the tallest reeds stand ~3u.
+      fitInstanceBounds(mesh, 2.5);
+      mesh.layers.set(2); // own layer: out of the mirror AND the outline pass
+      mesh.userData.sprig = tag; // which biome signature this is (probes frame by it)
+      group.add(mesh);
+    }
   };
   for (const [kind, recs] of byKind) {
     if (!recs.length) continue;
-    addMesh(SPRIGS[kind].geo(), recs, (r) => r.tint, kind);
+    addMesh(SPRIGS[kind].geo, recs, (r) => r.tint, kind);
     // Flower heads: same roots, yaws and scales, so each head bends with its
     // own stem — but its own mesh, so its colour isn't multiplied by the
     // biome's green.
-    if (kind === "flower") addMesh(flowerHeadGeo(), recs, (r) => r.petal, "flower-head");
+    if (kind === "flower") addMesh(flowerHeadGeo, recs, (r) => r.petal, "flower-head");
   }
   scene.add(group);
   return group;
@@ -1373,9 +1457,55 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
     roughness: 1,
     flatShading: false, // smooth-shaded so the hills aren't stepped
   });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true;
-  scene.add(mesh);
+  // TILES. One 145k-vertex sheet is always partly in view, so every vertex of
+  // it went through the vertex + shadow-receive path from every camera. Cut it
+  // into an 8×8 grid of sub-meshes that SHARE the sheet's vertex buffers
+  // (positions/normals/colours are computed once above, so the shading stays
+  // seamless across tile edges) and carry only their own index + bounds, so a
+  // chase view culls the tiles behind and beside it. The bounds are set by
+  // hand from each tile's own vertex range — computeBoundingSphere would
+  // measure the shared position buffer and hand every tile the whole sheet.
+  const TILES = 8;
+  const tileBox = new THREE.Box3();
+  const tileV = new THREE.Vector3();
+  for (let tz = 0; tz < TILES; tz++) {
+    const iz0 = Math.floor((tz * SEG) / TILES), iz1 = Math.floor(((tz + 1) * SEG) / TILES);
+    for (let tx = 0; tx < TILES; tx++) {
+      const ix0 = Math.floor((tx * SEG) / TILES), ix1 = Math.floor(((tx + 1) * SEG) / TILES);
+      if (ix1 <= ix0 || iz1 <= iz0) continue;
+      const idx = [];
+      tileBox.makeEmpty();
+      for (let iz = iz0; iz < iz1; iz++) {
+        for (let ix = ix0; ix < ix1; ix++) {
+          // PlaneGeometry's own winding (indices are untouched by rotateX).
+          const a = ix + seg1 * iz;
+          const b = ix + seg1 * (iz + 1);
+          const c = ix + 1 + seg1 * (iz + 1);
+          const d = ix + 1 + seg1 * iz;
+          idx.push(a, b, d, b, c, d);
+        }
+      }
+      for (let iz = iz0; iz <= iz1; iz++) {
+        for (let ix = ix0; ix <= ix1; ix++) {
+          const v = iz * seg1 + ix;
+          tileBox.expandByPoint(tileV.set(pos.getX(v), pos.getY(v), pos.getZ(v)));
+        }
+      }
+      const tg = new THREE.BufferGeometry();
+      tg.setAttribute("position", pos);
+      tg.setAttribute("normal", geo.attributes.normal);
+      tg.setAttribute("color", geo.attributes.color);
+      tg.setAttribute("uv", geo.attributes.uv);
+      tg.setIndex(idx);
+      tg.boundingBox = tileBox.clone();
+      tg.boundingSphere = new THREE.Sphere();
+      tileBox.getBoundingSphere(tg.boundingSphere);
+      const mesh = new THREE.Mesh(tg, mat);
+      mesh.receiveShadow = true;
+      mesh.userData.terrainTile = true;
+      scene.add(mesh);
+    }
+  }
 }
 
 // Rock palette, snowline and SLOPE CHARACTER per biome. `snow` is the fraction
@@ -1703,13 +1833,27 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
       }
     }
   }
+  // Bake the ring into a few AZIMUTH SECTORS rather than one mesh. The ring
+  // surrounds every viewpoint, but a 62° camera only ever sees a couple of
+  // sectors of it — the rest (tens of thousands of triangles behind the
+  // camera) now culls instead of drawing every frame.
   if (peakGeos.length) {
-    const merged = new THREE.Mesh(mergeGeometries(peakGeos), rockMat);
-    merged.castShadow = false;
-    merged.receiveShadow = false;
-    merged.frustumCulled = false; // the ring surrounds every viewpoint anyway
-    merged.userData.mountains = peakInfo; // probes census + frame the range by this
-    scene.add(merged);
+    const SECTORS = 6;
+    const bySector = Array.from({ length: SECTORS }, () => []);
+    for (const g of peakGeos) {
+      g.computeBoundingSphere();
+      const c = g.boundingSphere.center;
+      const a = ((Math.atan2(c.z, c.x) / (Math.PI * 2)) + 1) % 1;
+      bySector[Math.min(SECTORS - 1, Math.floor(a * SECTORS))].push(g);
+    }
+    for (const geos of bySector) {
+      if (!geos.length) continue;
+      const merged = new THREE.Mesh(mergeGeometries(geos), rockMat);
+      merged.castShadow = false;
+      merged.receiveShadow = false;
+      merged.userData.mountains = peakInfo; // probes census + frame the range by this (the whole ring's list on every sector)
+      scene.add(merged);
+    }
   }
 }
 
@@ -2329,7 +2473,6 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
   // flattens to a firm lean instead of a thrash.
   foliageMat.userData.swayMaxStr = 1.45;
 
-  const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, spots.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3();
@@ -2345,8 +2488,10 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
     arr.push(spot);
   }
 
-  // Precompute each spot's trunk-top so trunk + canopy line up.
-  spots.forEach((spot, i) => {
+  // Precompute each spot's trunk-top so trunk + canopy line up. Every rand()
+  // for the batch is drawn here and in the per-shape colour pass below, in the
+  // original order, BEFORE the cell chunking reorders the uploads.
+  spots.forEach((spot) => {
     const { y, b } = spot;
     const shape = b.treeShape || "round";
     const sc = (0.8 + rand() * 1.4) * scaleMul;
@@ -2354,49 +2499,68 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
     spot._sc = sc;
     spot._yaw = rand() * Math.PI;
     spot._top = y + 3 * sc * hmul; // world Y of the trunk top (canopy base)
-    q.setFromAxisAngle(UP_Y, spot._yaw);
-    p.set(spot.x, y + 1.5 * sc * hmul, spot.z);
-    s.set(sc, sc * hmul, sc);
-    m.compose(p, q, s);
-    trunks.setMatrixAt(i, m);
+    spot._hmul = hmul;
   });
-  trunks.instanceMatrix.needsUpdate = true;
-  trunks.layers.set(1); // excluded from the rear-view mirror render
-  scene.add(trunks);
-
-  // One foliage mesh per shape. The canopy geometry is CLONED off the shared
-  // cache here because the wind bend needs per-instance data (aWindRoot) on it,
-  // and the cache hands the same geometry to every batch in the world.
-  for (const [shape, arr] of byShape) {
-    const geo = bakeBendWeights(foliageGeoFor(shape).clone());
-    const windRoot = new Float32Array(arr.length * 3);
-    geo.setAttribute("aWindRoot", new THREE.InstancedBufferAttribute(windRoot, 3));
-    const foliage = new THREE.InstancedMesh(geo, foliageMat, arr.length);
-    foliage.castShadow = true;
-    foliage.layers.set(1);
-    arr.forEach((spot, i) => {
-      windRoot[i * 3] = spot.x; // where it stands: the gust wave is sampled here
-      windRoot[i * 3 + 1] = spot.z;
-      windRoot[i * 3 + 2] = spot.b.sy * spot._sc; // its height scale, so the lean is a fraction of ITS height
-      const { b } = spot;
-      const sc = spot._sc;
+  // Trunks, one mesh per world cell (the shared brown trunk geometry needs no
+  // per-instance attributes, so the batches share it).
+  for (const chunk of chunkByCell(spots)) {
+    const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, chunk.length);
+    chunk.forEach((spot, i) => {
+      const sc = spot._sc, hmul = spot._hmul;
       q.setFromAxisAngle(UP_Y, spot._yaw);
-      p.set(spot.x, spot._top - 0.2 * sc, spot.z); // tiny overlap into the trunk top
-      // Per-biome width/height tweak still applies (sx/sy), keeping the old variety.
-      s.set(b.sx * sc, b.sy * sc, b.sx * sc);
+      p.set(spot.x, spot.y + 1.5 * sc * hmul, spot.z);
+      s.set(sc, sc * hmul, sc);
       m.compose(p, q, s);
-      foliage.setMatrixAt(i, m);
+      trunks.setMatrixAt(i, m);
+    });
+    trunks.instanceMatrix.needsUpdate = true;
+    fitInstanceBounds(trunks);
+    trunks.layers.set(1); // excluded from the rear-view mirror render
+    scene.add(trunks);
+  }
 
+  // Foliage: per shape (its own silhouette) and per world cell. The canopy
+  // geometry is CLONED off the shared cache for every batch because the wind
+  // bend needs per-instance data (aWindRoot) on it, and the cache hands the
+  // same geometry to every batch in the world.
+  for (const [shape, arr] of byShape) {
+    for (const spot of arr) {
+      const { b } = spot;
       let h = b.foliage[0];
       if (b.name === "autumn") h += (rand() - 0.5) * 0.12; // mix red/orange/gold
       else if (b.name === "blossom") h += (rand() - 0.5) * 0.04; // a little pink variance
       col.setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.86));
       if (b.name === "alpine") col.lerp(SNOW_WHITE, 0.45); // snow-dusted pines
-      foliage.setColorAt(i, col);
-    });
-    foliage.instanceMatrix.needsUpdate = true;
-    if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
-    scene.add(foliage);
+      spot._col = col.getHex();
+    }
+    for (const chunk of chunkByCell(arr)) {
+      const geo = bakeBendWeights(foliageGeoFor(shape).clone());
+      const windRoot = new Float32Array(chunk.length * 3);
+      geo.setAttribute("aWindRoot", new THREE.InstancedBufferAttribute(windRoot, 3));
+      const foliage = new THREE.InstancedMesh(geo, foliageMat, chunk.length);
+      foliage.castShadow = true;
+      foliage.layers.set(1);
+      chunk.forEach((spot, i) => {
+        windRoot[i * 3] = spot.x; // where it stands: the gust wave is sampled here
+        windRoot[i * 3 + 1] = spot.z;
+        windRoot[i * 3 + 2] = spot.b.sy * spot._sc; // its height scale, so the lean is a fraction of ITS height
+        const { b } = spot;
+        const sc = spot._sc;
+        q.setFromAxisAngle(UP_Y, spot._yaw);
+        p.set(spot.x, spot._top - 0.2 * sc, spot.z); // tiny overlap into the trunk top
+        // Per-biome width/height tweak still applies (sx/sy), keeping the old variety.
+        s.set(b.sx * sc, b.sy * sc, b.sx * sc);
+        m.compose(p, q, s);
+        foliage.setMatrixAt(i, m);
+        foliage.setColorAt(i, col.setHex(spot._col));
+      });
+      foliage.instanceMatrix.needsUpdate = true;
+      if (foliage.instanceColor) foliage.instanceColor.needsUpdate = true;
+      // Headroom for the wind lean: 0.12 of a crown's height, capped, on
+      // canopies up to ~20u (giants) — a few units covers the sway.
+      fitInstanceBounds(foliage, 4);
+      scene.add(foliage);
+    }
   }
 
   // Soft contact shadow under each tree — grounds them without the cost of a
@@ -2462,28 +2626,36 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   const bulbMat = new THREE.MeshStandardMaterial({
     color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 2.4 * level : 0.0, roughness: 0.4,
   });
-  const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.28, 0.4, POST_H, 7), postMat, spots.length);
-  const heads = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.95, 0.55, 0.7, 8), postMat, spots.length);
-  const bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.42, 10, 8), bulbMat, spots.length);
-  posts.castShadow = true;
-  heads.castShadow = true;
+  // One post/head/bulb mesh per world cell (see chunkByCell) — the geometries
+  // are shared, only the instance data is per batch.
+  const postGeo = new THREE.CylinderGeometry(0.28, 0.4, POST_H, 7);
+  const headGeo = new THREE.CylinderGeometry(0.95, 0.55, 0.7, 8);
+  const bulbGeo = new THREE.SphereGeometry(0.42, 10, 8);
   const m = new THREE.Matrix4();
   const ID = new THREE.Quaternion();
   const sc = new THREE.Vector3(1, 1, 1);
   const pos = new THREE.Vector3();
-  spots.forEach((sp, i) => {
-    pos.set(sp.x, sp.y + POST_H / 2, sp.z);
-    posts.setMatrixAt(i, m.compose(pos, ID, sc));
-    const hx = sp.x + sp.ax, hz = sp.z + sp.az; // head juts toward the road
-    pos.set(hx, sp.y + POST_H + 0.1, hz);
-    heads.setMatrixAt(i, m.compose(pos, ID, sc));
-    pos.set(hx, sp.y + POST_H - 0.35, hz);
-    bulbs.setMatrixAt(i, m.compose(pos, ID, sc));
-  });
-  for (const im of [posts, heads, bulbs]) {
-    im.instanceMatrix.needsUpdate = true;
-    im.layers.set(1); // out of the rear-view mirror render
-    scene.add(im);
+  for (const chunk of chunkByCell(spots)) {
+    const posts = new THREE.InstancedMesh(postGeo, postMat, chunk.length);
+    const heads = new THREE.InstancedMesh(headGeo, postMat, chunk.length);
+    const bulbs = new THREE.InstancedMesh(bulbGeo, bulbMat, chunk.length);
+    posts.castShadow = true;
+    heads.castShadow = true;
+    chunk.forEach((sp, i) => {
+      pos.set(sp.x, sp.y + POST_H / 2, sp.z);
+      posts.setMatrixAt(i, m.compose(pos, ID, sc));
+      const hx = sp.x + sp.ax, hz = sp.z + sp.az; // head juts toward the road
+      pos.set(hx, sp.y + POST_H + 0.1, hz);
+      heads.setMatrixAt(i, m.compose(pos, ID, sc));
+      pos.set(hx, sp.y + POST_H - 0.35, hz);
+      bulbs.setMatrixAt(i, m.compose(pos, ID, sc));
+    });
+    for (const im of [posts, heads, bulbs]) {
+      im.instanceMatrix.needsUpdate = true;
+      fitInstanceBounds(im);
+      im.layers.set(1); // out of the rear-view mirror render
+      scene.add(im);
+    }
   }
   if (!lit) return;
 
@@ -2581,22 +2753,29 @@ function buildRhythmPosts(scene, track, heightAt) {
 
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.8 });
   const capMat = new THREE.MeshStandardMaterial({ color: 0xd83a2f, roughness: 0.6 });
-  const bodies = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.13, 0.17, BODY_H, 6), bodyMat, spots.length);
-  const caps = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.14, CAP_H, 6), capMat, spots.length);
+  // Per world cell (see chunkByCell): the posts beat all the way round the
+  // lap, so one mesh could never cull.
+  const bodyGeo = new THREE.CylinderGeometry(0.13, 0.17, BODY_H, 6);
+  const capGeo = new THREE.CylinderGeometry(0.15, 0.14, CAP_H, 6);
   const m = new THREE.Matrix4();
   const ID = new THREE.Quaternion();
   const sc = new THREE.Vector3(1, 1, 1);
   const pos = new THREE.Vector3();
-  spots.forEach((sp, i) => {
-    pos.set(sp.x, sp.y + BODY_H / 2, sp.z);
-    bodies.setMatrixAt(i, m.compose(pos, ID, sc));
-    pos.set(sp.x, sp.y + BODY_H + CAP_H / 2 - 0.02, sp.z);
-    caps.setMatrixAt(i, m.compose(pos, ID, sc));
-  });
-  for (const im of [bodies, caps]) {
-    im.instanceMatrix.needsUpdate = true;
-    im.layers.set(1); // out of the rear-view mirror render (same as the lamps)
-    scene.add(im);
+  for (const chunk of chunkByCell(spots)) {
+    const bodies = new THREE.InstancedMesh(bodyGeo, bodyMat, chunk.length);
+    const caps = new THREE.InstancedMesh(capGeo, capMat, chunk.length);
+    chunk.forEach((sp, i) => {
+      pos.set(sp.x, sp.y + BODY_H / 2, sp.z);
+      bodies.setMatrixAt(i, m.compose(pos, ID, sc));
+      pos.set(sp.x, sp.y + BODY_H + CAP_H / 2 - 0.02, sp.z);
+      caps.setMatrixAt(i, m.compose(pos, ID, sc));
+    });
+    for (const im of [bodies, caps]) {
+      im.instanceMatrix.needsUpdate = true;
+      fitInstanceBounds(im);
+      im.layers.set(1); // out of the rear-view mirror render (same as the lamps)
+      scene.add(im);
+    }
   }
 }
 
@@ -3289,21 +3468,24 @@ function buildBlobShadows(scene, discs) {
     polygonOffset: true,
     polygonOffsetFactor: -2,
   });
-  const mesh = new THREE.InstancedMesh(geo, mat, discs.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3();
   const p = new THREE.Vector3();
-  discs.forEach((d, i) => {
-    p.set(d.x, d.y + 0.06, d.z); // just above the ground to avoid z-fighting
-    s.set(d.r * 2, 1, d.r * 2);
-    m.compose(p, q, s);
-    mesh.setMatrixAt(i, m);
-  });
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.renderOrder = 1; // draw over the ground, under the trees
-  mesh.layers.set(1); // match the trees: excluded from the mirror render
-  scene.add(mesh);
+  for (const chunk of chunkByCell(discs)) { // per world cell, like the trees they sit under
+    const mesh = new THREE.InstancedMesh(geo, mat, chunk.length);
+    chunk.forEach((d, i) => {
+      p.set(d.x, d.y + 0.06, d.z); // just above the ground to avoid z-fighting
+      s.set(d.r * 2, 1, d.r * 2);
+      m.compose(p, q, s);
+      mesh.setMatrixAt(i, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    fitInstanceBounds(mesh);
+    mesh.renderOrder = 1; // draw over the ground, under the trees
+    mesh.layers.set(1); // match the trees: excluded from the mirror render
+    scene.add(mesh);
+  }
 }
 
 // Desert cacti: a saguaro built once and instanced.
@@ -3397,23 +3579,32 @@ function buildRocks(scene, track, heightAt, flatten) {
   const spots = scatter(140, track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
   const geo = new THREE.IcosahedronGeometry(1, 1);
   const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1 });
-  const rocks = new THREE.InstancedMesh(geo, mat, spots.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const p = new THREE.Vector3();
   const s = new THREE.Vector3();
-  spots.forEach((spot, i) => {
-    const y = heightAt(spot.x, spot.z);
-    const sc = 1 + rand() * 3;
-    q.setFromEuler(new THREE.Euler(rand() * 3, rand() * 3, rand() * 3));
-    p.set(spot.x, y + sc * 0.4, spot.z);
-    s.set(sc, sc * 0.8, sc);
-    m.compose(p, q, s);
-    rocks.setMatrixAt(i, m);
-  });
-  rocks.instanceMatrix.needsUpdate = true;
-  rocks.layers.set(1); // excluded from the rear-view mirror render
-  scene.add(rocks);
+  // Draw every rock's randoms in order first; the cell chunking below only
+  // decides which mesh each already-shaped rock is uploaded into.
+  for (const spot of spots) {
+    spot.y = heightAt(spot.x, spot.z);
+    spot.sc = 1 + rand() * 3;
+    spot.rot = [rand() * 3, rand() * 3, rand() * 3];
+  }
+  for (const chunk of chunkByCell(spots, 320)) { // sparse: wider cells keep the draw count down
+    const rocks = new THREE.InstancedMesh(geo, mat, chunk.length);
+    chunk.forEach((spot, i) => {
+      const sc = spot.sc;
+      q.setFromEuler(new THREE.Euler(spot.rot[0], spot.rot[1], spot.rot[2]));
+      p.set(spot.x, spot.y + sc * 0.4, spot.z);
+      s.set(sc, sc * 0.8, sc);
+      m.compose(p, q, s);
+      rocks.setMatrixAt(i, m);
+    });
+    rocks.instanceMatrix.needsUpdate = true;
+    fitInstanceBounds(rocks);
+    rocks.layers.set(1); // excluded from the rear-view mirror render
+    scene.add(rocks);
+  }
 }
 
 function buildTown(scene, track, heightAt) {
