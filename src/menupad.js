@@ -9,6 +9,10 @@
 // already pauses/resumes). Focus is spatial — d-pad/stick moves to the
 // nearest visible button in that direction — so new screens work without
 // registering anything.
+//
+// The keyboard rides the same ring: main.js routes the arrow keys + Enter
+// through keyNav()/keyActivate() so a keyboard-only player (a Deck in desktop
+// mode, a laptop with no mouse) gets the same spatial navigation as a pad.
 export class MenuPad {
   constructor() {
     this._prev = []; // last frame's button states (edge detection)
@@ -16,6 +20,9 @@ export class MenuPad {
     this._scopeEl = null; // container the focus lives in
     this._repeatAt = 0; // performance.now() gate for held-direction repeat
     this._heldDir = null; // which direction is being held (repeat resets on change)
+    this._kb = false; // the ring was last placed by the keyboard (survives pad-less frames)
+    this.hasPad = false; // a connected pad was seen this frame (drives the "Press A" copy + legend)
+    this.active = false; // a navigable surface is up this frame (menu or sheet)
   }
 
   update() {
@@ -24,7 +31,18 @@ export class MenuPad {
     for (const p of raw) {
       if (p && p.connected && p.buttons?.length) pads.push(p);
     }
-    if (!pads.length) { this._prev.length = 0; this._setFocus(null); return; }
+    this.hasPad = pads.length > 0;
+    this.active = !!this._scope();
+    if (!pads.length) {
+      this._prev.length = 0;
+      // No pad: the ring only lives on if the KEYBOARD placed it, and only
+      // while it still points at a live control on the same screen — a
+      // screen change drops it until the next arrow key re-seats.
+      if (!this._kb || !this._focus || !this._valid(this._focus) || this._scope() !== this._scopeEl) {
+        this._setFocus(null);
+      }
+      return;
+    }
     // EVERY connected pad drives the menus, not just the first: on a couch,
     // players 2-4 must be able to move the ring on their own seat pass (and
     // hit Start) without the "pass pad #1 around" ritual. Buttons OR
@@ -55,6 +73,7 @@ export class MenuPad {
       this._commit(pad);
       return;
     }
+    this._kb = false;
     if (scope !== this._scopeEl) {
       // New screen/sheet: seat the ring straight onto its primary action —
       // with a pad plugged in (the only way this code runs) the player should
@@ -78,6 +97,13 @@ export class MenuPad {
       else this._seatDefault(scope);
     }
 
+    // Y opens Settings and Select (back/view) the Cat-alog from any flow
+    // screen — the chrome chips ride the top-right corner and are also in
+    // the spatial candidates, but a dedicated button means nobody has to
+    // hunt for them. Only on the flow: a sheet already up owns Y/Select.
+    if (down(3)) this._shortcut(scope, "chrome-gear", "open-settings");
+    if (down(8)) this._shortcut(scope, "chrome-treats", "open-catalog");
+
     // Direction: d-pad, or the left stick past a firm threshold. Held input
     // repeats slowly (350ms first step, 160ms after) so lists are scrollable
     // without skipping.
@@ -99,6 +125,42 @@ export class MenuPad {
     this._heldDir = dir;
 
     this._commit(pad);
+  }
+
+  // Keyboard spatial nav (main.js calls these from its keydown handler). Both
+  // return true when the key was consumed, so the caller can preventDefault
+  // (arrow keys would otherwise scroll the flow body). Inert during play.
+  keyNav(dir) {
+    const scope = this._scope();
+    if (!scope) return false;
+    this._kb = true;
+    if (scope !== this._scopeEl || !this._focus || !this._valid(this._focus)) {
+      // First arrow on a screen shows where the ring is rather than jumping
+      // past the primary action — the same "seat first" rule the pad uses.
+      this._scopeEl = scope;
+      this._seatDefault(scope);
+      return true;
+    }
+    this._move(dir, scope);
+    return true;
+  }
+  keyActivate() {
+    const scope = this._scope();
+    if (!scope || !this._focus || !this._valid(this._focus)) return false;
+    this._activate(this._focus);
+    return true;
+  }
+
+  _shortcut(scope, chromeId, flowId) {
+    if (!scope.classList.contains("flow-screen") && scope.id !== "menu") return;
+    for (const id of [chromeId, flowId]) {
+      const el = document.getElementById(id);
+      if (!el || el.classList.contains("hidden")) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4) continue;
+      el.click();
+      return;
+    }
   }
 
   _merge(pads) {
@@ -126,12 +188,10 @@ export class MenuPad {
   // The surface the pad should navigate right now, or null during play.
   // Topmost visible overlay wins — the sheets (settings/catalog/track-panel)
   // come after pause/results in the DOM, matching their stacking — then the
-  // active flow screen of the menu. #rotate is a passive prompt, never focus.
+  // active flow screen of the menu.
   _scope() {
     let top = null;
-    for (const o of document.querySelectorAll(".overlay:not(.hidden)")) {
-      if (o.id !== "rotate") top = o;
-    }
+    for (const o of document.querySelectorAll(".overlay:not(.hidden)")) top = o;
     if (top) return top;
     const menu = document.getElementById("menu");
     if (menu && !menu.classList.contains("hidden")) {
@@ -140,21 +200,40 @@ export class MenuPad {
     return null;
   }
 
+  // The persistent menu chrome (🐟 balance + ⚙ gear) floats OUTSIDE the flow
+  // screens but belongs to whichever flow step is up — fold it into that
+  // step's candidates so the pad can reach prices' balance and Settings.
+  _chrome(scope) {
+    if (!scope.classList.contains("flow-screen")) return null;
+    const c = document.getElementById("menu-chrome");
+    return c && !c.classList.contains("hidden") ? c : null;
+  }
+
   _valid(el) {
     if (!el.isConnected || el.disabled || el.classList.contains("hidden")) return false;
-    if (this._scopeEl && !this._scopeEl.contains(el)) return false;
+    if (this._scopeEl && !this._scopeEl.contains(el)) {
+      const chrome = this._chrome(this._scopeEl);
+      if (!chrome || !chrome.contains(el)) return false;
+    }
     const r = el.getBoundingClientRect();
     return r.width > 3 && r.height > 3;
   }
 
+  // Everything the ring may land on: buttons, plus range sliders (which A
+  // leaves alone — left/right nudge them instead, see _move).
   _candidates(scope) {
     const out = [];
-    for (const el of scope.querySelectorAll("button")) {
-      if (el.disabled || el.classList.contains("hidden")) continue;
-      const r = el.getBoundingClientRect();
-      if (r.width < 4 || r.height < 4) continue; // display:none/collapsed
-      out.push({ el, r });
-    }
+    const collect = (root) => {
+      for (const el of root.querySelectorAll("button, input[type=range]")) {
+        if (el.disabled || el.classList.contains("hidden")) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width < 4 || r.height < 4) continue; // display:none/collapsed
+        out.push({ el, r });
+      }
+    };
+    collect(scope);
+    const chrome = this._chrome(scope);
+    if (chrome) collect(chrome);
     return out;
   }
 
@@ -167,9 +246,10 @@ export class MenuPad {
     if (!cands.length) { this._setFocus(null); return; }
     const isChrome = (el) =>
       el.classList.contains("flow-back") || el.hasAttribute("data-back") ||
-      /(^|-)(back|close)($|-)/.test(el.id);
+      /(^|-)(back|close)($|-)/.test(el.id) || el.closest("#menu-chrome");
     const pick =
       cands.find((c) => c.el.classList.contains("btn-gold")) ||
+      cands.find((c) => !isChrome(c.el) && c.el.tagName === "BUTTON") ||
       cands.find((c) => !isChrome(c.el)) ||
       cands[0];
     this._setFocus(pick.el);
@@ -177,6 +257,12 @@ export class MenuPad {
 
   // Move the ring spatially from the current element.
   _move(dir, scope) {
+    // A ringed slider eats left/right: nudge by 5% of its range and fire the
+    // same input/change events a drag would, so the volume/knob handlers run.
+    if (this._focus && this._focus.type === "range" && (dir === "left" || dir === "right")) {
+      this._nudge(this._focus, dir === "left" ? -1 : 1);
+      return;
+    }
     const cands = this._candidates(scope);
     if (!cands.length) return;
     const cur = this._focus && this._valid(this._focus)
@@ -208,6 +294,17 @@ export class MenuPad {
       }
     }
     if (next) this._setFocus(next);
+  }
+
+  _nudge(range, sign) {
+    const min = Number(range.min) || 0;
+    const max = Number(range.max) || 100;
+    const step = Math.max(Number(range.step) || 1, (max - min) * 0.05);
+    const v = Math.min(max, Math.max(min, Number(range.value) + sign * step));
+    if (v === Number(range.value)) return;
+    range.value = String(Math.round(v));
+    range.dispatchEvent(new Event("input", { bubbles: true }));
+    range.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
   _setFocus(el) {
@@ -246,6 +343,7 @@ export class MenuPad {
   }
 
   _activate(el) {
+    if (el.type === "range") return; // sliders are driven by left/right, A is a no-op
     el.click();
     // The click usually changes the screen; the ring re-seats on next input.
     if (!this._valid(el)) this._setFocus(null);

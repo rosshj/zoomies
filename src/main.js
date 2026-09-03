@@ -781,6 +781,7 @@ const SPLIT_FINISH_GRACE = 30;
 let _splitGrace = null;
 let _splitGrace10 = false;
 window.__zoomies.split = () => ({ active: splitActive, p2: !!player2, count: splitPlayers.length, grace: _splitGrace }); // debug hook
+window.__zoomies.state = () => state; // debug hook (menupad check asserts pause/resume around sheets)
 window.__zoomies.debugGrace = (s) => { if (_splitGrace !== null) _splitGrace = s; }; // headless check fast-forwards the finish grace
 window.__zoomies.splitCams = () => (_sCams.length ? { c1: _sCams[0].camera, c2: _sCams[1]?.camera, cams: _sCams.map((c) => c.camera) } : null); // debug hook
 
@@ -1201,10 +1202,9 @@ let ttGhost = null; // { samples, n, cursor } currently being replayed
 let _ghostGroup = null; // the translucent ghost kart in the scene
 
 // --- Stage / orientation ---
-// We render at the true viewport size (no CSS rotation — that caused cutoff and
-// gaps on iOS) and show a "rotate to landscape" prompt when held in portrait.
+// We render at the true viewport size and counter-rotate the stage so the game
+// always presents in landscape (there is no "rotate your phone" prompt).
 const stage = document.getElementById("stage");
-const rotateEl = document.getElementById("rotate");
 const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
 
@@ -1223,7 +1223,6 @@ function layoutStage() {
   const W = Math.max(iw, ih);
   const H = Math.min(iw, ih);
   stageState = { iw, ih, W, H, rot };
-  rotateEl.classList.add("hidden"); // forced landscape — never prompt
 
   stage.style.width = W + "px";
   stage.style.height = H + "px";
@@ -2082,6 +2081,10 @@ function lockLandscape() {
   }
 }
 function enterFullscreenLandscape() {
+  // The desktop shell owns fullscreen (F11 / the Settings toggle / the Deck
+  // launch flag): a requestFullscreen from the page fights it — and there is
+  // no orientation to lock on a monitor.
+  if (window.zoomiesDesktop) return;
   const el = document.documentElement;
   const req = el.requestFullscreen || el.webkitRequestFullscreen;
   try {
@@ -2097,8 +2100,14 @@ function enterFullscreenLandscape() {
 
 // --- Pause wiring ---
 const pauseOverlay = document.getElementById("pause-overlay");
+// The countdown can pause too (Start/P/the ⏸ button during the 3-2-1) — but
+// not while the race veil still covers the stage: the veil sits above the
+// pause card and only the COUNTDOWN block drops it. Resume returns to
+// whichever state was frozen.
+let _pausedFrom = State.RACING;
 function pauseGame() {
-  if (state !== State.RACING) return;
+  if (state !== State.RACING && !(state === State.COUNTDOWN && !_veilActive)) return;
+  _pausedFrom = state;
   state = State.PAUSED;
   audio.stopEngine();
   audio.setSkid(false);
@@ -2107,8 +2116,9 @@ function pauseGame() {
 function resumeGame() {
   if (state !== State.PAUSED) return;
   pauseOverlay.classList.add("hidden");
-  audio.startEngine();
-  state = State.RACING;
+  if (_pausedFrom === State.RACING) audio.startEngine();
+  state = _pausedFrom;
+  _pausedFrom = State.RACING;
 }
 
 // --- Track viewer (fly camera) ---------------------------------------------
@@ -2405,7 +2415,10 @@ function toMenu() {
   // Opening the menu mid-race parks it (so START is a fresh race but you can also
   // Resume). Reaching the menu from results clears any parked race.
   hideFlyUI(); // safety: never leave the fly-cam chrome up over the menu
-  _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished;
+  // A Versus race is never parked: its seats, cameras and input scoping are
+  // torn down below, so "Resume race" would come back to a half-wired couch.
+  // Leaving it is leaving it — same as a finished race.
+  _raceParked = (state === State.PAUSED || state === State.RACING) && !!player && !player.finished && !splitActive;
   pauseOverlay.classList.add("hidden");
   document.getElementById("hud").classList.add("hidden");
   document.getElementById("results").classList.add("hidden");
@@ -3096,6 +3109,39 @@ const howtoOverlay = document.getElementById("howto");
 document.getElementById("howto-btn")?.addEventListener("click", () => openSubScreen(howtoOverlay));
 document.getElementById("howto-back")?.addEventListener("click", () => closeSubScreen(howtoOverlay));
 
+// --- Which input is in the player's hands ---------------------------------
+// Drives three surfaces from one answer, refreshed once per frame (change-
+// gated, so it's a couple of comparisons):
+//  · the touch HUD (#throttle / #action-buttons / #steer) shows only where a
+//    finger can use it — a coarse pointer, or a touch already seen — and
+//    never while a pad is driving; #btn-pause always stays.
+//  · the controller legend strip while a pad drives a menu surface.
+//  · the How to Play cards: pad → keyboard → touch.
+const _coarsePointer = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
+let _touchSeen = false;
+window.addEventListener("touchstart", () => { _touchSeen = true; }, { passive: true, capture: true });
+let _padSeen = false; // a pad has driven something this session (hides the touch HUD)
+const _inputUI = { touchHud: null, legend: null, howto: "" };
+function refreshInputSurfaces() {
+  if (menupad.hasPad) _padSeen = true;
+  const touchHud = (_coarsePointer || _touchSeen) && !(_padSeen && !_touchSeen);
+  if (touchHud !== _inputUI.touchHud) {
+    _inputUI.touchHud = touchHud;
+    document.getElementById("hud")?.classList.toggle("no-touch", !touchHud);
+  }
+  const legend = menupad.hasPad && menupad.active;
+  if (legend !== _inputUI.legend) {
+    _inputUI.legend = legend;
+    document.getElementById("pad-legend")?.classList.toggle("hidden", !legend);
+  }
+  const how = menupad.hasPad ? "pad" : (_touchSeen || _coarsePointer) && !window.zoomiesDesktop ? "touch" : "keyboard";
+  if (how !== _inputUI.howto) {
+    _inputUI.howto = how;
+    for (const g of howtoOverlay?.querySelectorAll(".how-grid") || []) g.classList.toggle("hidden", g.dataset.input !== how);
+  }
+}
+refreshInputSurfaces();
+
 // --- Add to Home Screen ---
 // Chromium fires `beforeinstallprompt`, which we stash and replay from the
 // button to show the native install dialog. iOS has no such API, so there the
@@ -3116,8 +3162,11 @@ const _isIOS =
 // suppressed inside the app. In Safari this is false, so the browser keeps the
 // existing Add-to-Home-Screen prompt/gate unchanged.
 const _isNativeApp = isNativePlatform();
+// The desktop (Electron) shell is likewise already "the app" — never gate it
+// behind Add to Home Screen.
 const _isStandalone =
   _isNativeApp ||
+  !!window.zoomiesDesktop ||
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
@@ -3485,8 +3534,12 @@ function buildGaragePreview() {
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
 const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Cage"];
-const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel"];
-const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl"];
+// 24 curated names each: the studios' Surprise-me pool AND the pad-friendly
+// name picker's grid (a text field has no on-screen keyboard on a controller).
+const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel", "Luna", "Oreo",
+  "Peanut", "Nacho", "Boots", "Sushi", "Muffin", "Toffee", "Olive", "Maple", "Sprout", "Truffle", "Widget", "Dumpling"];
+const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl", "Nitro", "Vortex",
+  "Jet", "Streak", "Zoom", "Rumble", "Thunder", "Flash", "Meteor", "Skitter", "Sprocket", "Piston", "Drifter", "Tornado"];
 const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
 const _cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -3830,6 +3883,46 @@ document.getElementById("kart-randomize")?.addEventListener("click", () => editC
   color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
+// Name picker (both studios): "✏️ Pick" swaps the creator for a grid of the
+// curated names — every one a <button>, so the pad's ring walks it — plus
+// Random and Close. Picking a name writes it through the same edit path as
+// typing. Esc/B closes it before backing out of the studio.
+function _wireNamePicker(which, names, apply) {
+  const card = document.getElementById(`flow-${which}-edit`)?.querySelector(".racer-card");
+  const picker = document.getElementById(`${which}-name-picker`);
+  const grid = document.getElementById(`${which}-name-grid`);
+  if (!card || !picker || !grid) return;
+  const close = () => { picker.classList.add("hidden"); card.classList.remove("picking-name"); };
+  const open = () => {
+    const cur = document.getElementById(`${which}-custom-name`)?.value || "";
+    grid.replaceChildren();
+    for (const n of names) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = n;
+      b.classList.toggle("is-active", n === cur);
+      b.addEventListener("click", () => { apply(n); close(); });
+      grid.appendChild(b);
+    }
+    picker.classList.remove("hidden");
+    card.classList.add("picking-name");
+    uiCue("bloom");
+  };
+  document.getElementById(`${which}-name-pick`)?.addEventListener("click", open);
+  document.getElementById(`${which}-name-close`)?.addEventListener("click", close);
+  document.getElementById(`${which}-name-random`)?.addEventListener("click", () => { apply(_pick(names)); close(); });
+  _namePickers.push(close);
+}
+const _namePickers = [];
+function closeNamePicker() {
+  const open = document.querySelector(".racer-card.picking-name");
+  if (!open) return false;
+  for (const close of _namePickers) close();
+  return true;
+}
+_wireNamePicker("cat", CUSTOM_CAT_NAMES, (name) => editCustomCat({ name }, false));
+_wireNamePicker("kart", CUSTOM_KART_NAMES, (name) => editCustomKart({ name }, false));
+
 // --- Racer grids: one card per cat/kart (real catalog renders), doors that
 // advance. Locked priced cards buy in place with a tap-again confirm; cup and
 // difficulty prizes shake and say how to win them. ---
@@ -3989,9 +4082,9 @@ function commitRacer() {
 // Versus labels whose racer is being picked on each pass.
 function refreshRacerEyebrows() {
   const c = document.getElementById("cat-eyebrow");
-  if (c) c.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your cat` : raceMode === "split" ? "Player 1 · Step 3 of 4" : "Step 3 of 4";
+  if (c) c.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your cat` : raceMode === "split" ? "Player 1 · Step 3 of 5" : "Step 3 of 5";
   const k = document.getElementById("kart-eyebrow");
-  if (k) k.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your kart` : raceMode === "split" ? "Player 1 · Step 4 of 4" : "Step 4 of 4";
+  if (k) k.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your kart` : raceMode === "split" ? "Player 1 · Step 4 of 5" : "Step 4 of 5";
 }
 // Studio actions: Unlock buys the creator; Use adopts the design and rolls on.
 for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
@@ -4055,11 +4148,36 @@ if (indicatorBtn)
 applyIndicator();
 window.addEventListener("keydown", (e) => {
   if (e.code === "Escape" || e.code === "KeyP") {
-    if (state === State.RACING) pauseGame();
+    // A sheet up over ANY state closes first: Settings opened from the pause
+    // card used to fall through to "paused → resume", un-pausing the race
+    // behind the still-open sheet.
+    if (escCloseTopScreen()) return;
+    if (state === State.RACING || state === State.COUNTDOWN) pauseGame();
     else if (state === State.PAUSED) resumeGame();
     else if (state === State.FLYVIEW) exitFlyView();
-    // Esc walks back out: topmost sheet first, then one flow step.
-    else if (e.code === "Escape" && !escCloseTopScreen()) flowBack();
+    else if (state === State.FINISHED) {
+      // Results: B / Esc / Start leave for the menu the same way the Main
+      // Menu button does (through the badge-claim interstitial). On the claim
+      // screen the first press collects every badge, the next continues.
+      // During the victory lap (results not up yet) there's nothing to do.
+      if (claimScreenBack()) return;
+      const results = document.getElementById("results");
+      if (results && !results.classList.contains("hidden")) document.getElementById("results-menu-btn")?.click();
+    }
+    // Esc walks back out: the name picker, then one flow step.
+    else if (e.code === "Escape" && !closeNamePicker()) flowBack();
+    return;
+  }
+  // Keyboard spatial navigation on every menu surface: arrows move the pad's
+  // ring, Enter presses it (Tab still works). Typing fields and sliders keep
+  // their own arrow keys, and a Tab-focused button keeps native Enter.
+  const t = e.target;
+  const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+  const dir = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" }[e.code];
+  if (dir && !typing && (state === State.MENU || state === State.PAUSED || state === State.FINISHED)) {
+    if (menupad.keyNav(dir)) { e.preventDefault(); if (t instanceof Element && t !== document.body) t.blur(); }
+  } else if (e.code === "Enter" && !typing && !(t && t.tagName === "BUTTON") && state !== State.RACING && state !== State.COUNTDOWN) {
+    if (menupad.keyActivate()) e.preventDefault();
   }
 });
 
@@ -4156,7 +4274,20 @@ function flowGo(step, dir = 1, instant = false) {
     menuFlowEl.dataset.step = step;
   }
   refreshMenuChrome();
+  refreshScrollHint();
+  if (changing) setTimeout(refreshScrollHint, 500); // after the slide has landed
 }
+// "More below" fade + chevron on the active flow screen while its body can
+// still scroll down (the cat/kart grids past row three, the 4P lobby…).
+function refreshScrollHint() {
+  const scr = document.getElementById("flow-" + flowStep);
+  const body = scr?.querySelector(".flow-body");
+  if (!scr || !body) return;
+  const more = body.scrollHeight > body.clientHeight + 4 && body.scrollTop < body.scrollHeight - body.clientHeight - 4;
+  scr.classList.toggle("can-scroll", more);
+}
+for (const body of menuFlowEl.querySelectorAll(".flow-body")) body.addEventListener("scroll", refreshScrollHint, { passive: true });
+window.addEventListener("resize", () => setTimeout(refreshScrollHint, 60));
 // Back is always the same edge: one step toward the title. The racer's back
 // depends on how you got there.
 function flowBack() {
@@ -4195,9 +4326,16 @@ function refreshTitlePlay() {
   if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
   else startBtn.textContent = "▶  Let's Go!";
 }
+// A returning player (a saved mode + a saved racer) lands straight on the
+// start line — its Edit links (racer, map) and Back still reach every step,
+// so the full flow is one tap away instead of five taps in the way.
+function hasSavedSetup() {
+  try { return !!localStorage.getItem(MODE_KEY) && !!localStorage.getItem(GARAGE_KEY); } catch { return false; }
+}
 startBtn?.addEventListener("click", () => {
   audio.unlock(); // the opening tap doubles as the audio unlock
   if (raceMode === "cup" && _cupState && _activeCup) { flowGo("startline"); return; }
+  if (hasSavedSetup() && !_dailyActive) { flowGo("startline"); return; }
   flowGo("mode");
 });
 
@@ -4253,7 +4391,8 @@ function renderTrackCards() {
   grid.replaceChildren();
   const addCard = (name, sub, cfg, current) => {
     const b = document.createElement("button");
-    b.className = "tap-card track-tap";
+    b.className = "tap-card track-tap" + (current ? " is-current" : "");
+    if (current) b.setAttribute("aria-current", "true");
     const shot = document.createElement("span");
     shot.className = "track-shot";
     const canvas = document.createElement("canvas");
@@ -4448,6 +4587,8 @@ function refreshStartline() {
       const pb = loadTimeTrial()[0];
       txt = pb ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
         : "⏱ One flying lap against the clock — set your first PB!";
+    } else if (raceMode === "split") {
+      txt = "🛋️ Versus is for bragging rights — no treats.";
     }
     note.textContent = txt;
     note.classList.toggle("hidden", !txt);
@@ -4474,10 +4615,29 @@ document.getElementById("go-btn")?.addEventListener("click", () => {
 // controls note for an invisible mode only raise questions.
 if (window.zoomiesDesktop) {
   document.getElementById("mode-split")?.classList.remove("hidden");
+  // Desktop copy + layout: the Graphics note talks GPUs, not phones; the
+  // touch line, Compatibility mode (the shell pins WebGL2), the tilt debug
+  // toggle and the pause card's tilt bar have no meaning without a phone.
+  const qn = document.getElementById("quality-note");
+  if (qn) qn.innerHTML = "<b>Low</b> — integrated GPUs and older laptops (simplest effects, bare verges). <b>Balanced</b> — most laptops / Steam Deck: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — gaming laptops / desktops (full effects, 60fps). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)";
+  for (const id of ["touch-controls-note", "compat-row", "compat-note", "tilt-row", "indicator-btn"]) {
+    document.getElementById(id)?.classList.add("hidden");
+  }
 } else {
   for (const id of ["splitfx-row", "splitfx-note", "versus-controls-note"]) {
     document.getElementById(id)?.classList.add("hidden");
   }
+}
+// The Controls card's button maps hide behind "Show controls" (four dense
+// paragraphs for everyone, every time, was the sheet's wall of text).
+{
+  const t = document.getElementById("controls-toggle");
+  const box = document.getElementById("controls-notes");
+  t?.addEventListener("click", () => {
+    const open = box.classList.toggle("hidden") === false;
+    t.textContent = open ? "Hide controls ▾" : "Show controls ▸";
+    t.setAttribute("aria-expanded", String(open));
+  });
 }
 applyModeUI();
 refreshRaceOptSegs();
@@ -4633,7 +4793,10 @@ function refreshMenuMapCycle() {
   const paint = () => {
     const race = cupDef.races[_mapCycleIdx % cupDef.races.length];
     paintTrackMap(canvas, previewLoopPoints(race.cfg));
-    if (label) label.textContent = `${cupDef.emoji} ${cupDef.name} · Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`;
+    // Two lines on the small chip: the cup's name, then which race is showing.
+    if (label) label.replaceChildren(
+      `${cupDef.emoji} ${cupDef.name}`, document.createElement("br"),
+      `Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`);
   };
   paint();
   canvas.style.opacity = "1";
@@ -4728,11 +4891,15 @@ function showClaimScreen(onDone) {
   if (!scr || !list || !cont) { onDone(); return; }
   list.innerHTML = "";
   cont.classList.add("hidden");
+  // Pad players press A, not "TAP!" — the copy follows the input in hand.
+  const pad = menupad.hasPad;
+  const sub = document.getElementById("claim-sub");
+  if (sub) sub.textContent = pad ? "Press Ⓐ on each badge to collect its treats 🐟" : "Tap each badge to collect its treats 🐟";
   for (const a of pending) {
     const card = document.createElement("button");
     card.type = "button";
     card.className = "claim-card";
-    card.innerHTML = `<span class="claim-medal">🏅</span><span class="claim-text"><span class="claim-name">${a.name}</span><span class="claim-desc">${a.desc}</span></span><span class="claim-cta">TAP! +${a.pay}</span>`;
+    card.innerHTML = `<span class="claim-medal">🏅</span><span class="claim-text"><span class="claim-name">${a.name}</span><span class="claim-desc">${a.desc}</span></span><span class="claim-cta">${pad ? "Press Ⓐ" : "TAP!"} +${a.pay}</span>`;
     card.addEventListener("click", () => {
       const paid = claimAchievement(profile, a.id);
       if (!paid) return;
@@ -4751,8 +4918,21 @@ function showClaimScreen(onDone) {
   scr.classList.remove("hidden");
   uiCue("chime"); // gentle "you've got badges" attention
 }
+// B / Esc on the claim interstitial: the first press collects EVERY waiting
+// badge (nobody's treats get skipped by backing out), the next one continues.
+function claimScreenBack() {
+  const scr = document.getElementById("claim-screen");
+  if (!scr || scr.classList.contains("hidden")) return false;
+  const waiting = [...scr.querySelectorAll(".claim-card:not(.claimed)")];
+  if (waiting.length) { for (const c of waiting) c.click(); return true; }
+  document.getElementById("claim-continue")?.click();
+  return true;
+}
 function prizeTile(id, name, colorHex, how, owned) {
-  const d = document.createElement("div");
+  // A <button>, so the pad's ring (menupad.js: buttons + sliders) can reach
+  // the till; the confirm's ✓/✕ inside are buttons too and stop propagation.
+  const d = document.createElement("button");
+  d.type = "button";
   d.className = "prize-tile" + (owned ? " owned" : "")
     + (id.startsWith("kart.") || id === "custom.kart" ? " wide" : "");
   // Real render of the prize (tools/catalog-shots.mjs). If a shot is missing,
@@ -4885,20 +5065,33 @@ document.getElementById("open-catalog")?.addEventListener("click", () => {
 });
 document.getElementById("catalog-back")?.addEventListener("click", () => closeSubScreen(catalogEl));
 
-// Backup: the whole profile as a copy-paste code (Settings → Progress).
+// Backup: the whole profile as a copy-paste code (Settings → Progress). The
+// code lives in an in-sheet field — window.prompt() throws in Electron, and a
+// field also gives keyboard players somewhere to paste by hand.
+const backupField = document.getElementById("backup-code");
+const backupNote = document.getElementById("backup-note");
 document.getElementById("backup-copy")?.addEventListener("click", async () => {
   const tok = encodeProfileToken(profile);
+  if (backupField) backupField.value = tok;
   let copied = false;
-  try { await navigator.clipboard.writeText(tok); copied = true; } catch { /* ignore */ }
-  if (!copied) window.prompt("Copy your backup code:", tok);
-  const note = document.getElementById("backup-note");
-  if (note) note.textContent = copied ? "Backup code copied to the clipboard ✓" : "Copy the code from the box above.";
+  try { await navigator.clipboard.writeText(tok); copied = true; } catch { /* no clipboard access */ }
+  if (backupNote) backupNote.textContent = copied ? "Backup code copied to the clipboard ✓ (it's in the box too)" : "Your code is in the box above — select it and copy.";
+});
+document.getElementById("backup-paste")?.addEventListener("click", async () => {
+  let txt = "";
+  try { txt = await navigator.clipboard?.readText?.(); } catch { /* denied / unsupported */ }
+  if (txt && backupField) {
+    backupField.value = txt.trim();
+    if (backupNote) backupNote.textContent = "Pasted — press Restore to import it.";
+  } else if (backupNote) {
+    backupNote.textContent = "Couldn't read the clipboard — click the box and paste the code there.";
+  }
 });
 document.getElementById("backup-restore")?.addEventListener("click", () => {
-  const tok = window.prompt("Paste your backup code (ZP1.…):", "");
-  if (!tok) return;
+  const tok = (backupField?.value || "").trim();
+  const note = backupNote;
+  if (!tok) { if (note) note.textContent = "Paste your backup code in the box first (it starts with ZP1.)."; return; }
   const restored = decodeProfileToken(tok);
-  const note = document.getElementById("backup-note");
   if (!restored) { if (note) note.textContent = "That code didn't parse — check it and try again."; return; }
   try { localStorage.setItem(PROFILE_KEY, JSON.stringify(restored)); } catch { /* ignore */ }
   if (note) note.textContent = "Profile restored — reloading…";
@@ -4911,7 +5104,7 @@ function applyDevUI() {
   document.getElementById("dev-card")?.classList.toggle("hidden", !devMode);
 }
 let _devTaps = 0;
-document.querySelector("#settings h1")?.addEventListener("click", () => {
+document.querySelector("#settings .flow-h")?.addEventListener("click", () => {
   if (devMode) return;
   if (++_devTaps >= 7) {
     devMode = true;
@@ -6103,17 +6296,35 @@ function renderResults() {
   const order = raceField().sort((a, b) => a.place - b.place);
   const list = document.getElementById("results-list");
   list.innerHTML = "";
-  order.forEach((k) => {
-    const time = k.finished ? (k.dnf ? "DNF" : formatClock(k.finishTime)) : `+${projectedGap(k).toFixed(1)}s`;
-    const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
-    list.appendChild(resultRow(medal, k.name, time, k === player || splitPlayers.includes(k)));
-  });
-  let _title;
-  if (splitActive && player2) {
-    let best = 0;
+  const versus = splitActive && player2;
+  // Versus: the best-placed human is the winner (gold row); every other seat
+  // gets the human tint. Rows read "P1 · Marmalade" so seats and cats line up
+  // with the start line, instead of "Player 1" beside "Smokey (P2)".
+  let best = 0;
+  if (versus) {
     for (let i = 1; i < splitPlayers.length; i++) {
       if (splitPlayers[i].place < splitPlayers[best].place) best = i;
     }
+  }
+  order.forEach((k) => {
+    // Still running → projected gap; DNF only once the finish clock expired.
+    const time = k.finished ? (k.dnf ? "DNF" : formatClock(k.finishTime)) : `+${projectedGap(k).toFixed(1)}s`;
+    const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
+    if (versus) {
+      const seat = splitPlayers.indexOf(k);
+      const name = seat < 0 ? k.name : `P${seat + 1} · ${seat === 0 ? catSpec(garageConfig).name : seatLook(seat + 1).cat.name}`;
+      list.appendChild(resultRow(medal, name, time, seat === best, seat >= 0));
+    } else {
+      list.appendChild(resultRow(medal, k.name, time, k === player));
+    }
+  });
+  const note = document.getElementById("results-note");
+  if (note) {
+    note.textContent = versus ? "🛋️ Versus is for bragging rights — no treats." : "";
+    note.classList.toggle("hidden", !versus);
+  }
+  let _title;
+  if (versus) {
     _title = `🏆 Player ${best + 1} Wins!`;
   } else {
     _title = player.place === 1 ? "🏆 You Win!" : `🏁 ${ordinal(player.place)} Place`;
@@ -6121,8 +6332,9 @@ function renderResults() {
   document.getElementById("results-title").textContent = _title;
 }
 // One standings row: rank (medal for the podium) | name | time, so the columns
-// line up instead of reading as a text blob. `you` lights the player's row gold.
-function resultRow(rank, name, time, you) {
+// line up instead of reading as a text blob. `you` lights the player's row gold;
+// `human` (Versus) tints the other seats.
+function resultRow(rank, name, time, you, human = false) {
   const li = document.createElement("li");
   const r = document.createElement("span");
   r.className = "r-rank";
@@ -6135,6 +6347,7 @@ function resultRow(rank, name, time, you) {
   t.textContent = time;
   li.append(r, n, t);
   if (you) li.className = "you";
+  else if (human) li.className = "human";
   return li;
 }
 
@@ -6348,6 +6561,10 @@ window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), halfRate: _halfRat
 // the ambient menu drift at ~30fps, and refresh the minimap at ~20fps. All hold
 // their last frame on the canvas between draws, so there's no visible change.
 let _pauseDrawn = false;
+// A resize (window drag, F11 / the shell's fullscreen toggle) clears the
+// canvas — redraw the frozen frame once instead of leaving the pause card
+// over black.
+window.addEventListener("resize", () => { _pauseDrawn = false; });
 let _lastMenuDraw = 0;
 let _lastMiniDraw = 0;
 // Menu/tableau render cadence. Phones throttle to ~30fps to save battery, but
@@ -6390,6 +6607,7 @@ function loop(now) {
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
   menupad.update(); // before the PAUSED early-out — the pad must resume too
+  refreshInputSurfaces(); // pad legend, touch HUD gating, How-to cards
   if (state !== State.PAUSED) {
     _pauseDrawn = false; // any live frame → the next pause redraws its frozen shot once
     const _t = performance.now();
@@ -7100,6 +7318,7 @@ for (const ev of ["pointerdown", "touchstart", "mousedown", "keydown"]) {
 // above remains the fallback, and playMusic retries a rejected play().
 const _isStandalonePWA =
   _isNativeApp ||
+  !!window.zoomiesDesktop ||
   (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
   window.navigator.standalone === true;
 if (_isStandalonePWA) {

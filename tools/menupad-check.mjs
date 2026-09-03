@@ -176,9 +176,112 @@ await check("focus auto-seats in the open sheet", () => {
   const f = document.querySelector("#settings .pad-focus");
   return !!f && f.id !== "settings-back";
 });
+// Range sliders are candidates: right from the Music toggle lands on the
+// music slider, and right AGAIN nudges it (5% of its range) instead of
+// leaving it — the volume handler runs off the synthesised input event.
+await press(15);
+await check("d-pad reaches the music slider", () =>
+  document.getElementById("set-music-vol").classList.contains("pad-focus"));
+const volBefore = await page.evaluate(() => +document.getElementById("set-music-vol").value);
+await press(15);
+await check("right nudges the ringed slider by 5", (before) => {
+  const v = +document.getElementById("set-music-vol").value;
+  return document.getElementById("set-music-vol").classList.contains("pad-focus") && v === Math.min(100, before + 5);
+}, volBefore);
 await press(1);
 await check("B closes the sheet", () =>
   document.getElementById("settings").classList.contains("hidden"));
+
+// Keyboard spatial nav rides the same ring: ArrowDown from the title's
+// Let's Go! moves to the extras row, Enter presses the ringed button.
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowDown" })));
+await frames(1);
+await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowDown" })));
+await frames(1);
+await check("arrow keys move the ring off Let's Go!", () => {
+  const f = document.querySelector("#flow-title .pad-focus");
+  return !!f && f.id !== "start-btn";
+});
+await page.evaluate(() => { document.querySelector(".pad-focus")?.blur(); });
+
+// Cat-alog: the buyable prize tiles are <button>s the ring can walk onto.
+await page.evaluate(() => document.getElementById("open-catalog").click());
+await frames(2);
+for (let i = 0; i < 4; i++) {
+  const on = await page.evaluate(() => !!document.querySelector("#catalog .prize-tile.pad-focus"));
+  if (on) break;
+  await press(13);
+}
+await check("d-pad reaches a Cat-alog prize tile (a <button>)", () => {
+  const f = document.querySelector("#catalog .prize-tile.pad-focus");
+  return !!f && f.tagName === "BUTTON" && document.querySelectorAll("#catalog .prize-tile.buyable").length > 0;
+});
+await press(1);
+await check("B closes the Cat-alog", () => document.getElementById("catalog").classList.contains("hidden"));
+
+// Y opens Settings from a flow screen (the chrome gear shortcut).
+await page.evaluate(() => document.getElementById("start-btn").click());
+await frames(6);
+await press(3);
+await check("Y opens Settings from the flow", () => !document.getElementById("settings").classList.contains("hidden"));
+await press(1);
+await frames(2);
+await press(1); // back to the title
+await frames(2);
+
+// --- Race surfaces: pause from the countdown, Settings over pause, results.
+// One race is worth the SwiftShader warm-up: the pause/results ordering bugs
+// only exist with a race behind the sheets.
+await page.evaluate(() => { document.getElementById("mode-gp").click(); });
+await frames(4);
+await page.evaluate(() => document.querySelector("#track-grid .track-tap").click()); // Classic is current → no reload
+await frames(6);
+await page.evaluate(() => document.querySelector("#cat-grid .racer-tap").click());
+await frames(4);
+await page.evaluate(() => document.querySelector("#kart-grid .racer-tap").click());
+await frames(6);
+await check("kart pick lands on the start line", () => document.getElementById("flow-startline").classList.contains("is-active"));
+await page.evaluate(() => document.getElementById("go-btn").click());
+// The veil drops once frames settle (or at its 9s cap after the build).
+await page.waitForFunction(() => document.getElementById("race-veil").classList.contains("hidden") && window.__zoomies.state() === 1, null, { timeout: 240000 })
+  .catch(() => errors.push("race veil never dropped during the countdown"));
+// Start during the countdown pauses (state 4 = PAUSED, from COUNTDOWN).
+await press(9);
+await check("Start pauses during the countdown", () =>
+  window.__zoomies.state() === 4 && !document.getElementById("pause-overlay").classList.contains("hidden"));
+// Settings from the pause card, then B: the sheet closes and the race STAYS
+// paused (it used to resume behind the still-open sheet).
+await page.evaluate(() => document.getElementById("open-settings-pause").click());
+await frames(2);
+await press(1);
+await check("B in Settings-from-pause closes the sheet and keeps the pause", () =>
+  document.getElementById("settings").classList.contains("hidden") &&
+  window.__zoomies.state() === 4 &&
+  !document.getElementById("pause-overlay").classList.contains("hidden"));
+await press(1);
+await check("B on the pause card resumes the countdown", () =>
+  window.__zoomies.state() === 1 && document.getElementById("pause-overlay").classList.contains("hidden"));
+// Finish → results (after the victory-lap delay) → B walks out through the
+// claim interstitial: first press claims every badge, the next continues.
+await page.evaluate(() => { window.__zoomies.debugFinish(); });
+await page.waitForFunction(() => !document.getElementById("results").classList.contains("hidden"), null, { timeout: 120000 })
+  .catch(() => errors.push("results never appeared"));
+await frames(2);
+await press(1);
+await check("B on results leaves through the claim screen", () =>
+  !document.getElementById("claim-screen").classList.contains("hidden") &&
+  document.querySelectorAll("#claim-screen .claim-card").length > 0);
+await check("claim copy says Press A with a pad", () =>
+  /Press Ⓐ/.test(document.querySelector("#claim-screen .claim-cta")?.textContent || ""));
+await press(1);
+await check("B on the claim screen collects every badge", () =>
+  document.querySelectorAll("#claim-screen .claim-card:not(.claimed)").length === 0 &&
+  !document.getElementById("claim-continue").classList.contains("hidden"));
+await press(1);
+await check("B again continues to the menu", () =>
+  document.getElementById("claim-screen").classList.contains("hidden") &&
+  !document.getElementById("menu").classList.contains("hidden") &&
+  window.__zoomies.state() === 0);
 
 console.log(JSON.stringify({ errors }, null, 2));
 await browser.close();

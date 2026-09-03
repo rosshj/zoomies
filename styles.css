@@ -208,6 +208,32 @@ body {
   font-size: 18px;
 }
 
+/* Controller legend: a quiet strip along the bottom edge while a pad drives
+   the menus (menupad.js toggles .hidden). Passes touches through. */
+#pad-legend {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(6px, var(--safe-bottom, 0px));
+  z-index: 58;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 248, 238, 0.82);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+#pad-legend b {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 15px;
+  color: var(--f-gold, #ffc24b);
+}
+#pad-legend.hidden { display: none; }
+
 /* Menu screens ease in: each card rises + fades over ~0.2s whenever its
    overlay unhides. Motion-sensitive players get an instant cut instead. */
 /* Sheets (settings, Cat-alog, how-to, track maker…) slide UP over the flow,
@@ -919,21 +945,6 @@ kbd {
   font-size: 11px;
 }
 
-#rotate {
-  z-index: 100; /* above the menu/HUD so it always takes priority */
-}
-
-.rotate-icon {
-  font-size: 64px;
-  margin-bottom: 12px;
-  animation: spin 2s ease-in-out infinite;
-}
-
-@keyframes spin {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(90deg); }
-}
-
 /* Results: podium-style standings rows — rank | name | time columns, with the
    player's row lit gold. Floats over the victory-lap camera + fireworks. */
 .menu-card.results-main {
@@ -984,6 +995,19 @@ kbd {
   color: var(--accent);
   opacity: 1;
 }
+/* Versus: every human seat is tinted (the winner alone gets the gold .you). */
+#results-list li.human {
+  border-color: rgba(120, 190, 255, 0.55);
+  background: rgba(120, 190, 255, 0.08);
+}
+#results-list li.human .r-name { color: #cfe6ff; }
+.results-note {
+  margin: -6px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+}
+.results-note.hidden { display: none; }
 #restart-btn {
   font-size: 17px;
   padding: 11px 34px;
@@ -996,6 +1020,11 @@ kbd {
   z-index: 30;
   pointer-events: none;
 }
+/* Touch controls only where a finger can use them: main.js sets .no-touch
+   while no coarse pointer exists and no touch has been seen (a desktop
+   window, the Steam Deck on a pad) — the slider, the action fan and the
+   tilt readout would otherwise draw over a mouse/pad game. Pause stays. */
+#hud.no-touch #throttle, #hud.no-touch #action-buttons, #hud.no-touch #steer { display: none; }
 
 /* Victory lap: gently fade the racing controls + readouts out so the camera
    orbit and fireworks play unobstructed. The invisible hit-flash layer is
@@ -1598,9 +1627,29 @@ button.small {
 
 .setting-row {
   display: grid;
-  grid-template-columns: 104px 76px 1fr;
+  /* 140px label column: "Compatibility mode" / "Controller rumble" wrap onto
+     two clean lines instead of colliding with the toggle. */
+  grid-template-columns: 140px 76px 1fr;
   align-items: center;
   gap: 12px;
+}
+/* The Progress card's backup block is its own stacked row (label, the code
+   field, the three pills) — squeezing it into the grid's 76px column shoved
+   the pills off the card. */
+.backup-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.backup-row .share-row { justify-content: flex-start; }
+.backup-code {
+  width: 100%;
+  resize: none;
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  line-height: 1.35;
+  word-break: break-all;
 }
 
 /* The Graphics row has no slider; let its toggle span the slider column too. */
@@ -2007,6 +2056,19 @@ button.secondary.small,
   border: 2px solid var(--f-ink);
   box-shadow: 0 4px 0 var(--f-ink), 0 10px 18px -8px rgba(14, 6, 30, 0.45);
   color: var(--f-ink);
+  /* Tiles are <button>s (so the pad's ring can reach the till): undo the
+     base button's type, size and push-down press. */
+  font: inherit;
+  letter-spacing: normal;
+  margin: 0;
+  width: 100%;
+  min-height: 0;
+  cursor: default;
+  text-align: center;
+}
+.prize-tile:active {
+  transform: none;
+  box-shadow: 0 4px 0 var(--f-ink), 0 10px 18px -8px rgba(14, 6, 30, 0.45);
 }
 .prize-tile.owned { border-color: var(--f-ink); }
 /* Karts (and the custom kart) ride wide 3:2 tiles like the kart step. */
@@ -2177,6 +2239,34 @@ button.secondary.small,
 .flow-back:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 var(--f-ink);
+}
+/* "More below" affordance: a fade + chevron along the bottom of a flow screen
+   whose body can still scroll down (main.js toggles .can-scroll from the
+   body's scroll metrics). Sits over the body, passes touches through. */
+.flow-screen.can-scroll::after {
+  content: "⌄";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  padding-top: 26px;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--f-gold, #ffc24b);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(180deg, rgba(6, 9, 16, 0) 0%, rgba(6, 9, 16, 0.78) 100%);
+  pointer-events: none;
+  animation: scroll-hint 1.6s ease-in-out infinite;
+}
+@keyframes scroll-hint {
+  50% { padding-top: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-screen.can-scroll::after { animation: none; }
 }
 .flow-body {
   flex: 1;
@@ -2577,9 +2667,13 @@ button.secondary.small,
   bottom: 6px;
   font-size: 10px;
   max-width: calc(100% - 52px);
-  white-space: nowrap;
+  /* Two lines max (the cup label stacks "cup name" over "Race n/3"). */
+  white-space: normal;
+  line-height: 1.2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .map-chip .map-edit-hint { right: 8px; bottom: 6px; font-size: 10px; }
 .start-stakes {
@@ -2786,9 +2880,17 @@ button.small { white-space: nowrap; }
   gap: 5px;
   padding: 7px 7px 8px;
   text-align: center;
+  /* Three rows fit the body at 1280×800 AND 1280×720 (header ≈58px, body
+     padding 32px, two 12px gaps): cap the card so the shot shrinks to fit
+     instead of the grid overflowing; anything past row 3 scrolls under the
+     fade + chevron (.can-scroll). */
+  height: clamp(150px, calc((100vh - 130px) / 3), 250px);
+  min-height: 0;
 }
-.racer-tap .track-name { text-align: center; }
-.racer-tap .track-sub { text-align: center; min-height: 1em; }
+.racer-tap .track-name { text-align: center; flex: 0 0 auto; }
+/* Two text lines reserved on EVERY card (prices are one line, "win the
+   Sandy Paws Cup" two) so the shots in a row all come out the same size. */
+.racer-tap .track-sub { text-align: center; min-height: 2.5em; line-height: 1.25; flex: 0 0 auto; }
 .racer-shot {
   position: relative;
   display: block;
@@ -2797,6 +2899,13 @@ button.small { white-space: nowrap; }
   border: 2px solid var(--f-ink);
   background: #223052;
   aspect-ratio: 1;
+  /* Takes whatever height the capped card leaves; the width follows the
+     aspect ratio (centred) and is clamped to the column. */
+  flex: 1 1 0;
+  min-height: 0;
+  width: auto;
+  max-width: 100%;
+  align-self: center;
 }
 .racer-shot img {
   display: block;
@@ -2811,14 +2920,18 @@ button.small { white-space: nowrap; }
   font-size: 17px;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
 }
-#kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 880px; }
+#kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 760px; }
 #kart-grid .racer-shot { aspect-ratio: 3 / 2; }
 /* The card matching the current selection: a gold ring + corner check, so
-   every pass shows where you already are before you tap anything. */
-.racer-tap.is-current {
+   every pass shows where you already are before you tap anything. The
+   track cards wear the same ring for the world that's already built. */
+.racer-tap.is-current,
+.track-tap.is-current {
   border-color: var(--f-gold, #ffc24b);
   box-shadow: 0 0 0 2px rgba(255, 194, 75, 0.75), 0 3px 0 rgba(43, 26, 78, 0.5);
 }
+.track-tap.is-current .track-shot { position: relative; }
+.track-tap.is-current .track-shot::after,
 .racer-tap.is-current .racer-shot::after {
   content: "✓";
   position: absolute;
@@ -2859,6 +2972,45 @@ button.small { white-space: nowrap; }
 .racer-card .mini-name { font-size: 15px; }
 .racer-card .creator-label { font-size: 11px; }
 .racer-card .creator-input { min-height: 42px; font-size: 15px; }
+/* Name row: the typed field plus a Pick button for pad players. */
+.name-pick-btn { flex: 0 0 auto; margin: 0; min-height: 42px; padding: 0 12px; font-size: 13px; }
+/* The in-card name picker replaces the creator while it's open (a grid of
+   curated names; the pad's ring walks it like any other grid). */
+.racer-card.picking-name .creator,
+.racer-card.picking-name .garage-lock-note,
+.racer-card.picking-name .racer-actions { display: none; }
+.name-picker { display: flex; flex-direction: column; gap: 10px; }
+.name-picker.hidden { display: none; }
+.name-picker-head {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 248, 238, 0.7);
+}
+.name-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.name-grid button {
+  margin: 0;
+  min-height: 40px;
+  padding: 4px 6px;
+  font-size: 13px;
+  letter-spacing: 0;
+  border-radius: 12px;
+  color: var(--f-ink);
+  background: linear-gradient(180deg, var(--f-cream), var(--f-cream-2));
+  border: 2px solid var(--f-ink);
+  box-shadow: 0 3px 0 var(--f-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.name-grid button.is-active { background: #fff; box-shadow: inset 0 0 0 2px var(--f-gold, #ffc24b), 0 3px 0 var(--f-ink); }
+.name-picker-actions { display: flex; gap: 8px; }
+.name-picker-actions button { flex: 1; margin: 0; }
 
 /* Track maker: 3-up chip rows (Style / Size) + the Fine-tune drawer. */
 .tod-grid.trio { grid-template-columns: repeat(3, 1fr); }
@@ -3017,3 +3169,21 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 #hud.split #rear-threat, #hud.split #shoot-lock, #hud.split #steer,
 #hud.split #throttle, #hud.split #action-buttons, #hud.split #yarn-warn,
 #hud.split #info, #hud.split #powerups { display: none; }
+
+/* ============================================================================
+   Big screens (desktop / Steam Deck at 1280×800): nothing below 12px. The
+   phone sizes above tuned eyebrows, notes and badges down to 10–11px for a
+   6" screen; on a monitor two metres away they turn to dust.
+   ============================================================================ */
+@media (min-width: 1200px) {
+  .flow-eyebrow, .setting-note, .settings-section, .map-label, .map-chip .map-label,
+  .map-chip .map-edit-hint, .seat-input, .start-racer-label, .cup-pill, .claim-sub,
+  .claim-desc, .pc-text, .prize-confirm button, .prize-how, .hint, kbd, .creator-label,
+  .racer-card .creator-label, .throttle-label, .adv-toggle, .env-hint, .start-input-warn,
+  .track-tap .track-sub, .tap-sub, .catalog-stats, .ach-desc, .shelf-diff, .earn-row,
+  #results-earnings, .split-chip-sub, .env-label, .biome-chip, .mode-opt-label, .track-val, .prize-head {
+    font-size: 12px !important;
+  }
+  .setting-note, .hint, .claim-desc, .earn-row, #results-earnings { font-size: 12.5px !important; }
+  .track-tap .track-sub, .tap-sub { font-size: 12.5px !important; }
+}

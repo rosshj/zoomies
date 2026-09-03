@@ -254,7 +254,6 @@
        there. Above menus/sheets, still under the race veil. -->
   <div id="toast"></div>
 
-  <!-- ===== Rotate-to-landscape gate ===== -->
   <!-- Persistent menu chrome: the treats balance and the settings gear ride
        above every menu sub-screen (garage, Cat-alog, mode, track, start line…),
        so prices always have a visible balance and Settings is one tap away.
@@ -264,10 +263,11 @@
     <button id="chrome-gear" title="Settings" aria-label="Settings">⚙</button>
   </div>
 
-  <div id="rotate" class="overlay hidden">
-    <div class="rotate-icon">📱↻</div>
-    <p>Turn your phone <strong>sideways</strong> to play.</p>
-    <p class="hint">If it won't rotate, turn off Portrait Orientation Lock in Control Center.</p>
+  <!-- Controller legend: which pad buttons do what on the menus. Shown only
+       while a pad is present AND a menu surface is up (menupad.js flips the
+       class); touch and mouse players never see it. -->
+  <div id="pad-legend" class="hidden" aria-hidden="true">
+    <span><b>Ⓐ</b> Select</span><span><b>Ⓑ</b> Back</span><span><b>Ⓨ</b> Settings</span><span><b>☰</b> Pause</span>
   </div>
 
   <!-- ===== Pause ===== -->
@@ -279,7 +279,9 @@
       <button id="resume-btn">▶ RESUME</button>
       <div class="pause-row">
         <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
-        <button id="indicator-btn" class="secondary small">Tilt indicator: Off</button>
+        <!-- Touch only: the tilt-steering readout under the minimap. Hidden in
+             the desktop shell (there's no tilt to read). -->
+        <button id="indicator-btn" class="secondary small">Tilt bar: Off</button>
       </div>
       <!-- Dev/inspection tool, revealed by the Advanced settings toggle: fly the
            camera freely around the frozen race world. -->
@@ -347,7 +349,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 1 of 4</div>
+          <div class="flow-eyebrow">Step 1 of 5</div>
           <h2 class="flow-h">How do you want to race?</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -392,7 +394,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 2 of 4</div>
+          <div class="flow-eyebrow">Step 2 of 5</div>
           <h2 class="flow-h">Pick a track</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -407,7 +409,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 2 of 4</div>
+          <div class="flow-eyebrow">Step 2 of 5</div>
           <h2 class="flow-h">Pick a cup</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -425,7 +427,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow" id="cat-eyebrow">Step 3 of 4</div>
+          <div class="flow-eyebrow" id="cat-eyebrow">Step 3 of 5</div>
           <h2 class="flow-h">Pick your cat</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -440,7 +442,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow" id="kart-eyebrow">Step 4 of 4</div>
+          <div class="flow-eyebrow" id="kart-eyebrow">Step 4 of 5</div>
           <h2 class="flow-h">Pick your kart</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -491,9 +493,22 @@
             </div>
             <div class="creator-row">
               <span class="creator-label">Name</span>
+              <!-- Keyboard/mouse players type here; pad players open the
+                   picker (a grid of curated names) — text inputs have no
+                   on-screen keyboard on a controller. -->
               <input id="cat-custom-name" class="creator-input" maxlength="14" placeholder="My Cat" />
+              <button id="cat-name-pick" class="btn-cream small-pill name-pick-btn" aria-label="Pick a name">✏️ Pick</button>
             </div>
             <button id="cat-randomize" class="btn-cream small-pill creator-rand">🎲 Surprise me</button>
+          </div>
+          <!-- In-card name picker (JS fills the grid; hidden until Pick). -->
+          <div id="cat-name-picker" class="name-picker hidden">
+            <div class="name-picker-head">Pick a name</div>
+            <div class="name-grid" id="cat-name-grid"></div>
+            <div class="name-picker-actions">
+              <button id="cat-name-random" class="btn-cream small-pill">🎲 Random</button>
+              <button id="cat-name-close" class="btn-cream small-pill">✕ Close</button>
+            </div>
           </div>
           <p id="cat-edit-note" class="garage-lock-note"></p>
           <div class="racer-actions">
@@ -541,8 +556,17 @@
             <div class="creator-row">
               <span class="creator-label">Name</span>
               <input id="kart-custom-name" class="creator-input" maxlength="14" placeholder="My Kart" />
+              <button id="kart-name-pick" class="btn-cream small-pill name-pick-btn" aria-label="Pick a name">✏️ Pick</button>
             </div>
             <button id="kart-randomize" class="btn-cream small-pill creator-rand">🎲 Surprise me</button>
+          </div>
+          <div id="kart-name-picker" class="name-picker hidden">
+            <div class="name-picker-head">Pick a name</div>
+            <div class="name-grid" id="kart-name-grid"></div>
+            <div class="name-picker-actions">
+              <button id="kart-name-random" class="btn-cream small-pill">🎲 Random</button>
+              <button id="kart-name-close" class="btn-cream small-pill">✕ Close</button>
+            </div>
           </div>
           <p id="kart-edit-note" class="garage-lock-note"></p>
           <div class="racer-actions">
@@ -560,7 +584,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Ready to race</div>
+          <div class="flow-eyebrow">Step 5 of 5 · Ready to race</div>
           <h2 class="flow-h">Start line</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -727,7 +751,9 @@
     </header>
     <div class="flow-body">
     <div class="sheet-inner howto-main">
-      <div class="how-grid">
+      <!-- One card set per input. JS shows the set for whatever the player is
+           holding (pad → keyboard → touch) via data-input on #howto. -->
+      <div class="how-grid" data-input="touch">
         <div class="how-item"><span class="how-ico">📱</span><span class="how-txt"><strong>Tilt</strong> your phone to steer</span></div>
         <div class="how-item"><span class="how-ico">🕹️</span><span class="how-txt"><strong>Left slider</strong> — up gas, down brake</span></div>
         <div class="how-item"><span class="how-ico">⬆</span><span class="how-txt"><strong>Hold Jump</strong> in a turn to <strong>drift</strong> — longer drift, bigger boost</span></div>
@@ -736,7 +762,25 @@
         <div class="how-item"><span class="how-ico">💨</span><span class="how-txt"><strong>Boost</strong> — a turbo cat toot (recharges)</span></div>
         <div class="how-item how-win"><span class="how-ico">🏁</span><span class="how-txt">First to finish <strong>all laps</strong> wins!</span></div>
       </div>
-      <p class="hint">Desktop: arrows · <kbd>Space</kbd> jump · <kbd>F</kbd> shoot · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield</p>
+      <div class="how-grid" data-input="pad">
+        <div class="how-item"><span class="how-ico">🕹️</span><span class="how-txt"><strong>Left stick</strong> or d-pad to steer</span></div>
+        <div class="how-item"><span class="how-ico">🎮</span><span class="how-txt"><strong>RT</strong> gas · <strong>LT</strong> brake / reverse</span></div>
+        <div class="how-item"><span class="how-ico">⬆</span><span class="how-txt"><strong>Hold Ⓐ</strong> in a turn to <strong>drift</strong> — longer drift, bigger boost</span></div>
+        <div class="how-item"><span class="how-ico">🐾</span><span class="how-txt"><strong>Ⓧ</strong> shoots hairballs (hold to charge)</span></div>
+        <div class="how-item"><span class="how-ico">🛡️</span><span class="how-txt"><strong>Hold LB / RB</strong> to shield</span></div>
+        <div class="how-item"><span class="how-ico">💨</span><span class="how-txt"><strong>Ⓑ</strong> boost (recharges) · <strong>Ⓨ</strong> spill milk</span></div>
+        <div class="how-item how-win"><span class="how-ico">🏁</span><span class="how-txt">First to finish <strong>all laps</strong> wins!</span></div>
+      </div>
+      <div class="how-grid" data-input="keyboard">
+        <div class="how-item"><span class="how-ico">⌨️</span><span class="how-txt"><strong>A / D</strong> or <strong>◀ ▶</strong> to steer</span></div>
+        <div class="how-item"><span class="how-ico">🕹️</span><span class="how-txt"><strong>W / S</strong> or <strong>▲ ▼</strong> gas / brake</span></div>
+        <div class="how-item"><span class="how-ico">⬆</span><span class="how-txt"><strong>Hold Space</strong> in a turn to <strong>drift</strong> — longer drift, bigger boost</span></div>
+        <div class="how-item"><span class="how-ico">🐾</span><span class="how-txt"><strong>F</strong> shoots hairballs (hold to charge)</span></div>
+        <div class="how-item"><span class="how-ico">🛡️</span><span class="how-txt"><strong>Hold Shift</strong> to shield</span></div>
+        <div class="how-item"><span class="how-ico">💨</span><span class="how-txt"><strong>B</strong> boost (recharges) · <strong>M</strong> spill milk</span></div>
+        <div class="how-item how-win"><span class="how-ico">🏁</span><span class="how-txt">First to finish <strong>all laps</strong> wins!</span></div>
+      </div>
+      <p class="hint" id="howto-hint">Pad, keyboard and touch all work — the cards follow whichever you're using.</p>
     </div>
     </div>
   </div>
@@ -748,6 +792,8 @@
     <div class="menu-card results-main">
       <h1 id="results-title">🏁 Finish!</h1>
       <ol id="results-list"></ol>
+      <!-- Versus: no economy, said plainly (the earnings ledger stays hidden). -->
+      <p id="results-note" class="results-note hidden"></p>
       <!-- Treats earned + achievement banners + cup standings (progression). -->
       <div id="results-earnings" class="hidden"></div>
       <button id="results-next-btn" class="hidden">▶ Next Race</button>
@@ -763,7 +809,7 @@
   <div id="claim-screen" class="overlay hidden">
     <div class="menu-card claim-main">
       <h1>🏅 New badges!</h1>
-      <p class="claim-sub">Tap each badge to collect its treats 🐟</p>
+      <p class="claim-sub" id="claim-sub">Tap each badge to collect its treats 🐟</p>
       <div id="claim-list"></div>
       <button id="claim-continue" class="hidden">🏠 Continue</button>
     </div>
@@ -868,7 +914,8 @@
             </div>
           </div>
           <div class="track-actions">
-            <button id="track-apply">✓ Play this map</button>
+            <!-- btn-gold: the pad's ring seats on the sheet's primary action. -->
+            <button id="track-apply" class="btn-gold">✓ Play this map</button>
           </div>
         </div>
       </div>
@@ -951,17 +998,19 @@
               <button id="set-quality-high" class="seg-btn">High</button>
             </div>
           </div>
-          <p class="setting-note"><b>Low</b> — older phones (simplest effects, bare verges). <b>Balanced</b> — most phones: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
+          <p class="setting-note" id="quality-note"><b>Low</b> — older phones (simplest effects, bare verges). <b>Balanced</b> — most phones: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
           <div class="setting-row" id="splitfx-row">
             <span class="setting-label">Versus effects (2P only)</span>
             <button id="set-splitfx-toggle" class="secondary small toggle off">Off</button>
           </div>
           <p class="setting-note" id="splitfx-note">Full glow, sun rays &amp; colour grade in 2-player split screen (3–4 players always run lean). Heavier: both halves run the whole effect stack — watch the FPS counter and see if your machine holds up.</p>
-          <div class="setting-row">
+          <!-- Web/mobile only: the desktop shell pins WebGL2, so there's nothing
+               to switch (JS hides the row there). -->
+          <div class="setting-row" id="compat-row">
             <span class="setting-label">Compatibility mode</span>
             <button id="set-compat-toggle" class="secondary small toggle off">Off</button>
           </div>
-          <p class="setting-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
+          <p class="setting-note" id="compat-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
         </section>
         <section class="settings-card">
           <h2 class="settings-section">🎮 Controls</h2>
@@ -969,21 +1018,31 @@
             <span class="setting-label">Controller rumble</span>
             <button id="set-rumble-toggle" class="secondary small toggle">On</button>
           </div>
-          <p class="setting-note"><b>Controller</b> — stick/d-pad steer (and browse the menus) · RT gas · LT brake · A hop &amp; drift · X shoot (hold to charge) · B boost · Y milk · LB/RB shield · Start pause.</p>
-          <p class="setting-note"><b>Keyboard</b> — A/D or ◀▶ steer · W/S or ▲▼ gas/brake · Space hop &amp; drift · F shoot · B boost · M milk · Shift shield · P or Esc pause.</p>
-          <p class="setting-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks.</p>
-          <p class="setting-note" id="versus-controls-note"><b>Versus (2–4P, desktop)</b> — controllers are dealt in player order (P1 gets the first pad), and the first player without a pad gets the keyboard. The start line shows who has what.</p>
+          <!-- The full button maps hide behind a disclosure: four dense
+               paragraphs made the sheet a wall of text for everyone. -->
+          <button id="controls-toggle" class="adv-toggle" aria-expanded="false">Show controls ▸</button>
+          <div id="controls-notes" class="hidden">
+            <p class="setting-note"><b>Controller</b> — stick/d-pad steer (and browse the menus) · RT gas · LT brake · A hop &amp; drift · X shoot (hold to charge) · B boost · Y milk · LB/RB shield · Start pause.</p>
+            <p class="setting-note"><b>Keyboard</b> — A/D or ◀▶ steer · W/S or ▲▼ gas/brake · Space hop &amp; drift · F shoot · B boost · M milk · Shift shield · P or Esc pause.</p>
+            <p class="setting-note" id="touch-controls-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks.</p>
+            <p class="setting-note" id="versus-controls-note"><b>Versus (2–4P, desktop)</b> — controllers are dealt in player order (P1 gets the first pad), and the first player without a pad gets the keyboard. The start line shows who has what.</p>
+          </div>
         </section>
         <section class="settings-card">
           <h2 class="settings-section">💾 Progress</h2>
-          <div class="setting-row">
-            <span class="setting-label">Backup</span>
+          <!-- Backup code in an in-sheet field (Electron has no window.prompt):
+               Copy fills it + copies, Paste reads the clipboard into it,
+               Restore imports whatever's in it. -->
+          <div class="backup-row">
+            <span class="setting-label">Import progress from the web version</span>
+            <textarea id="backup-code" class="creator-input backup-code" rows="2" spellcheck="false" autocomplete="off" placeholder="Paste your backup code here (ZP1.…)"></textarea>
             <div class="share-row">
-              <button id="backup-copy" class="secondary small">📋 Copy code</button>
+              <button id="backup-copy" class="secondary small">📋 Copy my code</button>
+              <button id="backup-paste" class="secondary small">📥 Paste</button>
               <button id="backup-restore" class="secondary small">↩ Restore</button>
             </div>
           </div>
-          <p id="backup-note" class="setting-note">Your treats, unlocks and trophies as a copy-paste code — restore it after a reinstall or on another device.</p>
+          <p id="backup-note" class="setting-note">Your treats, unlocks and trophies as a copy-paste code — copy it here, paste it on another device (or the web version) and press Restore.</p>
           <div id="dev-card" class="hidden">
             <h2 class="settings-section">🛠 Developer</h2>
             <div class="setting-row"><span class="setting-label">Treats</span><button id="dev-treats" class="secondary small">+1000 🐟</button></div>
@@ -1000,7 +1059,7 @@
               <span class="setting-label">FPS counter</span>
               <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
             </div>
-            <div class="setting-row">
+            <div class="setting-row" id="tilt-row">
               <span class="setting-label">Tilt debug</span>
               <button id="set-tilt-toggle" class="secondary small toggle off">Off</button>
             </div>

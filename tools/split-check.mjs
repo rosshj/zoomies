@@ -255,12 +255,16 @@ const fin = await page.evaluate(() => ({
   title: document.getElementById("results-title").textContent,
   rows: [...document.querySelectorAll("#results-list li")].map((li) => li.textContent),
   youRows: document.querySelectorAll("#results-list .you").length,
+  humanRows: document.querySelectorAll("#results-list .you, #results-list .human").length,
+  note: document.getElementById("results-note")?.textContent || "",
+  noteHidden: document.getElementById("results-note")?.classList.contains("hidden") ?? true,
   earningsHidden: document.getElementById("results-earnings")?.classList.contains("hidden") ?? true,
 }));
 check("grace expiry ends the race with P2 the winner", fin.results && /Player 2 Wins/.test(fin.title), fin);
-check("idle P1 scored DNF", fin.rows.some((r) => /Player 1/.test(r) && /DNF/.test(r)), fin);
-check("both human rows highlighted", fin.youRows === 2, fin);
-check("no treats paid for a couch match", fin.earningsHidden, fin);
+// Rows read "P1 · <cat>" / "P2 · <cat>" (seat first, like the start line).
+check("idle P1 scored DNF", fin.rows.some((r) => /P1 · /.test(r) && /DNF/.test(r)), fin);
+check("both human rows tinted, the winner alone gold", fin.humanRows === 2 && fin.youRows === 1, fin);
+check("no treats paid for a couch match", fin.earningsHidden && !fin.noteHidden && /no treats/.test(fin.note), fin);
 
 console.log(JSON.stringify({ errors }, null, 2));
 await browser.close();
