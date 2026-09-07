@@ -97,31 +97,21 @@ export const SLIPSTREAM_MULT = 4.5;
 export const BOOST_OVERCHARGE = 1.2;        // max meter (120%)
 export const BOOST_OVERCHARGE_DECAY = 0.08; // per second, bleeds 1.2 → 1.0 in ~2.5s out of the draft (held longer so the overcharge is usable)
 
-// Mini-turbo TIERS: the release boost is quantised to three steps by how long
-// the drift was held (seconds of REAL cornering charge — see the drift block in
-// update: charge only accrues while the slide is actually arcing). Below tier 1
-// the drift just ends with no boost — so brief flicks, and the short re-grabs
+// A drift must be held at least this long (seconds) to earn a mini-turbo. Below
+// it the drift just ends with no boost — so brief flicks, and the short re-grabs
 // the AI makes when its curvature reading wiggles at a corner exit or S-bend
-// inflection, don't each pop a boost on the straight. `kart.driftTier` (0-3)
-// mirrors the tier live while drifting so effects/haptics step in sync.
-export const DRIFT_TIERS = [
-  { charge: 0.6, mult: 1.2, secs: 0.7 },
-  { charge: 1.4, mult: 1.35, secs: 1.0 },
-  { charge: 2.4, mult: 1.5, secs: 1.4 },
-];
-const MIN_DRIFT_CHARGE = DRIFT_TIERS[0].charge;
+// inflection, don't each pop a boost on the straight.
+const MIN_DRIFT_CHARGE = 0.5;
+// Cosmetic charge steps (seconds held) that `kart.driftTier` (0-3) reports live
+// while drifting — the spark colour steps (blue → gold → rainbow) and the
+// haptic ticks read it. Purely presentational: the release boost itself is the
+// continuous curve in endDrift, not a tier table.
+export const DRIFT_TIER_CHARGES = [0.8, 1.5, 2.4];
 export function driftTierFor(charge) {
   let tier = 0;
-  for (let i = 0; i < DRIFT_TIERS.length; i++) if (charge >= DRIFT_TIERS[i].charge) tier = i + 1;
+  for (let i = 0; i < DRIFT_TIER_CHARGES.length; i++) if (charge >= DRIFT_TIER_CHARGES[i]) tier = i + 1;
   return tier;
 }
-// Drift feel: the velocity direction LAGS the heading by up to this much (rad)
-// at full inward commitment — the kart visibly slides rather than pivoting on
-// rails — and the lag bleeds off in ~0.25s once the drift ends.
-const DRIFT_SLIP_MAX = 20 * Math.PI / 180;
-// A drift that has stopped arcing (amount below the idle pull) for this long
-// ends on its own — no straight-line "drift" down the road banking charge.
-const DRIFT_SLACK_END = 0.35;
 // After a spin-out settles the kart can't be spun again for this long, so a
 // second hairball in the same volley doesn't chain wipeouts.
 const SPIN_IMMUNITY = 1.0;
@@ -198,16 +188,13 @@ export class Kart {
     this.wallHit = false;
     this.wallHitDir = new THREE.Vector3();
     this.wallHitPulse = 0; // s remaining; a scrape latch for slow samplers (see update)
-    this._wallContact = false; // were we against the barrier last frame? (impact edge)
 
     // Drift (hold jump while turning to slide + charge a mini-turbo)
     this.drifting = false;
     this.driftDir = 0;
     this.driftCharge = 0;
-    this.driftTier = 0; // live mini-turbo tier (0-3) while drifting; 0 otherwise
+    this.driftTier = 0; // live cosmetic charge step (0-3) while drifting; 0 otherwise
     this.driftHeld = false; // jump button held (sustains the drift)
-    this.slipAngle = 0; // rad the velocity lags the heading (signed; drift slide)
-    this._driftSlack = 0; // s the drift has spent not actually arcing
 
     // Boost (drift mini-turbo and the toot boost button)
     this.boostTimer = 0;
@@ -364,21 +351,19 @@ export class Kart {
     return true;
   }
 
-  // End a drift, awarding the mini-turbo TIER the charge reached (see
-  // DRIFT_TIERS: 0.6s → 1.2×/0.7s, 1.4s → 1.35×/1.0s, 2.4s → 1.5×/1.4s). A
-  // drift that didn't charge to tier 1 earns nothing — no trivial flick boosts.
+  // End a drift, awarding a boost that scales with how long it was held (the
+  // longer you hold jump through the corner, the bigger the boost). A drift that
+  // didn't charge long enough earns nothing — no trivial flick boosts.
   endDrift() {
     if (!this.drifting) return;
     this.drifting = false;
     const charge = this.driftCharge;
     this.driftCharge = 0;
     this.driftTier = 0;
-    this._driftSlack = 0;
-    const tier = driftTierFor(charge);
-    if (tier < 1) return; // too short to earn a mini-turbo
-    const t = DRIFT_TIERS[tier - 1];
-    this.applyBoost(t.mult, t.secs);
-    this.boostPuff = t.charge; // signal a tier-coloured boost cloud (see main loop)
+    if (charge < MIN_DRIFT_CHARGE) return; // too short to earn a mini-turbo
+    const c = Math.min(charge, 3.2);
+    this.applyBoost(1.12 + c * 0.12, 0.4 + c * 0.28);
+    this.boostPuff = c; // signal a charge-coloured boost cloud (see main loop)
   }
 
   get boosting() {
@@ -462,7 +447,6 @@ export class Kart {
     this.drifting = false;
     this.driftCharge = 0;
     this.driftTier = 0;
-    this.slipAngle = 0;
     // The slide carries the momentum; when the spin settles the kart rolls on
     // with 30% of its pre-hit pace instead of restarting from a dead stop.
     this._spinExitSpeed = Math.abs(this.speed) * 0.3;
@@ -624,13 +608,18 @@ export class Kart {
 
     // --- Drift: continues as long as jump is held; release fires the boost ---
     if (this.drifting) {
+      // The charge banks for the whole slide. The one gate is a minimal
+      // anti-farm one: a "drift" counter-steered dead straight (the inward
+      // amount below 0.12 — see the steering block for `amount`) banks nothing,
+      // so parking the slide on a straight can't stockpile a boost. Any real
+      // steer angle, including the light ones tilt/touch players hold, clears it.
+      if (0.2 + this.steerInput * this.driftDir * 0.7 >= 0.12) this.driftCharge += dt;
       if (!this.driftHeld || this.speed < 6) this.endDrift();
     } else if (this.driftHeld && !this.airborne && this.speed > 7 && Math.abs(this.steerInput) > 0.25) {
       this.drifting = true;
       this.driftDir = Math.sign(this.steerInput);
       this.driftCharge = 0;
       this.driftTier = 0;
-      this._driftSlack = 0;
     }
 
     // --- Steering --- (less effective at very low speed, reversed in reverse)
@@ -638,42 +627,24 @@ export class Kart {
     const dir = this.speed >= 0 ? 1 : -1;
     let steer = this.steerInput;
     let turnRate = 1.9; // rad/sec at full
-    let slipTarget = 0;
     if (this.drifting) {
-      turnRate = 2.4;
+      turnRate = 1.8;
       // The drift has a gentle inherent pull; steering has strong authority over
-      // it. Tilt into the drift to tighten (up to 1.1 — sharper than any grip
-      // turn), tilt against it to pull back (and a little past straight) —
-      // counter-steering really bites now.
+      // it. Tilt into the drift to tighten, tilt against it to pull back (and a
+      // little past straight) — counter-steering really bites now.
       const rel = this.steerInput * this.driftDir; // +1 into, -1 counter
-      const amount = Math.max(-0.4, 0.2 + rel * 0.9);
+      const amount = Math.max(-0.4, 0.2 + rel * 0.7);
       steer = this.driftDir * amount;
-      // The slide: the velocity lags the nose in proportion to the commitment,
-      // so the kart tracks a wider line than it points — the drift IDENTITY.
-      slipTarget = this.driftDir * Math.max(0, amount) / 1.1 * DRIFT_SLIP_MAX;
-      // A sliding tyre has less grip: a small steady scrub while the slide lasts
-      // (the release boost is the payoff for committing anyway).
-      this.speed *= 1 - Math.min(1, 0.03 * dt);
-      // Mini-turbo charge + drift speed ramp only accrue during REAL cornering:
+      // Drift speed ramp: ~+1% per half second of REAL cornering, capped +5%.
       // `amount` only stays high while the slide is actually arcing — hold a
       // "drift" straight down the road (or snake it) and it sits near the 0.2
-      // idle pull, so nothing banks and after DRIFT_SLACK_END the drift ends on
-      // its own. No free speed, no straight-line charging.
-      if (amount >= 0.35) {
-        this.driftCharge += dt;
-        this._driftSlack = 0;
-        if (Math.abs(this.speed) > 10) this.driftRamp = Math.min(0.05, this.driftRamp + 0.02 * dt);
-        else this.driftRamp = Math.max(0, this.driftRamp - 0.1 * dt);
+      // idle pull, so the ramp decays instead of accruing. No free speed.
+      if (amount >= 0.35 && Math.abs(this.speed) > 10) {
+        this.driftRamp = Math.min(0.05, this.driftRamp + 0.02 * dt);
       } else {
         this.driftRamp = Math.max(0, this.driftRamp - 0.1 * dt);
-        if (amount < 0.15) {
-          this._driftSlack += dt;
-          if (this._driftSlack >= DRIFT_SLACK_END) this.endDrift();
-        } else {
-          this._driftSlack = 0;
-        }
       }
-      this.driftTier = this.drifting ? driftTierFor(this.driftCharge) : 0;
+      this.driftTier = driftTierFor(this.driftCharge); // cosmetic step for sparks/haptics
     } else {
       this.driftTier = 0;
       if (this.driftRamp > 0) {
@@ -682,11 +653,6 @@ export class Kart {
         this.driftRamp = Math.max(0, this.driftRamp - 0.2 * dt);
       }
     }
-    // Slip angle eases toward the drift's target and bleeds off (~0.25s) once
-    // the drift ends, so the exit still carries a beat of the slide.
-    if (this.drifting) this.slipAngle += (slipTarget - this.slipAngle) * Math.min(1, 10 * dt);
-    else this.slipAngle *= Math.max(0, 1 - 12 * dt);
-    if (Math.abs(this.slipAngle) < 1e-4) this.slipAngle = 0;
     // Catnip is fast, which makes tight corners hard — give it extra steering
     // authority so it stays controllable through bends.
     if (this.catnipBoosting && !this.drifting) turnRate *= 1.4;
@@ -707,15 +673,7 @@ export class Kart {
 
   _integrate(dt, track, finishing) {
     const fwd = _iFwd.set(Math.sin(this.heading), 0, Math.cos(this.heading));
-    // Travel along the VELOCITY direction: the nose leads it by the slip angle
-    // while drifting (the slide), and they coincide the rest of the time.
-    if (this.slipAngle !== 0) {
-      const vh = this.heading - this.slipAngle;
-      this.position.x += Math.sin(vh) * this.speed * dt;
-      this.position.z += Math.cos(vh) * this.speed * dt;
-    } else {
-      this.position.addScaledVector(fwd, this.speed * dt);
-    }
+    this.position.addScaledVector(fwd, this.speed * dt);
 
     // Bumper-car knockback (decaying positional impulse). The decay is gentle so
     // a bump glides to a stop rather than snapping — this is the slide both the
@@ -733,19 +691,7 @@ export class Kart {
     if (Math.abs(proj.lateral) > limit) {
       const correction = Math.sign(proj.lateral) * limit - proj.lateral;
       this.position.addScaledVector(proj.side, correction);
-      // Scraping along the barrier bleeds pace steadily...
-      this.speed *= 1 - Math.min(0.4, 3.5 * dt);
-      // ...and the FIRST contact costs an impulse scaled by the approach angle:
-      // a glancing graze loses next to nothing, a head-on clip drops ~1s of
-      // pace (≈60% of top speed, which full throttle wins back in about a
-      // second) plus a small shove back off the wall.
-      if (!this._wallContact) {
-        const wallN = Math.sign(proj.lateral); // +: outer side of `side`
-        const approach = Math.max(0, (fwd.x * proj.side.x + fwd.z * proj.side.z) * wallN * Math.sign(this.speed || 1));
-        this.speed *= 1 - 0.6 * approach;
-        this.knock.addScaledVector(proj.side, -wallN * approach * 6);
-      }
-      this._wallContact = true;
+      this.speed *= 1 - Math.min(0.4, 1.6 * dt);
       this.knock.multiplyScalar(0.5);
       // Clipping a wall kills an active drift and forfeits its charge (no boost
       // reward) — drive clean through the corner to keep the slide.
@@ -763,8 +709,6 @@ export class Kart {
         // transient set here and cleared in the effects pass. Stays up ~0.12s.
         this.wallHitPulse = 0.12;
       }
-    } else {
-      this._wallContact = false;
     }
 
     // Sit the kart on its front + rear wheel contacts (not just the centreline),
@@ -948,10 +892,7 @@ export class Kart {
     // Aim point a short distance ahead — shorter on sharp corners so we follow
     // the bend instead of cutting it. A gentle apex on mild bends, blended with
     // this driver's own lane bias so the field fans out instead of clumping.
-    // (Longer while drifting: the slide is judged against where the corner is
-    // GOING, not the next few metres, or the drift reads as over-rotated at
-    // once and gets released before it charges.)
-    const aimDist = (8 + speed * 0.5) * (1 - 0.5 * sharp) * (this.drifting ? 1.7 : 1);
+    const aimDist = (8 + speed * 0.5) * (1 - 0.5 * sharp);
     const aT = wrap(this.trackT + aimDist / L);
     const target = track.getPointAt(aT, _aiTarget);
     const side = _aiSide.crossVectors(track.getTangentAt(aT, _aiT0), UP).normalize();
@@ -1023,26 +964,15 @@ export class Kart {
       }
     }
 
-    // Aim the VELOCITY at the target, not the nose: while drifting the kart
-    // travels `slipAngle` wide of where it points, so the nose has to sit
-    // that much further inside — without this the AI reads its own slide as
-    // over-rotation, counter-steers, and the drift stops charging.
-    const desired = Math.atan2(target.x - this.position.x, target.z - this.position.z) + this.slipAngle;
+    const desired = Math.atan2(target.x - this.position.x, target.z - this.position.z);
     const diff = angleDelta(desired, this.heading);
     this.steerInput = Math.max(-1, Math.min(1, diff * 3.2));
 
     // Carry good corner speed: brake for sharp bends but keep a healthy floor so
-    // they stay competitive instead of crawling round every turn. The drift's
-    // extra rotation (turnRate 2.4 vs 1.9) lets them carry more through a bend
-    // than a grip turn would — the floors sit higher while sliding.
-    // Floors were 0.34/0.55 (slope 0.82): far more braking than the kart
-    // needs — `sharp` saturates at a ~290u radius while the kart can grip-turn
-    // ~18u at top speed — and it cost ~3s a lap on the classic circuit for no
-    // fewer wall touches (headless pace probe: 0% barrier grind either way).
-    const floor = this.drifting ? (sharp > 0.6 ? 0.85 : 0.95) : (sharp > 0.6 ? 0.7 : 0.85);
+    // they stay competitive instead of crawling round every turn.
     this.throttleInput = Math.max(
-      floor,
-      1 - sharp * (this.drifting ? 0.25 : 0.4) - Math.min(0.35, Math.abs(diff) * 0.45)
+      sharp > 0.6 ? 0.34 : 0.55,
+      1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45)
     );
     // Grade compensation: a max-grade climb drags ~0.35 of full accel, which
     // eats the sharp-corner throttle floor almost exactly — the kart stalls,
@@ -1054,41 +984,15 @@ export class Kart {
       this.throttleInput = Math.max(this.throttleInput, Math.min(1, need));
     }
 
-    // Drift through sweeping corners for a mini-turbo. The charge only banks
-    // while the slide is really arcing (amount ≥ 0.35 → ≥0.84 rad/s of
-    // rotation — see update), which on a wide sweeper is MORE turn than the
-    // road needs: so the AI drifts the way a player does, committing a steady
-    // inward steer and letting the kart carve toward the inside of the bend,
-    // then releasing when the nose has swung too far past the line or the
-    // inside barrier gets close. Once a tier is banked it lets go sooner (the
-    // boost is the payoff; over-rotating into the wall is not). Hysteresis:
-    // start only on a real sweeper with room to carve, hold while the road
-    // still bends this way.
+    // Drift through sweeping corners and HOLD it well into the exit for a long
+    // charge (bigger boost). Hysteresis: start only on a real sweeper, but once
+    // drifting keep holding until the road nearly straightens out.
     if (this.spinTimer > 0) {
       this.driftHeld = false;
     } else if (this.drifting) {
-      const lat = this._proj ? this._proj.lateral : 0;
-      // Distance to the barrier on the inside of the slide (positive steer
-      // carries the kart toward negative lateral — see _integrate/heading).
-      const room = (track.halfWidth - this.radius) + lat * this.driftDir;
-      const overRot = -diff * this.driftDir; // rad the nose sits past the aim, into the bend
-      // The bend is still on: the road ahead keeps curving this way, OR the
-      // nose still has to swing inward to make the aim (the curvature read is
-      // ~50u ahead, so it drops out before the kart has actually exited).
-      const stillBends = (Math.sign(curve) === this.driftDir && sharp > 0.16) || overRot < -0.08;
-      const limit = this.driftTier >= 2 ? 0.2 : this.driftTier >= 1 ? 0.4 : 0.65;
-      this.driftHeld = speed > 8 && stillBends && room > 4.5 && overRot < limit;
-      // Commit inward so the charge accrues (rel ≥ 0.17 keeps amount ≥ 0.35),
-      // rather than sawing at the wheel as the aim error flips sign.
-      if (this.driftHeld) this.steerInput = this.driftDir * Math.max(this.steerInput * this.driftDir, 0.18);
+      this.driftHeld = speed > 8 && sharp > 0.16; // hold through the exit
     } else {
-      const lat = this._proj ? this._proj.lateral : 0;
-      const dir = Math.sign(this.steerInput) || 1;
-      const room = (track.halfWidth - this.radius) + lat * dir;
-      // Only into a bend that goes the way we're steering (a lane/apex offset
-      // can have us steering across a bend — that's not a drift line).
-      this.driftHeld = speed > 16 && sharp > 0.3 && sharp < 0.96 && Math.abs(this.steerInput) > 0.3 &&
-        dir === Math.sign(curve) && room > 7;
+      this.driftHeld = speed > 16 && sharp > 0.4 && sharp < 0.96 && Math.abs(this.steerInput) > 0.3;
     }
 
     // Stuck recovery: if we've been crawling (pinned on a wall) without being

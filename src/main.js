@@ -3188,8 +3188,9 @@ function updateHaptics(nowMs) {
   const spinning = player.spinTimer > 0;
   if (spinning && !_feel.spin) fire("heavy");
   _feel.spin = spinning;
-  // Drift mini-turbo charging up a tier (kart.driftTier, the same 0.6/1.4/2.4s
-  // thresholds the release boost + spark colours use, blue→gold→rainbow).
+  // Drift charge stepping up (kart.driftTier: 0.8/1.5/2.4s held — the first two
+  // are the spark colour steps, blue→gold→rainbow; the third is a "well past
+  // maxed" tick). Cosmetic steps only: the release boost is a continuous curve.
   const tier = player.drifting ? player.driftTier : 0;
   if (tier > _feel.tier) fire("light");
   _feel.tier = tier;
