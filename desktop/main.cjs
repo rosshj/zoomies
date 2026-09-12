@@ -109,6 +109,16 @@ if (ON_DECK) {
   app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
+// WebGPU retest switch: ZOOMIES_WEBGPU=1 drops the WebGL2 pin (see gameUrl)
+// and, on Linux, turns on Chromium's Vulkan-backed WebGPU, which is still
+// gated there. One env var so the test is the same on a Mac terminal and in
+// a Steam launch option (`ZOOMIES_WEBGPU=1 %command%`). Off = today's shell.
+const WANT_WEBGPU = process.env.ZOOMIES_WEBGPU === "1";
+if (WANT_WEBGPU && process.platform === "linux") {
+  app.commandLine.appendSwitch("enable-unsafe-webgpu");
+  app.commandLine.appendSwitch("enable-features", "Vulkan");
+}
+
 // app:// must be registered standard+secure BEFORE app ready so module
 // scripts, fetch and localStorage all behave like a normal https origin.
 protocol.registerSchemesAsPrivileged([
@@ -240,10 +250,13 @@ function gameUrl() {
   // below the app (one render loop, one camera — verified), so the fix is to
   // not ride that path: WebGL2 is the game's fully supported backend, the one
   // every headless check runs, and ANGLE-on-Metal presents rock-solid.
-  // Retest WebGPU after Electron upgrades with ZOOMIES_QUERY=webgpu=1 — the
-  // pin is dropped then, because in gpu.js a webgl param always beats webgpu.
+  // Retest WebGPU after Electron upgrades with ZOOMIES_WEBGPU=1 (or
+  // ZOOMIES_QUERY=webgpu=1) — the pin is dropped then and webgpu=1 also
+  // clears the game's sticky prefer-WebGL flag, because in gpu.js a webgl
+  // param always beats webgpu.
   const extra = process.env.ZOOMIES_QUERY || "";
-  const pin = /webgpu|webgl/.test(extra) ? "" : "&webgl=1";
+  const forced = /webgpu|webgl/.test(extra);
+  const pin = forced ? "" : WANT_WEBGPU ? "&webgpu=1" : "&webgl=1";
   return `app://game/index.html?nosw=1${pin}${extra ? "&" + extra : ""}`;
 }
 
