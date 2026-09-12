@@ -356,6 +356,11 @@
       </header>
       <div class="flow-body">
         <div class="mode-grid">
+          <button id="mode-explore" class="tap-card mode-tap mode-explore">
+            <span class="tap-chip" style="background:#7ee787">🗺️</span>
+            <span class="tap-text"><span class="tap-title">Explore the Atlas</span><span class="tap-sub" id="mode-explore-sub">Race places nobody has been — win, name them, and bring home the cats who live there</span></span>
+            <span class="tap-chev">›</span>
+          </button>
           <button id="mode-gp" class="tap-card mode-tap">
             <span class="tap-chip" style="background:#ff5d5d">🏁</span>
             <span class="tap-text"><span class="tap-title">Single Race</span><span class="tap-sub">One race, five rivals — quickest way to the track</span></span>
@@ -384,6 +389,48 @@
             <span class="tap-text"><span class="tap-title">Daily Challenge</span><span class="tap-sub" id="mode-daily-sub">Everyone races today's track — finish for bonus treats!</span></span>
             <span class="tap-chev">›</span>
           </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Atlas: the world map. Every cell is a seeded place; home is open, a
+         raced cell opens its neighbours, a first win names it and hatches its
+         resident cat or kart. Cells are buttons so the pad can roam the map. -->
+    <section id="flow-atlas" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <div class="flow-eyebrow" id="atlas-eyebrow">Step 2 of 5 · The Atlas</div>
+          <h2 class="flow-h">Where to?</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body atlas-body">
+        <div class="atlas-map-wrap">
+          <div id="atlas-grid" class="atlas-grid" role="grid"></div>
+          <p class="atlas-legend"><span>🏁 raced</span><span>⭐ won</span><span>🐱/🏎️ resident waiting</span><span>? unexplored</span></p>
+        </div>
+        <div class="sticker-deep atlas-card" id="atlas-card">
+          <canvas id="atlas-preview" class="track-map atlas-preview" width="300" height="188"></canvas>
+          <div class="atlas-title-row">
+            <h3 id="atlas-name" class="atlas-name">Home</h3>
+            <span id="atlas-addr" class="atlas-addr">0,0</span>
+          </div>
+          <p id="atlas-where" class="atlas-line">🌳 Meadow</p>
+          <p id="atlas-what" class="atlas-line">🏁 Circuit · ☀️ Midday</p>
+          <p id="atlas-status" class="atlas-line atlas-status">Unexplored</p>
+          <div id="atlas-resident" class="atlas-resident"></div>
+          <div class="atlas-actions">
+            <button id="atlas-race" class="btn-gold racer-next">🏁&nbsp; Race here</button>
+            <div class="atlas-actions-row">
+              <button id="atlas-share" class="btn-cream small-pill">🔗 Copy address</button>
+              <button id="atlas-home" class="btn-cream small-pill" title="Back to home">🏠 Home</button>
+            </div>
+          </div>
+          <div class="atlas-goto">
+            <input id="atlas-goto-input" class="creator-input" placeholder="Go to… e.g. 4,-2" maxlength="9" />
+            <button id="atlas-goto-btn" class="btn-cream small-pill">Go</button>
+          </div>
         </div>
       </div>
     </section>
@@ -813,6 +860,30 @@
       <p class="claim-sub" id="claim-sub">Tap each badge to collect its treats 🐟</p>
       <div id="claim-list"></div>
       <button id="claim-continue" class="hidden">🏠 Continue</button>
+    </div>
+  </div>
+
+  <!-- ===== Atlas ceremony: first win on a cell — name the place, meet the resident ===== -->
+  <div id="atlas-claim" class="overlay hidden">
+    <div class="menu-card claim-main atlas-claim-main">
+      <h1 id="atlas-claim-title">🏁 First to win here!</h1>
+      <p class="claim-sub" id="atlas-claim-sub">Name this place — it's yours to call.</p>
+      <div class="atlas-namerow">
+        <input id="atlas-name-input" class="creator-input" maxlength="24" placeholder="Name this place" />
+        <button id="atlas-name-pick" class="btn-cream small-pill" aria-label="Pick a name">✏️ Pick</button>
+      </div>
+      <div id="atlas-name-grid" class="name-grid atlas-name-grid hidden"></div>
+      <div id="atlas-hatch" class="atlas-hatch">
+        <canvas id="atlas-hatch-canvas" width="180" height="180"></canvas>
+        <div class="atlas-hatch-text">
+          <div class="atlas-hatch-kicker" id="atlas-hatch-kicker">A cat lived here</div>
+          <div class="atlas-hatch-name" id="atlas-hatch-name">Biscuit</div>
+          <div class="atlas-hatch-desc" id="atlas-hatch-desc"></div>
+          <div class="atlas-hatch-bio" id="atlas-hatch-bio"></div>
+          <div class="atlas-hatch-rarity" id="atlas-hatch-rarity"></div>
+        </div>
+      </div>
+      <button id="atlas-claim-continue" class="btn-gold">✓&nbsp; Keep it</button>
     </div>
   </div>
 

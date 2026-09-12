@@ -389,6 +389,35 @@ const ROAD_STYLES = {
 export function biomeRoadStyle(x, z) {
   return ROAD_STYLES[biomeAt(x, z).name] || ROAD_STYLES.meadow;
 }
+// How each road kind DRIVES. grip scales acceleration, braking and steering
+// authority; drag trims the top speed (loose sand, deep snow); slide is the
+// extra tail-out a drift carries. Sized to be felt without being punishing —
+// snow is the loosest at ~20% less grip, city concrete is a touch stickier.
+const SURFACES = {
+  asphalt: { grip: 1.0, drag: 0.0, slide: 0.0 },
+  urban: { grip: 1.05, drag: 0.0, slide: -0.1 },
+  autumn: { grip: 0.95, drag: 0.02, slide: 0.25 }, // leaf litter
+  damp: { grip: 0.92, drag: 0.02, slide: 0.4 }, // wet forest / jungle
+  sand: { grip: 0.9, drag: 0.08, slide: 0.2 }, // dunes, savanna, beach
+  snow: { grip: 0.8, drag: 0.05, slide: 0.65 }, // alpine / tundra
+};
+// Blended driving surface under (x,z,y): weights the kinds the road-style
+// blend reports, so a seam eases from tarmac to snow over the same band the
+// road's own colour does. Writes into `out` (the kart owns it).
+export function biomeSurfaceAt(x, z, y, out) {
+  const b = biomeRoadStyleBlend(x, z, y);
+  let grip = 0, drag = 0, slide = 0, wsum = 0, best = 0, kind = "asphalt";
+  for (const k in b.kinds) {
+    const w = b.kinds[k];
+    if (w <= 0) continue;
+    const sf = SURFACES[k] || SURFACES.asphalt;
+    grip += sf.grip * w; drag += sf.drag * w; slide += sf.slide * w; wsum += w;
+    if (w > best) { best = w; kind = k; }
+  }
+  if (wsum > 0) { grip /= wsum; drag /= wsum; slide /= wsum; } else { grip = 1; drag = 0; slide = 0; }
+  out.grip = grip; out.drag = drag; out.slide = slide; out.kind = kind;
+  return out;
+}
 
 // Blended road style for the road SURFACE itself: instead of the hard
 // per-vertex switch above, the tint cross-fades over the same wide seam bands
@@ -490,7 +519,11 @@ export function buildWorld(scene, track, opts = {}) {
   const roadClear = track.halfWidth + 10; // keep scenery off the tarmac
   // Every track gets its own prevailing wind out of the seed, so the direction
   // the grass and the treeline lean is part of a world's character.
-  setWind({ dirRad: rand() * Math.PI * 2, strength: 0.9 + rand() * 0.3 });
+  // Weather variant (atlas cells roll one): a stormy seed nearly doubles the
+  // prevailing wind (the soften curve in wind.js caps the felt force), a still
+  // one drops it to a breeze.
+  const windVar = opts.weather === "stormy" ? 1.8 : opts.weather === "still" ? 0.45 : 1;
+  setWind({ dirRad: rand() * Math.PI * 2, strength: (0.9 + rand() * 0.3) * windVar });
 
   // Gentle rolling detail laid on top of the road-anchored hills (kept small so
   // it never digs the ground below the road — that just makes scenery vanish

@@ -118,6 +118,63 @@ src/
   crashguard.js   # WebGPU device-loss watchdog + reload recovery
   rng.js          # seeded RNG for reproducible worlds
   worldcfg.js     # encoded-world token that carries a cup round's exact map
+  atlas.js        # the world map: cell (x,y) → track recipe + resident, exploration rules
+  genome.js       # seeded cat/kart genomes: coat genes, body genes, accessory flair, names
+  portrait.js     # 2D portraits painted from a genome (thumbnails for found racers)
+```
+
+### The Atlas (Explore mode)
+
+The world is a grid of **cells**, and every cell is a place: a seeded track
+recipe and a resident cat or kart, both grown from the cell's coordinates.
+Home is `0,0`. Finishing a race there (any place) opens its four neighbours;
+the **first win** on a cell lets you **name it** and hatches its resident into
+your garage. Cells further from home race harder rivals.
+
+Because everything is a pure function of the seed, the map is the same on
+every device with no server: `?atlas=4,-2` (the Copy address button) builds
+that exact cell for a friend, resident included.
+
+- **Geography** comes from smoothed noise fields over the grid (temperature,
+  wetness, urbanity, relief), so neighbouring cells share a family and
+  continents emerge: a desert belt, a snowy north, a city cluster.
+- **Archetypes** — each cell rolls a track personality before its knobs:
+  circuit, speedway (wide, two real straights), street circuit (a technical
+  knot), mountain pass (one climb, one technical descent), coastal run, rally
+  stage, figure eight. See `ARCHETYPES` in `src/track.js`: sections modulate
+  the lap's rhythm, the road width follows, and the crossover planner is
+  reserved for circuits and figure eights.
+- **Headline set piece** — most cells are built around ONE scaled-up feature
+  (a longer tunnel, a deeper canyon, a wider river crossing) that also names
+  the track.
+- **Weather variants** — clear, misty (fog pulled in), stormy (wind nearly
+  doubled), still.
+- **Surfaces** — the road under each kart drives differently: snow slides and
+  brakes late, sand drags the top speed, wet forest lengthens drifts, city
+  concrete grips. The AI reads the same surface. (`biomeSurfaceAt` in
+  `src/scenery.js`, consumed in `Kart.update`.)
+
+### Found cats and karts (genomes)
+
+Residents are **genomes** (`src/genome.js`), not presets: continuous genes
+for coat colour + dilution, tabby type + density (mackerel / classic / spotted
+/ ticked / rosetted), white-spotting grade (0–10, floods up from the belly),
+colourpoint, tortie mosaic, eye colour (odd eyes happen), ears (folds),
+tail (bobtails), fluff (ruffs), chonk, face width, whiskers and eye tilt —
+plus an accessory with **flair**: tilted, backwards, tiny or oversized, with a
+propeller / feather / googly eyes / sticker / bell / antenna / tiny hat / sprout.
+Karts blend nose reach, fin height, tyre size, ride height and track width
+over the five body styles, wear a painted livery and a hood ornament, and
+carry a whisper of handling identity (grippy / zippy). Rarity (common / rare /
+legendary, some shiny) pushes the genes. `createCat` / `createKartModel` take
+`opts.genome`; the biome a resident is found in nudges its genes (tundra cats
+run pale and fluffy, city cats are tuxedos in shades).
+
+```bash
+npm run check:atlas             # genome + atlas + exploration rules (pure node)
+node tools/genome-probe.mjs     # contact sheet of cats/karts from seeds
+node tools/archetype-probe.mjs  # the loop shape per archetype
+node tools/atlas-probe.mjs      # the whole explore → win → name → hatch loop
 ```
 
 ### Is a track playable? (`npm run check:tracks`)

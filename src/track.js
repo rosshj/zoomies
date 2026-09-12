@@ -224,6 +224,54 @@ function _loopOK(pts, minR, xover = null) {
 // is. The generator scales its high-frequency harmonics by the wedge under each
 // angle — city blocks read tight and busy, deserts open into long fast sweeps —
 // so crossing a biome border changes how the road DRIVES, not just how it looks.
+// Track ARCHETYPES — the personality a seed rolls BEFORE its knobs. Every seed
+// used to be drawn from the middle of one distribution (one loop family, knobs
+// near 0.5), and the average of that is always the same track, just wiggled.
+// An archetype spreads seeds to the edges of the space: an oval speedway with
+// two real straights, a boxy street circuit that is technical everywhere, a
+// mountain pass that is one climb + one technical descent, a coastal run that
+// idles along the shore then knots up inland.
+//   sections: [from, to, env] lap-fraction bands multiplying the high-frequency
+//             (technical) harmonics — the lap's RHYTHM. null = the per-biome
+//             rhythm alone (the classic behaviour).
+//   lobes:    scale on the low harmonics (the silhouette's big lobes); a
+//             speedway wants a clean oval, a rally stage wants deep bays.
+//   width:    road width; halfWidth feeds the corner floor + containment.
+export const ARCHETYPES = {
+  classic:  { label: "Circuit", glyph: "🏁", width: 30, lobes: 1.0, sections: null },
+  speedway: { label: "Speedway", glyph: "🏟️", width: 34, lobes: 0.42, sections: [[0.0, 0.2, 0.08], [0.2, 0.48, 0.55], [0.48, 0.7, 0.08], [0.7, 1.0, 0.85]] },
+  street:   { label: "Street circuit", glyph: "🏙️", width: 27, lobes: 0.9, sections: [[0.0, 0.3, 1.25], [0.3, 0.42, 0.35], [0.42, 1.0, 1.2]] },
+  mountain: { label: "Mountain pass", glyph: "⛰️", width: 28, lobes: 1.0, sections: [[0.0, 0.32, 0.45], [0.32, 0.62, 1.2], [0.62, 0.8, 0.3], [0.8, 1.0, 0.9]] },
+  coastal:  { label: "Coastal run", glyph: "🌊", width: 30, lobes: 0.8, sections: [[0.0, 0.42, 0.22], [0.42, 0.72, 1.0], [0.72, 1.0, 0.55]] },
+  rally:    { label: "Rally stage", glyph: "🌲", width: 27, lobes: 1.15, sections: [[0.0, 0.14, 0.2], [0.14, 0.52, 1.3], [0.52, 0.66, 0.3], [0.66, 1.0, 1.1]] },
+  figure8:  { label: "Figure eight", glyph: "♾️", width: 30, lobes: 1.0, sections: null },
+};
+export const ARCHETYPE_IDS = Object.keys(ARCHETYPES);
+export function archetypeOf(cfg) {
+  return (cfg && ARCHETYPES[cfg.archetype]) ? cfg.archetype : "classic";
+}
+// Section envelope at lap angle `a` (0..TAU): the band's env, smoothed across
+// a 6%-of-lap seam so a straight eases into a technical knot.
+function sectionEnvAt(sections, a) {
+  if (!sections) return 1;
+  const f = ((a / TAU) % 1 + 1) % 1;
+  const W = 0.06;
+  let acc = 0, wsum = 0;
+  for (const [from, to, env] of sections) {
+    // Soft window with smoothstep shoulders that wrap around the lap.
+    for (const off of [-1, 0, 1]) {
+      const x = f + off;
+      const lo = Math.min(1, Math.max(0, (x - from + W) / W));
+      const hi = Math.min(1, Math.max(0, (to + W - x) / W));
+      const w = Math.min(lo, hi);
+      if (w <= 0) continue;
+      const ws = w * w * (3 - 2 * w);
+      acc += env * ws; wsum += ws;
+    }
+  }
+  return wsum > 0 ? acc / wsum : 1;
+}
+
 const BIOME_RHYTHM = {
   city: 1.0, forest: 0.8, autumn: 0.65, blossom: 0.6, alpine: 0.6,
   meadow: 0.5, tundra: 0.45, beach: 0.35, savanna: 0.3, desert: 0.18,
@@ -555,7 +603,11 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   const curviness = clamp01(cfg.curviness);
   const elevation = clamp01(cfg.hilliness); // how high/low (amplitude)
   const hills = clamp01(cfg.hills ?? 0.5); // how MANY hills (frequency)
-  const xover = planCrossover(cfg);
+  const arch = ARCHETYPES[archetypeOf(cfg)];
+  const archId = archetypeOf(cfg);
+  // Only the classic circuit and the figure eight may self-cross: a speedway
+  // or a street circuit with a loop in it stops reading as what it is.
+  const xover = archId === "classic" || archId === "figure8" ? planCrossover(cfg) : null;
   // One centrepiece per lap: a crossing map skips the summit (its flattened
   // crossing zone and the peak's Gaussian would fight over the profile).
   const summit = xover ? null : planSummitPeak(cfg);
@@ -584,7 +636,8 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // so a centreline radius below halfWidth (15) folds the inner edge over itself —
   // which looks especially broken where a tight corner also falls on a steep grade.
   // Keep a margin above halfWidth so the inner edge always has room (radius ~7).
-  const MIN_CORNER = 22;
+  // A wider road (speedway) needs a wider corner floor to keep its inner edge.
+  const MIN_CORNER = Math.max(22, (cfg.width || arch.width || 30) / 2 + 7);
 
   // Elevation profile: number of hills scales with the Hills knob AND map size
   // (bigger maps fit more hills). 1/k weighting keeps the climbs/drops drivable
@@ -604,9 +657,9 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   // Low harmonics (overall lobe count) follow curviness; the high harmonics that
   // pack in extra wiggles follow `detail`, so they thin out on small maps.
   const rH = [
-    { k: 1, w: 0.45 },
-    { k: 2, w: 0.85 },
-    { k: 3, w: 0.4 + curviness * 0.9 },
+    { k: 1, w: 0.45 * arch.lobes },
+    { k: 2, w: 0.85 * arch.lobes },
+    { k: 3, w: (0.4 + curviness * 0.9) * arch.lobes },
     { k: 4, w: detail * 1.1 },
     { k: 5, w: detail * 0.85 },
     { k: 6, w: detail * 0.6 },
@@ -704,7 +757,9 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       // cool enough that loop validity stays near the old generator's rate
       // (pushing to 1.55x cratered it). Late attempts step the envelope back
       // toward uniform so hard seeds still converge to SOME valid loop.
-      const envRaw = 0.6 + 0.7 * rhythmAt(a);
+      // The archetype's SECTIONS ride on top of the biome rhythm: a speedway's
+      // straights zero the wiggle, a street circuit's knots crank it.
+      const envRaw = (0.6 + 0.7 * rhythmAt(a)) * sectionEnvAt(arch.sections, a);
       const envK = attempt < 10 ? 1 : attempt < 20 ? 0.55 : attempt < 30 ? 0.25 : 0;
       const env = 1 + (envRaw - 1) * envK;
       let x, z;
@@ -1019,7 +1074,7 @@ export class Track {
   // `config` (optional): { mode:"custom", size, curviness, hilliness, width }.
   // Without it (or mode !== "custom") the hand-authored classic circuit is used.
   constructor(config = null) {
-    this.width = config && config.width ? config.width : 30;
+    this.width = config && config.width ? config.width : (config && config.mode === "custom" ? ARCHETYPES[archetypeOf(config)].width : 30);
     this.halfWidth = this.width / 2;
 
     // Control points (x, y, z). Either the procedural loop from the knobs, or
@@ -1155,7 +1210,7 @@ export class Track {
     this.biomeNames = biomeNames; // kept for debugging/headless tooling
     // config.features (from the editor's set-piece chips) filters which kinds
     // may spawn; null/absent means everything is allowed.
-    this.features = planFeatures(this, biomeNames, rand, config && config.features);
+    this.features = planFeatures(this, biomeNames, rand, config && config.features, config && config.headline);
 
     this.group = new THREE.Group();
     this._buildRoad();

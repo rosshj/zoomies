@@ -149,7 +149,11 @@ function sideAt(track, i) {
 
 // Plan the map's set pieces. `allowed` (from the track editor's chips) filters
 // which kinds may spawn: null/empty = everything; "extras" covers treatments.
-export function planFeatures(track, biomeNames, rng, allowed = null) {
+// `headline` names the ONE set piece this seed is built around: it plans
+// first (so it gets the best arc), runs ~1.5× longer and carves ~1.35× deeper,
+// and the track takes its name from it. One big memorable thing beats five
+// medium ones.
+export function planFeatures(track, biomeNames, rng, allowed = null, headline = null) {
   const N = track.samples;
   const pts = track._pts;
   const tans = track._tans;
@@ -161,6 +165,12 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
   const allow = Array.isArray(allowed)
     ? new Set(allowed.flatMap((k) => (k === "extras" ? EXTRA_KINDS : [k])))
     : new Set(ALL_KINDS);
+  const headSpec = headline ? KIND_SPECS.find((s) => s.kind === headline) : null;
+  if (headSpec) allow.add(headline);
+  const specs = headSpec
+    ? [{ ...headSpec, headline: true, halfFrac: headSpec.halfFrac * 1.5, fallbacks: [headSpec.halfFrac * 1.2, headSpec.halfFrac, ...(headSpec.fallbacks || [])] },
+       ...KIND_SPECS.filter((s) => s !== headSpec)]
+    : KIND_SPECS;
 
   const overlapsTaken = (c, half) => {
     if (loopDist(c, 0, N) < startGuard + half) return true;
@@ -178,8 +188,9 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
     taken.push({ c: run.c, half: halfX + 8 });
   }
 
-  for (const spec of KIND_SPECS) {
+  for (const spec of specs) {
     if (!allow.has(spec.kind)) continue;
+    const big = spec.headline ? 1.35 : 1;
     // A spec may list fallback lengths: try the full-length arc first, then
     // progressively shorter ones, so a long set piece degrades to a shorter
     // one on cramped seeds instead of vanishing.
@@ -233,22 +244,23 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
     }
     if (!run) continue;
 
+    if (spec.headline) run.headline = true;
     if (spec.kind === "canyon") {
-      run.mag = 23 + rng() * 9;
+      run.mag = (23 + rng() * 9) * big;
       run.warmRock = biomeNames[((run.c % N) + N) % N] === "desert";
     } else if (spec.kind === "tunnel") {
-      run.mag = 19 + rng() * 4; // ridge over the tube (tube apex is ~15)
+      run.mag = (19 + rng() * 4) * big; // ridge over the tube (tube apex is ~15)
     } else if (spec.kind === "overpass") {
       run.depth = 7.5;
     } else if (spec.kind === "shelf") {
-      run.mag = 20 + rng() * 8; // wall height (outward side)
-      run.drop = 20 + rng() * 8; // drop depth (inward side)
+      run.mag = (20 + rng() * 8) * big; // wall height (outward side)
+      run.drop = (20 + rng() * 8) * big; // drop depth (inward side)
       const cp = pts[((run.c % N) + N) % N];
       const cs = sideAt(track, run.c);
       run.inSign = cs.x * cp.x + cs.z * cp.z >= 0 ? -1 : 1; // toward the infield
       run.warmRock = biomeNames[((run.c % N) + N) % N] !== "alpine";
     } else if (spec.kind === "dam") {
-      run.depth = 22 + rng() * 6; // valley sink below the deck (inward side)
+      run.depth = (22 + rng() * 6) * big; // valley sink below the deck (inward side)
       const cp = pts[((run.c % N) + N) % N];
       const cs = sideAt(track, run.c);
       run.inSign = cs.x * cp.x + cs.z * cp.z >= 0 ? -1 : 1;
@@ -876,6 +888,8 @@ export function trackTitle(feats, seedStr) {
   // nothing and the menu shows "Tunnel undefined".
   const suffix = TITLE_SUFFIX[(h >>> 0) % TITLE_SUFFIX.length];
   const kinds = new Set((feats?.runs || []).map((r) => r.kind));
+  const head = (feats?.runs || []).find((r) => r.headline);
+  if (head && TITLE_WORDS[head.kind]) return `${TITLE_WORDS[head.kind]} ${suffix}`;
   for (const k of TITLE_PRIORITY) {
     if (kinds.has(k)) return `${TITLE_WORDS[k]} ${suffix}`;
   }

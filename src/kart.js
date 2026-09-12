@@ -145,7 +145,7 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1, rng = Math.random, headless = false }) {
+  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1, rng = Math.random, headless = false, catGenome = null, kartGenome = null }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
@@ -247,6 +247,16 @@ export class Kart {
     this.radius = 1.8; // half-width for road containment
 
     this.shielding = false; // STATE (read by hit-blocking), not visual — always set
+    // The driving surface under the kart (written each frame by main.js from
+    // the biome road blend — see scenery.biomeSurfaceAt). 1/0/0 = dry tarmac.
+    this.surface = { grip: 1, drag: 0, slide: 0, kind: "asphalt" };
+    // Found-kart trait: a whisper of handling identity, never a power gate.
+    // grippy = +6% steering, -1.5% top; zippy = the reverse.
+    this.trait = kartGenome ? kartGenome.trait : "balanced";
+    this.traitTurn = this.trait === "grippy" ? 1.06 : this.trait === "zippy" ? 0.96 : 1;
+    if (this.trait === "grippy") this.maxSpeed *= 0.985;
+    else if (this.trait === "zippy") this.maxSpeed *= 1.02;
+    this.baseMaxSpeed = this.maxSpeed;
 
     // Visual — skipped entirely in headless mode (no THREE meshes, no canvas
     // textures). A headless kart runs the full physics but has no `group`.
@@ -257,16 +267,18 @@ export class Kart {
       // the world axis, so the kart only tilts to the grade when facing ±Z — on a
       // looping track it mostly wouldn't pitch at all.
       this.group.rotation.order = "YXZ";
-      const { group: kart, wheels, brakeMat, flames, flag } = createKartModel(color, { style: kartStyle, number: kartNumber });
+      // Found (genome) cats/karts ride the same constructor: the genome, when
+      // present, overrides the classic look fields inside the model builders.
+      const { group: kart, wheels, brakeMat, flames, flag, seatLift } = createKartModel(color, { style: kartStyle, number: kartNumber, genome: kartGenome });
       this.wheels = wheels;
       for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
       this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
       this.flames = flames; // boost exhaust flames; shown/flickered while boosting
       this.flag = flag; // roadster pennant pivot (flapped in update); null elsewhere
       this.group.add(kart);
-      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart" });
+      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart", genome: catGenome });
       cat.scale.setScalar(0.62);
-      cat.position.set(0, 0.85, -0.35);
+      cat.position.set(0, 0.85 + (seatLift || 0), -0.35);
       this.group.add(cat);
       this.catRig = cat.userData.rig;
 
@@ -549,19 +561,20 @@ export class Kart {
     // --- Longitudinal ---
     const boosting = this.boostTimer > 0;
     const th = this.throttleInput;
+    const sf = this.surface; // grip / drag / slide of the road under us
     if (boosting) {
       this.speed += this.accel * 2.2 * dt; // strong push while boosting
     } else if (th > 0.02) {
-      this.speed += this.accel * th * dt;
+      this.speed += this.accel * th * sf.grip * dt;
     } else if (th < -0.02) {
       if (this.speed > 0.5) {
-        this.speed -= this.brake * -th * dt; // braking
+        this.speed -= this.brake * -th * sf.grip * dt; // braking (longer on snow)
         if (this.speed < 0) this.speed = 0;
       } else {
         this.speed -= this.accel * -th * dt; // reverse
       }
     } else {
-      this.speed *= 1 - Math.min(1, 1.4 * dt); // engine braking
+      this.speed *= 1 - Math.min(1, (1.4 + sf.drag * 6) * dt); // engine braking (+ loose-surface drag)
       if (Math.abs(this.speed) < 0.05) this.speed = 0;
     }
 
@@ -587,6 +600,9 @@ export class Kart {
     // steering block), capped at +5%. It rides the ceiling so it fades with
     // the drift instead of snapping.
     if (this.driftRamp > 0) upper *= 1 + this.driftRamp;
+    // Loose surfaces trim the ceiling: sand ~7%, snow ~4.5% (the grip loss is
+    // the bigger story there).
+    if (sf.drag > 0 && !boosting) upper *= 1 - sf.drag * 0.9;
     // A raised (HELD) shield drags: ~4% off the top while it's up. Defense
     // occupies the action slot AND costs pace — that's the whole trade. The
     // item-box shield (shieldTimer) is a prize and rides free.
@@ -626,14 +642,15 @@ export class Kart {
     const speedFactor = Math.min(1, Math.abs(this.speed) / 10);
     const dir = this.speed >= 0 ? 1 : -1;
     let steer = this.steerInput;
-    let turnRate = 1.9; // rad/sec at full
+    let turnRate = 1.9 * this.traitTurn * (1 - (1 - sf.grip) * 0.6); // rad/sec at full; low grip = understeer
     if (this.drifting) {
-      turnRate = 1.8;
+      turnRate = 1.8 * this.traitTurn;
       // The drift has a gentle inherent pull; steering has strong authority over
       // it. Tilt into the drift to tighten, tilt against it to pull back (and a
       // little past straight) — counter-steering really bites now.
       const rel = this.steerInput * this.driftDir; // +1 into, -1 counter
-      const amount = Math.max(-0.4, 0.2 + rel * 0.7);
+      // Loose surfaces (snow, wet leaves) carry more inherent tail-out.
+      const amount = Math.max(-0.4, 0.2 + sf.slide * 0.14 + rel * 0.7);
       steer = this.driftDir * amount;
       // Drift speed ramp: ~+1% per half second of REAL cornering, capped +5%.
       // `amount` only stays high while the slide is actually arcing — hold a
@@ -887,7 +904,9 @@ export class Kart {
     const t0 = track.getTangentAt(wrap(this.trackT + 5 / L), _aiT0);
     const t1 = track.getTangentAt(wrap(this.trackT + (18 + speed) / L), _aiT1);
     const curve = angleDelta(Math.atan2(t1.x, t1.z), Math.atan2(t0.x, t0.z));
-    const sharp = Math.min(1, Math.abs(curve) * 6);
+    // Low-grip surfaces read as sharper corners to the AI, so it brakes and
+    // drifts for them the way a player has to.
+    const sharp = Math.min(1, Math.abs(curve) * 6 * (1 + (1 - this.surface.grip) * 1.6));
 
     // Aim point a short distance ahead — shorter on sharp corners so we follow
     // the bend instead of cutting it. A gentle apex on mild bends, blended with

@@ -24,7 +24,44 @@ export function defaultStats() {
     races: 0, wins: 0, winsHard: 0, winsNight: 0, racesCustom: 0,
     driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0,
     boxes: 0, dailies: 0, treatsEarned: 0,
+    cellsRaced: 0, cellsNamed: 0, found: 0, // the atlas: places raced, places named, residents hatched
   };
+}
+// The atlas record: which cells have been raced/won, what they were named,
+// and the residents (cats/karts) found there — stored as regrowable stubs
+// {id, kind, seed, biome, cell} because the genome itself is a pure function
+// of the seed (src/genome.js). See src/atlas.js for the rules.
+export function defaultAtlas() {
+  return { cells: {}, found: [] };
+}
+export function migrateAtlas(raw) {
+  const a = raw && typeof raw === "object" ? raw : {};
+  const out = defaultAtlas();
+  if (a.cells && typeof a.cells === "object") {
+    for (const k of Object.keys(a.cells)) {
+      if (!/^-?\d+,-?\d+$/.test(k)) continue;
+      const c = a.cells[k] || {};
+      out.cells[k] = {
+        raced: Number.isFinite(c.raced) && c.raced >= 0 ? Math.floor(c.raced) : 0,
+        won: Number.isFinite(c.won) && c.won >= 0 ? Math.floor(c.won) : 0,
+        name: typeof c.name === "string" ? c.name.slice(0, 24) : "",
+        best: Number.isFinite(c.best) && c.best > 0 ? c.best : null,
+      };
+    }
+  }
+  if (Array.isArray(a.found)) {
+    const seen = new Set();
+    for (const f of a.found) {
+      if (!f || typeof f !== "object" || typeof f.id !== "string" || typeof f.seed !== "string" || seen.has(f.id)) continue;
+      seen.add(f.id);
+      out.found.push({
+        id: f.id, kind: f.kind === "kart" ? "kart" : "cat", seed: f.seed,
+        biome: typeof f.biome === "string" ? f.biome : null,
+        cell: Array.isArray(f.cell) && f.cell.length === 2 ? [Number(f.cell[0]) || 0, Number(f.cell[1]) || 0] : null,
+      });
+    }
+  }
+  return out;
 }
 
 export function defaultProfile() {
@@ -37,6 +74,7 @@ export function defaultProfile() {
     pendingClaims: [], // earned badges whose treats wait for the player's CLAIM tap
     stats: defaultStats(),
     dailyPaid: "", // last YYYY-MM-DD the daily bonus was paid
+    atlas: defaultAtlas(),
   };
 }
 
@@ -60,6 +98,7 @@ export function migrateProfile(raw) {
   p.stats = { ...defaultStats() };
   for (const k of Object.keys(p.stats)) if (Number.isFinite(s[k]) && s[k] >= 0) p.stats[k] = s[k];
   p.dailyPaid = typeof p.dailyPaid === "string" ? p.dailyPaid : "";
+  p.atlas = migrateAtlas(p.atlas);
   return p;
 }
 
@@ -173,6 +212,13 @@ export const ACHIEVEMENTS = [
   { id: "custom-race", name: "Trailblazer", desc: "Race a track you generated", pay: 50, test: (s) => s.racesCustom >= 1 },
   { id: "cup-first", name: "Silverware", desc: "Win any cup", pay: 150, test: (s, p) => Object.keys(p.trophies).length >= 1 },
   { id: "cup-sweep", name: "Cat-egory Champion", desc: "Win all four cups", pay: 400, test: (s, p) => CUPS.every((c) => p.trophies[c.id]) },
+  // The atlas: explore, name, collect.
+  { id: "atlas-first", name: "Off the Map", desc: "Race a place on the atlas", pay: 50, test: (s) => s.cellsRaced >= 1 },
+  { id: "atlas-10", name: "Wanderer", desc: "Race 10 different places", pay: 150, test: (s) => s.cellsRaced >= 10 },
+  { id: "atlas-40", name: "Cartographer", desc: "Race 40 different places", pay: 400, test: (s) => s.cellsRaced >= 40 },
+  { id: "named-3", name: "Namesake", desc: "Name 3 places you won", pay: 100, test: (s) => s.cellsNamed >= 3 },
+  { id: "found-5", name: "Cat Herder", desc: "Bring home 5 residents", pay: 150, test: (s) => s.found >= 5 },
+  { id: "found-20", name: "Full House", desc: "Bring home 20 residents", pay: 400, test: (s) => s.found >= 20 },
 ];
 
 // Mark newly earned badges. The treats are NOT paid here — each badge waits in

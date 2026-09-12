@@ -23,7 +23,7 @@ import { ChaseCam } from "./split.js";
 import { HairballManager } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal, formatTime } from "./hud.js";
-import { buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeSurfaceAt, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { encodeWorld, decodeWorld } from "./worldcfg.js";
@@ -78,6 +78,15 @@ let trackConfig = loadTrackConfig(); // `let`: a cup race replaces this with the
 // Garage presets live in src/presets.js (pure data) so the catalog-screenshot
 // tool can import them without booting the game.
 import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } from "./presets.js";
+// The Atlas (world map of seeded cells) + the genomes its residents are grown
+// from + the 2D portraits that stand in for catalog renders of found racers.
+import {
+  ATLAS_RADIUS, cellConfig, cellPrize, cellKey, parseCellKey, cellAddress, cellDefaultName, cellDisplayName,
+  isCellOpen, isCellRaced, isCellWon, cellRecord, recordCellRace, nameCell, regrow,
+} from "./atlas.js";
+import { describeCat, describeFlair, describeKart, catSpecFromGenome, kartSpecFromGenome, RARITY_LABEL, TRAIT_LABEL } from "./genome.js";
+import { drawCatPortrait, drawKartPortrait, portraitDataURL } from "./portrait.js";
+import { ARCHETYPES } from "./track.js";
 // A "Custom" slot sits one past the last preset in each stepper; landing on it
 // reveals the creator (colour / pattern / accessory / name) and the look is read
 // from garageConfig.customCat / .customKart instead of the preset arrays.
@@ -123,13 +132,16 @@ function loadGarageConfig() {
         kart: clampIdx(c.kart, KART_PRESETS.length + 1),
         customCat: sanitizeCustomCat(c.customCat),
         customKart: sanitizeCustomKart(c.customKart),
+        // Found (atlas) racers ride by genome id; null = a preset/custom pick.
+        foundCat: typeof c.foundCat === "string" ? c.foundCat : null,
+        foundKart: typeof c.foundKart === "string" ? c.foundKart : null,
       };
     }
   } catch {
     /* ignore */
   }
   // Marmalade in the Ember kart (the original "You"), with sensible custom defaults.
-  return { cat: 0, kart: 0, customCat: sanitizeCustomCat(), customKart: sanitizeCustomKart() };
+  return { cat: 0, kart: 0, customCat: sanitizeCustomCat(), customKart: sanitizeCustomKart(), foundCat: null, foundKart: null };
 }
 function clampIdx(v, n) {
   v = Number.isInteger(v) ? v : 0;
@@ -144,7 +156,18 @@ function saveGarageConfig(c) {
 }
 // Resolve a garage config (live or draft) to the concrete cat / kart look,
 // transparently handling the Custom slot.
+// A found racer's genome, regrown from the profile's atlas stub (null if the
+// id isn't in the collection any more — the pick falls back to the preset).
+function foundGenome(id, kind) {
+  if (!id) return null;
+  const stub = (profile?.atlas?.found || []).find((f) => f.id === id && f.kind === kind);
+  return stub ? regrow(stub) : null;
+}
 function catSpec(cfg) {
+  if (cfg.foundCat) {
+    const g = foundGenome(cfg.foundCat, "cat");
+    if (g) return catSpecFromGenome(g);
+  }
   if (cfg.cat === CUSTOM_CAT_IDX) {
     const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
     return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
@@ -154,6 +177,10 @@ function catSpec(cfg) {
   return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
 }
 function kartSpec(cfg) {
+  if (cfg.foundKart) {
+    const g = foundGenome(cfg.foundKart, "kart");
+    if (g) return kartSpecFromGenome(g);
+  }
   if (cfg.kart === CUSTOM_KART_IDX) {
     const k = cfg.customKart || DEFAULT_CUSTOM_KART;
     return { name: k.name, color: k.color, style: k.style, number: k.number };
@@ -165,7 +192,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
-  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, catGenome: cat.genome || null, kartGenome: kart.genome || null };
 }
 
 const _qs = new URLSearchParams(location.search);
@@ -179,6 +206,13 @@ let _worldLaps = null; // lap count when the world came from `?w=` (overrides lo
 if (_sharedWorld) {
   trackConfig = _sharedWorld.cfg; // build EXACTLY the encoded map
   if (_sharedWorld.laps >= 1 && _sharedWorld.laps <= 5) _worldLaps = _sharedWorld.laps;
+}
+// A friend's address (?atlas=4,-2): build that atlas cell exactly and land on
+// the start line. No server — the cell regrows identically on any build.
+const _atlasLink = parseCellKey(_qs.get("atlas"));
+if (_atlasLink && !_sharedWorld && Math.max(Math.abs(_atlasLink[0]), Math.abs(_atlasLink[1])) <= ATLAS_RADIUS) {
+  trackConfig = cellConfig(_atlasLink[0], _atlasLink[1]);
+  saveTrackConfig(trackConfig);
 }
 // Normalize the stored seed to the same casing the world stream uses: the
 // isolated plan streams (biome wedges, summit, crossover) key off cfg.seed,
@@ -544,7 +578,11 @@ scene.add(track.group);
 const _worldDetail = (() => {
   try { return localStorage.getItem("zoomies-quality-v2") === "high" ? 1.7 : 1; } catch { return 1; }
 })();
-const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail });
+// Weather variant per seed (atlas cells roll clear / misty / stormy / still):
+// misty pulls the fog in, stormy/still scale the wind in buildWorld.
+const WEATHER_VARIANT = ["clear", "misty", "stormy", "still"].includes(trackConfig.weather) ? trackConfig.weather : "clear";
+const _fogVariant = WEATHER_VARIANT === "misty" ? 0.62 : 1;
+const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail, weather: WEATHER_VARIANT });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 window.__zoomies.wind = { uWindStr, uWindAir, biomeWindAt }; // debug hook: force a shot was taken at + the per-biome target
@@ -1090,7 +1128,7 @@ function aiRoster(look) {
 }
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, catGenome: look.catGenome, kartGenome: look.kartGenome };
   if (timeTrial) return [playerCfg];
   if (raceMode === "split") {
     // Versus: 2-4 humans + AI to fill the same six-kart field (and headlight
@@ -2071,7 +2109,7 @@ function applyQuality(q, persist = true) {
   for (const k of karts) applyKartShadowMode(k);
   // Draw distance: push the fog out ~35% and the far plane with it — the
   // distant world becomes VISIBLE rather than hazed.
-  setFogScale(high ? 1.35 : 1);
+  setFogScale((high ? 1.35 : 1) * _fogVariant);
   camera.far = high ? 2600 : 2050;
   // Split cams track the tier's far plane, with the 3-4 seat rein-in intact.
   const _viewFar = splitActive && splitCount >= 3 ? Math.min(camera.far, 1800) : camera.far;
@@ -2587,7 +2625,7 @@ window.addEventListener("blur", pauseOnBlur);
 // Badges block the exit: leaving the results for the menu detours through the
 // claim interstitial whenever any badge is still unclaimed (it no-ops straight
 // to the menu when there's nothing to claim).
-document.getElementById("results-menu-btn")?.addEventListener("click", () => showClaimScreen(toMenu));
+document.getElementById("results-menu-btn")?.addEventListener("click", () => showAtlasClaim(() => showClaimScreen(toMenu)));
 
 // --- Settings screen (graphics + sound), opened from the menu and pause ---
 const settingsOverlay = document.getElementById("settings");
@@ -3024,7 +3062,7 @@ function warmGarageKart() {
   try {
     const cat = catSpec(garageConfig);
     const kart = kartSpec(garageConfig);
-    const wk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
+    const wk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1, catGenome: cat.genome || null, kartGenome: kart.genome || null });
     wk.group.traverse((o) => {
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3508,9 +3546,11 @@ function refreshMenuMap() {
   // The menu map shows the LIVE world, so its set pieces (planned at build)
   // can be drawn right on the loop, and the track gets its generated name.
   paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig), featureGlyphs(track.features));
-  const name = trackConfig.mode === "custom"
-    ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
-    : "Classic circuit";
+  const name = Array.isArray(trackConfig.cell)
+    ? `🗺️ ${cellDisplayName(profile.atlas, trackConfig.cell[0], trackConfig.cell[1])} · ${cellAddress(trackConfig.cell[0], trackConfig.cell[1])}`
+    : trackConfig.mode === "custom"
+      ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
+      : "Classic circuit";
   const label = document.getElementById("menu-map-label");
   if (label) label.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
@@ -3601,12 +3641,12 @@ const _previewCache = { key: null, kart: null };
 function _previewKey(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  return [cat.fur, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
+  return [cat.fur, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number, cat.genome ? cat.genome.id : "", kart.genome ? kart.genome.id : ""].join("|");
 }
 function _buildPreviewKart(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1, catGenome: cat.genome || null, kartGenome: kart.genome || null });
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3758,9 +3798,9 @@ function refreshRacerSummary() {
   const kart = kartSpec(garageConfig);
   el.textContent = `${cat.name} · ${kart.name}`;
   const ct = document.getElementById("racer-thumb-cat");
-  if (ct) ct.src = garageConfig.cat === CUSTOM_CAT_IDX ? "assets/catalog/custom-cat.jpg" : `assets/catalog/cat-${garageConfig.cat}.jpg`;
+  if (ct) ct.src = cat.genome ? portraitDataURL(cat.genome, 120) : garageConfig.cat === CUSTOM_CAT_IDX ? "assets/catalog/custom-cat.jpg" : `assets/catalog/cat-${garageConfig.cat}.jpg`;
   const kt = document.getElementById("racer-thumb-kart");
-  if (kt) kt.src = garageConfig.kart === CUSTOM_KART_IDX ? "assets/catalog/custom-kart.jpg" : `assets/catalog/kart-${garageConfig.kart}.jpg`;
+  if (kt) kt.src = kart.genome ? portraitDataURL(kart.genome, 120) : garageConfig.kart === CUSTOM_KART_IDX ? "assets/catalog/custom-kart.jpg" : `assets/catalog/kart-${garageConfig.kart}.jpg`;
 }
 // Entering any racer-family screen (cat / kart / the two studios): open the
 // showroom once — the draft persists across the whole family and commits when
@@ -3775,6 +3815,8 @@ function openRacerStep() {
       kart: garageConfig.kart,
       customCat: { ...garageConfig.customCat },
       customKart: { ...garageConfig.customKart },
+      foundCat: garageConfig.foundCat || null,
+      foundKart: garageConfig.foundKart || null,
     };
     const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
     _garageAnchor.copy(slot.position);
@@ -4106,8 +4148,8 @@ function renderCatCards() {
       // Couch rule: a guest's seat pass rides any preset free — Versus pays
       // no treats, and P1's locks/prices (and wallet!) are P1's alone.
       buyId: _pickingSeat ? null : `cat.${i}`,
-      current: _garageDraft?.cat === i,
-      onPick: () => { _garageDraft.cat = i; flowGo("kart"); },
+      current: _garageDraft?.cat === i && !_garageDraft?.foundCat,
+      onPick: () => { _garageDraft.cat = i; _garageDraft.foundCat = null; flowGo("kart"); },
       rerender: renderCatCards,
     }));
   });
@@ -4116,9 +4158,23 @@ function renderCatCards() {
       img: "assets/catalog/custom-cat.jpg",
       name: "Custom Cat",
       sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
-      current: _garageDraft?.cat === CUSTOM_CAT_IDX,
+      current: _garageDraft?.cat === CUSTOM_CAT_IDX && !_garageDraft?.foundCat,
       onPick: () => flowGo("cat-edit"),
     }));
+    // Found on the atlas: every resident cat the player has brought home.
+    for (const stub of profile.atlas.found) {
+      if (stub.kind !== "cat") continue;
+      const g = regrow(stub);
+      if (!g) continue;
+      grid.appendChild(racerGridCard({
+        img: portraitDataURL(g, 160),
+        name: g.name,
+        sub: `🗺️ ${stub.cell ? cellDisplayName(profile.atlas, stub.cell[0], stub.cell[1]) : "found"}${RARITY_LABEL[g.rarity] ? " · " + RARITY_LABEL[g.rarity] : ""}`,
+        current: _garageDraft?.foundCat === stub.id,
+        onPick: () => { _garageDraft.foundCat = stub.id; flowGo("kart"); },
+        rerender: renderCatCards,
+      }));
+    }
   }
 }
 function renderKartCards() {
@@ -4131,8 +4187,8 @@ function renderKartCards() {
       name: k.name,
       // Same couch rule as the cats: seat passes never see locks or prices.
       buyId: _pickingSeat ? null : `kart.${i}`,
-      current: _garageDraft?.kart === i,
-      onPick: () => { _garageDraft.kart = i; commitRacer(); },
+      current: _garageDraft?.kart === i && !_garageDraft?.foundKart,
+      onPick: () => { _garageDraft.kart = i; _garageDraft.foundKart = null; commitRacer(); },
       rerender: renderKartCards,
     }));
   });
@@ -4141,9 +4197,22 @@ function renderKartCards() {
       img: "assets/catalog/custom-kart.jpg",
       name: "Custom Kart",
       sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
-      current: _garageDraft?.kart === CUSTOM_KART_IDX,
+      current: _garageDraft?.kart === CUSTOM_KART_IDX && !_garageDraft?.foundKart,
       onPick: () => flowGo("kart-edit"),
     }));
+    for (const stub of profile.atlas.found) {
+      if (stub.kind !== "kart") continue;
+      const g = regrow(stub);
+      if (!g) continue;
+      grid.appendChild(racerGridCard({
+        img: portraitDataURL(g, 160),
+        name: g.name,
+        sub: `🗺️ ${stub.cell ? cellDisplayName(profile.atlas, stub.cell[0], stub.cell[1]) : "found"} · ${TRAIT_LABEL[g.trait].split(" ·")[0]}`,
+        current: _garageDraft?.foundKart === stub.id,
+        onPick: () => { _garageDraft.foundKart = stub.id; commitRacer(); },
+        rerender: renderKartCards,
+      }));
+    }
   }
 }
 // Kart chosen → the racer is complete: save it and roll on to the start line.
@@ -4189,6 +4258,8 @@ function commitRacer() {
   garageConfig.kart = _garageDraft.kart;
   garageConfig.customCat = sanitizeCustomCat(_garageDraft.customCat);
   garageConfig.customKart = sanitizeCustomKart(_garageDraft.customKart);
+  garageConfig.foundCat = _garageDraft.foundCat || null;
+  garageConfig.foundKart = _garageDraft.foundKart || null;
   saveGarageConfig(garageConfig);
   refreshRacerSummary();
   flowGo("startline");
@@ -4274,7 +4345,7 @@ window.addEventListener("keydown", (e) => {
       // Menu button does (through the badge-claim interstitial). On the claim
       // screen the first press collects every badge, the next continues.
       // During the victory lap (results not up yet) there's nothing to do.
-      if (claimScreenBack()) return;
+      if (atlasClaimBack() || claimScreenBack()) return;
       const results = document.getElementById("results");
       if (results && !results.classList.contains("hidden")) document.getElementById("results-menu-btn")?.click();
     }
@@ -4367,9 +4438,12 @@ function flowGo(step, dir = 1, instant = false) {
   else if (step === "cup") renderCupOptions();
   else if (step === "cat") { openRacerStep(); renderCatCards(); refreshRacerEyebrows(); }
   else if (step === "kart") { openRacerStep(); renderKartCards(); refreshRacerEyebrows(); }
-  else if (step === "cat-edit") { openRacerStep(); _garageDraft.cat = CUSTOM_CAT_IDX; syncGarageUI(); refreshRacerPreview(); }
-  else if (step === "kart-edit") { openRacerStep(); _garageDraft.kart = CUSTOM_KART_IDX; syncGarageUI(); refreshRacerPreview(); }
+  else if (step === "cat-edit") { openRacerStep(); _garageDraft.cat = CUSTOM_CAT_IDX; _garageDraft.foundCat = null; syncGarageUI(); refreshRacerPreview(); }
+  else if (step === "kart-edit") { openRacerStep(); _garageDraft.kart = CUSTOM_KART_IDX; _garageDraft.foundKart = null; syncGarageUI(); refreshRacerPreview(); }
   else if (step === "startline") { refreshStartline(); openStartGrid(); }
+  else if (step === "atlas") renderAtlas();
+  if (step === "atlas") _fromAtlas = true;
+  else if (step === "track" || step === "cup") _fromAtlas = false;
   if (changing) {
     if (instant) menuFlowEl.classList.add("flow-instant");
     if (cur) {
@@ -4421,7 +4495,8 @@ function flowBack() {
     mode: "title",
     track: "mode",
     cup: "mode",
-    cat: raceMode === "cup" ? "cup" : "track",
+    atlas: "mode",
+    cat: raceMode === "cup" ? "cup" : _fromAtlas ? "atlas" : "track",
     kart: "cat",
     "cat-edit": "cat",
     "kart-edit": "kart",
@@ -4467,6 +4542,14 @@ function setRaceMode(mode) {
 // Mode: one tap chooses AND advances (no selected state — these are doors,
 // not toggles). The daily card doubles as today's status line.
 function refreshModeCards() {
+  const ex = document.getElementById("mode-explore-sub");
+  if (ex) {
+    const raced = Object.values(profile.atlas.cells).filter((c) => c.raced > 0).length;
+    const found = profile.atlas.found.length;
+    ex.textContent = raced
+      ? `${raced} place${raced === 1 ? "" : "s"} explored · ${found} resident${found === 1 ? "" : "s"} found — the map keeps going`
+      : "Race places nobody has been — win, name them, and bring home the cats who live there";
+  }
   const sub = document.getElementById("mode-daily-sub");
   if (sub) {
     sub.textContent = profile.dailyPaid === todayStr()
@@ -4475,9 +4558,229 @@ function refreshModeCards() {
   }
 }
 document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
+document.getElementById("mode-explore")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("atlas"); });
 document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
 document.getElementById("mode-split")?.addEventListener("click", () => { setRaceMode("split"); flowGo("track"); });
 document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
+
+// --- The Atlas: the world map screen ----------------------------------------
+// A window of cells around the selection, drawn as buttons (so the pad can
+// roam it), and a card for the selected place: its generated map, where and
+// what it is, its status, and the resident waiting there. Tap a cell to
+// select it, tap it again (or Race here) to go — the race itself is the
+// ordinary single-race path on the cell's recipe.
+const ATLAS_COLS = 11, ATLAS_ROWS = 7;
+const ATLAS_SEL_KEY = "zoomies-atlas-sel";
+let _fromAtlas = false; // the racer steps came from the atlas (Back returns there)
+let _atlasSel = [0, 0];
+try { const v = JSON.parse(localStorage.getItem(ATLAS_SEL_KEY)); if (Array.isArray(v) && v.length === 2) _atlasSel = [v[0] | 0, v[1] | 0]; } catch { /* ignore */ }
+let _atlasView = [..._atlasSel];
+let _atlasSettled = null; // what the last atlas race unlocked (for the ceremony)
+const BIOME_EMOJI = { meadow: "🌳", forest: "🌲", alpine: "🏔", autumn: "🍂", desert: "🏜", mesa: "🪨", blossom: "🌸", jungle: "🌴", savanna: "🦒", tundra: "❄️", city: "🏙", beach: "🏖" };
+const BIOME_LABEL = { meadow: "Meadow", forest: "Forest", alpine: "Alpine", autumn: "Autumn", desert: "Desert", mesa: "Mesa", blossom: "Blossom", jungle: "Jungle", savanna: "Savanna", tundra: "Tundra", city: "City", beach: "Beach" };
+const TOD_EMOJI = { midday: "☀️ Midday", sunset: "🌇 Sunset", night: "🌙 Night" };
+const WEATHER_LABEL = { clear: "", misty: "🌫️ Misty", stormy: "🌬️ Stormy", still: "🍃 Still" };
+const HEADLINE_LABEL = { tunnel: "🚇 a long tunnel", canyon: "⛰️ a deep canyon", bridge: "🌉 a river crossing", dam: "💧 a dam wall", shelf: "🧗 a cliff ledge", causeway: "🌊 a causeway", overpass: "🛣️ a skyway", giant: "🌲 giant trees" };
+const TIER_LABEL = { easy: "Easy", medium: "Medium", hard: "Hard", expert: "Expert" };
+function _saveAtlasSel() { try { localStorage.setItem(ATLAS_SEL_KEY, JSON.stringify(_atlasSel)); } catch { /* ignore */ } }
+function selectAtlasCell(x, y) {
+  _atlasSel = [x, y];
+  _saveAtlasSel();
+  renderAtlas();
+}
+function renderAtlas() {
+  const grid = document.getElementById("atlas-grid");
+  if (!grid) return;
+  const [sx, sy] = _atlasSel;
+  const hx = Math.floor(ATLAS_COLS / 2), hy = Math.floor(ATLAS_ROWS / 2);
+  // Re-centre only when the selection nears the window's edge, so browsing
+  // doesn't slide the whole map under every tap.
+  if (Math.abs(sx - _atlasView[0]) > hx - 1 || Math.abs(sy - _atlasView[1]) > hy - 1) _atlasView = [sx, sy];
+  grid.replaceChildren();
+  grid.style.setProperty("--atlas-cols", ATLAS_COLS);
+  const A = profile.atlas;
+  for (let row = 0; row < ATLAS_ROWS; row++) {
+    for (let col = 0; col < ATLAS_COLS; col++) {
+      const x = _atlasView[0] - hx + col, y = _atlasView[1] + hy - row; // +y is north (up)
+      const inMap = Math.max(Math.abs(x), Math.abs(y)) <= ATLAS_RADIUS;
+      const open = inMap && isCellOpen(A, x, y);
+      if (!open) {
+        const d = document.createElement("div");
+        d.className = "atlas-cell fog" + (x === sx && y === sy ? " is-sel" : "");
+        d.textContent = inMap ? "?" : "";
+        if (inMap) d.addEventListener("click", () => selectAtlasCell(x, y)); // peek at fog (a friend's address)
+        grid.appendChild(d);
+        continue;
+      }
+      const raced = isCellRaced(A, x, y), won = isCellWon(A, x, y);
+      const cfg = cellConfig(x, y);
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "atlas-cell open" + (raced ? " raced" : " frontier") + (won ? " won" : "") + (x === sx && y === sy ? " is-sel" : "");
+      b.textContent = BIOME_EMOJI[cfg.biomes[0]] || "🏁";
+      b.title = `${cellDisplayName(A, x, y)} (${x},${y})`;
+      const mark = document.createElement("span");
+      mark.className = "cell-mark";
+      mark.textContent = won ? "⭐" : raced ? "🏁" : cellPrize(x, y).kind === "cat" ? "🐱" : "🏎️";
+      b.appendChild(mark);
+      if (x === 0 && y === 0) { const h = document.createElement("span"); h.className = "cell-home"; h.textContent = "🏠"; b.appendChild(h); }
+      cueifyButton(b);
+      b.addEventListener("click", () => {
+        if (x === sx && y === sy) { startAtlasRace(x, y); return; } // second tap = go
+        selectAtlasCell(x, y);
+      });
+      grid.appendChild(b);
+    }
+  }
+  renderAtlasCard();
+}
+function renderAtlasCard() {
+  const [x, y] = _atlasSel;
+  const A = profile.atlas;
+  const cfg = cellConfig(x, y);
+  const rec = cellRecord(A, x, y);
+  const open = isCellOpen(A, x, y);
+  paintTrackMap(document.getElementById("atlas-preview"), previewLoopPoints(cfg));
+  const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+  set("atlas-name", cellDisplayName(A, x, y));
+  set("atlas-addr", cellAddress(x, y));
+  set("atlas-where", cfg.biomes.map((b) => `${BIOME_EMOJI[b] || ""} ${BIOME_LABEL[b] || b}`).join(" · "));
+  const arch = ARCHETYPES[cfg.archetype] || ARCHETYPES.classic;
+  const bits = [`${arch.glyph} ${arch.label}`, TOD_EMOJI[cfg.timeOfDay] || ""];
+  if (WEATHER_LABEL[cfg.weather]) bits.push(WEATHER_LABEL[cfg.weather]);
+  if (cfg.headline && HEADLINE_LABEL[cfg.headline]) bits.push(HEADLINE_LABEL[cfg.headline]);
+  set("atlas-what", bits.filter(Boolean).join(" · "));
+  const tier = TIER_LABEL[cfg.tier] || cfg.tier;
+  let status;
+  if (!open) status = `🔒 Unexplored — race a neighbouring place to open it (or follow a friend's address)`;
+  else if (!rec || rec.raced === 0) status = `Unexplored · ${tier} rivals · first to win names it`;
+  else status = `Raced ${rec.raced}× · won ${rec.won}× · ${tier} rivals` + (rec.best ? ` · best ${formatTime(rec.best / 1000)}` : "");
+  set("atlas-status", status);
+  const res = document.getElementById("atlas-resident");
+  if (res) {
+    res.replaceChildren();
+    const prize = cellPrize(x, y);
+    const found = A.found.find((f) => f.id === prize.id);
+    if (found) {
+      const g = regrow(found);
+      const im = document.createElement("img");
+      im.src = portraitDataURL(g, 88);
+      im.alt = g.name;
+      if (g.kind === "kart") im.classList.add("wide");
+      const t = document.createElement("span");
+      t.textContent = `${g.name} — found here, in your garage`;
+      res.append(im, t);
+    } else {
+      const t = document.createElement("span");
+      t.textContent = prize.kind === "cat" ? "🐱 A cat lives here — win to meet it" : "🏎️ A kart is parked here — win to take it";
+      res.appendChild(t);
+    }
+  }
+  const race = document.getElementById("atlas-race");
+  if (race) race.textContent = rec && rec.raced > 0 ? "🏁\u00a0 Race again" : "🏁\u00a0 Race here";
+}
+function startAtlasRace(x, y) {
+  const cfg = cellConfig(x, y);
+  setRaceMode("gp");
+  // Rivals follow the cell's tier (the start line still lets you change it).
+  if (AI_DIFFICULTY[cfg.tier]) {
+    DIFFICULTY = cfg.tier;
+    try { localStorage.setItem(DIFF_KEY, cfg.tier); } catch { /* ignore */ }
+    refreshRaceOptSegs();
+  }
+  _atlasSel = [x, y];
+  _saveAtlasSel();
+  chooseTrackCard(cfg);
+}
+document.getElementById("atlas-race")?.addEventListener("click", () => startAtlasRace(_atlasSel[0], _atlasSel[1]));
+document.getElementById("atlas-home")?.addEventListener("click", () => { _atlasView = [0, 0]; selectAtlasCell(0, 0); });
+document.getElementById("atlas-share")?.addEventListener("click", async (e) => {
+  const u = new URL(location.href);
+  for (const p of ["seed", "w", "daily", "cup"]) u.searchParams.delete(p);
+  u.searchParams.set("atlas", cellAddress(_atlasSel[0], _atlasSel[1]));
+  const btn = e.currentTarget;
+  try { await navigator.clipboard.writeText(u.toString()); btn.textContent = "✓ Copied"; uiCue("chime"); }
+  catch { btn.textContent = cellAddress(_atlasSel[0], _atlasSel[1]); }
+  setTimeout(() => { btn.textContent = "🔗 Copy address"; }, 2200);
+});
+const _atlasGoto = () => {
+  const inp = document.getElementById("atlas-goto-input");
+  const c = parseCellKey((inp?.value || "").replace(/\s+/g, ""));
+  if (!c || Math.max(Math.abs(c[0]), Math.abs(c[1])) > ATLAS_RADIUS) { uiCue("error"); return; }
+  _atlasView = [...c];
+  selectAtlasCell(c[0], c[1]);
+};
+document.getElementById("atlas-goto-btn")?.addEventListener("click", _atlasGoto);
+document.getElementById("atlas-goto-input")?.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); _atlasGoto(); } });
+
+// Name suggestions for a first win — the pad's way to name a place.
+const NAME_A = ["Whisker", "Purr", "Zoomie", "Toe Bean", "Hairball", "Catnip", "Tuna", "Scratch", "Mitten", "Biscuit", "Yarn", "Snooze"];
+const NAME_B = ["Bend", "Run", "Hollow", "Point", "Pass", "Loop", "Sprint", "Corner", "Hill", "Way", "Gap", "Flats"];
+function atlasNameSuggestions(x, y) {
+  const r = makeRng(`names|${x},${y}`);
+  const out = new Set([cellDefaultName(x, y)]);
+  while (out.size < 12) out.add(`${NAME_A[Math.floor(r() * NAME_A.length)]} ${NAME_B[Math.floor(r() * NAME_B.length)]}`);
+  return [...out];
+}
+// The ceremony after a first win on a cell: name the place, meet the resident.
+function showAtlasClaim(onDone) {
+  const r = _atlasSettled;
+  _atlasSettled = null;
+  if (!r || !r.firstWin || !r.prize || !Array.isArray(trackConfig.cell)) { onDone(); return; }
+  const [x, y] = trackConfig.cell;
+  const scr = document.getElementById("atlas-claim");
+  const input = document.getElementById("atlas-name-input");
+  const grid = document.getElementById("atlas-name-grid");
+  const cont = document.getElementById("atlas-claim-continue");
+  if (!scr || !input || !grid || !cont) { onDone(); return; }
+  const title = document.getElementById("atlas-claim-title");
+  if (title) title.textContent = `🏁 First to win at ${cellAddress(x, y)}!`;
+  input.value = cellDisplayName(profile.atlas, x, y);
+  grid.replaceChildren();
+  grid.classList.add("hidden");
+  for (const n of atlasNameSuggestions(x, y)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = n;
+    b.addEventListener("click", () => { input.value = n; grid.classList.add("hidden"); uiCue("bloom"); });
+    grid.appendChild(b);
+  }
+  const pick = document.getElementById("atlas-name-pick");
+  if (pick) pick.onclick = () => grid.classList.toggle("hidden");
+  // The hatch.
+  const g = regrow(r.prize);
+  const cv = document.getElementById("atlas-hatch-canvas");
+  if (g && cv) {
+    if (g.kind === "kart") { cv.width = 270; cv.height = 180; cv.classList.add("wide"); drawKartPortrait(cv, g); }
+    else { cv.width = cv.height = 180; cv.classList.remove("wide"); drawCatPortrait(cv, g); }
+    const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+    set("atlas-hatch-kicker", g.kind === "kart" ? "A kart was parked here" : "A cat lived here");
+    set("atlas-hatch-name", g.name);
+    set("atlas-hatch-desc", g.kind === "kart" ? `${describeKart(g)} · ${TRAIT_LABEL[g.trait]}` : `${describeCat(g)} · ${describeFlair(g)}`);
+    set("atlas-hatch-bio", `“${g.bio}”`);
+    set("atlas-hatch-rarity", (RARITY_LABEL[g.rarity] || "") + (g.shiny ? " ✨ shiny" : ""));
+    const box = document.getElementById("atlas-hatch");
+    if (box) { box.classList.remove("pop"); void box.offsetWidth; box.classList.add("pop"); }
+  }
+  cont.onclick = () => {
+    const name = nameCell(profile.atlas, x, y, input.value);
+    if (name) profile.stats.cellsNamed++;
+    checkAchievements(profile); // a naming badge lands on the badge screen next
+    saveProfile();
+    scr.classList.add("hidden");
+    uiCue("success");
+    onDone();
+  };
+  scr.classList.remove("hidden");
+  uiCue("sparkle");
+}
+// B / Esc on the ceremony keeps the name as typed and continues.
+function atlasClaimBack() {
+  const scr = document.getElementById("atlas-claim");
+  if (!scr || scr.classList.contains("hidden")) return false;
+  document.getElementById("atlas-claim-continue")?.click();
+  return true;
+}
 
 // --- Track step: featured recipes painted from the real generator ----------
 // Fixed seeds/knobs so the cards are stable, nameable places. Picking a card
@@ -4492,7 +4795,7 @@ const FEATURED_TRACKS = [
   { name: "Maple Falls", sub: "🍂 Autumn · Sunset", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
   { name: "Petal Parade", sub: "🌸 Blossom · Midday", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
 ];
-const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
+const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay", "archetype", "headline"];
 function trackCardCurrent(cfg) {
   if (cfg.mode !== "custom") return trackConfig.mode !== "custom";
   return trackConfig.mode === "custom"
@@ -4540,7 +4843,11 @@ function renderTrackCards() {
 }
 function chooseTrackCard(cfg) {
   if (trackCardCurrent(cfg)) { flowGo("cat"); return; } // already built → onward
-  saveTrackConfig({ ...trackConfig, ...cfg });
+  // Atlas-only fields (the cell, its archetype/headline/weather) never leak
+  // into a featured or hand-made recipe picked afterwards.
+  const merged = { ...trackConfig, ...cfg };
+  for (const k of ["cell", "archetype", "headline", "weather", "tier"]) if (!(k in cfg)) delete merged[k];
+  saveTrackConfig(merged);
   saveFlowResume("cat");
   uiCue("loading");
   markReload("track-pick");
@@ -4697,6 +5004,13 @@ function refreshStartline() {
     else if (raceMode === "cup" && cupDef) {
       txt = `${cupDef.emoji} ${cupDef.name} — ${cupDef.races.length} races, points and trophies.`;
       if (cupDef.unlockId && !profile.trophies[cupDef.id]) txt += ` 🎁 First win: ${unlockName(cupDef.unlockId)}.`;
+    } else if (raceMode === "gp" && Array.isArray(trackConfig.cell)) {
+      const [cx, cy] = trackConfig.cell;
+      const rec = cellRecord(profile.atlas, cx, cy);
+      const tier = TIER_LABEL[trackConfig.tier] || "";
+      txt = rec && rec.won > 0
+        ? `🗺️ ${cellDisplayName(profile.atlas, cx, cy)} — yours already. Beat your best of ${rec.best ? formatTime(rec.best / 1000) : "—"}.`
+        : `🗺️ Unexplored${tier ? ` · ${tier} rivals` : ""} — win here to name the place and meet who lives there.`;
     } else if (raceMode === "tt") {
       const pb = loadTimeTrial()[0];
       txt = pb ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
@@ -4764,6 +5078,7 @@ refreshRaceOptSegs();
     sessionStorage.removeItem(FLOW_RESUME_KEY);
   } catch { /* ignore */ }
   if (_resume === "racer") _resume = "cat"; // pre-split marker from an old build
+  if (_atlasLink && !_resume) { _resume = "startline"; setRaceMode("gp"); } // a friend's address lands on the start line
   if (_resume && document.getElementById("flow-" + _resume)) {
     // Deferred: the racer step's enter hook touches state (menu cinematic,
     // preview build) that initialises later in this module.
@@ -5111,6 +5426,40 @@ function renderPrizes() {
   cGrid.appendChild(prizeTile("custom.cat", "Custom Cat", "#f0a830", prizeHow("custom.cat"), isUnlocked(profile, "custom.cat")));
   cGrid.appendChild(prizeTile("custom.kart", "Custom Kart", "#e53935", prizeHow("custom.kart"), isUnlocked(profile, "custom.kart")));
   box.appendChild(cGrid);
+  // Residents brought home from the atlas — every one a unique genome.
+  const found = profile.atlas.found;
+  head(found.length ? `🗺️ Found on the atlas · ${found.length}` : "🗺️ Found on the atlas");
+  const fGrid = document.createElement("div");
+  fGrid.className = "prize-grid";
+  if (!found.length) {
+    const p = document.createElement("p");
+    p.className = "catalog-stats";
+    p.textContent = "Win a race on the atlas to meet the cat (or kart) that lives there.";
+    box.appendChild(p);
+  }
+  for (const stub of found) {
+    const g = regrow(stub);
+    if (!g) continue;
+    const d = document.createElement("button");
+    d.type = "button";
+    d.className = "prize-tile owned found" + (g.kind === "kart" ? " wide" : "");
+    const im = document.createElement("img");
+    im.className = "prize-shot";
+    im.alt = g.name;
+    im.src = portraitDataURL(g, 160);
+    const nm = document.createElement("span");
+    nm.className = "prize-name";
+    nm.textContent = g.name + (g.shiny ? " ✨" : "");
+    const st = document.createElement("span");
+    st.className = "prize-how";
+    st.textContent = g.kind === "kart" ? describeKart(g) : describeCat(g);
+    const wh = document.createElement("span");
+    wh.className = "prize-where";
+    wh.textContent = stub.cell ? `📍 ${cellDisplayName(profile.atlas, stub.cell[0], stub.cell[1])} (${stub.cell[0]},${stub.cell[1]})` : "";
+    d.append(im, nm, st, wh);
+    fGrid.appendChild(d);
+  }
+  box.appendChild(fGrid);
 }
 function setCatalogTab(prizes) {
   document.getElementById("catalog-prizes")?.classList.toggle("hidden", !prizes);
@@ -5170,7 +5519,8 @@ function renderCatalog() {
   const st = document.getElementById("catalog-stats");
   if (st) {
     const s = profile.stats;
-    st.textContent = `${s.races} races · ${s.wins} wins · ${s.boxes} boxes · ${s.treatsEarned} treats earned`;
+    const explored = Object.values(profile.atlas.cells).filter((c) => c.raced > 0).length;
+    st.textContent = `${s.races} races · ${s.wins} wins · ${s.boxes} boxes · ${s.treatsEarned} treats earned · ${explored} places explored · ${profile.atlas.found.length} residents found`;
   }
 }
 document.getElementById("open-catalog")?.addEventListener("click", () => {
@@ -6211,6 +6561,16 @@ function settleRaceRewards() {
   if (won && (DIFFICULTY === "hard" || DIFFICULTY === "expert")) s.winsHard++;
   if (won && TIME_OF_DAY === "night") s.winsNight++;
   if (trackConfig.mode === "custom") s.racesCustom++;
+  // An atlas cell: record the visit (opens the neighbours), and a first win
+  // hatches the resident. The ceremony (showAtlasClaim) reads _atlasSettled.
+  _atlasSettled = null;
+  if (!_dailyActive && Array.isArray(trackConfig.cell) && trackConfig.cell.length === 2) {
+    const [cx, cy] = trackConfig.cell;
+    const rec = recordCellRace(profile.atlas, cx, cy, { won, timeMs: Math.round((player.finishTime || 0) * 1000) || null });
+    if (rec.firstRace) s.cellsRaced++;
+    if (rec.prize) s.found++;
+    _atlasSettled = rec;
+  }
   s.driftBoosts += _raceStats.driftBoosts;
   s.slipSeconds += Math.round(_raceStats.slipSeconds);
   s.milkTrips += _raceStats.milkTrips;
@@ -6247,7 +6607,7 @@ function settleRaceRewards() {
   const fresh = checkAchievements(profile);
   saveProfile();
   refreshTreatsChip();
-  return { payout, fresh, cup };
+  return { payout, fresh, cup, atlas: _atlasSettled };
 }
 function clearCupRun() {
   try { sessionStorage.removeItem(CUP_KEY); } catch { /* ignore */ }
@@ -6262,9 +6622,17 @@ function renderRaceEarnings(settled) {
   if (!settled) { return; } // re-renders keep the panel from the first settle
   box.innerHTML = "";
   box.classList.remove("hidden");
-  const { payout, fresh, cup } = settled;
+  const { payout, fresh, cup, atlas } = settled;
   for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
   box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));
+  if (atlas) {
+    if (atlas.firstRace) box.appendChild(earnRow("🗺️ New place explored — the map opens around it", "", "earn-ach"));
+    if (atlas.prize) {
+      const g = regrow(atlas.prize);
+      box.appendChild(earnRow(`${atlas.prize.kind === "kart" ? "🏎️" : "🐱"} ${g ? g.name : "A resident"} was waiting here`, "NEW", "earn-ach"));
+      uiCue("sparkle");
+    }
+  }
   // Badges are teased here but CLAIMED on the interstitial between results and
   // the menu (showClaimScreen) — that tap is the reward moment.
   for (const a of fresh) box.appendChild(earnRow(`🏅 ${a.name} — ${a.desc}`, "badge!", "earn-ach"));
@@ -6317,6 +6685,8 @@ function unlockName(id) {
 
 // Debug hook: finish the race NOW (headless probes verify the settle → earnings
 // flow without driving three real laps). Client-side only, like every hook here.
+window.__zoomies.atlas = { cellConfig, cellPrize, profile, get settled() { return _atlasSettled; }, showAtlasClaim, renderAtlas, startAtlasRace };
+window.__zoomies.garage = { get draft() { return _garageDraft; }, get previewKey() { return _previewCache.key; }, playerLook, get trackConfig() { return trackConfig; }, get raceMode() { return raceMode; } };
 window.__zoomies.debugFinish = () => {
   if (!player || player.finished) return false;
   player.finished = true;
@@ -6582,7 +6952,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1, catGenome: look.catGenome, kartGenome: look.kartGenome });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).
@@ -7120,7 +7490,10 @@ function loop(now) {
     updateSlipstream(karts);
     if (_raceStats && player && player.slipstream > 0.3) _raceStats.slipSeconds += dt;
 
-    // Step physics
+    // Step physics — each kart first reads the road under it (snow slides,
+    // sand drags, wet leaves drift), AI included so nobody out-corners the
+    // surface.
+    for (const k of karts) biomeSurfaceAt(k.position.x, k.position.z, k.position.y, k.surface);
     for (const k of karts) k.update(dt, track);
     updateHaptics(now); // discrete taptic feedback off fresh player state
     applyBoostPads(dt);
@@ -7412,6 +7785,7 @@ function loop(now) {
     // the player's kart (each half keeps chasing its own kart in Versus);
     // fireworks keep popping from the arch.
     for (const k of karts) k.driveAI(track, dt);
+    for (const k of karts) biomeSurfaceAt(k.position.x, k.position.z, k.position.y, k.surface);
     for (const k of karts) k.update(dt, track);
     tickFinishClock(dt); // race clock + straggler settlement + live standings
     resolveCollisions();

@@ -83,3 +83,33 @@ Bending rules that keep re-appearing (the grass got both wrong first):
 3. `node tools/catalog-shots.mjs` when presets/models changed.
 4. `npm run check` (+ `node tools/progress-check.mjs` if the economy changed),
    `node tools/build-web.mjs`, then commit + push.
+
+## Found racers are GENOMES; the atlas is a pure function of (x, y)
+
+`src/genome.js` grows a cat or kart from a seed string (continuous genes, not
+a pattern id); `src/atlas.js` grows a track recipe + resident from a cell
+coordinate. Both are pure and node-testable (`npm run check:atlas`), and the
+whole point is determinism: a friend's `?atlas=4,-2` must regrow the identical
+place and cat with no server. Never draw from `Math.random` or the shared world
+stream inside them, and never let a saved profile store anything a genome
+already implies — the profile keeps regrowable stubs `{kind, seed, biome}`.
+
+Rules that keep re-appearing:
+- `createCat` / `createKartModel` read `opts.genome`. Anything that MOVES A
+  VERTEX (body proportions, accessory flair, kart blends) must be folded into
+  the merged-geometry cache keys (`bodyKey(g)` for cats, `genomeKey(g)` for
+  karts) — the `_geoCache` hands one baked body to every racer with the same
+  key, so a missed key means six racers silently share one cat's silhouette.
+  Coat textures key on `genomeKey(g)` for the same reason.
+- Accessory extras are built in the accessory's own frame BEFORE the flair
+  pose (tilt / yaw / backwards / scale about the contact point), then baked
+  with `applyMatrix4` into the static cluster — still one draw per material.
+- Track archetypes live in `ARCHETYPES` (`src/track.js`): sections multiply
+  the HIGH harmonics only (the lap's rhythm), `lobes` scale the low ones (the
+  silhouette), width follows the archetype, and only `classic`/`figure8` may
+  self-cross. A cell's knob RANGES per archetype live in `src/atlas.js`
+  (`ARCH_KNOBS`) — keep both when adding one, and add it to the random sweep
+  in `tools/track-audit.mjs`.
+- Verify genome/atlas changes by LOOKING: `node tools/genome-probe.mjs`
+  (contact sheet), `node tools/archetype-probe.mjs` (loop shapes),
+  `node tools/atlas-probe.mjs` (the whole explore → win → name → hatch loop).

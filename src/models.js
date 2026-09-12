@@ -1,6 +1,8 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { makeRng } from "./rng.js";
+import { genomeKey, bodyKey } from "./genome.js";
 
 // Rounded box helper — the workhorse of the soft, toy-like art direction. Edges
 // are chamfered by `r` (auto-clamped so it never exceeds half the smallest side).
@@ -187,6 +189,12 @@ export const ACCESSORY_COLORS = {
   viking:     [0x8a8f98, 0x6b4a2f, 0x1a1a1a, 0xcaa472, 0x2f4a6b, 0xe23b3b, 0x37b24d, 0xf5c518, 0xf0f0f0], // norse metals
   scarf:      [0x9aa2a8, 0xe23b3b, 0x3f7fd6, 0x37b24d, 0xf5c518, 0xa259ff, 0xff8c1a, 0x18b6a6, 0xff5fa2], // knit colours (soft grey default)
   charm:      [0x7fb3d9, 0xd23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xa259ff, 0x18b6a6], // collar colours (light blue default)
+};
+// Head-local height of each headwear piece's crown — where a flair extra
+// (propeller, antenna, sprout…) perches. Face/neck pieces have their own spots.
+const ACC_TOP = {
+  cap: 0.9, headphones: 0.92, beanie: 1.12, flower: 0.96, fedora: 1.12, sunglasses: 0.82, party: 1.42, crown: 1.1,
+  pirate: 1.1, tophat: 1.38, cowboy: 1.15, aviator: 0.98, helmet: 1.05, chef: 1.4, wizard: 1.75, viking: 1.05,
 };
 const PATTERN_ACCESSORY = {
   spotted: "cap", solid: "headphones", snowshoe: "beanie", point: "flower",
@@ -540,6 +548,198 @@ function makeTortieTexture(baseColor) {
   return _cacheTex(key, t);
 }
 
+// ---------------------------------------------------------------------------
+// Genome coat painter — ONE painter for every found cat, driven by the
+// continuous genes in src/genome.js instead of a fixed pattern id. Layers, in
+// order: base fur → tortie mosaic → tabby markings (mackerel / classic / spotted
+// / ticked / rosette, scaled by density + contrast) → white-spotting flood from
+// the belly up (grade 0..10, higher at the chest/face than the back). The tail
+// gets rings instead of flank stripes. Baked once per distinct look, cached
+// with the other coats.
+// ---------------------------------------------------------------------------
+function makeGenomeCoatTexture(g, forTail) {
+  const key = `gen|${genomeKey(g)}|${forTail ? "t" : "b"}`;
+  if (_coatTexCache.has(key)) return _coatTexCache.get(key);
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  const fur = new THREE.Color(g.fur);
+  const mark = new THREE.Color(g.coat.stripeColor);
+  const r = makeRng("coat|" + g.seed + (forTail ? "|t" : "|b"));
+  ctx.fillStyle = "#" + fur.getHexString();
+  ctx.fillRect(0, 0, S, S);
+  const lum = 0.2126 * fur.r + 0.7152 * fur.g + 0.0722 * fur.b;
+
+  // Tortie mosaic: a second coat colour (ginger on a dark cat, dark on a ginger
+  // one) in big interlocking patches — more of them the stronger the gene.
+  if (g.tortie > 0.2) {
+    const second = lum > 0.4 ? "#3a2a22" : "#c9742a";
+    const n = Math.round(4 + g.tortie * 8);
+    ctx.fillStyle = second;
+    for (let i = 0; i < n; i++) {
+      ctx.beginPath();
+      ctx.ellipse(r() * S, r() * S, (0.09 + r() * 0.1) * S, (0.08 + r() * 0.1) * S, r() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Markings.
+  const type = g.coat.type;
+  const dens = g.coat.density, wave = g.coat.wave, scl = g.coat.scale;
+  ctx.fillStyle = ctx.strokeStyle = "#" + mark.getHexString();
+  ctx.globalAlpha = 0.6 + g.coat.contrast * 0.4;
+  ctx.lineCap = "round";
+  const rings = (count, wFrac) => {
+    // Bands across the texture's v axis: rings along the tail.
+    const pitch = S / count;
+    for (let i = 0; i < count; i++) {
+      const y = (i + 0.5) * pitch + (r() - 0.5) * pitch * 0.2;
+      ctx.fillRect(0, y - pitch * wFrac / 2, S, pitch * wFrac);
+    }
+  };
+  if (type === "mackerel") {
+    if (forTail) rings(Math.round(4 + dens * 5), 0.36);
+    else {
+      // Vertical flank bars that wobble (wave) and break into dashes.
+      const count = Math.round(9 + dens * 15);
+      const pitch = S / count;
+      ctx.lineWidth = pitch * (0.18 + (1 - dens) * 0.12);
+      for (let i = 0; i < count; i++) {
+        const c0 = (i + 0.5) * pitch + (r() - 0.5) * pitch * 0.3;
+        const ph = r() * Math.PI * 2;
+        let y = r() * 0.15 * S;
+        while (y < S) {
+          const len = (0.12 + r() * 0.26) * S;
+          ctx.beginPath();
+          for (let yy = y; yy <= Math.min(S, y + len); yy += 6) {
+            const x = c0 + Math.sin(yy / S * Math.PI * 2 * (1 + wave * 2) + ph) * wave * pitch * 0.45;
+            if (yy === y) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+          }
+          ctx.stroke();
+          y += len + (0.04 + r() * 0.12) * S;
+        }
+      }
+    }
+  } else if (type === "classic") {
+    if (forTail) rings(Math.round(3 + dens * 3), 0.5);
+    else {
+      // Blotched tabby: a bullseye on each flank (u≈0.25 faces +z, so the
+      // flanks sit at u≈0 / 0.5) wrapped in thick swirling arcs.
+      for (const cx of [0.0, 0.5]) {
+        const x = (cx + 0.05 + r() * 0.1) * S, y = (0.42 + r() * 0.16) * S;
+        const R = (0.11 + scl * 0.05) * S;
+        ctx.lineWidth = R * (0.28 + wave * 0.12);
+        ctx.beginPath(); ctx.ellipse(x, y, R * 0.45, R * 0.36, r(), 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x, y, R, R * 0.8, r() * 0.5, 0, Math.PI * 2); ctx.stroke();
+        // Swirl arcs spinning off the bullseye.
+        const arcs = Math.round(2 + dens * 3);
+        for (let k = 0; k < arcs; k++) {
+          const a0 = r() * Math.PI * 2;
+          ctx.beginPath();
+          ctx.ellipse(x + (r() - 0.5) * R * 1.4, y + (r() - 0.5) * R * 1.6, R * (1.3 + r() * 0.6), R * (0.9 + r() * 0.5), r() * Math.PI, a0, a0 + 1.2 + r() * 1.6);
+          ctx.stroke();
+        }
+      }
+      // Spine stripe along the top (v→1) and a few shoulder bars.
+      ctx.lineWidth = S * 0.03;
+      ctx.beginPath(); ctx.moveTo(0, S * 0.96); ctx.lineTo(S, S * 0.96); ctx.stroke();
+      const bars = Math.round(2 + dens * 4);
+      for (let k = 0; k < bars; k++) {
+        const x = r() * S;
+        ctx.beginPath(); ctx.moveTo(x, S * 0.92); ctx.lineTo(x + (r() - 0.5) * 0.1 * S, S * (0.7 + r() * 0.12)); ctx.stroke();
+      }
+    }
+  } else if (type === "spotted") {
+    if (forTail) rings(Math.round(4 + dens * 4), 0.3);
+    else {
+      const n = Math.round(10 + dens * 20);
+      const rad = (0.03 + scl * 0.02);
+      for (let i = 0; i < n; i++) {
+        const x = r() * S, y = r() * S, rr = rad * (0.7 + r() * 0.6) * S;
+        ctx.beginPath(); ctx.ellipse(x, y, rr, rr * (1.05 + wave * 0.5), r() * Math.PI, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  } else if (type === "ticked") {
+    // Agouti ticking: hundreds of tiny flecks, denser toward the spine.
+    ctx.globalAlpha *= 0.55;
+    const n = Math.round(320 + dens * 420);
+    for (let i = 0; i < n; i++) {
+      const y = forTail ? r() * S : Math.pow(r(), 0.7) * S;
+      const rr = (0.006 + r() * 0.008) * S;
+      ctx.beginPath(); ctx.ellipse(r() * S, y, rr, rr * 1.6, r() * Math.PI, 0, Math.PI * 2); ctx.fill();
+    }
+    if (forTail) { ctx.globalAlpha = 0.6 + g.coat.contrast * 0.4; rings(Math.round(3 + dens * 3), 0.28); }
+  } else if (type === "rosette") {
+    if (forTail) rings(Math.round(4 + dens * 4), 0.34);
+    else {
+      const rust = fur.clone().lerp(new THREE.Color(0x7a3d16), 0.5);
+      const n = Math.round(7 + dens * 8);
+      for (let i = 0; i < n; i++) {
+        const x = r() * S, y = r() * S, R = (0.045 + scl * 0.025) * S;
+        ctx.fillStyle = "#" + rust.getHexString();
+        ctx.beginPath(); ctx.ellipse(x, y, R * 0.8, R * 0.68, r() * Math.PI, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#" + mark.getHexString();
+        const blobs = 4 + Math.floor(r() * 3), skip = Math.floor(r() * blobs);
+        for (let k = 0; k < blobs; k++) {
+          if (k === skip) continue;
+          const ang = (k / blobs) * Math.PI * 2 + r() * 0.7;
+          ctx.beginPath();
+          ctx.ellipse(x + Math.cos(ang) * R * 0.92, y + Math.sin(ang) * R * 0.8, R * (0.4 + r() * 0.14), R * 0.26, ang + Math.PI / 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      const spots = Math.round(6 + dens * 8);
+      for (let i = 0; i < spots; i++) {
+        const rr = (0.014 + r() * 0.008) * S;
+        ctx.beginPath(); ctx.ellipse(r() * S, r() * S, rr, rr * 1.25, 0.4, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  ctx.globalAlpha = 1;
+
+  // White spotting: floods up from the belly (v=0 = canvas bottom). The edge
+  // rides higher at the chest/face (u≈0.25 is +z) than the back, with a wobble
+  // so it reads as a marking rather than a paint line.
+  if (g.white >= 1 && !forTail) {
+    const h = (g.white / 10) * 0.8; // fraction of height covered at the front
+    ctx.fillStyle = "#fbfbfb";
+    ctx.beginPath();
+    ctx.moveTo(0, S);
+    const ph = r() * 6.28;
+    for (let x = 0; x <= S; x += 4) {
+      const u = x / S;
+      const front = 0.5 + 0.5 * Math.cos((u - 0.25) * Math.PI * 2); // 1 at the chest, 0 at the spine
+      const hh = h * (0.45 + 0.55 * front) + Math.sin(u * 19 + ph) * 0.025 + Math.sin(u * 47 + ph * 2) * 0.012;
+      ctx.lineTo(x, S * (1 - Math.max(0, hh)));
+    }
+    ctx.lineTo(S, S);
+    ctx.closePath();
+    ctx.fill();
+  } else if (g.white >= 9 && forTail) {
+    ctx.fillStyle = "#fbfbfb";
+    ctx.fillRect(0, 0, S, S * 0.5);
+  }
+  const t = _finishTex(c);
+  return _cacheTex(key, t);
+}
+
+// Palette for a genome cat: the same shape catPalette returns, so createCat's
+// material plumbing doesn't care which one it got.
+function genomePalette(g) {
+  const fur = new THREE.Color(g.fur);
+  const L = _lum(fur);
+  return {
+    pattern: g.pattern,
+    fur,
+    stripe: new THREE.Color(g.coat.stripeColor),
+    white: new THREE.Color(0xfbfbfb),
+    point: L > 0.75 ? new THREE.Color(0x6a5240) : fur.clone().lerp(new THREE.Color(0x4a382a), 0.76),
+    eye: new THREE.Color(g.eyes.color),
+    eye2: new THREE.Color(g.eyes.odd ? g.eyes.color2 : g.eyes.color),
+  };
+}
+
 // Eyeball texture: sclera + iris + slit pupil + catch-lights all PAINTED onto one
 // sphere (cached per eye colour), so the eye is a single clean ball an eyelid can
 // sweep over — no separate pupil/shine objects poking through a closing lid. The
@@ -806,25 +1006,35 @@ const ARM_POSES = {
 // rig still drives them.
 export function createCat(furColor = 0xf0a830, opts = {}) {
   const cat = new THREE.Group();
-  const pal = catPalette(furColor, opts.pattern);
+  // A genome (src/genome.js) replaces the pattern id with continuous genes:
+  // the coat is painted by makeGenomeCoatTexture, the structural flags below
+  // derive from the white-spotting / point genes, and the body + flair genes
+  // reshape the silhouette after the parts are built.
+  const g = opts.genome && opts.genome.kind === "cat" ? opts.genome : null;
+  const pal = g ? genomePalette(g) : catPalette(furColor, opts.pattern);
   const pat = pal.pattern;
-  const isTabby = pat === "tabby";
-  const isSpotted = pat === "spotted";
-  const isCalico = pat === "calico";
-  const isTortie = pat === "tortie";
-  const isBengal = pat === "bengal";
-  const isCow = pat === "cow";
-  const isTextured = isTabby || isSpotted || isCalico || isTortie || isBengal || isCow; // coat carries a painted pattern
-  const isTuxedo = pat === "tuxedo";
-  const isMitted = pat === "mitted";
-  const isSolid = pat === "solid";
-  const isSmoke = pat === "smoke";             // dark coat, pale silver chest — structural only
-  const isPoint = pat === "point";
-  const isSnow = pat === "snowshoe";
+  const isTabby = !g && pat === "tabby";
+  const isSpotted = !g && pat === "spotted";
+  const isCalico = !g && pat === "calico";
+  const isTortie = !g && pat === "tortie";
+  const isBengal = !g && pat === "bengal";
+  const isCow = !g && pat === "cow";
+  const isTextured = g
+    ? (g.coat.type !== "solid" || g.tortie > 0.2 || g.white >= 1)
+    : isTabby || isSpotted || isCalico || isTortie || isBengal || isCow; // coat carries a painted pattern
+  const isTuxedo = g ? g.white >= 6 : pat === "tuxedo";
+  const isMitted = !g && pat === "mitted";
+  const isSolid = g ? (g.coat.type === "solid" && g.white < 1 && g.tortie <= 0.2) : pat === "solid";
+  const isSmoke = !g && pat === "smoke";       // dark coat, pale silver chest — structural only
+  const isPoint = g ? g.point > 0.3 : pat === "point";
+  const isSnow = !g && pat === "snowshoe";
   const hasMask = isPoint || isSnow;           // dark face mask + colour points
-  const hasBib = isTuxedo || isMitted;         // big white chest
-  const whitePaws = isTuxedo || isMitted || isSnow || isCalico || isCow; // calicos + cow cats have white socks
+  const hasBib = g ? g.white >= 5 : isTuxedo || isMitted; // big white chest
+  const whitePaws = g ? g.white >= 2 : isTuxedo || isMitted || isSnow || isCalico || isCow; // calicos + cow cats have white socks
   const colorExtremity = isPoint || isSnow;    // ears/mask/tail take the point colour
+  // Genome cats: the face goes white with the chest (white ≥ 2) or stays coat-
+  // coloured, instead of the classic "every cat has a white muzzle" default.
+  const whiteFace = g ? (g.white >= 2 || isPoint) : !isSolid;
 
   // Colour-dependent materials come from the shared cache: two cats with the same
   // palette share instances (one toon pipeline for both, safe-skipped on teardown).
@@ -842,10 +1052,15 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const pawMat = whitePaws ? white : isPoint ? extremity : fur;
   // Eyeball: one sphere with the iris/pupil/highlights painted on (see makeEyeTexture).
   const eyeballMat = sharedMat(`ceye|${pal.eye.getHexString()}`, () => new THREE.MeshStandardMaterial({ map: makeEyeTexture(pal.eye), roughness: 0.32 }));
+  // Odd-eyed genome cats: the right eye takes the second colour.
+  const eyeballMat2 = pal.eye2 && pal.eye2.getHex() !== pal.eye.getHex()
+    ? sharedMat(`ceye|${pal.eye2.getHexString()}`, () => new THREE.MeshStandardMaterial({ map: makeEyeTexture(pal.eye2), roughness: 0.32 }))
+    : eyeballMat;
   // Painted coat: vertical mackerel stripes down the flanks (tabby) or scattered
   // spots (spotted), baked into the fur so the markings read as bold and graphic.
   // The tail gets rings (stripes wrapped the other way). Flat for everyone else.
   function coatTex(forTail) {
+    if (g) return makeGenomeCoatTexture(g, forTail);
     if (isTabby) return forTail
       ? makeStripeTexture(pal.fur, pal.stripe, 7, "v")   // rings around the tail
       : makeStripeTexture(pal.fur, pal.stripe, 18, "v"); // many fine mackerel bands
@@ -858,7 +1073,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     if (isCow) return makeCowTexture(pal.fur);           // big black patches on white
     return null;
   }
-  const coatKey = `${pat}|${furHex}|${pal.stripe.getHexString()}`;
+  const coatKey = g ? `g${genomeKey(g)}` : `${pat}|${furHex}|${pal.stripe.getHexString()}`;
   const coat = isTextured
     ? sharedMat(`ccoat|${coatKey}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(false) }))
     : fur;
@@ -875,6 +1090,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 0.78, 6, 16), coat);
   body.position.y = 1.0;
   catStatic.push(body);
+  // Chonk gene: the torso (and everything fitted to its cross-section — the
+  // chest decal, neckwear) widens together, so nothing floats or sinks.
+  const gChonk = g ? Math.max(0.9, Math.min(1.16, g.body.chonk)) : 1;
+  body.scale.set(gChonk, 1, gChonk);
 
   // Chest + belly fluff. Tuxedo/mitten cats get a big white bib; solid coats keep
   // the body colour (no bib); others get a soft pale chest.
@@ -882,6 +1101,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // the body colour; everyone else gets the soft white chest.
   const chestMat = isSmoke
     ? sharedMat("csmoke", () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.92 }))
+    : g ? (g.white >= 1 ? white : fur)
     : (isSolid || isTortie) ? fur : white;
   // A PAINTED-ON round chest patch: a thin decal shell that CONFORMS to the
   // torso (every vertex sits on the body's own cross-section radius + 0.018),
@@ -889,7 +1109,17 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // bandana flap or the front legs to collide with. (Every proud-ball
   // version before it shaded as a 3D lump and clipped the neckwear.)
   const chest = new THREE.Mesh(chestDecalGeo(hasBib), chestMat);
+  chest.scale.set(gChonk, 1, gChonk);
   catStatic.push(chest);
+  // Fluff gene: longhairs grow a ruff — a squashed mane around the neck that
+  // sits just under where neckwear rides (bands start at y≈1.64).
+  if (g && g.body.fluff > 0.55) {
+    const ruff = new THREE.Mesh(new THREE.SphereGeometry(1.0, 16, 12), coat);
+    ruff.position.set(0, 1.4, 0.02);
+    const rs = 1 + (g.body.fluff - 0.55) * 0.3;
+    ruff.scale.set(1.06 * gChonk * rs, 0.36, 1.0 * rs);
+    catStatic.push(ruff);
+  }
 
   // Front paws — posed for the scenario (opts.pose):
   //   kart — reaching forward onto the steering wheel (the racing default)
@@ -952,8 +1182,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // feet emerge from under something instead of floating beside the body.
     for (const sx of [-1, 1]) {
       const haunch = new THREE.Mesh(new THREE.SphereGeometry(0.46, 14, 12), coat);
-      haunch.position.set(sx * 0.6, 0.12, 0.12);
-      haunch.scale.set(0.95, 0.85, 1.05);
+      haunch.position.set(sx * 0.6 * gChonk, 0.12, 0.12);
+      haunch.scale.set(0.95 * gChonk, 0.85, 1.05);
       catStatic.push(haunch);
     }
     // Hind feet tucked under the haunches — set WIDE and further back so they
@@ -994,11 +1224,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   }
   // Cheeks — fuller floof for a rounder face. White, except solid coats keep the
   // body colour so the face isn't oddly two-toned.
-  const cheekMat = isSolid ? fur : white;
+  const cheekMat = whiteFace ? white : fur;
+  // Body genes (genome cats only; 1 = the classic cat everywhere else).
+  const gb = g ? g.body : null;
+  const chonk = gb ? Math.max(0.9, Math.min(1.16, gb.chonk)) : 1;
+  const face = gb ? gb.face : 1;
+  const fluff = gb ? gb.fluff : 0;
+  skull.scale.x *= face;
+  const cheekS = 1 + Math.max(0, fluff - 0.4) * 0.45; // floofier cheeks on longhairs
   for (const sx of [-1, 1]) {
     const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), cheekMat);
-    cheek.position.set(sx * 0.36, -0.18, 0.52);
-    cheek.scale.set(0.95, 0.74, 0.72);
+    cheek.position.set(sx * 0.36 * face, -0.18, 0.52);
+    cheek.scale.set(0.95 * cheekS, 0.74 * cheekS, 0.72);
     headStatic.push(cheek);
   }
 
@@ -1020,15 +1257,28 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     inner.position.set(0, 0.21, 0.07);
     inner.rotation.z = sx * -0.22;
     pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}` })); // one mesh per ear; the pivot flicks it
+    if (gb) {
+      // Ear genes: size, and the Scottish-fold tip-forward. The rig zeroes the
+      // pivot's rotation each frame, so the fold lives on the inner mesh.
+      pivot.scale.setScalar(gb.ears);
+      pivot.position.x *= face;
+      if (gb.fold > 0) {
+        const m = pivot.children[0];
+        m.rotation.x = gb.fold * 1.0;
+        m.rotation.z = sx * -gb.fold * 0.35;
+        m.scale.y = 1 - gb.fold * 0.3;
+      }
+    }
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
   // Eyes — one painted eyeball each (iris + slit pupil + catch-lights baked into
   // the texture), so it's a single clean ball. Merged into the head like the rest.
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), eyeballMat);
-    eye.position.set(sx * 0.31, 0.1, 0.6);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), sx > 0 ? eyeballMat2 : eyeballMat);
+    eye.position.set(sx * 0.31 * face, 0.1, 0.6);
     eye.scale.set(0.96, 1.12, 0.7);
+    if (gb) eye.rotation.z = sx * gb.brow * 0.22; // grumpy ↔ sweet eye tilt
     headStatic.push(eye);
   }
 
@@ -1040,7 +1290,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const eyelids = [];
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
-    pivot.position.set(sx * 0.31, 0.36, 0.6); // top edge of the eye
+    pivot.position.set(sx * 0.31 * face, 0.36, 0.6); // top edge of the eye
     pivot.scale.y = 0;
     pivot.visible = false;
     const lid = new THREE.Mesh(catConstGeo().eyelid, coat);
@@ -1053,7 +1303,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
 
   // Muzzle + nose + a tiny "ω" smile. White, except solid coats (a clean grey
   // face shouldn't sprout a white snout).
-  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), isSolid ? fur : white);
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), whiteFace ? white : fur);
   muzzle.position.set(0, -0.2, 0.66);
   muzzle.scale.set(1.12, 0.7, 0.62);
   headStatic.push(muzzle);
@@ -1093,6 +1343,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     pivot.position.set(sx * 0.18, -0.12, 0.78);
     head.add(pivot);
     pivot.add(new THREE.LineSegments(sx < 0 ? catConstGeo().whiskerL : catConstGeo().whiskerR, whiskerMat));
+    if (gb) pivot.scale.setScalar(gb.whiskers);
     whiskers[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -1100,13 +1351,14 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // any of them (or none) via opts.accessory. Ids are semantic so the creator UI
   // can list them. Hats/headwear parent to the head (so they lean with it);
   // neckwear parents to the body. ---
-  const accId = opts.accessory || PATTERN_ACCESSORY[pat] || "none";
+  const accId = g ? (CAT_ACCESSORIES.includes(g.accessory) ? g.accessory : "none") : opts.accessory || PATTERN_ACCESSORY[pat] || "none";
   // Each accessory has a natural default colour (the first swatch in its palette);
   // a custom cat can recolour it via opts.accessoryColor. Accent bits that read as
   // "not the main fabric" — a gold bell, a white pom/button, a yellow flower centre
   // — keep their own fixed colours so recolouring still reads.
-  const accCol = (opts.accessoryColor != null && opts.accessoryColor !== "")
-    ? new THREE.Color(opts.accessoryColor).getHex()
+  const accColSrc = g ? g.accessoryColor : opts.accessoryColor;
+  const accCol = (accColSrc != null && accColSrc !== "")
+    ? new THREE.Color(accColSrc).getHex()
     : (ACCESSORY_COLORS[accId]?.[0] ?? 0xffffff);
   // Accessory materials come from the shared cache (keyed by colour + surface
   // params): every cat wearing e.g. a red collar shares one material/pipeline.
@@ -1512,6 +1764,87 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // children's transforms already read in the right frame — route them into the
   // matching static bucket to merge.
   const accToBody = accId === "bandana" || accId === "collar" || accId === "bow" || accId === "scarf" || accId === "charm";
+  // --- Flair (genome cats): the extra bolted onto the accessory, then the
+  // whole accessory tilted / swivelled / worn backwards / comically re-sized
+  // about the point where it touches the cat. Built in the accessory's own
+  // frame so it rides with the hat, then baked into the static cluster like
+  // everything else (still one draw call per material).
+  if (g && accId !== "none") {
+    const f = g.flair;
+    const onFace = accId === "sunglasses";
+    const top = ACC_TOP[accId] ?? 1.0;
+    // Where the extra lands: the crown of headwear, the chest of neckwear.
+    const at = accToBody ? new THREE.Vector3(0.28, 1.56, 0.94) : onFace ? new THREE.Vector3(0, 0.82, 0.15) : new THREE.Vector3(0, top, 0.02);
+    const xm = (hex, r = 0.5, m = 0) => accMat(hex, r, m);
+    const ex = f.extra;
+    if (ex === "propeller") {
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.14, 8), xm(0x2a2a2a));
+      hub.position.copy(at).y += 0.07; acc.add(hub);
+      for (let k = 0; k < 2; k++) {
+        const blade = new THREE.Mesh(rbox(0.56, 0.03, 0.1, 0.012), xm(k ? 0xf5f5f5 : 0xe23b3b));
+        blade.position.copy(at).y += 0.15; blade.rotation.y = k * Math.PI / 2; blade.rotation.x = 0.35;
+        acc.add(blade);
+      }
+    } else if (ex === "feather") {
+      const q = new THREE.Mesh(rbox(0.07, 0.62, 0.02, 0.01), xm(0xf5f5f5));
+      q.position.copy(at).add(new THREE.Vector3(0.18, 0.18, -0.08)); q.rotation.z = -0.55; q.rotation.x = -0.25; acc.add(q);
+      const q2 = new THREE.Mesh(rbox(0.07, 0.44, 0.02, 0.01), xm(0xff5fa2));
+      q2.position.copy(at).add(new THREE.Vector3(0.28, 0.12, -0.1)); q2.rotation.z = -0.8; q2.rotation.x = -0.25; acc.add(q2);
+    } else if (ex === "googly") {
+      for (const sx of [-1, 1]) {
+        const w = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), xm(0xfbfbfb, 0.3));
+        w.position.copy(at).add(new THREE.Vector3(sx * 0.17, -0.22, accToBody ? 0.06 : 0.5)); acc.add(w);
+        const p = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 8), xm(0x111111, 0.3));
+        p.position.copy(w.position).add(new THREE.Vector3(sx * 0.02, -0.03, 0.07)); acc.add(p);
+      }
+    } else if (ex === "sticker") {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.02, 5), xm(0xffe14d));
+      s.position.copy(at).add(new THREE.Vector3(0.3, -0.3, accToBody ? 0.04 : 0.42)); s.rotation.x = Math.PI / 2; s.rotation.y = 0.4; acc.add(s);
+    } else if (ex === "bell") {
+      const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 10), xm(0xf5c518, 0.3, 0.6));
+      b.position.copy(at).y += 0.06; acc.add(b);
+    } else if (ex === "antenna") {
+      const st = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.5, 6), xm(0x2a2a2a));
+      st.position.copy(at).y += 0.25; acc.add(st);
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), xm(0xe23b3b, 0.3));
+      ball.position.copy(at).y += 0.52; acc.add(ball);
+    } else if (ex === "tinyhat") {
+      const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.03, 12), xm(0x1a1a1a));
+      brim.position.copy(at).y += 0.02; acc.add(brim);
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.14, 0.24, 12), xm(0x1a1a1a));
+      crown.position.copy(at).y += 0.14; acc.add(crown);
+    } else if (ex === "sprout") {
+      const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.32, 6), xm(0x3c9a3a));
+      stem.position.copy(at).y += 0.16; acc.add(stem);
+      for (const sx of [-1, 1]) {
+        const leaf = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), xm(0x63c15a));
+        leaf.position.copy(at).add(new THREE.Vector3(sx * 0.09, 0.32, 0)); leaf.scale.set(1.3, 0.4, 0.7); leaf.rotation.z = sx * 0.5;
+        acc.add(leaf);
+      }
+    }
+    // The pose of the whole accessory, pivoting where it meets the cat.
+    if (accToBody) {
+      const s = Math.max(0.92, Math.min(1.12, f.scale));
+      const p = new THREE.Vector3(0, 1.62, 0);
+      acc.scale.set(s * gChonk, s, s * gChonk);
+      acc.position.copy(p).sub(p.clone().multiply(acc.scale));
+    } else {
+      const s = f.scale;
+      const p = onFace ? new THREE.Vector3(0, 0.1, 0.6) : new THREE.Vector3(0, 0.45, 0);
+      acc.scale.setScalar(s);
+      acc.rotation.z = f.tilt;
+      acc.rotation.y = f.yaw + (f.backwards && !onFace ? Math.PI : 0);
+      acc.rotation.x = f.backwards && !onFace ? -0.12 : 0;
+      acc.updateMatrix();
+      // position so that p maps to itself: p' = R*S*p + t = p → t = p - R*S*p
+      const rs = p.clone().applyMatrix4(acc.matrix); // includes position(0), so this is R*S*p
+      acc.position.copy(p).sub(rs);
+    }
+    acc.updateMatrix();
+    for (const ch of acc.children) ch.applyMatrix4(acc.matrix);
+  } else if (accToBody && gChonk !== 1) {
+    for (const ch of acc.children) { ch.position.x *= gChonk; ch.position.z *= gChonk; ch.scale.x *= gChonk; ch.scale.z *= gChonk; }
+  }
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
@@ -1527,6 +1860,17 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const tip = new THREE.Mesh(catConstGeo().tailTip, tipMat);
   tip.position.copy(catConstGeo().tailTipPos);
   tailPivot.add(tip);
+  if (gb) {
+    if (gb.tail < 0.5) {
+      // Bobtail: a stubby curl with a fat pom of a tip.
+      tail.scale.setScalar(0.45);
+      tip.scale.setScalar(1.9);
+      tip.position.multiplyScalar(0.45);
+    } else {
+      tailPivot.scale.setScalar(Math.min(1.3, gb.tail));
+      if (gb.fluff > 0.6) tail.scale.x = tail.scale.z = 1 + (gb.fluff - 0.6) * 0.9; // plume
+    }
+  }
   cat.add(tailPivot);
 
   // Bake the rigid clusters: the head cluster (skull/face/eyes/headwear) rides
@@ -1538,9 +1882,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // pick material instances. The accessory COLOUR is in the key because a colour
   // matching an accent piece (e.g. a white cap button on a white cap) collapses
   // two materials into one and changes the merged group layout.
+  // Genome cats move vertices (proportions, flair) — their clusters key on the
+  // body hash too, so two different silhouettes never share one baked body.
   const accKey = `${accId}:${accCol}`;
-  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}` }));
-  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}|${pose}` }));
+  const gk = g ? `|g${bodyKey(g)}` : "";
+  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}${gk}` }));
+  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}|${pose}${gk}` }));
 
   cat.userData.tail = tailPivot;
   cat.userData.rig = {
@@ -1689,9 +2036,22 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     { snout: 1.8, wing: "fin", tire: 0.94, hoop: false },
     { snout: 1.35, wing: "none", tire: 1.3, hoop: false, cage: true }, // off-road cage buggy
   ];
-  const st = STYLES[opts.style ?? 0] || STYLES[0];
-  const styleIdx = STYLES.indexOf(st);
-  const kartNumber = opts.number ?? 1;
+  // A kart genome (src/genome.js) stretches the chosen style with its BLEND
+  // genes (nose reach, tyre size, fin height, ride height, track width), paints
+  // a livery on the panels and perches an ornament on the hood. Everything
+  // keyed on the style index below keys on the genome's look hash instead, so
+  // blended shells never collide in the merge cache.
+  const kg = opts.genome && opts.genome.kind === "kart" ? opts.genome : null;
+  const base = STYLES[(kg ? kg.style : opts.style) ?? 0] || STYLES[0];
+  const bl = kg ? kg.blend : null;
+  const st = kg
+    ? { ...base, snout: base.snout * bl.nose, tire: base.tire * bl.wheel }
+    : base;
+  const styleIdx = kg ? `${kg.style}g${genomeKey(kg)}` : STYLES.indexOf(base);
+  const finH = bl ? 0.7 + bl.fin * 0.6 : 1;           // rear aero height multiplier
+  const ride = bl ? bl.ride : 0;                       // chassis lift (world units)
+  const trackW = bl ? bl.width : 1;                    // wheel track multiplier
+  const kartNumber = kg ? kg.number : opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
   // userData.paint). Accent is a darker shade of the same hue; the stripe is a
   // near-white tint so the livery reads on dark and light bodies alike. All the
@@ -1705,7 +2065,23 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     return m;
   });
   const paint = paintMat("paint", () => new THREE.MeshStandardMaterial({ color: body.clone(), roughness: 0.34, metalness: 0.0 }));
-  const accent = paintMat("accent", () => new THREE.MeshStandardMaterial({ color: body.clone().multiplyScalar(0.55), roughness: 0.38, metalness: 0.0 }));
+  // Genome karts carry a real second colour; presets shade their own hue.
+  const accentCol = kg ? new THREE.Color(kg.accent) : body.clone().multiplyScalar(0.55);
+  const accent = sharedMat(`kaccent|${accentCol.getHexString()}`, () => {
+    const m = new THREE.MeshStandardMaterial({ color: accentCol.clone(), roughness: 0.38, metalness: 0.0 });
+    m.userData.paint = true;
+    return m;
+  });
+  // Livery decals (genome karts): a transparent painted motif laid over the
+  // body paint on the cowl and side pods.
+  const livery = kg && kg.livery.type !== "none"
+    ? sharedMat(`klivery|${kg.livery.type}|${kg.livery.color}|${kg.livery.scale}|${kg.seed}`, () => {
+      const m = new THREE.MeshStandardMaterial({ map: makeLiveryTexture(kg), transparent: true, roughness: 0.34, metalness: 0, depthWrite: false });
+      m.userData.paint = true;
+      return m;
+    })
+    : null;
+  const decals = [];
   // Painted racing stripe: crisp white on dark/medium bodies, a deep charcoal on
   // very light bodies, so the stripe always reads as deliberate paint.
   const bodyL = 0.2126 * body.r + 0.7152 * body.g + 0.0722 * body.b;
@@ -1806,9 +2182,61 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       cowlNum.position.set(0, 0.935, 0.98);
       cowlNum.rotation.x = -(Math.PI / 2 - RAKE);
       roundels.push(cowlNum);
-      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.55), stripe));
-      noseStripe.position.set(0, 0.715, 1.51);
-      noseStripe.rotation.x = -(Math.PI / 2 - RAKE);
+      if (livery) {
+        // The livery replaces the plain stripe: one big panel decal on the
+        // cowl (below the roundel) and one along each side pod.
+        const cowlDecal = new THREE.Mesh(new THREE.PlaneGeometry(0.72, 0.62), livery);
+        cowlDecal.position.set(0, 0.705, 1.53);
+        cowlDecal.rotation.x = -(Math.PI / 2 - RAKE);
+        decals.push(cowlDecal);
+      } else {
+        const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.55), stripe));
+        noseStripe.position.set(0, 0.715, 1.51);
+        noseStripe.rotation.x = -(Math.PI / 2 - RAKE);
+      }
+      if (kg && kg.ornament) {
+        // Hood ornament: a little mascot on the nose, between the headlights.
+        const om = (hex, r = 0.35, m = 0.5) => sharedMat(`korn|${hex}|${r}|${m}`, () => new THREE.MeshStandardMaterial({ color: hex, roughness: r, metalness: m }));
+        const oy = 0.6, oz = snout - 0.05;
+        const o = kg.ornament;
+        if (o === "fish") {
+          const f = add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), om(0x7fb3d9)));
+          f.position.set(0, oy + 0.1, oz); f.scale.set(0.7, 0.8, 1.6);
+          const fin = add(new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.18, 4), om(0x7fb3d9)));
+          fin.position.set(0, oy + 0.1, oz - 0.25); fin.rotation.x = Math.PI / 2; fin.scale.set(1, 1, 0.5);
+        } else if (o === "bell") {
+          const b = add(new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), om(0xf5c518, 0.3, 0.7)));
+          b.position.set(0, oy + 0.12, oz);
+        } else if (o === "star") {
+          const s = add(new THREE.Mesh(new THREE.OctahedronGeometry(0.15), om(0xf5c518, 0.3, 0.6)));
+          s.position.set(0, oy + 0.15, oz); s.scale.set(1, 1.4, 0.5);
+        } else if (o === "antenna") {
+          const a = add(new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.5, 6), chrome));
+          a.position.set(0.3, oy + 0.25, oz - 0.2);
+          const ball = add(new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), om(0xe23b3b, 0.3, 0)));
+          ball.position.set(0.3, oy + 0.52, oz - 0.2);
+        } else if (o === "duck") {
+          const d = add(new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), om(0xffe14d, 0.6, 0)));
+          d.position.set(0, oy + 0.1, oz); d.scale.set(1, 0.85, 1.3);
+          const h = add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), om(0xffe14d, 0.6, 0)));
+          h.position.set(0, oy + 0.26, oz + 0.1);
+          const bk = add(new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 6), om(0xff8c1a, 0.6, 0)));
+          bk.position.set(0, oy + 0.25, oz + 0.2); bk.rotation.x = Math.PI / 2;
+        } else if (o === "horn") {
+          const hb = add(new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.11, 0.3, 10), om(0xf5c518, 0.3, 0.7)));
+          hb.position.set(-0.32, oy + 0.15, oz - 0.1); hb.rotation.x = -Math.PI / 2.4;
+          const bulb = add(new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 8), om(0x1a1a1a, 0.7, 0)));
+          bulb.position.set(-0.32, oy + 0.2, oz - 0.32);
+        } else if (o === "crown") {
+          const c = add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.14, 8), om(0xf5c518, 0.3, 0.7)));
+          c.position.set(0, oy + 0.1, oz);
+          for (let k = 0; k < 4; k++) {
+            const pt = add(new THREE.Mesh(new THREE.ConeGeometry(0.04, 0.1, 4), om(0xf5c518, 0.3, 0.7)));
+            const a = (k / 4) * Math.PI * 2;
+            pt.position.set(Math.cos(a) * 0.13, oy + 0.21, oz + Math.sin(a) * 0.13);
+          }
+        }
+      }
       // Little accent winglets flanking the panel (the reference's red fins).
       for (const sx of [-1, 1]) {
         const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
@@ -1877,6 +2305,12 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       for (const sx of [-1, 1]) {
         const pod = add(new THREE.Mesh(rbox(0.46, 0.5, podLen, 0.07), paint));
         pod.position.set(sx * 1.12, 0.5, -0.12);
+        if (livery) {
+          const d = new THREE.Mesh(new THREE.PlaneGeometry(podLen * 0.92, 0.42), livery);
+          d.position.set(sx * 1.352, 0.5, -0.12);
+          d.rotation.y = sx * Math.PI / 2;
+          decals.push(d);
+        }
       }
       addRoundels(1.36, 0.5, -0.12, 0.4);
       // Bare bucket seat: tall back + side bolsters (nothing to sink into now).
@@ -1938,18 +2372,24 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // Both roundels share one material — merge them into one mesh (one draw).
   // Positions are style-dependent, so the merge cache keys on the style.
   group.add(mergeMeshes(roundels, { geoKey: `kroundel|${styleIdx}` }));
+  if (decals.length) {
+    // Livery decals render after the roundels so the number stays on top.
+    const dm = mergeMeshes(decals, { geoKey: `kdecal|${styleIdx}` });
+    dm.renderOrder = -1;
+    group.add(dm);
+  }
 
   // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
   let flagPivot = null; // the roadster's pennant pivot (returned for live flapping)
   if (st.wing === "big") {
     // Pylon runs all the way down to the floor pan (no rear deck any more).
-    const pylon = add(new THREE.Mesh(rbox(0.34, 1.1, 0.34, 0.1), dark));
-    pylon.position.set(0, 1.06, -2.3);
+    const pylon = add(new THREE.Mesh(rbox(0.34, 1.1 * finH, 0.34, 0.1), dark));
+    pylon.position.set(0, 0.51 + 0.55 * finH, -2.3);
     const wing = add(new THREE.Mesh(rbox(2.7, 0.14, 0.74, 0.06), paint));
-    wing.position.set(0, 1.62, -2.32);
+    wing.position.set(0, 0.52 + 1.1 * finH, -2.32);
     for (const sx of [-1, 1]) {
       const plate = add(new THREE.Mesh(rbox(0.08, 0.36, 0.78, 0.03), accent));
-      plate.position.set(sx * 1.32, 1.55, -2.32);
+      plate.position.set(sx * 1.32, 0.45 + 1.1 * finH, -2.32);
     }
   } else if (st.wing === "lip") {
     // Ducktail lip spoiler perched on the rear bumper…
@@ -1988,8 +2428,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     // Two clean raked fins, nothing else (the accent edge caps and the centre
     // spine fin cluttered the tail into a jumble of plates).
     for (const sx of [-1, 1]) {
-      const fin = add(new THREE.Mesh(rbox(0.14, 0.95, 1.1, 0.07), paint));
-      fin.position.set(sx * 0.72, 1.02, -2.15);
+      const fin = add(new THREE.Mesh(rbox(0.14, 0.95 * finH, 1.1, 0.07), paint));
+      fin.position.set(sx * 0.72, 0.545 + 0.475 * finH, -2.15);
       fin.rotation.x = -0.34; // rake the fin back
       fin.rotation.z = sx * 0.12; // splay outward a touch
     }
@@ -2121,7 +2561,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     for (const [x, z, baseR] of wheelDefs) {
       const radius = baseR * st.tire;
       const w = buildWheel(radius, Math.sign(x));
-      w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
+      w.position.set(x * trackW, radius, z); // centre at radius so the tyre sits on the ground
       group.add(w);
       wheels.push(w);
     }
@@ -2168,10 +2608,88 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       })
     );
     under.position.set(0, 0.07, -0.1);
+    under.userData.underglow = true;
     under.scale.set(4.6, 1, 5.6);
     under.renderOrder = 1;
     group.add(under);
   }
 
-  return { group, wheels, brakeMat, flames, flag: flagPivot };
+  // Ride-height gene: lift everything but the wheels (and the underglow pool)
+  // so a tall buggy sits up on its tyres and a slammed GP hugs the road. The
+  // seat lift is returned so the cat rides up with the chassis.
+  if (ride) {
+    for (const ch of group.children) {
+      if (wheels.includes(ch) || ch.userData.underglow) continue;
+      ch.position.y += ride;
+    }
+  }
+  return { group, wheels, brakeMat, flames, flag: flagPivot, seatLift: ride };
+}
+
+// Livery motif for genome karts: a transparent 256² canvas carrying one painted
+// pattern in the accent colour, laid over the body paint as a decal. Seeded
+// jitter so two "flames" karts don't share the exact same flames.
+const _liveryTexCache = new Map();
+function makeLiveryTexture(kg) {
+  const key = `${kg.livery.type}|${kg.livery.color}|${kg.livery.scale}|${kg.seed}`;
+  if (_liveryTexCache.has(key)) return _liveryTexCache.get(key);
+  const S = 256;
+  const c = document.createElement("canvas");
+  c.width = c.height = S;
+  const ctx = c.getContext("2d");
+  const r = makeRng("livery|" + kg.seed);
+  const col = "#" + new THREE.Color(kg.livery.color).getHexString();
+  const sc = kg.livery.scale;
+  ctx.fillStyle = ctx.strokeStyle = col;
+  ctx.lineCap = "round";
+  const t = kg.livery.type;
+  if (t === "stripes") {
+    const n = Math.round(2 + sc * 2), pitch = S / n;
+    ctx.lineWidth = pitch * 0.32;
+    for (let i = 0; i < n; i++) {
+      const x = (i + 0.5) * pitch;
+      ctx.beginPath(); ctx.moveTo(x - S * 0.25, S); ctx.lineTo(x + S * 0.25, 0); ctx.stroke();
+    }
+  } else if (t === "flames") {
+    // Tongues licking in from the left edge, each a wobbly spike.
+    const n = Math.round(3 + sc * 3);
+    for (let i = 0; i < n; i++) {
+      const y0 = ((i + 0.5) / n) * S, len = (0.45 + r() * 0.45) * S * sc, h = (S / n) * 0.9;
+      ctx.beginPath();
+      ctx.moveTo(0, y0 - h / 2);
+      ctx.bezierCurveTo(len * 0.4, y0 - h * 0.6, len * 0.5, y0 + h * 0.2, len, y0 + (r() - 0.5) * h * 0.4);
+      ctx.bezierCurveTo(len * 0.5, y0 + h * 0.4, len * 0.3, y0 + h * 0.7, 0, y0 + h / 2);
+      ctx.closePath(); ctx.fill();
+    }
+  } else if (t === "checker") {
+    const n = Math.round(5 + sc * 3), cell = S / n;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if ((x + y) % 2 === 0) ctx.fillRect(x * cell, y * cell, cell, cell);
+  } else if (t === "dots") {
+    const n = Math.round(4 + sc * 3), cell = S / n;
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      ctx.beginPath(); ctx.arc((x + 0.5 + (y % 2) * 0.5) * cell % S, (y + 0.5) * cell, cell * 0.28, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (t === "lightning") {
+    ctx.lineWidth = S * 0.07 * sc;
+    for (let k = 0; k < 2; k++) {
+      let x = S * (0.15 + k * 0.45), y = 0;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      while (y < S) { y += S * (0.18 + r() * 0.12); x += (r() < 0.5 ? -1 : 1) * S * 0.14; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+  } else if (t === "paws") {
+    const n = Math.round(4 + sc * 3);
+    for (let i = 0; i < n; i++) {
+      const x = r() * S, y = r() * S, R = S * 0.05 * sc, a = r() * Math.PI * 2;
+      ctx.beginPath(); ctx.ellipse(x, y, R, R * 0.85, a, 0, Math.PI * 2); ctx.fill();
+      for (let k = -1.5; k <= 1.5; k++) {
+        const ang = a - Math.PI / 2 + k * 0.5;
+        ctx.beginPath(); ctx.arc(x + Math.cos(ang) * R * 1.5, y + Math.sin(ang) * R * 1.5, R * 0.36, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _liveryTexCache.set(key, tex);
+  return tex;
 }

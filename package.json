@@ -19,6 +19,7 @@
     "check:items": "node tools/items-check.mjs",
     "check:lives": "node tools/lives-check.mjs",
     "check:progress": "node tools/progress-check.mjs",
+    "check:atlas": "node tools/atlas-check.mjs",
     "check:sim": "node tools/sim-check.mjs",
     "check:worldcfg": "node tools/worldcfg-check.mjs",
     "check:tracks": "node tools/track-audit.mjs",

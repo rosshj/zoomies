@@ -20,5 +20,7 @@ jobs:
         run: npm run check:worldcfg
       - name: progression economy (treats/unlocks/cups)
         run: npm run check:progress
+      - name: atlas + genomes (cells, residents, exploration rules)
+        run: npm run check:atlas
       - name: kart sim determinism
         run: npm run check:sim

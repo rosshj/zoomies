@@ -1,5 +1,18 @@
 # Zoomies GP — gameplay backlog
 
+## ✅ Shipped: the Atlas + genomes (see src/atlas.js, src/genome.js)
+Explore mode: a world map of seeded cells; finishing a race opens the
+neighbours, a first win names the place and hatches its resident (a cat or a
+kart grown from the cell's seed — unique coat/body/flair, or a blended kart
+with a livery). Track archetypes + one headline set piece per cell + weather
+variants + per-biome road surfaces make cells drive differently, not just look
+different. Found racers join the cat/kart grids and the Cat-alog; `?atlas=x,y`
+shares a place with no server. Design notes: offline-first by determinism;
+no new stats gates (kart traits are ±2% and cosmetic-adjacent); rivals scale by
+distance from home. Future lanes: online first-finder + shared name registry,
+weekly expeditions (a route of adjacent cells), per-cell ghosts, rare sky
+mutations, an explore mode with the barriers down.
+
 ## ✅ Shipped: progression v1 (see src/progress.js)
 Treats (🐟) earned per race (placement + moments, capped) · garage unlocks with a
 starter set (grandfathered saves) · 15 achievements over career stats · 4 solo cups

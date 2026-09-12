@@ -8,6 +8,7 @@
 // applies a toon conversion at race setup, so in-game shading is a touch more
 // stylised than here — silhouettes, proportions and palettes are identical).
 import * as THREE from "three";
+import { catGenome, kartGenome } from "./genome.js";
 import {
   createCat,
   createKartModel,
@@ -478,10 +479,17 @@ renderer.setAnimationLoop((now) => {
 window.__viewer = {
   orbit, camera, scene,
   setBackground, setGameLook,
-  // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
+  // {kind:"cat", fur, pattern, accessory?, genome?} | {kind:"kart", color, style, number, genome?}
+  // A genome (src/genome.js) overrides the classic fields — the probes pass
+  // the whole object, or a seed via showGenome below.
   showPreset(spec) {
-    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { pattern: spec.pattern, accessory: spec.accessory }));
-    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number }));
+    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { pattern: spec.pattern, accessory: spec.accessory, accessoryColor: spec.accessoryColor, genome: spec.genome }));
+    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number, genome: spec.genome }));
+  },
+  showGenome(kind, seed, biome = null) {
+    const g = kind === "cat" ? catGenome(seed, biome) : kartGenome(seed, biome);
+    this.showPreset(kind === "cat" ? { kind: "cat", name: g.name, fur: g.fur, genome: g } : { kind: "kart", name: g.name, color: g.color, style: g.style, number: g.number, genome: g });
+    return g;
   },
   freeze(t = 0) { animPlaying = false; animT = t; curAnim?.(t); refreshAnimPlayBtn(); },
 };

@@ -129,11 +129,11 @@ await press(0);
 await check("A advances to the mode screen", () =>
   document.getElementById("flow-mode").classList.contains("is-active"));
 
-// …and the ring is ALREADY on Single race (first non-back button), not the
-// back arrow.
+// …and the ring is ALREADY on the first door (Explore the Atlas, the hero
+// card since the atlas shipped — it was Single race before), not the back arrow.
 await frames(2);
-await check("mode screen auto-seats on Single race", () =>
-  document.getElementById("mode-gp").classList.contains("pad-focus"));
+await check("mode screen auto-seats on the first mode card", () =>
+  document.getElementById("mode-explore").classList.contains("pad-focus"));
 
 // Walk down: the ring must MOVE (spatial nav, not stuck).
 const before = await page.evaluate(() => document.querySelector("#flow-mode .pad-focus")?.id ?? "");

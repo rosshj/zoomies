@@ -97,10 +97,17 @@ function randomRecipes(n, salt = 1) {
     }
     // Full knob range on purpose — the extremes are exactly where a generator
     // produces geometry nobody has driven.
+    // Archetype + headline set piece: the atlas rolls these per cell, so the
+    // random sweep must cover them too (a speedway's wide road and a scaled-up
+    // headline canyon are exactly the geometry nobody has driven).
+    const ARCH = ["classic", "speedway", "street", "mountain", "coastal", "rally", "figure8"];
+    const HEAD = [null, "tunnel", "canyon", "bridge", "dam", "shelf", "causeway", "overpass", "giant"];
+    const archetype = ARCH[Math.floor(r() * ARCH.length)];
+    const headline = HEAD[Math.floor(r() * HEAD.length)];
     out.push({
-      name: `random ${seed}`,
+      name: `random ${seed} ${archetype}${headline ? "+" + headline : ""}`,
       cfg: {
-        mode: "custom", seed,
+        mode: "custom", seed, archetype, headline,
         size: +(0.3 + r() * 0.6).toFixed(2),
         curviness: +(0.25 + r() * 0.65).toFixed(2),
         twist: +(0.25 + r() * 0.65).toFixed(2),
