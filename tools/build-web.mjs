@@ -69,6 +69,18 @@ for (const entry of entries) {
   copied++;
 }
 
+// The download page shows the desktop app's version (from desktop/package.json)
+// as its fallback; the page itself upgrades that to the live latest release.
+const downloadPage = join(dist, "download", "index.html");
+if (existsSync(downloadPage)) {
+  try {
+    const desktopVersion = JSON.parse(readFileSync(join(root, "desktop", "package.json"), "utf8")).version;
+    writeFileSync(downloadPage, readFileSync(downloadPage, "utf8").replace('data-version="dev">dev<', `data-version="${desktopVersion}">v${desktopVersion}<`));
+  } catch (err) {
+    console.warn(`[build-web] download page version stamp skipped: ${err.message}`);
+  }
+}
+
 // Stamp the build time into dist/index.html (the repo copy stays "dev"). The
 // boot log prints it, so any device log immediately shows WHICH build is
 // actually running — a stale service-worker cache once served weeks-old code

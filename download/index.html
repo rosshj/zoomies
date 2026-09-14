@@ -115,7 +115,11 @@
          (controllers + keyboard on one screen), ready for the Deck's controls
          and screen.</p>
       <a class="btn" href="https://github.com/rosshj/zoomies-releases/releases/latest/download/zoomies-gp-linux-x64.tar.gz">⬇&nbsp; Download for Steam Deck / Linux</a>
-      <span class="meta">.tar.gz · x86_64 · ~110&nbsp;MB</span>
+      <span class="meta">.tar.gz · x86_64 · ~125&nbsp;MB</span>
+      <!-- Version: stamped from desktop/package.json at build time (the
+           fallback), then replaced by the release the button actually serves,
+           read live from the releases repo. -->
+      <span class="meta" id="release-meta">Version <span id="release-version" data-version="dev">dev</span></span>
       <details>
         <summary>Install on Steam Deck (one-time, ~5 minutes)</summary>
         <ol>
@@ -151,5 +155,24 @@
     <a href="../">← Back to the game</a><br />
     Made with too much catnip. Saves stay on your device; no accounts, no tracking.
   </footer>
+  <script>
+    // Show the release the download button really points at (public GitHub
+    // API, no auth, no cookies). The stamped fallback stays if it fails.
+    (function () {
+      var el = document.getElementById("release-version");
+      if (!el) return;
+      var stamped = el.getAttribute("data-version");
+      if (stamped && stamped !== "dev") el.textContent = "v" + stamped.replace(/^v/, "");
+      fetch("https://api.github.com/repos/rosshj/zoomies-releases/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (rel) {
+          if (!rel || !rel.tag_name) return;
+          var when = rel.published_at ? new Date(rel.published_at) : null;
+          var date = when ? " · " + when.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "";
+          el.textContent = rel.tag_name + date;
+        })
+        .catch(function () { /* keep the stamped version */ });
+    })();
+  </script>
 </body>
 </html>
