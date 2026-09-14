@@ -268,7 +268,15 @@ function markReload(cause) {
   } catch { /* ignore */ }
   const _nav = performance.getEntriesByType?.("navigation")?.[0]?.type || "?";
   const _build = document.querySelector('meta[name="zoomies-build"]')?.content || "unknown";
-  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""} · build=${_build}`);
+  const _rev = document.querySelector('meta[name="zoomies-rev"]')?.content || "";
+  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""} · build=${_build}${_rev ? ` · rev=${_rev}` : ""}`);
+  // Title-screen stamp: the same facts, readable on a Deck with no terminal.
+  const _stampEl = document.getElementById("build-stamp");
+  if (_stampEl) {
+    _stampEl.textContent = _build === "dev"
+      ? "dev build"
+      : `build ${_build.replace("T", " ").replace(/:\d\dZ$/, " UTC")}${_rev ? ` · ${_rev}` : ""}`;
+  }
 }
 
 // Boot timeline stamps (ms since navigation start), logged once from the

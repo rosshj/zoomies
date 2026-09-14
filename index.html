@@ -341,6 +341,10 @@
           <!-- Desktop (Electron) only — see #quit-btn-pause. -->
           <button id="quit-btn-title" class="btn-cream extra-btn hidden">⏻ Quit</button>
         </div>
+        <!-- Which build is this? Stamped by tools/build-web.mjs (date + git
+             revision); "dev" when serving the working tree. Settles "am I
+             running the latest?" without a terminal. -->
+        <p id="build-stamp" class="build-stamp"></p>
       </div>
     </section>
 

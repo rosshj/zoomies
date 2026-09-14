@@ -74,10 +74,28 @@ for (const entry of entries) {
 // actually running — a stale service-worker cache once served weeks-old code
 // while we debugged fixes that "didn't work" because they weren't running.
 const stamp = new Date().toISOString().replace(/\.\d+Z$/, "Z");
+// Git revision (best effort, no git binary): so a tester's title screen says
+// exactly which commit they are running — "the old steering is back" once
+// turned out to be a build from an un-pulled checkout.
+function gitRev() {
+  try {
+    const head = readFileSync(join(root, ".git", "HEAD"), "utf8").trim();
+    const m = head.match(/^ref: (.+)$/);
+    if (!m) return head.slice(0, 7);
+    const refPath = join(root, ".git", m[1]);
+    if (existsSync(refPath)) return readFileSync(refPath, "utf8").trim().slice(0, 7);
+    const packed = readFileSync(join(root, ".git", "packed-refs"), "utf8");
+    const line = packed.split("\n").find((l) => l.trim().endsWith(" " + m[1]));
+    return line ? line.trim().split(/\s+/)[0].slice(0, 7) : "";
+  } catch {
+    return "";
+  }
+}
+const rev = gitRev();
 const indexPath = join(dist, "index.html");
 const html = readFileSync(indexPath, "utf8").replace(
   '<meta name="zoomies-build" content="dev" />',
-  `<meta name="zoomies-build" content="${stamp}" />`
+  `<meta name="zoomies-build" content="${stamp}" />` + (rev ? `\n  <meta name="zoomies-rev" content="${rev}" />` : "")
 );
 writeFileSync(indexPath, html);
 

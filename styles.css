@@ -1476,6 +1476,15 @@ button.secondary:active {
 }
 #fps-counter.warn { color: #ffd24d; }
 #fps-counter.bad { color: #ff5b4d; }
+/* Desktop shell (no touch HUD): park the counter bottom-right, where nothing
+   else lives — top-left is exactly where the Steam Deck's performance overlay
+   draws, and the two hid each other. */
+#hud.no-touch #fps-counter {
+  top: auto;
+  left: auto;
+  right: max(12px, var(--safe-right, 0px));
+  bottom: max(12px, var(--safe-bottom, 0px));
+}
 
 /* Tilt debug readout: same pill as the FPS counter, parked just below it. */
 #tilt-counter {
@@ -3200,3 +3209,14 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
   .setting-note, .hint, .claim-desc, .earn-row, #results-earnings { font-size: 12.5px !important; }
   .track-tap .track-sub, .tap-sub { font-size: 12.5px !important; }
 }
+
+/* Title-screen build stamp (see #build-stamp in index.html). */
+.build-stamp {
+  margin: 8px 0 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 248, 238, 0.55);
+  text-align: center;
+}
+.build-stamp:empty { display: none; }
