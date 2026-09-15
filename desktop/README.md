@@ -233,17 +233,34 @@ Gaming Mode; pick the **Gamepad** controller template so the Deck presents
 as a standard pad (the Gamepad API path the game already uses — press any
 button once, the browser hides a pad until its first input).
 
-The shell detects SteamOS itself (`/etc/os-release`, plus the `SteamDeck`
-env belt-and-braces — Gaming Mode does NOT pass its env to non-Steam
-shortcuts) and adapts: Chromium's SUID sandbox helper can't work on the
-immutable filesystem (a stock launch dies at startup) so it runs
-`no-sandbox` — the game only ever loads its own bundled app:// content.
-The decisive fix (field-A/B'd on a real Deck) is `no-zygote`: the zygote's
-children were denied shared memory (ESRCH in /dev/shm AND /tmp), killing
-the renderer at birth — live app, black window, both modes — so children
-spawn directly instead; `disable-dev-shm-usage` stays as belt-and-braces.
-It does NOT force fullscreen (the fullscreen-by-default rule above is
-skipped on the Deck): Gaming Mode fullscreens windows itself, and
+**Leave Steam's Launch Options empty.** In the Linux package
+`zoomies-desktop` is a small launcher script (written by `after-pack.cjs`
+at packaging time; the real Electron binary sits next to it as
+`zoomies-desktop.bin`). It detects SteamOS — the `SteamDeck` /
+`SteamGamepadUI` env, a gamescope desktop, `/etc/os-release`, or user
+namespaces being disabled — and `exec`s the binary with
+`--no-sandbox --no-zygote --disable-dev-shm-usage` already on the command
+line. Those flags have to be there from process start: Chromium decides
+sandbox and zygote before any JavaScript runs, so `appendSwitch` in
+`main.cjs` never took effect and every launch without hand-typed Launch
+Options stalled on a black splash for a minute and came up in software
+rendering (v0.1.3 field test). `main.cjs` keeps a fallback for a bare
+binary or dev run on SteamOS: when the flags are missing it relaunches
+itself with them and stays alive as the parent. The shell log's `loading`
+line says which path applied them (`deckFlags=launcher:…`, `reexec`,
+`argv`, or `none`).
+
+Why the flags: Chromium's SUID sandbox helper can't work on the immutable
+filesystem (a stock launch dies at startup) so it runs `no-sandbox` — the
+game only ever loads its own bundled app:// content. The decisive fix
+(field-A/B'd on a real Deck) is `no-zygote`: the zygote's children were
+denied shared memory (ESRCH in /dev/shm AND /tmp), killing the renderer at
+birth — live app, black window, both modes — so children spawn directly
+instead; `disable-dev-shm-usage` stays as belt-and-braces. (Headless
+containers without ptrace/seccomp allowances kill renderers under
+`no-zygote`, so the packaged smoke test here runs WITHOUT `SteamDeck=1`.)
+The shell does NOT force fullscreen (the fullscreen-by-default rule above
+is skipped on the Deck): Gaming Mode fullscreens windows itself, and
 fullscreen-at-creation wedged into a stuck black window.
 
 The screen is 1280×800 — the exact viewport every headless check runs at.

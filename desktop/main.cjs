@@ -134,6 +134,40 @@ if (ON_DECK) {
   app.commandLine.appendSwitch("disable-dev-shm-usage");
 }
 
+// …but appendSwitch is NOT enough for these two. Chromium decides sandbox
+// and zygote before any of this JavaScript runs, so the in-process switches
+// above never took effect: every good Deck launch so far had the flags typed
+// into Steam's Launch Options, and an empty field stalled into software
+// rendering (v0.1.3 field test). They have to be on the REAL command line:
+//  1. The packaged Linux build's `zoomies-desktop` is a launcher script
+//     (desktop/after-pack.cjs) that detects SteamOS and execs the binary
+//     with the flags — the normal path; it sets ZOOMIES_LAUNCHER so the log
+//     line below can say so.
+//  2. Fallback, for a bare binary / dev run on SteamOS: when the flags are
+//     missing, relaunch this same executable with them and stay alive as
+//     the parent (Steam tracks the process it started; if it exited the
+//     game would count as closed).
+const DECK_ARGV = ["--no-sandbox", "--no-zygote", "--disable-dev-shm-usage"];
+const HAS_DECK_ARGV = process.argv.includes("--no-sandbox");
+const REEXEC_PARENT = ON_DECK && !HAS_DECK_ARGV && !process.env.ZOOMIES_REEXEC;
+if (REEXEC_PARENT) {
+  const { spawn } = require("node:child_process");
+  const args = [...process.argv.slice(1), ...DECK_ARGV];
+  console.log(`[shell] SteamOS (${DECK_REASON}) without ${DECK_ARGV.join(" ")} on argv: relaunching with them`);
+  const child = spawn(process.execPath, args, {
+    stdio: "inherit",
+    env: { ...process.env, ZOOMIES_REEXEC: "1" },
+  });
+  child.on("exit", (code, signal) => {
+    console.log(`[shell] child exited (${code ?? signal})`);
+    process.exit(code ?? 0);
+  });
+  child.on("error", (err) => {
+    // Can't relaunch: fall through and run in-process as before.
+    console.error(`[shell] relaunch failed: ${err.message}`);
+  });
+}
+
 // WebGPU retest switch: ZOOMIES_WEBGPU=1 drops the WebGL2 pin (see gameUrl)
 // and, on Linux, turns on Chromium's Vulkan-backed WebGPU, which is still
 // gated there. One env var so the test is the same on a Mac terminal and in
@@ -380,7 +414,7 @@ function createWindow() {
   const url = gameUrl();
   // Printed to the npm-start terminal so "which build/backend am I actually
   // running?" is answerable at a glance (a stale build once burned a tester).
-  console.log(`[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}${DECK_REASON ? ":" + DECK_REASON : ""}, webgpu=${WEBGPU_MODE || "off"}, electron=${process.versions.electron})`);
+  console.log(`[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}${DECK_REASON ? ":" + DECK_REASON : ""}, deckFlags=${HAS_DECK_ARGV ? (process.env.ZOOMIES_LAUNCHER ? "launcher:" + process.env.ZOOMIES_LAUNCHER : process.env.ZOOMIES_REEXEC ? "reexec" : "argv") : "none"}, webgpu=${WEBGPU_MODE || "off"}, electron=${process.versions.electron})`);
   if (!app.isPackaged) console.log(`[shell] source ${gitHead()}`);
   win.loadURL(url);
 
@@ -397,7 +431,7 @@ function createWindow() {
 
 // Steam relaunches the same executable if the player hits PLAY again: the
 // second copy quits, and the first one comes to the front.
-if (!app.requestSingleInstanceLock()) {
+if (!REEXEC_PARENT && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -416,6 +450,8 @@ app.on("child-process-gone", (_e, details) => {
 });
 
 app.whenReady().then(() => {
+  // The relaunch parent only waits for its child; the child does the work.
+  if (REEXEC_PARENT) return;
   if (!fs.existsSync(path.join(DIST, "index.html"))) {
     console.error(`[shell] no game at ${DIST}` + (app.isPackaged ? "" : " — is the repo checkout intact?"));
     app.quit();
