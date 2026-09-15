@@ -5,7 +5,7 @@
 // is served over a custom app:// scheme rather than file:// because the game
 // is ES modules behind an import map, and module scripts are CORS-blocked on
 // a file:// origin.
-const { app, BrowserWindow, protocol, net, ipcMain } = require("electron");
+const { app, BrowserWindow, protocol, net, ipcMain, screen } = require("electron");
 const path = require("node:path");
 const fs = require("node:fs");
 const { pathToFileURL } = require("node:url");
@@ -498,6 +498,21 @@ app.whenReady().then(() => {
   ipcMain.on("zoomies:save-flush", (e, payload) => { writeSave(payload); e.returnValue = true; });
   // Bridge queries (sync so game code can read them like plain properties).
   ipcMain.on("zoomies:deck", (e) => { e.returnValue = ON_DECK; });
+  // The display's real refresh rate, for the game's frame cap. Chromium's
+  // animation ticks under gamescope are NOT vsync-locked (they arrive in
+  // bursts), so the game's tick-based estimate read a 60Hz Deck as ~178Hz and
+  // rendered every 4th tick — the 40fps-with-an-idle-GPU field report. The
+  // OS knows; ask it. 0 = unknown (the game falls back to its estimate).
+  ipcMain.on("zoomies:refresh-hz", (e) => {
+    try {
+      const win = BrowserWindow.fromWebContents(e.sender);
+      const disp = win ? screen.getDisplayMatching(win.getBounds()) : screen.getPrimaryDisplay();
+      const hz = Number(disp?.displayFrequency) || 0;
+      e.returnValue = hz >= 24 && hz <= 480 ? hz : 0;
+    } catch {
+      e.returnValue = 0;
+    }
+  });
   ipcMain.on("zoomies:is-fullscreen", (e) => {
     const w = BrowserWindow.fromWebContents(e.sender);
     e.returnValue = !!(w && w.isFullScreen());

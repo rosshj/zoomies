@@ -1823,15 +1823,16 @@ const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | balanced | medium | high
 // _bootQuality by the night light pool, which needs the tier before this module.
 let quality = _bootQuality;
 // --- Frame-rate cap + Battery saver (Display settings; persisted) ---
-// The cap is a TARGET the loop turns into an integer divisor of the measured
-// refresh (see _frameDiv). "auto" keeps today's behaviour: 60 on 100Hz+
-// displays, the display's own rate below that.
+// The cap is a TARGET the loop turns into a tick-aware time gate (see
+// _gateMs). "auto" keeps today's behaviour: 60 on 100Hz+ displays, the
+// display's own rate below that.
 const FPS_CAP_KEY = "zoomies-fps-cap"; // auto | 60 | 45 | 40 | 30
 const FPS_CAPS = ["auto", "60", "45", "40", "30"];
 let fpsCap = "auto";
 try { const v = localStorage.getItem(FPS_CAP_KEY); if (FPS_CAPS.includes(v)) fpsCap = v; } catch {}
-// Battery saver: one switch for the handheld posture — a lower frame cap (45
-// on Deck, 30 elsewhere, unless an explicit cap is set), 20fps menus, a 1.25×
+// Battery saver: one switch for the handheld posture — a 30fps cap on phones
+// (none on the Deck: its 60Hz panel can't pace 45 evenly and ~40 read as
+// "slow and stuttering" in the field; an explicit cap still wins), 20fps menus, a 1.25×
 // / 1.6MP resolution ceiling, a frozen 2048² sun shadow map, the no-god-rays
 // composite (bloom kept), no ambient motes, half the weather particles, and
 // pause-on-blur. ON by default on Steam Deck, off elsewhere.
@@ -3134,7 +3135,7 @@ function logPerfSummary(rawMs) {
   // main at 6ms is the pipeline/GPU; main at 18ms is JS + draw submission.
   const mainAvg = _perfMain.n ? _perfMain.sum / _perfMain.n : 0;
   console.log(
-    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · main ${mainAvg.toFixed(1)}/${_perfMain.max.toFixed(0)}ms · vsync ${_vsyncEma.toFixed(1)}ms ÷${_frameDiv()} · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`
+    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · main ${mainAvg.toFixed(1)}/${_perfMain.max.toFixed(0)}ms · tick ${_tickMs().toFixed(1)}ms${_shellHz ? ` (os ${_shellHz}Hz)` : ""} · gate ${_gateMs(_targetFps()).toFixed(1)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`
   );
   _perfMain.sum = _perfMain.max = _perfMain.n = 0;
   _perfFrames.length = 0;
@@ -6670,53 +6671,65 @@ let prevPlayerSpin = 0;
 // headroom on world detail instead of >60fps. ?uncap=1 still lifts the cap
 // for A/B runs.
 //
-// The cap is REFRESH-AWARE, not a fixed-ms gate: skipping to "about N" only
-// works when the display's rate divides cleanly. The measured vsync interval
-// (EMA over raw rAF cadence, outliers ignored) is turned into an INTEGER tick
-// divisor for the target (see _frameDiv):
-//   auto     → 60 on a 100Hz+ display (120Hz renders every 2nd tick), else
-//              the display's own rate. A fixed 15ms gate on a 90Hz Steam Deck
-//              landed on 45fps with 22ms rendered intervals — which the
-//              resolution scaler (also fixed to a 60Hz budget then) read as
-//              GPU overload and answered by flooring the render scale:
-//              butter smooth, needlessly blurry.
-//   60/45/40/30 (Settings) → the nearest divisor: 90Hz÷45 = every 2nd tick,
-//              120Hz÷40 = every 3rd, 60Hz÷30 = every 2nd.
-// The DRS budgets derive from the same measurement × divisor, so "too slow"
-// is always judged against what this display is actually being asked for.
+// The cap is a TIME GATE with tick-aware slack: render once at least
+// (1000/target − 0.4 × one display tick) has passed since the last render.
+// On a clean vsync source that lands on the same even beat an integer tick
+// divisor would (120Hz→60: every 2nd tick; 90Hz→45: every 2nd; 60Hz→30:
+// every 2nd), because the slack swallows the jitter without ever letting a
+// tick through early. It used to BE an integer divisor of the measured tick
+// rate — and that is what put the Steam Deck at 40fps with an idle GPU:
+// under gamescope Chromium's rAF ticks are not vsync-locked (they arrive in
+// bursts, ~5.6ms apart), the estimate read the 60Hz panel as ~178Hz, and
+// "every 4th tick" was the cap. A time gate can't be fooled that way: a
+// wrong tick estimate only moves the slack a few ms.
+//   auto     → 60 on a 100Hz+ display, else the display's own rate.
+//   60/45/40/30 (Settings) → that rate.
+//   Battery saver → 30 on phones. On the Deck it does NOT cap below the
+//              panel (the 60Hz panel can't pace 45 evenly, and the field
+//              report at ~40 was "slow and stuttering"); saver's savings there
+//              are the effects/resolution/shadow trims.
+// The DRS budget is the interval the cap asks for (never below one tick), so
+// "too slow" is always judged against what this display is actually being
+// asked for.
+//
+// Display tick: the desktop shell asks the OS for the refresh rate
+// (authoritative; the estimate below is switched off). Elsewhere it is
+// measured from rAF ticks — see _measureVsync for how missed frames and
+// bursts are kept out of it. Clamped to 40–240Hz either way.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
-let _vsyncEma = 16.7; // measured display interval (ms)
+const VSYNC_MAX_MS = 25.5, VSYNC_MIN_MS = 4.1; // 40Hz … 240Hz
+const _shellHz = (() => {
+  try {
+    const bridge = window.zoomiesDesktop;
+    if (!bridge) return 0;
+    const hz = Number(bridge.refreshHz?.()) || 0;
+    // Under a compositor the shell's ticks can't be trusted at all: when the
+    // OS won't say, assume the common 60 rather than measure.
+    return hz >= 24 && hz <= 480 ? hz : 60;
+  } catch { return 0; }
+})();
+let _vsyncEma = _shellHz ? 1000 / _shellHz : 16.7; // display interval (ms)
 let _lastRaf = 0;
-let _rafTick = 0; // every rAF tick, including the ones the cap skips (menu cadence counts these)
-const _vsyncHz = () => 1000 / _vsyncEma;
+let _rafTick = 0; // every rAF tick, including the ones the cap skips
+const _tickMs = () => Math.min(VSYNC_MAX_MS, Math.max(VSYNC_MIN_MS, _vsyncEma));
+const _vsyncHz = () => 1000 / _tickMs();
 function _targetFps() {
   if (fpsCap !== "auto") return Number(fpsCap);
-  if (saverOn) return IS_DECK ? 45 : 30; // Battery saver's cap, unless an explicit one is set
+  if (saverOn && !IS_DECK) return 30; // Battery saver's cap, unless an explicit one is set
   const hz = _vsyncHz();
   return hz >= 100 ? 60 : hz;
 }
-// Render every Nth vsync — the nearest integer divisor of the refresh, so
-// rendered frames land on an even beat (a gate that doesn't divide the
-// refresh alternates 3- and 4-tick gaps and reads as judder). Clamped to 4:
-// below a quarter of the refresh the display's pacing is lost anyway.
-const _frameDiv = () => Math.max(1, Math.min(4, Math.round(_vsyncHz() / _targetFps())));
-const _renderBudgetMs = () => _vsyncEma * _frameDiv();
-// Menu/tableau cadence, in rAF ticks: ~30fps (20 in Battery saver), and
-// 10fps once nothing has been touched for 30s. Dividing the measured vsync
-// keeps the pacing even on every display: a fixed 32ms gate doesn't divide a
-// 120Hz display's 8.3ms vsync, so rendered frames landed alternately 3 and 4
-// ticks apart — constant background judder ("the menus flicker"; measured in
-// a ProMotion screen recording as alternating step sizes at a 4:3 ratio). The
-// desktop shell used to render menus at full rate to dodge that; it now
-// divides like everything else.
+const _gateMs = (fps) => 1000 / fps - 0.4 * _tickMs();
+const _renderBudgetMs = () => Math.max(_tickMs(), 1000 / _targetFps());
+// Menu/tableau cadence: ~30fps (20 in Battery saver), and 10fps once nothing
+// has been touched for 30s — the same tick-aware gate, so on a 120Hz phone
+// the drawn frames land on an even beat (a plain 32ms gate alternated 3- and
+// 4-tick gaps there: constant background judder, "the menus flicker").
 const MENU_FPS = 30, MENU_FPS_SAVER = 20, IDLE_FPS = 10, IDLE_AFTER_MS = 30000;
 let _lastInputAt = 0; // performance.now() of the last key / pointer / pad input
 const _isIdle = () => performance.now() - _lastInputAt > IDLE_AFTER_MS;
-function _menuDiv() {
-  const fps = _isIdle() ? IDLE_FPS : saverOn ? MENU_FPS_SAVER : MENU_FPS;
-  return Math.max(1, Math.round(_vsyncHz() / fps));
-}
-window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), div: _frameDiv(), target: +_targetFps().toFixed(1), menuDiv: _menuDiv(), idle: _isIdle(), saver: saverOn, cap: fpsCap, halfRate: _frameDiv() > 1, state }); // debug hook
+const _menuFps = () => (_isIdle() ? IDLE_FPS : saverOn ? MENU_FPS_SAVER : MENU_FPS);
+window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), tick: +_tickMs().toFixed(2), shellHz: _shellHz, target: +_targetFps().toFixed(1), gate: +_gateMs(_targetFps()).toFixed(2), menuFps: _menuFps(), idle: _isIdle(), saver: saverOn, cap: fpsCap, state }); // debug hook
 const _noteInput = () => { _lastInputAt = performance.now(); };
 window.__zoomies.noteInput = _noteInput; // debug hook (the pacing probe wakes / ages the idle throttle)
 window.__zoomies.setIdleAt = (t) => { _lastInputAt = t; }; // debug hook
@@ -6752,7 +6765,7 @@ let _pauseDrawn = false;
 // over black.
 window.addEventListener("resize", () => { _pauseDrawn = false; _resultsDrawn = false; });
 let _resultsDrawn = false;
-let _lastMenuTick = 0;
+let _lastMenuAt = 0; // rAF timestamp of the last drawn menu frame
 let _lastMiniDraw = 0;
 const _resultsEl = document.getElementById("results");
 // High-tier real-time shadows, throttled: the sun map re-renders at most 30Hz,
@@ -6795,20 +6808,34 @@ function _tickShadow(now) {
 // 40Hz mode, a ProMotion phone dropping out of 120) is accepted once the
 // SHORTEST tick of a ~120-tick window has stayed above that for three
 // windows in a row, clamped at 40Hz — no game target runs slower.
-let _vsWinMin = Infinity, _vsWinTicks = 0, _vsSlowWins = 0;
-const VSYNC_MAX_MS = 25.5; // 40Hz — the slowest display any target ships
+// Two failure modes, both seen in the field: a frame that misses vsync
+// delays the next tick by a whole refresh (60Hz at 40fps = 16.7/33ms
+// alternating — read as ~25ms, the scaler then judged against that and the
+// state locked in), and a compositor that delivers ticks in BURSTS (the Deck
+// under gamescope: ~5.6ms clusters on a 60Hz panel — a one-sided "accept
+// only short ticks" rule ratcheted straight down to the burst interval). So:
+// the EMA only takes ticks inside a symmetric band around the estimate
+// (0.75–1.35×); a genuine change of rate (a ProMotion phone moving between
+// 60 and 120, the Deck's 40Hz mode) is accepted once the 45th percentile of
+// a 120-tick window has sat outside the band for three windows running —
+// the 45th percentile ignores a minority of bursts AND a minority of missed
+// frames, and in the 50/50 alternating case lands on the fast side.
+let _vsWin = [], _vsOffWins = 0;
 function _measureVsync(tick) {
+  if (_shellHz) return; // the OS said what the display does; ticks here can't be trusted
   if (tick <= 3 || tick > 60) return; // pauses, hitches, backgrounding
-  if (tick < Math.min(_vsyncEma * 1.35, VSYNC_MAX_MS * 1.05)) _vsyncEma += (tick - _vsyncEma) * 0.05;
-  if (tick < _vsWinMin) _vsWinMin = tick;
-  if (++_vsWinTicks < 120) return;
-  if (_vsWinMin >= _vsyncEma * 1.35) {
-    if (++_vsSlowWins >= 3) { _vsyncEma = Math.min(_vsWinMin, VSYNC_MAX_MS); _vsSlowWins = 0; }
-  } else {
-    _vsSlowWins = 0;
+  const lo = Math.max(_vsyncEma * 0.75, VSYNC_MIN_MS * 0.95), hi = Math.min(_vsyncEma * 1.35, VSYNC_MAX_MS * 1.05);
+  if (tick > lo && tick < hi) _vsyncEma += (tick - _vsyncEma) * 0.05;
+  _vsWin.push(tick);
+  if (_vsWin.length < 120) return;
+  _vsWin.sort((a, b) => a - b);
+  const p45 = _vsWin[Math.floor(_vsWin.length * 0.45)];
+  _vsWin.length = 0;
+  if (p45 > lo && p45 < hi) { _vsOffWins = 0; return; }
+  if (++_vsOffWins >= 3) {
+    _vsyncEma = Math.min(VSYNC_MAX_MS, Math.max(VSYNC_MIN_MS, p45));
+    _vsOffWins = 0;
   }
-  _vsWinMin = Infinity;
-  _vsWinTicks = 0;
 }
 // Main-thread time per frame (sim + draw submission, everything inside the
 // loop body) for the 5s perf summary: the one number that says whether a
@@ -6840,14 +6867,12 @@ function loopBody(now) {
     // sim step, no draw — runs on a skipped menu tick.
     menupad.update();
     if (_padActive()) _noteInput();
-    if (_rafTick - _lastMenuTick < _menuDiv()) return false;
-    _lastMenuTick = _rafTick;
+    if (now - _lastMenuAt < _gateMs(_menuFps())) return false;
+    _lastMenuAt = now;
   } else if (!_uncapParam) {
-    // Cap: render every Nth vsync (see _frameDiv), leaving `last` untouched
-    // on a skip so dt still spans to the real last frame. The 0.4-tick slack
-    // tolerates rAF jitter without ever letting a tick through early.
-    const div = _frameDiv();
-    if (div > 1 && now - last < _vsyncEma * (div - 0.4)) return false;
+    // Cap (see _gateMs): leaves `last` untouched on a skip so dt still spans
+    // to the real last frame.
+    if (now - last < _gateMs(_targetFps())) return false;
   }
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;

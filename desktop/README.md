@@ -57,6 +57,7 @@ Capacitor, so feature-detect (`window.zoomiesDesktop?.deck`), never assume.
 | --- | --- | --- |
 | `quit()` | `() => void` | Quit the app (the title screen's Quit button). |
 | `deck` | `boolean` | `true` when the shell detected a Steam Deck / SteamOS at launch. |
+| `refreshHz()` | `() => number` | The display's refresh rate from the OS (`0` = unknown). The game's frame cap uses it instead of measuring rAF ticks, which are not vsync-locked under gamescope (a 60Hz Deck measured as ~178Hz and got capped to every 4th tick). |
 | `isFullscreen()` | `() => boolean` | Current fullscreen state (synchronous IPC). |
 | `setFullscreen(on)` | `(boolean) => void` | Enter/leave fullscreen (same as F11). |
 | `onBlur(cb)` | `(fn) => unsubscribe` | Called when the window loses focus. Returns a function that removes the listener. |

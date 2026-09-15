@@ -129,6 +129,9 @@ try { deck = !!ipcRenderer.sendSync("zoomies:deck"); } catch { /* default: not a
 contextBridge.exposeInMainWorld("zoomiesDesktop", {
   quit: () => ipcRenderer.send("zoomies:quit"),
   deck,
+  // The display's refresh rate from the OS (0 = unknown). The game's own
+  // tick-based estimate is unreliable under gamescope — see main.cjs.
+  refreshHz: () => { try { return Number(ipcRenderer.sendSync("zoomies:refresh-hz")) || 0; } catch { return 0; } },
   isFullscreen: () => { try { return !!ipcRenderer.sendSync("zoomies:is-fullscreen"); } catch { return false; } },
   setFullscreen: (on) => ipcRenderer.send("zoomies:set-fullscreen", !!on),
   onBlur: subscribe("blur"),
