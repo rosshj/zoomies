@@ -92,10 +92,35 @@ const DIST = app.isPackaged
 // reach non-Steam shortcuts (field report: black screen at launch until
 // --no-sandbox was typed into Launch Options by hand), and Desktop Mode
 // never sets it at all. /etc/os-release names SteamOS on every path.
-const ON_DECK = !!process.env.SteamDeck || (() => {
-  try { return /^ID=steamos$/m.test(fs.readFileSync("/etc/os-release", "utf8")); }
-  catch { return false; }
+// Belt-and-braces detection, each with a name so the log says WHICH one
+// fired (a Deck running in Gaming Mode with an empty Launch Options field
+// once stalled into software rendering — the flags below were not applied,
+// and nothing said why):
+//  • env: SteamDeck (Gaming Mode), SteamGamepadUI, or a gamescope desktop
+//  • /etc/os-release ID or ID_LIKE naming steamos, or /etc/steamos-release
+//  • unprivileged user namespaces disabled — the case where Chromium's
+//    namespace sandbox can't work without the SUID helper on ANY Linux
+const DECK_REASON = (() => {
+  const env = process.env;
+  if (env.SteamDeck) return "env:SteamDeck";
+  if (env.SteamGamepadUI) return "env:SteamGamepadUI";
+  if (/gamescope/i.test(env.XDG_CURRENT_DESKTOP || "") || /gamescope/i.test(env.XDG_SESSION_DESKTOP || "")) return "env:gamescope";
+  try {
+    const rel = fs.readFileSync("/etc/os-release", "utf8");
+    if (/^ID=["']?steamos/m.test(rel) || /^ID_LIKE=.*steamos/m.test(rel)) return "os-release";
+  } catch { /* not there */ }
+  if (fs.existsSync("/etc/steamos-release")) return "steamos-release";
+  if (process.platform === "linux") {
+    try {
+      if (fs.readFileSync("/proc/sys/kernel/unprivileged_userns_clone", "utf8").trim() === "0") return "no-userns";
+    } catch { /* knob absent on most kernels */ }
+    try {
+      if (fs.readFileSync("/proc/sys/user/max_user_namespaces", "utf8").trim() === "0") return "no-userns";
+    } catch { /* ignore */ }
+  }
+  return "";
 })();
+const ON_DECK = !!DECK_REASON;
 if (ON_DECK) {
   app.commandLine.appendSwitch("no-sandbox");
   // Field-tested on a real Deck (candidate flag sets A/B/C'd by hand in
@@ -335,6 +360,14 @@ function createWindow() {
       win.loadURL(crashPage(details.reason));
     }
   });
+  // The game's own boot lines ("[zoomies] boot: … build=… rev=…", the
+  // renderer backend, the perf watchdog) go into the shell log too, so one
+  // file answers "which build, which backend, what happened" from the field.
+  win.webContents.on("console-message", (_e, level, message) => {
+    if (/^\[zoomies\]|^\[gpu\]|^\[crashguard\]/.test(message) || level >= 2) {
+      console.log(`[renderer] ${String(message).slice(0, 400)}`);
+    }
+  });
   win.webContents.on("did-finish-load", () => {
     clearTimeout(healthyTimer);
     if (win.webContents.getURL().startsWith("app://")) {
@@ -347,7 +380,7 @@ function createWindow() {
   const url = gameUrl();
   // Printed to the npm-start terminal so "which build/backend am I actually
   // running?" is answerable at a glance (a stale build once burned a tester).
-  console.log(`[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}, electron=${process.versions.electron})`);
+  console.log(`[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}${DECK_REASON ? ":" + DECK_REASON : ""}, webgpu=${WEBGPU_MODE || "off"}, electron=${process.versions.electron})`);
   if (!app.isPackaged) console.log(`[shell] source ${gitHead()}`);
   win.loadURL(url);
 
