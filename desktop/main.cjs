@@ -452,6 +452,25 @@ app.on("child-process-gone", (_e, details) => {
 app.whenReady().then(() => {
   // The relaunch parent only waits for its child; the child does the work.
   if (REEXEC_PARENT) return;
+  // What Chromium actually decided about the GPU, in the log a tester can
+  // photograph: "software" here IS the stuttering-at-10fps Deck report.
+  console.log(`[shell] argv: ${process.argv.slice(1).join(" ") || "(none)"}`);
+  // …asked a few seconds in, not at ready: the GPU process is still coming
+  // up then and everything reads "disabled_software" even on a good run.
+  const logGpu = (tag) => {
+    try {
+      const g = app.getGPUFeatureStatus();
+      console.log(`[shell] gpu@${tag}: compositing=${g.gpu_compositing}, rasterization=${g.rasterization}, webgl=${g.webgl}, webgl2=${g.webgl2}, opengl=${g.opengl}, vulkan=${g.vulkan}, webgpu=${g.webgpu}`);
+    } catch (err) {
+      console.log(`[shell] gpu status unavailable: ${err.message}`);
+    }
+    app.getGPUInfo("basic").then((info) => {
+      const devs = (info?.gpuDevice || []).map((d) => `${d.active ? "*" : ""}${(d.vendorId || 0).toString(16)}:${(d.deviceId || 0).toString(16)}`);
+      console.log(`[shell] gpu devices: ${devs.join(" ") || "none"}`);
+    }).catch(() => { /* best effort */ });
+  };
+  setTimeout(() => logGpu("5s"), 5000);
+  setTimeout(() => logGpu("30s"), 30000);
   if (!fs.existsSync(path.join(DIST, "index.html"))) {
     console.error(`[shell] no game at ${DIST}` + (app.isPackaged ? "" : " — is the repo checkout intact?"));
     app.quit();
