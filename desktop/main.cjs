@@ -113,10 +113,17 @@ if (ON_DECK) {
 // and, on Linux, turns on Chromium's Vulkan-backed WebGPU, which is still
 // gated there. One env var so the test is the same on a Mac terminal and in
 // a Steam launch option (`ZOOMIES_WEBGPU=1 %command%`). Off = today's shell.
-const WANT_WEBGPU = process.env.ZOOMIES_WEBGPU === "1";
+// Two strengths on Linux, because the first field test (Deck, Gaming Mode)
+// never showed a window with the compositor forced onto Vulkan:
+//   ZOOMIES_WEBGPU=1       lift Chromium's WebGPU gate only (Dawn brings its
+//                          own Vulkan device; the compositor stays as it is)
+//   ZOOMIES_WEBGPU=vulkan  additionally move the compositor to Vulkan
+const WEBGPU_MODE = (process.env.ZOOMIES_WEBGPU || "").toLowerCase();
+const WANT_WEBGPU = WEBGPU_MODE === "1" || WEBGPU_MODE === "vulkan";
 if (WANT_WEBGPU && process.platform === "linux") {
   app.commandLine.appendSwitch("enable-unsafe-webgpu");
-  app.commandLine.appendSwitch("enable-features", "Vulkan");
+  app.commandLine.appendSwitch("ignore-gpu-blocklist");
+  if (WEBGPU_MODE === "vulkan") app.commandLine.appendSwitch("enable-features", "Vulkan");
 }
 
 // app:// must be registered standard+secure BEFORE app ready so module
