@@ -2955,8 +2955,11 @@ function updateFpsCounter(dt) {
   // at 1.0x is a transient the scaler hasn't reacted to; a dip AT 0.45x means
   // pixel scaling can't help (vertex/CPU-bound — or the phone is thermally
   // throttling, which looks exactly like this after minutes of sustained load).
+  // cpu Nms = main-thread time inside the loop per frame (sim + draw
+  // submission). Read against the interval: 25ms frames with cpu at 6ms are
+  // the display/GPU pipeline; cpu at 18ms is the JS/draw-call bill itself.
   const rs = renderScale.toFixed(2).replace(/0$/, "");
-  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality[0].toUpperCase()}`;
+  fpsEl.textContent = `${fps} FPS · ${backend} · ${dc}dc · cpu ${Math.round(_mainEma)}ms · sun ${Math.round(_sunFaceDeg)}° · ${rs}x ${quality[0].toUpperCase()}`;
   fpsEl.classList.toggle("warn", fps < 50 && fps >= 35);
   fpsEl.classList.toggle("bad", fps < 35);
 }
@@ -3126,9 +3129,14 @@ function logPerfSummary(rawMs) {
   const backend = renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2";
   const dc = renderer?.info?.render?.drawCalls ?? 0;
   const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
+  // main = CPU time inside the loop per rendered frame (avg / worst); vsync =
+  // the display estimate the cap and scaler judge against. A 25ms frame with
+  // main at 6ms is the pipeline/GPU; main at 18ms is JS + draw submission.
+  const mainAvg = _perfMain.n ? _perfMain.sum / _perfMain.n : 0;
   console.log(
-    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`
+    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · main ${mainAvg.toFixed(1)}/${_perfMain.max.toFixed(0)}ms · vsync ${_vsyncEma.toFixed(1)}ms ÷${_frameDiv()} · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`
   );
+  _perfMain.sum = _perfMain.max = _perfMain.n = 0;
   _perfFrames.length = 0;
   _perfElapsed = 0;
 }
@@ -6775,14 +6783,56 @@ function _tickShadow(now) {
   sun.shadow.needsUpdate = true;
 }
 
+// Display refresh estimate. rAF ticks arrive at the RENDERED cadence, not the
+// display's: a frame that misses vsync delays the next tick by a whole
+// refresh, so a plain EMA over ticks drifts UP as soon as frames run long —
+// and everything downstream (the DRS budget, the cap's divisor) then judges
+// the game against its own slow pace. That was the Deck's "fast at first,
+// then gradually slower": 40fps frames (16.7/33.3ms alternating) pushed the
+// estimate to ~25ms, the scaler saw "within budget" and even climbed rungs,
+// and the state locked in. So: only ticks that look like a single refresh
+// (≤1.35× the estimate) feed the EMA; a genuinely slower display (the Deck's
+// 40Hz mode, a ProMotion phone dropping out of 120) is accepted once the
+// SHORTEST tick of a ~120-tick window has stayed above that for three
+// windows in a row, clamped at 40Hz — no game target runs slower.
+let _vsWinMin = Infinity, _vsWinTicks = 0, _vsSlowWins = 0;
+const VSYNC_MAX_MS = 25.5; // 40Hz — the slowest display any target ships
+function _measureVsync(tick) {
+  if (tick <= 3 || tick > 60) return; // pauses, hitches, backgrounding
+  if (tick < Math.min(_vsyncEma * 1.35, VSYNC_MAX_MS * 1.05)) _vsyncEma += (tick - _vsyncEma) * 0.05;
+  if (tick < _vsWinMin) _vsWinMin = tick;
+  if (++_vsWinTicks < 120) return;
+  if (_vsWinMin >= _vsyncEma * 1.35) {
+    if (++_vsSlowWins >= 3) { _vsyncEma = Math.min(_vsWinMin, VSYNC_MAX_MS); _vsSlowWins = 0; }
+  } else {
+    _vsSlowWins = 0;
+  }
+  _vsWinMin = Infinity;
+  _vsWinTicks = 0;
+}
+// Main-thread time per frame (sim + draw submission, everything inside the
+// loop body) for the 5s perf summary: the one number that says whether a
+// slow frame is the CPU (JS/draw calls) or the wait for the display/GPU.
+const _perfMain = { sum: 0, max: 0, n: 0 };
+let _mainEma = 0; // smoothed, for the on-screen counter ("cpu Nms")
 function loop(now) {
   requestAnimationFrame(loop);
+  const _t0 = performance.now();
+  if (loopBody(now) === false) return; // a tick the cadence/cap skipped — nothing ran
+  const ms = performance.now() - _t0;
+  if (ms > 250) return; // a freeze (first-frame compiles, a resume) — the FREEZE line reports those
+  _mainEma += (ms - _mainEma) * 0.1;
+  _perfMain.sum += ms;
+  _perfMain.n++;
+  if (ms > _perfMain.max) _perfMain.max = ms;
+}
+function loopBody(now) {
   _rafTick++;
   // Measure the display's real cadence from EVERY rAF tick (including the
-  // ones the cap skips): jitter-tolerant EMA, ignoring pauses/hitches.
+  // ones the cap skips) — see _measureVsync.
   const _tick = now - _lastRaf;
   _lastRaf = now;
-  if (_tick > 3 && _tick < 35) _vsyncEma += (_tick - _vsyncEma) * 0.05;
+  _measureVsync(_tick);
   if (state === State.MENU) {
     // Menu screens (title drift, showroom, start-line tableau) run on their
     // own vsync-dividing cadence. The pad stays live on every tick so a tap is
@@ -6790,14 +6840,14 @@ function loop(now) {
     // sim step, no draw — runs on a skipped menu tick.
     menupad.update();
     if (_padActive()) _noteInput();
-    if (_rafTick - _lastMenuTick < _menuDiv()) return;
+    if (_rafTick - _lastMenuTick < _menuDiv()) return false;
     _lastMenuTick = _rafTick;
   } else if (!_uncapParam) {
     // Cap: render every Nth vsync (see _frameDiv), leaving `last` untouched
     // on a skip so dt still spans to the real last frame. The 0.4-tick slack
     // tolerates rAF jitter without ever letting a tick through early.
     const div = _frameDiv();
-    if (div > 1 && now - last < _vsyncEma * (div - 0.4)) return;
+    if (div > 1 && now - last < _vsyncEma * (div - 0.4)) return false;
   }
   const rawMs = now - last; // real frame interval (for resolution scaling)
   let dt = (now - last) / 1000;
