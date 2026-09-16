@@ -4127,29 +4127,45 @@ function batchStaticProps(scene) {
         keep.push(o);
         return;
       }
-      const mKey = `${m.color.getHexString()}|${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}`;
-      let entry = bucket.get(mKey);
-      if (!entry) bucket.set(mKey, (entry = { material: m, geos: [] }));
+      // The COLOUR is not part of the key: it is baked into a vertex-colour
+      // attribute and the merged mesh uses one shared vertexColors material
+      // per remaining look (roughness/metalness/flat/side/emissive/backlight
+      // and the geometry's attribute set, which mergeGeometries needs equal).
+      // Keyed by colour too, a city cell held dozens of merged pieces — the
+      // palette mints a fresh tint per prop — and one sightline on the Deck
+      // still paid ~90 draw calls for "static props".
       let geo = o.geometry.clone();
       geo.applyMatrix4(o.matrixWorld); // bake world transform
       if (geo.index) geo = geo.toNonIndexed(); // mergeGeometries can't mix indexed/non
       for (const a of Object.keys(geo.attributes)) {
         if (a !== "position" && a !== "normal" && a !== "uv") geo.deleteAttribute(a);
       }
+      bakeVertexColor(geo, m.color.getHex());
+      const mKey = `${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}|${geo.attributes.normal ? "n" : ""}${geo.attributes.uv ? "u" : ""}`;
+      let entry = bucket.get(mKey);
+      if (!entry) {
+        let material = _staticLookMats.get(mKey);
+        if (!material) {
+          material = m.clone(); // same look, white base × baked vertex colours
+          material.color.set(0xffffff);
+          material.vertexColors = true;
+          material.userData = { ...m.userData, shared: true };
+          _staticLookMats.set(mKey, material);
+        }
+        bucket.set(mKey, (entry = { material, geos: [] }));
+      }
       entry.geos.push(geo);
     });
   }
   for (const o of keep) scene.attach(o); // preserve world transform outside the doomed group
-  // Materials are minted per call by mat(); each look keeps ONE representative
-  // (referenced by the merged mesh below) and the duplicates are disposed.
-  const heldMats = new Set();
-  for (const bucket of buckets.values()) for (const e of bucket.values()) heldMats.add(e.material);
+  // Materials are minted per call by mat(); the merged meshes use the shared
+  // per-look materials above, so every original can go.
   for (const g of groups) {
     g.parent && g.parent.remove(g);
     g.traverse((o) => {
       if (o.isMesh) {
         o.geometry.dispose();
-        if (!heldMats.has(o.material)) o.material.dispose?.();
+        o.material.dispose?.();
       }
     });
   }
@@ -4167,6 +4183,9 @@ function batchStaticProps(scene) {
     }
   }
 }
+// One shared material per static-prop LOOK (see batchStaticProps): module
+// lifetime, flagged shared so a world teardown never disposes it.
+const _staticLookMats = new Map();
 
 // Pick a town structure — mostly houses, occasionally a landmark.
 function makeTownStructure(density, biome) {
@@ -5345,6 +5364,40 @@ function makePigeon() {
   }
   return { group: g, wings };
 }
+// The GAME's flocks draw as two InstancedMeshes per flock — one body (head,
+// beak and tail baked in as vertex colours), one wing — whatever the birds
+// are doing: 2 draw calls live instead of the 42 meshes the viewer's
+// makePigeon() adds up to. The rig below is that same bird as transforms
+// only; the instance matrices are read back from it every live frame.
+let _pigeonInst = null;
+function pigeonGeos() {
+  if (_pigeonInst) return _pigeonInst;
+  const parts = [];
+  part(parts, new THREE.SphereGeometry(0.32, 10, 8).scale(1, 0.9, 1.4), 0x9aa3ad); // body
+  part(parts, new THREE.SphereGeometry(0.18, 8, 8).translate(0, 0.22, 0.34), 0xb0b8c0); // head
+  part(parts, new THREE.ConeGeometry(0.05, 0.14, 5).rotateX(Math.PI / 2).translate(0, 0.2, 0.5), 0xe0a52a); // beak
+  part(parts, new THREE.BoxGeometry(0.3, 0.06, 0.4).translate(0, 0.02, -0.42), 0x7e878f); // tail
+  _pigeonInst = {
+    body: mergeGeometries(parts, false),
+    bodyMat: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }),
+    wing: new THREE.BoxGeometry(0.5, 0.08, 0.5), // offset ±0.3 comes from the wing pivot's matrix
+    wingMat: mat(0x868f98),
+  };
+  _pigeonInst.bodyMat.userData.shared = true;
+  _pigeonInst.wingMat.userData.shared = true;
+  return _pigeonInst;
+}
+function makePigeonRig() {
+  const g = new THREE.Group();
+  const wings = [];
+  for (const sx of [-1, 1]) {
+    const wg = new THREE.Group();
+    wg.position.set(sx * 0.1, 0.05, 0);
+    g.add(wg);
+    wings.push({ wg, sx, phase: rand() * 6.28 });
+  }
+  return { group: g, wings };
+}
 
 // A roadside loft with a flock of pigeons perched on its roof; they all burst
 // into the air when the player drives close, then re-perch once you're well past.
@@ -5426,38 +5479,64 @@ function buildPigeons(scene, track, heightAt) {
     const birds = [];
     const n = 7;
     for (let k = 0; k < n; k++) {
-      const pg = makePigeon();
+      const pg = makePigeonRig();
       const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
       pg.group.position.copy(home);
       pg.group.rotation.y = (rand() - 0.5) * 1.2;
       pg.group.scale.setScalar(1.2); // a touch bigger so they read at race speed
-      pg.group.traverse((o) => o.layers.set(1));
       flockGroup.add(pg.group);
       for (const w of pg.wings) w.wg.rotation.z = w.sx * 0.12; // folded, so the proxy bakes the perched pose
       birds.push({ group: pg.group, wings: pg.wings, home, homeRy: pg.group.rotation.y, vel: new THREE.Vector3(), phase: rand() * 6.28 });
     }
-    // Sleep proxy: a flock is ~42 small meshes, but it perches motionless for
-    // almost the whole race. Bake the perched pose into ONE merged mesh (one
-    // draw per shared pigeon material) and show THAT by default; the live,
-    // articulated birds only swap in when the player is close enough to see
-    // them bob / scatter (see updatePigeons). Same pattern as the leaf piles.
-    flockGroup.updateMatrixWorld(true);
-    const inv = new THREE.Matrix4().copy(flockGroup.matrixWorld).invert();
-    const rel = new THREE.Matrix4();
-    const matOrder = [];
-    const geosByMat = new Map();
-    flockGroup.traverse((o) => {
-      if (!o.isMesh) return;
-      let g = o.geometry.clone();
-      g.applyMatrix4(rel.multiplyMatrices(inv, o.matrixWorld));
-      if (g.index) g = g.toNonIndexed();
-      if (!geosByMat.has(o.material)) { geosByMat.set(o.material, []); matOrder.push(o.material); }
-      geosByMat.get(o.material).push(g);
+    // Live drawables: one body InstancedMesh + one wing InstancedMesh for the
+    // whole flock (see pigeonGeos), refreshed from the rigs each live frame.
+    const pg = pigeonGeos();
+    const bodyIM = new THREE.InstancedMesh(pg.body, pg.bodyMat, n);
+    const wingIM = new THREE.InstancedMesh(pg.wing, pg.wingMat, n * 2);
+    for (const im of [bodyIM, wingIM]) {
+      im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      im.frustumCulled = false; // a scattered flock climbs well past the loft's bounds
+      im.layers.set(1);
+      flockGroup.add(im);
+    }
+    const _wingOff = new THREE.Matrix4();
+    const _m = new THREE.Matrix4();
+    const refresh = () => {
+      flockGroup.updateMatrixWorld(true);
+      birds.forEach((b, i) => {
+        bodyIM.setMatrixAt(i, b.group.matrix); // rigs are direct children: local = flock-relative
+        b.wings.forEach((w, j) => {
+          _wingOff.makeTranslation(w.sx * 0.3, 0, 0);
+          _m.multiplyMatrices(b.group.matrix, w.wg.matrix).multiply(_wingOff);
+          wingIM.setMatrixAt(i * 2 + j, _m);
+        });
+      });
+      bodyIM.instanceMatrix.needsUpdate = true;
+      wingIM.instanceMatrix.needsUpdate = true;
+    };
+    refresh();
+    flockGroup.userData.refresh = refresh; // debug hook (tools/pigeon-shot.mjs poses the rigs by hand)
+    // Sleep proxy: a flock perches motionless for almost the whole race. Bake
+    // the perched pose into ONE merged mesh (two draws: body + wing material)
+    // and show THAT by default; the live instanced birds only swap in when the
+    // player is close enough to see them bob / scatter (see updatePigeons).
+    // Same pattern as the leaf piles.
+    const bodyGeos = [], wingGeos = [];
+    birds.forEach((b, i) => {
+      bodyIM.getMatrixAt(i, _m);
+      bodyGeos.push(pg.body.clone().applyMatrix4(_m));
+      for (let j = 0; j < 2; j++) {
+        wingIM.getMatrixAt(i * 2 + j, _m);
+        wingGeos.push(pg.wing.clone().toNonIndexed().applyMatrix4(_m));
+      }
     });
-    const perMat = matOrder.map((m) => mergeGeometries(geosByMat.get(m), false));
-    const proxy = new THREE.Mesh(mergeGeometries(perMat, true), matOrder);
-    proxy.castShadow = true; // stands in for the birds in the one-shot world shadow bake
-    proxy.layers.set(1);
+    const proxy = new THREE.Group(); // two meshes: the geometries' attribute sets differ (colour vs none)
+    for (const [geos, m] of [[bodyGeos, pg.bodyMat], [wingGeos, pg.wingMat]]) {
+      const mesh = new THREE.Mesh(mergeGeometries(geos, false), m);
+      mesh.castShadow = true; // stands in for the birds in the one-shot world shadow bake
+      mesh.layers.set(1);
+      proxy.add(mesh);
+    }
     proxy.position.copy(flockGroup.position);
     scene.add(proxy);
     flockGroup.visible = false; // live birds start asleep behind the proxy
@@ -5465,7 +5544,7 @@ function buildPigeons(scene, track, heightAt) {
     // CENTERLINE, so anything under that radius could never fire from a normal
     // racing line (the old value, 14, was why nobody ever saw them scatter).
     // halfWidth+24 covers the full road width in front of the loft.
-    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds, group: flockGroup, proxy, liveOn: false });
+    flocks.push({ center: new THREE.Vector3(bx, by, bz), triggerR: track.halfWidth + 24, scattered: false, timer: 0, birds, group: flockGroup, proxy, liveOn: false, refresh });
   };
   makeLoftAt(0.08);
   makeLoftAt(0.55);
@@ -5510,6 +5589,7 @@ function updatePigeons(flock, dt, time, ppos) {
       b.group.position.y = b.home.y + Math.sin(time * 2.2 + b.phase) * 0.04;
       for (const w of b.wings) w.wg.rotation.z = w.sx * 0.12; // wings folded
     }
+    flock.refresh();
     if (ppos) {
       if (_pigeonNearest(flock, ppos) < flock.triggerR * flock.triggerR) {
         flock.scattered = true;
@@ -5528,6 +5608,7 @@ function updatePigeons(flock, dt, time, ppos) {
       for (const w of b.wings) w.wg.rotation.z = w.sx * (0.3 + Math.sin(time * 24 + b.phase) * 0.8);
       b.group.rotation.y = Math.atan2(b.vel.x, b.vel.z);
     }
+    flock.refresh();
     if (flock.timer > 4 && ppos) {
       const landR = _rangePigeon + 20; // must exceed the live range or a flock lands while still "near"
       if (_pigeonNearest(flock, ppos) > landR * landR) {

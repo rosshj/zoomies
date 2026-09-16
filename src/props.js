@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";
+import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
 
 export async function initProps(scene, track, opts = {}) {
@@ -70,6 +71,30 @@ export const makeBarrelProp = (rand = Math.random) => {
   g.add(mergeMeshes(parts, { castShadow: false })); // blob-shadowed, like the crates
   return { mesh: g, rest: h / 2 };
 };
+
+// In the GAME every crate and every barrel is an instance of ONE unit
+// geometry (crate: box + lid, barrel: body + two bands — the same shapes the
+// viewer builds above, at unit size), drawn by one InstancedMesh per kind
+// with a material array: 4 draw calls for the whole lap instead of 2 per
+// prop (~40 in a city sightline). Each prop keeps an empty Group as its
+// transform (the sim, the blob shadow and the glow shell all read it) and
+// the instance matrix is refreshed from that group only while it moves.
+function unitCrateGeo() {
+  const box = new THREE.BoxGeometry(1, 1, 1).toNonIndexed();
+  const lid = new THREE.BoxGeometry(1.02, 0.16, 1.02).translate(0, 0.5, 0).toNonIndexed();
+  return mergeGeometries([box, lid], true); // group 0 = wood, group 1 = lid
+}
+function unitBarrelGeo() {
+  const body = new THREE.CylinderGeometry(1, 1, 1, 12).toNonIndexed();
+  const bands = mergeGeometries(
+    [-0.3, 0.3].map((y) => new THREE.CylinderGeometry(1.04, 1.04, 0.12, 12).translate(0, y, 0).toNonIndexed()),
+    false
+  );
+  return mergeGeometries([body, bands], true); // group 0 = body, group 1 = bands
+}
+let _crateGeo = null, _barrelGeo = null;
+const crateGeo = () => (_crateGeo ||= unitCrateGeo());
+const barrelGeo = () => (_barrelGeo ||= unitBarrelGeo());
 
 // A small leaf silhouette (a pointed oval ~0.48 long) in the XY plane, so callers
 // can lay it flat and spin it like the old plane card but it reads as a leaf.
@@ -137,10 +162,19 @@ function build(scene, track, opts) {
   const leafPiles = []; // { x, z, groundY, r, leaves[], burst }
   const N = track.samples;
 
-  // Crate/barrel art lives at module scope (shared with the asset viewer);
-  // bind the seeded rng so sizes stay deterministic per seed.
-  const makeCrate = () => makeCrateProp(rand);
-  const makeBarrel = () => makeBarrelProp(rand);
+  // Sizes roll the SAME rng calls as the viewer's makeCrateProp/makeBarrelProp
+  // (one for a crate, two for a barrel) so a seed lays out exactly what it
+  // always did; the drawable is an instance (see unitCrateGeo) — the Group
+  // is just the transform the sim drives.
+  const makeCrate = () => {
+    const s = 1.5 + rand() * 0.6;
+    return { mesh: new THREE.Group(), rest: s / 2, scale: new THREE.Vector3(s, s, s) };
+  };
+  const makeBarrel = () => {
+    const r = 0.7 + rand() * 0.2;
+    const h = 1.9 + rand() * 0.3;
+    return { mesh: new THREE.Group(), rest: h / 2, scale: new THREE.Vector3(r, h, r) };
+  };
   // `o.kind` is "crate" or "barrel"; `o.mode` is the crate lifecycle state
   // ("ground" knockable | "float" power-up | "rising" transition). Which grounded
   // crate gets promoted into a floating box is decided at runtime (any settled,
@@ -151,7 +185,8 @@ function build(scene, track, opts) {
     mesh.position.set(x, restY, z);
     group.add(mesh);
     const pr = {
-      mesh, rest: built.rest, hit: 0, asleep: true, settle: false,
+      mesh, rest: built.rest, scale: built.scale, hit: 0, asleep: true, settle: false,
+      inst: null, // { mesh: InstancedMesh, i } — assigned once every prop is placed
       kind: o.kind || "crate", mode: o.mode || "ground", spent: false,
       groundY, phase: rand() * Math.PI * 2, t: 0,
       pos: new THREE.Vector3(x, restY, z),
@@ -273,6 +308,42 @@ function build(scene, track, opts) {
     scene.remove(group);
     return null;
   }
+
+  // One InstancedMesh per kind (see unitCrateGeo): every crate is an instance
+  // of the unit crate scaled by its size, every barrel of the unit barrel
+  // scaled (r, h, r). Matrices follow each prop's transform Group.
+  const crates = props.filter((p) => p.kind === "crate");
+  const barrels = props.filter((p) => p.kind === "barrel");
+  const _instances = [];
+  for (const [list, geo, mats] of [[crates, crateGeo(), [woodMat, woodTop]], [barrels, barrelGeo(), [barrelMat, bandMat]]]) {
+    if (!list.length) continue;
+    const im = new THREE.InstancedMesh(geo, mats, list.length);
+    im.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    im.frustumCulled = false; // instances span the whole lap
+    group.add(im);
+    list.forEach((pr, i) => { pr.inst = { mesh: im, i }; });
+    _instances.push(im);
+  }
+  const _imDummy = new THREE.Object3D();
+  function updatePropInstances() {
+    let changed = null;
+    for (const pr of props) {
+      if (!pr.inst) continue;
+      // A resting prop's matrix is constant — skip it once written.
+      const active = !pr.asleep || pr.settle || pr.mode !== "ground";
+      if (!active && pr._imBaked && pr._imVis === pr.mesh.visible) continue;
+      _imDummy.position.copy(pr.mesh.position);
+      _imDummy.quaternion.copy(pr.mesh.quaternion);
+      if (pr.mesh.visible) _imDummy.scale.copy(pr.scale); else _imDummy.scale.setScalar(0.0001);
+      _imDummy.updateMatrix();
+      pr.inst.mesh.setMatrixAt(pr.inst.i, _imDummy.matrix);
+      pr._imVis = pr.mesh.visible;
+      pr._imBaked = !active;
+      (changed ||= new Set()).add(pr.inst.mesh);
+    }
+    if (changed) for (const im of changed) im.instanceMatrix.needsUpdate = true;
+  }
+  updatePropInstances(); // first frame: everything at rest
 
   // Soft blob shadow under EVERY crate/barrel/floating box: one InstancedMesh
   // (a single draw call, no shadow-map cost) using the same projected blob the
@@ -530,7 +601,9 @@ function build(scene, track, opts) {
       if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
     }
 
-    // Re-project every prop's blob shadow now that positions are final.
+    // Positions are final: refresh the moved instances, then re-project every
+    // prop's blob shadow.
+    updatePropInstances();
     updatePropShadows();
 
     // Leaf piles: each leaf is its own particle. Any kart driving through kicks
