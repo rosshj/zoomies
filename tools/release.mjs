@@ -60,7 +60,11 @@ const gh = async (url, opts = {}) => {
     },
   });
   if (!res.ok && res.status !== 404) throw new Error(`${opts.method || "GET"} ${url} → ${res.status}: ${await res.text()}`);
-  return res.status === 404 ? null : res.json();
+  if (res.status === 404) return null;
+  // DELETE (replacing an asset on a re-run) answers 204 with an empty body —
+  // parsing that as JSON threw "Unexpected end of JSON input" mid-release.
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
 };
 
 // 1. Build the desktop bundle once (game only — no PWA/service-worker
