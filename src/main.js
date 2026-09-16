@@ -6755,6 +6755,7 @@ const MENU_FPS = 30, MENU_FPS_SAVER = 20, IDLE_FPS = 10, IDLE_AFTER_MS = 30000;
 let _lastInputAt = 0; // performance.now() of the last key / pointer / pad input
 const _isIdle = () => performance.now() - _lastInputAt > IDLE_AFTER_MS;
 const _menuFps = () => (_isIdle() ? IDLE_FPS : saverOn ? MENU_FPS_SAVER : MENU_FPS);
+window.__zoomies.gfx = () => ({ scene, renderer, camera }); // debug hook (draw-call attribution probe)
 window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), tick: +_tickMs().toFixed(2), shellHz: _shellHz, target: +_targetFps().toFixed(1), gate: +_gateMs(_targetFps()).toFixed(2), menuFps: _menuFps(), idle: _isIdle(), saver: saverOn, cap: fpsCap, state }); // debug hook
 const _noteInput = () => { _lastInputAt = performance.now(); };
 window.__zoomies.noteInput = _noteInput; // debug hook (the pacing probe wakes / ages the idle throttle)
