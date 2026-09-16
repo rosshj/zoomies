@@ -17,3 +17,6 @@ android/.gradle/
 android/build/
 android/app/build/
 **/xcuserdata/
+
+# Claude Code agent worktrees (session-local checkouts, never source)
+.claude/worktrees/

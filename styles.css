@@ -208,6 +208,32 @@ body {
   font-size: 18px;
 }
 
+/* Controller legend: a quiet strip along the bottom edge while a pad drives
+   the menus (menupad.js toggles .hidden). Passes touches through. */
+#pad-legend {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: max(6px, var(--safe-bottom, 0px));
+  z-index: 58;
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 248, 238, 0.82);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+}
+#pad-legend b {
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 15px;
+  color: var(--f-gold, #ffc24b);
+}
+#pad-legend.hidden { display: none; }
+
 /* Menu screens ease in: each card rises + fades over ~0.2s whenever its
    overlay unhides. Motion-sensitive players get an instant cut instead. */
 /* Sheets (settings, Cat-alog, how-to, track maker…) slide UP over the flow,
@@ -274,8 +300,8 @@ body {
 
 /* The main menu and its sub-screens float over the LIVE 3D world (a slow camera
    orbit renders behind), so darken it just enough for legibility instead of
-   hiding it. Pause holds the frozen race behind its card, the lobby floats over
-   the world tour, and results float over the victory lap + fireworks. */
+   hiding it. Pause holds the frozen race behind its card, and results float
+   over the victory lap + fireworks. */
 #howto,
 #settings,
 #install-help,
@@ -682,37 +708,6 @@ body {
   margin: 0 auto;
 }
 
-/* Multiplayer join (lobby code) */
-.mp-join-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-#mp-code {
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: bold;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  text-align: center;
-  width: 170px;
-  padding: 8px 10px;
-  color: #fff;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: var(--pill);
-  outline: none;
-}
-#mp-code::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-  text-transform: none;
-  letter-spacing: 0.5px;
-  font-weight: normal;
-}
-#mp-code:focus {
-  border-color: var(--accent);
-}
-
 /* Add-to-Home-Screen instructions */
 .install-gate-note {
   margin: 10px auto 4px;
@@ -761,8 +756,8 @@ body {
   height: 100%;
 }
 
-/* Solo / Multiplayer segmented toggle — two pills in one track; the selected
-   side is filled so it's obvious which mode is active. */
+/* Segmented toggle — pills in one track; the selected side is filled so it's
+   obvious which option is active. */
 .seg-toggle {
   display: inline-flex;
   margin-top: 10px;
@@ -950,21 +945,6 @@ kbd {
   font-size: 11px;
 }
 
-#rotate {
-  z-index: 100; /* above the menu/HUD so it always takes priority */
-}
-
-.rotate-icon {
-  font-size: 64px;
-  margin-bottom: 12px;
-  animation: spin 2s ease-in-out infinite;
-}
-
-@keyframes spin {
-  0%, 100% { transform: rotate(0deg); }
-  50% { transform: rotate(90deg); }
-}
-
 /* Results: podium-style standings rows — rank | name | time columns, with the
    player's row lit gold. Floats over the victory-lap camera + fireworks. */
 .menu-card.results-main {
@@ -1015,82 +995,22 @@ kbd {
   color: var(--accent);
   opacity: 1;
 }
+/* Versus: every human seat is tinted (the winner alone gets the gold .you). */
+#results-list li.human {
+  border-color: rgba(120, 190, 255, 0.55);
+  background: rgba(120, 190, 255, 0.08);
+}
+#results-list li.human .r-name { color: #cfe6ff; }
+.results-note {
+  margin: -6px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+}
+.results-note.hidden { display: none; }
 #restart-btn {
   font-size: 17px;
   padding: 11px 34px;
-}
-
-#lobby-players {
-  list-style: none;
-  padding: 0;
-  margin: 4px 0 6px;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  text-align: left;
-  font-size: 14px;
-}
-#lobby-players li {
-  padding: 6px 13px;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: var(--pill);
-  background: rgba(255, 255, 255, 0.045);
-  font-weight: 600;
-}
-#lobby-players .you {
-  color: var(--accent);
-  font-weight: 800;
-  border-color: rgba(255, 179, 0, 0.7);
-  background: rgba(255, 179, 0, 0.1);
-}
-#lobby-code {
-  letter-spacing: 2px;
-  color: var(--accent);
-}
-/* Big, copyable share code in the lobby. */
-.lobby-code-big {
-  display: inline-block;
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: 6px;
-  color: var(--accent);
-  background: rgba(255, 179, 0, 0.1);
-  border: 1px dashed rgba(255, 179, 0, 0.55);
-  border-radius: 12px;
-  padding: 6px 16px;
-  margin: 2px auto 10px;
-  user-select: all;
-  -webkit-user-select: all;
-}
-.lobby-track-tag {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.5px;
-  color: rgba(255, 255, 255, 0.6);
-  margin: -4px auto 8px;
-  min-height: 14px;
-}
-.lobby-track-tag.mismatch {
-  color: #ff7b7b;
-}
-.lobby-share-label,
-.lobby-players-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.6px;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.55);
-  margin: 8px 0 4px;
-}
-.lobby-players-label span {
-  color: var(--accent);
-}
-.mp-share-row {
-  display: flex;
-  gap: 8px;
-  justify-content: center;
-  flex-wrap: wrap;
 }
 
 /* ===== HUD ===== */
@@ -1100,6 +1020,11 @@ kbd {
   z-index: 30;
   pointer-events: none;
 }
+/* Touch controls only where a finger can use them: main.js sets .no-touch
+   while no coarse pointer exists and no touch has been seen (a desktop
+   window, the Steam Deck on a pad) — the slider, the action fan and the
+   tilt readout would otherwise draw over a mouse/pad game. Pause stays. */
+#hud.no-touch #throttle, #hud.no-touch #action-buttons, #hud.no-touch #steer { display: none; }
 
 /* Victory lap: gently fade the racing controls + readouts out so the camera
    orbit and fireworks play unobstructed. The invisible hit-flash layer is
@@ -1322,30 +1247,36 @@ kbd {
 
 /* Drafting: the meter is charging faster — pulse a cyan rim + brighten the fill so
    the slipstream speedup is legible on the HUD. */
+/* The pulses animate transform/opacity only: an infinite keyframe on
+   box-shadow re-rasterises the button every frame on the main thread, which
+   showed up as a steady CPU tick even while nothing else moved. The glow is a
+   static shadow; the pulse is a compositor-only scale. */
 #btn-boost.drafting {
   border-color: rgba(160, 232, 255, 0.95);
+  box-shadow: 0 0 12px 3px rgba(120, 220, 255, 0.7);
   animation: boost-draft 0.6s ease-in-out infinite;
 }
 #btn-boost.drafting #boost-fill {
   background: linear-gradient(0deg, #4fc3f7, #b3e5fc);
 }
 @keyframes boost-draft {
-  0%, 100% { box-shadow: 0 0 6px 1px rgba(120, 220, 255, 0.45); }
-  50% { box-shadow: 0 0 14px 4px rgba(120, 220, 255, 0.85); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
 }
 
 /* Overcharged: drafted past full — a gold pulse + gold fill so the beefier toot
    reads on the HUD (echoes the drift charge's gold tier). */
 #btn-boost.overcharged {
   border-color: rgba(255, 213, 79, 0.95);
+  box-shadow: 0 0 16px 5px rgba(255, 193, 7, 0.8);
   animation: boost-over 0.5s ease-in-out infinite;
 }
 #btn-boost.overcharged #boost-fill {
   background: linear-gradient(0deg, #ffb300, #ffe082);
 }
 @keyframes boost-over {
-  0%, 100% { box-shadow: 0 0 8px 2px rgba(255, 193, 7, 0.55); }
-  50% { box-shadow: 0 0 18px 6px rgba(255, 193, 7, 0.95); }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
 }
 
 #btn-milk {
@@ -1545,6 +1476,15 @@ button.secondary:active {
 }
 #fps-counter.warn { color: #ffd24d; }
 #fps-counter.bad { color: #ff5b4d; }
+/* Desktop shell (no touch HUD): park the counter bottom-right, where nothing
+   else lives — top-left is exactly where the Steam Deck's performance overlay
+   draws, and the two hid each other. */
+#hud.no-touch #fps-counter {
+  top: auto;
+  left: auto;
+  right: max(12px, var(--safe-right, 0px));
+  bottom: max(12px, var(--safe-bottom, 0px));
+}
 
 /* Tilt debug readout: same pill as the FPS counter, parked just below it. */
 #tilt-counter {
@@ -1604,11 +1544,12 @@ button.secondary:active {
   border-color: #ff3b30;
   color: #ffd0cc;
   background: rgba(40, 8, 6, 0.72);
+  box-shadow: 0 0 12px 3px rgba(255, 59, 48, 0.75); /* static glow; the pulse below is transform-only */
   animation: rtPulse 0.5s ease-in-out infinite;
 }
 @keyframes rtPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.55); }
-  50% { box-shadow: 0 0 14px 4px rgba(255, 59, 48, 0.85); transform: translateX(-50%) scale(1.06); }
+  0%, 100% { transform: translateX(-50%) scale(1); }
+  50% { transform: translateX(-50%) scale(1.06); }
 }
 
 /* Opening furball-charge countdown (top center). Shares the rear-threat pill
@@ -1702,9 +1643,29 @@ button.small {
 
 .setting-row {
   display: grid;
-  grid-template-columns: 104px 76px 1fr;
+  /* 140px label column: "Compatibility mode" / "Controller rumble" wrap onto
+     two clean lines instead of colliding with the toggle. */
+  grid-template-columns: 140px 76px 1fr;
   align-items: center;
   gap: 12px;
+}
+/* The Progress card's backup block is its own stacked row (label, the code
+   field, the three pills) — squeezing it into the grid's 76px column shoved
+   the pills off the card. */
+.backup-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.backup-row .share-row { justify-content: flex-start; }
+.backup-code {
+  width: 100%;
+  resize: none;
+  font-size: 12px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  line-height: 1.35;
+  word-break: break-all;
 }
 
 /* The Graphics row has no slider; let its toggle span the slider column too. */
@@ -1712,6 +1673,12 @@ button.small {
   grid-column: 2 / 4;
   justify-self: start;
   margin-top: 0; /* the seg-toggle's default top margin is for the menu, not here */
+}
+/* Frame-rate cap: same segmented layout as the Graphics row. */
+#set-fps-cap-seg {
+  grid-column: 2 / 4;
+  justify-self: start;
+  margin-top: 0;
 }
 
 /* A small explanatory line under a setting row (e.g. Compatibility mode). */
@@ -1888,7 +1855,6 @@ button.small {
 /* Every secondary/small pill meets the tap target and centres its label. */
 button.small,
 button.secondary.small,
-.mp-join-row button.small,
 .seg-btn,
 .setting-row .toggle {
   min-height: var(--tap);
@@ -2112,6 +2078,19 @@ button.secondary.small,
   border: 2px solid var(--f-ink);
   box-shadow: 0 4px 0 var(--f-ink), 0 10px 18px -8px rgba(14, 6, 30, 0.45);
   color: var(--f-ink);
+  /* Tiles are <button>s (so the pad's ring can reach the till): undo the
+     base button's type, size and push-down press. */
+  font: inherit;
+  letter-spacing: normal;
+  margin: 0;
+  width: 100%;
+  min-height: 0;
+  cursor: default;
+  text-align: center;
+}
+.prize-tile:active {
+  transform: none;
+  box-shadow: 0 4px 0 var(--f-ink), 0 10px 18px -8px rgba(14, 6, 30, 0.45);
 }
 .prize-tile.owned { border-color: var(--f-ink); }
 /* Karts (and the custom kart) ride wide 3:2 tiles like the kart step. */
@@ -2282,6 +2261,34 @@ button.secondary.small,
 .flow-back:active {
   transform: translateY(3px);
   box-shadow: 0 1px 0 var(--f-ink);
+}
+/* "More below" affordance: a fade + chevron along the bottom of a flow screen
+   whose body can still scroll down (main.js toggles .can-scroll from the
+   body's scroll metrics). Sits over the body, passes touches through. */
+.flow-screen.can-scroll::after {
+  content: "⌄";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 64px;
+  padding-top: 26px;
+  box-sizing: border-box;
+  text-align: center;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 800;
+  color: var(--f-gold, #ffc24b);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  background: linear-gradient(180deg, rgba(6, 9, 16, 0) 0%, rgba(6, 9, 16, 0.78) 100%);
+  pointer-events: none;
+  animation: scroll-hint 1.6s ease-in-out infinite;
+}
+@keyframes scroll-hint {
+  50% { padding-top: 32px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flow-screen.can-scroll::after { animation: none; }
 }
 .flow-body {
   flex: 1;
@@ -2485,7 +2492,7 @@ button.secondary.small,
   margin: 0;
 }
 
-/* --- Mode / cup / friends grids --------------------------------------------- */
+/* --- Mode / cup grids --------------------------------------------- */
 .mode-grid,
 .cup-grid {
   display: grid;
@@ -2497,56 +2504,8 @@ button.secondary.small,
   align-content: center;
   align-content: safe center;
 }
-.friends-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(8px, 1.8vh, 14px);
-  max-width: 800px;
-  margin: 0 auto;
-  min-height: 100%;
-  align-content: center;
-  align-content: safe center;
-  align-items: stretch;
-}
 .mode-tap { min-height: clamp(64px, 13vh, 92px); }
 .mode-daily { grid-column: 1 / -1; min-height: clamp(56px, 10vh, 76px); }
-.friends-card { min-height: clamp(88px, 18vh, 120px); }
-.mp-join-row { display: flex; gap: 8px; margin-top: 6px; }
-#mp-code {
-  flex: 1;
-  min-width: 0;
-  width: 100%;
-  min-height: 44px;
-  padding: 6px 14px;
-  border: 2px solid var(--f-ink);
-  border-radius: var(--pill);
-  background: #fff;
-  color: var(--f-ink);
-  font: inherit;
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  text-align: center;
-  box-shadow: inset 0 2px 0 rgba(43, 26, 78, 0.15);
-  -webkit-user-select: text;
-  user-select: text;
-}
-#mp-code::placeholder {
-  letter-spacing: 0.04em;
-  font-weight: 600;
-  color: var(--f-ink-soft);
-  text-transform: none;
-}
-.join-go { min-height: 44px; padding: 6px 20px; font-size: 15px; }
-.join-status {
-  display: block;
-  margin-top: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--f-ink-soft);
-}
-
 /* cup cards (rendered by JS into #cup-list) */
 .cup-tap { flex-wrap: wrap; }
 .cup-tap .cup-meta {
@@ -2730,9 +2689,13 @@ button.secondary.small,
   bottom: 6px;
   font-size: 10px;
   max-width: calc(100% - 52px);
-  white-space: nowrap;
+  /* Two lines max (the cup label stacks "cup name" over "Race n/3"). */
+  white-space: normal;
+  line-height: 1.2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .map-chip .map-edit-hint { right: 8px; bottom: 6px; font-size: 10px; }
 .start-stakes {
@@ -2790,71 +2753,6 @@ button.secondary.small,
   letter-spacing: 0.05em;
 }
 
-/* --- Lobby (flow) ------------------------------------------------------------------ */
-.lobby-flow-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
-  gap: clamp(10px, 2vw, 18px);
-  max-width: 860px;
-  margin: 0 auto;
-  width: 100%;
-  align-content: center;
-  align-content: safe center;
-  align-items: center;
-  align-items: safe center;
-  min-height: 100%;
-}
-.lobby-left {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(7px, 1.6vh, 12px);
-}
-.lobby-code-card { padding: 10px 14px 12px; text-align: center; }
-.lobby-code-card .lobby-share-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--f-ink-soft);
-  margin: 0;
-}
-.lobby-code-card .lobby-code-big {
-  /* chunky gold code, like the logo */
-  background: linear-gradient(180deg, #ffb300 0%, #f57f17 60%, #e64a19 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  filter: drop-shadow(0 2px 0 rgba(43, 26, 78, 0.85));
-  font-size: clamp(38px, 11vh, 58px);
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  line-height: 1.1;
-  border: none;
-  padding: 0;
-  margin: 2px 0 0;
-  background-color: transparent;
-}
-.lobby-code-card .lobby-track-tag { margin: 0 0 6px; color: var(--f-ink-soft); }
-.lobby-code-card .lobby-track-tag.mismatch { color: #d43a3a; }
-.lobby-code-card .mp-share-row { justify-content: center; margin-top: 2px; }
-.lobby-players-card { padding: 10px 14px; align-self: stretch; display: flex; flex-direction: column; }
-.lobby-players-label {
-  font-size: 10.5px;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: rgba(255, 248, 238, 0.65);
-  margin: 0 0 6px;
-  text-align: left;
-}
-.lobby-waiting {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgba(255, 248, 238, 0.75);
-  text-align: center;
-}
-
 /* --- Segmented controls: white thumb + ink outline (one style everywhere) ---- */
 .seg-btn.is-active {
   background: #fff;
@@ -2885,13 +2783,13 @@ button.secondary.small,
 }
 #menu.flow-instant .flow-screen .tap-card { animation: none !important; }
 
-/* Connection status colours ride the lobby eyebrow + the join row's note
-   (setMpStatus toggles .ok/.error on both). */
-.flow-eyebrow.ok { color: #7ee08a; }
-.flow-eyebrow.error { color: #ff8a7a; }
-.join-status.ok { color: #3f9a2f; }
-.join-status.error { color: #d43a3a; }
-
+/* A row of small pills (the profile backup's Copy code / Restore). */
+.share-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
 /* Small pills never wrap their labels (Copy code / Restore etc.). */
 button.small { white-space: nowrap; }
 
@@ -3004,9 +2902,17 @@ button.small { white-space: nowrap; }
   gap: 5px;
   padding: 7px 7px 8px;
   text-align: center;
+  /* Three rows fit the body at 1280×800 AND 1280×720 (header ≈58px, body
+     padding 32px, two 12px gaps): cap the card so the shot shrinks to fit
+     instead of the grid overflowing; anything past row 3 scrolls under the
+     fade + chevron (.can-scroll). */
+  height: clamp(150px, calc((100vh - 130px) / 3), 250px);
+  min-height: 0;
 }
-.racer-tap .track-name { text-align: center; }
-.racer-tap .track-sub { text-align: center; min-height: 1em; }
+.racer-tap .track-name { text-align: center; flex: 0 0 auto; }
+/* Two text lines reserved on EVERY card (prices are one line, "win the
+   Sandy Paws Cup" two) so the shots in a row all come out the same size. */
+.racer-tap .track-sub { text-align: center; min-height: 2.5em; line-height: 1.25; flex: 0 0 auto; }
 .racer-shot {
   position: relative;
   display: block;
@@ -3015,6 +2921,13 @@ button.small { white-space: nowrap; }
   border: 2px solid var(--f-ink);
   background: #223052;
   aspect-ratio: 1;
+  /* Takes whatever height the capped card leaves; the width follows the
+     aspect ratio (centred) and is clamped to the column. */
+  flex: 1 1 0;
+  min-height: 0;
+  width: auto;
+  max-width: 100%;
+  align-self: center;
 }
 .racer-shot img {
   display: block;
@@ -3029,14 +2942,18 @@ button.small { white-space: nowrap; }
   font-size: 17px;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
 }
-#kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 880px; }
+#kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 760px; }
 #kart-grid .racer-shot { aspect-ratio: 3 / 2; }
 /* The card matching the current selection: a gold ring + corner check, so
-   every pass shows where you already are before you tap anything. */
-.racer-tap.is-current {
+   every pass shows where you already are before you tap anything. The
+   track cards wear the same ring for the world that's already built. */
+.racer-tap.is-current,
+.track-tap.is-current {
   border-color: var(--f-gold, #ffc24b);
   box-shadow: 0 0 0 2px rgba(255, 194, 75, 0.75), 0 3px 0 rgba(43, 26, 78, 0.5);
 }
+.track-tap.is-current .track-shot { position: relative; }
+.track-tap.is-current .track-shot::after,
 .racer-tap.is-current .racer-shot::after {
   content: "✓";
   position: absolute;
@@ -3077,6 +2994,45 @@ button.small { white-space: nowrap; }
 .racer-card .mini-name { font-size: 15px; }
 .racer-card .creator-label { font-size: 11px; }
 .racer-card .creator-input { min-height: 42px; font-size: 15px; }
+/* Name row: the typed field plus a Pick button for pad players. */
+.name-pick-btn { flex: 0 0 auto; margin: 0; min-height: 42px; padding: 0 12px; font-size: 13px; }
+/* The in-card name picker replaces the creator while it's open (a grid of
+   curated names; the pad's ring walks it like any other grid). */
+.racer-card.picking-name .creator,
+.racer-card.picking-name .garage-lock-note,
+.racer-card.picking-name .racer-actions { display: none; }
+.name-picker { display: flex; flex-direction: column; gap: 10px; }
+.name-picker.hidden { display: none; }
+.name-picker-head {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255, 248, 238, 0.7);
+}
+.name-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.name-grid button {
+  margin: 0;
+  min-height: 40px;
+  padding: 4px 6px;
+  font-size: 13px;
+  letter-spacing: 0;
+  border-radius: 12px;
+  color: var(--f-ink);
+  background: linear-gradient(180deg, var(--f-cream), var(--f-cream-2));
+  border: 2px solid var(--f-ink);
+  box-shadow: 0 3px 0 var(--f-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.name-grid button.is-active { background: #fff; box-shadow: inset 0 0 0 2px var(--f-gold, #ffc24b), 0 3px 0 var(--f-ink); }
+.name-picker-actions { display: flex; gap: 8px; }
+.name-picker-actions button { flex: 1; margin: 0; }
 
 /* Track maker: 3-up chip rows (Style / Size) + the Fine-tune drawer. */
 .tod-grid.trio { grid-template-columns: repeat(3, 1fr); }
@@ -3235,3 +3191,32 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 #hud.split #rear-threat, #hud.split #shoot-lock, #hud.split #steer,
 #hud.split #throttle, #hud.split #action-buttons, #hud.split #yarn-warn,
 #hud.split #info, #hud.split #powerups { display: none; }
+
+/* ============================================================================
+   Big screens (desktop / Steam Deck at 1280×800): nothing below 12px. The
+   phone sizes above tuned eyebrows, notes and badges down to 10–11px for a
+   6" screen; on a monitor two metres away they turn to dust.
+   ============================================================================ */
+@media (min-width: 1200px) {
+  .flow-eyebrow, .setting-note, .settings-section, .map-label, .map-chip .map-label,
+  .map-chip .map-edit-hint, .seat-input, .start-racer-label, .cup-pill, .claim-sub,
+  .claim-desc, .pc-text, .prize-confirm button, .prize-how, .hint, kbd, .creator-label,
+  .racer-card .creator-label, .throttle-label, .adv-toggle, .env-hint, .start-input-warn,
+  .track-tap .track-sub, .tap-sub, .catalog-stats, .ach-desc, .shelf-diff, .earn-row,
+  #results-earnings, .split-chip-sub, .env-label, .biome-chip, .mode-opt-label, .track-val, .prize-head {
+    font-size: 12px !important;
+  }
+  .setting-note, .hint, .claim-desc, .earn-row, #results-earnings { font-size: 12.5px !important; }
+  .track-tap .track-sub, .tap-sub { font-size: 12.5px !important; }
+}
+
+/* Title-screen build stamp (see #build-stamp in index.html). */
+.build-stamp {
+  margin: 8px 0 0;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(255, 248, 238, 0.55);
+  text-align: center;
+}
+.build-stamp:empty { display: none; }

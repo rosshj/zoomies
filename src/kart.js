@@ -73,6 +73,13 @@ function makeShieldMaterial() {
 // Boost meter recharge rate (full in ~16s) — identical for the player and AI.
 export const BOOST_RECHARGE = 1 / 16;
 
+// Kart-vs-kart collision constants (main.js resolveCollisions).
+export const KART_COLLIDE_MIN = 4.4; // contact diameter
+export function kartBumpPower(aSpeed, bSpeed) {
+  // Bumper impulse, scaled by how fast the pair is moving.
+  return 10 + (Math.abs(aSpeed) + Math.abs(bSpeed)) * 0.4;
+}
+
 // Slipstreaming: while tucked in a rival's wake (kart.slipstream, 0..1, set each
 // frame by the draft pass in main.js), the toot-boost meter charges faster — up to
 // (1 + SLIPSTREAM_MULT)× the base rate at a perfect draft (fills in ~3s vs 16), and
@@ -95,6 +102,19 @@ export const BOOST_OVERCHARGE_DECAY = 0.08; // per second, bleeds 1.2 → 1.0 in
 // the AI makes when its curvature reading wiggles at a corner exit or S-bend
 // inflection, don't each pop a boost on the straight.
 const MIN_DRIFT_CHARGE = 0.5;
+// Cosmetic charge steps (seconds held) that `kart.driftTier` (0-3) reports live
+// while drifting — the spark colour steps (blue → gold → rainbow) and the
+// haptic ticks read it. Purely presentational: the release boost itself is the
+// continuous curve in endDrift, not a tier table.
+export const DRIFT_TIER_CHARGES = [0.8, 1.5, 2.4];
+export function driftTierFor(charge) {
+  let tier = 0;
+  for (let i = 0; i < DRIFT_TIER_CHARGES.length; i++) if (charge >= DRIFT_TIER_CHARGES[i]) tier = i + 1;
+  return tier;
+}
+// After a spin-out settles the kart can't be spun again for this long, so a
+// second hairball in the same volley doesn't chain wipeouts.
+const SPIN_IMMUNITY = 1.0;
 
 // Soft radial blob used as a contact/grounding shadow under each kart (also
 // shared by the prop/item-box shadows in props.js, so they match).
@@ -157,6 +177,8 @@ export class Kart {
     this.spinDir = 1;
     this.spinAngVel = 0; // angular velocity (decays) while spinning out
     this.spinVel = new THREE.Vector3(); // carries inertia while spinning out
+    this.spinImmune = 0; // s of post-spin immunity left (can't be spun again)
+    this._spinExitSpeed = 0; // speed handed back when the spin settles (30% of pre-hit)
 
     // Bumper-car knockback (decaying positional impulse)
     this.knock = new THREE.Vector3();
@@ -165,12 +187,13 @@ export class Kart {
     // Wall scrape (for spark effects)
     this.wallHit = false;
     this.wallHitDir = new THREE.Vector3();
-    this.wallHitPulse = 0; // s remaining; a scrape latch the MP pose send reads (see update)
+    this.wallHitPulse = 0; // s remaining; a scrape latch for slow samplers (see update)
 
     // Drift (hold jump while turning to slide + charge a mini-turbo)
     this.drifting = false;
     this.driftDir = 0;
     this.driftCharge = 0;
+    this.driftTier = 0; // live cosmetic charge step (0-3) while drifting; 0 otherwise
     this.driftHeld = false; // jump button held (sustains the drift)
 
     // Boost (drift mini-turbo and the toot boost button)
@@ -198,8 +221,7 @@ export class Kart {
     this.trackT = 0;
     this.totalProgress = -1;
     this.finished = false;
-    this.finishTime = 0; // elapsed race time at finish (for display)
-    this.finishClock = 0; // shared-clock instant at finish (for MP ranking)
+    this.finishTime = 0; // elapsed race time at finish (for display + ranking)
     this.place = 1;
     this._stuck = 0; // AI: time spent crawling (wall recovery)
 
@@ -337,6 +359,7 @@ export class Kart {
     this.drifting = false;
     const charge = this.driftCharge;
     this.driftCharge = 0;
+    this.driftTier = 0;
     if (charge < MIN_DRIFT_CHARGE) return; // too short to earn a mini-turbo
     const c = Math.min(charge, 3.2);
     this.applyBoost(1.12 + c * 0.12, 0.4 + c * 0.28);
@@ -347,18 +370,19 @@ export class Kart {
     return this.boostTimer > 0;
   }
 
-  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 7s.
+  // Catnip power-up: a hands-free continuous boost (no drift/button needed) for 6s.
   // Sustained each frame in update(); reads as a green boost (cloud + flames).
   giveCatnip() {
     if (this.finished) return;
-    this.catnipTimer = 7;
+    this.catnipTimer = 6;
   }
   get catnipBoosting() {
     return this.catnipTimer > 0;
   }
   // Item-box shield: hands-free hairball protection for `secs` (no button held).
-  // The bubble shows and blocks hits for the duration (see update()).
-  giveShield(secs = 15) {
+  // The bubble shows and blocks hits for the duration (see update()). Unlike the
+  // HELD shield it costs no pace — it's a prize, not a trade.
+  giveShield(secs = 10) {
     if (this.finished) return;
     this.shieldTimer = Math.max(this.shieldTimer, secs);
   }
@@ -377,12 +401,12 @@ export class Kart {
     if (this.finished) return;
     this.milkBottles = 1;
   }
-  // Item-box Nine Lives: bank a life (up to 3 heart pips). The next spinOut is
+  // Item-box Nine Lives: bank a life (up to 2 heart pips). The next spinOut is
   // downgraded to a brief wobble — you keep most of your speed and control.
   // Purely damage-mitigation: no boost, no offense.
   giveLife() {
     if (this.finished) return;
-    this.lives = Math.min(3, (this.lives || 0) + 1);
+    this.lives = Math.min(2, (this.lives || 0) + 1);
   }
 
   // Spin out — keep the kart's momentum so it slides out realistically and
@@ -396,7 +420,7 @@ export class Kart {
   }
 
   spinOut(impactDir = null) {
-    if (this.spinTimer > 0) return;
+    if (this.spinTimer > 0 || this.spinImmune > 0) return;
     if (this.catnipBoosting) return; // catnip = invincible: nothing stops the zoom
     // Nine Lives: a banked heart downgrades the wipeout to a brief flip-and-wobble —
     // keep most of your speed and control ("always lands on its feet"). Consumes one
@@ -421,6 +445,11 @@ export class Kart {
     this.spinVel.copy(fwd).multiplyScalar(Math.abs(this.speed)); // real momentum
     if (impactDir) this.spinVel.addScaledVector(impactDir, 6);
     this.drifting = false;
+    this.driftCharge = 0;
+    this.driftTier = 0;
+    // The slide carries the momentum; when the spin settles the kart rolls on
+    // with 30% of its pre-hit pace instead of restarting from a dead stop.
+    this._spinExitSpeed = Math.abs(this.speed) * 0.3;
     this.speed = 0;
   }
 
@@ -452,8 +481,9 @@ export class Kart {
     }
 
     if (this.shootCooldown > 0) this.shootCooldown -= dt;
+    if (this.spinImmune > 0) this.spinImmune -= dt;
     if (this.boxCooldown > 0) this.boxCooldown -= dt;
-    if (this.wallHitPulse > 0) this.wallHitPulse -= dt; // MP wall-scrape latch (see the scrape site)
+    if (this.wallHitPulse > 0) this.wallHitPulse -= dt; // wall-scrape latch (see the scrape site)
     if (this.tootTimer > 0) this.tootTimer -= dt;
     if (this.gloatTimer > 0) this.gloatTimer -= dt;
     if (this.boostTimer > 0) this.boostTimer -= dt;
@@ -494,6 +524,13 @@ export class Kart {
       this.speed = 0;
       this._lat = Math.max(-1, Math.min(1, this.spinAngVel * 0.12));
       this._lon = 0;
+      if (this.spinTimer <= 0) {
+        // Spin over: roll on with a share of the pre-hit pace, and a beat of
+        // immunity so the recovery isn't immediately undone by the next ball.
+        this.speed = this._spinExitSpeed;
+        this._spinExitSpeed = 0;
+        this.spinImmune = SPIN_IMMUNITY;
+      }
       this._integrate(dt, track, false);
       this._syncMesh();
       return;
@@ -550,9 +587,10 @@ export class Kart {
     // steering block), capped at +5%. It rides the ceiling so it fades with
     // the drift instead of snapping.
     if (this.driftRamp > 0) upper *= 1 + this.driftRamp;
-    // A raised shield drags: ~4% off the top while it's up. Defense occupies
-    // the action slot AND costs pace — that's the whole trade.
-    if (this.shielding && !boosting) upper *= 0.96;
+    // A raised (HELD) shield drags: ~4% off the top while it's up. Defense
+    // occupies the action slot AND costs pace — that's the whole trade. The
+    // item-box shield (shieldTimer) is a prize and rides free.
+    if (this.shielding && !boosting && this.shieldTimer <= 0) upper *= 0.96;
     if (this.speed > upper) {
       this.speed = boosting ? upper : Math.max(upper, this.speed - 26 * dt);
     }
@@ -570,12 +608,18 @@ export class Kart {
 
     // --- Drift: continues as long as jump is held; release fires the boost ---
     if (this.drifting) {
-      this.driftCharge += dt;
+      // The charge banks for the whole slide. The one gate is a minimal
+      // anti-farm one: a "drift" counter-steered dead straight (the inward
+      // amount below 0.12 — see the steering block for `amount`) banks nothing,
+      // so parking the slide on a straight can't stockpile a boost. Any real
+      // steer angle, including the light ones tilt/touch players hold, clears it.
+      if (0.2 + this.steerInput * this.driftDir * 0.7 >= 0.12) this.driftCharge += dt;
       if (!this.driftHeld || this.speed < 6) this.endDrift();
     } else if (this.driftHeld && !this.airborne && this.speed > 7 && Math.abs(this.steerInput) > 0.25) {
       this.drifting = true;
       this.driftDir = Math.sign(this.steerInput);
       this.driftCharge = 0;
+      this.driftTier = 0;
     }
 
     // --- Steering --- (less effective at very low speed, reversed in reverse)
@@ -600,10 +644,14 @@ export class Kart {
       } else {
         this.driftRamp = Math.max(0, this.driftRamp - 0.1 * dt);
       }
-    } else if (this.driftRamp > 0) {
-      // Out of the drift the earned pace evaporates fast (the release boost
-      // is the payoff for a clean exit, not a lingering ramp).
-      this.driftRamp = Math.max(0, this.driftRamp - 0.2 * dt);
+      this.driftTier = driftTierFor(this.driftCharge); // cosmetic step for sparks/haptics
+    } else {
+      this.driftTier = 0;
+      if (this.driftRamp > 0) {
+        // Out of the drift the earned pace evaporates fast (the release boost
+        // is the payoff for a clean exit, not a lingering ramp).
+        this.driftRamp = Math.max(0, this.driftRamp - 0.2 * dt);
+      }
     }
     // Catnip is fast, which makes tight corners hard — give it extra steering
     // authority so it stays controllable through bends.
@@ -650,16 +698,15 @@ export class Kart {
       if (this.drifting) {
         this.drifting = false;
         this.driftCharge = 0;
+        this.driftTier = 0;
         this.driftRamp = 0;
       }
       if (Math.abs(this.speed) > 6) {
         this.wallHit = true;
         this.wallHitDir.copy(proj.side).multiplyScalar(Math.sign(proj.lateral));
-        // A short latch so multiplayer can broadcast the scrape. `wallHit` itself is a
-        // one-frame transient set here (physics) and cleared in the effects pass; the
-        // pose send runs BEFORE physics in the frame, so it would always miss it. This
-        // timer stays up for ~0.12s so getPose reliably tags FLAG.WALL and a rival
-        // sees the sparks. (Local sparks still use wallHit; this is send-only.)
+        // A short latch for readers that sample less often than physics runs
+        // (the track audit's grind metric): `wallHit` itself is a one-frame
+        // transient set here and cleared in the effects pass. Stays up ~0.12s.
         this.wallHitPulse = 0.12;
       }
     }
@@ -861,7 +908,8 @@ export class Kart {
     if (catnipTargets && catnipTargets.length && !this.catnipBoosting && this.spinTimer <= 0) {
       const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
       const behind = Math.max(0, (this.place || 1) - 3); // 0 for top-3, up to 3 for last
-      const catnipMul = this.diff ? this.diff.catnip : 1; // easier modes chase catnip less
+      // Easier modes chase boxes less; a driver's own aggression scales it too.
+      const catnipMul = (this.diff ? this.diff.catnip : 1) * (this.aggro || 1);
       const range = (24 + behind * 18) * catnipMul;       // trailing karts reach much further
       let best = null, bestD = range;
       for (const cn of catnipTargets) {

@@ -98,7 +98,11 @@ export function createScene() {
 
   // WebGPU migration: WebGPURenderer (WebGL2 backend by default, WebGPU with
   // ?webgpu=1). It auto-falls back to WebGL2 if WebGPU is unavailable.
-  const renderer = new THREE.WebGPURenderer({ antialias: true, forceWebGL: !USE_WEBGPU });
+  // antialias OFF: the scene is drawn into the post-processing pass's own render
+  // target (main.js), so the default framebuffer only ever receives the final
+  // full-screen quad — a 4× MSAA default framebuffer resolved nothing but that
+  // quad and cost its memory/bandwidth on every present.
+  const renderer = new THREE.WebGPURenderer({ antialias: false, forceWebGL: !USE_WEBGPU });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
@@ -145,10 +149,21 @@ export function createScene() {
   // reasonably crisp over a whole track on High. iOS is capped at 2048 whatever
   // the tier — its WebGPU loses the device under memory pressure (the game's one
   // hard-crash mode; repeated jumps mid-race triggered it on a 4096 map), and
-  // 16MB vs 64MB is exactly the kind of headroom that decides it. Low tier gets
-  // 2048 everywhere.
+  // 16MB vs 64MB is exactly the kind of headroom that decides it.
+  // Tiered by the quality pref the settings UI actually persists
+  // ("zoomies-quality-v2": low | balanced | medium | high; the legacy
+  // "zoomies-quality" low/high key is the fallback, as main.js migrates it):
+  // Low 1024, Balanced/Medium 2048, High 4096 — the iOS cap applies on top.
+  const SHADOW_BY_TIER = { low: 1024, balanced: 2048, medium: 2048, high: 4096 };
   let shadowSz = IS_IOS ? 2048 : 4096;
-  try { if (localStorage.getItem("zoomies-quality") === "low") shadowSz = 2048; } catch { /* keep default */ }
+  try {
+    let tier = localStorage.getItem("zoomies-quality-v2");
+    // Same migration rule as main.js: a legacy "low" stays low, anything else
+    // (legacy "high", nothing stored) is the default tier, medium.
+    if (!SHADOW_BY_TIER[tier]) tier = localStorage.getItem("zoomies-quality") === "low" ? "low" : "medium";
+    const want = SHADOW_BY_TIER[tier];
+    shadowSz = Math.min(shadowSz, want);
+  } catch { /* keep default */ }
   sun.shadow.mapSize.set(shadowSz, shadowSz);
   // Initial bounds are placeholders — fitSunShadow overwrites them on frame one.
   const s = 85;

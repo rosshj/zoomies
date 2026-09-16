@@ -1,5 +1,6 @@
 // Nine Lives mechanics on a headless Kart: a banked heart downgrades spinOut to
-// a speed-keeping wobble (consumed, capped at 3). Imports three
+// a speed-keeping wobble (consumed, capped at 2), plus the post-spin recovery
+// rules (30% speed kept, 1s immunity). Imports three
 // (steps a real Kart), so it runs locally like check:sim — not in the node-only CI.
 // Run: `npm run check:lives`.
 import * as THREE from "three";
@@ -44,9 +45,26 @@ check("wobble expired", b.wobbleTimer <= 0);
 b.spinOut();
 check("next hit (no heart left) → real spinout", b.spinTimer > 0);
 
-// 4) Lives cap at 3.
+// 4) Lives cap at 2 (a third heart is wasted — hearts are a cushion, not armour).
 const c = mk(); c.giveLife(); c.giveLife(); c.giveLife(); c.giveLife();
-check("lives cap at 3", c.lives === 3);
+check("lives cap at 2", c.lives === 2);
+
+// 5) Post-spin: the kart rolls on with 30% of its pre-hit pace and is immune
+// to a second spin for ~1s once the spin settles (no chained wipeouts).
+const d = mk(); d.throttleInput = 1;
+for (let i = 0; i < 240; i++) { track.raceTime += dt; d.update(dt, track); }
+const preHit = Math.abs(d.speed);
+d.spinOut();
+d.throttleInput = 0;
+let exitSpeed = null;
+for (let i = 0; i < 120 && exitSpeed === null; i++) { track.raceTime += dt; d.update(dt, track); if (d.spinTimer <= 0) exitSpeed = Math.abs(d.speed); }
+check(`spin settles with ~30% of pre-hit speed (${exitSpeed?.toFixed(1)} vs ${preHit.toFixed(1)})`,
+  exitSpeed !== null && exitSpeed > preHit * 0.25 && exitSpeed < preHit * 0.35);
+d.spinOut();
+check("immune to a second spin right after recovering", d.spinTimer <= 0 && d.spinImmune > 0);
+for (let i = 0; i < 70; i++) { track.raceTime += dt; d.update(dt, track); }
+d.spinOut();
+check("immunity expires after ~1s", d.spinTimer > 0);
 
 
 console.log(fails ? `${fails} FAILED` : "all nine-lives checks passed");

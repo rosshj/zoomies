@@ -100,13 +100,12 @@ index.html        # markup, HUD, import map for three.js
 styles.css        # HUD, slider, overlays
 sw.js             # service worker (offline PWA shell cache)
 src/
-  main.js         # game loop, state machine, race logic, menus, multiplayer glue
+  main.js         # game loop, state machine, race logic, menus
   scene.js        # renderer, lights, sky, post-processing
   scenery.js      # procedural world: biomes, buildings, foliage, landmarks
   track.js        # closed Catmull-Rom circuit + lap projection
   models.js       # procedural cat + kart meshes, accessories, shared materials
   kart.js         # arcade kart physics, lap timing, AI driver
-  remotekart.js   # render-only multiplayer ghost (interpolated puppet)
   input.js        # accelerometer / slider / tap-zones / keyboard
   hairball.js     # projectiles + collision
   hud.js          # HUD DOM updates
@@ -118,8 +117,7 @@ src/
   gpu.js          # WebGPU/WebGL2 backend selection (?webgl=1 override)
   crashguard.js   # WebGPU device-loss watchdog + reload recovery
   rng.js          # seeded RNG for reproducible worlds
-  net/            # multiplayer: transport facade, Ably relay, WebRTC P2P,
-                  # interpolation, shared clock (see NETWORKING.md)
+  worldcfg.js     # encoded-world token that carries a cup round's exact map
 ```
 
 ### Is a track playable? (`npm run check:tracks`)

@@ -7,6 +7,8 @@
 //   - the TRI_FAN spread constant stays a symmetric 3-way
 //   - the floating power-up box lifecycle: drive-through grants to the right kart,
 //     the box sinks, and a roadside crate rises to refill the pool
+//   - milk puddles (dropper grace, hop/catnip dodge, shield doesn't help)
+//   - yarn balls (arc-window hit, hop/shield/catnip defences)
 import * as THREE from "three";
 import { HairballManager, TRI_FAN } from "../src/hairball.js";
 import { initProps } from "../src/props.js";
@@ -90,20 +92,25 @@ function check(name, cond) {
   check("a refused pickup leaves the box floating", props2.boxTargets().length === 5);
 }
 
-// --- Milk replication (spawnMilkAt, victim-authoritative) -----------------
+// --- Milk puddles (dropMilk: a floor hazard behind the dropper) -------------
 {
   const track = straightTrack();
   const im = new ItemManager(stubScene, track);
+  // dropMilk lands the puddle 6 m behind the dropper's projected position.
+  const dropper = (x) => milkKart(x, { _proj: { t: x / track.length, lateral: 0 } });
 
-  const puddle = im.spawnMilkAt({ x: 50, z: 0, r: 3 });
-  check("spawnMilkAt creates an owner-less, grace-free puddle",
-    im.puddles.length === 1 && puddle.owner === null && puddle.grace === 0 && puddle.r === 3 && puddle.x === 50);
+  const puddle = im.dropMilk(dropper(56));
+  check("dropMilk lands a puddle 6 m behind the dropper, owned by them",
+    im.puddles.length === 1 && puddle.owner !== null && puddle.grace > 0 && Math.abs(puddle.x - 50) < 1e-6);
 
   const p1 = milkKart(50);
   im.update(0.016, [p1], {});
-  check("a replicated puddle trips a local player driving through it", p1.spun === true);
+  check("a puddle trips a rival driving through it", p1.spun === true);
 
-  im.spawnMilkAt({ x: 100, z: 0, r: 3 });
+  const owner2 = dropper(106);
+  im.dropMilk(owner2); // puddle at x=100
+  im.update(0.016, [owner2], {});
+  check("the dropper's own grace keeps them off their fresh puddle", owner2.spun === false);
   const hopper = milkKart(100, { y: 1.5 });
   im.update(0.016, [hopper], {});
   check("airborne kart hops the puddle (no spin)", hopper.spun === false);
@@ -111,52 +118,41 @@ function check(name, cond) {
   im.update(0.016, [catCart], {});
   check("catnip plows through the puddle (no spin)", catCart.spun === false);
 
-  im.spawnMilkAt({ x: 150, z: 0, r: 3 });
+  const p3 = im.dropMilk(dropper(156)); // puddle at x=150
   const shielded = milkKart(150, { shielding: true });
   im.update(0.016, [shielded], {});
   check("shield does NOT save you from milk (floor hazard)", shielded.spun === true);
 
-  const far = milkKart(150 + 3 + 1.2 + 0.5); // just outside r+1.2
-  im.spawnMilkAt({ x: 300, z: 0, r: 3 });
+  const far = milkKart(150 + p3.r + 1.2 + 0.5); // just outside r+1.2
+  im.dropMilk(dropper(306));
   im.update(0.016, [far], {});
   check("a kart clear of every puddle is untouched", far.spun === false);
 }
 
-// --- Yarn replication (ghost cosmetic, shooter-authoritative remote bridge) --
+// --- Yarn balls (arc-window hit test) -----------------------------------------
 {
   const track = straightTrack();
   const im = new ItemManager(stubScene, track);
   // Owner near t=0.1 (x=20). spawnYarn reads owner._proj + speed.
   const owner = { position: new THREE.Vector3(20, 0, 0), speed: 20, _proj: { t: 0.1, lateral: 0 }, trackT: 0.1 };
 
-  // A REAL yarn spins a local kart sitting in its arc window.
+  // A yarn spins a kart sitting in its arc window.
   const yr = im.spawnYarn(owner, null);
-  check("spawnYarn returns a non-ghost record", !!yr && yr.ghost === false);
+  check("spawnYarn returns the ball record", !!yr && yr.owner === owner);
   const victim = milkKart(21.5, { trackT: 0.1075, _proj: { lateral: 0 } });
   im.update(0.001, [owner, victim], {});
-  check("a real yarn spins a kart in its arc window", victim.spun === true);
+  check("a yarn spins a kart in its arc window", victim.spun === true);
 
-  // A GHOST yarn (a remote's, replicated) never decides a hit — cosmetic only.
-  const gy = im.spawnYarnGhost({ t: 0.1, lat: 0, speed: 60, life: 12, target: null });
-  check("spawnYarnGhost creates a ghost record", !!gy && gy.ghost === true);
-  const bystander = milkKart(21.5, { trackT: 0.1075, _proj: { lateral: 0 } });
-  im.update(0.001, [bystander], {});
-  check("a ghost yarn never spins a kart (cosmetic)", bystander.spun === false);
-
-  // The shooter's live yarn hits a remote GHOST world-space via the bridge.
-  function bridgeHit(ghostOver) {
+  function yarnHit(over) {
     const im2 = new ItemManager(stubScene, track);
     im2.spawnYarn(owner, null);
-    const hits = [];
-    const gk = { position: new THREE.Vector3(20, 0, 0), y: 0, shielding: false, catnipBoosting: false, ...ghostOver };
-    const remotes = new Map([["R1", { _ready: true, id: "R1", kart: gk }]]);
-    im2.update(0.001, [owner], {}, remotes, (id) => hits.push(id));
-    return hits;
+    const k = milkKart(21.5, { trackT: 0.1075, _proj: { lateral: 0 }, ...over });
+    im2.update(0.001, [owner, k], {});
+    return k.spun;
   }
-  check("yarn hits a remote ghost world-space → onRemoteHit fires", bridgeHit({}).length === 1);
-  check("a hopped remote ghost dodges the yarn (no remote hit)", bridgeHit({ y: 1.5 }).length === 0);
-  check("a shielded remote ghost blocks the yarn (no remote hit)", bridgeHit({ shielding: true }).length === 0);
-  check("a catnip remote ghost blocks the yarn (no remote hit)", bridgeHit({ catnipBoosting: true }).length === 0);
+  check("a hopped kart dodges the yarn", yarnHit({ y: 1.5 }) === false);
+  check("a shielded kart blocks the yarn", yarnHit({ shielding: true }) === false);
+  check("a catnip kart blocks the yarn", yarnHit({ catnipBoosting: true }) === false);
 }
 
 if (failures) { console.log(`\n${failures} check(s) FAILED`); process.exit(1); }

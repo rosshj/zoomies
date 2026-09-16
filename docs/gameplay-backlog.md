@@ -9,7 +9,7 @@ a day) · Cat-alog screen (treats, trophy shelf, achievements, stats) · backup 
 (ZP1. token, Settings → Progress) · dev mode (?dev=1 or 7 taps on the Settings
 title: grant treats, unlock all, reset; __zoomies.dev in the console).
 Future lanes from the design chat: cloud sync + paid cosmetics (needs receipts /
-server-side entitlements), weekly featured cup, reward-box ceremony, MP cups.
+server-side entitlements), weekly featured cup, reward-box ceremony.
 
 Design decisions from the "fun but fair" brainstorm. Guiding principles: reward
 skill/expression, always give counterplay, no RNG "gotchas", and keep catch-up

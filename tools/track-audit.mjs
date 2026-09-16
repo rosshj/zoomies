@@ -173,6 +173,10 @@ async function auditTrack(entry) {
     try {
       localStorage.setItem("zoomies-track-v1", JSON.stringify(cfg));
       localStorage.setItem("zoomies-mode-v1", "gp"); // a plain single race
+      // Audit at FULL AI pace: the fresh-profile default is now Medium, and a
+      // corner the field can only take cleanly when slowed down is exactly the
+      // pathology this is hunting.
+      localStorage.setItem("zoomies-difficulty", "expert");
       // We are auditing the SIMULATION, not the pixels — the cheapest renderer
       // setting makes the software-rendered sim run far closer to real time.
       localStorage.setItem("zoomies-quality-v2", "low");
