@@ -57,12 +57,19 @@ await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, { w
 console.error("[probe] page loaded"); await page.waitForSelector("#start-btn", { timeout: 15000 });
 await page.click("body", { position: { x: 5, y: 5 } }).catch(() => {});
 await page.click("#start-btn", { force: true });
+// The saved mode lands on the start line (step 5); START RACE is #go-btn.
+await page.waitForSelector("#go-btn", { state: "visible", timeout: 120000 });
+await page.waitForTimeout(1500);
+await page.click("#go-btn", { force: true });
+console.error("[probe] START RACE clicked");
+await page.waitForSelector("#go-btn", { state: "hidden", timeout: 60000 }).catch(() => {});
 for (let t = 0; t < 150; t++) {
   const txt = await page.textContent("#fps-counter").catch(() => "");
   if (/\d+\s*FPS/.test(txt || "")) break;
   await page.waitForTimeout(1000);
 }
-console.error("[probe] race running, counter:", await page.textContent("#fps-counter").catch(() => "")); await page.waitForTimeout(3000);
+await page.waitForTimeout(12000); // veil + countdown under SwiftShader, then live racing
+console.error("[probe] race running, counter:", await page.textContent("#fps-counter").catch(() => ""));
 
 // Exact attribution: wrap the backend's draw() and tally every draw call by
 // the object it draws — keyed by the object's TOP-LEVEL scene ancestor's

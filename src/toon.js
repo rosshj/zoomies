@@ -71,7 +71,11 @@ function sunTermsNode(ud) {
 export function makePaletteToonMaterial(colors, ud = {}, { side = THREE.FrontSide } = {}) {
   const t = new THREE.MeshToonNodeMaterial({ gradientMap: TOON_GRADIENT, side });
   const pal = uniformArray(colors.map((c) => c.clone()));
-  t.colorNode = pal.element(int(attribute("aSlot", "float")));
+  // ROUND the interpolated slot: every vertex of a triangle carries the same
+  // value, but perspective interpolation can hand the fragment 0.99998, and
+  // truncation then reads the neighbouring colour — speckles all over the
+  // paint on the first try.
+  t.colorNode = pal.element(int(attribute("aSlot", "float").add(0.5)));
   t.emissiveNode = sunTermsNode(ud);
   t.userData.palette = pal; // colours can be retuned live through pal.array[i]
   return t;
