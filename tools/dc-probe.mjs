@@ -154,7 +154,15 @@ const report = await page.evaluate(async (FRAMES) => {
   // kart is the hero asset and was 38–46 draws EACH in the first race probe.
   let kart = null;
   scene.traverse((o) => { if (!kart && o.userData?.isKart) kart = o; });
-  if (!kart) scene.traverse((o) => { if (!kart && o.isGroup && o.parent === scene && [...byTop.values()].some((e) => e.objs.has(o)) && o.children.some((c) => c.geometry?.type === "TubeGeometry" || c.isLineSegments)) kart = o; });
+  if (!kart) {
+    // A kart is the top-level group whose subtree holds a cat tail (TubeGeometry) or whiskers (LineSegments).
+    for (const o of scene.children) {
+      if (!o.isGroup) continue;
+      let hit = false;
+      o.traverse((c) => { if (c.geometry?.type === "TubeGeometry" || c.isLineSegments) hit = true; });
+      if (hit) { kart = o; break; }
+    }
+  }
   const kartRows = [];
   if (kart) {
     kart.traverse((c) => {
