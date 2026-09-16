@@ -60,7 +60,7 @@ await page.click("#start-btn", { force: true });
 // The saved mode lands on the start line (step 5); START RACE is #go-btn.
 await page.waitForSelector("#go-btn", { state: "visible", timeout: 120000 });
 await page.waitForTimeout(1500);
-await page.click("#go-btn", { force: true });
+await page.evaluate(() => document.getElementById("go-btn")?.click()); // the panel scrolls; a DOM click skips the viewport check
 console.error("[probe] START RACE clicked");
 await page.waitForSelector("#go-btn", { state: "hidden", timeout: 60000 }).catch(() => {});
 for (let t = 0; t < 150; t++) {
