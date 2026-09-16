@@ -228,8 +228,12 @@ a manual `chmod +x`), while tar preserves permissions.
 
 Get the archive onto the Deck (USB stick, scp, or `npx serve desktop/out`
 on the build machine and download it with the Deck's browser in Desktop
-Mode), extract it anywhere (e.g. `~/Zoomies`), then in desktop Steam:
-**Games → Add a Non-Steam Game → Browse** → `zoomies-desktop`. Launch from
+Mode), extract it in the home folder — `tools/release.mjs` tars the build
+under the STABLE folder `zoomies-gp/` (electron-builder's own tar.gz uses
+`zoomies-desktop-<version>/`, which made every update land in a new
+sibling folder while the Steam shortcut kept launching the old build) —
+then in desktop Steam:
+**Games → Add a Non-Steam Game → Browse** → `zoomies-gp/zoomies-desktop`. Launch from
 Gaming Mode; pick the **Gamepad** controller template so the Deck presents
 as a standard pad (the Gamepad API path the game already uses — press any
 button once, the browser hides a pad until its first input).

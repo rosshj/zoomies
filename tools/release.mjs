@@ -10,7 +10,7 @@
 // site's links with zero site changes. The token needs repo scope on
 // zoomies-releases only.
 import { execSync } from "node:child_process";
-import { readFileSync, readdirSync, copyFileSync, mkdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, copyFileSync, mkdirSync, statSync, existsSync, rmSync, renameSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -44,7 +44,12 @@ const PLATFORMS = {
   // Linux ships as tar.gz, NOT zip: browser downloads + GUI extraction strip
   // the executable bit out of zips (field-verified on a Steam Deck — the
   // binary wouldn't launch until a manual chmod +x), while tar preserves it.
-  linux: { flags: "--linux tar.gz --x64", asset: "zoomies-gp-linux-x64.tar.gz", ext: ".tar.gz" },
+  // The archive's top-level folder is the STABLE `zoomies-gp/`, not
+  // electron-builder's `zoomies-desktop-<version>/`: a versioned folder made
+  // every update extract to a NEW sibling folder while the Steam shortcut
+  // kept launching the old one (a Deck ran v0.1.6 for two "updates"). So the
+  // build is packaged as a directory and tarred here under the fixed name.
+  linux: { flags: "--linux dir --x64", asset: "zoomies-gp-linux-x64.tar.gz", dir: "linux-unpacked", folder: "zoomies-gp" },
   mac: { flags: "--mac zip", asset: "zoomies-gp-macos.zip", ext: ".zip" },
   win: { flags: "--win zip --x64", asset: "zoomies-gp-windows-x64.zip", ext: ".zip" },
 };
@@ -78,6 +83,18 @@ for (const p of platforms) {
   if (!cfg) { console.error(`unknown platform: ${p}`); process.exit(1); }
   console.log(`\n[release] packaging ${p}…`);
   sh(`npx electron-builder --config electron-builder.json ${cfg.flags}`, join(ROOT, "desktop"));
+  if (cfg.dir) {
+    // Directory build → tar.gz under the stable folder name (see PLATFORMS).
+    // tar, not a zip, keeps the executable bits (field-verified on a Deck).
+    const src = join(outDir, cfg.dir);
+    const named = join(outDir, cfg.folder);
+    if (!existsSync(src)) { console.error(`no ${cfg.dir} produced for ${p}`); process.exit(1); }
+    rmSync(named, { recursive: true, force: true });
+    renameSync(src, named);
+    sh(`tar -czf "${join(staging, cfg.asset)}" -C "${outDir}" "${cfg.folder}"`);
+    console.log(`[release] ${cfg.folder}/ → ${cfg.asset}`);
+    continue;
+  }
   // electron-builder names archives by product/version; grab the newest one
   // of this platform's type and restage it under the stable asset name.
   const zips = readdirSync(outDir).filter((f) => f.endsWith(cfg.ext));
