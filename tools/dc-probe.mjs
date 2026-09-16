@@ -99,8 +99,21 @@ const report = await page.evaluate(async (FRAMES) => {
       let key = topKey.get(top);
       if (!key) { key = shapeOf(top); topKey.set(top, key); }
       let e = byTop.get(key);
-      if (!e) { e = { calls: 0, objs: new Set() }; byTop.set(key, e); }
+      if (!e) { e = { calls: 0, objs: new Set(), samples: [] }; byTop.set(key, e); }
       e.calls++;
+      if (!e.objs.has(top) && e.samples.length < 3) {
+        // Enough to find the builder: where it sits, how big, what colour.
+        let verts = 0, meshes = 0, color = "";
+        top.traverse((c) => {
+          if (!c.isMesh) return;
+          meshes++;
+          verts += c.geometry?.attributes?.position?.count || 0;
+          const m = Array.isArray(c.material) ? c.material[0] : c.material;
+          if (!color && m?.color) color = "#" + m.color.getHexString();
+        });
+        const p = top.position;
+        e.samples.push(`at(${p.x.toFixed(0)},${p.y.toFixed(0)},${p.z.toFixed(0)}) meshes=${meshes} verts=${verts} ${color}${Object.keys(top.userData || {}).length ? " userData:" + Object.keys(top.userData).join(",") : ""}`);
+      }
       e.objs.add(top);
     }
     const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
@@ -110,14 +123,18 @@ const report = await page.evaluate(async (FRAMES) => {
   };
   await frames(FRAMES);
   backend.draw = orig;
-  const tops = [...byTop.entries()].map(([key, e]) => ({ key, perFrame: e.calls / FRAMES, objs: e.objs.size })).sort((a, b) => b.perFrame - a.perFrame);
+  const tops = [...byTop.entries()].map(([key, e]) => ({ key, perFrame: e.calls / FRAMES, objs: e.objs.size, samples: e.samples })).sort((a, b) => b.perFrame - a.perFrame);
   const leaves = [...byLeaf.entries()].map(([key, n]) => ({ key, perFrame: n / FRAMES })).sort((a, b) => b.perFrame - a.perFrame);
   return { perFrame: total / FRAMES, offscene: offscene / FRAMES, counter: document.getElementById("fps-counter")?.textContent, children: scene.children.length, tops, leaves };
 }, FRAMES);
 
 console.log(`${report.perFrame.toFixed(1)} draw calls/frame over ${FRAMES} frames (${report.offscene.toFixed(1)} off-scene: post passes) · ${report.children} top-level objects · counter: ${report.counter}`);
 console.log("\n-- by top-level scene object shape --\n   dc/f  objs  shape");
-for (const r of report.tops) if (r.perFrame >= 0.5) console.log(r.perFrame.toFixed(1).padStart(7), String(r.objs).padStart(5), " " + r.key);
+for (const r of report.tops) {
+  if (r.perFrame < 0.5) continue;
+  console.log(r.perFrame.toFixed(1).padStart(7), String(r.objs).padStart(5), " " + r.key);
+  if (r.perFrame >= 2) for (const s of r.samples) console.log("              e.g. " + s);
+}
 console.log("\n-- by drawn mesh shape --\n   dc/f  mesh");
 for (const r of report.leaves.slice(0, 40)) if (r.perFrame >= 0.5) console.log(r.perFrame.toFixed(1).padStart(7), " " + r.key);
 if (errors.length) console.log("page errors:", errors);
