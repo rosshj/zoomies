@@ -1,7 +1,9 @@
 name: checks
 
-# Node-only checks: fast and dependency-free apart from the vendored three.js
-# (no `npm install`). Anything that needs a browser — the headless smoke test,
+# Node-only checks. The kart-sim check imports `three` from node_modules
+# (kart.js says `from "three"`, which only the browser's import map points at
+# the vendored build), so the lockfile is installed first — scripts skipped,
+# no browsers. Anything that needs a browser — the headless smoke test,
 # offline test, split-screen and gamepad checks — is left to run locally.
 on:
   push:
@@ -15,7 +17,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
       - name: world-config codec (cup reload token)
         run: npm run check:worldcfg
       - name: progression economy (treats/unlocks/cups)
