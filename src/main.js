@@ -1952,6 +1952,8 @@ let _drsOverT = 0; // how long we've been continuously over budget
 const DRS_RUNGS = [1, 0.8, 0.62, DRS_MIN];
 let _drsRung = 0; // index into DRS_RUNGS
 let _drsUnderT = 0; // how long we've had comfortable headroom (for recovery)
+let _drsProbe = null; // {before, rung} of the last step-down, judged once its cooldown ends
+let _drsNoGain = 0; // consecutive step-downs that bought nothing (backs the retries off)
 
 function updateDRS(rawMs, dt) {
   _frameMs += (Math.min(rawMs, 60) - _frameMs) * 0.18; // smoothed frame interval (a touch quicker to react)
@@ -1987,6 +1989,25 @@ function updateDRS(rawMs, dt) {
   const _budget = _renderBudgetMs();
   const _over = _budget * 1.11 + 0.1;
   const _under = _budget * 1.03;
+  // A rung was dropped a moment ago: did it buy anything? Fewer pixels only
+  // help a FILL-bound frame. When the cost is the CPU side (sim + draw
+  // submission, or the browser's own per-draw work between us and the GPU),
+  // the interval doesn't move and the scaler used to keep stepping down to
+  // the floor anyway — a Steam Deck at 51fps, GPU 25% busy, 0.45x and blurry.
+  // No gain → step straight back up and hold off for a while.
+  if (_drsProbe) {
+    const p = _drsProbe;
+    _drsProbe = null;
+    if (_frameMs > p.before * 0.93 && _drsRung > p.rung) {
+      _drsRung = p.rung;
+      renderScale = DRS_RUNGS[_drsRung];
+      applyResolution();
+      _drsNoGain = Math.min(3, _drsNoGain + 1);
+      _drsCooldown = 6 * _drsNoGain; // 6s, 12s, 18s between futile retries
+      return;
+    }
+    _drsNoGain = 0;
+  }
   if (_frameMs > _over && _drsRung < DRS_RUNGS.length - 1) {
     // Only step down after the budget has been blown for a SUSTAINED beat. A
     // transient spike — a jump's brief draw-call burst, a first-use shader
@@ -1995,7 +2016,12 @@ function updateDRS(rawMs, dt) {
     _drsOverT += dt;
     if (_drsOverT < 0.5) return;
     _drsOverT = 0;
+    // Main thread already eating most of the budget: the frame is CPU-bound
+    // and fewer pixels can't help — don't even probe (see cpu Nms on the
+    // counter; the Deck's 12ms of 16.7 is exactly this).
+    if (_mainEma > _budget * 0.6) { _drsCooldown = 2.0; return; }
     // Genuinely sustained overload drops two rungs in one move.
+    _drsProbe = { before: _frameMs, rung: _drsRung };
     _drsRung = Math.min(DRS_RUNGS.length - 1, _drsRung + (_frameMs > _budget * 1.67 ? 2 : 1));
     renderScale = DRS_RUNGS[_drsRung];
     applyResolution();
