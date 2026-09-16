@@ -51,7 +51,7 @@ const info = await page.evaluate(() => {
   const { scene, camera } = window.__zoomies.gfx();
   // The flock: a body InstancedMesh with 7 instances under a Group that also holds the 14-wing one.
   let flock = null;
-  scene.traverse((o) => { if (!flock && o.isInstancedMesh && o.count === 7 && o.parent?.children?.some((c) => c.isInstancedMesh && c.count === 14)) flock = o.parent; });
+  scene.traverse((o) => { if (!flock && typeof o.userData?.refresh === "function") flock = o; });
   if (!flock) return { err: "no flock found" };
   flock.visible = true; // force live
   for (const c of scene.children) if (c.isGroup && c.position.equals(flock.position) && c !== flock) c.visible = false; // hide its proxy
@@ -71,7 +71,7 @@ await page.screenshot({ path: `${prefix}-perched.png` });
 await page.evaluate(() => {
   const { scene } = window.__zoomies.gfx();
   let flock = null;
-  scene.traverse((o) => { if (!flock && o.isInstancedMesh && o.count === 7) flock = o.parent; });
+  scene.traverse((o) => { if (!flock && typeof o.userData?.refresh === "function") flock = o; });
   const rigs = flock.children.filter((c) => !c.isInstancedMesh);
   rigs.forEach((r, i) => { r.position.y += 1.5 + i * 0.4; r.position.x += (i - 3) * 0.8; r.rotation.y = i; r.children.forEach((wg, j) => { wg.rotation.z = (j ? 1 : -1) * 0.9; }); });
   flock.userData.refresh();

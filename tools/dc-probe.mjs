@@ -150,9 +150,34 @@ const report = await page.evaluate(async (FRAMES) => {
     return [...agg.entries()].map(([k, s]) => ({ k, objs: s.objs, perFrame: s.calls / FRAMES })).sort((a, b) => b.perFrame - a.perFrame).slice(0, 12);
   };
   const tops = [...byTop.entries()].map(([key, e]) => ({ key, perFrame: e.calls / FRAMES, objs: e.objs.size, samples: e.samples, sub: e.calls / FRAMES >= 10 ? subrows(e) : [] })).sort((a, b) => b.perFrame - a.perFrame);
+  // One kart, mesh by mesh: geometry groups × materials = its draw calls. The
+  // kart is the hero asset and was 38–46 draws EACH in the first race probe.
+  let kart = null;
+  scene.traverse((o) => { if (!kart && o.userData?.isKart) kart = o; });
+  if (!kart) scene.traverse((o) => { if (!kart && o.isGroup && o.parent === scene && [...byTop.values()].some((e) => e.objs.has(o)) && o.children.some((c) => c.geometry?.type === "TubeGeometry" || c.isLineSegments)) kart = o; });
+  const kartRows = [];
+  if (kart) {
+    kart.traverse((c) => {
+      if (!(c.isMesh || c.isLineSegments || c.isLine || c.isSprite)) return;
+      const mats = Array.isArray(c.material) ? c.material : [c.material];
+      const groups = c.geometry?.groups?.length || 0;
+      const draws = Array.isArray(c.material) ? Math.max(1, groups) : 1;
+      const parts = mats.map((m) => `${m.type.replace("Material", "")}${m.color ? " #" + m.color.getHexString() : ""}${m.name ? " '" + m.name + "'" : ""}${Object.keys(m.userData || {}).filter((k) => k !== "shared").length ? " {" + Object.keys(m.userData).filter((k) => k !== "shared").join(",") + "}" : ""}${m.transparent ? " T" : ""}${m.emissiveIntensity ? " e" + m.emissiveIntensity.toFixed(1) : ""}`);
+      kartRows.push({ draws, visible: c.visible, desc: `${c.type} ${c.geometry?.type || "?"} v${c.geometry?.attributes?.position?.count || 0}${c.name ? " '" + c.name + "'" : ""}${groups ? " groups=" + groups : ""}`, parts });
+    });
+  }
   const leaves = [...byLeaf.entries()].map(([key, n]) => ({ key, perFrame: n / FRAMES })).sort((a, b) => b.perFrame - a.perFrame);
-  return { perFrame: total / FRAMES, offscene: offscene / FRAMES, counter: document.getElementById("fps-counter")?.textContent, children: scene.children.length, tops, leaves };
+  return { perFrame: total / FRAMES, offscene: offscene / FRAMES, counter: document.getElementById("fps-counter")?.textContent, children: scene.children.length, tops, leaves, kartRows };
 }, FRAMES);
+
+if (report.kartRows.length) {
+  const total = report.kartRows.reduce((s, r) => s + (r.visible ? r.draws : 0), 0);
+  console.log(`\n-- one kart, mesh by mesh (${total} draws when all visible) --`);
+  for (const r of report.kartRows.sort((a, b) => b.draws - a.draws)) {
+    console.log(String(r.draws).padStart(4), r.visible ? " " : "H", r.desc);
+    for (const p of r.parts.slice(0, 40)) console.log("         · " + p);
+  }
+}
 
 console.log(`${report.perFrame.toFixed(1)} draw calls/frame over ${FRAMES} frames (${report.offscene.toFixed(1)} off-scene: post passes) · ${report.children} top-level objects · counter: ${report.counter}`);
 console.log("\n-- by top-level scene object shape --\n   dc/f  objs  shape");
