@@ -269,6 +269,12 @@ export class Kart {
       cat.position.set(0, 0.85, -0.35);
       this.group.add(cat);
       this.catRig = cat.userData.rig;
+      // Distance detail: whiskers, mouth, eyelids and tail are ~7 draws a kart
+      // that vanish at 40u. main.js flips them per frame from the camera
+      // distance (setDetail); the rig keeps animating the hidden pivots.
+      this._lodParts = [];
+      cat.traverse((o) => { if (o.userData.lod) this._lodParts.push(o); });
+      this._detailOn = true;
 
       // Shield bubble (held protection from hairballs) — a glowing Fresnel energy
       // orb: bright at the rim, faint fill, with travelling shimmer bands.
@@ -469,6 +475,14 @@ export class Kart {
   // views like the garage, where the kart itself isn't being simulated.
   idleBlink(dt) {
     updateCatRig(this.catRig, dt, 0, 0, false, false, true);
+  }
+
+  // Show/hide the distance-detail parts (see the constructor); cheap when
+  // nothing changes, so it is called every frame.
+  setDetail(on) {
+    if (!this._lodParts || this._detailOn === on) return;
+    this._detailOn = on;
+    for (const o of this._lodParts) o.visible = on;
   }
 
   update(dt, track) {

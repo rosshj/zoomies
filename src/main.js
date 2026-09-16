@@ -6745,7 +6745,11 @@ function _targetFps() {
   const hz = _vsyncHz();
   return hz >= 100 ? 60 : hz;
 }
-const _gateMs = (fps) => 1000 / fps - 0.4 * _tickMs();
+// Slack of 0.2 tick (3.3ms at 60Hz): enough for a tick that arrives a touch
+// early on a clean vsync source, but NOT enough for the Deck's burst ticks
+// to pass two frames 11ms apart — 0.4 let that through, and the counter
+// wandered 45–70 while gamescope presented a flat 60.
+const _gateMs = (fps) => 1000 / fps - 0.2 * _tickMs();
 const _renderBudgetMs = () => Math.max(_tickMs(), 1000 / _targetFps());
 // Menu/tableau cadence: ~30fps (20 in Battery saver), and 10fps once nothing
 // has been touched for 30s — the same tick-aware gate, so on a 120Hz phone
@@ -7232,6 +7236,14 @@ function loopBody(now) {
 
     // Step physics
     for (const k of karts) k.update(dt, track);
+    // Distance detail on the field: whiskers, mouth, eyelids and tail are ~7
+    // draws a kart that are invisible past 40u from the camera (last frame's
+    // position — a frame of lag is nothing at that range). Split screen keeps
+    // everything: up to four cameras, each close to its own kart.
+    if (!splitActive) {
+      const cp = camera.position;
+      for (const k of karts) k.setDetail(k === player || k.group.position.distanceToSquared(cp) < 1600);
+    }
     updateHaptics(now); // discrete taptic feedback off fresh player state
     applyBoostPads(dt);
     resolveCollisions();

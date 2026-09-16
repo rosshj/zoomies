@@ -1086,6 +1086,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     lid.position.set(0, -0.26, 0.02); // centre hangs over the eyeball when scale.y = 1
     lid.scale.set(1.0, 1.15, 0.8);
     pivot.add(lid);
+    pivot.userData.lod = true; // distance detail (see Kart.setDetail): a blink is invisible at 40u
     head.add(pivot);
     eyelids.push(pivot);
   }
@@ -1103,7 +1104,9 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   nose.position.set(0, -0.13, 0.87);
   headStatic.push(nose);
   // The "ω" smile — both strokes baked into one LineSegments (4 points → 2 segs).
-  head.add(new THREE.LineSegments(catConstGeo().mouth, _cMouth));
+  const mouth = new THREE.LineSegments(catConstGeo().mouth, _cMouth);
+  mouth.userData.lod = true; // distance detail (see Kart.setDetail): invisible past ~40u
+  head.add(mouth);
 
   // Cool-cat sunglasses, hidden until the victory celebration drops them on.
   // The two lenses + bridge bake into one mesh; the group is what the rig
@@ -1132,6 +1135,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     pivot.position.set(sx * 0.18, -0.12, 0.78);
     head.add(pivot);
     pivot.add(new THREE.LineSegments(sx < 0 ? catConstGeo().whiskerL : catConstGeo().whiskerR, whiskerMat));
+    pivot.userData.lod = true; // distance detail (see Kart.setDetail)
     whiskers[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -1558,6 +1562,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // tuxedos. A taper-radius function fattens the base and rounds the tip.
   const tail = new THREE.Mesh(catConstGeo().tail, tailCoat);
   const tailPivot = new THREE.Group();
+  tailPivot.userData.lod = true; // distance detail (see Kart.setDetail): tail + tip, 2 draws
   tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
   // Tail tip cap: white for tuxedo, a dark tip for tabby/spotted coats, the
