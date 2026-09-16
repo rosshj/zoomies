@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
+import { makePaletteToonMaterial } from "./toon.js";
 
 // Rounded box helper — the workhorse of the soft, toy-like art direction. Edges
 // are chamfered by `r` (auto-clamped so it never exceeds half the smallest side).
@@ -31,48 +32,86 @@ function rbox(w, h, d, r = 0.18, seg = 4) {
 // makes high-poly kart/cat models affordable: geometry cost is per VARIANT, not
 // per racer. Entries are flagged shared so disposeGroup leaves them alone.
 const _geoCache = new Map();
-export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false, geoKey = null } = {}) {
+// Palette mode (`palette: true`): materials that differ ONLY by colour — a
+// plain, opaque, untextured standard material with a black emissive — are
+// collapsed into one "class" per (sun-term flags, side). Every vertex gets an
+// `aSlot` attribute naming its colour, and the class draws with one
+// palette toon material (see makePaletteToonMaterial). A kart shell went
+// from 5 draws to 2 (paint-glint parts + stock parts), a wheel from 3 to 1,
+// the cat body from 6 to 1. Anything else (textured, transparent, emissive,
+// node) keeps its own group exactly as before.
+const _paletteable = (m) =>
+  !!m && m.isMeshStandardMaterial && !m.isNodeMaterial && !m.map && !m.emissiveMap && !m.transparent && m.opacity === 1 &&
+  (!m.emissive || m.emissive.getHex() === 0) && !(m.userData && (m.userData.skipToon || m.userData.sway || m.userData.swayLoose));
+const _classKey = (m) => {
+  const ud = m.userData || {};
+  return `pal|${ud.paint ? "p" : ""}${ud.rim ? "r" : ""}${ud.backlight ? "b" : ""}|${m.side}`;
+};
+// Group the parts: an ordered list of classes, each { key, mats: [material…]
+// in first-seen order, meshes: [{ mesh, slot }] }. Palette classes collect
+// several materials (slot = colour index); a plain class is one material.
+function classify(meshes, palette) {
+  const order = [];
+  const byKey = new Map();
+  for (const m of meshes) {
+    const mat = m.material;
+    const pal = palette && _paletteable(mat);
+    const key = pal ? _classKey(mat) : mat;
+    let c = byKey.get(key);
+    if (!c) { c = { key, palette: pal, mats: [], meshes: [] }; byKey.set(key, c); order.push(c); }
+    let slot = c.mats.indexOf(mat);
+    if (slot < 0) { slot = c.mats.length; c.mats.push(mat); }
+    c.meshes.push({ mesh: m, slot });
+  }
+  return order;
+}
+function classMaterials(classes) {
+  return classes.map((c) => {
+    if (!c.palette) return c.mats[0];
+    const ud = c.mats[0].userData || {};
+    return makePaletteToonMaterial(c.mats.map((m) => m.color), ud, { side: c.mats[0].side });
+  });
+}
+export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false, geoKey = null, palette = false } = {}) {
   if (!meshes.length) return null;
   // geoKey contract: for a given key, callers always pass parts with identical
   // geometry/transforms and an identical material-identity pattern (same roles
   // collapsing to the same slots), so the cached geometry + fresh material list
-  // line up group-for-group.
+  // line up group-for-group. (Palette mode keeps that contract: the geometry
+  // carries slot INDICES, never colours, so it is shared across liveries.)
+  const classes = classify(meshes, palette);
   if (geoKey) {
     const cached = _geoCache.get(geoKey);
     if (cached) {
-      const mats = [];
-      const seen = new Set();
-      for (const m of meshes) {
-        if (!seen.has(m.material)) { seen.add(m.material); mats.push(m.material); }
-      }
+      const mats = classMaterials(classes);
       const mesh = new THREE.Mesh(cached, mats.length === 1 ? mats[0] : mats);
       mesh.castShadow = castShadow;
       mesh.receiveShadow = receiveShadow;
       return mesh;
     }
   }
-  const order = [];          // material instances, in first-seen order
-  const byMat = new Map();   // material -> [baked geometry]
-  for (const m of meshes) {
-    m.updateMatrix();
-    let geo = m.geometry.clone();
-    geo.applyMatrix4(m.matrix);
-    if (geo.index) geo = geo.toNonIndexed();
-    // Drop any attributes beyond the common set so every geometry merges cleanly.
-    for (const key of Object.keys(geo.attributes)) {
-      if (key !== "position" && key !== "normal" && key !== "uv") geo.deleteAttribute(key);
+  const anyPalette = classes.some((c) => c.palette);
+  const perClass = [];
+  for (const c of classes) {
+    const geos = [];
+    for (const { mesh: m, slot } of c.meshes) {
+      m.updateMatrix();
+      let geo = m.geometry.clone();
+      geo.applyMatrix4(m.matrix);
+      if (geo.index) geo = geo.toNonIndexed();
+      // Drop any attributes beyond the common set so every geometry merges cleanly.
+      for (const key of Object.keys(geo.attributes)) {
+        if (key !== "position" && key !== "normal" && key !== "uv") geo.deleteAttribute(key);
+      }
+      // Every part carries aSlot once any class is a palette (attribute sets
+      // must match across the final merge); plain classes just get 0.
+      if (anyPalette) geo.setAttribute("aSlot", new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count).fill(slot), 1));
+      geos.push(geo);
     }
-    if (!byMat.has(m.material)) { byMat.set(m.material, []); order.push(m.material); }
-    byMat.get(m.material).push(geo);
+    perClass.push(geos.length === 1 ? geos[0] : mergeGeometries(geos, false));
   }
-  const mats = [];
-  const perMat = [];
-  for (const mat of order) {
-    const geos = byMat.get(mat);
-    perMat.push(geos.length === 1 ? geos[0] : mergeGeometries(geos, false));
-    mats.push(mat);
-  }
-  const finalGeo = perMat.length === 1 ? perMat[0] : mergeGeometries(perMat, true);
+  const mats = classMaterials(classes);
+  const finalGeo = perClass.length === 1 ? perClass[0] : mergeGeometries(perClass, true);
   if (geoKey) {
     finalGeo.userData.shared = true; // disposeGroup must not free it between races
     // Soft cap (the creator can mint arbitrary accessory-colour variants):
@@ -944,7 +983,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // one mesh per arm; the pivot still pumps it. Geometry is identical for every
     // cat of a pose (colours live in the materials) — shared via the merge cache.
     // A leaning arm is mirrored left/right, so those poses cache per side.
-    pivot.add(mergeMeshes(parts, { geoKey: `carm|${pose}|${ap.armLean ? (sx < 0 ? "L" : "R") : "c"}` }));
+    pivot.add(mergeMeshes(parts, { geoKey: `carm|${pose}|${ap.armLean ? (sx < 0 ? "L" : "R") : "c"}`, palette: true }));
     arms[sx < 0 ? "L" : "R"] = pivot;
   }
   if (pose === "sit") {
@@ -1019,7 +1058,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const inner = new THREE.Mesh(innerGeo, pink);
     inner.position.set(0, 0.21, 0.07);
     inner.rotation.z = sx * -0.22;
-    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}` })); // one mesh per ear; the pivot flicks it
+    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}`, palette: true })); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -1080,7 +1119,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.07, 0.05), shade);
   bridge.position.set(0, 0.16, 0.64);
   glassParts.push(bridge);
-  glasses.add(mergeMeshes(glassParts, { geoKey: "cglasses" }));
+  glasses.add(mergeMeshes(glassParts, { geoKey: "cglasses", palette: true }));
   glasses.visible = false;
   head.add(glasses);
 
@@ -1539,8 +1578,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // matching an accent piece (e.g. a white cap button on a white cap) collapses
   // two materials into one and changes the merged group layout.
   const accKey = `${accId}:${accCol}`;
-  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}` }));
-  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}|${pose}` }));
+  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}`, palette: true }));
+  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}|${pose}`, palette: true }));
 
   cat.userData.tail = tailPivot;
   cat.userData.rig = {
@@ -2025,7 +2064,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // Shell geometry is a pure function of the STYLE (colours only pick which
   // material instances fill the slots — role-keyed, so they never collapse into
   // each other) — share it across every kart of that style via the merge cache.
-  const shellMesh = mergeMeshes(shell, { castShadow: false, geoKey: `kshell|${styleIdx}` });
+  const shellMesh = mergeMeshes(shell, { castShadow: false, geoKey: `kshell|${styleIdx}`, palette: true });
   group.add(shellMesh);
 
   // Headlights — a pair set into the nose. Positions are style-dependent →
@@ -2106,7 +2145,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     }
     // Wheel geometry depends only on (radius, side): every kart of a style
     // shares the same four wheel geometries instead of merging 24 of them.
-    w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}` }));
+    w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}`, palette: true }));
     return w;
   }
   {

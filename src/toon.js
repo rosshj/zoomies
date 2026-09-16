@@ -3,7 +3,7 @@
 // over each garage preview, and the asset viewer's "game look" toggle applies
 // the very same conversion so what it previews is exactly what ships.
 import * as THREE from "three";
-import { color as tslColor, float, smoothstep, normalView, positionViewDirection, uniform } from "three/tsl";
+import { color as tslColor, float, int, smoothstep, normalView, positionViewDirection, uniform, uniformArray, attribute } from "three/tsl";
 import { windBendNode, windBendLooseNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
 
 function makeToonGradient() {
@@ -29,6 +29,53 @@ export const uSunColNode = uniform(new THREE.Color(0x000000));
 // caching collapses them to a single toon material / render pipeline instead of
 // one per occurrence.
 const _toonCache = new WeakMap();
+// The sun-driven add-ons a material's userData flags ask for, as ONE emissive
+// node (null when none): foliage backlight, hero rim, kart-paint glint.
+function sunTermsNode(ud) {
+  let term = null;
+  if (ud.backlight) {
+    // glows warm where you look toward the sun through the foliage.
+    const backlit = positionViewDirection.negate().dot(uSunViewNode).max(0).pow(3);
+    term = uSunColNode.mul(backlit);
+  }
+  if (ud.rim) {
+    // a warm sun rim on the silhouette so the hero pops off the scene.
+    const ndv = normalView.dot(positionViewDirection).max(0);
+    const rimF = float(1).sub(ndv).pow(2.5).mul(normalView.dot(uSunViewNode.negate()).max(0));
+    const rimTerm = uSunColNode.mul(rimF.mul(1.6));
+    term = term ? term.add(rimTerm) : rimTerm;
+  }
+  if (ud.paint) {
+    // A soft, banded "toy gloss" highlight on kart paint: a single crisp
+    // specular bloom toward the sun. Toon-banded (smoothstep) so it reads as a
+    // shaped glint, not a smooth Phong lobe; kept gentle so it never blows out.
+    const lightDir = uSunViewNode.negate().normalize();
+    const half = lightDir.add(positionViewDirection).normalize();
+    const spec = normalView.dot(half).max(0).pow(26);
+    const glint = smoothstep(0.32, 0.58, spec);
+    // mostly white so the shine reads on any body colour, warmed by the sun
+    // tint; kept low so the paint is a soft satin, not glossy.
+    const paintTerm = tslColor(0xffffff).mul(0.22).add(uSunColNode.mul(0.6)).mul(glint);
+    term = term ? term.add(paintTerm) : paintTerm;
+  }
+  return term;
+}
+// A toon material whose diffuse colour comes from a small PALETTE indexed by
+// the per-vertex `aSlot` attribute (see mergeMeshes' palette mode): parts
+// that only differ by colour — kart paint/accent/stripe, a cat's fur/stripe/
+// pink, tyre/rim/caliper — merge into ONE draw call while keeping the exact
+// colour each had, and the merged geometry stays colour-agnostic (shared
+// across every racer of that style; only these uniforms differ). Under toon
+// shading roughness/metalness never mattered, so nothing else is lost. The
+// same sun-driven terms (`ud` flags) as toToon apply to the whole class.
+export function makePaletteToonMaterial(colors, ud = {}, { side = THREE.FrontSide } = {}) {
+  const t = new THREE.MeshToonNodeMaterial({ gradientMap: TOON_GRADIENT, side });
+  const pal = uniformArray(colors.map((c) => c.clone()));
+  t.colorNode = pal.element(int(attribute("aSlot", "float")));
+  t.emissiveNode = sunTermsNode(ud);
+  t.userData.palette = pal; // colours can be retuned live through pal.array[i]
+  return t;
+}
 export function toToon(m) {
   if (!m || !m.isMeshStandardMaterial || (m.userData && m.userData.skipToon)) return m;
   // TSL-authored materials (leaf wake pop, water ripples, puddle fresnel, petal
@@ -63,33 +110,7 @@ export function toToon(m) {
   const matte = !params.emissive || params.emissive.getHex() === 0;
   if ((ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
-    let term = null;
-    if (ud.backlight) {
-      // glows warm where you look toward the sun through the foliage.
-      const backlit = positionViewDirection.negate().dot(uSunViewNode).max(0).pow(3);
-      term = uSunColNode.mul(backlit);
-    }
-    if (ud.rim) {
-      // a warm sun rim on the silhouette so the hero pops off the scene.
-      const ndv = normalView.dot(positionViewDirection).max(0);
-      const rimF = float(1).sub(ndv).pow(2.5).mul(normalView.dot(uSunViewNode.negate()).max(0));
-      const rimTerm = uSunColNode.mul(rimF.mul(1.6));
-      term = term ? term.add(rimTerm) : rimTerm;
-    }
-    if (ud.paint) {
-      // A soft, banded "toy gloss" highlight on kart paint: a single crisp
-      // specular bloom toward the sun. Toon-banded (smoothstep) so it reads as a
-      // shaped glint, not a smooth Phong lobe; kept gentle so it never blows out.
-      const lightDir = uSunViewNode.negate().normalize();
-      const half = lightDir.add(positionViewDirection).normalize();
-      const spec = normalView.dot(half).max(0).pow(26);
-      const glint = smoothstep(0.32, 0.58, spec);
-      // mostly white so the shine reads on any body colour, warmed by the sun
-      // tint; kept low so the paint is a soft satin, not glossy.
-      const paintTerm = tslColor(0xffffff).mul(0.22).add(uSunColNode.mul(0.6)).mul(glint);
-      term = term ? term.add(paintTerm) : paintTerm;
-    }
-    t.emissiveNode = term;
+    t.emissiveNode = sunTermsNode(ud);
     // Rooted-and-bowing in the shared wind (tree canopies). The number is the
     // lean at the crown as a fraction of the object's own height, so it reads
     // the same on a sapling and a giant. Only set this on materials whose every
