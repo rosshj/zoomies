@@ -60,34 +60,17 @@ for (let t = 0; t < 150; t++) {
 }
 console.error("[probe] race running, counter:", await page.textContent("#fps-counter").catch(() => "")); await page.waitForTimeout(3000);
 
-const report = await page.evaluate(async () => {
+// Exact attribution: wrap the backend's draw() and tally every draw call by
+// the object it draws — keyed by the object's TOP-LEVEL scene ancestor's
+// shape (type + geometry + material kinds + instanced or not) and, in a
+// second table, by the leaf mesh's own shape. Averaged over N frames of a
+// live race (the camera moves, so per-frame counts wobble; the ranking
+// doesn't). Hiding objects one by one was far too noisy for that.
+const FRAMES = Number(process.env.FRAMES || 60);
+const report = await page.evaluate(async (FRAMES) => {
   const { scene, renderer } = window.__zoomies.gfx();
   const frames = (n) => new Promise((r) => { let k = 0; const step = () => (++k >= n ? r() : requestAnimationFrame(step)); requestAnimationFrame(step); });
-  const sample = async () => {
-    let max = 0;
-    for (let i = 0; i < 3; i++) { await frames(1); max = Math.max(max, renderer.info.render.drawCalls); }
-    return max;
-  };
-  const hasDrawables = (o) => { let n = 0; o.traverse((c) => { if (c.isMesh || c.isPoints || c.isLine || c.isSprite) n++; }); return n > 0; };
-  const describe = (o) => {
-    let meshes = 0, inst = 0, instCount = 0, geos = new Set(), mats = new Set();
-    o.traverse((c) => {
-      if (c.isMesh || c.isPoints || c.isLine) {
-        meshes++;
-        if (c.isInstancedMesh) { inst++; instCount += c.count; }
-        if (c.geometry) geos.add(c.geometry.type);
-        const m = Array.isArray(c.material) ? c.material[0] : c.material;
-        if (m) mats.add(m.type);
-      }
-    });
-    const p = o.position;
-    return `${o.type}${o.name ? " '" + o.name + "'" : ""} meshes=${meshes}${inst ? ` (instanced ${inst}, ${instCount} inst)` : ""} geo=[${[...geos].slice(0, 4).join(",")}] mat=[${[...mats].slice(0, 3).join(",")}] at(${p.x.toFixed(0)},${p.y.toFixed(0)},${p.z.toFixed(0)})`;
-  };
-  // Group the top-level objects by SHAPE (type + geometry + material kinds +
-  // instanced or not) and hide each group as a whole: a scene can hold
-  // hundreds of top-level objects (SwiftShader makes one sample ~0.2s), and a
-  // group of many same-shaped meshes is exactly the batching candidate.
-  const signature = (o) => {
+  const shapeOf = (o) => {
     const geos = new Set(), mats = new Set();
     let inst = false;
     o.traverse((c) => {
@@ -97,36 +80,46 @@ const report = await page.evaluate(async () => {
       const m = Array.isArray(c.material) ? c.material[0] : c.material;
       if (m) mats.add(m.type);
     });
-    return `${o.type}${inst ? "+inst" : ""} geo=[${[...geos].sort().join(",")}] mat=[${[...mats].sort().join(",")}]`;
+    return `${o.type}${o.name ? "'" + o.name + "'" : ""}${inst ? "+inst" : ""} geo=[${[...geos].sort().slice(0, 4).join(",")}] mat=[${[...mats].sort().slice(0, 3).join(",")}]`;
   };
-  const baseline = await sample();
-  const groups = new Map();
-  for (const child of scene.children) {
-    if (!child.visible || child.isLight || child.isCamera || !hasDrawables(child)) continue;
-    const sig = signature(child);
-    if (!groups.has(sig)) groups.set(sig, []);
-    groups.get(sig).push(child);
-  }
-  const rows = [];
-  for (const [sig, objs] of groups) {
-    for (const o of objs) o.visible = false;
-    const dc = await sample();
-    for (const o of objs) o.visible = true;
-    let meshes = 0, instCount = 0;
-    for (const o of objs) o.traverse((c) => { if (c.isMesh || c.isPoints || c.isLine || c.isSprite) { meshes++; if (c.isInstancedMesh) instCount += c.count; } });
-    rows.push({ cost: baseline - dc, objects: objs.length, meshes, instCount, sig });
-  }
-  const allHidden = [];
-  for (const child of scene.children) { if (child.visible && !child.isLight && !child.isCamera) { child.visible = false; allHidden.push(child); } }
-  const rest = await sample();
-  for (const c of allHidden) c.visible = true;
-  rows.sort((a, b) => b.cost - a.cost);
-  return { baseline, rest, counter: document.getElementById("fps-counter")?.textContent, children: scene.children.length, groups: groups.size, rows };
-});
+  const topOf = (o) => { let t = o; while (t.parent && t.parent !== scene) t = t.parent; return t; };
+  const topKey = new Map(); // top-level object → shape key
+  const byTop = new Map(); // key → { calls, objs:Set }
+  const byLeaf = new Map(); // leaf shape → calls
+  let total = 0, offscene = 0;
+  const backend = renderer.backend;
+  const orig = backend.draw.bind(backend);
+  backend.draw = (ro, info) => {
+    const obj = ro.object;
+    total++;
+    const top = topOf(obj);
+    if (top.parent !== scene) {
+      offscene++;
+    } else {
+      let key = topKey.get(top);
+      if (!key) { key = shapeOf(top); topKey.set(top, key); }
+      let e = byTop.get(key);
+      if (!e) { e = { calls: 0, objs: new Set() }; byTop.set(key, e); }
+      e.calls++;
+      e.objs.add(top);
+    }
+    const m = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+    const lk = `${obj.type}${obj.isInstancedMesh ? "(" + obj.count + ")" : ""} ${obj.geometry?.type || "?"} ${m?.type || "?"}${m?.name ? " '" + m.name + "'" : ""}`;
+    byLeaf.set(lk, (byLeaf.get(lk) || 0) + 1);
+    return orig(ro, info);
+  };
+  await frames(FRAMES);
+  backend.draw = orig;
+  const tops = [...byTop.entries()].map(([key, e]) => ({ key, perFrame: e.calls / FRAMES, objs: e.objs.size })).sort((a, b) => b.perFrame - a.perFrame);
+  const leaves = [...byLeaf.entries()].map(([key, n]) => ({ key, perFrame: n / FRAMES })).sort((a, b) => b.perFrame - a.perFrame);
+  return { perFrame: total / FRAMES, offscene: offscene / FRAMES, counter: document.getElementById("fps-counter")?.textContent, children: scene.children.length, tops, leaves };
+}, FRAMES);
 
-console.log(`baseline ${report.baseline} draw calls · with every scene object hidden ${report.rest} (post/HUD) · ${report.children} top-level objects in ${report.groups} shape groups · counter: ${report.counter}`);
-console.log("   dc  objs meshes  inst  shape");
-for (const r of report.rows) if (r.cost > 0) console.log(String(r.cost).padStart(5), String(r.objects).padStart(5), String(r.meshes).padStart(6), String(r.instCount).padStart(5), " " + r.sig);
+console.log(`${report.perFrame.toFixed(1)} draw calls/frame over ${FRAMES} frames (${report.offscene.toFixed(1)} off-scene: post passes) · ${report.children} top-level objects · counter: ${report.counter}`);
+console.log("\n-- by top-level scene object shape --\n   dc/f  objs  shape");
+for (const r of report.tops) if (r.perFrame >= 0.5) console.log(r.perFrame.toFixed(1).padStart(7), String(r.objs).padStart(5), " " + r.key);
+console.log("\n-- by drawn mesh shape --\n   dc/f  mesh");
+for (const r of report.leaves.slice(0, 40)) if (r.perFrame >= 0.5) console.log(r.perFrame.toFixed(1).padStart(7), " " + r.key);
 if (errors.length) console.log("page errors:", errors);
 await browser.close();
 server.close();
