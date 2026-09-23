@@ -7,9 +7,9 @@ import { color as tslColor, float, smoothstep, normalView, positionViewDirection
 import { windBendNode, windBendLooseNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
 
 function makeToonGradient() {
-  // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
-  // matte "toy" cel rather than a hard 3-step terminator.
-  const steps = new Uint8Array([145, 195, 228, 255]);
+  // Four deliberate value bands: deeper form shadows keep cream fur and bright
+  // paint legible, with a lifted floor so night scenes retain their toy warmth.
+  const steps = new Uint8Array([105, 170, 220, 255]);
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;

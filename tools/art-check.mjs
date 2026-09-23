@@ -1,0 +1,100 @@
+// Procedural art budget/integrity check. No GPU timing claim: the assertions
+// cover geometry and material batches; use hardware gameplay for frame pacing.
+// PW_CHROME=/path/to/chrome node tools/art-check.mjs
+import { chromium } from 'playwright-core';
+import http from 'node:http';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+const root = path.resolve(new URL('..', import.meta.url).pathname);
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json' };
+const server = http.createServer(async (req, res) => {
+  if (req.url === '/favicon.ico') { res.writeHead(204).end(); return; }
+  const file = path.join(root, decodeURIComponent(req.url.split('?')[0]));
+  try { const data = await fs.readFile(file); res.writeHead(200, { 'content-type': mime[path.extname(file)] || 'application/octet-stream' }); res.end(data); }
+  catch { res.writeHead(404).end(); }
+});
+await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+let browser;
+try {
+  browser = await chromium.launch({
+    executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
+    args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
+  });
+  const page = await browser.newPage();
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto(`http://127.0.0.1:${server.address().port}/viewer.html?webgl=1&plain=1`);
+  await page.waitForFunction(() => window.__viewer);
+  const result = await page.evaluate(async () => {
+    const { createCat, createKartModel, CAT_PATTERNS, CAT_ACCESSORIES, updateCatRig } = await import('/src/models.js');
+    const { Track } = await import('/src/track.js');
+    const assert = (ok, message) => { if (!ok) throw new Error(message); };
+    const inspect = root => {
+      let triangles = 0, batches = 0;
+      root.traverse(o => {
+        if (!o.isMesh) return;
+        const g = o.geometry, p = g.attributes.position;
+        assert([...p.array].every(Number.isFinite), 'non-finite model vertex');
+        const count = g.index?.count ?? p.count;
+        triangles += count / 3;
+        batches += Math.max(1, g.groups.length);
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const group of (Array.isArray(o.material) ? g.groups : [])) {
+          assert(group.start + group.count <= count, 'geometry group exceeds buffer');
+          assert(mats[group.materialIndex], 'cached geometry/material slots disagree');
+        }
+      });
+      return { triangles, batches };
+    };
+    // Baseline material batches and triangle budgets from main at 0d0198a.
+    const baseline = [25292, 22568, 22084, 23420, 24268];
+    const batches = [22, 24, 22, 22, 22];
+    const karts = [];
+    for (let style = 0; style < 5; style++) {
+      for (const color of [0xe53935, 0xfafafa, 0x182030]) {
+        const kart = createKartModel(color, { style });
+        const stats = inspect(kart.group);
+        assert(stats.triangles < baseline[style] * 0.65, `style ${style}: triangle budget`);
+        assert(stats.batches === batches[style], `style ${style}: added material batches`);
+        assert(kart.wheels.length === 4, 'wheel rig missing');
+        if (color === 0xe53935) karts.push({ style, ...stats });
+      }
+    }
+    let cats = 0;
+    for (const pattern of CAT_PATTERNS) for (const pose of ['sit', 'kart', 'stand']) {
+      const cat = createCat(0xf0a830, { pattern, pose });
+      inspect(cat);
+      updateCatRig(cat.userData.rig, 0.016, 0.6, 20, false, false, true);
+      cats++;
+    }
+    for (const accessory of CAT_ACCESSORIES) inspect(createCat(0x8c9298, { pattern: 'solid', accessory }));
+    const { setSeed } = await import('/src/rng.js');
+    const tracks = [];
+    const recipes = [null,
+      { mode: 'custom', seed: 'ART-CITY', size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ['city'] },
+      { mode: 'custom', seed: 'ART-HILLS', size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ['alpine', 'tundra'] },
+    ];
+    for (const recipe of recipes) {
+      setSeed(recipe?.seed || 'ART-CLASSIC');
+      const track = new Track(recipe);
+      tracks.push({ seed: recipe?.seed || 'classic', ...inspect(track.group) });
+      // Road shoulders must close cleanly, including the final loop join.
+      const shoulder = track.group.children[1].geometry;
+      const p = shoulder.attributes.position;
+      assert(p.count === track.samples * 12, 'unexpected shoulder topology');
+      for (let i = 0; i < track.samples; i++) for (let side = 0; side < 2; side++) {
+        for (let j = 0; j < 3; j++) {
+          const a = i * 12 + side * 6 + 3 + j;
+          const b = ((i + 1) % track.samples) * 12 + side * 6 + j;
+          for (const get of ['getX', 'getY', 'getZ']) assert(Math.abs(p[get](a) - p[get](b)) < 1e-5, 'open shoulder seam');
+        }
+      }
+    }
+    return { karts, catPoses: cats, accessories: CAT_ACCESSORIES.length, tracks };
+  });
+  if (errors.length) throw new Error(errors.join('\n'));
+  console.log(JSON.stringify(result, null, 2));
+} finally {
+  await browser?.close();
+  server.close();
+}

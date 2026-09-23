@@ -1540,30 +1540,35 @@ export class Track {
       const t = this._tans[((k % div) + div) % div];
       return Math.atan2(t.x, t.z);
     };
-    for (let i = 0; i <= div; i++) {
-      const idx = i % div;
-      const p = this._pts[idx];
-      const side = this._sideAt(idx);
-      // Local curvature: how much the heading turns over a short look-ahead. On
-      // bends the verge becomes a red/white rumble kerb; straights stay sandy —
-      // or, in the CITY, concrete sidewalk slabs (alternating tone = paving joints).
-      let d = tanAng(idx + 10) - tanAng(idx);
+    // Duplicate the ends of each painted section: shared vertex colours blended
+    // red into white across every band, making the kerbs look airbrushed. Each
+    // section now has a solid colour and a raised, bevelled outer shoulder.
+    // One mesh/material still covers BOTH verges around the entire circuit.
+    for (let i = 0; i < div; i++) {
+      const p = this._pts[i];
+      let d = tanAng(i + 10) - tanAng(i);
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
       const urban = biomeRoadStyle(p.x, p.z).kind === "urban";
-      if (Math.abs(d) > 0.055) c.copy(Math.floor(i / 2) % 2 === 0 ? red : white);
-      else if (urban) c.copy(Math.floor(i / 3) % 2 === 0 ? concrete : concreteSeam);
+      const bend = Math.abs(d) > 0.055;
+      // World-space band length remains readable on long and short circuits.
+      if (bend) c.copy(Math.floor(i * this.length / div / 4.5) % 2 === 0 ? red : white);
+      else if (urban) c.copy(Math.floor(i * this.length / div / 6) % 2 === 0 ? concrete : concreteSeam);
       else c.copy(sand);
-      const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
-      const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
-      const rIn = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
-      const rOut = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth - trim);
-      positions.push(lOut.x, lOut.y, lOut.z, lIn.x, lIn.y, lIn.z, rIn.x, rIn.y, rIn.z, rOut.x, rOut.y, rOut.z);
-      for (let v = 0; v < 4; v++) colors.push(c.r, c.g, c.b);
-      if (i < div) {
-        const a = i * 4;
-        indices.push(a, a + 1, a + 4, a + 1, a + 5, a + 4);
-        indices.push(a + 2, a + 3, a + 6, a + 3, a + 7, a + 6);
+      for (const sign of [-1, 1]) {
+        const base = positions.length / 3;
+        for (const k of [i, (i + 1) % div]) {
+          const center = this._pts[k], side = this._sideAt(k);
+          for (const [offset, height, shade] of [[0, 0, 0.78], [0.48, 0.12, 1], [trim, 0, 0.86]]) {
+            const distance = sign * (this.halfWidth + offset);
+            positions.push(center.x + side.x * distance, center.y + height, center.z + side.z * distance);
+            colors.push(c.r * shade, c.g * shade, c.b * shade);
+          }
+        }
+        for (let j = 0; j < 2; j++) {
+          const v = base + j;
+          indices.push(v, v + 1, v + 3, v + 1, v + 4, v + 3);
+        }
       }
     }
     const geo = new THREE.BufferGeometry();

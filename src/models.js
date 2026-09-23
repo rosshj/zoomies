@@ -4,7 +4,8 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Rounded box helper — the workhorse of the soft, toy-like art direction. Edges
 // are chamfered by `r` (auto-clamped so it never exceeds half the smallest side).
-function rbox(w, h, d, r = 0.18, seg = 4) {
+// Two bevel segments preserve the toy silhouette without tessellating flat panels.
+function rbox(w, h, d, r = 0.18, seg = 2) {
   const radius = Math.min(r, w / 2, h / 2, d / 2) * 0.98;
   return new RoundedBoxGeometry(w, h, d, seg, radius);
 }
@@ -300,8 +301,18 @@ function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
       ? [[0.06, 0.36], [0.5, 0.42]]
       : [[0.0, 0.3], [0.42, 0.22], [0.72, 0.24]];
     for (const [a, len] of segs) {
-      if (axis === "v") ctx.fillRect(a * S, c0 - w / 2, len * S, w);      // ring (along the tail)
-      else ctx.fillRect(c0 - w / 2, a * S, w, len * S);                   // vertical flank stripe
+      // Tapered brush shapes replace rectangular dashes. Curved edges avoid
+      // the old barcode look without changing the cached texture budget.
+      ctx.save();
+      if (axis !== "v") ctx.transform(0, 1, 1, 0, 0, 0);
+      const x = a * S, length = len * S;
+      const bend = (i % 2 ? 1 : -1) * w * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(x, c0);
+      ctx.bezierCurveTo(x + length * 0.2, c0 - w, x + length * 0.65, c0 + bend - w, x + length, c0 + bend);
+      ctx.bezierCurveTo(x + length * 0.65, c0 + bend + w * 0.5, x + length * 0.2, c0 + w * 0.6, x, c0);
+      ctx.fill();
+      ctx.restore();
     }
   }
   const t = _finishTex(c);
@@ -557,10 +568,15 @@ function makeEyeTexture(eyeColor) {
   ctx.fillStyle = "#fbfbfb"; // sclera
   ctx.fillRect(0, 0, S, S);
   const cx = S * 0.25, cy = S * 0.5; // forward-facing point of the sphere
+  // An ink rim and a warm lower iris give the eyes depth without extra meshes.
+  ctx.fillStyle = "#263047";
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.22, S * 0.29, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "#" + hex; // iris (tall oval — cat eye)
   ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.2, S * 0.27, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = "#141414"; // vertical slit pupil
-  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.07, S * 0.23, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "rgba(255,235,164,0.45)";
+  ctx.beginPath(); ctx.ellipse(cx, cy + S * 0.1, S * 0.16, S * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#182033"; // rounded vertical pupil
+  ctx.beginPath(); ctx.ellipse(cx, cy, S * 0.095, S * 0.23, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.95)"; // double catch-light
   ctx.beginPath(); ctx.arc(cx - S * 0.07, cy - S * 0.12, S * 0.055, 0, Math.PI * 2); ctx.fill();
   ctx.beginPath(); ctx.arc(cx + S * 0.04, cy + S * 0.09, S * 0.028, 0, Math.PI * 2); ctx.fill();
@@ -758,13 +774,42 @@ function catConstGeo() {
     tailTip: _sharedGeo(new THREE.SphereGeometry(0.15, 12, 12)),
     eyelid: _sharedGeo(new THREE.SphereGeometry(0.26, 14, 10)),
     mouth: _sharedGeo(new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(-0.12, -0.26, 0.86),
-      new THREE.Vector3(0, -0.16, 0.92), new THREE.Vector3(0.12, -0.26, 0.86),
+      ...[-1, 1].flatMap((sx) => {
+        const pts = [];
+        for (let i = 0; i < 6; i++) {
+          for (const t of [i / 6, (i + 1) / 6]) {
+            pts.push(new THREE.Vector3(sx * t * 0.17, -0.19 - Math.sin(t * Math.PI * 0.85) * 0.065, 0.88 - t * 0.02));
+          }
+        }
+        return pts;
+      }),
     ])),
     whiskerL: whisker(-1),
     whiskerR: whisker(1),
   };
   return _catConstGeo;
+}
+
+// One sculpted ear: broad at the scalp, softly rounded at the tip, shallow
+// front-to-back. The pink inset follows the front surface instead of nesting
+// a second cone inside it (which hid the pink and looked like horns).
+function catEarGeometry(inner = false) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.30, -0.12);
+  shape.quadraticCurveTo(-0.34, 0.04, -0.08, 0.48);
+  shape.quadraticCurveTo(0, 0.62, 0.08, 0.48);
+  shape.quadraticCurveTo(0.34, 0.04, 0.30, -0.12);
+  shape.quadraticCurveTo(0, -0.22, -0.30, -0.12);
+  if (inner) {
+    const geo = new THREE.ShapeGeometry(shape, 5);
+    geo.scale(0.64, 0.65, 1);
+    geo.translate(0, 0.035, 0.146);
+    return geo;
+  }
+  return new THREE.ExtrudeGeometry(shape, {
+    depth: 0.15, steps: 1, bevelEnabled: true,
+    bevelThickness: 0.07, bevelSize: 0.055, bevelSegments: 2, curveSegments: 5,
+  }).translate(0, 0, -0.09);
 }
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
@@ -1003,21 +1048,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   }
 
   // Ears on pivots so they can flick/lag. Point cats darken at the ear tips.
-  // The cone gets extra shank and sits LOWER than it looks: its flat base is
-  // buried well inside the skull, so the tilted base edge can't peek out of the
-  // curving scalp as a seam (it did, at the base rear).
-  const earGeo = new THREE.ConeGeometry(0.35, 0.8, 6);
-  const innerGeo = new THREE.ConeGeometry(0.19, 0.4, 6);
+  // Broad, bevelled bases bury into the scalp; the inset is part of the same
+  // silhouette and keeps clear of hats while the existing ear pivots flick.
+  const earGeo = catEarGeometry();
+  const innerGeo = catEarGeometry(true);
   const ears = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.45, 0.5, -0.02);
     head.add(pivot);
     const ear = new THREE.Mesh(earGeo, extremity);
-    ear.position.y = 0.22;
+    ear.position.y = 0.05;
     ear.rotation.z = sx * -0.22;
     const inner = new THREE.Mesh(innerGeo, pink);
-    inner.position.set(0, 0.21, 0.07);
+    inner.position.set(0, 0.05, 0);
     inner.rotation.z = sx * -0.22;
     pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}` })); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
@@ -1656,7 +1700,7 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
 // collapses to ONE render pipeline for the whole field instead of one per kart.
 // Flagged shared so kart teardown (disposeGroup) never disposes them.
 const _kDark = _shared(new THREE.MeshStandardMaterial({ color: 0x1c1c20, roughness: 0.6 }));
-const _kTire = _shared(new THREE.MeshStandardMaterial({ color: 0x16161a, roughness: 1.0, metalness: 0.0 }));
+const _kTire = _shared(new THREE.MeshStandardMaterial({ color: 0x303440, roughness: 1.0, metalness: 0.0 }));
 const _kTread = _shared(new THREE.MeshStandardMaterial({ color: 0x0e0e12, roughness: 1.0, metalness: 0.0 }));
 const _kChrome = _shared(new THREE.MeshStandardMaterial({ color: 0xd2dadf, metalness: 0.9, roughness: 0.22 }));
 const _kRim = _shared(new THREE.MeshStandardMaterial({ color: 0xc9cfd6, metalness: 0.45, roughness: 0.42 }));
@@ -1793,7 +1837,14 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       const RAKE = 0.39; // the panel's climb toward the wheel
       const stub = add(new THREE.Mesh(rbox(0.95, 0.26, 1.9, 0.13), paint));
       stub.position.set(0, 0.44, snout - 0.45);
-      const cowl = add(new THREE.Mesh(rbox(0.88, 0.24, 1.55, 0.12), paint));
+      const cowlGeo = rbox(0.98, 0.24, 1.55, 0.12);
+      // Taper one continuous panel toward the nose, keeping its flat decal face.
+      const cowlPos = cowlGeo.attributes.position;
+      for (let i = 0; i < cowlPos.count; i++) {
+        cowlPos.setX(i, cowlPos.getX(i) * (0.88 - cowlPos.getZ(i) * 0.22));
+      }
+      cowlGeo.computeVertexNormals();
+      const cowl = add(new THREE.Mesh(cowlGeo, paint));
       cowl.position.set(0, 0.78, 1.0);
       // +RAKE = front end dips into the stub, rear rises to the wheel, and the
       // panel's face tilts up-FORWARD so the number reads from the front.
@@ -1877,6 +1928,15 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       for (const sx of [-1, 1]) {
         const pod = add(new THREE.Mesh(rbox(0.46, 0.5, podLen, 0.07), paint));
         pod.position.set(sx * 1.12, 0.5, -0.12);
+      }
+      // Flush livery along the side pods: a cream shoulder and dark lower sill.
+      // Both reuse existing shell materials, so there are no extra draw calls.
+      for (const sx of [-1, 1]) {
+        for (const [y, h, mat] of [[0.68, 0.045, stripe], [0.32, 0.065, accent]]) {
+          const inlay = add(new THREE.Mesh(new THREE.PlaneGeometry(podLen - 0.2, h), mat));
+          inlay.position.set(sx * 1.354, y, -0.12);
+          inlay.rotation.y = sx * Math.PI / 2;
+        }
       }
       addRoundels(1.36, 0.5, -0.12, 0.4);
       // Bare bucket seat: tall back + side bolsters (nothing to sink into now).
@@ -2088,7 +2148,16 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     // keep the spin readable while the kart rolls.
     const w = new THREE.Group();
     const parts = [];
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, 0.5, 24), tire);
+    const t = new THREE.Mesh(new THREE.LatheGeometry([
+      new THREE.Vector2(radius * 0.52, -0.25),
+      new THREE.Vector2(radius * 0.82, -0.25),
+      new THREE.Vector2(radius * 0.96, -0.20),
+      new THREE.Vector2(radius, -0.12),
+      new THREE.Vector2(radius, 0.12),
+      new THREE.Vector2(radius * 0.96, 0.20),
+      new THREE.Vector2(radius * 0.82, 0.25),
+      new THREE.Vector2(radius * 0.52, 0.25),
+    ], 24), tire);
     t.rotation.z = Math.PI / 2;
     parts.push(t);
     const ring = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.56, radius * 0.56, 0.53, 20), _kRim);
