@@ -53,6 +53,8 @@ animated in the comparison images. These snapshots are not an FPS benchmark.
   in sitting, driving, and standing poses; all 22 accessories; finite vertex
   data, cache/material compatibility, model budgets, and shoulder seam integrity on classic, city, and hilly alpine circuits.
 - `npm run check`: WebGL2 game smoke test, no browser errors.
+- `npm run check:split`: six-kart/two-player rendering, independent controls,
+  ranking, finish grace, and results pass without browser errors.
 - `npm run check:worldcfg`: world encoding and round-trip checks.
 - `npm run build:web`: web build succeeds.
 - `node tools/catalog-shots.mjs`: all 38 catalog images render without errors.
