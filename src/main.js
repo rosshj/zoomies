@@ -1824,8 +1824,7 @@ const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | balanced | medium | high
 let quality = _bootQuality;
 // --- Frame-rate cap + Battery saver (Display settings; persisted) ---
 // The cap is a TARGET the loop turns into a tick-aware time gate (see
-// _gateMs). "auto" keeps today's behaviour: 60 on 100Hz+ displays, the
-// display's own rate below that.
+// _gateMs). "auto" is 60, or the display's own rate when it is slower.
 const FPS_CAP_KEY = "zoomies-fps-cap"; // auto | 60 | 45 | 40 | 30
 const FPS_CAPS = ["auto", "60", "45", "40", "30"];
 let fpsCap = "auto";
@@ -6708,7 +6707,7 @@ let prevPlayerSpin = 0;
 // bursts, ~5.6ms apart), the estimate read the 60Hz panel as ~178Hz, and
 // "every 4th tick" was the cap. A time gate can't be fooled that way: a
 // wrong tick estimate only moves the slack a few ms.
-//   auto     → 60 on a 100Hz+ display, else the display's own rate.
+//   auto     → 60, or the display's own rate when it is slower.
 //   60/45/40/30 (Settings) → that rate.
 //   Battery saver → 30 on phones. On the Deck it does NOT cap below the
 //              panel (the 60Hz panel can't pace 45 evenly, and the field
@@ -6742,8 +6741,12 @@ const _vsyncHz = () => 1000 / _tickMs();
 function _targetFps() {
   if (fpsCap !== "auto") return Number(fpsCap);
   if (saverOn && !IS_DECK) return 30; // Battery saver's cap, unless an explicit one is set
-  const hz = _vsyncHz();
-  return hz >= 100 ? 60 : hz;
+  // Never above 60 (see the header): the Settings cap tops out there too. A
+  // 90Hz display used to get 90 — and the Deck OLED REPORTS 90Hz through
+  // the OS while gamescope presents 60, so the game chased a 90fps target
+  // and an 11ms scaler budget: frames judged "over", resolution dropped to
+  // 0.62x, and the counter wandered above 60.
+  return Math.min(60, _vsyncHz());
 }
 // Slack of 0.2 tick (3.3ms at 60Hz): enough for a tick that arrives a touch
 // early on a clean vsync source, but NOT enough for the Deck's burst ticks
