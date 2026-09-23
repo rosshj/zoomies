@@ -1,7 +1,7 @@
 {
   "name": "zoomies-desktop",
   "productName": "Zoomies GP",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": true,
   "description": "Electron desktop shell for Zoomies GP — the Steam build.",
   "author": "Ross Howard-Jones",
