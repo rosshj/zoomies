@@ -161,7 +161,9 @@ function streakTexture() {
   g.addColorStop(0.5, "rgba(220,235,255,0.95)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
-  ctx.fillRect(6, 0, 4, 64);
+  ctx.beginPath();
+  ctx.moveTo(8, 0); ctx.lineTo(10, 44); ctx.lineTo(8, 64); ctx.lineTo(6, 44);
+  ctx.closePath(); ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   return tex;
 }

@@ -25,7 +25,8 @@
     "check:tracks:random": "TRACKS=random SEEDS=6 node tools/track-audit.mjs",
     "check:art": "node tools/art-check.mjs",
     "check:scenery": "node tools/scenery-check.mjs",
-    "check:landscape": "node tools/landscape-check.mjs"
+    "check:landscape": "node tools/landscape-check.mjs",
+    "check:effects-art": "node tools/effects-art-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

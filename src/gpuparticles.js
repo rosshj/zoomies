@@ -77,9 +77,10 @@ async function build(scene, renderer, opts) {
   mat.positionNode = positions.toAttribute();
   mat.colorNode = uTint;
   mat.scaleNode = float(opts.size ?? 0.5);
-  // Soft round mote (radial alpha falloff over the quad), faded by uOpacity.
-  const d = uv().sub(0.5).length();
-  mat.opacityNode = smoothstep(0.5, 0.0, d).mul(uOpacity);
+  // Small diamond motes fit the cel art. Manhattan distance avoids the old
+  // per-fragment square root; counts, compute motion and quality gates stay put.
+  const d = uv().sub(0.5).abs();
+  mat.opacityNode = smoothstep(0.5, 0.08, d.x.add(d.y)).mul(uOpacity);
 
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, COUNT);
   mesh.frustumCulled = false;

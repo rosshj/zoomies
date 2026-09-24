@@ -996,19 +996,31 @@ function puddleBlob(cx, cz, baseR, stretchZ) {
   return g;
 }
 
-// Fine grayscale noise used as the road's bump map (asphalt grain).
-function noiseTexture() {
+// Painted aggregate: one colour lookup replaces noisy bump-normal work. All
+// detail is baked into a tiny repeating canvas; no new road geometry or passes.
+function asphaltTexture() {
   const c = document.createElement("canvas");
-  c.width = c.height = 64;
+  c.width = c.height = 128;
   const ctx = c.getContext("2d");
-  const img = ctx.createImageData(64, 64);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = 140 + Math.random() * 115;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 255;
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const n = Math.random(); // same 4096 draws as the former bump texture
+    const patch = Math.sin(x * Math.PI / 16) * Math.cos(y * Math.PI / 32);
+    const v = Math.round(239 + patch * 4 + (n - 0.5) * 10);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(x * 2, y * 2, 2, 2);
+    // Sparse cut-stone flecks, restrained enough to minify without sparkling.
+    if (n < 0.14 || n > 0.94) {
+      const chip = n < 0.14 ? v - 17 : Math.min(255, v + 12);
+      ctx.fillStyle = `rgb(${chip},${chip},${chip})`;
+      ctx.fillRect(x * 2, y * 2, n < 0.07 ? 2 : 1, 1);
+    }
   }
-  ctx.putImageData(img, 0, 0);
-  return new THREE.CanvasTexture(c);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 6);
+  texture.anisotropy = 8;
+  return texture;
 }
 
 // A closed race track built from a smooth 3D Catmull-Rom loop. The curve now
@@ -1173,7 +1185,7 @@ export class Track {
     const uvs = [];
     const colors = [];
     const indices = [];
-    const base = new THREE.Color(0x53535b); // asphalt
+    const base = new THREE.Color(0x585860); // asphalt, balanced against painted grain
     const c = new THREE.Color();
 
     const hash = (a, b) => {
@@ -1276,17 +1288,13 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
-    const bump = noiseTexture();
-    bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
-    bump.repeat.set(6, 6);
-    bump.anisotropy = 8;
+    const asphalt = asphaltTexture();
     const road = new THREE.Mesh(
       geo,
       new THREE.MeshStandardMaterial({
         vertexColors: true,
         roughness: 0.95,
-        bumpMap: bump,
-        bumpScale: 0.25,
+        map: asphalt,
         // DoubleSide: the strip's triangle winding follows the loop's direction,
         // and custom-generated tracks can run CLOCKWISE — with the default
         // FrontSide the whole road was back-face culled from above on those

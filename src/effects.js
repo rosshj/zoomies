@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { attribute, texture, color } from "three/tsl";
 
-// Soft particle effects (textured sprites): rainbow toot clouds, boost trail,
+// Cel particle effects (procedural sprites): rainbow toot clouds, boost trail,
 // drift/wall sparks, plus reusable tyre skid-mark quads.
 //
 // All particles render through just TWO instanced meshes (one per texture: soft
@@ -92,7 +92,7 @@ export class EffectsManager {
   }
 
   // Build one instanced billboard field (additive) reading per-instance position,
-  // colour, scale and opacity from instanced attributes. The texture's radial alpha
+  // colour, scale and opacity from instanced attributes. The texture's painted alpha
   // shapes each particle; the tint comes from aColor.
   _makeField(tex) {
     const cap = this.maxParts;
@@ -116,7 +116,7 @@ export class EffectsManager {
     mat.positionNode = attribute("aPos"); // sprite centre (world space)
     mat.scaleNode = attribute("aScale");
     mat.colorNode = attribute("aColor");
-    mat.opacityNode = texture(tex).a.mul(attribute("aOpacity")); // radial shape × fade
+    mat.opacityNode = texture(tex).a.mul(attribute("aOpacity")); // painted mask × fade
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.frustumCulled = false;
     mesh.renderOrder = 4;
@@ -161,8 +161,9 @@ export class EffectsManager {
   warmup(pos) {
     _col.setHex(0xffffff);
     _vel.set(0, 0, 0);
-    this._spawn(pos, _col, { spark: false, life: 0.12, opacity: 0.01, size: 0.5, v: _vel });
-    this._spawn(pos, _col, { spark: true, life: 0.12, opacity: 0.01, size: 0.5, v: _vel });
+    // Stay above zero through the warm-up lifetime despite the 1.5/s fade.
+    this._spawn(pos, _col, { spark: false, life: 0.12, opacity: 0.2, size: 0.5, v: _vel });
+    this._spawn(pos, _col, { spark: true, life: 0.12, opacity: 0.2, size: 0.5, v: _vel });
     if (this.skidFill === 0) {
       this.skidFill = 1;
       this.skidHead = 1;
@@ -608,7 +609,8 @@ export class EffectsManager {
   }
 
   update(dt) {
-    // Advance the simulation and cull dead particles.
+    // Retire fully faded particles too: their old lifetime could keep invisible
+    // sprites simulating, uploading and drawing for over a second.
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt;
@@ -617,7 +619,7 @@ export class EffectsManager {
       p.v.multiplyScalar(1 - Math.min(1, p.damp * dt));
       if (p.grow) p.scale += p.grow * dt;
       p.opacity = Math.max(0, p.opacity - dt * 1.5);
-      if (p.life <= 0) {
+      if (p.life <= 0 || p.opacity <= 0) {
         // Swap-remove (order doesn't matter — the fields repack every frame);
         // splice() shifted the whole tail per death, O(n²) when a burst fades.
         this.parts[i] = this.parts[this.parts.length - 1];
@@ -654,7 +656,7 @@ export class EffectsManager {
   _flush(field, count) {
     field.mesh.count = count;
     if (!count) return;
-    // Upload only the live instances, not the full 240-slot capacity.
+    // Upload only the visible instances, not the full 280-slot capacity.
     field.aPos.addUpdateRange(0, count * 3);
     field.aPos.needsUpdate = true;
     field.aColor.addUpdateRange(0, count * 3);
@@ -666,23 +668,42 @@ export class EffectsManager {
   }
 }
 
-// Soft radial sprite texture (smoke = soft falloff; spark = tight hot core).
+// Painted cel puffs and four-point glints, baked into the same two 64px
+// textures. The existing two fields, particle budget and shader stay unchanged.
 function softTexture(spark) {
   const c = document.createElement("canvas");
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
   if (spark) {
-    g.addColorStop(0, "rgba(255,255,255,1)");
-    g.addColorStop(0.4, "rgba(255,255,255,0.7)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
+    const glow = ctx.createRadialGradient(32, 32, 0, 32, 32, 29);
+    glow.addColorStop(0, "rgba(255,255,255,1)");
+    glow.addColorStop(0.22, "rgba(255,255,255,0.95)");
+    glow.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i * Math.PI / 4, r = i % 2 ? 8 : 30;
+      const x = 32 + Math.cos(a) * r, y = 32 + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fill();
   } else {
-    g.addColorStop(0, "rgba(255,255,255,0.85)");
-    g.addColorStop(0.5, "rgba(255,255,255,0.4)");
-    g.addColorStop(1, "rgba(255,255,255,0)");
+    // One scalloped silhouette, with translucent painted bands and a narrow
+    // feathered rim. One fill avoids bright seams where separate blobs overlap.
+    const img = ctx.createImageData(64, 64);
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+      const dx = (x - 31.5) / 29, dy = (y - 31.5) / 29;
+      const angle = Math.atan2(dy, dx);
+      const edge = 0.88 + 0.07 * Math.cos(angle * 5) + 0.035 * Math.sin(angle * 3);
+      const r = Math.hypot(dx, dy) / edge;
+      const rim = Math.max(0, Math.min(1, (1 - r) / 0.12));
+      const band = r < 0.5 ? 0.66 : r < 0.76 ? 0.5 : 0.32;
+      const i = (y * 64 + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(255 * band * rim);
+    }
+    ctx.putImageData(img, 0, 0);
   }
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, 64, 64);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -702,5 +723,8 @@ function skidTexture() {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 32, 4);
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = "rgba(0,0,0,0.35)";
+  for (const x of [9, 15, 21]) ctx.fillRect(x, 0, 1, 4);
   return new THREE.CanvasTexture(c);
 }
