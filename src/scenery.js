@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { paintSurface, rockGeometry, palmFrond } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
@@ -1120,11 +1121,11 @@ function sprigCard(wBase, wTop, lo, hi, curve = 0) {
   const a = new THREE.Color(lo), b = new THREE.Color(hi), c = new THREE.Color();
   for (let s = 0; s <= SEG; s++) {
     const t = s / SEG;
-    const w = (wBase + (wTop - wBase) * t) * 0.5;
+    const w = s === SEG ? 0 : (wBase + (wTop - wBase) * t) * 0.5 * (s === 0 ? 0.7 : 1.4);
     const bow = curve * t * t; // a resting curve, before any wind
-    pos.push(-w, t, bow, w, t, bow);
+    pos.push(-w + curve * t * 0.45, t, bow, w + curve * t * 0.45, t, bow);
     c.copy(a).lerp(b, t);
-    col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    col.push(c.r * 0.78, c.g * 0.86, c.b * 0.86, c.r, c.g, c.b);
   }
   for (let s = 0; s < SEG; s++) {
     const i0 = s * 2;
@@ -1169,15 +1170,22 @@ const FLOWER_COLS = {
   meadow: [0xfff3d0, 0xffe27a, 0xf6f2ff, 0xe8b6f0],
   blossom: [0xffd3e4, 0xffb0cd, 0xfff0f6, 0xff9ec2],
 };
-// A few petals: two crossed cards up at the top of the stem, tiny and white so
-// the per-instance colour reads true.
+// Four lobed petals and a golden centre, still eight triangles per flower.
+// Heights stay below one so the same stem wind deformation anchors the blossom.
 function flowerHeadGeo() {
-  const a = sprigCard(0.02, 0.17, 0xffffff, 0xffffff);
-  const b = sprigCard(0.02, 0.17, 0xf2f2f2, 0xf2f2f2);
-  a.translate(0, -1, 0); a.scale(1, 0.13, 1); a.translate(0, 0.95, 0);
-  b.translate(0, -1, 0); b.scale(1, 0.13, 1); b.translate(0, 0.95, 0);
-  b.rotateY(Math.PI / 2);
-  return mergeGeometries([a, b]);
+  const p = [0, 0.94, 0], col = [1, 0.78, 0.24], indices = [];
+  for (let i = 0; i <= 8; i++) {
+    const a = i / 8 * Math.PI * 2;
+    const r = i % 2 ? 0.075 : 0.16;
+    p.push(Math.cos(a) * r, 0.97 - (i % 2 ? 0.025 : 0), Math.sin(a) * r);
+    col.push(1, 1, 1);
+    if (i < 8) indices.push(0, i + 1, i + 2);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(p, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(indices); g.computeVertexNormals();
+  return g;
 }
 
 // Instanced roadside cover along the verge, swaying in the shared wind.
@@ -2402,12 +2410,20 @@ function foliageGeoFor(shape) {
   if (_foliageGeoCache[shape]) return _foliageGeoCache[shape];
   let g;
   if (shape === "pine") {
-    // Stacked tiers → a proper layered conifer instead of a single cone.
-    g = mergeGeometries([
-      new THREE.ConeGeometry(2.2, 3.0, 7).translate(0, 1.5, 0),
-      new THREE.ConeGeometry(1.7, 2.6, 7).translate(0, 3.4, 0),
-      new THREE.ConeGeometry(1.15, 2.3, 7).translate(0, 5.2, 0),
-    ]);
+    // Three overlapping bough skirts. One extra ring per tier rounds the
+    // silhouette into a bell rather than a straight paper cone (+42 triangles
+    // per pine, still a single instanced canopy draw).
+    const tier = (r, h, y) => {
+      const geo = new THREE.ConeGeometry(r, h, 7, 2);
+      const p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        if (Math.abs(p.getY(i)) < 0.001) {
+          p.setX(i, p.getX(i) * 1.35); p.setZ(i, p.getZ(i) * 1.35);
+        }
+      }
+      geo.computeVertexNormals(); return geo.translate(0, y, 0);
+    };
+    g = mergeGeometries([tier(2.2, 3.0, 1.5), tier(1.7, 2.6, 3.4), tier(1.15, 2.3, 5.2)]);
   } else if (shape === "acacia") {
     // Flat-topped umbrella: a wide, thin dome with a smaller crown on top. Pairs
     // with a tall bare trunk (trunkHmul below) for the savanna silhouette.
@@ -2431,19 +2447,26 @@ function foliageGeoFor(shape) {
     const n = 9;
     for (let i = 0; i < n; i++) {
       const len = 3.4 + (i % 3) * 0.4;
-      const f = new THREE.ConeGeometry(0.5, len, 3); // 3-sided → a flat-ish blade
-      f.scale(1, 1, 0.16); // flatten into a frond
-      f.rotateZ(Math.PI / 2); // lay it along +X (tip outward)
-      f.translate(len / 2, 0, 0); // pivot at the WIDE base (crown), tip out at +len
-      f.rotateZ(-0.7 - (i % 2) * 0.12); // arch: base stays at crown, tip droops down
+      const f = palmFrond(len);
       f.rotateY((i / n) * Math.PI * 2 + (i % 2) * 0.18);
       fronds.push(f);
     }
     g = mergeGeometries(fronds);
     g.translate(0, 0.5, 0); // sit the crown at the trunk top
   } else {
-    // round (deciduous): a single faceted lollipop crown.
+    // Deciduous crown: one surface, lobed below without adding geometry.
     g = new THREE.IcosahedronGeometry(2.3, 1).scale(1, 0.95, 1).translate(0, 2.15, 0);
+  }
+  if (shape !== "palm") {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const a = Math.atan2(z, x);
+      const lobe = 1 + (shape === "pine" ? 0.09 : shape === "round" ? 0.26 : 0.14) * Math.sin(a * 3 + y * 1.5);
+      p.setXYZ(i, x * lobe, y + Math.sin(a * 5) * Math.hypot(x, z) * 0.06, z * lobe);
+    }
+    g.computeVertexNormals();
+    paintSurface(g, { low: 0.56, high: 1, faces: 0.06 });
   }
   _foliageGeoCache[shape] = g;
   return g;
@@ -2458,9 +2481,9 @@ const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95, palm: 1
 // acacia / blossom) — each shape its own silhouette, recoloured per-instance from
 // the biome's foliage HSL. Draw calls stay tiny: 1 trunk + ≤4 canopy meshes.
 function buildShapedTrees(scene, spots, scaleMul = 1) {
-  const trunkGeo = new THREE.CylinderGeometry(0.4, 0.6, 3, 6); // baked base at y=0..3
-  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1 });
-  const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true });
+  const trunkGeo = paintSurface(new THREE.CylinderGeometry(0.4, 0.68, 3, 6), { low: 0.7, high: 1 }); // baked base at y=0..3
+  const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, vertexColors: true });
+  const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, vertexColors: true, side: THREE.DoubleSide });
   foliageMat.userData.backlight = true; // glow when backlit by the sun (set in toonify)
   // Canopies bow in the shared wind field, pivoting on the trunk top. The
   // number is the crown's lean as a fraction of its own height; 0.12 reads
@@ -3491,7 +3514,7 @@ function buildBlobShadows(scene, discs) {
 // Desert cacti: a saguaro built once and instanced.
 function buildCacti(scene, spots) {
   const geo = cactusGeometry();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x4f8a4a, roughness: 1, flatShading: true });
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4f8a4a, roughness: 1, flatShading: true, vertexColors: true });
   const cacti = new THREE.InstancedMesh(geo, mat, spots.length);
   cacti.castShadow = true;
   const m = new THREE.Matrix4();
@@ -3520,14 +3543,25 @@ function buildCacti(scene, spots) {
 }
 
 function cactusGeometry() {
-  const parts = [
-    new THREE.CylinderGeometry(0.5, 0.62, 4, 8).translate(0, 2, 0),
-    new THREE.CylinderGeometry(0.28, 0.3, 1.4, 6).rotateZ(Math.PI / 2).translate(-0.9, 2.4, 0),
-    new THREE.CylinderGeometry(0.28, 0.3, 1.3, 6).translate(-1.5, 3.0, 0),
-    new THREE.CylinderGeometry(0.26, 0.28, 1.2, 6).rotateZ(Math.PI / 2).translate(0.8, 1.8, 0),
-    new THREE.CylinderGeometry(0.26, 0.28, 1.1, 6).translate(1.3, 2.3, 0),
-  ];
-  return mergeGeometries(parts);
+  const stem = new THREE.LatheGeometry([
+    [0.56, 0], [0.6, 0.3], [0.5, 3.55], [0.42, 3.86], [0.22, 4.03], [0, 4.08],
+  ].map(([r, y]) => new THREE.Vector2(r, y)), 8);
+  const parts = [stem];
+  for (const side of [-1, 1]) {
+    const lift = side < 0 ? 0.55 : 0;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(side * 0.32, 1.7 + lift, 0),
+      new THREE.Vector3(side * 1.12, 1.75 + lift, 0),
+      new THREE.Vector3(side * 1.4, 2.08 + lift, 0),
+      new THREE.Vector3(side * 1.4, 2.9 + lift, 0),
+    ]);
+    const arm = new THREE.TubeGeometry(curve, 6, 0.27, 6, false);
+    const p = arm.attributes.position, tip = curve.getPoint(1);
+    // Pinch the final ring closed into a rounded bud; no open pipe ends.
+    for (let i = p.count - 7; i < p.count; i++) p.setXYZ(i, tip.x, tip.y + 0.12, tip.z);
+    arm.computeVertexNormals(); parts.push(arm);
+  }
+  return paintSurface(mergeGeometries(parts), { low: 0.65, high: 1, faces: 0.1 });
 }
 
 // Dense woods crowding right up to the road through forest/alpine sectors, so
@@ -3577,8 +3611,8 @@ function buildForests(scene, track, heightAt) {
 
 function buildRocks(scene, track, heightAt, flatten) {
   const spots = scatter(140, track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
-  const geo = new THREE.IcosahedronGeometry(1, 1);
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1 });
+  const geo = rockGeometry();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1, vertexColors: true });
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const p = new THREE.Vector3();
@@ -3798,7 +3832,13 @@ function windowTexture() {
       // harsh grid that shimmers into noise when the frame minifies at distance.
       const v = lit < 0.5 ? Math.floor(120 + rand() * 55) : 40;
       ctx.fillStyle = `rgb(${v},${Math.floor(v * 0.84)},${Math.floor(v * 0.55)})`;
-      ctx.fillRect(8 + col * 18, 7 + r * 18, 11, 12);
+      const x = 8 + col * 18, y = 7 + r * 18;
+      ctx.fillRect(x, y, 11, 12);
+      ctx.fillStyle = "rgba(20,26,38,0.42)";
+      ctx.fillRect(x + 5, y, 1, 12); // painted mullion, no facade geometry
+      ctx.fillRect(x, y + 4, 11, 1);
+      ctx.fillStyle = "rgba(255,234,187,0.12)";
+      ctx.fillRect(x, y + 11, 11, 1);
     }
   }
   const t = new THREE.CanvasTexture(c);
@@ -3822,12 +3862,14 @@ const _solidMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness
 function part(parts, geo, color) {
   if (geo.index) geo = geo.toNonIndexed();
   const c = new THREE.Color(color);
+  paintSurface(geo, { low: 0.86, high: 1, faces: 0.06 });
+  const shade = geo.attributes.color;
   const n = geo.attributes.position.count;
   const arr = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    arr[i * 3] = c.r;
-    arr[i * 3 + 1] = c.g;
-    arr[i * 3 + 2] = c.b;
+    arr[i * 3] = c.r * shade.getX(i);
+    arr[i * 3 + 1] = c.g * shade.getY(i);
+    arr[i * 3 + 2] = c.b * shade.getZ(i);
   }
   geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
   parts.push(geo);
@@ -4127,14 +4169,14 @@ function batchStaticProps(scene) {
         keep.push(o);
         return;
       }
-      const mKey = `${m.color.getHexString()}|${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}`;
+      const mKey = `${m.color.getHexString()}|${m.roughness}|${m.metalness}|${m.flatShading ? 1 : 0}|${m.side}|${m.emissive.getHexString()}|${m.emissiveIntensity}|${m.userData.backlight ? 1 : 0}|${m.vertexColors ? 1 : 0}`;
       let entry = bucket.get(mKey);
       if (!entry) bucket.set(mKey, (entry = { material: m, geos: [] }));
       let geo = o.geometry.clone();
       geo.applyMatrix4(o.matrixWorld); // bake world transform
       if (geo.index) geo = geo.toNonIndexed(); // mergeGeometries can't mix indexed/non
       for (const a of Object.keys(geo.attributes)) {
-        if (a !== "position" && a !== "normal" && a !== "uv") geo.deleteAttribute(a);
+        if (a !== "position" && a !== "normal" && a !== "uv" && !(a === "color" && m.vertexColors)) geo.deleteAttribute(a);
       }
       entry.geos.push(geo);
     });
@@ -4262,9 +4304,9 @@ function makePlanter() {
   const box = new THREE.Mesh(rbox(1.4, 0.6, 1.4, 0.14), mat(0x8d6e3a));
   box.position.y = 0.3;
   g.add(box);
-  const m = mat(0x4caf50, { flatShading: true });
+  const m = mat(0x4caf50, { flatShading: true, vertexColors: true });
   for (let i = 0; i < 3; i++) {
-    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 0), m);
+    const b = new THREE.Mesh(paintSurface(new THREE.IcosahedronGeometry(0.5, 0), { low: 0.6 }), m);
     b.position.set((rand() - 0.5) * 0.8, 0.8, (rand() - 0.5) * 0.8);
     g.add(b);
   }
@@ -4408,7 +4450,7 @@ function makeFarmProp(biome) {
 
 function makeCactusProp() {
   const g = new THREE.Group();
-  const c = new THREE.Mesh(cactusGeometry(), mat(0x4f8a4a, { flatShading: true }));
+  const c = new THREE.Mesh(cactusGeometry(), mat(0x4f8a4a, { flatShading: true, vertexColors: true }));
   c.scale.setScalar(0.9 + rand() * 0.8);
   c.castShadow = true;
   g.add(c);
@@ -4417,10 +4459,10 @@ function makeCactusProp() {
 
 function makeRockProp() {
   const g = new THREE.Group();
-  const m = mat(0x9a8a6a);
+  const m = mat(0x9a8a6a, { vertexColors: true });
   const n = 1 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
-    const r = new THREE.Mesh(new THREE.IcosahedronGeometry(0.6 + rand() * 1.0, 1), m);
+    const r = new THREE.Mesh(rockGeometry(0.6 + rand() * 1.0), m);
     r.position.set((rand() - 0.5) * 2, 0.4, (rand() - 0.5) * 2);
     r.rotation.set(rand() * 3, rand() * 3, rand() * 3);
     r.castShadow = true;
@@ -4495,7 +4537,7 @@ function makeTree(biome) {
   const g = new THREE.Group();
   const s = 0.9 + rand() * 1.2;
   const hmul = TRUNK_HMUL[shape] ?? 1.0;
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.6, 3, 6), mat(0x6b4a2b));
+  const trunk = new THREE.Mesh(paintSurface(new THREE.CylinderGeometry(0.4, 0.68, 3, 6), { low: 0.7, high: 1 }), mat(0x6b4a2b, { vertexColors: true }));
   trunk.position.y = 1.5 * s * hmul;
   trunk.scale.set(s, s * hmul, s);
   trunk.castShadow = true;
@@ -4505,7 +4547,7 @@ function makeTree(biome) {
   else if (b.name === "blossom") h += (rand() - 0.5) * 0.04;
   const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.86));
   // Share the cached canopy silhouette so roadside trees match the scattered ones.
-  const fol = new THREE.Mesh(foliageGeoFor(shape), mat(folCol.getHex(), { flatShading: true }));
+  const fol = new THREE.Mesh(foliageGeoFor(shape), mat(folCol.getHex(), { flatShading: true, vertexColors: true, side: THREE.DoubleSide }));
   fol.position.y = 3 * s * hmul - 0.2 * s;
   fol.scale.set(b.sx * s, b.sy * s, b.sx * s);
   fol.castShadow = true;
@@ -4515,10 +4557,10 @@ function makeTree(biome) {
 
 function makeBush() {
   const g = new THREE.Group();
-  const m = mat(0x4caf50, { flatShading: true });
+  const m = mat(0x4caf50, { flatShading: true, vertexColors: true });
   const n = 2 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
-    const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.9 + rand() * 0.6, 0), m);
+    const b = new THREE.Mesh(paintSurface(new THREE.IcosahedronGeometry(0.9 + rand() * 0.6, 0), { low: 0.6 }), m);
     b.position.set((rand() - 0.5) * 2, 0.7, (rand() - 0.5) * 2);
     b.castShadow = true;
     g.add(b);
@@ -4548,6 +4590,14 @@ function makeCow() {
       leg.position.set(sx * 1.1, 0.75, sz * 0.5);
       parts.push(leg);
     }
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 6, 4), dark);
+    eye.position.set(-1.94, 1.86, side * 0.45); parts.push(eye);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 4), white);
+    ear.scale.set(0.7, 0.45, 1.5); ear.position.set(-1.66, 2.0900000000000003, side * 0.52); parts.push(ear);
+  }
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 5), dark);
+  muzzle.scale.set(0.5, 0.65, 1); muzzle.position.set(-2.14, 1.52, 0); parts.push(muzzle);
   g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 4, speed: 1.1, bob: 0.06 }; // cows graze slowly
   return g;
@@ -4572,6 +4622,12 @@ function makeSheep() {
       leg.position.set(sx * 0.7, 0.55, sz * 0.45);
       parts.push(leg);
     }
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 6, 4), wool);
+    eye.position.set(-1.55, 1.64, side * 0.3); parts.push(eye);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 4), wool);
+    ear.scale.set(0.7, 0.45, 1.5); ear.position.set(-1.27, 1.8699999999999999, side * 0.37); parts.push(ear);
+  }
   g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 5, speed: 1.6, bob: 0.16 }; // sheep bounce more
   return g;
@@ -4601,6 +4657,12 @@ function makeDeer() {
       const leg = new THREE.Mesh(rbox(0.22, 1.5, 0.22, 0.09), dark);
       leg.position.set(sx * 0.8, 0.75, sz * 0.35); parts.push(leg);
     }
+  for (const side of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.065, 6, 4), dark);
+    eye.position.set(-1.72, 2.8, side * 0.25); parts.push(eye);
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(0.18, 6, 4), tan);
+    ear.scale.set(0.7, 0.45, 1.5); ear.position.set(-1.44, 3.03, side * 0.32); parts.push(ear);
+  }
   g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 6, speed: 2.2, bob: 0.12 }; // deer step lightly
   return g;
@@ -4636,7 +4698,8 @@ function makeCrab() {
 function makeGull() {
   const g = new THREE.Group();
   const white = mat(0xf4f6f8);
-  const grey = mat(0x9aa4ac);
+  const grey = mat(0x667484);
+  const orange = mat(0xe0a52a);
   const parts = [];
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), white);
   body.scale.set(1, 0.9, 1.5); body.position.y = 0.7; parts.push(body);
@@ -4644,11 +4707,17 @@ function makeGull() {
   back.scale.set(1, 0.5, 1.4); back.position.set(0, 0.86, -0.1); parts.push(back);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), white);
   head.position.set(0, 1.05, 0.42); parts.push(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 5), mat(0xe0a52a));
+  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 5), orange);
   beak.rotation.x = Math.PI / 2; beak.position.set(0, 1.02, 0.68); parts.push(beak);
   for (const sx of [-1, 1]) {
-    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.44, 4), mat(0xe0a52a));
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.44, 4), orange);
     leg.position.set(sx * 0.12, 0.26, 0.1); parts.push(leg);
+  }
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 5, 3), grey);
+    eye.position.set(sx * 0.19, 1.11, 0.52); parts.push(eye);
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 5, 3), orange);
+    foot.scale.set(0.75, 0.3, 1.5); foot.position.set(sx * 0.12, 0.055, 0.17); parts.push(foot);
   }
   g.add(mergeMeshes(parts, { castShadow: true }));
   g.userData.wander = { range: 4, speed: 2.0, bob: 0.05 };
@@ -4954,7 +5023,7 @@ function makeBigWindmill() {
 // Local axes: the bird flies along +X (beak forward), wings span ±Z. Kept
 // deliberately light — these are distant sky silhouettes: a fingered wing
 // shape (~16 tris) and a low-poly body/head/beak/fan-tail (~80 tris).
-export const SKY_BIRD_COLOR = 0x24272c; // default: raven black
+export const SKY_BIRD_COLOR = 0x414957; // default: raven black
 let _skyBirdGeos = null;
 const _skyBirdMats = new Map(); // colour → shared material (flocks + viewer)
 function skyBirdMaterial(color = SKY_BIRD_COLOR) {
@@ -4962,7 +5031,7 @@ function skyBirdMaterial(color = SKY_BIRD_COLOR) {
   if (!m) {
     // DoubleSide: the wings are flat shapes, and each LEFT wing is the same
     // geometry mirrored by a negative instance scale (which flips the winding).
-    m = mat(color, { flatShading: true, side: THREE.DoubleSide });
+    m = mat(color, { flatShading: true, side: THREE.DoubleSide, vertexColors: true });
     _skyBirdMats.set(color, m);
   }
   return m;
@@ -5004,6 +5073,16 @@ function skyBirdGeos() {
     new THREE.ConeGeometry(0.07, 0.34, 4).rotateZ(-Math.PI / 2).translate(0.88, 0.1, 0), // beak
     new THREE.ShapeGeometry(tail, 2).rotateX(Math.PI / 2).translate(-0.5, 0.03, 0), // fan tail
   ]);
+  // Camber gives the wings volume in a bank while keeping the exact silhouette
+  // and triangle count. Cooler flight feathers are painted into the same draw.
+  const wp = wingGeo.attributes.position;
+  for (let i = 0; i < wp.count; i++) {
+    const span = wp.getZ(i) / 2.42;
+    wp.setY(i, 0.18 * Math.sin(span * Math.PI) - 0.10 * span * span);
+  }
+  wingGeo.computeVertexNormals();
+  paintSurface(wingGeo, { low: 0.56, high: 1, faces: 0 });
+  paintSurface(bodyGeo, { low: 0.62, high: 1, faces: 0.06 });
   _skyBirdGeos = { wingGeo, bodyGeo };
   return _skyBirdGeos;
 }
@@ -5314,8 +5393,8 @@ function makePigeon() {
   // toon pipeline per part instead of five fresh materials per pigeon.
   if (!_pigeonMats) {
     _pigeonMats = {
-      body: mat(0x9aa3ad), head: mat(0xb0b8c0), beak: mat(0xe0a52a),
-      tail: mat(0x7e878f), wing: mat(0x868f98),
+      body: mat(0x9aa3ad), head: mat(0x719b91), beak: mat(0xe0a52a),
+      tail: mat(0x566477), wing: mat(0x7b8799),
     };
   }
   const g = new THREE.Group();
@@ -5325,18 +5404,25 @@ function makePigeon() {
   g.add(body);
   const head = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 8), _pigeonMats.head);
   head.position.set(0, 0.22, 0.34);
-  g.add(head);
+  const face = [head];
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.032, 5, 3), _pigeonMats.tail);
+    eye.position.set(sx * 0.15, 0.26, 0.41); face.push(eye);
+  }
+  // Eyes use the existing tail material; rigid parts are merged below.
   const beak = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.14, 5), _pigeonMats.beak);
   beak.rotation.x = Math.PI / 2;
   beak.position.set(0, 0.2, 0.5);
   g.add(beak);
   const tail = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.06, 0.4), _pigeonMats.tail);
   tail.position.set(0, 0.02, -0.42);
-  g.add(tail);
+  face.push(body, beak, tail);
+  g.remove(body, beak);
+  g.add(mergeMeshes(face));
   const wings = [];
   for (const sx of [-1, 1]) {
     const wg = new THREE.Group();
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.08, 0.5), _pigeonMats.wing);
+    const wing = new THREE.Mesh(new THREE.SphereGeometry(0.3, 6, 4).scale(1.15, 0.15, 1.35), _pigeonMats.wing);
     wing.position.x = sx * 0.3;
     wg.add(wing);
     wg.position.set(sx * 0.1, 0.05, 0);
@@ -5571,6 +5657,12 @@ function makeBalloon(paletteIndex = 0) {
   // triangle by its centroid's longitude — 8 panels alternating main/cream.
   const geo = new THREE.LatheGeometry(S.prof, 16).toNonIndexed();
   const pos = geo.getAttribute("position");
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i), y = pos.getY(i);
+    const seam = 1 - 0.045 * Math.cos(Math.atan2(z, x) * 8) * Math.sin(y / 16.4 * Math.PI);
+    pos.setXYZ(i, x * seam, y, z * seam);
+  }
+  geo.computeVertexNormals();
   const colAttr = new THREE.Float32BufferAttribute(new Float32Array(pos.count * 3), 3);
   for (let f = 0; f < pos.count; f += 3) {
     const cx = (pos.getX(f) + pos.getX(f + 1) + pos.getX(f + 2)) / 3;
@@ -5675,7 +5767,7 @@ function makeSkyBirdAsset(color = SKY_BIRD_COLOR) {
 // One cloud (scene.js merges 16 of these clusters into a single ring mesh
 // high above the map — the exact same cloudClusterGeo builds both).
 function makeCloudAsset() {
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
   const g = new THREE.Group();
   g.add(new THREE.Mesh(cloudClusterGeo(), cloudMat));
   return g;
@@ -5729,8 +5821,25 @@ export function assetCatalog() {
   const add = (group, name, build) => entries.push({ group, name, build });
 
   // Trees per biome silhouette (round/pine/acacia/blossom — the distinct shapes).
-  for (const bn of ["meadow", "forest", "autumn", "blossom", "savanna", "desert"])
+  for (const bn of ["meadow", "forest", "autumn", "blossom", "savanna", "beach", "jungle", "desert"])
     add("Trees & plants", `Tree — ${bn}`, () => makeTree(biome(bn)));
+  for (const [name, kind] of [["Grass tuft", "blade"], ["Wildflowers", "flower"], ["Reeds", "reed"]]) {
+    add("Trees & plants", name, () => {
+      const g = new THREE.Group();
+      const material = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide });
+      for (let i = 0; i < 7; i++) {
+        const blade = new THREE.Mesh(SPRIGS[kind].geo(), material);
+        blade.rotation.y = i * 2.4;
+        blade.position.set(Math.sin(i * 2.4) * 0.18, 0, Math.cos(i * 2.4) * 0.18);
+        blade.scale.setScalar(0.7 + (i % 3) * 0.2); g.add(blade);
+        if (kind === "flower") {
+          const head = new THREE.Mesh(flowerHeadGeo(), material);
+          head.position.copy(blade.position); head.scale.copy(blade.scale); g.add(head);
+        }
+      }
+      return g;
+    });
+  }
   add("Trees & plants", "Bush", () => makeBush());
   add("Trees & plants", "Cactus", () => makeCactusProp());
   add("Trees & plants", "Rock", () => makeRockProp());

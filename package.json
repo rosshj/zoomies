@@ -23,7 +23,8 @@
     "check:worldcfg": "node tools/worldcfg-check.mjs",
     "check:tracks": "node tools/track-audit.mjs",
     "check:tracks:random": "TRACKS=random SEEDS=6 node tools/track-audit.mjs",
-    "check:art": "node tools/art-check.mjs"
+    "check:art": "node tools/art-check.mjs",
+    "check:scenery": "node tools/scenery-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

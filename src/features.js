@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { paintSurface, paintSolid } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // ---- Track set pieces -------------------------------------------------------
@@ -1897,10 +1899,12 @@ export function makeTrain(cars = 4) {
   const winMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x9fc6e8, emissiveIntensity: 0.5, roughness: 0.3 });
   for (let cIdx = 0; cIdx < cars; cIdx++) {
     const car = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.1, 7.2), cIdx === 0 ? bodyMat : carMat);
+    const body = new THREE.Mesh(new RoundedBoxGeometry(2.2, 2.1, 7.2, 1, 0.3), cIdx === 0 ? bodyMat : carMat);
     body.castShadow = true;
     car.add(body);
-    const win = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.7, 5.6), winMat);
+    const panes = [];
+    for (let w = 0; w < 4; w++) panes.push(new THREE.BoxGeometry(2.23, 0.7, 1.1).translate(0, 0, -2.1 + w * 1.4));
+    const win = new THREE.Mesh(mergeGeometries(panes), winMat);
     win.position.y = 0.45;
     car.add(win);
     car.position.z = -cIdx * 8.2;
@@ -1994,17 +1998,19 @@ export function makeDuck() {
   if (!_duckMats) {
     _duckMats = {
       body: new THREE.MeshStandardMaterial({ color: 0xf5efdd, roughness: 0.9 }),
-      head: new THREE.MeshStandardMaterial({ color: 0x3e7d3a, roughness: 0.8 }),
+      head: new THREE.MeshStandardMaterial({ color: 0x3e7d3a, roughness: 0.8, vertexColors: true }),
       beak: new THREE.MeshStandardMaterial({ color: 0xf2a63c, roughness: 0.8 }),
     };
   }
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6).scale(1, 0.7, 1.3), _duckMats.body);
   g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), _duckMats.head);
+  const face = [paintSurface(new THREE.SphereGeometry(0.3, 8, 6))];
+  for (const side of [-1, 1]) face.push(paintSolid(new THREE.SphereGeometry(0.035, 5, 3).translate(side * 0.265, 0.07, 0.11), 0x151923));
+  const head = new THREE.Mesh(mergeGeometries(face), _duckMats.head);
   head.position.set(0, 0.55, 0.55);
   g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 5).rotateX(Math.PI / 2), _duckMats.beak);
+  const beak = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 4).scale(1, 0.35, 1.35), _duckMats.beak);
   beak.position.set(0, 0.5, 0.9);
   g.add(beak);
   return g;
@@ -2020,18 +2026,20 @@ export function makeGoat() {
     };
   }
   const parts = [];
-  parts.push(new THREE.BoxGeometry(0.9, 0.8, 1.5).translate(0, 1.05, 0));
-  parts.push(new THREE.BoxGeometry(0.5, 0.55, 0.6).translate(0, 1.6, 0.85));
+  parts.push(new RoundedBoxGeometry(0.9, 0.8, 1.5, 1, 0.22).translate(0, 1.05, 0));
+  parts.push(new RoundedBoxGeometry(0.5, 0.55, 0.6, 1, 0.16).translate(0, 1.6, 0.85));
   for (const s of [0.28, -0.28]) {
     parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, 0.5));
     parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, -0.5));
   }
-  const goat = new THREE.Mesh(mergeGeometries(parts), _goatMats.body);
+  const goat = new THREE.Mesh(mergeGeometries(parts.map(g => g.index ? g.toNonIndexed() : g)), _goatMats.body);
   goat.castShadow = true;
   const horns = new THREE.Mesh(
     mergeGeometries([
       new THREE.ConeGeometry(0.07, 0.5, 5).translate(-0.16, 2.05, 0.75),
       new THREE.ConeGeometry(0.07, 0.5, 5).translate(0.16, 2.05, 0.75),
+      new THREE.SphereGeometry(0.045, 5, 3).translate(-0.24, 1.69, 1.0),
+      new THREE.SphereGeometry(0.045, 5, 3).translate(0.24, 1.69, 1.0),
     ]),
     _goatMats.horn
   );

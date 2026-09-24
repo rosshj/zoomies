@@ -1,0 +1,60 @@
+// Cheap sculpting and painted form detail. These run only while building assets;
+// no extra materials, texture samples, or per-frame work are needed.
+import * as THREE from 'three';
+
+export function paintSurface(geo, { low = 0.72, high = 1, faces = 0.08 } = {}) {
+  geo.computeBoundingBox();
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  const min = geo.boundingBox.min.y, range = Math.max(0.001, geo.boundingBox.max.y - min);
+  const colors = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const t = (p.getY(i) - min) / range;
+    const value = low + (high - low) * t;
+    const shade = value * (1 - faces * (1 - Math.max(0, n?.getY(i) || 0)));
+    colors.set([shade * 0.97, shade, Math.min(1, shade * (1.06 - t * 0.06))], i * 3);
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geo;
+}
+
+// Same 80 triangles as the old icosphere, with a broad planted base and broken
+// geological planes. Coordinate-only deformation keeps duplicate vertices welded.
+export function rockGeometry(radius = 1) {
+  const g = new THREE.IcosahedronGeometry(radius, 1);
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i) / radius, y = p.getY(i) / radius, z = p.getZ(i) / radius;
+    const bulge = 1 + 0.12 * Math.sin(x * 4 + z * 3) * Math.cos(y * 3);
+    p.setXYZ(i, x * radius * bulge, Math.max(-0.55, y) * radius, z * radius * (1 + 0.1 * Math.cos(x * 4 - y * 2)));
+  }
+  g.computeVertexNormals();
+  return paintSurface(g, { low: 0.64, high: 1, faces: 0.12 });
+}
+
+// Six triangles, like the old triangular prism, but a pointed, arched frond.
+// The narrow tip, broad middle and curved span are all in one surface.
+export function palmFrond(length) {
+  const p = [], colors = [], indices = [];
+  for (let i = 0; i < 4; i++) {
+    const t = i / 3;
+    const half = [0.07, 0.46, 0.32, 0][i];
+    const y = Math.sin(t * Math.PI) * 0.6 - t * t * 1.6;
+    p.push(t * length, y, -half, t * length, y, half);
+    const v = 0.68 + t * 0.32;
+    colors.push(v * 0.93, v, v * 0.9, v, v, v * 0.92);
+    if (i < 3) { const j = i * 2; indices.push(j, j + 2, j + 1, j + 1, j + 2, j + 3); }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(16), 2));
+  g.setIndex(indices); g.computeVertexNormals();
+  return g;
+}
+
+export function paintSolid(geo, hex) {
+  const c = new THREE.Color(hex), values = new Float32Array(geo.attributes.position.count * 3);
+  for (let i = 0; i < values.length; i += 3) values.set([c.r, c.g, c.b], i);
+  geo.setAttribute('color', new THREE.BufferAttribute(values, 3));
+  return geo;
+}

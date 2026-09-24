@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { paintSurface } from "./scenery-art.js";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, uniform, color as tslColor } from "three/tsl";
 import { USE_WEBGPU, IS_IOS } from "./gpu.js";
@@ -51,11 +52,11 @@ export function moodForTimeOfDay(tod) {
 
 // Sets up renderer, scene, lights, sky and a chase camera, and returns an
 // applyMood() the game uses to switch time-of-day / weather lighting.
-// One low-poly cloud cluster: a plume of crumple-jittered icosahedron lumps
+// One low-poly cloud cluster: a plume of softly sculpted icosahedron lobes
 // (big head tapering to a tail) with the underside clamped FLAT — the classic
-// stylised paper-cloud silhouette. Flat-shaded by the cloud material, so the
-// jitter reads as crisp facets. Origin: flat base on y=0, plume along X,
-// roughly centred. Shared by the sky ring (createScene) and the asset viewer.
+// stylised cumulus silhouette. Painted cool undersides and smooth normals keep
+// the lobes soft while the shared toon ramp keeps the lighting banded.
+// Origin: flat base on y=0, plume along X, roughly centred. Shared by the sky ring (createScene) and the asset viewer.
 export function cloudClusterGeo(rand = Math.random) {
   const geos = [];
   const n = 4 + Math.floor(rand() * 3); // 4-6 lumps
@@ -77,12 +78,12 @@ export function cloudClusterGeo(rand = Math.random) {
     const g = mergeVertices(raw);
     const p = g.attributes.position;
     for (let v = 0; v < p.count; v++) {
-      const jit = 0.85 + rand() * 0.3;
+      const jit = 0.97 + rand() * 0.06;
       p.setXYZ(v, p.getX(v) * jit, p.getY(v) * jit, p.getZ(v) * jit);
     }
-    g.translate(x, r * 0.3 + (rand() - 0.5) * r * 0.2, (rand() - 0.5) * baseR * 0.4);
+    g.translate(x, r * 0.46 + (rand() - 0.5) * r * 0.12, (rand() - 0.5) * baseR * 0.4);
     geos.push(g);
-    x += r * (1.05 + rand() * 0.35);
+    x += r * (0.72 + rand() * 0.25);
   }
   const geo = mergeGeometries(geos);
   // Flat underside: clamp everything that dips below the base plane.
@@ -90,7 +91,7 @@ export function cloudClusterGeo(rand = Math.random) {
   for (let v = 0; v < p.count; v++) if (p.getY(v) < 0) p.setY(v, 0);
   geo.translate(-x / 2, 0, 0);
   geo.computeVertexNormals();
-  return geo;
+  return paintSurface(geo, { low: 0.66, high: 1, faces: 0.02 });
 }
 
 export function createScene() {
@@ -199,9 +200,8 @@ export function createScene() {
   // some are in frame from every camera angle — as individual puff meshes that
   // was ~60-75 draw calls every frame. Bake every cluster into ONE merged mesh
   // (they all share cloudMat, which applyMood recolours) for a single draw.
-  // flatShading gives the crumpled low-poly facets; the silhouette comes from
-  // cloudClusterGeo (jittered icosahedron lumps over a clamped flat base).
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
+  // Painted undersides keep the flat base legible without another cloud layer.
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
   const puffGeos = [];
   for (let i = 0; i < 16; i++) {
     // Sit them out beyond the playable hills and high up, so they read as

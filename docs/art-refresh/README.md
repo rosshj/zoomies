@@ -11,6 +11,8 @@ materials. No downloaded models, additional render passes, new lights, or
 per-frame animation work were introduced. Track layout and physics are unchanged.
 The catalog thumbnails are regenerated from the actual procedural models.
 
+[Scenery and wildlife extension: comparisons and budgets](scenery/README.md)
+
 ## Compare
 
 | Main | This branch |

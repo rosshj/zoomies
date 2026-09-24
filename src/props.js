@@ -35,6 +35,32 @@ const woodMat = new THREE.MeshStandardMaterial({ color: 0xb5803f, roughness: 0.8
 const woodTop = new THREE.MeshStandardMaterial({ color: 0xcd9a55, roughness: 0.85 });
 const barrelMat = new THREE.MeshStandardMaterial({ color: 0xc24a3a, roughness: 0.6, metalness: 0.15 });
 const bandMat = new THREE.MeshStandardMaterial({ color: 0xe6e2d6, roughness: 0.5, metalness: 0.4 });
+// Small, shared canvas paintings add readable joinery without extra draw calls.
+// Lazy creation keeps this module importable in non-DOM simulation tools.
+let propPaintReady = false;
+function preparePropPaint() {
+  if (propPaintReady) return;
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#e3c398"; ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? "#d7b585" : "#eed3a5";
+    ctx.fillRect(3, i * 32 + 2, 122, 28);
+    ctx.fillStyle = "#96704b"; ctx.fillRect(4, i * 32 + 30, 120, 2);
+  }
+  ctx.strokeStyle = "#986b42"; ctx.lineWidth = 15;
+  ctx.strokeRect(7, 7, 114, 114);
+  ctx.beginPath(); ctx.moveTo(12, 113); ctx.lineTo(113, 12); ctx.stroke();
+  ctx.strokeStyle = "#f5dfb8"; ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(12, 110); ctx.lineTo(110, 12); ctx.stroke();
+  ctx.fillStyle = "#58483d";
+  for (const x of [10, 118]) for (const y of [10, 118]) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  woodMat.map = t; woodTop.map = t;
+  woodMat.needsUpdate = woodTop.needsUpdate = true;
+  propPaintReady = true;
+}
+
 // Module-lifetime materials: mark them shared so disposeGroup() (models.js)
 // never disposes them out from under the next crate/barrel built.
 for (const m of [woodMat, woodTop, barrelMat, bandMat]) m.userData.shared = true;
@@ -44,6 +70,7 @@ for (const m of [woodMat, woodTop, barrelMat, bandMat]) m.userData.shared = true
 // that a box holds a power-up is that it floats; the ones sitting on the ground
 // (which tumble when you hit them) hold nothing.
 export const makeCrateProp = (rand = Math.random) => {
+  preparePropPaint();
   const s = 1.5 + rand() * 0.6;
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
@@ -60,9 +87,12 @@ export const makeBarrelProp = (rand = Math.random) => {
   // multi-material mesh (2 draws instead of 3 meshes).
   const r = 0.7 + rand() * 0.2;
   const h = 1.9 + rand() * 0.3;
-  const parts = [new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat)];
+  const parts = [new THREE.Mesh(new THREE.LatheGeometry([
+    [0, -h / 2], [r * 0.82, -h / 2], [r * 0.97, -h * 0.3],
+    [r, 0], [r * 0.97, h * 0.3], [r * 0.82, h / 2], [0, h / 2],
+  ].map(([x, y]) => new THREE.Vector2(x, y)), 12), barrelMat)];
   for (const yy of [-h * 0.3, h * 0.3]) {
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, h * 0.12, 12), bandMat);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.995, r * 0.995, h * 0.12, 12), bandMat);
     band.position.y = yy;
     parts.push(band);
   }

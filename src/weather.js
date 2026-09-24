@@ -137,9 +137,16 @@ function dotTexture() {
   g.addColorStop(0.6, "rgba(255,255,255,0.9)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
+  // A soft six-point snow crystal, painted into the same 32px sprite. The
+  // existing instanced field, particle count and GPU motion stay unchanged.
   ctx.beginPath();
-  ctx.arc(16, 16, 16, 0, Math.PI * 2);
-  ctx.fill();
+  for (let i = 0; i < 12; i++) {
+    const a = i / 12 * Math.PI * 2 - Math.PI / 2;
+    const r = i % 2 ? 6 : 15;
+    const x = 16 + Math.cos(a) * r, y = 16 + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath(); ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   return tex;
 }
