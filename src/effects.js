@@ -708,7 +708,9 @@ function softTexture(spark) {
     for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
       const dx = (x - 31.5) / 29, dy = (y - 31.5) / 29;
       const angle = Math.atan2(dy, dx);
-      const edge = 0.88 + 0.07 * Math.cos(angle * 5) + 0.035 * Math.sin(angle * 3);
+      // Broad, uneven billows: five equally spaced lobes looked like a star
+      // when a pale puff shrank to a handful of pixels behind a racing kart.
+      const edge = 0.88 + 0.045 * Math.cos(angle * 3) + 0.025 * Math.sin(angle * 2);
       const r = Math.hypot(dx, dy) / edge;
       const rim = Math.max(0, Math.min(1, (1 - r) / 0.12));
       const band = r < 0.5 ? 0.66 : r < 0.76 ? 0.5 : 0.32;

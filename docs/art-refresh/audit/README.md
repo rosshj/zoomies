@@ -11,7 +11,8 @@ leave everything reviewable in PR #64.
 The largest safe opportunities were the silhouette, colour, surface-paint and
 geometry changes already delivered in the preceding passes. This audit found
 a real transparency defect and redundant water-material work, both corrected.
-It also found and repaired a headless item-test regression introduced by the
+It also removed a star-like smoke silhouette visible during racing and
+repaired a headless item-test regression introduced by the
 prop painting. It did not find evidence that another expensive rendering
 feature could be added for free.
 
@@ -60,6 +61,20 @@ the real ripple animation already uses TSL `time`. No new water shading or
 reflection technique is added. This is a small CPU/setup simplification, not a
 large FPS improvement. The measured renderer-memory difference is only 48 bytes.
 
+### Smoke reads as a puff rather than another star
+
+The race screenshot revealed that the smoke mask's five equally spaced lobes
+still resembled white stars at driving distance, even though the spark mask
+had already become a tapered ember. The same 64×64 canvas now bakes broader,
+irregular billows using two lower-frequency harmonics. This changes pixels in
+the existing texture only: quads, shaders, population, updates and blending
+are unchanged. Before/after effects checks have identical resource and
+simulation results (6,187 submissions, zero invisible submissions).
+
+| Before smoke | After smoke |
+| --- | --- |
+| ![Five-lobed smoke](effects-before-particles.png) | ![Rounded smoke](effects-after-particles.png) |
+
 ### Item checks run again, including in CI
 
 Procedural crate paint was lazy-created but still required `document` when the
@@ -106,7 +121,8 @@ and [lighting comparisons](../lighting/README.md).
 
 Raw evidence: [decal baseline](before-metrics.json), [decal result](after-metrics.json),
 [world before](world-before.json), [world after](world-after.json),
-[82-asset results](scenery-metrics.json).
+[82-asset results](scenery-metrics.json),
+[effects before](effects-before-metrics.json), [effects after](effects-after-metrics.json).
 
 ## Reproduction and validation
 
@@ -116,7 +132,8 @@ fixture and counters to `OUT`, supports `ART_ROOT` for a baseline checkout and
 `check:landscape` now also reports water mesh/material counts.
 
 Checks run for this audit: material pixel regression, all scenery previews,
-four fixed full-world views on both revisions, item logic, simulation, web
+four fixed full-world views on both revisions, effects rendering/lifecycle,
+item logic, simulation, web
 build, and split-screen gameplay. Earlier passes also verified the art budgets,
 road seams, full-game smoke, effects lifecycle and catalog renders. CI and the
 branch preview are checked after pushing. The PR stays unmerged for testing.
