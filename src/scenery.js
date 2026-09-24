@@ -136,7 +136,7 @@ const UP_Y = new THREE.Vector3(0, 1, 0); // shared up axis for yaw-only instance
 // tri budget sane across the many roadside props; radius auto-clamps to the box.
 // Used for silhouette-defining masses (building bodies, animals, props); tiny
 // trim stays as plain BoxGeometry, and rocks/cliffs are left intentionally craggy.
-function rbox(w, h, d, r = 0.15, seg = 2) {
+function rbox(w, h, d, r = 0.15, seg = 1) {
   const radius = Math.min(r, w / 2, h / 2, d / 2) * 0.95;
   return new RoundedBoxGeometry(w, h, d, seg, radius);
 }
@@ -163,8 +163,12 @@ function roundedColumn(w, h, d, r) {
   const uvGen = {
     generateTopUV: () => [new THREE.Vector2(), new THREE.Vector2(), new THREE.Vector2()],
     generateSideWallUV: (g, v, a, b, c, dd) => {
-      const U = (i) => Math.atan2(v[i * 3 + 1], v[i * 3]) / (Math.PI * 2) + 0.5;
-      const V = (i) => v[i * 3 + 2] / h;
+      // Map each facade across the window sheet, rather than stretching
+      // one quarter of the sheet over a wall using a polar angle.
+      const alongX = Math.abs(v[a * 3] - v[b * 3]) > Math.abs(v[a * 3 + 1] - v[b * 3 + 1]);
+      const U = (i) => alongX ? v[i * 3] / w + 0.5 : v[i * 3 + 1] / d + 0.5;
+      // Four rows per sheet; each row occupies one 2.7-unit storey.
+      const V = (i) => v[i * 3 + 2] / 10.8;
       return [a, b, c, dd].map((i) => new THREE.Vector2(U(i), V(i)));
     },
   };
@@ -1404,7 +1408,9 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
 
     biomeGround(x, z, base, y);
     const b = biomeAt(x, z, y);
-    base.lerp(b.ground2Col, rand() * 0.3); // subtle dappling
+    const dapple = rand(); // keep the world-generation random stream stable
+    const meadowBands = 0.5 + 0.5 * Math.sin(x * 0.016 + Math.sin(z * 0.012) * 2.4);
+    base.lerp(b.ground2Col, 0.06 + meadowBands * 0.24 + dapple * 0.04);
     c.copy(base);
     let snowAmt = 0; // how snowy this vertex is, so we can extra-darken it at night
     if (_altMode) {
@@ -1561,8 +1567,9 @@ const MOUNTAIN_ROCK = {
 // than being a separate cap mesh, so the snowline follows the ridges and dips
 // into the gullies — a ragged line the way real snow lies, not a clean circle.
 function mountainGeo(h, rad, rock, opts = {}) {
-  const RINGS = 15;
-  const SEGS = 28;
+  // Broad readable facets: 504 triangles instead of 868 per peak.
+  const RINGS = 10;
+  const SEGS = 24;
   const TAU = Math.PI * 2;
   // Ridge/erosion harmonics. Low counts read as big spurs, high as scree.
   const harm = [];
@@ -1590,6 +1597,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
   const shAmp = 0.18 + rand() * 0.22;
   const shAt = 0.42 + rand() * 0.22;
   const snowStart = opts.snow ?? rock.snow;
+  const dry = snowStart >= 1;
   // Vegetation (or sand, or scree — whatever the biome's floor is) climbing the
   // foot of the mountain. Same idea as the snowline but from below: a mountain
   // that meets the ground as a hard colour edge reads as a prop dropped onto
@@ -1607,6 +1615,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
   const lo = new THREE.Color(rock.lo);
   const hi = new THREE.Color(rock.hi);
   const snowCol = new THREE.Color(0xf2f6fb);
+  const recessCol = new THREE.Color(0x596980);
   const c = new THREE.Color();
 
   const pos = [];
@@ -1619,7 +1628,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
     // — a clean elliptical cut into the ground is the other half of what made
     // these read as dropped-in cones) and a summit that is a small broken crest
     // rather than a machined point.
-    const prof = Math.pow(t, profExp) + apron * Math.pow(t, 2.4) + 0.045 * Math.pow(1 - t, 3);
+    const prof = Math.pow(t, profExp) + apron * Math.pow(t, 2.4) + (dry ? 0.22 : 0.045) * Math.pow(1 - t, 3);
     const ridgeW = Math.sin(Math.PI * Math.pow(t, 0.75)); // spurs peak mid-flank
     for (let j = 0; j < SEGS; j++) {
       const th = (j / SEGS) * TAU;
@@ -1639,7 +1648,11 @@ function mountainGeo(h, rad, rock, opts = {}) {
       // split every peak into a tuning fork. One lobe, gently, so the crest
       // leans to one side and reads as broken rock rather than twin spires.
       const jag = Math.cos(th + summitPh) * 0.022 * Math.pow(1 - t, 1.6);
-      const y = h * (1 - t) + h * jag;
+      // A broad offset shoulder breaks the straight cone profile; dry peaks
+      // use stepped sandstone ledges, sculpted into the same welded skin.
+      const ledge = dry ? Math.sin(t * Math.PI * 6) * 0.022 * Math.sin(Math.PI * t) : 0;
+      const shoulder = shA * shA * Math.sin(Math.PI * t) * 0.045;
+      const y = h * (1 - t + shoulder + ledge) + h * jag;
       const x = Math.sin(th) * r * ex + leanX * rad * (1 - t);
       const z = Math.cos(th) * r * ez + leanZ * rad * (1 - t);
       pos.push(x, y, z);
@@ -1659,7 +1672,11 @@ function mountainGeo(h, rad, rock, opts = {}) {
       }
       // Gullies sit in their own shade — cheap baked occlusion that makes the
       // erosion read in silhouette-free views.
-      const shade = 1 - gully * 2.1;
+      // Broad strata and cool recessed faces read at racing distance; all
+      // colour is baked, with no texture fetches or per-frame shader work.
+      const strata = dry ? 0.91 + 0.09 * Math.cos(f * Math.PI * 10 + Math.cos(th) * 0.5) : 1;
+      const shade = (1 - gully * 2.4) * strata;
+      c.lerp(recessCol, Math.max(0, -az) * 0.22);
       col.push(c.r * shade, c.g * shade, c.b * shade);
     }
   }
@@ -3843,6 +3860,7 @@ function windowTexture() {
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapT = THREE.RepeatWrapping;
   t.anisotropy = 8; // filter the window grid smoothly at grazing angles / distance (was aliasing into noise)
   return (_windowTex = t);
 }
@@ -3863,6 +3881,13 @@ function part(parts, geo, color) {
   if (geo.index) geo = geo.toNonIndexed();
   const c = new THREE.Color(color);
   paintSurface(geo, { low: 0.86, high: 1, faces: 0.06 });
+  if (geo.userData.hipRoof) {
+    const colors = geo.attributes.color, normals = geo.attributes.normal;
+    for (let i = 0; i < colors.count; i++) {
+      const shade = 0.86 + normals.getX(i) * 0.14;
+      colors.setXYZ(i, colors.getX(i) * shade, colors.getY(i) * shade, colors.getZ(i) * shade);
+    }
+  }
   const shade = geo.attributes.color;
   const n = geo.attributes.position.count;
   const arr = new Float32Array(n * 3);
@@ -3875,14 +3900,55 @@ function part(parts, geo, color) {
   parts.push(geo);
 }
 
+// A shared tiny painted facade keeps windows readable in daylight. Its
+// white plaster multiplies the procedural wall palette; night lighting still
+// uses the existing emissive window sheet. No added meshes or material batches.
+let _facadeTex = null;
+function facadeTexture() {
+  if (_facadeTex) return _facadeTex;
+  const canvas = document.createElement("canvas"); canvas.width = 64; canvas.height = 80;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 64, 80);
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
+    const x = 8 + c * 18, y = 7 + r * 18;
+    ctx.fillStyle = "#b6aaa1"; ctx.fillRect(x - 1, y - 1, 13, 15);
+    ctx.fillStyle = "#607b89"; ctx.fillRect(x, y, 11, 12);
+    ctx.fillStyle = "#8fa9b4"; ctx.fillRect(x + 1, y + 1, 9, 4);
+    ctx.fillStyle = "#e8e4dc"; ctx.fillRect(x + 5, y, 1, 12); ctx.fillRect(x, y + 5, 11, 1);
+    ctx.fillStyle = "#f5eee2"; ctx.fillRect(x - 1, y + 12, 13, 1);
+  }
+  const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 8;
+  return (_facadeTex = texture);
+}
+
 function bodyMaterial(wall) {
   return new THREE.MeshStandardMaterial({
     color: wall,
     roughness: 0.94,
     emissive: 0xffcf86,
+    map: facadeTexture(),
     emissiveMap: windowTexture(),
     emissiveIntensity: 0.32,
   });
+}
+
+// Six outward-facing triangles form a fitted hip roof with a long ridge.
+// The hidden underside is omitted; both slopes meet along shared positions.
+function hipRoof(w, d, h) {
+  const x = w / 2, z = d / 2, ridge = d * 0.25;
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([
+    -x,0,-z, 0,h,-ridge, x,0,-z,
+    x,0,-z, 0,h,ridge, x,0,z, x,0,-z, 0,h,-ridge, 0,h,ridge,
+    x,0,z, 0,h,ridge, -x,0,z,
+    -x,0,z, 0,h,-ridge, -x,0,-z, -x,0,z, 0,h,ridge, 0,h,-ridge,
+  ], 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(36), 2));
+  g.computeVertexNormals();
+  g.userData.hipRoof = true;
+  return g;
 }
 
 // A detailed small-town / farm building: foundation, trim, varied overhanging
@@ -3933,8 +3999,7 @@ function makeBuilding(density, biome) {
     part(parts, new THREE.BoxGeometry(w + 0.4, 0.5, 0.3).translate(0, top + 0.6, d / 2 + 0.05), trim); // front parapet
   } else {
     const roofH = 1.4 + floors * 0.45;
-    const rad = Math.max(w, d) * 0.82 + 0.5;
-    part(parts, new THREE.ConeGeometry(rad, roofH, 4).rotateY(Math.PI / 4).translate(0, top + roofH / 2, 0), roofCol);
+    part(parts, hipRoof(w + 0.8, d + 0.8, roofH).translate(0, top, 0), roofCol);
     if (rand() < 0.75) {
       const cx = w * 0.25;
       const cz = d * 0.2;
@@ -3943,8 +4008,13 @@ function makeBuilding(density, biome) {
     }
     if (floors >= 2 && rand() < 0.5) {
       part(parts, new THREE.BoxGeometry(1.3, 1.1, 1.0).translate(0, top + 0.35, d / 2 - 0.3), wall);
-      part(parts, new THREE.ConeGeometry(1.1, 0.8, 4).rotateY(Math.PI / 4).translate(0, top + 1.2, d / 2 - 0.3), roofCol);
+      part(parts, hipRoof(1.6, 1.4, 0.8).translate(0, top + 0.8, d / 2 - 0.3), roofCol);
     }
+  }
+
+  if (wing) {
+    const { ww, wd, wh, wx, wz } = wing;
+    part(parts, hipRoof(ww + 0.5, wd + 0.5, 0.8).translate(wx, base + wh, wz), roofCol);
   }
 
   // Framed door (+ step).
@@ -4001,6 +4071,17 @@ function makeTower(density) {
   solid.castShadow = true;
   solid.receiveShadow = true;
   g.add(solid);
+  // Taper the whole assembled tower so bands and roof follow its walls.
+  // Same vertices and material batches, a softer toy-city silhouette.
+  g.traverse(o => {
+    if (!o.geometry) return;
+    const p = o.geometry.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const taper = 1 - 0.12 * clamp((p.getY(i) - base) / h, 0, 1);
+      p.setX(i, p.getX(i) * taper); p.setZ(i, p.getZ(i) * taper);
+    }
+    o.geometry.computeVertexNormals();
+  });
   g.userData.isBuilding = true;
   return g;
 }
@@ -4057,6 +4138,7 @@ function bodyMergeMaterial() {
     vertexColors: true,
     roughness: 0.94,
     emissive: 0xffcf86,
+    map: facadeTexture(),
     emissiveMap: windowTexture(),
     emissiveIntensity: 0.32,
   });
@@ -5838,6 +5920,13 @@ export function assetCatalog() {
         }
       }
       return g;
+    });
+  }
+  for (const name of ["alpine", "meadow", "desert"]) {
+    add("Landscape", `Mountain — ${name}`, () => {
+      const rock = MOUNTAIN_ROCK[name];
+      return new THREE.Mesh(mountainGeo(100 * rock.tall, 70, rock, { apron: rock.apron, ground: biome(name).ground }),
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
     });
   }
   add("Trees & plants", "Bush", () => makeBush());

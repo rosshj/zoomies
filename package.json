@@ -1,7 +1,7 @@
 {
   "name": "zoomies",
   "version": "0.1.0",
-  "description": "Cat kart racing — a three.js web game with accelerometer steering.",
+  "description": "Cat kart racing \u2014 a three.js web game with accelerometer steering.",
   "type": "module",
   "scripts": {
     "start": "npx --yes serve -l 8080 .",
@@ -24,7 +24,8 @@
     "check:tracks": "node tools/track-audit.mjs",
     "check:tracks:random": "TRACKS=random SEEDS=6 node tools/track-audit.mjs",
     "check:art": "node tools/art-check.mjs",
-    "check:scenery": "node tools/scenery-check.mjs"
+    "check:scenery": "node tools/scenery-check.mjs",
+    "check:landscape": "node tools/landscape-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

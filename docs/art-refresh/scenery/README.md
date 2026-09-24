@@ -1,5 +1,7 @@
 # Scenery and wildlife pass
 
+This records the intermediate scenery pass. The subsequent [landscape pass](../landscape/README.md) improves mountains and buildings and reduces geometry; see that report for the final combined performance figures.
+
 This extends the first cat/kart pass to the world around the race. It retains
 procedural generation, the shared wind field, instancing, spatial batching,
 quality-tier density, and existing animation update rates.

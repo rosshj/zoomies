@@ -20,8 +20,8 @@ const server = http.createServer(async (req, res) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let browser;
-const extra = { Barrel: 96, Cactus: 96, Cow: 208, Sheep: 144, Deer: 144, Goat: 232, Gull: 80, Pigeon: 88, Duck: 78, 'Sky train': 528, 'Tree — forest': 42 };
-const shots = new Set(['Cloud', 'Sky bird', 'Tree — meadow', 'Tree — forest', 'Tree — blossom', 'Tree — beach', 'Grass tuft', 'Wildflowers', 'Cow', 'Sheep', 'Pigeon', 'Gull', 'Crate', 'Barrel', 'Building — village', 'Hot-air balloon', 'Rock', 'Cactus', 'Duck', 'Goat', 'Sky train']);
+const extra = { 'Building — village': 6, 'Building — snowy': 6, Barrel: 96, Cactus: 96, Cow: 208, Sheep: 144, Deer: 144, Goat: 232, Gull: 80, Pigeon: 88, Duck: 78, 'Sky train': 528, 'Tree — forest': 42 };
+const shots = new Set(['Mountain — alpine', 'Mountain — meadow', 'Mountain — desert','Tower', 'City tower', 'Building — snowy','Cloud', 'Sky bird', 'Tree — meadow', 'Tree — forest', 'Tree — blossom', 'Tree — beach', 'Grass tuft', 'Wildflowers', 'Cow', 'Sheep', 'Pigeon', 'Gull', 'Crate', 'Barrel', 'Building — village', 'Hot-air balloon', 'Rock', 'Cactus', 'Duck', 'Goat', 'Sky train']);
 try {
   browser = await chromium.launch({
     executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -42,7 +42,7 @@ try {
       Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
       const v = window.__viewer; v.setBackground('#91b2c3'); v.setGameLook(true);
       [...document.querySelectorAll('#list button')].find(b => b.textContent === name).click();
-      v.freeze(0); v.orbit.theta = ['Cow', 'Sheep', 'Deer'].includes(name) ? -0.8 : 0.7; v.orbit.phi = 1.1; v.orbit.radius *= name.startsWith('Tree') ? 1.28 : 1.06;
+      v.freeze(0); v.orbit.theta = ['Cow', 'Sheep', 'Deer'].includes(name) ? -0.8 : 0.7; v.orbit.phi = 1.1; v.orbit.radius *= name === 'Tower' ? 1.35 : name.startsWith('Tree') ? 1.28 : 1.06;
       const root = v.scene.children.at(-1);
       let triangles = 0, batches = 0, invalid = 0, missingColors = 0;
       root.traverse(o => {
@@ -61,6 +61,7 @@ try {
     }, name);
     rows.push(row);
     if (row.invalid || row.missingColors) errors.push(`${name}: invalid buffers or missing painted attributes`);
+    if (name.startsWith('Mountain —') && (row.triangles > 504 || row.batches !== 1)) errors.push(`${name}: mountain budget exceeded`);
     const base = budgets[name];
     if (!process.env.BASELINE && base) {
       if (row.triangles > base[0] + (extra[name] || 0)) errors.push(`${name}: triangle budget exceeded (${row.triangles})`);

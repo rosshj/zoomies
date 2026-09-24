@@ -13,6 +13,8 @@ The catalog thumbnails are regenerated from the actual procedural models.
 
 [Scenery and wildlife extension: comparisons and budgets](scenery/README.md)
 
+[Landscape pass and final performance comparison](landscape/README.md)
+
 ## Compare
 
 | Main | This branch |
