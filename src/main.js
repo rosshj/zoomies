@@ -390,7 +390,7 @@ const _uVignette = uniform(0.12); // eased — corners were reading too dark
 // but sunset/night read too dark in the shadowed areas, so lift their darks more.
 // Night/sunset brightness now comes mostly from exposure + ambient (see MOODS), so
 // keep the shadow-lift modest here — too much lift greyed the blacks (washed out).
-const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.045 : TIME_OF_DAY === "sunset" ? 0.04 : 0.02;
+const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.05 : TIME_OF_DAY === "sunset" ? 0.045 : 0.035;
 const _uShadowLift = uniform(_shadowLiftTOD);
 // (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
 // full-screen copy. The look held up fine without it.)
@@ -1477,7 +1477,7 @@ function updateAtmosphere() {
     vis = _ss(0.02, 0.45, facing) * (1 - _ss(1.0, 2.4, off));
   }
   // Rain clouds the sun: fade the shafts/flare/backlight as it picks up.
-  const clear = 1 - 0.7 * weather.rainAmount;
+  const clear = 1 - 0.8 * weather.rainAmount;
   vis *= clear;
   godrayPass.uniforms.uVis.value = vis; // (flarePass is a dead stub — no write)
   // Refresh the shaft target every OTHER frame while the sun shows (soft, low-
@@ -7376,7 +7376,7 @@ function loopBody(now) {
     }
     _lightning = Math.max(0, _lightning - dt * 3.2);
     const flash = _lightning > 0 ? Math.max(0, 0.45 + 0.55 * Math.sin(_lightning * 42)) * _lightning : 0;
-    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend) * (1 + flash * 1.5) * _bgExp;
+    renderer.toneMappingExposure = moodExposure * (1 - 0.18 * wet - 0.12 * _snowBlend) * (1 + flash * 1.1) * _bgExp;
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();

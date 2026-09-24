@@ -125,10 +125,10 @@ export function shadowTexture() {
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-  // Darker + a broader solid core so the shadow reads from the chase cam (the
-  // old soft 0.5 core faded out within the kart's own footprint and vanished).
-  g.addColorStop(0, "rgba(0,0,0,0.82)");
-  g.addColorStop(0.55, "rgba(0,0,0,0.6)");
+  // A firm contact core with a lighter penumbra, baked into the same 64px
+  // mask. Same three gradient stops and runtime sampling cost.
+  g.addColorStop(0, "rgba(0,0,0,0.86)");
+  g.addColorStop(0.55, "rgba(0,0,0,0.36)");
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);

@@ -12,36 +12,36 @@ import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 // through, handled in the main loop.
 export const MOODS = [
   {
-    // Midday: a bright sunny afternoon (the original look).
+    // Midday: warm direct light, cool sky fill and restrained ground bounce.
     name: "Midday", tod: "midday", weather: "none",
-    sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.5,
+    sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.25,
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
-    hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
+    hemiSky: 0xcfe6ff, hemiGround: 0x626854, hemiI: 1.02,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
     sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
-    cloud: 0xffffff, sat: 1.3, contrast: 1.02,
+    cloud: 0xffffff, sat: 1.16, contrast: 1.02,
   },
   {
-    // Sunset: a low, warm sun; golden glow, deep blue overhead, long shadows.
+    // Sunset: warm direct light against cool sky fill, retaining long shadows.
     name: "Sunset", tod: "sunset", weather: "none",
-    sunDir: [0.62, 0.15, 0.42], sunColor: 0xffb066, sunI: 2.2,
+    sunDir: [0.62, 0.15, 0.42], sunColor: 0xffb066, sunI: 2.05,
     skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
-    hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.84,
+    hemiSky: 0x9baed6, hemiGround: 0x554a40, hemiI: 0.96,
     bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.13,
     sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.4, starI: 0.15,
-    cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
+    cloud: 0xffd6ad, sat: 1.18, contrast: 1.03,
   },
   {
     // Night: a cool moon, dark blue sky and stars. Kept "well lit" by moonlight +
     // (in scenery) warm street lamps and kart headlights, not pitch black. Snow is
     // darkened at the albedo level (in buildTerrain) so it doesn't read self-lit.
     name: "Night", tod: "night", weather: "none",
-    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.15,
+    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.08,
     skyTop: 0x060a1a, skyHorizon: 0x17263f, skyWarm: 0x17263f,
-    hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.56,
+    hemiSky: 0x465778, hemiGround: 0x171d29, hemiI: 0.62,
     bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.16,
     sunCore: [1.25, 1.35, 1.65], sunSize: 28, sunVisible: true, rays: false, starI: 1,
-    cloud: 0x2a3551, sat: 1.32, contrast: 1.1,
+    cloud: 0x2a3551, sat: 1.14, contrast: 1.04,
   },
 ];
 
