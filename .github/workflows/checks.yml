@@ -26,3 +26,5 @@ jobs:
         run: npm run check:progress
       - name: kart sim determinism
         run: npm run check:sim
+      - name: item and knockable prop logic
+        run: npm run check:items

@@ -46,6 +46,9 @@ export function toToon(m) {
     transparent: m.transparent,
     opacity: m.opacity,
     side: m.side,
+    // Road decals deliberately avoid writing depth: their transparent gaps
+    // must not occlude later puddles/skids. Preserve that through cel conversion.
+    depthWrite: m.depthWrite,
     emissive: m.emissive ? m.emissive.clone() : new THREE.Color(0x000000),
     emissiveMap: m.emissiveMap || null,
     emissiveIntensity: m.emissiveIntensity,

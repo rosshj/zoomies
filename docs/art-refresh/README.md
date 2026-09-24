@@ -21,6 +21,8 @@ The catalog thumbnails are regenerated from the actual procedural models.
 
 [Lighting and contact shadows: comparisons and rendering budget](lighting/README.md)
 
+[Final graphics audit: findings, fixes and remaining tradeoffs](audit/README.md)
+
 ## Compare
 
 | Main | This branch |

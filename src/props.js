@@ -39,7 +39,7 @@ const bandMat = new THREE.MeshStandardMaterial({ color: 0xe6e2d6, roughness: 0.5
 // Lazy creation keeps this module importable in non-DOM simulation tools.
 let propPaintReady = false;
 function preparePropPaint() {
-  if (propPaintReady) return;
+  if (propPaintReady || typeof document === "undefined") return;
   const c = document.createElement("canvas"); c.width = c.height = 128;
   const ctx = c.getContext("2d");
   ctx.fillStyle = "#e3c398"; ctx.fillRect(0, 0, 128, 128);

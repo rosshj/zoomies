@@ -1,4 +1,5 @@
-// Fixed-seed landscape views and resource census. ART_ROOT compares a checkout.
+// Fixed-seed landscape views and resource census. ART_ROOT compares a checkout;
+// BASELINE=1 allows the old per-lake materials while recording their counts.
 // Software WebGL2 resource counts are reproducible; they are NOT hardware FPS.
 import { chromium } from 'playwright-core';
 import http from 'node:http';
@@ -59,18 +60,21 @@ try {
     views.push(await page.evaluate(name=>({name,render:{...window.__zoomies.renderer.info.render},memory:{...window.__zoomies.renderer.info.memory}}),name));
   }
   const scene=await page.evaluate(()=>{
-    let triangles=0,mountainTriangles=0,batches=0,invalid=0,missingColors=0;
+    let triangles=0,mountainTriangles=0,batches=0,invalid=0,missingColors=0,waterMeshes=0;
+    const waterMaterials=new Set();
     window.__zoomies.scene.traverse(o=>{
       if(!o.isMesh||!o.geometry)return;
       const g=o.geometry, n=(g.index?.count||g.attributes.position.count)/3*(o.isInstancedMesh?o.count:1);
+      if(g.attributes.aShore && g.attributes.aLen){waterMeshes++;waterMaterials.add(o.material);}
       triangles+=n; if(o.userData.mountains)mountainTriangles+=n;
       batches+=Array.isArray(o.material)?g.groups.length:1;
       for(const a of Object.values(g.attributes))for(const v of a.array)if(!Number.isFinite(v))invalid++;
       if((Array.isArray(o.material)?o.material:[o.material]).some(m=>m.vertexColors)&&!g.attributes.color)missingColors++;
     });
-    return {triangles,mountainTriangles,batches,invalid,missingColors};
+    return {triangles,mountainTriangles,batches,invalid,missingColors,waterMeshes,waterMaterials:waterMaterials.size};
   });
   if(scene.invalid||scene.missingColors)errors.push('Invalid landscape geometry or missing colors');
+  if(!process.env.BASELINE && scene.waterMeshes && scene.waterMaterials!==1)errors.push('Identical lake materials must be shared');
   const result={scene,views,errors};
   await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result,null,2));

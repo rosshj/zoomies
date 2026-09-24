@@ -612,7 +612,7 @@ export function buildWorld(scene, track, opts = {}) {
   const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
   buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
-  const waters = buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
+  buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
   const birds = buildBirds(scene);
@@ -659,10 +659,8 @@ export function buildWorld(scene, track, opts = {}) {
         updateCritter(c, dt, time, heightAt);
       }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, ppos);
-      // (fireflies + water animate via the TSL `time` node; node materials drop the
-      // dummy .uniforms after they compile, so don't write to them.)
+      // Fireflies animate via the TSL time node (legacy uniform guard retained).
       if (fireflies && fireflies.material.uniforms) fireflies.material.uniforms.uTime.value = time;
-      for (const w of waters) if (w.uniforms) w.uniforms.uTime.value = time;
       // (the roadside cover is a group of TSL sprig meshes driven by the shared
       // wind field's own `time` node — nothing to tick from here. The old
       // GLSL-era uniform poke that lived here was already dead code, and threw
@@ -891,10 +889,8 @@ function carveLakes(lakes, x, z, h) {
 // by a per-vertex "shore" value (0 at the centre/spine, 1 at the bank) and a
 // "len" value along the water, so there's no concentric/pinwheel pattern.
 function makeWaterMaterial(darken = 1) {
-  // TSL node material (WebGPU). Now a METALLIC standard material so screen-space
-  // reflections (SSR, in main.js) mirror the scene on the lake. It keeps its
-  // stylised deep/shallow/foam colour as the base (so it reads blue, not pure
-  // mirror) and the ripples modulate roughness so the reflection shimmers. aShore:
+  // Shared TSL water: stylised deep/shallow/foam colour, a sky-tinted Fresnel
+  // reflection and ripples that modulate roughness. No SSR or reflection pass. aShore:
   // 0 at the centre/spine -> 1 at the bank. aLen: along the water. Animates off the
   // global TSL `time`. `darken` dims it at dusk/night.
   // depthWrite off: the water never needs to occlude anything by depth (the
@@ -936,21 +932,19 @@ function makeWaterMaterial(darken = 1) {
   mat.colorNode = col;
   mat.roughnessNode = float(0.05).add(ripple.mul(0.2)); // tight sun glints; ripples shimmer them
   mat.opacityNode = float(0.95); // a touch more opaque: the dark lake bed was muddying the colour
-  // Dummy uniforms bag so the existing `w.uniforms.uTime.value = …` write stays a
-  // harmless no-op (animation is via `time`).
-  mat.uniforms = { uTime: { value: 0 } };
   return mat;
 }
 
 function buildWater(scene, lakes, darken = 1) {
-  const mats = [];
+  if (!lakes.length) return;
+  // Every lake uses the same mood and TSL clock. Geometry attributes supply
+  // the shape-specific shoreline/ripples; separate materials only duplicate
+  // node graphs and renderer state. Keep meshes separate for culling/sorting.
+  const mat = makeWaterMaterial(darken);
   for (const L of lakes) {
-    const mat = makeWaterMaterial(darken);
     const mesh = L.ribbon ? ribbonWaterMesh(L, mat) : circleWaterMesh(L, mat);
     scene.add(mesh);
-    mats.push(mat);
   }
-  return mats;
 }
 
 function circleWaterMesh(L, mat) {
