@@ -1,5 +1,5 @@
-// Cheap sculpting and painted form detail. These run only while building assets;
-// no extra materials, texture samples, or per-frame work are needed.
+// Geometry painting runs only while building assets. The landscape grain
+// helpers below additionally share one small, precomputed texture.
 import * as THREE from 'three';
 
 export function paintSurface(geo, { low = 0.72, high = 1, faces = 0.08 } = {}) {
@@ -56,5 +56,53 @@ export function paintSolid(geo, hex) {
   const c = new THREE.Color(hex), values = new Float32Array(geo.attributes.position.count * 3);
   for (let i = 0; i < values.length; i += 3) values.set([c.r, c.g, c.b], i);
   geo.setAttribute('color', new THREE.BufferAttribute(values, 3));
+  return geo;
+}
+
+// One shared, linear-colour grain tile. Noise is baked once, never evaluated in
+// the fragment shader. Mipmaps suppress distant speckle; the small contrast
+// preserves the terrain palette and cel lighting. No world RNG is consumed.
+let _landscapeGrain = null;
+export function landscapeGrainTexture() {
+  if (_landscapeGrain) return _landscapeGrain;
+  const size = 128, data = new Uint8Array(size * size * 4);
+  const hash = (x, y) => {
+    let n = Math.imul(x + 71, 374761393) ^ Math.imul(y + 19, 668265263);
+    n = Math.imul(n ^ (n >>> 13), 1274126177);
+    return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+  };
+  const noise = (x, y, cells) => {
+    const px = x / size * cells, py = y / size * cells;
+    const ix = Math.floor(px), iy = Math.floor(py);
+    let fx = px - ix, fy = py - iy;
+    fx *= fx * (3 - 2 * fx); fy *= fy * (3 - 2 * fy);
+    const a = hash(ix % cells, iy % cells), b = hash((ix + 1) % cells, iy % cells);
+    const c = hash(ix % cells, (iy + 1) % cells), d = hash((ix + 1) % cells, (iy + 1) % cells);
+    return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+  };
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const grain = noise(x, y, 8) * 0.35 + noise(x, y, 32) * 0.45 + noise(x, y, 64) * 0.2;
+    const v = Math.round(210 + grain * 45), i = (y * size + x) * 4;
+    data[i] = data[i + 1] = data[i + 2] = v; data[i + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.name = 'Shared landscape grain';
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true; tex.anisotropy = 4; tex.needsUpdate = true;
+  return (_landscapeGrain = tex);
+}
+
+// Static oblique world projection: height participates so steep faces retain
+// detail. One sample instead of three-way projection; shared ground vertices
+// keep tile borders seamless. Call again after placing/conforming a mountain.
+export function landscapeGrainUV(geo) {
+  const p = geo.attributes.position;
+  const uv = geo.attributes.uv || new THREE.BufferAttribute(new Float32Array(p.count * 2), 2);
+  for (let i = 0; i < p.count; i++) {
+    uv.setXY(i, (p.getX(i) + p.getY(i) * 0.37) / 32, (p.getZ(i) + p.getY(i) * 0.23) / 32);
+  }
+  geo.setAttribute('uv', uv);
   return geo;
 }

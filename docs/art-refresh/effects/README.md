@@ -1,5 +1,7 @@
 # Procedural particles and road paint
 
+This records the initial effects pass. The later [grain and embers pass](../grain/README.md) replaces the star-shaped sparks with motion-aligned ember streaks.
+
 This pass adds scalloped, banded smoke/boost puffs; four-point spark glints;
 diamond ambient motes; tapered rain streaks; and fine grooves in skid ribbons.
 Driving particles still use the same two 64×64 textures, two instanced fields

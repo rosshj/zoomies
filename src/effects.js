@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { attribute, texture, color } from "three/tsl";
+import { attribute, texture, color, cameraViewMatrix, vec4, atan } from "three/tsl";
 
 // Cel particle effects (procedural sprites): rainbow toot clouds, boost trail,
 // drift/wall sparks, plus reusable tyre skid-mark quads.
@@ -42,7 +42,7 @@ export class EffectsManager {
     // One instanced billboard field per texture (both additive). Each is sized for
     // the whole budget so an all-smoke or all-spark frame still fits.
     this.smokeField = this._makeField(this.smokeTex);
-    this.sparkField = this._makeField(this.sparkTex);
+    this.sparkField = this._makeField(this.sparkTex, true);
 
     // Skid marks: ONE continuous ribbon mesh shared by every kart — a ring buffer
     // of quads where each new quad reuses the previous quad's far edge as its near
@@ -94,7 +94,7 @@ export class EffectsManager {
   // Build one instanced billboard field (additive) reading per-instance position,
   // colour, scale and opacity from instanced attributes. The texture's painted alpha
   // shapes each particle; the tint comes from aColor.
-  _makeField(tex) {
+  _makeField(tex, spark = false) {
     const cap = this.maxParts;
     const geo = new THREE.PlaneGeometry(1, 1);
     const mk = (n) => {
@@ -116,13 +116,21 @@ export class EffectsManager {
     mat.positionNode = attribute("aPos"); // sprite centre (world space)
     mat.scaleNode = attribute("aScale");
     mat.colorNode = attribute("aColor");
+    let aVelocity = null;
+    if (spark) {
+      aVelocity = mk(3); geo.setAttribute("aVelocity", aVelocity);
+      // Project velocity separately for each camera, including split-screen.
+      // Rotation happens per vertex; no extra draw, texture, or CPU trig.
+      const direction = cameraViewMatrix.mul(vec4(attribute("aVelocity"), 0)).xy;
+      mat.rotationNode = atan(direction.y, direction.x.add(0.00001));
+    }
     mat.opacityNode = texture(tex).a.mul(attribute("aOpacity")); // painted mask × fade
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.frustumCulled = false;
     mesh.renderOrder = 4;
     mesh.count = 0;
     this.scene.add(mesh);
-    return { mesh, aPos, aColor, aScale, aOpacity };
+    return { mesh, aPos, aColor, aScale, aOpacity, aVelocity };
   }
 
   _spawn(pos, color, opts) {
@@ -636,6 +644,7 @@ export class EffectsManager {
       f.aColor.setXYZ(idx, p.r, p.g, p.b);
       f.aScale.setX(idx, p.scale);
       f.aOpacity.setX(idx, p.opacity);
+      if (f.aVelocity) f.aVelocity.setXYZ(idx, p.v.x, p.v.y, p.v.z);
     }
     this._flush(this.smokeField, ns);
     this._flush(this.sparkField, np);
@@ -665,28 +674,33 @@ export class EffectsManager {
     field.aScale.needsUpdate = true;
     field.aOpacity.addUpdateRange(0, count);
     field.aOpacity.needsUpdate = true;
+    if (field.aVelocity) {
+      field.aVelocity.addUpdateRange(0, count * 3);
+      field.aVelocity.needsUpdate = true;
+    }
   }
 }
 
-// Painted cel puffs and four-point glints, baked into the same two 64px
-// textures. The existing two fields, particle budget and shader stay unchanged.
+// Painted cel puffs and tapered embers, baked into the same two 64px
+// textures. The existing two fields and particle budget stay unchanged.
 function softTexture(spark) {
   const c = document.createElement("canvas");
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   if (spark) {
-    const glow = ctx.createRadialGradient(32, 32, 0, 32, 32, 29);
-    glow.addColorStop(0, "rgba(255,255,255,1)");
-    glow.addColorStop(0.22, "rgba(255,255,255,0.95)");
-    glow.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = i * Math.PI / 4, r = i % 2 ? 8 : 30;
-      const x = 32 + Math.cos(a) * r, y = 32 + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    // A compact hot head and a tapered tail, oriented along particle motion.
+    // No star arms or lens-flare shape. The existing emitter tint supplies heat.
+    const img = ctx.createImageData(64, 64);
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+      const u = (x + 0.5) / 64, v = (y - 31.5) / 64;
+      const head = Math.exp(-Math.pow((u - 0.72) / 0.14, 2) - Math.pow(v / 0.065, 2));
+      const tail = 0.65 * Math.max(0, 1 - Math.abs(v) / (0.025 + u * 0.065)) * u;
+      const cap = Math.max(0, Math.min(1, u / 0.12, (1 - u) / 0.2));
+      const i = (y * 64 + x) * 4;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
+      img.data[i + 3] = Math.round(255 * Math.min(1, head + tail) * cap);
     }
-    ctx.closePath(); ctx.fill();
+    ctx.putImageData(img, 0, 0);
   } else {
     // One scalloped silhouette, with translucent painted bands and a narrow
     // feathered rim. One fill avoids bright seams where separate blobs overlap.

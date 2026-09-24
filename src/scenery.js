@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { paintSurface, rockGeometry, palmFrond } from "./scenery-art.js";
+import { paintSurface, rockGeometry, palmFrond, landscapeGrainTexture, landscapeGrainUV } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
@@ -1469,8 +1469,10 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
   const mat = new THREE.MeshStandardMaterial({
     vertexColors: true,
     roughness: 1,
+    map: landscapeGrainTexture(),
     flatShading: false, // smooth-shaded so the hills aren't stepped
   });
+  landscapeGrainUV(geo);
   // TILES. One 145k-vertex sheet is always partly in view, so every vertex of
   // it went through the vertex + shadow-receive path from every camera. Cut it
   // into an 8×8 grid of sub-meshes that SHARE the sheet's vertex buffers
@@ -1717,6 +1719,7 @@ function mountainGeo(h, rad, rock, opts = {}) {
   g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
   g.setIndex(idx);
+  landscapeGrainUV(g);
   g.userData.frac = frac; // consumed by place() once the peak is in world space
   g.computeVertexNormals();
   return g;
@@ -1726,7 +1729,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
   // One vertex-coloured material for every peak in the world: the rock palette,
   // the snowline and the gully shading all live in the vertex colours, so the
   // whole ring still bakes down to a single draw.
-  const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
+  const rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, map: landscapeGrainTexture() });
 
   // Peaks never move — collect every one and bake the lot into ONE mesh at the
   // end (~50 draw calls → 1). The ring surrounds the camera so half of it is in
@@ -1771,6 +1774,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     p.needsUpdate = true;
     geo.computeVertexNormals();
     delete geo.userData.frac; // don't carry it into the merge
+    landscapeGrainUV(geo);
     peakGeos.push(geo);
   };
   const _grnd = new THREE.Color();
@@ -5926,7 +5930,7 @@ export function assetCatalog() {
     add("Landscape", `Mountain — ${name}`, () => {
       const rock = MOUNTAIN_ROCK[name];
       return new THREE.Mesh(mountainGeo(100 * rock.tall, 70, rock, { apron: rock.apron, ground: biome(name).ground }),
-        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true }));
+        new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true, map: landscapeGrainTexture() }));
     });
   }
   add("Trees & plants", "Bush", () => makeBush());

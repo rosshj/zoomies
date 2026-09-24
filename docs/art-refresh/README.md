@@ -17,6 +17,8 @@ The catalog thumbnails are regenerated from the actual procedural models.
 
 [Particles and road paint: comparisons and submission savings](effects/README.md)
 
+[Landscape grain and replacement ember sparks: latest pass](grain/README.md)
+
 ## Compare
 
 | Main | This branch |

@@ -40,9 +40,12 @@ try {
     const fx = new EffectsManager(v.scene); window.__fx=fx;
     for(let i=0;i<6;i++) {
       fx._spawn(new THREE.Vector3(-5+i*2,3,0),new THREE.Color().setHSL(i/6,0.8,0.6),{size:2.2,life:2,opacity:0.85});
-      fx._spawn(new THREE.Vector3(-5+i*2,0.5,0),new THREE.Color().setHSL(i/6,0.7,0.7),{size:1.8,life:2,opacity:0.9,spark:true});
+      fx._spawn(new THREE.Vector3(-5+i*2,0.5,0),new THREE.Color().setHSL(i/6,0.7,0.7),{size:1.8,life:2,opacity:0.9,spark:true,v:new THREE.Vector3(Math.cos(i*.5)*6,Math.sin(i*.5)*6,2)});
     }
     fx.update(0);
+    if(fx.sparkField.aVelocity) {
+      for(const value of fx.sparkField.aVelocity.array)if(!Number.isFinite(value))throw Error('Invalid spark velocity');
+    }
     const track = new Track(); const road = track.group.children[0];
     window.__roadMat = toToon(road.material);
     window.__roadColor = new THREE.Color().fromBufferAttribute(road.geometry.attributes.color,5);
