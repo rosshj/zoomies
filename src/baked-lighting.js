@@ -69,10 +69,10 @@ function occlusion(entries, radius, ground) {
     bitangent.crossVectors(n,tangent);
     ray.origin.copy(p).addScaledVector(n,epsilon*2);
     let sum=0;
-    // Fixed seven-direction hemisphere: deterministic, no world RNG consumed.
-    for(let j=0;j<7;j++) {
+    // Fixed cosine-weighted hemisphere: more accurate generation, same RGB output.
+    for(let j=0;j<25;j++) {
       ray.direction.copy(n);
-      if(j) {const a=(j-1)*Math.PI/3;ray.direction.multiplyScalar(.6).addScaledVector(tangent,Math.cos(a)*.8).addScaledVector(bitangent,Math.sin(a)*.8);}
+      if(j) {const r=Math.sqrt((j-.5)/24),a=j*2.399963229728653;ray.direction.multiplyScalar(Math.sqrt(1-r*r)).addScaledVector(tangent,Math.cos(a)*r).addScaledVector(bitangent,Math.sin(a)*r);}
       let d=radius;
       if(ground!==null && ray.direction.y<-.001) {
         const floor=(ground-ray.origin.y)/ray.direction.y;if(floor>=0)d=Math.min(d,floor);
@@ -80,7 +80,7 @@ function occlusion(entries, radius, ground) {
       d=nearest(tree,d);
       sum+=Math.pow(1-d/radius,2);
     }
-    values[i]=sum/7;duplicates.set(id,values[i]);
+    values[i]=sum/25;duplicates.set(id,values[i]);
   }
   // A bounded FIFO/LRU cache of scalar shading, never full scene geometry.
   if(values.length<=MAX_VALUES) {

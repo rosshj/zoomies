@@ -959,7 +959,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     geo.computeVertexNormals();
     deckGeometries.push(geo);
     const mesh = new THREE.Mesh(geo, concrete);
-    mesh.castShadow = true;
+    mesh.castShadow = true; mesh.userData.staticScenery = true;
     scene.add(mesh);
 
     if (!piers) return;
@@ -1071,7 +1071,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       geo.setIndex(indices);
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, concrete);
-      mesh.castShadow = true;
+      mesh.castShadow = true; mesh.userData.staticScenery = true;
       scene.add(mesh);
     };
 
@@ -1223,7 +1223,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
           mesh.setMatrixAt(i, m);
         });
         mesh.instanceMatrix.needsUpdate = true;
-        mesh.castShadow = true;
+        mesh.castShadow = true; mesh.userData.staticScenery = true;
         scene.add(mesh);
       }
       emitBatch();
@@ -1320,7 +1320,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       mesh.setMatrixAt(i, m);
     });
     mesh.instanceMatrix.needsUpdate = true;
-    mesh.castShadow = true;
+    mesh.castShadow = true; mesh.userData.staticScenery = true;
     scene.add(mesh);
   }
 
@@ -1361,7 +1361,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.castShadow = true;
+    mesh.castShadow = true; mesh.userData.staticScenery = true;
     mesh.layers.set(1);
     scene.add(mesh);
   }
@@ -1428,7 +1428,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   geo.setIndex(indices);
   geo.computeVertexNormals();
   const tube = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
-  tube.castShadow = true; // occludes the sun -> naturally dark interior
+  tube.castShadow = true; tube.userData.staticScenery = true; // occludes the sun -> naturally dark interior
   tube.receiveShadow = false;
   scene.add(tube);
 
@@ -1453,7 +1453,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     ring.position.set(p.x, p.y + 0.4, p.z);
     ring.rotation.y = yaw;
     ring.scale.y = (APEX + 1.5) / (halfW + 1.2);
-    ring.castShadow = true;
+    ring.castShadow = true; ring.userData.staticScenery = true;
     scene.add(ring);
   }
 
@@ -1507,7 +1507,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     // guarantees no camera can get inside the shell — so the interior skin
     // never renders for anyone and backface culling halves the fill cost.
     const shell = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
-    shell.castShadow = true;
+    shell.castShadow = true; shell.userData.staticScenery = true;
     shell.receiveShadow = true;
     scene.add(shell);
 
@@ -1547,7 +1547,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
       });
       rockMesh.instanceMatrix.needsUpdate = true;
       if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
-      rockMesh.castShadow = true;
+      rockMesh.castShadow = true; rockMesh.userData.staticScenery = true;
       scene.add(rockMesh);
     }
   }

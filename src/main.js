@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { installSceneryRendering } from "./scenery-shadows.js";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
 import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
@@ -333,6 +334,8 @@ let DIFFICULTY = "medium"; // default for a fresh profile: the middle of the lad
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
 const { renderer, scene, camera, sun, applyMood, setFogScale, ready: rendererReady, skyMesh, starField } = createScene();
+installSceneryRendering(renderer, sun);
+const _lodViews = [camera];
 // Debug hook (console / headless tooling): inspect the live scene graph and
 // renderer counters without instrumenting a build.
 window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
@@ -1516,6 +1519,16 @@ function updateAtmosphere() {
 // minimap while playing.
 function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
+  // Upload/draw both LOD variants under the splash. Normal racing only selects
+  // already-warmed geometry; a first distant switch should not compile mid-race.
+  if (_warmAllFrames > 0) {
+    for (const e of world.lod.entries) e.mesh.geometry = _warmAllFrames % 2 ? e.far : e.near;
+  } else {
+    const multi = splitActive && player2 && state !== State.MENU && _sCams.length;
+    _lodViews.length = multi ? splitPlayers.length : 1;
+    for (let i = 0; i < _lodViews.length; i++) _lodViews[i] = multi ? _sCams[i].camera : camera;
+    world.lod.update(_lodViews);
+  }
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   let _t = performance.now();
   // Versus (2P): the shared camera mirrors P1's view so everything that reads
@@ -2068,7 +2081,7 @@ const qualityBalBtn = document.getElementById("set-quality-balanced");
 // and the quad itself — a shadow-casting shadow is an Escher print.
 function applyKartShadowMode(kart) {
   if (!kart || !kart.group) return;
-  const real = quality === "high";
+  const real = quality === "high" && !saverOn;
   if (kart.groundShadow) kart.groundShadow.visible = !real;
   kart.group.traverse((o) => {
     if (!o.isMesh || o === kart.shadowQuad || o === kart.shieldMesh) return;
@@ -2097,10 +2110,9 @@ function applyQuality(q, persist = true) {
   const high = q === "high";
   // Real-time shadows: the frustum stays world-fitted (a moving boundary
   // pops long shadows — tried and rejected, see updateAtmosphere), but on
-  // High the MAP re-renders — at most 30Hz, and only while a kart is moving
-  // (see _tickShadow) — so karts cast true shadows (their quads hide) and the
-  // canopies' wind sway animates in the shadows too. The map is never on
-  // three's per-frame autoUpdate; Battery saver keeps it fully static.
+  // High the map re-renders at most 30Hz while karts move. All scenery
+  // uses its original shadow geometry regardless of visual LOD. Battery saver
+  // freezes scenery shadows and restores the karts' projected shadows.
   sun.shadow.autoUpdate = false;
   _shadowLive = high && !saverOn;
   sun.shadow.needsUpdate = true; // one fresh map for the new mode (static tiers hold it)
@@ -7575,7 +7587,7 @@ rendererReady
     _boot.renderer = performance.now();
     // Draw the whole world for the first frames (see warmAllStep); when the
     // pass retires, dismiss the native splash and queue the kart-family warm.
-    beginWarmAll(2, () => {
+    beginWarmAll(3, () => { // two unculled draws: full detail, then distant geometry
       // Only now dismiss the splash (and apply the rest of the native chrome):
       // the warm frames' compile stall must happen BEHIND the splash, not under
       // a frozen first frame. No-op on the web.

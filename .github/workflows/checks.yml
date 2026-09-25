@@ -31,3 +31,5 @@ jobs:
 
       - name: procedural baked-lighting invariants
         run: npm run check:baked-lighting
+      - name: procedural LOD and world-shelter invariants
+        run: npm run check:runtime-art

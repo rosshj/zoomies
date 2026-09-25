@@ -1,4 +1,6 @@
 import { LivingDetails, buildBiomeEvents, makeSailboat } from './living-scenery.js';
+import { bakeWorldShelter } from './world-shelter.js';
+import { SceneryLOD } from './scenery-lod.js';
 import { bakeScenery, bakeGeometry, bakeGroundContacts, bakeBuildingShelter } from './baked-lighting.js';
 import { clearTerrainGrid, clearMountainPosition } from './terrain-clearance.js';
 import { HABITAT_ASSETS, makeHabitatAsset } from './habitat-assets.js';
@@ -626,6 +628,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildRoadside(scene, track, heightAt, livingDetails); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
+  bakeWorldShelter(scene); // neighbouring shelter, before shared static batching
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
@@ -646,8 +649,25 @@ export function buildWorld(scene, track, opts = {}) {
   const biomeEvents=buildBiomeEvents(scene,track,lakes,heightAt,biomeNameAt,lakeDist);
   scene.userData.livingDetails={meshes:livingDetails.meshes,flags:livingDetails.flags};
 
+  const lod=new SceneryLOD();
+  // Build after placement, painting and batching. Textured facades retain UV
+  // seams; clustering only removes detail smaller than a pixel at this range.
+  scene.traverse(o=>{
+    if(!o.isMesh)return;
+    if(['pine','acacia','blossom','willow'].includes(o.userData.canopyShape)){
+      const far=foliageGeoFor(o.userData.canopyShape,true).clone();
+      // Keep the same crown extents/attachment height despite fewer segments.
+      o.geometry.computeBoundingBox();far.computeBoundingBox();
+      const a=o.geometry.boundingBox,b=far.boundingBox,as=a.getSize(new THREE.Vector3()),bs=b.getSize(new THREE.Vector3());
+      const ac=a.getCenter(new THREE.Vector3()),bc=b.getCenter(new THREE.Vector3());
+      far.translate(-bc.x,-bc.y,-bc.z);far.scale(as.x/bs.x,as.y/bs.y,as.z/bs.z);far.translate(ac.x,ac.y,ac.z);
+      bakeBendWeights(far,o.userData.canopyShape);far.setAttribute('aWindRoot',o.geometry.attributes.aWindRoot);
+      lod.add(o,0,300,far);
+    }
+    else if(o.userData.staticScenery && !o.isInstancedMesh && !o.material.map && !o.material.emissiveMap)lod.add(o,.45,300);
+  });
   return {
-    grass,
+    grass, lod,
     biomeEvents, livingDetails,
     lakes, // water entries (level/floor/spine) — debug probes verify carve vs water level
     heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
@@ -2473,15 +2493,16 @@ function buildTrees(scene, track, heightAt, flatten) {
 // → one InstancedMesh / draw call per shape, not per tree. flatShading on the
 // shared material keeps the merged blobs reading as faceted toon foliage.
 const _foliageGeoCache = {};
-function foliageGeoFor(shape) {
-  if (_foliageGeoCache[shape]) return _foliageGeoCache[shape];
+function foliageGeoFor(shape, distant = false) {
+  const cacheKey = distant ? shape + ":far" : shape;
+  if (_foliageGeoCache[cacheKey]) return _foliageGeoCache[cacheKey];
   let g;
   if (shape === "pine") {
     // Three overlapping bough skirts. One extra ring per tier rounds the
     // silhouette into a bell rather than a straight paper cone (+42 triangles
     // per pine, still a single instanced canopy draw).
     const tier = (r, h, y) => {
-      const geo = new THREE.ConeGeometry(r, h, 7, 2);
+      const geo = new THREE.ConeGeometry(r, h, 7, distant ? 1 : 2);
       const p = geo.attributes.position;
       for (let i = 0; i < p.count; i++) {
         if (Math.abs(p.getY(i)) < 0.001) {
@@ -2505,7 +2526,7 @@ function foliageGeoFor(shape) {
   } else if (shape === "acacia") {
     // One broad umbrella skin instead of two intersecting flattened spheres.
     // 168 triangles (was 172), with a shallow underside and a lifted crown.
-    g = new THREE.SphereGeometry(3, 12, 8);
+    g = new THREE.SphereGeometry(3, distant ? 8 : 12, distant ? 5 : 8);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const t = p.getY(i) / 3;
@@ -2514,7 +2535,7 @@ function foliageGeoFor(shape) {
   } else if (shape === "blossom") {
     // A single molded blossom crown: broad lobes flow into one another rather
     // than six visibly intersecting balls. 320 triangles instead of 480.
-    g = new THREE.IcosahedronGeometry(2.35, 3);
+    g = new THREE.IcosahedronGeometry(2.35, distant ? 1 : 3);
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
@@ -2523,7 +2544,7 @@ function foliageGeoFor(shape) {
     }
   } else if (shape === "willow") {
     // One pleated, drooping crown; broad lobes hang around the trunk.
-    g = new THREE.SphereGeometry(2.5, 12, 8);
+    g = new THREE.SphereGeometry(2.5, distant ? 8 : 12, distant ? 5 : 8);
     const p = g.attributes.position;
     for (let i=0;i<p.count;i++) {
       const x=p.getX(i), y=p.getY(i), z=p.getZ(i), a=Math.atan2(z,x);
@@ -2572,7 +2593,7 @@ function foliageGeoFor(shape) {
   }
   // Local branch-layer shelter is cached with the prototype, not per tree.
   if(shape!=='palm')g=bakeGeometry(g,{radius:1.6,strength:.20,ground:null});
-  _foliageGeoCache[shape] = g;
+  _foliageGeoCache[cacheKey] = g;
   return g;
 }
 
@@ -2776,8 +2797,8 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     const posts = new THREE.InstancedMesh(postGeo, postMat, chunk.length);
     const heads = new THREE.InstancedMesh(headGeo, postMat, chunk.length);
     const bulbs = new THREE.InstancedMesh(bulbGeo, bulbMat, chunk.length);
-    posts.castShadow = true;
-    heads.castShadow = true;
+    posts.castShadow = true;posts.userData.staticScenery=true;
+    heads.castShadow = true;heads.userData.staticScenery=true;
     chunk.forEach((sp, i) => {
       pos.set(sp.x, sp.y + POST_H / 2, sp.z);
       posts.setMatrixAt(i, m.compose(pos, ID, sc));
@@ -3617,7 +3638,7 @@ function buildFootbridge(scene, track, heightAt, frac, woodMat, lit, level, moti
   const geo = bakeGeometry(mergeGeometries(parts),{radius:1.5,strength:.25,ground:null});
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, woodMat);
-  mesh.castShadow = true;
+  mesh.castShadow = true;mesh.userData.staticScenery=true;
   mesh.receiveShadow = true;
   mesh.position.set(p.x, p.y, p.z);
   mesh.rotation.y = yaw;
@@ -3696,7 +3717,7 @@ function buildCacti(scene, spots) {
   const geo = cactusGeometry();
   const mat = new THREE.MeshStandardMaterial({ color: 0x4f8a4a, roughness: 1, flatShading: true, vertexColors: true });
   const cacti = new THREE.InstancedMesh(geo, mat, spots.length);
-  cacti.castShadow = true;
+  cacti.castShadow = true;cacti.userData.staticScenery=true;
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const s = new THREE.Vector3();
@@ -3819,6 +3840,7 @@ function buildRocks(scene, track, heightAt, flatten) {
     rocks.instanceMatrix.needsUpdate = true;
     fitInstanceBounds(rocks);
     rocks.layers.set(1); // excluded from the rear-view mirror render
+    rocks.userData.staticScenery=true;
     scene.add(rocks);
   }
 }
@@ -4353,6 +4375,7 @@ function batchBuildings(scene) {
     const mesh = new THREE.Mesh(merged, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
+    mesh.userData.staticScenery = true;
     mesh.layers.set(1); // match the originals (scenery layer)
     scene.add(mesh);
   };
@@ -4431,6 +4454,7 @@ function batchStaticProps(scene) {
       const mesh = new THREE.Mesh(merged, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.userData.staticScenery = !material.userData.swayLoose && !material.userData.windFlex;
       mesh.layers.set(1); // match the originals (scenery layer, out of the mirror)
       scene.add(mesh);
     }

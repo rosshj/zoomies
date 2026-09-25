@@ -21,13 +21,14 @@ try {
    for(let repeat=0;repeat<2;repeat++) {
     setSeed('SHADE');const track=new Track({mode:'custom',seed:'SHADE',size:.5,curviness:.45,twist:.4,hilliness:.25,hills:.4,biomes:[biome]});
     const scene=new THREE.Scene(),before=lighting?{...lighting.bakeStats}:{};
-    const start=performance.now();buildWorld(scene,track,{detail:1});const buildMs=performance.now()-start;
+    const start=performance.now();const world=buildWorld(scene,track,{detail:1});const buildMs=performance.now()-start;
     let invalid=0,triangles=0;scene.traverse(o=>{if(o.geometry){for(const v of o.geometry.attributes.color?.array||[])if(!Number.isFinite(v)||v<0)invalid++;if(o.isMesh)triangles+=(o.geometry.index?.count||o.geometry.attributes.position.count)/3*(o.isInstancedMesh?o.count:1);}});
     const stats=lighting?Object.fromEntries(Object.entries(lighting.bakeStats).map(([k,v])=>[k,v-before[k]])):null;
     const ground=scene.userData.groundContactBake;
     if(invalid)throw Error('Invalid baked colours');
     if(!baseline && (!ground?.shaded || !stats.vertices))throw Error('Missing world bake coverage');
-    runs.push({buildMs,triangles,invalid,bake:stats,ground});
+    for(const e of world.lod?.entries||[])for(const a of Object.values(e.far.attributes))if(!a.array.every(Number.isFinite))throw Error('Invalid distant geometry');
+    runs.push({buildMs,triangles,invalid,bake:stats,ground,context:scene.userData.worldShelter,lod:world.lod?.stats});
    }
    return {biome,runs};
   },{biome,baseline:!!process.env.BASELINE});

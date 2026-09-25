@@ -30,6 +30,8 @@
     "check:effects-art": "node tools/effects-art-check.mjs",
     "check:biomes": "node tools/biome-dressing-check.mjs",
     "check:terrain": "node tools/terrain-clearance-check.mjs",
+    "check:runtime-art": "node tools/runtime-art-check.mjs",
+    "check:scenery-shadows": "node tools/scenery-shadow-check.mjs",
     "check:baked-lighting": "node tools/baked-lighting-check.mjs",
     "check:living": "node tools/living-world-check.mjs"
   },

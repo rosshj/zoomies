@@ -33,7 +33,7 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: process.env.NATIVE ? [] : ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
 });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const errors = [];
@@ -41,6 +41,7 @@ const page = await ctx.newPage();
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 
+if (process.env.QUALITY) await ctx.addInitScript(q => localStorage.setItem('zoomies-quality-v2', q), process.env.QUALITY);
 const SPLITFX = process.env.SPLITFX === "1";
 await ctx.addInitScript((fx) => {
   try { localStorage.setItem("zoomies-fps", "1"); } catch {}
@@ -110,6 +111,15 @@ check("split cams share the game camera's layer mask",
 check("six karts, two humans", seam.karts === 6 && seam.humans === 2, seam);
 check("split HUD is up", seam.hudSplit && seam.chipsShown, seam);
 check("P2 wears the startline pick (Snow · Clover)", seam.names.includes("Snow (P2)"), seam);
+
+// Observe the actual render integration, not just the LOD unit's camera API.
+await page.evaluate(() => {
+  const lod=window.__zoomies.world.lod,update=lod.update;
+  lod.update=function(cameras){window.__lodCameraCount=cameras.length;return update.call(this,cameras);};
+});
+await page.waitForTimeout(100);
+const lodViews=await page.evaluate(()=>window.__lodCameraCount);
+check("scenery LOD considers both player cameras", lodViews===2, {lodViews});
 
 // Drive: P1 holds RT (pad), P2 holds ArrowUp (keyboard). Both must move —
 // independently (P2's key must not budge P1).
@@ -267,6 +277,7 @@ check("both human rows tinted, the winner alone gold", fin.humanRows === 2 && fi
 check("no treats paid for a couch match", fin.earningsHidden && !fin.noteHidden && /no treats/.test(fin.note), fin);
 
 console.log(JSON.stringify({ errors }, null, 2));
-await browser.close();
+await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);
+server.closeAllConnections();
 server.close();
 process.exit(errors.length ? 1 : 0);

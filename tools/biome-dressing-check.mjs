@@ -68,4 +68,5 @@ try {
   }
   if(process.env.OUT)await fs.writeFile(process.env.OUT,JSON.stringify(results,null,2));
   if(results.some(r=>r.errors.length))process.exitCode=1;
-} finally {await browser.close();server.closeAllConnections();server.close();}
+} finally {await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);server.closeAllConnections();server.close();}
+process.exit(process.exitCode||0);
