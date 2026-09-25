@@ -915,6 +915,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   const cTop = new THREE.Color(0xb5b0a6);
   const cUnder = new THREE.Color(0x7e7a72);
   const pierBoxes = [];
+  const deckGeometries = [];
 
   // Deck (skirts + underside) for a run; `depths` lets the dam sink one skirt
   // to the valley floor.
@@ -956,6 +957,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
+    deckGeometries.push(geo);
     const mesh = new THREE.Mesh(geo, concrete);
     mesh.castShadow = true;
     scene.add(mesh);
@@ -1299,6 +1301,12 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       p.setXYZ(i,p.getX(i)*w,y,p.getZ(i)*w);
     }
     pierGeo.computeVertexNormals();paintSurface(pierGeo,{low:.58});
+    // Contact at the deck joint and foot, baked into the shared pier prototype.
+    const pc=pierGeo.attributes.color;
+    for(let i=0;i<p.count;i++) {
+      const y=p.getY(i),s=1-.27*Math.max(0,y*2)**2-.08*Math.max(0,-y*2)**2;
+      pc.setXYZ(i,pc.getX(i)*s,pc.getY(i)*s,pc.getZ(i)*(s+.015));
+    }
     const mesh = new THREE.InstancedMesh(pierGeo, mat, pierBoxes.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
@@ -1314,6 +1322,22 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     mesh.instanceMatrix.needsUpdate = true;
     mesh.castShadow = true;
     scene.add(mesh);
+  }
+
+  // Actual support locations only; skipped piers do not leave phantom marks.
+  for(const geo of deckGeometries) {
+    const p=geo.attributes.position,c=geo.attributes.color;
+    for(let i=0;i<p.count;i++) {
+      if(i%4===0 || i%4===3)continue; // sunlit upper edge stays bright
+      let cover=0;
+      for(const b of pierBoxes) {
+        const dx=p.getX(i)-b.x,dz=p.getZ(i)-b.z,cs=Math.cos(b.yaw),sn=Math.sin(b.yaw);
+        const outside=Math.hypot(Math.max(0,Math.abs(cs*dx-sn*dz)-b.sx/2),Math.max(0,Math.abs(sn*dx+cs*dz)-b.sz/2));
+        const dy=Math.abs(p.getY(i)-(b.y+b.sy/2));
+        cover=Math.max(cover,Math.max(0,1-outside/5)*Math.max(0,1-dy/3));
+      }
+      const s=1-.24*cover;c.setXYZ(i,c.getX(i)*s,c.getY(i)*s,c.getZ(i)*(1-.21*cover));
+    }
   }
 
   if (rimChunks.length) {
@@ -1384,8 +1408,12 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     for (let k = 0; k <= ARC; k++) {
       const [sx, sy] = profile[k];
       positions.push(p.x + side.x * sx, p.y + 0.2 + sy, p.z + side.z * sx);
-      const c = sy > APEX * 0.55 ? cLo : cIn; // darker toward the crown
-      colors.push(c.r, c.g, c.b);
+      // Broad entrance daylight fades with actual distance into the tunnel.
+      // The open mouths stay readable; recesses transition smoothly to shelter.
+      const roofBlend=smooth01(sy/APEX),c=cIn.clone().lerp(cLo,roofBlend);
+      const depth=Math.min(i-t0,t1-i)*track.length/N;
+      const shade=.88+.24*Math.exp(-depth/14);
+      colors.push(c.r*shade,c.g*shade,c.b*(shade+.015*roofBlend));
     }
     if (i < t1) {
       const a = row * (ARC + 1);

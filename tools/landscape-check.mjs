@@ -39,7 +39,7 @@ try {
   const cfg = process.env.RECIPE_FILE ? JSON.parse(await fs.readFile(process.env.RECIPE_FILE,'utf8')) : recipe ? {mode:'custom',...recipe,biomes:[process.env.BIOME]} : null;
   const world = cfg ? Buffer.from(JSON.stringify({cfg,seed:cfg.seed,laps:3})).toString('base64url') : '';
 
-  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1&w=${world}${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
+  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1&seed=${encodeURIComponent(process.env.SEED || "SHADE")}&w=${world}${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__zoomies?.track,null,{timeout:150000});
   await page.evaluate(()=>{
     const z=window.__zoomies, c=z.camera;

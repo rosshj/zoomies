@@ -2,6 +2,7 @@
 // the world's existing static batches and animals use its bounded amble loop.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { bakeScenery } from './baked-lighting.js';
 import { paintSurface } from './scenery-art.js';
 import { dressingFor } from './biome-dressing.js';
 
@@ -158,5 +159,5 @@ export function makeHabitatAsset(kind, biome, material) {
   mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
   if(spec.animal)group.userData.wander={range:kind==='frog'?2:4,speed:kind==='tortoise'?.35:kind==='seal'?.55:1.1,bob:kind==='hare'?.12:.025};
   else group.userData.staticProp=true;
-  return group;
+  return spec.animal ? group : bakeScenery(group);
 }

@@ -28,3 +28,6 @@ jobs:
         run: npm run check:sim
       - name: item and knockable prop logic
         run: npm run check:items
+
+      - name: procedural baked-lighting invariants
+        run: npm run check:baked-lighting

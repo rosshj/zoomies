@@ -1,6 +1,7 @@
 // Geometry painting runs only while building assets. The landscape grain
 // helpers below additionally share one small, precomputed texture.
 import * as THREE from 'three';
+import { bakeGeometry } from './baked-lighting.js';
 
 export function paintSurface(geo, { low = 0.72, high = 1, faces = 0.08 } = {}) {
   geo.computeBoundingBox();
@@ -28,7 +29,7 @@ export function rockGeometry(radius = 1) {
     p.setXYZ(i, x * radius * bulge, Math.max(-0.55, y) * radius, z * radius * (1 + 0.1 * Math.cos(x * 4 - y * 2)));
   }
   g.computeVertexNormals();
-  return paintSurface(g, { low: 0.64, high: 1, faces: 0.12 });
+  return bakeGeometry(paintSurface(g, { low: 0.64, high: 1, faces: 0.12 }), {radius:.8,strength:.2,ground:null});
 }
 
 // Six triangles, like the old triangular prism, but a pointed, arched frond.

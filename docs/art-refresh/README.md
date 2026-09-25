@@ -1,3 +1,5 @@
+Latest: [Procedurally baked shelter and contact shading](baked-lighting/README.md).
+
 Latest: [Living scenery, shared wind, wildlife reactions and biome events](living-world/README.md).
 
 Latest: [Procedural road clearance fix](road-clearance/README.md).

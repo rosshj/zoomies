@@ -1,4 +1,5 @@
 import { LivingDetails, buildBiomeEvents, makeSailboat } from './living-scenery.js';
+import { bakeScenery, bakeGeometry, bakeGroundContacts, bakeBuildingShelter } from './baked-lighting.js';
 import { clearTerrainGrid, clearMountainPosition } from './terrain-clearance.js';
 import { HABITAT_ASSETS, makeHabitatAsset } from './habitat-assets.js';
 import { dressingFor, allowsDressing, habitatFits } from "./biome-dressing.js";
@@ -158,7 +159,7 @@ function rbox(w, h, d, r = 0.15, seg = 1) {
 // extruding a rounded-rectangle footprint; centred like BoxGeometry so callers
 // can position it the same way. UVs are normalised so emissive window maps tile
 // cleanly around the walls instead of clamping/streaking.
-function roundedColumn(w, h, d, r) {
+function roundedColumn(w, h, d, r, steps = 1) {
   r = Math.max(0.01, Math.min(r, w / 2 - 0.01, d / 2 - 0.01));
   const hw = w / 2, hd = d / 2;
   const s = new THREE.Shape();
@@ -183,7 +184,7 @@ function roundedColumn(w, h, d, r) {
       return [a, b, c, dd].map((i) => new THREE.Vector2(U(i), V(i)));
     },
   };
-  const geo = new THREE.ExtrudeGeometry(s, { depth: h, bevelEnabled: false, curveSegments: 3, UVGenerator: uvGen });
+  const geo = new THREE.ExtrudeGeometry(s, { depth: h, steps, bevelEnabled: false, curveSegments: 3, UVGenerator: uvGen });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, -h / 2, 0); // centre vertically like BoxGeometry
   return geo;
@@ -2569,6 +2570,8 @@ function foliageGeoFor(shape) {
         c.getX(i) * tierPaint.getX(i), c.getY(i) * tierPaint.getY(i), c.getZ(i) * tierPaint.getZ(i));
     }
   }
+  // Local branch-layer shelter is cached with the prototype, not per tree.
+  if(shape!=='palm')g=bakeGeometry(g,{radius:1.6,strength:.20,ground:null});
   _foliageGeoCache[shape] = g;
   return g;
 }
@@ -3611,7 +3614,7 @@ function buildFootbridge(scene, track, heightAt, frac, woodMat, lit, level, moti
     }
   }
 
-  const geo = mergeGeometries(parts);
+  const geo = bakeGeometry(mergeGeometries(parts),{radius:1.5,strength:.25,ground:null});
   geo.computeVertexNormals();
   const mesh = new THREE.Mesh(geo, woodMat);
   mesh.castShadow = true;
@@ -3801,6 +3804,7 @@ function buildRocks(scene, track, heightAt, flatten) {
     spot.sc = 1 + rand() * 3;
     spot.rot = [rand() * 3, rand() * 3, rand() * 3];
   }
+  scene.userData.rockContacts=spots.map(s=>({x:s.x,z:s.z,y:s.y,rx:s.sc*.7,rz:s.sc*.7,yaw:s.rot[1]}));
   for (const chunk of chunkByCell(spots, 320)) { // sparse: wider cells keep the draw count down
     const rocks = new THREE.InstancedMesh(geo, mat, chunk.length);
     chunk.forEach((spot, i) => {
@@ -3821,6 +3825,8 @@ function buildRocks(scene, track, heightAt, flatten) {
 
 function buildRoadside(scene, track, heightAt, motion) {
   scene.userData.biomePlacements ||= [];
+  const contacts=scene.userData.rockContacts || [];
+  delete scene.userData.rockContacts;
   const N = track.samples;
   const pts = track._pts;
   const tans = track._tans;
@@ -3864,12 +3870,17 @@ function buildRoadside(scene, track, heightAt, motion) {
     const kind = pick(dressingFor(biome.name)[category]);
     if (!habitatFits(biomeNameAt, x, z, name => allowsDressing(name, kind), 8)) return;
     const prop = makeDressing(kind, biome, .65);
+    // Only structure footprints: trees already have their own contact batch,
+    // while moving wildlife must never leave a baked patch behind.
+    const contactKinds=['farmhouse','barn','silo','tower','store','cabin','chalet','hut','stiltHut','adobe','pavilion','ruin','lifeguard','birdHide','lookout','well','trough','apiary','cairn'];
+    const bounds=contactKinds.includes(kind)?new THREE.Box3().setFromObject(prop):null;
     prop.userData.dressing = { kind, biome: biome.name, x, z };
     scene.userData.biomePlacements.push(prop.userData.dressing);
     prop.position.set(x, lo + 0.04, z);
     prop.rotation.y = faceRoad
       ? Math.atan2(-side.x * dir, -side.z * dir) + (rand() - 0.5) * 0.4
       : rand() * Math.PI * 2;
+    if(bounds){const center=bounds.getCenter(new THREE.Vector3()).applyAxisAngle(up,prop.rotation.y);contacts.push({x:x+center.x,z:z+center.z,y:lo,rx:(bounds.max.x-bounds.min.x)/2,rz:(bounds.max.z-bounds.min.z)/2,yaw:prop.rotation.y});}
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
     motion.decorate(scene,prop,kind,biome);
@@ -3937,6 +3948,7 @@ function buildRoadside(scene, track, heightAt, motion) {
       }
     }
   }
+  bakeGroundContacts(scene,contacts);
 }
 
 const pick = (arr) => arr[Math.floor(rand() * arr.length)];
@@ -3953,7 +3965,7 @@ function mergePaintedProp(group) {
     return geo.index ? geo.toNonIndexed() : geo;
   });
   const mesh=new THREE.Mesh(mergeGeometries(geos),material);mesh.castShadow=true;
-  group.clear();group.add(mesh);return group;
+  group.clear();group.add(mesh);return bakeScenery(group,{radius:1.2,strength:.28});
 }
 
 // Shared emissive "windows" texture so each building is just 2 meshes but still
@@ -4103,7 +4115,7 @@ function makeBuilding(density, biome) {
   const trim = snow ? 0xdfe8f0 : pick(TRIM_PALETTE);
 
   // Window-lit body (+ optional wing), merged into one emissive mesh.
-  const bodyParts = [roundedColumn(w, h, d, 0.9).translate(0, base + h / 2, 0)];
+  const bodyParts = [roundedColumn(w, h, d, 0.9, 3).translate(0, base + h / 2, 0)];
   let wing = null;
   if (rand() < 0.4) {
     const ww = w * 0.6;
@@ -4111,7 +4123,7 @@ function makeBuilding(density, biome) {
     const wh = h * (floors > 1 ? 0.6 : 0.92);
     const wx = (w / 2 + ww / 2 - 0.2) * (rand() < 0.5 ? 1 : -1);
     const wz = (rand() - 0.5) * d * 0.3;
-    bodyParts.push(roundedColumn(ww, wh, wd, 0.9).translate(wx, base + wh / 2, wz));
+    bodyParts.push(roundedColumn(ww, wh, wd, 0.9, 3).translate(wx, base + wh / 2, wz));
     wing = { ww, wd, wh, wx, wz };
   }
   const body = new THREE.Mesh(mergeGeometries(bodyParts), bodyMaterial(wall));
@@ -4166,7 +4178,7 @@ function makeBuilding(density, biome) {
   solid.receiveShadow = true;
   g.add(solid);
   g.userData.isBuilding = true; // collected + merged by batchBuildings() to slash draw calls
-  return g;
+  return bakeScenery(g);
 }
 
 // A downtown TOWER for the city biome: a tall glass-and-concrete high-rise with
@@ -4215,7 +4227,7 @@ function makeTower(density) {
     o.geometry.computeVertexNormals();
   });
   g.userData.isBuilding = true;
-  return g;
+  return bakeBuildingShelter(g,Array.from({length:floors},(_,f)=>({x:0,z:0,y:base+(f+1)*fh,rx:w/2+.12,rz:d/2+.12,reach:.85})));
 }
 
 // A low CITY storefront: a flat-roofed 1-2 storey shop with a glass storefront,
@@ -4258,7 +4270,7 @@ function makeCityStore() {
   g.add(solid);
   g.userData.facade={w,d};
   g.userData.isBuilding = true;
-  return g;
+  return bakeBuildingShelter(g,[{x:0,z:0,y:top,rx:w/2+.1,rz:d/2+.1,reach:1.1},{x:0,z:d/2+.72,y:base+2.5,rx:w*.45,rz:.7,reach:1.0}]);
 }
 
 // Shared material for all merged building BODIES: wall colour comes from baked
@@ -4284,9 +4296,9 @@ function bakeVertexColor(geo, hex) {
   const n = geo.attributes.position.count;
   const arr = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
-    arr[i * 3] = c.r;
-    arr[i * 3 + 1] = c.g;
-    arr[i * 3 + 2] = c.b;
+    arr[i * 3] = c.r * (geo.attributes.color?.getX(i) ?? 1);
+    arr[i * 3 + 1] = c.g * (geo.attributes.color?.getY(i) ?? 1);
+    arr[i * 3 + 2] = c.b * (geo.attributes.color?.getZ(i) ?? 1);
   }
   geo.setAttribute("color", new THREE.BufferAttribute(arr, 3));
 }
@@ -4444,7 +4456,7 @@ function makeChurch() {
   // door
   part(parts, new THREE.BoxGeometry(1.4, 2.4, 0.2).translate(0, 1.2, 5 + 1.5), 0x4a2f1c);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  return g;
+  return bakeScenery(g);
 }
 
 function makeWaterTower() {
@@ -4458,7 +4470,7 @@ function makeWaterTower() {
   part(parts, new THREE.CylinderGeometry(2.6, 2.6, 3, 12).translate(0, legH + 1.5, 0), 0xb24a3a);
   part(parts, new THREE.ConeGeometry(2.8, 1.8, 12).translate(0, legH + 3.9, 0), 0x5a4438);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  return g;
+  return bakeScenery(g);
 }
 
 function makeWindmill() {
@@ -4493,7 +4505,7 @@ function makeSilo() {
   part(parts, new THREE.CylinderGeometry(1.6, 1.6, hH, 12).translate(0, hH / 2, 0), 0xc9ccd2);
   part(parts, new THREE.SphereGeometry(1.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, hH, 0), 0x8a9aa6);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
-  return g;
+  return bakeScenery(g);
 }
 
 function makePlanter() {
@@ -4627,7 +4639,7 @@ function makeHabitatBuilding(kind, biome) {
   }
   add(new THREE.BoxGeometry(4.8,.3,4.8).translate(0,base,0), theme.wood);
   if (kind !== 'pavilion') {
-    add(new THREE.BoxGeometry(4.1,3.3,4.1).translate(0,base+1.65,0), wall);
+    add(new THREE.BoxGeometry(4.1,3.3,4.1,1,3,1).translate(0,base+1.65,0), wall);
     add(new THREE.BoxGeometry(1.1,2.3,.08).translate(0,base+1.15,2.08),0x352d26);
     for (const x of [-1.3,1.3]) {
       add(new THREE.BoxGeometry(.72,.8,.12).translate(x,base+2.1,2.1),0x283c40);
@@ -4653,7 +4665,7 @@ function makeHabitatBuilding(kind, biome) {
   }
   const group=new THREE.Group();
   const mesh=new THREE.Mesh(mergeGeometries(parts),_solidMat);mesh.castShadow=true;mesh.receiveShadow=true;
-  group.add(mesh);group.userData.staticProp=true;return group;
+  group.add(mesh);group.userData.staticProp=true;return bakeScenery(group);
 }
 function makeLog() {
   const parts=[];
@@ -5007,7 +5019,7 @@ function makeBarn() {
   const door = new THREE.Mesh(new THREE.PlaneGeometry(3, 4), mat(0xe8e0d0));
   door.position.set(0, 2, 4.02);
   g.add(door);
-  return g;
+  return bakeScenery(g);
 }
 
 // ---- Hero landmarks ----

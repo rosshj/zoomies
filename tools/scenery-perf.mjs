@@ -30,7 +30,7 @@ try {
     const raf=window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame=cb=>raf(t=>{if(!window.__pausePerf)cb(t);});
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
+  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1&seed=SHADE${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__zoomies?.track,null,{timeout:150000});
   await page.waitForTimeout(5000);
   await page.evaluate(()=>{window.__pausePerf=true;});
