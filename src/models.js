@@ -937,6 +937,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const parts = [];
     // One closed skin from shoulder through wrist into the rounded toes.
     // A curved axis and swelling profile avoid the old capsule/ball seam.
+    // The paw is wider and flatter than the wrist. Its end rings follow
+    // an ellipsoid cap: tapering radius along a straight axis made a cone.
     const controls = pose === "kart"
       ? [[0,.1,-.12],[0,-.04,.3],[0,-.06,.7],[0,-.04,.88],[0,-.04,1.09]]
       : pose === "sit"
@@ -946,7 +948,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const skin = new THREE.SphereGeometry(1, 12, 16);
     const pos = skin.attributes.position;
     const right = new THREE.Vector3(), across = new THREE.Vector3();
-    const profile = [[0,0],[.1,ap.armR],[.35,ap.armR],[.6,.18],[.8,.205],[.9,.17],[1,0]];
+    const profile = [[0,0],[.1,ap.armR],[.35,ap.armR],[.6,.17],[.8125,.26],[1,.26]];
     for (let i = 0; i < pos.count; i++) {
       const t = Math.acos(Math.max(-1, Math.min(1, pos.getY(i)))) / Math.PI;
       const angle = Math.atan2(pos.getZ(i), pos.getX(i));
@@ -954,12 +956,20 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       while (j < profile.length - 1 && t > profile[j][0]) j++;
       const [ta, ra] = profile[j - 1], [tb, rb] = profile[j];
       const f = (t - ta) / (tb - ta), blend = f * f * (3 - 2 * f);
-      const radius = ra + (rb - ra) * blend;
-      const center = curve.getPoint(t), tangent = curve.getTangent(t).normalize();
+      let radius = ra + (rb - ra) * blend;
+      let axisT = t;
+      if (t > .8125) {
+        const capAngle = (t - .8125) / .1875 * Math.PI / 2;
+        radius *= Math.cos(capAngle);
+        axisT = .8125 + .1875 * Math.sin(capAngle);
+      }
+      const center = curve.getPoint(axisT), tangent = curve.getTangent(axisT).normalize();
       right.set(1,0,0).addScaledVector(tangent, -tangent.x).normalize();
       across.crossVectors(tangent, right).normalize();
       center.addScaledVector(right, Math.cos(angle) * radius);
-      center.addScaledVector(across, Math.sin(angle) * radius * (pose === "kart" ? .85 : 1));
+      const pawBlend = THREE.MathUtils.smoothstep(t, .6, .8125);
+      const thickness = THREE.MathUtils.lerp(pose === "kart" ? .85 : 1, .68, pawBlend);
+      center.addScaledVector(across, Math.sin(angle) * radius * thickness);
       pos.setXYZ(i, center.x, center.y, center.z);
     }
     skin.computeVertexNormals();
