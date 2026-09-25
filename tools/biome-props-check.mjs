@@ -42,6 +42,23 @@ for(const biome of Object.keys(ROAD_PROP_BIOMES)){
 }
 // No decorative object can grant an item or become a replacement crate.
 assert(sounds>0&&bursts>0);
+// Hollow containers need outward-facing undersides as well as interior floors:
+// backface culling must not make a tumbling or emptied container see-through.
+for(const [kind,bottom,floor,radius] of [['fruitBasket',-.5,-.4,.5],['sandBucket',-.6,-.48,.35],['clayPot',-.7,-.55,.25]]){
+ for(const used of kind==='fruitBasket'?[false,true]:[false]){
+  const {mesh}=makeRoadProp(kind,used);mesh.updateMatrixWorld(true);
+  for(let i=0;i<20;i++){
+   const angle=(i+.37)*Math.PI*2/20,r=i%2?radius:.05;
+   const x=Math.sin(angle)*r,z=Math.cos(angle)*r;
+   const underside=new T.Raycaster(new T.Vector3(x,bottom-1,z),new T.Vector3(0,1,0)).intersectObject(mesh)[0];
+   assert(underside&&Math.abs(underside.point.y-bottom)<1e-6&&underside.face.normal.y<-.99,`${kind} missing underside (used=${used})`);
+   if(kind!=='fruitBasket'||used){
+    const interior=new T.Raycaster(new T.Vector3(x,1,z),new T.Vector3(0,-1,0)).intersectObject(mesh)[0];
+    assert(interior&&Math.abs(interior.point.y-floor)<1e-6&&interior.face.normal.y>.99,`${kind} must have an open top and raised interior floor`);
+   }
+  }
+ }
+}
 let checkedVertices=0;
 const ray=new T.Raycaster(),origin=new T.Vector3(),down=new T.Vector3(0,-1,0),road=new T.Mesh(new T.BufferGeometry(),new T.MeshBasicMaterial({side:T.DoubleSide}));road.updateMatrixWorld();
 const budgets=[];

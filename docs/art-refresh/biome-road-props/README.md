@@ -34,7 +34,7 @@ The image is a focused integration fixture with simultaneous apple, clay and lea
 ## Runtime budgets
 
 - **64 placement slots total**, including floating crates and leaf piles; this retains the previous total cap. Medium single-biome fixtures have 25 crates, including five floating pickups.
-- Each new intact or used model is **one opaque draw**, with shared cached geometry and one vertex-colored material. Models use **36–864 triangles**. No imported textures, extra lights, extra shadow maps or physics dependency.
+- Each new intact or used model is **one opaque draw**, with shared cached geometry and one vertex-colored material. Models use **36–884 triangles**. No imported textures, extra lights, extra shadow maps or physics dependency.
 - **36 fragments maximum**, across three instanced pools of 12. Each burst emits six pieces; full pools recycle slots. Pieces sleep and expire after roughly three seconds. Inactive pools are hidden after loading; all three shader variants warm before gameplay. First-burst program counts stayed unchanged on both graphics backends.
 - Sleeping props skip integration. Sphere contacts are analytic; cylinder envelopes are simplified during generation. Other objects retain geometry-derived support bounds. Existing road-triangle contact, local road-strand selection and fence containment remain in use.
 - Wind can wake at most **two eligible objects per second**, near racers, with an eight-second per-object cooldown and a five-unit home envelope. No global always-running rigid-body simulation.
@@ -67,3 +67,9 @@ The solver-only Node stress test repeatedly launches mixed object types once per
 The simulation is intentionally lightweight: props contact the road and fences, but do not collide or stack with each other. Deformation swaps prebuilt procedural meshes rather than simulating soft bodies. Broken objects remain spent for that race. Fast motion is bounded by substeps; this is playful prop motion, not a general-purpose rigid-body engine. Sustained mobile/thermal performance still needs device playtesting.
 
 To test, use the PR preview and race beach, meadow, desert, tundra, city and volcanic tracks. Hit objects at different speeds, revisit spilled/broken objects, check grounded crates rising to replace used power-ups, and inspect all models under **Road props** in `viewer.html`.
+
+## Container bottom correction
+
+Sand buckets and both full and emptied apple baskets now have closed exterior bottoms, while retaining open tops and raised interior floors. Clay pots already had both surfaces. The new caps add 20 submitted triangles and one deduplicated support vertex per affected model, with no extra draw calls, materials, lights or animation work. Buckets use 292 triangles, full baskets 884 and empty baskets 484. These are geometry-budget figures, not a new FPS measurement; the race measurements above precede this correction.
+
+`check:biome-props` now also raycasts the undersides and interior floors with the actual front-sided materials, including the emptied basket. The full physics check passes with 334,824 road-contact vertex checks. Focused underside views render correctly on native WebGL and WebGPU, and `build:web` passes.

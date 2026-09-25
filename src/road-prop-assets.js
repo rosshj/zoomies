@@ -75,7 +75,7 @@ function buildGeometry(kind, used) {
       for(let i=0;i<8;i++){const a=i*Math.PI/4;ball(.5,i%2?0xe58a27:0xcf6a1e,Math.sin(a)*.42,0,Math.cos(a)*.42,.8,1.45,.8);}
       cyl(.10,.16,.27,0x5e6b33,0,.8);break;
     case 'fruitBasket':
-      lathe([[.65,-.5],[.82,.35],[.73,.35],[.57,-.4],[0,-.4]],C.wood);
+      lathe([[0,-.5],[.65,-.5],[.82,.35],[.73,.35],[.57,-.4],[0,-.4]],C.wood);
       for(const y of [-.4,-.1,.2,.36])ring(.65+(y+.5)*.2,.035,C.end,y);
       if(!used)for(let i=0;i<5;i++){const a=i*2.4;ball(.29,i%2?0x9bbf49:0xd64632,Math.sin(a)*.46,.39+(i===4?.2:0),Math.cos(a)*.46);}
       break;
@@ -97,7 +97,7 @@ function buildGeometry(kind, used) {
     case 'coconut':
       ball(.66,0x876044);for(const [x,z] of [[-.16,0],[.16,0],[0,.2]])ball(.065,0x3b3028,x,.60,z);break;
     case 'sandBucket':
-      lathe([[.49,-.6],[.66,.52],[.56,.52],[.41,-.48],[0,-.48]],0x53bcc4);ring(.63,.065,0xf4d353,.53);
+      lathe([[0,-.6],[.49,-.6],[.66,.52],[.56,.52],[.41,-.48],[0,-.48]],0x53bcc4);ring(.63,.065,0xf4d353,.53);
       add(new THREE.TorusGeometry(.68,.035,4,12,Math.PI),0xf4d353,0,.45,0);break;
     case 'log':
       cyl(.64,.68,2.25,C.wood);for(const y of [-1.135,1.135]){cyl(.57,.57,.018,C.end,0,y);for(const r of [.18,.37,.53])ring(r,.018,0xae7b44,y);}
