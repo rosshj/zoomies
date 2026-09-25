@@ -1,5 +1,7 @@
 # Procedural art refresh
 
+[Latest: biome-specific scenery, buildings and wildlife](habitats/README.md).
+
 [Latest: trackside structures, three new biomes, and measured rendering costs](trackside/README.md).
 
 Current kart particles are circular additive glows; older ember illustrations below are historical.

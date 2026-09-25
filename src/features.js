@@ -1,3 +1,4 @@
+import { dressingFor, habitatFits } from "./biome-dressing.js";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { paintSurface, paintSolid } from "./scenery-art.js";
@@ -234,6 +235,7 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       if (run) break;
     }
     if (!run) continue;
+    run.biome = biomeNames[run.c];
 
     if (spec.kind === "canyon") {
       run.mag = 23 + rng() * 9;
@@ -289,7 +291,8 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       feats.river = river;
       // Visual variant per seed: the plain girder deck, a suspension span with
       // towers + catenary cables, a covered wooden bridge, or stone arches.
-      run.bridgeVariant = ["girder", "suspension", "covered", "arch"][Math.floor(rng() * 4)];
+      const variants = dressingFor(run.biome).bridges;
+      run.bridgeVariant = variants[Math.floor(rng() * variants.length)];
     }
     taken.push({ c: run.c, half });
     feats.runs.push(run);
@@ -1276,13 +1279,13 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     } else if (run.kind === "tunnel") {
       buildTunnel(scene, track, run, rng, anims, opts.groundColorAt);
     } else if (run.kind === "flowers") {
-      buildFlowers(scene, track, run, heightAt, rng);
+      buildFlowers(scene, track, run, heightAt, rng, opts.biomeNameAt);
     } else if (run.kind === "windfarm") {
-      buildWindFarm(scene, track, run, heightAt, rng, anims);
+      buildWindFarm(scene, track, run, heightAt, rng, anims, opts.biomeNameAt);
     } else if (run.kind === "arches") {
-      buildArches(scene, track, run, rng);
+      buildArches(scene, track, run, rng, opts.biomeNameAt);
     } else if (run.kind === "billboards") {
-      buildBillboards(scene, track, run, heightAt, rng, lit, litLevel);
+      buildBillboards(scene, track, run, heightAt, rng, lit, litLevel, opts.biomeNameAt);
     } else if (run.kind === "rail") {
       buildRail(scene, track, run, heightAt, rng, anims);
     }
@@ -1327,7 +1330,8 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       sv.set(2.2 + rng() * 2.4, sy, 2.2 + rng() * 2.4);
       m.compose(pv, q, sv);
       mesh.setMatrixAt(i, m);
-      if (c.warm) col.setHSL(0.055, 0.52, 0.33 + rng() * 0.1);
+      if (opts.biomeNameAt) col.set(dressingFor(opts.biomeNameAt(c.x,c.z)).stone).multiplyScalar(.85+rng()*.3);
+      else if (c.warm) col.setHSL(0.055, 0.52, 0.33 + rng() * 0.1);
       else col.setHSL(0.09, 0.1, 0.4 + rng() * 0.14);
       mesh.setColorAt(i, col);
     });
@@ -1339,7 +1343,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   }
 
   if (feats.waterfall) buildWaterfall(scene, feats.waterfall, anims);
-  buildAmbience(scene, track, feats, heightAt, rng, anims, opts.lakes || []);
+  buildAmbience(scene, track, feats, heightAt, rng, anims, opts.lakes || [], opts.biomeNameAt);
 
   return {
     update(time) {
@@ -1401,7 +1405,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   scene.add(tube);
 
   // Portal rings: a stone arch face at each end.
-  const portalMat = new THREE.MeshStandardMaterial({ color: 0xaaa493, vertexColors: true, roughness: 1 });
+  const portalMat = new THREE.MeshStandardMaterial({ color: dressingFor(run.biome || "desert").stone, vertexColors: true, roughness: 1 });
   for (const end of [t0, t1]) {
     const idx = ((end % N) + N) % N;
     const p = track._pts[idx];
@@ -1669,7 +1673,7 @@ function buildWaterfall(scene, wf, anims) {
 }
 
 // ---- Treatments --------------------------------------------------------------
-function buildFlowers(scene, track, run, heightAt, rng) {
+function buildFlowers(scene, track, run, heightAt, rng, nameAt) {
   // A carpet of flower heads on stems through the run. One stem mesh + one
   // instanced head mesh, tinted per-instance from the seed's palette.
   const PALETTES = [
@@ -1704,6 +1708,7 @@ function buildFlowers(scene, track, run, heightAt, rng) {
     const x = p.x + side.x * dir * dist + (rng() - 0.5) * 6;
     const z = p.z + side.z * dir * dist + (rng() - 0.5) * 6;
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue;
+    if (nameAt && !habitatFits(nameAt,x,z,n=>["meadow","blossom","lavender"].includes(n),1)) continue;
     const y = heightAt(x, z);
     const sc = 1.0 + rng() * 0.9;
     q.setFromAxisAngle(_up, rng() * TAU);
@@ -1758,7 +1763,7 @@ export function makeWindTurbine(H = 22) {
   return { group: g, rotor };
 }
 
-function buildWindFarm(scene, track, run, heightAt, rng, anims) {
+function buildWindFarm(scene, track, run, heightAt, rng, anims, nameAt) {
   const N = track.samples;
   const count = 4 + Math.floor(rng() * 3);
   for (let k = 0; k < count; k++) {
@@ -1771,6 +1776,7 @@ function buildWindFarm(scene, track, run, heightAt, rng, anims) {
     const x = p.x + side.x * dir * off;
     const z = p.z + side.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 30) continue;
+    if (nameAt && !habitatFits(nameAt,x,z,n=>["meadow","savanna","tundra"].includes(n),8)) continue;
     const y = heightAt(x, z);
     const { group: g, rotor } = makeWindTurbine(20 + rng() * 5);
     g.position.set(x, y, z);
@@ -1784,7 +1790,7 @@ function buildWindFarm(scene, track, run, heightAt, rng, anims) {
   }
 }
 
-function buildArches(scene, track, run, rng) {
+function buildArches(scene, track, run, rng, nameAt) {
   // Desert rock pillars (hoodoos) lining the road: standalone tapering
   // columns of varying heights, most wearing a wider caprock on top.
   const N = track.samples;
@@ -1803,6 +1809,7 @@ function buildArches(scene, track, run, rng) {
       const off = track.halfWidth + 5 + rng() * 7;
       const px = p.x + side.x * sgn * off;
       const pz = p.z + side.z * sgn * off;
+      if (nameAt && !habitatFits(nameAt,px,pz,n=>["desert","mesa","volcanic"].includes(n),6)) continue;
       const tiers = 4 + Math.floor(rng() * 4); // 4..7 — varied heights
       const base = 5.6 + rng() * 1.4;
       // Continuous tapering column (chunks overlap vertically and the base
@@ -1900,7 +1907,7 @@ export function makeBillboard([text, fg, bg] = BILLBOARD_SIGNS[0], lit = false, 
   return g;
 }
 
-function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
+function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel, nameAt) {
   const N = track.samples;
   const count = 3 + Math.floor(rng() * 2);
   for (let k = 0; k < count; k++) {
@@ -1914,6 +1921,7 @@ function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
     const z = p.z + side.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 6) continue;
     const y = heightAt(x, z);
+    if (nameAt && !habitatFits(nameAt,x,z,n=>n==="city",5)) continue;
     const g = makeBillboard(BILLBOARD_SIGNS[Math.floor(rng() * BILLBOARD_SIGNS.length)], lit, litLevel);
     g.position.set(x, y, z);
     g.rotation.y = Math.atan2(p.x - x, p.z - z);
@@ -2081,7 +2089,8 @@ export function makeGoat() {
   return g;
 }
 
-function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
+function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes, nameAt) {
+  const fits=(x,z,kind,radius=0)=>nameAt && habitatFits(nameAt,x,z,n=>dressingFor(n)[kind],radius);
   // Ducks: on the river (or the first big lake) — drift in lazy circles.
   const water = lakes.find((l) => l.river) || lakes.find((l) => l.ribbon) || lakes[0];
   if (water) {
@@ -2099,7 +2108,9 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
       }
     }
     for (const sp of spots) {
+      if (!fits(sp.x,sp.z,"ducks",5)) continue;
       const g = makeDuck();
+      g.userData.habitatAnimal="ducks";
       scene.add(g);
       const r = 1.5 + rng() * 3;
       const sp2 = 0.14 + rng() * 0.12;
@@ -2127,7 +2138,9 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
       const z = p.z + side.z * sgn * off;
       if (track.distanceToCenter(x, z) < track.halfWidth + 12) continue;
       const y = heightAt(x, z);
+      if (!fits(x,z,"goats",3)) continue;
       const g = makeGoat();
+      g.userData.habitatAnimal="goats";
       g.position.set(x, y, z);
       g.rotation.y = Math.atan2(p.x - x, p.z - z); // watching the race
       scene.add(g);

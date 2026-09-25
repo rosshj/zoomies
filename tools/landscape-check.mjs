@@ -35,7 +35,7 @@ try {
     wetlands: {seed:'REED',size:.5,curviness:.4,twist:.4,hilliness:.2,hills:.3,timeOfDay:'midday'},
     volcanic: {seed:'BASALT',size:.5,curviness:.55,twist:.5,hilliness:.6,hills:.6,timeOfDay:'sunset'},
   };
-  const recipe = biomeRecipes[process.env.BIOME];
+  const recipe = biomeRecipes[process.env.BIOME] || (process.env.BIOME ? {seed:'HABITAT',size:.5,curviness:.45,twist:.4,hilliness:.25,hills:.4,timeOfDay:'midday'} : null);
   const world = recipe ? Buffer.from(JSON.stringify({cfg:{mode:'custom',...recipe,biomes:[process.env.BIOME]},seed:recipe.seed,laps:3})).toString('base64url') : '';
 
   await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1&w=${world}${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
@@ -89,8 +89,26 @@ try {
   if(!process.env.BASELINE && scene.waterMeshes && scene.waterMaterials!==1)errors.push('Identical lake materials must be shared');
   const biome = await page.evaluate(async () => { const {biomeNameAt,biomeWeatherAt}=await import("/src/scenery.js");const p=window.__zoomies.track._pts[0];return {name:biomeNameAt(p.x,p.z),weather:biomeWeatherAt(p.x,p.z)}; });
   if(process.env.BIOME && biome.name!==process.env.BIOME) errors.push("Requested biome did not load");
-  const result={biome,scene,views,errors};
+  const dressing=process.env.DRESSING ? await page.evaluate(async()=>{
+    const {dressingFor,allowsDressing,habitatFits}=await import('/src/biome-dressing.js');
+    const {biomeNameAt}=await import('/src/scenery.js');
+    const scene=window.__zoomies.scene,placements=scene.userData.biomePlacements||[],birds=scene.userData.birdHabitats||[];
+    const invalid=placements.filter(p=>{
+      const name=biomeNameAt(p.x,p.z);
+      return p.kind==='pigeonLoft' ? !dressingFor(name).pigeons : !allowsDressing(name,p.kind);
+    });
+    const wrongBirds=birds.filter(b=>!habitatFits(biomeNameAt,b.x,b.z,n=>dressingFor(n).bird===b.species,b.radius));
+    return {placements, birds, invalid, wrongBirds};
+  }) : {invalid:[],wrongBirds:[]};
+  if(dressing.invalid.length||dressing.wrongBirds.length)errors.push('Scenery placed in incompatible habitat');
+  const result={biome,scene,views,dressing,errors};
   await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result,null,2));
   if(errors.length)process.exitCode=1;
-} finally {await browser?.close();server.closeAllConnections();server.close();}
+} finally {
+  // Native Chrome can leave its close handshake pending after exiting. Bound
+  // teardown so a completed screenshot tour doesn't stall a multi-biome audit.
+  await Promise.race([browser?.close(),new Promise(resolve=>setTimeout(resolve,5000))]);
+  server.closeAllConnections();server.close();
+}
+process.exit(process.exitCode || 0);

@@ -1,3 +1,4 @@
+import { dressingFor, allowsDressing, habitatFits } from "./biome-dressing.js";
 import * as THREE from "three";
 import { paintSolid, paintSurface, rockGeometry, palmFrond, treeTrunkGeometry, landscapeGrainTexture, landscapeGrainUV } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -616,7 +617,7 @@ export function buildWorld(scene, track, opts = {}) {
     }
     return out;
   };
-  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes, groundColorAt }); // set-piece kits + ambience
+  const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes, groundColorAt, biomeNameAt }); // set-piece kits + ambience
   buildRoadside(scene, track, heightAt); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
@@ -630,7 +631,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
   const balloons = buildBalloons(scene, heightAt);
-  const birds = buildBirds(scene);
+  const birds = buildBirds(scene, track, heightAt);
   const fireflies = buildFireflies(scene, track, heightAt);
   buildAmbientFlyers(scene, track, heightAt, litLevel); // butterflies/dragonflies (day) or moths (night) — GPU-animated, no per-frame CPU
   buildWindDebris(scene, track, heightAt); // tumbleweed (desert) + seed-fluff (savanna), GPU-animated wind buffeting
@@ -1555,14 +1556,14 @@ const MOUNTAIN_ROCK = {
   alpine: { lo: 0x4e5866, hi: 0x8a97a8, snow: 0.40 , apron: 0.30, tall: 0.92 },
   tundra: { lo: 0x59616a, hi: 0x939ba4, snow: 0.44 , apron: 0.34, tall: 0.92 },
   forest: { lo: 0x4a5348, hi: 0x7d8878, snow: 0.66 , apron: 0.58, tall: 0.82 },
-  jungle: { lo: 0x3f5040, hi: 0x6f8470, snow: 0.74 , apron: 0.55, tall: 0.84 },
+  jungle: { lo: 0x3f5040, hi: 0x6f8470, snow: 1 , apron: 0.55, tall: 0.84 },
   meadow: { lo: 0x6a6355, hi: 0x9a9384, snow: 0.68 , apron: 0.62, tall: 0.80 },
   blossom: { lo: 0x6e6559, hi: 0xa09689, snow: 0.70 , apron: 0.62, tall: 0.80 },
   autumn: { lo: 0x6f6045, hi: 0xa08d6c, snow: 0.72 , apron: 0.58, tall: 0.82 },
   savanna: { lo: 0x7a6647, hi: 0xb09a74, snow: 1 , apron: 0.66, tall: 0.78 },
   desert: { lo: 0x9c6a3e, hi: 0xd6a874, snow: 1 , apron: 0.20, tall: 1.05 },
   mesa: { lo: 0x8d4830, hi: 0xc47f56, snow: 1 , apron: 0.14, tall: 1.10 },
-  beach: { lo: 0x8a8270, hi: 0xc0b7a0, snow: 0.85 , apron: 0.60, tall: 0.80 },
+  beach: { lo: 0x8a8270, hi: 0xc0b7a0, snow: 1 , apron: 0.60, tall: 0.80 },
   city: { lo: 0x63656a, hi: 0x94969c, snow: 0.68 , apron: 0.56, tall: 0.84 },
 };
 
@@ -2724,7 +2725,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   }
   if (!spots.length) return;
 
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.7, metalness: 0.3 });
+  const postMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.85, metalness: 0.1 });
   const bulbMat = new THREE.MeshStandardMaterial({
     color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 1.8 * level : 0.0, roughness: 0.4,
   });
@@ -2746,6 +2747,9 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     chunk.forEach((sp, i) => {
       pos.set(sp.x, sp.y + POST_H / 2, sp.z);
       posts.setMatrixAt(i, m.compose(pos, ID, sc));
+      const theme=dressingFor(biomeNameAt(sp.x,sp.z)), tint=new THREE.Color(theme.wood);
+      if(biomeNameAt(sp.x,sp.z)==="city")tint.set(0x2a2f38);
+      posts.setColorAt(i,tint);heads.setColorAt(i,tint);
       const hx = sp.x + sp.ax, hz = sp.z + sp.az; // head juts toward the road
       pos.set(hx, sp.y + POST_H + 0.1, hz);
       heads.setMatrixAt(i, m.compose(pos, new THREE.Quaternion().setFromAxisAngle(UP_Y,Math.atan2(sp.ax,sp.az)), sc));
@@ -2897,8 +2901,8 @@ function buildRhythmPosts(scene, track, heightAt) {
   }
   if (!spots.length) return;
 
-  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.8 });
-  const capMat = new THREE.MeshStandardMaterial({ color: 0xd83a2f, roughness: 0.6 });
+  const bodyMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
+  const capMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
   // Per world cell (see chunkByCell): the posts beat all the way round the
   // lap, so one mesh could never cull.
   const bodyGeo = new THREE.CylinderGeometry(0.13, 0.17, BODY_H, 6);
@@ -2913,6 +2917,8 @@ function buildRhythmPosts(scene, track, heightAt) {
     chunk.forEach((sp, i) => {
       pos.set(sp.x, sp.y + BODY_H / 2, sp.z);
       bodies.setMatrixAt(i, m.compose(pos, ID, sc));
+      const biome=biomeAt(sp.x,sp.z);
+      bodies.setColorAt(i,new THREE.Color(biome.barrier.a));caps.setColorAt(i,new THREE.Color(biome.barrier.b));
       pos.set(sp.x, sp.y + BODY_H + CAP_H / 2 - 0.02, sp.z);
       caps.setMatrixAt(i, m.compose(pos, ID, sc));
     });
@@ -3161,7 +3167,7 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
     const p = track._pts[i];
     // Festive bulb strings don't belong downtown — city stretches get traffic
     // lights instead (buildTrafficLights).
-    if (biomeAt(p.x, p.z).name === "city") continue;
+    if (!habitatFits(biomeNameAt,p.x,p.z,n=>dressingFor(n).festive,track.halfWidth+5)) continue;
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     const off = track.halfWidth + 4;
     // A span needs honest footings: skip spots where a post would land on
@@ -3370,7 +3376,7 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, texIndex) {
   }
   geo.computeVertexNormals();
   const banner=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({
-    color:BANNER_COLS[texIndex%BANNER_COLS.length], map:bannerPrint(), roughness:1,side:THREE.DoubleSide
+    color:biomeAt(p.x,p.z).barrier.b, map:bannerPrint(), roughness:1,side:THREE.DoubleSide
   }));
   banner.position.set(p.x,(topY+botY)/2,p.z);banner.rotation.y=yaw+Math.PI;
   banner.castShadow=true;banner.layers.set(1);scene.add(banner);
@@ -3427,7 +3433,9 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   // bridge never plants a post in the water or inside a village. The whole
   // timber structure of each bridge merges into ONE geometry (1 draw call).
   for (const frac of pickFootbridgeSpans(track, heightAt, 2)) {
-    buildFootbridge(scene, track, heightAt, frac, postMat, lit, level);
+    const p=track._pts[Math.floor(frac*track.samples)%track.samples];
+    if (habitatFits(biomeNameAt,p.x,p.z,n=>dressingFor(n).footbridge,track.halfWidth+16))
+      buildFootbridge(scene, track, heightAt, frac, postMat, lit, level);
   }
 }
 
@@ -3742,7 +3750,7 @@ function buildForests(scene, track, heightAt) {
 function buildRocks(scene, track, heightAt, flatten) {
   const spots = scatter(140, track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
   const geo = rockGeometry();
-  const mat = new THREE.MeshStandardMaterial({ color: 0x8a8278, roughness: 1, vertexColors: true });
+  const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const p = new THREE.Vector3();
@@ -3763,6 +3771,7 @@ function buildRocks(scene, track, heightAt, flatten) {
       s.set(sc, sc * 0.8, sc);
       m.compose(p, q, s);
       rocks.setMatrixAt(i, m);
+      rocks.setColorAt(i,new THREE.Color(dressingFor(biomeNameAt(spot.x,spot.z)).stone));
     });
     rocks.instanceMatrix.needsUpdate = true;
     fitInstanceBounds(rocks);
@@ -3771,76 +3780,8 @@ function buildRocks(scene, track, heightAt, flatten) {
   }
 }
 
-function buildTown(scene, track, heightAt) {
-  const palette = [0xd9776a, 0xe0b15a, 0x7aa6c2, 0x9ccc8f, 0xc9bfa8, 0xb98ec2];
-  const roofMat = new THREE.MeshStandardMaterial({ color: 0x4a3b34, roughness: 1 });
-  const winMat = new THREE.MeshStandardMaterial({
-    color: 0xfff2b0,
-    emissive: 0xffd95e,
-    emissiveIntensity: 0.5,
-  });
-
-  // A cluster (town) plus a few scattered outbuildings.
-  const placements = [];
-  const townCenter = { x: 320, z: 330 };
-  for (let i = 0; i < 26; i++) {
-    placements.push({
-      x: townCenter.x + (rand() - 0.5) * 240,
-      z: townCenter.z + (rand() - 0.5) * 240,
-    });
-  }
-  for (let i = 0; i < 16; i++) {
-    const a = rand() * Math.PI * 2;
-    const r = 300 + rand() * 260;
-    placements.push({ x: Math.cos(a) * r, z: Math.sin(a) * r });
-  }
-
-  for (const pl of placements) {
-    if (track.distanceToCenter(pl.x, pl.z) < track.halfWidth + 30) continue;
-    const y = heightAt(pl.x, pl.z);
-    const w = 8 + rand() * 10;
-    const d = 8 + rand() * 10;
-    const floors = 1 + Math.floor(rand() * 4);
-    const h = floors * 5;
-    const mat = new THREE.MeshStandardMaterial({
-      color: palette[Math.floor(rand() * palette.length)],
-      roughness: 0.9,
-    });
-    const b = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-    body.position.y = h / 2;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    b.add(body);
-
-    // Pitched roof.
-    const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.78, 4, 4), roofMat);
-    roof.position.y = h + 2;
-    roof.rotation.y = Math.PI / 4;
-    roof.castShadow = true;
-    b.add(roof);
-
-    // Window strips (emissive) on the front and back.
-    for (let f = 0; f < floors; f++) {
-      for (const sz of [d / 2 + 0.05, -d / 2 - 0.05]) {
-        const win = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, 1.6), winMat);
-        win.position.set(0, 3 + f * 5, sz);
-        if (sz < 0) win.rotation.y = Math.PI;
-        b.add(win);
-      }
-    }
-
-    b.position.set(pl.x, y, pl.z);
-    b.rotation.y = rand() * Math.PI;
-    scene.add(b);
-  }
-}
-
-// ---- Roadside town & farm zones ----
-// Walk along the track and line the roadside. Town zones are packed (a front
-// row of buildings, a taller back row, and street props), farm zones are open,
-// so you plunge into a busy village and come out into open country.
 function buildRoadside(scene, track, heightAt) {
+  scene.userData.biomePlacements ||= [];
   const N = track.samples;
   const pts = track._pts;
   const tans = track._tans;
@@ -3852,7 +3793,7 @@ function buildRoadside(scene, track, heightAt) {
 
   const occupied=new Map(); // build-time spacing only; no per-frame work
   let insideTurn=0;
-  const place = (builder, dist, dir, p, side, faceRoad) => {
+  const place = (category, dist, dir, p, side, faceRoad) => {
     // Leave the inside verge of bends open so scenery doesn't hide the exit.
     if (dir===insideTurn && dist<halfW+17) return;
     const x = p.x + side.x * dir * dist;
@@ -3880,7 +3821,12 @@ function buildRoadside(scene, track, heightAt) {
     const key=cx+":"+cz;
     if(!occupied.has(key))occupied.set(key,[]);
     occupied.get(key).push({x,z,r:radius});
-    const prop = builder(biomeAt(x, z)); // biome-aware builders use it; others ignore
+    const biome = biomeAt(x, z);
+    const kind = pick(dressingFor(biome.name)[category]);
+    if (!habitatFits(biomeNameAt, x, z, name => allowsDressing(name, kind), 8)) return;
+    const prop = makeDressing(kind, biome, .65);
+    prop.userData.dressing = { kind, biome: biome.name, x, z };
+    scene.userData.biomePlacements.push(prop.userData.dressing);
     prop.position.set(x, lo + 0.04, z);
     prop.rotation.y = faceRoad
       ? Math.atan2(-side.x * dir, -side.z * dir) + (rand() - 0.5) * 0.4
@@ -3926,29 +3872,17 @@ function buildRoadside(scene, track, heightAt) {
     const bend=behind.x*ahead.z-behind.z*ahead.x;
     insideTurn=Math.abs(bend)>.05 ? Math.sign(bend) : 0;
     const roadBiome = biomeAt(p.x, p.z);
-    const roadCity = roadBiome.name === "city";
-    // City buildings: mostly towers with some low storefronts for ground-level life.
-    const cityFront = () => (rand() < 0.4 ? makeCityStore() : makeTower(density));
-    const cityRow = () => (rand() < 0.22 ? makeCityStore() : makeTower(density));
+    const urban = roadBiome.name === "city";
     for (const dir of [1, -1]) {
-      if (town && !["wetlands", "volcanic"].includes(roadBiome.name) && (roadBiome.name !== "lavender" || phase < .2)) {
-        // Front structures by the road. City stretches get towers + storefronts;
-        // every other biome gets the small-town building. Placed at halfW+9.. (not
-        // +5): a town building's overhanging pyramid roof reaches ~6.65 back toward
-        // the road, so the old +5 let roof corners hang over the tarmac. +9 clears it.
-        if (rand() < 0.62 + density * 0.32)
-          place((b) => (roadCity ? cityFront() : makeTownStructure(density, b)), halfW + 9 + rand() * 3, dir, p, side, true);
-        // Several rows stacking back from the road, thinning with depth so the town
-        // (or skyline) recedes into the distance instead of being a thin strip.
-        const rows = [13, 24, 36, 50, 66];
-        for (let r = 0; r < rows.length; r++) {
-          if (rand() < (0.52 + density * 0.4) * (1 - r * 0.15))
-            place((b) => (roadCity ? cityRow() : makeBuilding(density, b)), halfW + rows[r] + rand() * 7, dir, p, side, true);
-        }
-        if (rand() < 0.5)
-          place(makeStreetProp, halfW + 3.2 + rand() * 1.4, dir, p, side, true);
-      } else if (rand() < 0.4) {
-        place(makeFarmProp, halfW + 6 + rand() * 18, dir, p, side, false);
+      if (town && (urban || phase < .3)) {
+        if (rand() < (urban ? .62 + density * .32 : .55))
+          place('town', halfW + 12 + rand() * 3, dir, p, side, true);
+        const rows = urban ? [24,36,50,66] : [];
+        for (const row of rows) if (rand() < .65)
+          place('town', halfW + row + rand() * 7, dir, p, side, true);
+        if (rand() < .5) place('verge', halfW + 6 + rand() * 2, dir, p, side, true);
+      } else if (rand() < .4) {
+        place('field', halfW + 10 + rand() * 18, dir, p, side, false);
       }
     }
   }
@@ -4440,13 +4374,6 @@ function batchStaticProps(scene) {
 }
 
 // Pick a town structure — mostly houses, occasionally a landmark.
-function makeTownStructure(density, biome) {
-  const r = rand();
-  if (r < 0.05) return makeChurch();
-  if (r < 0.09) return makeWaterTower();
-  return makeBuilding(density, biome);
-}
-
 function makeChurch() {
   const g = new THREE.Group();
   const wall = 0xeae0cf;
@@ -4515,17 +4442,6 @@ function makeSilo() {
   part(parts, new THREE.SphereGeometry(1.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, hH, 0), 0x8a9aa6);
   g.add(new THREE.Mesh(mergeGeometries(parts), _solidMat));
   return g;
-}
-
-function makeStreetProp() {
-  const r = rand();
-  if (r < 0.26) return makeLamp();
-  if (r < 0.42) return makeBench();
-  if (r < 0.54) return makeHydrant();
-  if (r < 0.7) return makePlanter();
-  if (r < 0.85) return makeMarketStall();
-  if (r < 0.94) return makeSign();
-  return makeBush();
 }
 
 function makePlanter() {
@@ -4622,72 +4538,89 @@ function makeHydrant() {
   return g;
 }
 
-function makeFarmProp(biome) {
-  const b = biome || BIOMES[0];
-  const r = rand();
-  if (b.name === "volcanic") {
-    if (r < .78) return makeBasalt();
-    return makeSign();
-  }
-  if (b.name === "wetlands") {
-    if (r < .25) return makeDuck();
-    if (r < .63) return makeTree(b);
-    if (r < .83) return makeRockProp();
-    return makeFence(0x66735b);
-  }
-  if (b.style === "cactus") {
-    // Dry country: cacti, rocks and the odd ranch structure.
-    if (r < 0.45) return makeCactusProp();
-    if (r < 0.62) return makeRockProp();
-    if (r < 0.74) return makeFence(0x9c7a4a);
-    if (r < 0.84) return makeHayBale();
-    if (r < 0.93) return makeWindmill();
-    return makeSilo();
-  }
-  // Biome-appropriate wildlife + dressing.
-  if (b.name === "beach") {
-    // Seaside: crabs and gulls on the sand, parasols, driftwood rocks + palms.
-    if (r < 0.24) return makeCrab();
-    if (r < 0.44) return makeGull();
-    if (r < 0.60) return makeParasol();
-    if (r < 0.74) return makeTree(b); // a stray palm
-    if (r < 0.88) return makeRockProp();
-    return makeBush();
-  }
-  if (b.name === "forest" || b.name === "alpine" || b.name === "tundra") {
-    // Woodland: deer among the trees, rocks, rustic fences.
-    if (r < 0.26) return makeDeer();
-    if (r < 0.46) return makeTree(b);
-    if (r < 0.60) return makeBush();
-    if (r < 0.74) return makeRockProp();
-    if (r < 0.88) return makeFence(0x6b4a2b);
-    return makeHayBale();
-  }
-  if (b.name === "city") {
-    // Downtown verge: urban street furniture, not grey trees or livestock. (A
-    // makeTree here rendered a GREY lollipop because the city foliage HSL is
-    // desaturated — replaced with planters/benches/hydrants/signs.)
-    if (r < 0.32) return makePlanter();
-    if (r < 0.52) return makeBench();
-    if (r < 0.70) return makeHydrant();
-    if (r < 0.85) return makeSign();
-    return makeBush();
-  }
-  // Pastoral (meadow / autumn / blossom / savanna): cows, sheep, farm buildings.
-  if (r < 0.24) return makeTree(b);
-  if (r < 0.4) return makeBush();
-  if (r < 0.5) return makeCow();
-  if (r < 0.6) return makeSheep();
-  if (r < 0.7) return makeHayBale();
-  if (r < 0.78) return makeFence(0x8d6e3a);
-  if (r < 0.86) return makeBarn();
-  if (r < 0.93) return makeWindmill();
-  return makeSilo();
+function makeDressing(kind, biome, density = .5) {
+  const makers = {
+    tree: () => makeTree(biome), palm: () => makeTree(biome),
+    cow: makeCow, sheep: makeSheep, deer: makeDeer, goat: makeGoat,
+    duck: makeDuck, crab: makeCrab, gull: makeGull,
+    vulture: () => makeGull('vulture'), parrot: () => makeGull('parrot'),
+    cactus: makeCactusProp, rock: () => makeRockProp(biome), basalt: makeBasalt,
+    bush: () => makeBush(biome), hay: makeHayBale, barn: makeBarn,
+    fence: () => makeFence(dressingFor(biome.name).wood), windmill: makeWindmill, silo: makeSilo,
+    farmhouse: () => makeBuilding(.2, biome), cabin: () => makeHabitatBuilding('cabin', biome),
+    chalet: () => makeHabitatBuilding('chalet', biome), hut: () => makeHabitatBuilding('hut', biome),
+    stiltHut: () => makeHabitatBuilding('stiltHut', biome), adobe: () => makeHabitatBuilding('adobe', biome),
+    pavilion: () => makeHabitatBuilding('pavilion', biome), ruin: () => makeHabitatBuilding('ruin', biome),
+    tower: () => makeTower(density), store: makeCityStore,
+    lamp: makeLamp, bench: makeBench, hydrant: makeHydrant, planter: makePlanter,
+    stall: makeMarketStall, sign: makeSign, parasol: makeParasol,
+    reed: () => makeReedPatch(), log: () => makeLog(),
+  };
+  if (!makers[kind]) throw new Error(`Unknown dressing asset: ${kind}`);
+  return makers[kind]();
 }
 
-function makeBasalt() {
+// One painted rigid mesh per habitat building; thatch is a continuous molded
+// roof, with ridge shading in its vertices rather than extra grass meshes.
+function makeHabitatBuilding(kind, biome) {
+  const parts = [], theme = dressingFor(biome.name);
+  const stilt = kind === 'stiltHut', hut = kind === 'hut' || stilt;
+  const base = stilt ? 1.5 : .25, top = base + 3.3;
+  const wall = kind === 'adobe' ? 0xc7a47a : kind === 'ruin' ? theme.stone : theme.wood;
+  const add = (geo, color) => part(parts, geo, color);
+  if (stilt || kind === 'pavilion') {
+    for (const x of [-2,2]) for (const z of [-2,2])
+      add(new THREE.CylinderGeometry(.15,.24,top,6).translate(x,top/2,z), theme.wood);
+  }
+  add(new THREE.BoxGeometry(4.8,.3,4.8).translate(0,base,0), theme.wood);
+  if (kind !== 'pavilion') {
+    add(new THREE.BoxGeometry(4.1,3.3,4.1).translate(0,base+1.65,0), wall);
+    add(new THREE.BoxGeometry(1.1,2.3,.08).translate(0,base+1.15,2.08),0x352d26);
+    for (const x of [-1.3,1.3]) {
+      add(new THREE.BoxGeometry(.72,.8,.12).translate(x,base+2.1,2.1),0x283c40);
+      add(new THREE.BoxGeometry(.95,.12,.28).translate(x,base+1.64,2.15),0xc6b990);
+    }
+  }
+  if (hut) {
+    const roof = new THREE.LatheGeometry([[2.8,-.16],[3,0],[2.4,.45],[1.2,1.45],[.22,2.0],[0,2.1]].map(p=>new THREE.Vector2(...p)),12);
+    const pos=roof.attributes.position;
+    for(let i=0;i<pos.count;i++) {
+      const x=pos.getX(i),z=pos.getZ(i),a=Math.atan2(z,x),r=1+.025*Math.cos(a*6);
+      pos.setXYZ(i,x*r,pos.getY(i)+.05*Math.cos(a*6),z*r);
+    }
+    roof.computeVertexNormals();add(roof.translate(0,top,0),0xbda361);
+  } else if (kind === 'adobe' || kind === 'ruin') {
+    add(new THREE.BoxGeometry(4.5,.4,4.5).translate(0,top,0),wall);
+    for (const z of [-2,2]) add(new THREE.BoxGeometry(4.5,.6,.35).translate(0,top+.35,z),wall);
+    if (kind === 'ruin') for(const x of [-1.5,0,1.5])
+      add(new THREE.BoxGeometry(.7,.7,.6).translate(x,top+.85,-2),theme.stone);
+  } else {
+    const roof=new THREE.ConeGeometry(3.8,kind==='chalet'?3:2,4).rotateY(Math.PI/4).scale(1,1,1.12);
+    add(roof.translate(0,top+(kind==='chalet'?1.5:1),0),kind==='chalet'?0xe3e8ec:kind==='pavilion'?0x86677e:0x514d43);
+  }
+  const group=new THREE.Group();
+  const mesh=new THREE.Mesh(mergeGeometries(parts),_solidMat);mesh.castShadow=true;mesh.receiveShadow=true;
+  group.add(mesh);group.userData.staticProp=true;return group;
+}
+function makeLog() {
+  const parts=[];
+  part(parts,new THREE.CylinderGeometry(.45,.55,3.4,8).rotateZ(Math.PI/2).translate(0,.5,0),0x66513b);
+  part(parts,new THREE.CircleGeometry(.4,8).rotateY(Math.PI/2).translate(1.71,.5,0),0xbfa279);
+  const g=new THREE.Group();g.add(new THREE.Mesh(mergeGeometries(parts.map(p=>p.index?p.toNonIndexed():p)),_solidMat));return g;
+}
+function makeReedPatch() {
+  const g=new THREE.Group(), parts=[];
+  for(let i=0;i<5;i++) {
+    const h=1.2+i*.17,x=Math.sin(i*2)*.6,z=Math.cos(i*2)*.6;
+    part(parts,new THREE.CylinderGeometry(.035,.055,h,4).translate(x,h/2,z),0x6d8b50);
+    part(parts,new THREE.CylinderGeometry(.095,.095,.35,5).translate(x,h-.1,z),0x725538);
+  }
+  g.add(new THREE.Mesh(mergeGeometries(parts),_solidMat));return g;
+}
+
+function makeBasalt(biome) {
   const g = new THREE.Group();
-  const m = mat(0x68616f, { vertexColors: true, flatShading: true });
+  const m = mat(biome ? dressingFor(biome.name).stone : 0x68616f, { vertexColors: true, flatShading: true });
   for (let i=0;i<3;i++) {
     const h=1.4+i*.8;
     const geo=paintSurface(new THREE.CylinderGeometry(.55,.72,h,6), {low:.5});
@@ -4706,9 +4639,9 @@ function makeCactusProp() {
   return g;
 }
 
-function makeRockProp() {
+function makeRockProp(biome) {
   const g = new THREE.Group();
-  const m = mat(0x9a8a6a, { vertexColors: true });
+  const m = mat(biome ? dressingFor(biome.name).stone : 0x9a8a6a, { vertexColors: true });
   const n = 1 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
     const r = new THREE.Mesh(rockGeometry(0.6 + rand() * 1.0), m);
@@ -4804,9 +4737,9 @@ function makeTree(biome) {
   return g;
 }
 
-function makeBush() {
+function makeBush(biome) {
   const g = new THREE.Group();
-  const m = mat(0x4caf50, { flatShading: true, vertexColors: true });
+  const m = mat(biome ? new THREE.Color().setHSL(...biome.foliage).getHex() : 0x4caf50, { flatShading: true, vertexColors: true });
   const n = 2 + Math.floor(rand() * 3);
   for (let i = 0; i < n; i++) {
     const b = new THREE.Mesh(paintSurface(new THREE.IcosahedronGeometry(0.9 + rand() * 0.6, 0), { low: 0.6 }), m);
@@ -4944,17 +4877,17 @@ function makeCrab() {
 }
 
 // A seaside gull that struts along the sand: white body, grey back, orange beak.
-function makeGull() {
+function makeGull(species = "gull") {
   const g = new THREE.Group();
-  const white = mat(0xf4f6f8);
-  const grey = mat(0x667484);
+  const white = mat(species === "vulture" ? 0x433c37 : species === "parrot" ? 0x4a9d57 : 0xf4f6f8);
+  const grey = mat(species === "parrot" ? 0x387da9 : 0x46474d);
   const orange = mat(0xe0a52a);
   const parts = [];
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 6), white);
   body.scale.set(1, 0.9, 1.5); body.position.y = 0.7; parts.push(body);
   const back = new THREE.Mesh(new THREE.SphereGeometry(0.34, 8, 6), grey);
   back.scale.set(1, 0.5, 1.4); back.position.set(0, 0.86, -0.1); parts.push(back);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), white);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 6), species === "vulture" ? mat(0xb77669) : white);
   head.position.set(0, 1.05, 0.42); parts.push(head);
   const beak = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.24, 5), orange);
   beak.rotation.x = Math.PI / 2; beak.position.set(0, 1.02, 0.68); parts.push(beak);
@@ -4968,7 +4901,14 @@ function makeGull() {
     const foot = new THREE.Mesh(new THREE.SphereGeometry(0.1, 5, 3), orange);
     foot.scale.set(0.75, 0.3, 1.5); foot.position.set(sx * 0.12, 0.055, 0.17); parts.push(foot);
   }
+  if(species === "vulture") {
+    const neck=new THREE.Mesh(new THREE.CylinderGeometry(.13,.22,.45,6),mat(0xb77669));
+    neck.position.set(0,1.0,.35);parts.push(neck);
+    head.position.y=1.35;beak.position.y=1.32;
+    for(const piece of parts) if(piece.geometry.type==='SphereGeometry' && piece.geometry.parameters.radius===.035) piece.position.y+=.3;
+  }
   g.add(mergeMeshes(parts, { castShadow: true }));
+  if (species === 'vulture') g.scale.setScalar(1.7);
   g.userData.wander = { range: 4, speed: 2.0, bob: 0.05 };
   return g;
 }
@@ -5023,10 +4963,10 @@ function makeBarn() {
 // and is clearly visible while driving rather than hidden in a dip. Spread them
 // around the loop and face them back toward the road.
 function buildLandmarks(scene, track, heightAt) {
-  const makers = [makeLighthouse, makeCastle, makeFerrisWheel, makeGiantCat, makeBigWindmill];
+  const slots = 5, used = new Map();
   const N = track.samples;
   const up = new THREE.Vector3(0, 1, 0);
-  makers.forEach((make, k) => {
+  for (let k=0;k<slots;k++) {
     // Landmarks are LARGE (castle/ferris wheel footprints reach ~15-20u), so the
     // outward offset from one road point can, on a curvy/folded loop, land the
     // structure near a DIFFERENT road segment. Search out from the nominal spot,
@@ -5034,7 +4974,7 @@ function buildLandmarks(scene, track, heightAt) {
     // by a wide margin (distanceToCenter ≥ 45) so it never intrudes on the track.
     let x = 0, z = 0, fx = 0, fz = 0, ok = false;
     for (let attempt = 0; attempt < 8; attempt++) {
-      const i = Math.floor(((((k + 0.5) / makers.length) + attempt * 0.045) % 1) * N);
+      const i = Math.floor(((((k + 0.5) / slots) + attempt * 0.045) % 1) * N);
       const p = track._pts[i];
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
@@ -5044,13 +4984,20 @@ function buildLandmarks(scene, track, heightAt) {
       if (track.distanceToCenter(cx, cz) < 45 || _inLake(cx, cz)) continue;
       x = cx; z = cz; fx = p.x; fz = p.z; ok = true; break;
     }
-    if (!ok) return; // no clear spot on this map layout — skip rather than intrude
-    const obj = make();
-    obj.name = make.name; // traceable in the scene census / debug tooling
+    if (!ok) continue; // no clear spot on this map layout — skip rather than intrude
+    const biome=biomeAt(x,z), choices=dressingFor(biome.name).landmarks, kind=choices[k%choices.length];
+    if ((used.get(kind)||0) >= (["giantTree","rockSpire"].includes(kind)?3:1)) continue;
+    if (!habitatFits(biomeNameAt,x,z,n=>dressingFor(n).landmarks.includes(kind),20)) continue;
+    const makers={lighthouse:makeLighthouse,castle:makeCastle,ferris:makeFerrisWheel,catStatue:makeGiantCat,windmill:makeBigWindmill,
+      giantTree:()=>{const g=makeTree(biome);g.scale.setScalar(5);return g;},
+      rockSpire:()=>{const g=makeBasalt(biome);g.scale.set(6,10,6);return g;}};
+    const obj = makers[kind]();used.set(kind,(used.get(kind)||0)+1);
+    obj.userData.dressing={kind,biome:biome.name,x,z};scene.userData.biomePlacements.push(obj.userData.dressing);
+    obj.name = kind; // traceable in the scene census / debug tooling
     obj.position.set(x, heightAt(x, z), z);
     obj.rotation.y = Math.atan2(fx - x, fz - z); // face back toward the road
     scene.add(obj);
-  });
+  }
 }
 
 // A pole with a cloth flag that flutters (registered with _flutterers).
@@ -5259,21 +5206,20 @@ function makeBigWindmill() {
 }
 
 // ---- Birds ----
-// A few flocks of simple birds circling high in the sky, wings flapping. All the
-// wings across every flock render as ONE InstancedMesh (they used to be ~70
-// individual meshes — always in frustum on sky-filled vistas, one draw each).
+// Up to six flocks circling within their habitats. Each occupied species uses
+// a shared instanced wing/body pair, rather than meshes per individual bird.
 // The flock→bird→wing-pivot group hierarchy still exists and animates exactly as
 // before, but the pivots hold invisible markers whose world matrices are copied
 // into the instance buffer after the flock update.
 // Sky-bird geometry + materials, shared by every bird in every flock (they
-// render as two InstancedMeshes) and by the asset viewer. The silhouette is
+// render as two InstancedMeshes per species) and by the asset viewer. The silhouette is
 // corvid — fingered primaries, fan tail — but the COLOUR is a parameter, so
 // the same geometry serves ravens (the default near-black), gulls, doves…
 // Local axes: the bird flies along +X (beak forward), wings span ±Z. Kept
 // deliberately light — these are distant sky silhouettes: a fingered wing
 // shape (~16 tris) and a low-poly body/head/beak/fan-tail (~80 tris).
 export const SKY_BIRD_COLOR = 0x414957; // default: raven black
-let _skyBirdGeos = null;
+const _skyBirdGeos = new Map();
 const _skyBirdMats = new Map(); // colour → shared material (flocks + viewer)
 function skyBirdMaterial(color = SKY_BIRD_COLOR) {
   let m = _skyBirdMats.get(color);
@@ -5285,8 +5231,8 @@ function skyBirdMaterial(color = SKY_BIRD_COLOR) {
   }
   return m;
 }
-function skyBirdGeos() {
-  if (_skyBirdGeos) return _skyBirdGeos;
+function skyBirdGeos(species = "raven") {
+  if (_skyBirdGeos.has(species)) return _skyBirdGeos.get(species);
 
   // One RIGHT wing in (x = chord, y = span), shoulder at the origin: a swept
   // leading edge out to the wrist, splayed primary-feather "fingers" at the
@@ -5332,63 +5278,76 @@ function skyBirdGeos() {
   wingGeo.computeVertexNormals();
   paintSurface(wingGeo, { low: 0.56, high: 1, faces: 0 });
   paintSurface(bodyGeo, { low: 0.62, high: 1, faces: 0.06 });
-  _skyBirdGeos = { wingGeo, bodyGeo };
-  return _skyBirdGeos;
+  if (species !== 'raven') {
+    const colors={gull:0xf1f1e6,vulture:0x493e38,parrot:0x50a36b,swallow:0x536075,pigeon:0x87909c,heron:0xb0bbc0};
+    const base=new THREE.Color(colors[species]);
+    for(const geo of [wingGeo,bodyGeo]) {
+      const c=geo.attributes.color;
+      for(let i=0;i<c.count;i++) c.setXYZ(i,c.getX(i)*base.r,c.getY(i)*base.g,c.getZ(i)*base.b);
+    }
+    if(species==='vulture') {
+      const c=bodyGeo.attributes.color,skin=new THREE.Color(0xb87968);
+      // Head vertices follow the 7×5 torso grid in the merged geometry.
+      for(let i=35;i<65;i++) c.setXYZ(i,skin.r,skin.g,skin.b);
+      wingGeo.scale(1.3,1,1.2);
+    } else if(species==='gull' || species==='heron') {
+      wingGeo.scale(.8,1,1.22);
+      if(species==='heron') bodyGeo.scale(1.5,1,1);
+    } else if(species==='swallow') { wingGeo.scale(.6,1,.8);bodyGeo.scale(.8,.8,.8); }
+    if(species==='parrot') {
+      const c=wingGeo.attributes.color;
+      for(let i=0;i<c.count;i++) if(wingGeo.attributes.position.getZ(i)>1.4)c.setXYZ(i,.05,.2,.55);
+    }
+  }
+  const result = { wingGeo, bodyGeo };_skyBirdGeos.set(species,result);
+  return result;
 }
 
-function buildBirds(scene) {
-  const flocks = [];
-  const markers = []; // one per wing
-  const bodyMarkers = []; // one per bird
-  for (let f = 0; f < 6; f++) {
-    const flock = new THREE.Group();
-    const wings = [];
-    const count = 4 + Math.floor(rand() * 4);
-    for (let i = 0; i < count; i++) {
-      const bird = new THREE.Group();
-      const bodyMarker = new THREE.Object3D();
-      bird.add(bodyMarker);
-      bodyMarkers.push(bodyMarker);
-      const birdPhase = rand() * 6.28; // per BIRD, so its two wings beat together
-      for (const sx of [-1, 1]) {
-        const wg = new THREE.Group(); // flap pivot at the shoulder
-        const marker = new THREE.Object3D();
-        marker.position.z = sx * 0.22; // wing root sits at the body's flank
-        marker.scale.z = sx; // one wing geometry, mirrored for the left side
-        wg.add(marker);
-        bird.add(wg);
-        wings.push({ wg, sx, phase: birdPhase });
-        markers.push(marker);
+function buildBirds(scene, track, heightAt) {
+  const flocks = [], batches = new Map();
+  // Keep the six-flock population ceiling. Species share one wing/body pair
+  // per occupied habitat rather than adding a separate renderer per bird.
+  for(let f=0;f<6;f++) {
+    let site=null;
+    for(let attempt=0;attempt<16;attempt++) {
+      const p=track._pts[Math.floor(rand()*track.samples)];
+      const cx=p.x+(rand()-.5)*180,cz=p.z+(rand()-.5)*180;
+      const species=dressingFor(biomeNameAt(cx,cz)).bird,R=25+rand()*30;
+      if(!habitatFits(biomeNameAt,cx,cz,n=>dressingFor(n).bird===species,R+24))continue;
+      let ground=heightAt(cx,cz);
+      for(let k=0;k<12;k++)ground=Math.max(ground,heightAt(cx+Math.cos(k*Math.PI/6)*(R+24),cz+Math.sin(k*Math.PI/6)*(R+24)));
+      site={cx,cz,R,species,baseY:ground+40+rand()*25};break;
+    }
+    if(!site)continue;
+    if(!batches.has(site.species))batches.set(site.species,{markers:[],bodyMarkers:[]});
+    const batch=batches.get(site.species),flock=new THREE.Group(),wings=[];
+    const count=4+Math.floor(rand()*4);
+    for(let i=0;i<count;i++) {
+      const bird=new THREE.Group(),bodyMarker=new THREE.Object3D();bodyMarker.userData.habitatSpecies=site.species;bird.add(bodyMarker);batch.bodyMarkers.push(bodyMarker);
+      const phase=rand()*6.28;
+      for(const sx of [-1,1]) {
+        const wg=new THREE.Group(),marker=new THREE.Object3D();marker.position.z=sx*.22;marker.scale.z=sx;
+        wg.add(marker);bird.add(wg);wings.push({wg,sx,phase});batch.markers.push(marker);
       }
-      bird.position.set((rand() - 0.5) * 18, (rand() - 0.5) * 8, (rand() - 0.5) * 18);
-      bird.scale.setScalar(0.7 + rand() * 0.6);
-      flock.add(bird);
+      bird.position.set((rand()-.5)*18,(rand()-.5)*8,(rand()-.5)*18);
+      bird.scale.setScalar(.7+rand()*.6);flock.add(bird);
     }
     scene.add(flock);
-    flocks.push({
-      flock,
-      wings,
-      R: 130 + rand() * 170,
-      cx: (rand() - 0.5) * 320,
-      cz: (rand() - 0.5) * 320,
-      baseY: 85 + rand() * 55,
-      speed: (0.05 + rand() * 0.05) * (rand() < 0.5 ? 1 : -1),
-      phase: rand() * 6.28,
-    });
+    flocks.push({...site,flock,wings,speed:(.05+rand()*.05)*(rand()<.5?1:-1),phase:rand()*6.28});
   }
-  // Two draws for every bird in the sky: one instanced mesh of wings, one of
-  // bodies (was one draw of wing boxes — the body/tail/beak cost exactly +1).
-  const { wingGeo, bodyGeo } = skyBirdGeos();
-  const material = skyBirdMaterial();
-  const wingMesh = new THREE.InstancedMesh(wingGeo, material, markers.length);
-  const bodyMesh = new THREE.InstancedMesh(bodyGeo, material, bodyMarkers.length);
-  for (const m of [wingMesh, bodyMesh]) {
-    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    m.frustumCulled = false; // flocks span the whole sky; it's 2 draws regardless
-    m.layers.set(1);
-    scene.add(m);
+  for(const [species,batch] of batches) {
+    const {wingGeo,bodyGeo}=skyBirdGeos(species);
+    const material=skyBirdMaterial(species==='raven'?SKY_BIRD_COLOR:0xffffff);
+    batch.wingMesh=new THREE.InstancedMesh(wingGeo,material,batch.markers.length);
+    batch.bodyMesh=new THREE.InstancedMesh(bodyGeo,material,batch.bodyMarkers.length);
+    for(const mesh of [batch.wingMesh,batch.bodyMesh]) {
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;mesh.layers.set(1);scene.add(mesh);
+    }
   }
-  return { flocks, wingMesh, markers, bodyMesh, bodyMarkers };
+  scene.userData.birdHabitats=flocks.map(({cx,cz,R,species})=>({x:cx,z:cz,radius:R+24,species}));
+  const result={flocks,batches:[...batches.values()]};
+  for(const flock of flocks)updateFlock(flock,0);
+  _wingFlip=true;syncBirdWings(result);return result;
 }
 // Copy every marker's world matrix into the instance buffers (call after all
 // updateFlock calls; one updateMatrixWorld per flock refreshes its whole subtree).
@@ -5400,10 +5359,11 @@ function syncBirdWings(birds) {
   _wingFlip = !_wingFlip;
   if (_wingFlip) return;
   for (const fl of birds.flocks) fl.flock.updateMatrixWorld(true);
-  for (let i = 0; i < birds.markers.length; i++) birds.wingMesh.setMatrixAt(i, birds.markers[i].matrixWorld);
-  for (let i = 0; i < birds.bodyMarkers.length; i++) birds.bodyMesh.setMatrixAt(i, birds.bodyMarkers[i].matrixWorld);
-  birds.wingMesh.instanceMatrix.needsUpdate = true;
-  birds.bodyMesh.instanceMatrix.needsUpdate = true;
+  for(const batch of birds.batches) {
+    for(let i=0;i<batch.markers.length;i++)batch.wingMesh.setMatrixAt(i,batch.markers[i].matrixWorld);
+    for(let i=0;i<batch.bodyMarkers.length;i++)batch.bodyMesh.setMatrixAt(i,batch.bodyMarkers[i].matrixWorld);
+    batch.wingMesh.instanceMatrix.needsUpdate=true;batch.bodyMesh.instanceMatrix.needsUpdate=true;
+  }
 }
 
 function updateFlock(fl, time) {
@@ -5418,7 +5378,7 @@ function updateFlock(fl, time) {
     // Negative bias = wings held in a shallow raised V (a corvid's glide);
     // the flap swings around that. Slightly slower beat than the old sparrow
     // boxes — ravens row, they don't flutter.
-    w.wg.rotation.x = -w.sx * (0.25 + Math.sin(time * 6.5 + w.phase) * 0.55);
+    w.wg.rotation.x = -w.sx * (0.25 + Math.sin(time * (fl.species === "vulture" ? 1.8 : 6.5) + w.phase) * (fl.species === "vulture" ? .12 : .55));
   }
 }
 
@@ -5433,6 +5393,8 @@ function updateCritter(c, dt, time, heightAt) {
     const r = rand() * c.range;
     c.tx = c.base.x + Math.cos(a) * r;
     c.tz = c.base.z + Math.sin(a) * r;
+    const kind = c.obj.userData.dressing?.kind;
+    if (kind && !allowsDressing(biomeNameAt(c.tx, c.tz), kind)) { c.tx = c.base.x; c.tz = c.base.z; }
     c.gy = heightAt(c.tx, c.tz);
   }
   const dx = c.tx - c.obj.position.x;
@@ -5586,9 +5548,9 @@ function buildAmbientFlyers(scene, track, heightAt, litLevel) {
       // Dragonflies hug the wet forest; butterflies take the other warm biomes.
       // Cold/snow biomes get neither.
       let pal;
-      if (night) pal = [0xf2f2e6, 0xe8e8d8, 0xdedecf];
-      else if (isDragon) pal = b.name === "forest" ? DRAGONFLY_COLS : null;
-      else pal = FLYER_PALETTES[b.name];
+      if (night) pal = dressingFor(b.name).insects.includes("moth") ? [0xf2f2e6, 0xe8e8d8, 0xdedecf] : null;
+      else if (isDragon) pal = dressingFor(b.name).insects.includes("dragonfly") ? DRAGONFLY_COLS : null;
+      else pal = dressingFor(b.name).insects.includes("butterfly") ? FLYER_PALETTES[b.name] || FLYER_PALETTES.meadow : null;
       if (!pal) continue;
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const dirS = rand() < 0.5 ? 1 : -1;
@@ -5597,6 +5559,7 @@ function buildAmbientFlyers(scene, track, heightAt, litLevel) {
       const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 8;
       if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue;
       if (_inLake(x, z)) continue;
+      if (!habitatFits(biomeNameAt,x,z,n=>dressingFor(n).insects.includes(night?"moth":kind),4)) continue;
       bases.push(x, heightAt(x, z) + 0.9 + rand() * 2.3, z);
       _c.set(pal[(rand() * pal.length) | 0]);
       tints.push(_c.r, _c.g, _c.b);
@@ -5699,16 +5662,19 @@ function buildPigeons(scene, track, heightAt) {
       const outward = side.x * p.x + side.z * p.z >= 0 ? 1 : -1;
       const cx = p.x + side.x * outward * (track.halfWidth + 7.5);
       const cz = p.z + side.z * outward * (track.halfWidth + 7.5);
-      if (attempt < 9 && track.distanceToCenter(cx, cz) < track.halfWidth + 5) continue;
+      if (track.distanceToCenter(cx, cz) < track.halfWidth + 5 || _inLake(cx,cz)) continue;
+      if (!habitatFits(biomeNameAt,cx,cz,n=>dressingFor(n).pigeons,18)) continue;
       bx = cx;
       bz = cz;
       px = p.x; // road point the loft faces
       pz = p.z;
       break;
     }
+    if (bx === undefined) return;
     const by = heightAt(bx, bz);
 
     const loft = new THREE.Group();
+    scene.userData.biomePlacements.push({kind:"pigeonLoft",biome:biomeNameAt(bx,bz),x:bx,z:bz});
     const wallH = 4;
     // In the city the pigeons perch on a flat-roofed brick building with a small
     // rooftop coop, instead of the rural cottage (a pitched-roof cottage looked
@@ -5762,6 +5728,7 @@ function buildPigeons(scene, track, heightAt) {
     const n = 7;
     for (let k = 0; k < n; k++) {
       const pg = makePigeon();
+      pg.group.userData.habitatAnimal="pigeons";
       const home = new THREE.Vector3((k / (n - 1) - 0.5) * 4.2, wallH + 1.0 + rand() * 0.4, (rand() - 0.5) * 1.2);
       pg.group.position.copy(home);
       pg.group.rotation.y = (rand() - 0.5) * 1.2;
@@ -5858,8 +5825,18 @@ function updatePigeons(flock, dt, time, ppos) {
   } else {
     flock.timer += dt;
     for (const b of flock.birds) {
-      b.group.position.addScaledVector(b.vel, dt);
-      b.vel.y = Math.max(b.vel.y - 5 * dt, 2.5); // arc up, then keep climbing away
+      if (flock.timer < 1) {
+        b.group.position.addScaledVector(b.vel, dt);
+        b.vel.y = Math.max(b.vel.y - 5 * dt, 2.5);
+      } else {
+        // After the initial startle, circle the loft inside its prevalidated
+        // habitat envelope. Previously a nearby player made them fly forever.
+        const a=time*.9+b.phase, ease=Math.min(1,dt*3);
+        b.group.position.x+=(b.home.x+Math.cos(a)*8-b.group.position.x)*ease;
+        b.group.position.z+=(b.home.z+Math.sin(a)*8-b.group.position.z)*ease;
+        b.group.position.y+=(b.home.y+7+Math.sin(a)*.7-b.group.position.y)*ease;
+        b.vel.x=-Math.sin(a);b.vel.z=Math.cos(a);
+      }
       for (const w of b.wings) w.wg.rotation.z = w.sx * (0.3 + Math.sin(time * 24 + b.phase) * 0.8);
       b.group.rotation.y = Math.atan2(b.vel.x, b.vel.z);
     }
@@ -5955,10 +5932,11 @@ function makeBalloon(paletteIndex = 0) {
 function buildBalloons(scene, heightAt) {
   const balloons = [];
   for (let i = 0; i < 6; i++) {
-    const g = makeBalloon(i);
     const a = rand() * Math.PI * 2;
     const r = 150 + rand() * 300;
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (!habitatFits(biomeNameAt,x,z,n=>dressingFor(n).balloons,10)) continue;
+    const g=makeBalloon(i);
     g.position.set(x, 0, z);
     scene.add(g);
     // Float above the terrain beneath them, so they clear the high snowy hill.
@@ -5998,8 +5976,8 @@ function makeStreetLampAsset(lit = true) {
 // One sky bird in its gliding pose, assembled from the exact geometry the
 // flocks instance (see skyBirdGeos/buildBirds). `color` picks the species —
 // default raven black; pass e.g. 0xe8ecf0 for a gull, 0xb8a8c8 for a dove.
-function makeSkyBirdAsset(color = SKY_BIRD_COLOR) {
-  const { wingGeo, bodyGeo } = skyBirdGeos();
+function makeSkyBirdAsset(color = SKY_BIRD_COLOR, species = "raven") {
+  const { wingGeo, bodyGeo } = skyBirdGeos(species);
   const material = skyBirdMaterial(color);
   const g = new THREE.Group();
   g.add(new THREE.Mesh(bodyGeo, material));
@@ -6076,6 +6054,11 @@ export function assetCatalog() {
   add("Trackside", "Timber footbridge",()=>{
     const g=new THREE.Group();buildFootbridge(g,mockTrack,()=>0,0,new THREE.MeshStandardMaterial({vertexColors:true,roughness:1}),false);g.traverse(o=>o.layers.set(0));return g;
   });
+  for(const [kind,bn] of [['hut','beach'],['stiltHut','wetlands'],['cabin','forest'],['chalet','alpine'],['adobe','desert'],['pavilion','blossom'],['ruin','volcanic']])
+    add('Habitat buildings',kind,()=>makeHabitatBuilding(kind,biome(bn)));
+  add('Animals','Vulture',()=>makeGull('vulture'));
+  add('Animals','Parrot',()=>makeGull('parrot'));
+  for(const species of ['gull','vulture','parrot','heron'])add('Animals',`Sky bird — ${species}`,()=>makeSkyBirdAsset(0xffffff,species));
   // Trees per biome silhouette (round/pine/acacia/blossom — the distinct shapes).
   for (const bn of ["meadow", "forest", "autumn", "blossom", "savanna", "beach", "jungle", "desert", "wetlands", "lavender"])
     add("Trees & plants", `Tree — ${bn}`, () => makeTree(biome(bn)));
