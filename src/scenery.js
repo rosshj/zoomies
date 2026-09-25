@@ -1,3 +1,4 @@
+import { LivingDetails, buildBiomeEvents, makeSailboat } from './living-scenery.js';
 import { clearTerrainGrid, clearMountainPosition } from './terrain-clearance.js';
 import { HABITAT_ASSETS, makeHabitatAsset } from './habitat-assets.js';
 import { dressingFor, allowsDressing, habitatFits } from "./biome-dressing.js";
@@ -6,7 +7,7 @@ import { paintSolid, paintSurface, rockGeometry, palmFrond, treeTrunkGeometry, l
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
-import { rand, makeRng } from "./rng.js"; // seeded RNG so the world is identical per seed
+import { rand, makeRng, getSeed } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { cloudClusterGeo } from "./scene.js"; // the sky ring's cloud lump (asset catalog shows one)
 import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
@@ -15,7 +16,7 @@ import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals
 // around the runs and build their structures. See features.js for the system.
 import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 import { uSunViewNode, uSunColNode } from "./toon.js"; // shared per-frame sun nodes (grass backlight reads them)
-import { windLean, windGustDrift, bakeBendWeights, setWind, uKartPos } from "./wind.js"; // the world's one wind field
+import { windLean, windGustDrift, bakeBendWeights, setWind, setWindClock, windStrengthAt, uKartPos } from "./wind.js"; // the world's one wind field
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -620,7 +621,8 @@ export function buildWorld(scene, track, opts = {}) {
     return out;
   };
   const featAnim = buildFeatureStructures(scene, track, heightAt, rand, { lit, litLevel, lakes, groundColorAt, biomeNameAt }); // set-piece kits + ambience
-  buildRoadside(scene, track, heightAt); // town & farm zones lining the road
+  const livingDetails=new LivingDetails();
+  buildRoadside(scene, track, heightAt, livingDetails); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
@@ -628,7 +630,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
   buildRhythmPosts(scene, track, heightAt); // evenly-beat marker bollards hugging both verges (perceived speed)
   const stringLights = buildStringLights(scene, track, litLevel, heightAt); // festive bulb strings (swing + glow)
-  buildOverheadStructures(scene, track, heightAt, lit, litLevel); // banners + wooden footbridges spanning the road
+  buildOverheadStructures(scene, track, heightAt, lit, litLevel, livingDetails); // banners + wooden footbridges spanning the road
   buildLandmarks(scene, track, heightAt); // hero structures around the horizon
   buildWater(scene, lakes, 1 - litLevel * 0.6); // dimmer water at dusk/night
   const grass = buildGrass(scene, track, heightAt);
@@ -638,16 +640,21 @@ export function buildWorld(scene, track, opts = {}) {
   buildAmbientFlyers(scene, track, heightAt, litLevel); // butterflies/dragonflies (day) or moths (night) — GPU-animated, no per-frame CPU
   buildWindDebris(scene, track, heightAt); // tumbleweed (desert) + seed-fluff (savanna), GPU-animated wind buffeting
   buildRoadCrossers(scene, track, heightAt); // leaves/wisps/litter crossing the road itself (perceived speed)
+  const windPoint=new THREE.Vector3();
   const pigeonFlocks = buildPigeons(scene, track, heightAt);
+  const biomeEvents=buildBiomeEvents(scene,track,lakes,heightAt,biomeNameAt,lakeDist);
+  scene.userData.livingDetails={meshes:livingDetails.meshes,flags:livingDetails.flags};
 
   return {
     grass,
+    biomeEvents, livingDetails,
     lakes, // water entries (level/floor/spine) — debug probes verify carve vs water level
     heightAt, // terrain height sampler (incl. road carve) — props use it so piles sit on the ground
     groundLeaves, // { update(karts, camPos) } | null — drives the kart-wake leaf pop
     stringLights, // { update(dt, karts) } — driven from main.js with live kart data
     balloons, // debug hook: headless screenshot tours fly the camera to one
     update(time, dt = 0.016, playerPos = null) {
+      setWindClock(time);
       // playerPos: a Vector3, an ARRAY of Vector3s (split screen — every
       // human wakes the world around them), or null (menus: animate all).
       const ppos = Array.isArray(playerPos) ? playerPos : playerPos ? [playerPos] : null;
@@ -660,11 +667,16 @@ export function buildWorld(scene, track, opts = {}) {
         }
         return false;
       };
+      livingDetails.update(dt,nearAny);
+      biomeEvents.update(time,dt,nearAny);
       for (const b of balloons) {
         b.mesh.position.y = b.baseY + Math.sin(time * 0.5 + b.phase) * 4;
         b.mesh.rotation.y = time * 0.1 + b.phase;
       }
-      for (const s of _spinners) s.obj.rotation[s.ax] = time * s.speed + s.phase;
+      for (const s of _spinners) {
+        if(s.wind) { s.obj.getWorldPosition(windPoint);if(!nearAny(windPoint.x,windPoint.z,240))continue;s.angle=(s.angle ?? s.phase)+dt*s.speed*(.25+windStrengthAt(windPoint.x,windPoint.z));s.obj.rotation[s.ax]=s.angle; }
+        else s.obj.rotation[s.ax] = time * s.speed + s.phase;
+      }
       featAnim.update(time);
       for (const f of _flutterers) f.obj.rotation.y = Math.sin(time * 5 + f.phase) * 0.4;
       for (const fl of birds.flocks) updateFlock(fl, time);
@@ -674,7 +686,7 @@ export function buildWorld(scene, track, opts = {}) {
         // enough away, and freezing (vs culling) means they're right there
         // when you return. High extends the live range (setSceneryRanges).
         if (!nearAny(c.base.x, c.base.z, _rangeCritter)) continue;
-        updateCritter(c, dt, time, heightAt);
+        updateCritter(c, dt, time, heightAt, track, ppos);
       }
       for (const pf of pigeonFlocks) updatePigeons(pf, dt, time, ppos);
       // Fireflies animate via the TSL time node (legacy uniform guard retained).
@@ -1276,7 +1288,7 @@ function buildGrass(scene, track, heightAt) {
     const dx = root.x.sub(uKart.x);
     const dz = root.z.sub(uKart.z);
     const dist = dx.mul(dx).add(dz.mul(dz)).sqrt().max(0.001);
-    const near = smoothstep(0.9, 3.8, dist).oneMinus(); // 1 at the kart -> 0 by 3.8u
+    const near = smoothstep(0.9, 5.2, dist).oneMinus(); // 1 at the kart -> 0 by 5.2u
     const push = near.mul(near).mul(uKart.w).mul(0.5); // <= ~0.55 of a plant height
     const reach = bend.mul(height); // world units at an amplitude of 1
     const px = sway.x.add(dx.div(dist).mul(push)).mul(reach);
@@ -2022,7 +2034,7 @@ function buildGroundLeaves(scene, track, heightAt) {
   // A lingering wake TRAIL behind the nearest kart: each puff is (x,y,z,strength)
   // and decays over ~1.5s, so leaves you drive over stay kicked up and flutter
   // back down in your wake instead of snapping flat the instant the kart passes.
-  const PUFFS = 12;
+  const PUFFS = 8;
   const puffs = Array.from({ length: PUFFS }, () => uniform(new THREE.Vector4(1e6, 1e6, 1e6, 0)));
   const uWakeR = uniform(13.0); // generous so leaves you drive near clearly react (even passing at speed)
 
@@ -2030,11 +2042,11 @@ function buildGroundLeaves(scene, track, heightAt) {
   const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
   const _ph = hash(instanceIndex).mul(6.2832);
   const _t = time.add(_ph);
-  const _amp = positionLocal.length().mul(0.45); // idle wind: outer edges rock more than the centre (a touch livelier so none look dead)
-  const _sway = vec3(_t.mul(2.6).sin(), _t.mul(3.3).sin().mul(0.4), _t.mul(2.1).cos()).mul(_amp);
+  const _base = attribute("aBase");
+  const _amp = positionGeometry.length().mul(0.45); // idle wind: outer edges rock more than the centre (a touch livelier so none look dead)
+  const _sway = windGustDrift(_base.x, _base.z, .4, hash(instanceIndex), .03).mul(_amp);
   // Wake lift: sum each kart's nearby influence (1 at the kart, 0 past the radius).
   // Built as an immutable node expression (no toVar/assign — those need an Fn scope).
-  const _base = attribute("aBase"); // this leaf's world position
   let _liftSum = float(0);
   for (const w of wakes) {
     const dx = _base.x.sub(w.x);
@@ -2646,10 +2658,11 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
       spot._col = col.getHex();
     }
     for (const chunk of chunkByCell(arr)) {
-      const geo = bakeBendWeights(foliageGeoFor(shape).clone());
+      const geo = bakeBendWeights(foliageGeoFor(shape).clone(), shape);
       const windRoot = new Float32Array(chunk.length * 3);
       geo.setAttribute("aWindRoot", new THREE.InstancedBufferAttribute(windRoot, 3));
       const foliage = new THREE.InstancedMesh(geo, foliageMat, chunk.length);
+      foliage.userData.canopyShape=shape;
       foliage.castShadow = true;
       foliage.layers.set(1);
       chunk.forEach((spot, i) => {
@@ -3322,7 +3335,7 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
       const mag = Math.hypot(sw.x, sw.z);
       if (mag > 2.0) { sw.x *= 2.0 / mag; sw.z *= 2.0 / mag; } // cap the swing
       // Gentle idle breeze on top so they're never dead-still.
-      const idle = Math.sin(performance.now() * 0.0011 + sd.phase) * 0.12;
+      const idle = windStrengthAt(sd.mid.x,sd.mid.z) * .18;
       const ox = sw.x + sd.fwd.x * idle, oz = sw.z + sd.fwd.z * idle;
       // Apply the offset weighted by the catenary droop (max at the centre).
       const posAttr = sd.wireGeo.attributes.position;
@@ -3392,17 +3405,20 @@ function addStreetBanner(scene, track, heightAt, p, sx, sz, yaw, texIndex) {
     const x=pos.getX(i),y=pos.getY(i), pin=Math.max(0,1-Math.pow(y/(h*.5),2));
     pos.setZ(i,.26*Math.sin((x/w+.5)*Math.PI)*Math.sin(x/w*Math.PI*4)*pin);
   }
+  geo.setAttribute("aFlex", new THREE.Float32BufferAttribute(Array.from({length:pos.count},(_,i)=>Math.max(0,1-(pos.getY(i)/(h*.5))**2)*Math.max(0,1-(pos.getX(i)/(w*.5))**2)),1));
   geo.computeVertexNormals();
   const banner=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({
     color:biomeAt(p.x,p.z).barrier.b, map:bannerPrint(), roughness:1,side:THREE.DoubleSide
   }));
+  banner.material.userData.windFlex=.65;
+  banner.geometry.computeBoundingSphere();banner.geometry.boundingSphere.radius+=1;
   banner.position.set(p.x,(topY+botY)/2,p.z);banner.rotation.y=yaw+Math.PI;
   banner.castShadow=true;banner.layers.set(1);scene.add(banner);
 }
 
 // Overhead structures you drive UNDER: printed street banners on poles, and a
 // chunky bridge/overpass spanning the road. Seeded placement across the track.
-function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
+function buildOverheadStructures(scene, track, heightAt, lit, level = 1, motion = null) {
   const N = track.samples;
   const postMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 });
 
@@ -3453,7 +3469,7 @@ function buildOverheadStructures(scene, track, heightAt, lit, level = 1) {
   for (const frac of pickFootbridgeSpans(track, heightAt, 2)) {
     const p=track._pts[Math.floor(frac*track.samples)%track.samples];
     if (habitatFits(biomeNameAt,p.x,p.z,n=>dressingFor(n).footbridge,track.halfWidth+16))
-      buildFootbridge(scene, track, heightAt, frac, postMat, lit, level);
+      buildFootbridge(scene, track, heightAt, frac, postMat, lit, level, motion);
   }
 }
 
@@ -3517,7 +3533,7 @@ function pickFootbridgeSpans(track, heightAt, count) {
 // with timber posts at the road edges, plank rails and balusters. Everything is
 // built in the span's local frame (X across, Z along the road, Y up; local Y=0 is
 // road height) and merged into a single mesh — 1 draw call for the whole bridge.
-function buildFootbridge(scene, track, heightAt, frac, woodMat, lit, level) {
+function buildFootbridge(scene, track, heightAt, frac, woodMat, lit, level, motion = null) {
   const N = track.samples;
   const i = Math.floor((frac % 1) * N) % N;
   const p = track._pts[i];
@@ -3604,6 +3620,11 @@ function buildFootbridge(scene, track, heightAt, frac, woodMat, lit, level) {
   mesh.rotation.y = yaw;
   mesh.layers.set(1);
   scene.add(mesh);
+
+  if(motion)for(const u of [-.4,.4]) {
+    const x=u*L,z=deckW/2;
+    motion.flag(scene,p.x+Math.cos(yaw)*x+Math.sin(yaw)*z,p.y+deckY(u)+1.15,p.z-Math.sin(yaw)*x+Math.cos(yaw)*z,yaw);
+  }
 
   // A warm lantern hung under the crown at dusk/night.
   if (lit) {
@@ -3798,7 +3819,7 @@ function buildRocks(scene, track, heightAt, flatten) {
   }
 }
 
-function buildRoadside(scene, track, heightAt) {
+function buildRoadside(scene, track, heightAt, motion) {
   scene.userData.biomePlacements ||= [];
   const N = track.samples;
   const pts = track._pts;
@@ -3851,6 +3872,7 @@ function buildRoadside(scene, track, heightAt) {
       : rand() * Math.PI * 2;
     prop.traverse((o) => o.layers.set(1)); // keep out of the mirror render
     scene.add(prop);
+    motion.decorate(scene,prop,kind,biome);
     // Anything that never moves is merged by batchStaticProps() after placement
     // (a bench/fence/bush is 2-6 meshes each — hundreds of draw calls that all
     // collapse into a few per area). Animated props (wandering animals, spinning
@@ -3858,7 +3880,18 @@ function buildRoadside(scene, track, heightAt) {
     if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
     if (prop.userData.wander && _critters.length < Math.round(48 * _detail)) {
+      if (kind === 'gull' || kind === 'parrot') {
+        const flight=new THREE.Group();flight.rotation.y=-Math.PI/2;flight.position.y=.8;
+        const wings=[];
+        for(const side of [-1,1]) {
+          const wing=new THREE.Mesh(skyBirdGeos(kind).wingGeo,skyBirdMaterial(0xffffff));
+          wing.scale.set(.38,.38,side*.38);flight.add(wing);wings.push({wing,side});
+        }
+        flight.traverse(o=>o.layers.set(1));
+        flight.visible=false;prop.add(flight);prop.userData.flight={group:flight,wings};
+      }
       _critters.push({
+        rng: makeRng(`${getSeed()}:animal:${kind}:${x}:${z}`),
         obj: prop,
         base: prop.position.clone(),
         ry: prop.rotation.y,
@@ -4223,6 +4256,7 @@ function makeCityStore() {
   solid.castShadow = true;
   solid.receiveShadow = true;
   g.add(solid);
+  g.userData.facade={w,d};
   g.userData.isBuilding = true;
   return g;
 }
@@ -4448,7 +4482,7 @@ function makeWindmill() {
   hub.add(new THREE.Mesh(mergeGeometries(bladeGeos), sailMat));
   hub.userData.keepLive = true;
   g.add(hub);
-  _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28 });
+  _spinners.push({ obj: hub, ax: "z", speed: 0.6, phase: rand() * 6.28, wind: true });
   return g;
 }
 
@@ -5386,13 +5420,17 @@ function syncBirdWings(birds) {
 }
 
 function updateFlock(fl, time) {
-  const a = time * fl.speed + fl.phase;
+  // A short, staggered swoop every minute stays inside the validated habitat.
+  const pulse=Math.max(0,Math.sin(((time+fl.phase*9)%62)/10*Math.PI));
+  const event=(time+fl.phase*9)%62<10?pulse*pulse:0;
+  const a = time * fl.speed + fl.phase + event*.28;
   fl.flock.position.set(
     fl.cx + Math.cos(a) * fl.R,
-    fl.baseY + Math.sin(time * 0.3 + fl.phase) * 5,
+    fl.baseY + Math.sin(time * 0.3 + fl.phase) * 5 - event*14,
     fl.cz + Math.sin(a) * fl.R
   );
   fl.flock.rotation.y = -a + (fl.speed > 0 ? -Math.PI / 2 : Math.PI / 2); // face travel
+  fl.flock.rotation.z=Math.sin(a)*.10+event*.16;
   for (const w of fl.wings) {
     // Negative bias = wings held in a shallow raised V (a corvid's glide);
     // the flap swings around that. Slightly slower beat than the old sparrow
@@ -5404,34 +5442,50 @@ function updateFlock(fl, time) {
 // Gentle wander for ground animals: amble toward a roaming target near their
 // spawn, turn the nose (local -X) to lead, follow the ground, and bob as they
 // go. heightAt is only sampled when a new target is chosen (cheap).
-function updateCritter(c, dt, time, heightAt) {
-  c.t -= dt;
-  if (c.t <= 0) {
-    c.t = 2.5 + rand() * 4;
-    const a = rand() * Math.PI * 2;
-    const r = rand() * c.range;
-    c.tx = c.base.x + Math.cos(a) * r;
-    c.tz = c.base.z + Math.sin(a) * r;
-    const kind = c.obj.userData.dressing?.kind;
-    if (kind && !allowsDressing(biomeNameAt(c.tx, c.tz), kind)) { c.tx = c.base.x; c.tz = c.base.z; }
-    c.gy = heightAt(c.tx, c.tz);
+function updateCritter(c, dt, time, heightAt, track, players) {
+  const kind=c.obj.userData.dressing?.kind, bird=['gull','parrot','vulture','duck'].includes(kind);
+  let nearest=null,near2=Infinity;
+  for(const p of players || []) {const d=(p.x-c.obj.position.x)**2+(p.z-c.obj.position.z)**2;if(d<near2){near2=d;nearest=p;}}
+  const startled=near2<16*16 && !c.alerted;
+  if(near2>22*22)c.alerted=false;
+  if(startled) {c.alerted=true;c.t=0;c.rest=0;c.flight= c.obj.userData.flight ? 3 : 0;c.flee=2.5;}
+  c.t-=dt;c.flee=Math.max(0,(c.flee||0)-dt);c.flight=Math.max(0,(c.flight||0)-dt);
+  const rng=c.rng;
+  if(c.t<=0) {
+    c.t=3+rng()*5;
+    const angle=startled?Math.atan2(c.base.z-nearest.z,c.base.x-nearest.x):rng()*Math.PI*2;
+    const r=startled?c.range:rng()*c.range;
+    const x=c.base.x+Math.cos(angle)*r,z=c.base.z+Math.sin(angle)*r;
+    if(allowsDressing(biomeNameAt(x,z),kind) && track.distanceToCenter(x,z)>track.halfWidth+2 && !_inLake(x,z)) {c.tx=x;c.tz=z;}
+    else {c.tx=c.base.x;c.tz=c.base.z;}
+    c.gy=heightAt(c.tx,c.tz);
+    c.rest=startled?0:rng()*2.5; // graze/watch, then amble again
   }
-  const dx = c.tx - c.obj.position.x;
-  const dz = c.tz - c.obj.position.z;
-  const d = Math.hypot(dx, dz);
-  if (d > 0.15) {
-    const step = Math.min(d, c.speed * dt);
-    c.obj.position.x += (dx / d) * step;
-    c.obj.position.z += (dz / d) * step;
-    let diff = Math.atan2(dz, -dx) - c.ry; // nose = local -X
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    c.ry += diff * Math.min(1, dt * 4);
-    c.obj.rotation.y = c.ry;
+  c.rest=Math.max(0,(c.rest||0)-dt);
+  const dx=c.tx-c.obj.position.x,dz=c.tz-c.obj.position.z,d=Math.hypot(dx,dz);
+  const moving=d>.15 && c.rest<=0;
+  if(moving) {
+    const step=Math.min(d,c.speed*(c.flee>0?1.7:1)*dt);
+    c.obj.position.x+=dx/d*step;c.obj.position.z+=dz/d*step;
   }
-  const targetY = c.gy ?? c.base.y;
-  c.cy = (c.cy ?? c.base.y) + (targetY - (c.cy ?? c.base.y)) * Math.min(1, dt * 2);
-  c.obj.position.y = c.cy + Math.abs(Math.sin(time * 3 + c.phase)) * c.bob;
+  const gaze=!moving && nearest && near2<30*30;
+  const gx=gaze?nearest.x-c.obj.position.x:dx,gz=gaze?nearest.z-c.obj.position.z:dz;
+  if(moving||gaze) {
+    let diff=(bird?Math.atan2(gx,gz):Math.atan2(gz,-gx))-c.ry;
+    while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+    c.ry+=diff*Math.min(1,dt*4);c.obj.rotation.y=c.ry;
+  }
+  const targetY=c.gy??c.base.y;
+  c.cy=(c.cy??c.base.y)+(targetY-(c.cy??c.base.y))*Math.min(1,dt*2);
+  const hop=moving?Math.abs(Math.sin(time*(kind==='hare'?7:3)+c.phase))*c.bob:0;
+  c.obj.position.y=c.cy+hop+Math.sin((3-c.flight)/3*Math.PI)*(c.flight>0?3:0);
+  // Subtle feeding posture on the existing rigid mesh; feet remain near ground.
+  c.obj.rotation.z=!moving&&!gaze&&!bird?Math.sin(time*.8+c.phase)*.035:0;
+  if(c.obj.userData.flight) {
+    const flight=c.obj.userData.flight;flight.group.visible=c.flight>0;
+    for(const {wing,side} of flight.wings)wing.rotation.x=side*Math.sin(time*15)*.65;
+  }
+  c.obj.userData.behaviour=c.flight>0?'takeoff':c.flee>0?'startled':moving?'amble':gaze?'watch':'graze';
 }
 
 // Forest fireflies: a cloud of additive glowing points that drift and twinkle,
@@ -6066,6 +6120,7 @@ export function assetCatalog() {
   const entries = [];
   const add = (group, name, build) => entries.push({ group, name, build });
 
+  add("Habitat structures", "Sailboat", () => {const boat=makeSailboat();boat.traverse(o=>o.layers.set(0));return boat;});
   const mockTrack={samples:100,halfWidth:8,length:400,_pts:Array.from({length:100},()=>new THREE.Vector3()),_tans:Array.from({length:100},()=>new THREE.Vector3(0,0,1))};
   add("Trackside", "Racing banner",()=>{
     const g=new THREE.Group();addStreetBanner(g,mockTrack,()=>0,new THREE.Vector3(),1,0,0,1);g.traverse(o=>o.layers.set(0));return g;

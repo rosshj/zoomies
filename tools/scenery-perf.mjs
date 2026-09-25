@@ -40,7 +40,8 @@ try {
     // The pinned dependency exposes the TSL clock here; the game/renderer
     // RAF callbacks are paused, so every measured view uses the same wind phase.
     renderer._nodes.nodeFrame.time=0;renderer._nodes.nodeFrame.deltaTime=0;
-    const {uWindDir,uWindStr,uWindAir}=await import('/src/wind.js');
+    const wind=await import('/src/wind.js');
+    const {uWindDir,uWindStr,uWindAir}=wind;wind.setWindClock?.(0);
     uWindDir.value.set(.82,.57).normalize();uWindStr.value=1;uWindAir.value=1;
     const gl=renderer.backend.getContext();
     const ext=gl.getExtension('EXT_disjoint_timer_query_webgl2');
@@ -73,8 +74,24 @@ try {
       const sorted=[...batches].sort((a,b)=>a-b);
       views.push({t,batchesMsPerRender:batches,medianMsPerRender:sorted[4],render:{...renderer.info.render}});
     }
-    return {device,viewport:[1100,700],drawingBuffer:[renderer.domElement.width,renderer.domElement.height],views};
+    // Isolate the CPU scenery controller too. This deliberately excludes race
+    // physics, rendering and the separately updated kart-wake/string-light code.
+    const world=window.__zoomies.world,cpu=[];
+    const positions=Array.from({length:600},(_,i)=>track.getPointAt(.06+i*.5/track.length));
+    let step=0;
+    for(const mode of ['nearKart','wholeWorld']) {
+      const update=()=>{world.update(step/60,1/60,mode==='nearKart'?positions[step%600]:null);step++;};
+      for(let i=0;i<120;i++)update();
+      const batches=[];
+      for(let sample=0;sample<9;sample++) {
+        const start=performance.now();for(let i=0;i<600;i++)update();
+        batches.push((performance.now()-start)/600);
+      }
+      cpu.push({mode,batchesMsPerUpdate:batches,medianMsPerUpdate:[...batches].sort((a,b)=>a-b)[4]});
+    }
+    return {device,viewport:[1100,700],drawingBuffer:[renderer.domElement.width,renderer.domElement.height],views,cpu};
   });
   await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify({result,errors},null,2));
   console.log(JSON.stringify({result,errors},null,2));if(errors.length)process.exitCode=1;
-} finally {await browser?.close();server.close();}
+} finally {await Promise.race([browser?.close(),new Promise(r=>setTimeout(r,5000))]);server.closeAllConnections();server.close();}
+process.exit(process.exitCode||0);

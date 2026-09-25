@@ -4,7 +4,7 @@
 // the very same conversion so what it previews is exactly what ships.
 import * as THREE from "three";
 import { color as tslColor, float, smoothstep, normalView, positionViewDirection, uniform } from "three/tsl";
-import { windBendNode, windBendLooseNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
+import { windBendNode, windBendLooseNode, windFlexNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
 
 function makeToonGradient() {
   // Four deliberate value bands: deeper form shadows keep cream fur and bright
@@ -64,7 +64,7 @@ export function toToon(m) {
   // hang a positionNode, so a swaying material converted the plain way would go
   // silently rigid (exactly how the grass lost its sway once before).
   const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose) && matte) {
+  if ((ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose || ud.windFlex) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
     let term = null;
     if (ud.backlight) {
@@ -99,7 +99,8 @@ export function toToon(m) {
     // mesh carries the aBend / aWindRoot attributes windBendNode reads.
     // userData.swayMaxStr (optional) caps the wind force this material feels
     // — see windLean; the canopies use it so storm seeds can't fling them.
-    if (ud.sway) t.positionNode = windBendNode(ud.sway, ud.swayMaxStr ?? null);
+    if (ud.windFlex) t.positionNode = windFlexNode(ud.windFlex);
+    else if (ud.sway) t.positionNode = windBendNode(ud.sway, ud.swayMaxStr ?? null);
     // …and the same for a bush or hedge placed as its own object (see wind.js).
     else if (ud.swayLoose) t.positionNode = windBendLooseNode(ud.swayLoose);
     // A toon made from a shared source is itself shared across karts (the cache

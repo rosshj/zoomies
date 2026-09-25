@@ -6,11 +6,10 @@
 // wave that TRAVELS along that direction, so a single gust visibly sweeps
 // across the meadow, on through the trees and away down the road.
 //
-// It is all node graphs hanging off `time`, so there is no per-frame CPU tick,
-// no uniform upload, and nothing anyone can forget to update — the field is
-// live the moment a material reads it.
+// One shared clock drives GPU foliage and the small CPU prop/event budget.
+// The world (or asset viewer) advances it once per frame; no per-tree updates.
 import * as THREE from "three";
-import { uniform, time, vec2, vec3, vec4, attribute, positionLocal, positionGeometry, modelWorldMatrix, modelWorldMatrixInverse } from "three/tsl";
+import { uniform, vec2, vec3, vec4, attribute, positionLocal, positionGeometry, modelWorldMatrix, modelWorldMatrixInverse } from "three/tsl";
 
 export const uWindDir = uniform(new THREE.Vector2(0.82, 0.57)); // unit XZ, points DOWNWIND
 export const uWindStr = uniform(1); // force felt by things that BEND
@@ -24,7 +23,9 @@ export const uWindSpeed = uniform(0.9); // how fast gust fronts travel
 // frame via the handle buildGrass hangs on the roadside-cover group.
 export const uKartPos = uniform(new THREE.Vector4(1e6, 0, 1e6, 0));
 
-const _phase = time.mul(uWindSpeed);
+export const uWindClock = uniform(0);
+export function setWindClock(seconds) { uWindClock.value = seconds; }
+const _phase = uWindClock.mul(uWindSpeed);
 
 // Signed gust strength at a world XZ, -1..1. Two travelling waves — a long slow
 // roller and a finer chop — plus a cross-wise term so gust fronts arrive at a
@@ -86,8 +87,8 @@ export function windGustDrift(px, pz, amp, jitter, lift = 0) {
 
 // A positionNode for anything PLANTED in the ground: rooted at its base, bowing
 // downwind, never stretching. Needs two attributes on the geometry:
-//   aBend      per-vertex float — the object's own geometry height, so one
-//              shared material can serve several shapes at once
+//   aBend      per-vertex vec3 — extent, anchored weight and shape response;
+//              shared material serves drooping palms and upright crowns
 //   aWindRoot  per-instance vec3 — (world x, world z, instance height scale)
 //
 // Note what is NOT here: any rotation by the instance's yaw. On an
@@ -103,13 +104,14 @@ export function windGustDrift(px, pz, amp, jitter, lift = 0) {
 // ~s²/2 of reach, so the crown bows over its trunk instead of growing taller.
 export function windBendNode(amp, maxStr = null) {
   const root = attribute("aWindRoot");
-  const w = attribute("aBend");
+  const bend = attribute("aBend", "vec3");
+  const w = bend.x;
   const tall = w.mul(root.z).max(0.001); // the object's height in WORLD units
-  const norm = positionGeometry.y.div(w.max(0.001)).clamp(0, 1); // 0 base -> 1 crown
-  const reach = norm.mul(norm).mul(tall); // world units at amp = 1
+  const reach = bend.y.mul(tall).mul(bend.z); // world units at amp = 1
   const lean = windLean(root.x, root.y, amp, maxStr); // aWindRoot is (x, z, scale)
-  const ox = lean.x.mul(reach);
-  const oz = lean.y.mul(reach);
+  const flutter = _phase.mul(3.1).sub(root.x.mul(.071)).sub(root.y.mul(.049)).add(positionGeometry.x.mul(1.7)).sin().mul(.012).mul(reach).mul(uWindStr.min(1.45));
+  const ox = lean.x.mul(reach).add(uWindDir.y.mul(flutter));
+  const oz = lean.y.mul(reach).sub(uWindDir.x.mul(flutter));
   const oy = ox.mul(ox).add(oz.mul(oz)).mul(-0.5).div(tall);
   return positionLocal.add(vec3(ox, oy, oz));
 }
@@ -132,7 +134,7 @@ export function windBendNode(amp, maxStr = null) {
 // pass; until then treat this as untested and verify it renders before
 // believing it.
 export function windBendLooseNode(amp) {
-  const h = attribute("aBend").max(0.001); // geometry height
+  const h = attribute("aBend", "vec3").x.max(0.001); // geometry height
   const norm = positionGeometry.y.div(h).clamp(0, 1); // 0 base -> 1 crown
   const reach = norm.mul(norm).mul(h);
   const org = modelWorldMatrix.mul(vec4(0, 0, 0, 1)).xyz; // where it stands
@@ -144,17 +146,41 @@ export function windBendLooseNode(amp) {
   return positionLocal.add(vec3(ox, oy, oz));
 }
 
-// Bake the `aBend` attribute a windBendNode material expects: the geometry's
-// own height, which the shader normalises positionGeometry.y against. That pins
-// the object at its origin — for a canopy that is the trunk top, exactly where
-// a tree should pivot — and puts the full lean at its crown.
-export function bakeBendWeights(geo) {
+// Bake extent, attachment weight and shape response once at construction.
+// Upright crowns bend by height; drooping palms bend by distance from the
+// crown. The attachment stays pinned while the outer foliage can move.
+export function bakeBendWeights(geo, shape = 'round') {
   const pos = geo.attributes.position;
-  let maxY = 0;
-  for (let i = 0; i < pos.count; i++) maxY = Math.max(maxY, pos.getY(i));
-  if (maxY <= 0) maxY = 1;
-  geo.setAttribute("aBend", new THREE.BufferAttribute(new Float32Array(pos.count).fill(maxY), 1));
+  let extent = .001;
+  for (let i=0;i<pos.count;i++) extent=Math.max(extent,shape==='palm'?Math.hypot(pos.getX(i),pos.getZ(i)):pos.getY(i));
+  const response={pine:.6,round:1,blossom:1.1,acacia:.8,palm:1.35}[shape] ?? 1;
+  const values=new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++) {
+    // Palm fronds droop BELOW their root: height-only weights pinned their tips.
+    const radial=Math.hypot(pos.getX(i),pos.getZ(i));
+    const distance=shape==='palm'?(radial<.11?0:radial):Math.max(0,pos.getY(i));
+    values.set([extent,(distance/extent)**2,response],i*3);
+  }
+  geo.setAttribute('aBend',new THREE.BufferAttribute(values,3));
   return geo;
+}
+
+// CPU equivalent of the same travelling gust; used only by capped nearby props.
+export function windStrengthAt(x,z) {
+  const d=uWindDir.value,phase=uWindClock.value*uWindSpeed.value;
+  const along=x*d.x+z*d.y,across=x*d.y-z*d.x;
+  const gust=Math.sin(along*.017+across*.006-phase)*.62+Math.sin(along*.071+across*.028-phase*2.4)*.38;
+  return (.58+.42*gust)*Math.min(1.45,uWindStr.value);
+}
+
+// Cloth has explicit attachment weights, so poles, rails and seams stay pinned.
+export function windFlexNode(amp) {
+  const root=modelWorldMatrix.mul(vec4(0,0,0,1)).xyz;
+  const lean=windLean(root.x,root.z,amp,1.45);
+  const local=modelWorldMatrixInverse.mul(vec4(lean.x,0,lean.y,0)).xyz;
+  const weight=attribute('aFlex');
+  const ripple=_phase.mul(3.1).sub(root.x.mul(.071)).sub(root.z.mul(.049)).add(positionGeometry.x.mul(2)).sin().mul(amp*.22);
+  return positionLocal.add(local.add(vec3(0,ripple,0)).mul(weight));
 }
 
 // The force in uWindStr is two things multiplied: the track's own prevailing

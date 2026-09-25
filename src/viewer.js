@@ -1,3 +1,4 @@
+import { setWindClock } from './wind.js';
 // Asset viewer (viewer.html) — a dev tool for inspecting the game's procedural
 // assets one at a time. It imports the SAME modules the game runs (models,
 // scenery, props), so every mesh here is byte-for-byte what ships in a race —
@@ -469,6 +470,7 @@ renderer.setAnimationLoop((now) => {
     orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta)
   );
   camera.lookAt(orbit.target);
+  setWindClock(animPlaying ? now / 1000 : animT);
   renderer.render(scene, camera);
 });
 

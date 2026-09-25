@@ -1,3 +1,5 @@
+Latest: [Living scenery, shared wind, wildlife reactions and biome events](living-world/README.md).
+
 Latest: [Procedural road clearance fix](road-clearance/README.md).
 
 Latest: [Additional habitat animals and structures](habitat-expansion/README.md).
@@ -17,8 +19,9 @@ Track shoulders have crisp red/cream sections with a shallow beveled profile.
 The four-band cel ramp has deeper shadows to separate forms.
 
 Everything is still generated from geometry, canvas paint, and the existing
-materials. No downloaded models, additional render passes, new lights, or
-per-frame animation work were introduced. Track layout and physics are unchanged.
+materials. The initial racer pass added no render passes, lights or animation
+work. Subsequent living-world animation and its measured cost are documented
+above. Track layout and racing physics are unchanged.
 The catalog thumbnails are regenerated from the actual procedural models.
 
 [Scenery and wildlife extension: comparisons and budgets](scenery/README.md)
