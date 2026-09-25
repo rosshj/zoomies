@@ -28,7 +28,8 @@
     "check:scenery": "node tools/scenery-check.mjs",
     "check:landscape": "node tools/landscape-check.mjs",
     "check:effects-art": "node tools/effects-art-check.mjs",
-    "check:biomes": "node tools/biome-dressing-check.mjs"
+    "check:biomes": "node tools/biome-dressing-check.mjs",
+    "check:terrain": "node tools/terrain-clearance-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

@@ -36,7 +36,8 @@ try {
     volcanic: {seed:'BASALT',size:.5,curviness:.55,twist:.5,hilliness:.6,hills:.6,timeOfDay:'sunset'},
   };
   const recipe = biomeRecipes[process.env.BIOME] || (process.env.BIOME ? {seed:'HABITAT',size:.5,curviness:.45,twist:.4,hilliness:.25,hills:.4,timeOfDay:'midday'} : null);
-  const world = recipe ? Buffer.from(JSON.stringify({cfg:{mode:'custom',...recipe,biomes:[process.env.BIOME]},seed:recipe.seed,laps:3})).toString('base64url') : '';
+  const cfg = process.env.RECIPE_FILE ? JSON.parse(await fs.readFile(process.env.RECIPE_FILE,'utf8')) : recipe ? {mode:'custom',...recipe,biomes:[process.env.BIOME]} : null;
+  const world = cfg ? Buffer.from(JSON.stringify({cfg,seed:cfg.seed,laps:3})).toString('base64url') : '';
 
   await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1&w=${world}${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__zoomies?.track,null,{timeout:150000});
@@ -56,7 +57,8 @@ try {
     const track=window.__zoomies.track;
     return track.features.runs.filter(r=>['bridge','tunnel','causeway'].includes(r.kind)).map(r=>[r.kind,((r.i0-6+track.samples)%track.samples)/track.samples]);
   }) : [];
-  for(const [name,t] of [['track-a',.06],['track-b',.38],['track-c',.72],['mountain',null],...featureViews]){
+  const focusViews = process.env.FOCUS_FILE ? [['clearance', await page.evaluate(p=>window.__zoomies.track.project(p).t-.005, JSON.parse(await fs.readFile(process.env.FOCUS_FILE,'utf8')))]] : [];
+  for(const [name,t] of [['track-a',.06],['track-b',.38],['track-c',.72],['mountain',null],...featureViews,...focusViews]){
     await page.evaluate(({t})=>{
       const z=window.__zoomies;
       if(t!==null){const a=z.track.getPointAt(t),b=z.track.getPointAt(t+.025),dir=b.clone().sub(a).normalize();window.__setLandscapeCamera([a.x-dir.x*22,a.y+12,a.z-dir.z*22],[b.x,b.y,b.z]);}

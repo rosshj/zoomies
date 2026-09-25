@@ -1289,6 +1289,9 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
+    // Exact rendered ribbon used by the generation-time terrain clearance pass.
+    this.roadSurface = { geometry: geo, rowWidth: vpr };
+
     const asphalt = asphaltTexture();
     const road = new THREE.Mesh(
       geo,

@@ -1,3 +1,4 @@
+import { clearTerrainGrid, clearMountainPosition } from './terrain-clearance.js';
 import { HABITAT_ASSETS, makeHabitatAsset } from './habitat-assets.js';
 import { dressingFor, allowsDressing, habitatFits } from "./biome-dressing.js";
 import * as THREE from "three";
@@ -592,7 +593,7 @@ export function buildWorld(scene, track, opts = {}) {
   // sheet and into the fixed mountain ring's band.
   let trackReach = 0;
   for (const p of track._pts) trackReach = Math.max(trackReach, Math.hypot(p.x, p.z));
-  buildTerrain(scene, terrainHeight, litLevel, trackReach + 330); // night/dusk darkening (snow handled hard inside)
+  buildTerrain(scene, terrainHeight, litLevel, trackReach + 330, track.roadSurface); // night/dusk darkening (snow handled hard inside)
   buildMountains(scene, heightAt, track, trackReach);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
@@ -1392,7 +1393,7 @@ function buildGrass(scene, track, heightAt) {
   return group;
 }
 
-function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
+function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950, roadSurface = null) {
   // General ground only dims a LITTLE at night (so the scene stays as bright as it
   // was before) — but snow is darkened HARD, because near-white snow reflects the
   // moonlight far more than anything else and is what reads "self-lit".
@@ -1450,6 +1451,10 @@ function buildTerrain(scene, heightAt, litLevel = 0, halfExtent = 950) {
       darken *= 1 - snowTint * 0.55; // extra darkening for snow only
     }
     colors.push(c.r * darken, c.g * darken, c.b * darken);
+  }
+
+  if (roadSurface) {
+    scene.userData.terrainClearance = { loweredVertices: clearTerrainGrid(pos, SEG, SIZE, roadSurface.geometry.attributes.position, roadSurface.rowWidth), segments: SEG, size: SIZE };
   }
 
   // Baked ambient occlusion: darken concave ground (valley floors, hill bases,
@@ -1768,6 +1773,16 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     _q.setFromEuler(_e);
     _m4.compose(_v.set(x, y, z), _q, new THREE.Vector3(1, 1, 1));
     geo.applyMatrix4(_m4);
+    const vertices=geo.attributes.position;
+    let footprint=0;
+    for(let i=0;i<vertices.count;i++)footprint=Math.max(footprint,Math.hypot(vertices.getX(i)-x,vertices.getZ(i)-z));
+    const safe=clearMountainPosition(x,z,footprint,track._pts,track.halfWidth,trackReach);
+    if(safe.moved) {
+      const dy=heightAt(safe.x,safe.z)-heightAt(x,z);
+      geo.translate(safe.x-x,dy,safe.z-z);x=safe.x;z=safe.z;y+=dy;
+    }
+    scene.userData.mountainClearance ||= [];
+    scene.userData.mountainClearance.push({x,z,radius:footprint,moved:safe.moved});
     // CONFORM THE SKIRT. A peak is anchored at ONE sampled ground height, but
     // its apron now spans far more terrain than the old cones did — so on any
     // slope the uphill side buries itself while the downhill side hangs in
@@ -1792,6 +1807,7 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     delete geo.userData.frac; // don't carry it into the merge
     landscapeGrainUV(geo);
     peakGeos.push(geo);
+    return {x,z,y};
   };
   const _grnd = new THREE.Color();
   const peak = (x, z, h, rad, bury) => {
@@ -1799,8 +1815,9 @@ function buildMountains(scene, heightAt, track, trackReach = 900) {
     const base = heightAt(x, z) - bury;
     biomeGround(x, z, _grnd, base); // the local floor tone, for the skirt
     const gOpt = { apron: rock.apron, ground: _grnd.getHex() };
-    place(mountainGeo(h * (rock.tall ?? 1), rad, rock, gOpt), x, base, z);
-    peakInfo.push({ x, z, y: base, h, rad });
+    const placed=place(mountainGeo(h * (rock.tall ?? 1), rad, rock, gOpt), x, base, z);
+    peakInfo.push({ ...placed, h, rad });
+    x=placed.x;z=placed.z;
     // Bigger peaks come as a MASSIF rather than a lone spike: a subsidiary
     // summit set off to one side and fused into the same footprint. It is the
     // single strongest cue that a mountain is a mountain and not a pyramid.

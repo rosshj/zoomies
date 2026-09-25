@@ -1,3 +1,5 @@
+Latest: [Procedural road clearance fix](road-clearance/README.md).
+
 Latest: [Additional habitat animals and structures](habitat-expansion/README.md).
 
 # Procedural art refresh
