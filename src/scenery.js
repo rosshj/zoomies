@@ -2483,7 +2483,8 @@ function foliageGeoFor(shape) {
       fronds.push(f);
     }
     g = mergeGeometries(fronds);
-    g.translate(0, 0.5, 0); // sit the crown at the trunk top
+    // Roots stay at local y=0, overlapping the trunk tip after placement.
+    // Raising this geometry left a visible gap, amplified by biome scaling.
   } else {
     // Deciduous crown: one surface, lobed below without adding geometry.
     g = new THREE.IcosahedronGeometry(2.3, 1).scale(1, 0.95, 1).translate(0, 2.15, 0);
@@ -2648,9 +2649,9 @@ function lampGlowTexture() {
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-  g.addColorStop(0, "rgba(255,226,162,0.95)");
-  g.addColorStop(0.45, "rgba(255,196,110,0.4)");
-  g.addColorStop(1, "rgba(255,180,90,0)");
+  g.addColorStop(0, "rgba(255,244,215,0.92)");
+  g.addColorStop(0.32, "rgba(255,222,169,0.26)");
+  g.addColorStop(1, "rgba(255,211,148,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
   _lampGlowTex = new THREE.CanvasTexture(c);
@@ -2689,7 +2690,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
 
   const postMat = new THREE.MeshStandardMaterial({ color: 0x2a2f38, roughness: 0.7, metalness: 0.3 });
   const bulbMat = new THREE.MeshStandardMaterial({
-    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 2.4 * level : 0.0, roughness: 0.4,
+    color: 0xfff0c8, emissive: 0xffd98a, emissiveIntensity: lit ? 1.8 * level : 0.0, roughness: 0.4,
   });
   // One post/head/bulb mesh per world cell (see chunkByCell) — the geometries
   // are shared, only the instance data is per batch.
@@ -2723,6 +2724,50 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
     }
   }
   if (!lit) return;
+  // Static light spill is baked into existing road/building colour buffers.
+  // It follows surface orientation and distance without adding real-time lights.
+  scene.updateMatrixWorld(true);
+  // Pre-index each lamp's 26-unit reach so baking scales with vertices, not
+  // vertices × every lamp on a large track. This index is discarded after build.
+  const nearby = new Map();
+  for (const sp of spots) {
+    const cx = Math.floor((sp.x + sp.ax) / 26), cz = Math.floor((sp.z + sp.az) / 26);
+    for (let x = cx - 1; x <= cx + 1; x++) for (let z = cz - 1; z <= cz + 1; z++) {
+      const key = x + ":" + z;
+      if (!nearby.has(key)) nearby.set(key, []);
+      nearby.get(key).push(sp);
+    }
+  }
+  const candidates = [...scene.children, ...track.group.children];
+  const wp = new THREE.Vector3(), wn = new THREE.Vector3(), nm = new THREE.Matrix3();
+  for (const mesh of candidates) {
+    if (!mesh.isMesh || mesh.isInstancedMesh || !mesh.material?.isMeshStandardMaterial || mesh.material.isNodeMaterial) continue;
+    const geo = mesh.geometry, colors = geo.attributes.color, normals = geo.attributes.normal;
+    if (!colors || !normals) continue;
+    nm.getNormalMatrix(mesh.matrixWorld);
+    const vertices = geo.attributes.position;
+    for (let i = 0; i < vertices.count; i++) {
+      wp.fromBufferAttribute(vertices, i).applyMatrix4(mesh.matrixWorld);
+      const lamps = nearby.get(Math.floor(wp.x / 26) + ":" + Math.floor(wp.z / 26));
+      if (!lamps) continue;
+      wn.fromBufferAttribute(normals, i).applyMatrix3(nm).normalize();
+      let light = 0;
+      for (const sp of lamps) {
+        const dx = sp.x + sp.ax - wp.x, dy = sp.y + POST_H - 0.35 - wp.y, dz = sp.z + sp.az - wp.z;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 > 26 * 26 || dy < -0.5) continue; // hood blocks upward light
+        const cosine = Math.max(0, (wn.x * dx + wn.y * dy + wn.z * dz) / Math.max(0.01, Math.sqrt(d2)));
+        const fade = 1 - d2 / (26 * 26);
+        light += 100 / (d2 + 25) * cosine * fade * fade;
+      }
+      const gain = Math.min(0.9, light * level);
+      if (gain === 0) continue;
+      // Keep baked reflectance in LDR: HDR vertex colours can cause runaway
+      // bloom at night even when a direct (tone-mapped) scene render looks fine.
+      colors.setXYZ(i, Math.min(1, colors.getX(i) * (1 + gain)), Math.min(1, colors.getY(i) * (1 + gain * 0.65)), Math.min(1, colors.getZ(i) * (1 + gain * 0.24)));
+    }
+    colors.needsUpdate = true;
+  }
 
   // Warm ground pools (additive). Each is a tessellated disc whose vertices are
   // dropped onto the road surface (via groundInfo) so the light hugs the ground /
@@ -2754,7 +2799,7 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   const pools = new THREE.Mesh(
     poolGeo,
     new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, opacity: 0.35 + 0.65 * level, // subtler at dusk
+      map: tex, transparent: true, opacity: 0.55 * level, // restrained reflected light, not an orange overlay
       blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
     })
   );
@@ -2769,11 +2814,11 @@ function buildStreetLamps(scene, track, heightAt, lit, level = 1) {
   spots.forEach((sp, i) => haloPos.setXYZ(i, sp.x + sp.ax, sp.y + POST_H - 0.35, sp.z + sp.az));
   const haloMat = new THREE.SpriteNodeMaterial({
     map: tex, transparent: true,
-    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.85 * level,
+    blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.48 * level,
   });
   haloMat.color.set(0xffe6b0);
   haloMat.positionNode = attribute("aPos");
-  haloMat.scaleNode = float(7);
+  haloMat.scaleNode = float(3.2);
   const haloGeo = new THREE.PlaneGeometry(1, 1);
   haloGeo.setAttribute("aPos", haloPos);
   const halos = new THREE.InstancedMesh(haloGeo, haloMat, spots.length);

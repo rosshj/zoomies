@@ -78,6 +78,22 @@ try {
       setSeed(recipe?.seed || 'ART-CLASSIC');
       const track = new Track(recipe);
       tracks.push({ seed: recipe?.seed || 'classic', ...inspect(track.group) });
+      // Paint must stay narrow on curves, use a bounded mesh, and never bridge
+      // a dash gap with one giant triangle (including the closing loop segment).
+      const paint = track.group.children.find(o => o.geometry?.attributes.aAlpha);
+      assert(paint, 'missing centre paint mesh');
+      const pg = paint.geometry, pp = pg.attributes.position;
+      assert(pg.index.count / 3 <= track.samples * 2, 'centre paint triangle budget');
+      for (let i = 0; i < pp.count; i += 2) {
+        const width = Math.hypot(pp.getX(i)-pp.getX(i+1), pp.getZ(i)-pp.getZ(i+1));
+        assert(width > .37 && width < .39, 'centre paint width changed on curve');
+      }
+      for (const a of pg.attributes.aAlpha.array) assert(a >= 0 && a <= 1, 'invalid paint alpha');
+      for (let i = 0; i < pg.index.count; i += 3) {
+        const a = pg.index.getX(i), b = pg.index.getX(i+2);
+        const length = Math.hypot(pp.getX(a)-pp.getX(b), pp.getY(a)-pp.getY(b), pp.getZ(a)-pp.getZ(b));
+        assert(length < track.length / track.samples * 1.5 + .4, 'paint bridges gap or loop');
+      }
       // Road shoulders must close cleanly, including the final loop join.
       const shoulder = track.group.children[1].geometry;
       const p = shoulder.attributes.position;

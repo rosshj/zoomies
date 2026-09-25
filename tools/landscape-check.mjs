@@ -21,7 +21,7 @@ const server = http.createServer(async (req,res) => {
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 let browser;
 try {
-  browser = await chromium.launch({executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args:['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+  browser = await chromium.launch({executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args:process.env.NATIVE ? [] : ['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader']});
   const page = await browser.newPage({viewport:{width:1100,height:700}});
   const errors=[];
   page.on('pageerror',e=>{errors.push(e.message);console.error(e.message);});
@@ -30,7 +30,7 @@ try {
     let s=12345; Math.random=()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};
     localStorage.setItem('zoomies-quality-v2','medium');
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1`,{timeout:150000,waitUntil:'domcontentloaded'});
+  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__zoomies?.track,null,{timeout:150000});
   await page.evaluate(()=>{
     const z=window.__zoomies, c=z.camera;

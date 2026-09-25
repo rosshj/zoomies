@@ -822,27 +822,11 @@ function catEarGeometry(inner = false) {
 // shoulder-pivot local space; the pivot sits at (±0.5, 1.05, 0.45), the ground
 // under a seated cat is at y ≈ -0.29 in cat space.
 const ARM_POSES = {
-  // Driving: arms reach FORWARD-DOWN so the paws land on the wheel rim (the old
-  // pose held the paws above shoulder height, hovering behind the wheel), with
-  // the beans on the paw's far face — against the wheel, not floating mid-arm.
-  kart: { armR: 0.17, armRot: -1.35, armPos: [0, -0.02, 0.4], pawPos: [0, -0.04, 0.86], pawScale: [1, 0.85, 1.1], beanY: -0.06, beanZ: 1.05 },
-  // Sitting: no beans — a sitting cat shows the TOPS of its front paws (beans
-  // on the paw front read as claws). Legs run all the way DOWN to the ground
-  // (paw bottoms at the floor) and reach a touch forward, clear of the hind feet.
-  // armLen stretches the leg capsule UP so its top buries deep inside the
-  // chest (the default 0.6 ends right at the body surface, showing the cap's
-  // rounding and an intersection seam); the paw end stays put. armLean tips
-  // the TOP toward the body midline — the chest bulges most at x0, so an
-  // inward-leaning top tucks fully under the surface instead of standing
-  // proud of the flatter surface out at shoulder x.
-  // pawLog swaps the ball paw for a forward-pointing rounded capsule whose
-  // back end buries deep into the leg — its radius nearly matches the leg's,
-  // so the ankle reads as ONE form bending forward (with two toe bumps at
-  // the tip) instead of two primitives slapped together.
-  sit: { armR: 0.19, armRot: -0.18, armLen: 0.95, armLean: 0.12, armPos: [0, -0.41, 0.27], pawPos: [0, -1.16, 0.46], pawLog: true, beans: false },
-  // Standing on the hind legs like a curious meerkat-cat: front paws dangle at
-  // the sides, hind feet planted under the body (built in the stand block below).
-  stand: { armR: 0.17, armRot: -0.06, armPos: [0, -0.5, 0.04], pawPos: [0, -1.0, 0.16], pawScale: [1, 0.85, 1.2], beans: false },
+  // The molded foreleg controls below keep driving toes at the steering rim,
+  // sitting toes on the floor, and standing paws hanging beside the body.
+  kart: { armR: 0.17, beanY: -0.06, beanZ: 1.05 },
+  sit: { armR: 0.19, armLean: true, beans: false },
+  stand: { armR: 0.17, beans: false },
 };
 
 // The rigid clusters (body, head, each arm, each ear, glasses) are baked into a
@@ -951,32 +935,35 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     pivot.position.set(sx * 0.5, 1.05, 0.45);
     cat.add(pivot);
     const parts = [];
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(ap.armR, ap.armLen ?? 0.6, 4, 10), pawMat);
-    arm.position.set(...ap.armPos);
-    arm.rotation.x = ap.armRot;
-    if (ap.armLean) {
-      // Tip the top toward the midline, sliding the mesh outward so the paw
-      // end stays planted where it was.
-      arm.rotation.z = sx * ap.armLean;
-      const half = (ap.armLen ?? 0.6) / 2 + ap.armR;
-      arm.position.x -= sx * Math.sin(ap.armLean) * half;
+    // One closed skin from shoulder through wrist into the rounded toes.
+    // A curved axis and swelling profile avoid the old capsule/ball seam.
+    const controls = pose === "kart"
+      ? [[0,.1,-.12],[0,-.04,.3],[0,-.06,.7],[0,-.04,.88],[0,-.04,1.09]]
+      : pose === "sit"
+        ? [[-sx*.15,.22,.15],[-sx*.08,-.35,.23],[0,-.95,.36],[0,-1.16,.49],[0,-1.16,.79]]
+        : [[0,-.03,.01],[0,-.4,.04],[0,-.8,.1],[0,-1,.16],[0,-1.18,.18]];
+    const curve = new THREE.CatmullRomCurve3(controls.map(p => new THREE.Vector3(...p)));
+    const skin = new THREE.SphereGeometry(1, 12, 16);
+    const pos = skin.attributes.position;
+    const right = new THREE.Vector3(), across = new THREE.Vector3();
+    const profile = [[0,0],[.1,ap.armR],[.35,ap.armR],[.6,.18],[.8,.205],[.9,.17],[1,0]];
+    for (let i = 0; i < pos.count; i++) {
+      const t = Math.acos(Math.max(-1, Math.min(1, pos.getY(i)))) / Math.PI;
+      const angle = Math.atan2(pos.getZ(i), pos.getX(i));
+      let j = 1;
+      while (j < profile.length - 1 && t > profile[j][0]) j++;
+      const [ta, ra] = profile[j - 1], [tb, rb] = profile[j];
+      const f = (t - ta) / (tb - ta), blend = f * f * (3 - 2 * f);
+      const radius = ra + (rb - ra) * blend;
+      const center = curve.getPoint(t), tangent = curve.getTangent(t).normalize();
+      right.set(1,0,0).addScaledVector(tangent, -tangent.x).normalize();
+      across.crossVectors(tangent, right).normalize();
+      center.addScaledVector(right, Math.cos(angle) * radius);
+      center.addScaledVector(across, Math.sin(angle) * radius * (pose === "kart" ? .85 : 1));
+      pos.setXYZ(i, center.x, center.y, center.z);
     }
-    parts.push(arm);
-    if (ap.pawLog) {
-      // Paw per the Figma refs: from the FRONT a near-round ball barely
-      // wider than the leg, centred under it; from the SIDE a long flat
-      // ellipse running forward, with the leg's lower end buried in its
-      // back half so the two silhouettes union into one form.
-      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.24, 14, 12), pawMat);
-      paw.position.set(...ap.pawPos);
-      paw.scale.set(0.9, 0.75, 1.45);
-      parts.push(paw);
-    } else {
-      const paw = new THREE.Mesh(new THREE.SphereGeometry(0.21, 12, 12), pawMat);
-      paw.position.set(...ap.pawPos);
-      paw.scale.set(...ap.pawScale);
-      parts.push(paw);
-    }
+    skin.computeVertexNormals();
+    parts.push(new THREE.Mesh(skin, pawMat));
     // Toe-bean detail: three little pads on the front of each paw (poses with
     // grounded paws skip them — see ARM_POSES.sit).
     if (ap.beans !== false) {

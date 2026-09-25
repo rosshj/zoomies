@@ -1871,9 +1871,8 @@ export class Track {
   }
 
   _buildCenterLine() {
-    // The centre line only appears in the built-up town stretches and the alpine
-    // (snowy) pass. A per-sample 0/1 visibility field is box-blurred so the line
-    // fades in and out over distance instead of stopping abruptly.
+    // The centre line appears in built-up town stretches outside forest/snow.
+    // Blur zone visibility so paint fades gently at the edges of settlements.
     const div = this.samples;
     const ZONES = 6; // matches the town/farm zoning in scenery.buildRoadside
     let vis = new Float32Array(div);
@@ -1895,29 +1894,36 @@ export class Track {
       vis = out;
     }
 
-    const hw = 0.24; // half-width of the line
-    // Dash the line instead of painting it solid: a repeating on/off beat along
-    // the samples. Dashes strobe past at speed — a strong, cheap optic-flow cue
-    // right where the player looks — where the old continuous stripe just slid.
-    // Baked into the same per-vertex alpha as the zone fade, so dash ends stay
-    // soft (painted, not clinical) and it's still one mesh / one draw.
-    const DASH = 8; // samples per on+off cycle…
-    const DASH_ON = 5; // …of which this many are painted
-    const positions = [];
-    const alphas = [];
-    const indices = [];
-    for (let i = 0; i <= div; i++) {
-      const idx = i % div;
-      const p = this._pts[idx];
-      const side = this._sideAt(idx);
-      const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
-      const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
-      positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-      const dash = idx % DASH < DASH_ON ? 1 : 0;
-      alphas.push(vis[idx] * dash, vis[idx] * dash);
-      if (i < div) {
-        const k = i * 2;
-        indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    const hw = 0.19;
+    // Clip geometry at physical dash boundaries: crisp paint ends with no
+    // transparent triangles spanning the gaps. Fit whole cycles around the loop.
+    const step = this.length / div;
+    const period = this.length / Math.max(1, Math.floor(this.length / Math.max(14, step * 8)));
+    const on = period * 0.6;
+    const positions = [], alphas = [], indices = [];
+    let lastEnd = -1, lastRing = -1;
+    const ring = (i, f) => {
+      f = Math.max(0, Math.min(1, f)); // distance arithmetic can overshoot by an ulp
+      const next = (i + 1) % div;
+      const p = this._pts[i].clone().lerp(this._pts[next], f);
+      const side = this._sideAt(i).clone().lerp(this._sideAt(next), f).normalize();
+      const k = positions.length / 3;
+      positions.push(p.x-side.x*hw,p.y+.05,p.z-side.z*hw,
+        p.x+side.x*hw,p.y+.05,p.z+side.z*hw);
+      const alpha = vis[i] + (vis[next] - vis[i]) * f;
+      alphas.push(alpha, alpha);
+      return k;
+    };
+    for (let i = 0; i < div; i++) {
+      if (vis[i] + vis[(i+1)%div] === 0) continue;
+      const start = i * step, end = (i+1) * step;
+      for (let cycle = Math.floor(start / period); cycle * period < end; cycle++) {
+        const lo = Math.max(start, cycle * period), hi = Math.min(end, cycle * period + on);
+        if (hi - lo < 1e-7) continue;
+        const a = Math.abs(lo-lastEnd) < 1e-7 ? lastRing : ring(i, (lo-start)/step);
+        const b = ring(i, (hi-start)/step);
+        indices.push(a,a+1,b,a+1,b+1,b);
+        lastEnd = hi; lastRing = b;
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -1936,7 +1942,7 @@ export class Track {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    mat.colorNode = tslColor(0xf4cf3a);
+    mat.colorNode = tslColor(0xe9ca79);
     mat.opacityNode = attribute("aAlpha");
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 1;
