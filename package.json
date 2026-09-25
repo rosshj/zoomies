@@ -27,6 +27,7 @@
     "check:tracks": "node tools/track-audit.mjs",
     "check:tracks:random": "TRACKS=random SEEDS=6 node tools/track-audit.mjs",
     "check:art": "node tools/art-check.mjs",
+    "check:accessories": "node tools/accessory-art-check.mjs",
     "check:materials": "node tools/material-check.mjs",
     "check:scenery": "node tools/scenery-check.mjs",
     "check:landscape": "node tools/landscape-check.mjs",

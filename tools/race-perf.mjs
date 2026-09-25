@@ -1,5 +1,7 @@
 // Native full-race comparison, including simulation, weather, particles and post.
 // ART_ROOT selects a checkout. AI drives the human kart only inside this probe.
+// MODELS overrides models.js for a focused before/after comparison. ACCESSORY
+// forces the same accessory on every cat to stress its worst rendering case.
 import {chromium} from 'playwright-core';
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -7,7 +9,17 @@ import path from 'node:path';
 const root=process.env.ART_ROOT||path.resolve(new URL('..',import.meta.url).pathname),out=process.env.OUT||'/tmp/zoomies-race-perf';
 await fs.mkdir(out,{recursive:true});
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'};
-const server=http.createServer(async(req,res)=>{if(req.url==='/favicon.ico'){res.writeHead(204).end();return;}try{const file=path.join(root,req.url.split('?')[0]==='/'?'index.html':req.url.split('?')[0]);res.setHeader('content-type',mime[path.extname(file)]||'application/octet-stream');res.end(await fs.readFile(file));}catch{res.writeHead(404).end();}});
+async function sourceFile(file) {
+ if(!file.endsWith('/src/models.js')||(!process.env.MODELS&&!process.env.ACCESSORY))return fs.readFile(file);
+ let code=await fs.readFile(process.env.MODELS||file,'utf8');
+ if(process.env.ACCESSORY){
+  if(!code.includes('export function createCat('))throw Error('Cat factory changed; update the probe');
+  code=code.replace('export function createCat(', 'function createCatForProbe(');
+  code+=`\nexport function createCat(fur,opts={}) { return createCatForProbe(fur,{...opts,accessory:${JSON.stringify(process.env.ACCESSORY)}}); }`;
+ }
+ return code;
+}
+const server=http.createServer(async(req,res)=>{if(req.url==='/favicon.ico'){res.writeHead(204).end();return;}try{const file=path.join(root,req.url.split('?')[0]==='/'?'index.html':req.url.split('?')[0]);res.setHeader('content-type',mime[path.extname(file)]||'application/octet-stream');res.end(await sourceFile(file));}catch{res.writeHead(404).end();}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const browser=await chromium.launch({executablePath:process.env.PW_CHROME||'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'});
 const results=[];
