@@ -86,7 +86,6 @@ export class EffectsManager {
     // field's entries (and their vectors) for the whole session.
     this._skidPrev = new WeakMap();
     this._hue = 0;
-    this._trailBeat = 0;
     // Retired particle objects, reused by _spawn — steady-state racing (dust,
     // sparks, trails every frame) allocates nothing once the pool has warmed up.
     this._pool = [];
@@ -193,8 +192,8 @@ export class EffectsManager {
     return _rearPos;
   }
 
-  // Boost jet, coloured by how much was charged (matching the drift-
-  // charge spark tiers): blue for a light charge, gold for a mid
+  // Boost cloud burst, coloured by how much was charged (matching the drift-
+  // charge spark tiers): a solid blue cloud for a light charge, gold for a mid
   // charge, and a full rainbow only at full charge. The toot-meter boost passes
   // the default high charge, so the button toot is always the rainbow one.
   tootBurst(kart, charge = 2, green = false) {
@@ -206,14 +205,13 @@ export class EffectsManager {
       else if (rainbow) _col.setHSL((this._hue + i / 16) % 1, 1, 0.6);
       else _col.setHex(tier);
       _vel
-        .set((Math.random() - 0.5) * 3, .3 + Math.random() * 1.5, (Math.random() - 0.5) * 3)
-        .addScaledVector(_fwd, -(12 + Math.random() * 12));
-      this._spawn(this._rear(kart, .65), _col, {
-        spark: i % 3 !== 0,
+        .set((Math.random() - 0.5) * 6, 1 + Math.random() * 3, (Math.random() - 0.5) * 6)
+        .addScaledVector(_fwd, -(5 + Math.random() * 6));
+      this._spawn(this._rear(kart, 1.6), _col, {
         additive: true,
-        size: i % 3 !== 0 ? 1.1 + Math.random() * .6 : .8 + Math.random() * .4,
-        life: .35 + Math.random() * .25,
-        grow: i % 3 !== 0 ? -0.5 : 2,
+        size: 2.2 + Math.random(),
+        life: 0.7 + Math.random() * 0.5,
+        grow: 4,
         v: _vel,
         opacity: 0.85,
       });
@@ -221,8 +219,7 @@ export class EffectsManager {
     if (rainbow) this._hue = (this._hue + 0.13) % 1;
   }
 
-  // Fast hot streaks punctuated by small billows; one particle per call.
-  // Rainbow normally, green for a catnip boost.
+  // Continuous trail while boosting — rainbow normally, green for a catnip boost.
   trickle(kart, green = false) {
     if (green) {
       _col.setHSL(0.28, 0.85, 0.45 + Math.random() * 0.12);
@@ -230,14 +227,12 @@ export class EffectsManager {
       this._hue = (this._hue + 0.05) % 1;
       _col.setHSL(this._hue, 1, 0.6);
     }
-    const jet = (this._trailBeat = (this._trailBeat + 1) % 3) !== 0;
-    this._spawn(this._rear(kart, 0.35), _col, {
-      spark: jet,
+    this._spawn(this._rear(kart, 0.8), _col, {
       additive: true,
-      size: jet ? 1.35 : .85,
-      life: jet ? .28 : .42,
-      grow: jet ? -.6 : 1.8,
-      v: _vel.set(-Math.sin(kart.heading) * 16, .5, -Math.cos(kart.heading) * 16),
+      size: 1.6,
+      life: 0.55,
+      grow: 3,
+      v: _vel.set(0, 1.5, 0),
       opacity: 0.8,
     });
   }
@@ -686,7 +681,7 @@ export class EffectsManager {
   }
 }
 
-// Painted cel puffs and tapered embers, baked into the same two 64px
+// Round glowing puffs and tapered embers, baked into the same two 64px
 // textures. The existing two fields and particle budget stay unchanged.
 function softTexture(spark) {
   const c = document.createElement("canvas");
@@ -707,22 +702,14 @@ function softTexture(spark) {
     }
     ctx.putImageData(img, 0, 0);
   } else {
-    // Soft turbulent density baked once; no concentric bands or hard bubble rim.
-    const img = ctx.createImageData(64, 64);
-    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
-      const dx = (x - 31.5) / 29, dy = (y - 31.5) / 29;
-      const angle = Math.atan2(dy, dx);
-      // Broad, uneven billows: five equally spaced lobes looked like a star
-      // when a pale puff shrank to a handful of pixels behind a racing kart.
-      const edge = 0.88 + 0.045 * Math.cos(angle * 3) + 0.025 * Math.sin(angle * 2);
-      const r = Math.hypot(dx, dy) / edge;
-      const density = Math.pow(Math.max(0, 1 - r * r), 2);
-      const billow = .72 + .18 * Math.sin(dx * 8 + dy * 3) * Math.cos(dy * 7 - dx * 2);
-      const i = (y * 64 + x) * 4;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = 255;
-      img.data[i + 3] = Math.round(255 * density * billow);
-    }
-    ctx.putImageData(img, 0, 0);
+    // Production's round additive glow: bright centre and a broad soft halo.
+    // Baked once into the existing 64px texture, with no extra field or pass.
+    const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, "rgba(255,255,255,0.85)");
+    g.addColorStop(0.5, "rgba(255,255,255,0.4)");
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 64, 64);
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;

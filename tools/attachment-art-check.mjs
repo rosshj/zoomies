@@ -42,13 +42,20 @@ try {
   }
   await page.evaluate(async()=>{
     const THREE=await import('three');const {EffectsManager}=await import('/src/effects.js');const {createKartModel}=await import('/src/models.js');const {toonify}=await import('/src/toon.js');const v=window.__viewer;
-    v.scene.remove(window.__subject);const k=createKartModel(0xe53935);v.scene.add(k.group);toonify(k.group);
+    v.scene.remove(window.__subject);const k=createKartModel(0xe53935);window.__kartModel=k.group;v.scene.add(k.group);toonify(k.group);
     window.__fx=new EffectsManager(v.scene);window.__kart={position:new THREE.Vector3(),heading:0,y:0};
     v.orbit.target.set(0,.8,-3);v.orbit.radius=15;v.orbit.theta=2.2;v.orbit.phi=1.15;v.setBackground('#263b50');
     window.__fx.tootBurst(window.__kart);
   });
   for(let f=0;f<24;f++){
-    await page.evaluate(()=>{window.__fx.trickle(window.__kart);window.__fx.update(1/60);});
+    await page.evaluate(()=>{
+      // Racing speed separates the glow circles into a trail instead of stacking
+      // every emission over a parked kart into one white flash.
+      window.__kart.position.z += 45/60;
+      window.__kartModel.position.copy(window.__kart.position);
+      window.__viewer.orbit.target.z = window.__kart.position.z - 3;
+      window.__fx.trickle(window.__kart);window.__fx.update(1/60);
+    });
     if([3,9,19].includes(f)){await page.waitForTimeout(100);await page.screenshot({path:path.join(out,'exhaust-'+f+'.png')});}
   }
   console.log(JSON.stringify({errors}));if(errors.length)process.exitCode=1;

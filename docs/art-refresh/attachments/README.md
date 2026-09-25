@@ -1,6 +1,6 @@
 # Attachments, lights, road paint and boost trails
 
-Follow-up to `a870206`, on the same review branch / PR #64.
+Snapshot at `12a1611`, following `a870206`. The boost jet described here has since been replaced by [production-style circular glows](../glow/README.md); other changes remain.
 
 - Palm frond roots now overlap the top of the leaning trunk. Removed the extra canopy lift that exposed a gap, including in the asset viewer.
 - Forelegs and paws share a continuous molded skin in driving, sitting and standing poses. Shoulder pivots and bean details remain, with fewer triangles and the same material batches. Regenerated all 38 catalog thumbnails.
