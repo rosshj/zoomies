@@ -23,6 +23,8 @@ The catalog thumbnails are regenerated from the actual procedural models.
 
 [Final graphics audit: findings, fixes and remaining tradeoffs](audit/README.md)
 
+[Tree silhouettes and painted depth: next pass](forms/README.md)
+
 ## Compare
 
 | Main | This branch |

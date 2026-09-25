@@ -59,6 +59,22 @@ export function paintSolid(geo, hex) {
   return geo;
 }
 
+// Same cylinder topology and colour attribute as the old trunk. A splayed,
+// irregular foot and a slight lean replace the perfectly straight fence post.
+// The canopy attaches at x=.18; both the viewer and world use this geometry.
+export function treeTrunkGeometry() {
+  const geo = new THREE.CylinderGeometry(0.4, 0.68, 3, 6);
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+    const t = (y + 1.5) / 3;
+    const foot = 1 + (1 - t) * (0.12 + 0.12 * Math.cos(Math.atan2(z, x) * 3));
+    p.setXYZ(i, x * foot + 0.18 * t, y, z * foot);
+  }
+  geo.computeVertexNormals();
+  return paintSurface(geo, { low: 0.64, high: 1, faces: 0.1 });
+}
+
 // One shared, linear-colour grain tile. Noise is baked once, never evaluated in
 // the fragment shader. Mipmaps suppress distant speckle; the small contrast
 // preserves the terrain palette and cel lighting. No world RNG is consumed.

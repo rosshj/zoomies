@@ -21,7 +21,7 @@ const server = http.createServer(async (req, res) => {
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let browser;
 const extra = { 'Building — village': 6, 'Building — snowy': 6, Barrel: 96, Cactus: 96, Cow: 208, Sheep: 144, Deer: 144, Goat: 232, Gull: 80, Pigeon: 88, Duck: 78, 'Sky train': 528, 'Tree — forest': 42 };
-const shots = new Set(['Mountain — alpine', 'Mountain — meadow', 'Mountain — desert','Tower', 'City tower', 'Building — snowy','Cloud', 'Sky bird', 'Tree — meadow', 'Tree — forest', 'Tree — blossom', 'Tree — beach', 'Grass tuft', 'Wildflowers', 'Cow', 'Sheep', 'Pigeon', 'Gull', 'Crate', 'Barrel', 'Building — village', 'Hot-air balloon', 'Rock', 'Cactus', 'Duck', 'Goat', 'Sky train']);
+const shots = new Set(['Mountain — alpine', 'Mountain — meadow', 'Mountain — desert','Tower', 'City tower', 'Building — snowy','Cloud', 'Sky bird', 'Tree — meadow', 'Tree — forest', 'Tree — blossom', 'Tree — savanna', 'Tree — beach', 'Grass tuft', 'Wildflowers', 'Cow', 'Sheep', 'Pigeon', 'Gull', 'Crate', 'Barrel', 'Building — village', 'Hot-air balloon', 'Rock', 'Cactus', 'Duck', 'Goat', 'Sky train']);
 try {
   browser = await chromium.launch({
     executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',

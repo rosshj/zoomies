@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { paintSurface, rockGeometry, palmFrond, landscapeGrainTexture, landscapeGrainUV } from "./scenery-art.js";
+import { paintSurface, rockGeometry, palmFrond, treeTrunkGeometry, landscapeGrainTexture, landscapeGrainUV } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
@@ -2436,23 +2436,39 @@ function foliageGeoFor(shape) {
           p.setX(i, p.getX(i) * 1.35); p.setZ(i, p.getZ(i) * 1.35);
         }
       }
-      geo.computeVertexNormals(); return geo.translate(0, y, 0);
+      // Drooping branch tips and an offset upper crown, sculpted into
+      // the same rings. Coordinate-only edits keep cap/seam vertices welded.
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), yy = p.getY(i), z = p.getZ(i);
+        const t = (yy + h / 2) / h;
+        const a = Math.atan2(z, x);
+        p.setXYZ(i, x + 0.14 * (y / 5.2) * t,
+          yy - (1 - t) * 0.18 * (0.5 + 0.5 * Math.cos(a * 3)), z);
+      }
+      geo.computeVertexNormals();
+      paintSurface(geo, { low: 0.64, high: 1, faces: 0.1 });
+      return geo.translate(0, y, 0);
     };
     g = mergeGeometries([tier(2.2, 3.0, 1.5), tier(1.7, 2.6, 3.4), tier(1.15, 2.3, 5.2)]);
   } else if (shape === "acacia") {
-    // Flat-topped umbrella: a wide, thin dome with a smaller crown on top. Pairs
-    // with a tall bare trunk (trunkHmul below) for the savanna silhouette.
-    g = mergeGeometries([
-      new THREE.SphereGeometry(3.0, 10, 6).scale(1, 0.3, 1).translate(0, 0.7, 0),
-      new THREE.SphereGeometry(2.1, 9, 5).scale(1, 0.28, 1).translate(0, 1.25, 0),
-    ]);
+    // One broad umbrella skin instead of two intersecting flattened spheres.
+    // 168 triangles (was 172), with a shallow underside and a lifted crown.
+    g = new THREE.SphereGeometry(3, 12, 8);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const t = p.getY(i) / 3;
+      p.setY(i, 0.75 + (t > 0 ? Math.pow(t, 0.7) * 0.95 : t * 0.55));
+    }
   } else if (shape === "blossom") {
-    // Fluffy cherry cloud: a cluster of offset blobs reads as billowy blossom.
-    const blobs = [
-      [0, 1.7, 0, 1.75], [1.3, 2.1, 0.4, 1.25], [-1.1, 2.0, -0.5, 1.3],
-      [0.3, 2.85, 0.2, 1.3], [-0.4, 1.55, 1.0, 1.1], [0.9, 1.6, -0.9, 1.05],
-    ];
-    g = mergeGeometries(blobs.map(([x, y, z, r]) => new THREE.IcosahedronGeometry(r, 1).translate(x, y, z)));
+    // A single molded blossom crown: broad lobes flow into one another rather
+    // than six visibly intersecting balls. 320 triangles instead of 480.
+    g = new THREE.IcosahedronGeometry(2.35, 3);
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
+      const swell = 1 + 0.13 * Math.sin(x * 1.8 + z * 0.7) * Math.cos(y * 1.7 - z);
+      p.setXYZ(i, x * swell, y * 0.73 * swell + 2.0, z * swell);
+    }
   } else if (shape === "palm") {
     // A crown of long fronds that attach at the trunk top and ARCH down and out,
     // like a real palm — each is a thin flat blade whose WIDE end sits at the
@@ -2478,10 +2494,19 @@ function foliageGeoFor(shape) {
       const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
       const a = Math.atan2(z, x);
       const lobe = 1 + (shape === "pine" ? 0.09 : shape === "round" ? 0.26 : 0.14) * Math.sin(a * 3 + y * 1.5);
-      p.setXYZ(i, x * lobe, y + Math.sin(a * 5) * Math.hypot(x, z) * 0.06, z * lobe);
+      const sweep = shape === "round" ? 0.28 * Math.sin(y * 0.6) : shape === "acacia" ? 0.18 * y : 0;
+      p.setXYZ(i, x * lobe + sweep, y + Math.sin(a * 5) * Math.hypot(x, z) * 0.06, z * lobe);
     }
     g.computeVertexNormals();
-    paintSurface(g, { low: 0.56, high: 1, faces: 0.06 });
+    // The pine's tier-local paint makes the overlapping boughs readable;
+    // combine it with the overall crown gradient in the existing colour buffer.
+    const tierPaint = shape === "pine" ? g.attributes.color : null;
+    paintSurface(g, { low: tierPaint ? 0.85 : 0.56, high: 1, faces: 0.06 });
+    if (tierPaint) {
+      const c = g.attributes.color;
+      for (let i = 0; i < c.count; i++) c.setXYZ(i,
+        c.getX(i) * tierPaint.getX(i), c.getY(i) * tierPaint.getY(i), c.getZ(i) * tierPaint.getZ(i));
+    }
   }
   _foliageGeoCache[shape] = g;
   return g;
@@ -2496,7 +2521,7 @@ const TRUNK_HMUL = { round: 1.0, pine: 0.9, acacia: 1.85, blossom: 0.95, palm: 1
 // acacia / blossom) — each shape its own silhouette, recoloured per-instance from
 // the biome's foliage HSL. Draw calls stay tiny: 1 trunk + ≤4 canopy meshes.
 function buildShapedTrees(scene, spots, scaleMul = 1) {
-  const trunkGeo = paintSurface(new THREE.CylinderGeometry(0.4, 0.68, 3, 6), { low: 0.7, high: 1 }); // baked base at y=0..3
+  const trunkGeo = treeTrunkGeometry(); // centred; instances place its base on the ground
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4a2b, roughness: 1, vertexColors: true });
   const foliageMat = new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, vertexColors: true, side: THREE.DoubleSide });
   foliageMat.userData.backlight = true; // glow when backlit by the sun (set in toonify)
@@ -2585,7 +2610,9 @@ function buildShapedTrees(scene, spots, scaleMul = 1) {
         const { b } = spot;
         const sc = spot._sc;
         q.setFromAxisAngle(UP_Y, spot._yaw);
-        p.set(spot.x, spot._top - 0.2 * sc, spot.z); // tiny overlap into the trunk top
+        // Meet the leaning trunk before canopy-only width scaling.
+        p.set(spot.x + Math.cos(spot._yaw) * 0.18 * sc,
+          spot._top - 0.2 * sc, spot.z - Math.sin(spot._yaw) * 0.18 * sc);
         // Per-biome width/height tweak still applies (sx/sy), keeping the old variety.
         s.set(b.sx * sc, b.sy * sc, b.sx * sc);
         m.compose(p, q, s);
@@ -3909,10 +3936,14 @@ function facadeTexture() {
   ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, 64, 80);
   for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) {
     const x = 8 + c * 18, y = 7 + r * 18;
-    ctx.fillStyle = "#b6aaa1"; ctx.fillRect(x - 1, y - 1, 13, 15);
-    ctx.fillStyle = "#607b89"; ctx.fillRect(x, y, 11, 12);
-    ctx.fillStyle = "#8fa9b4"; ctx.fillRect(x + 1, y + 1, 9, 4);
-    ctx.fillStyle = "#e8e4dc"; ctx.fillRect(x + 5, y, 1, 12); ctx.fillRect(x, y + 5, 11, 1);
+    // Recess shadow, cool glass, a broad reflected sky band and a raised
+    // sill. Keep details wider than a hairline so the mip chain stays calm.
+    ctx.fillStyle = "#c0b6aa"; ctx.fillRect(x - 1, y - 1, 13, 15);
+    ctx.fillStyle = "#506575"; ctx.fillRect(x, y, 11, 12);
+    ctx.fillStyle = "#7e9ba8"; ctx.fillRect(x + 2, y + 3, 9, 7);
+    ctx.fillStyle = "#a6bdc4"; ctx.fillRect(x + 2, y + 3, 9, 3);
+    ctx.fillStyle = "#d8d5cd"; ctx.fillRect(x + 5, y, 1, 12); ctx.fillRect(x, y + 6, 11, 1);
+    ctx.fillStyle = "#a89d91"; ctx.fillRect(x - 1, y + 13, 13, 2);
     ctx.fillStyle = "#f5eee2"; ctx.fillRect(x - 1, y + 12, 13, 1);
   }
   const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
@@ -4617,7 +4648,7 @@ function makeTree(biome) {
   const g = new THREE.Group();
   const s = 0.9 + rand() * 1.2;
   const hmul = TRUNK_HMUL[shape] ?? 1.0;
-  const trunk = new THREE.Mesh(paintSurface(new THREE.CylinderGeometry(0.4, 0.68, 3, 6), { low: 0.7, high: 1 }), mat(0x6b4a2b, { vertexColors: true }));
+  const trunk = new THREE.Mesh(treeTrunkGeometry(), mat(0x6b4a2b, { vertexColors: true }));
   trunk.position.y = 1.5 * s * hmul;
   trunk.scale.set(s, s * hmul, s);
   trunk.castShadow = true;
@@ -4628,7 +4659,7 @@ function makeTree(biome) {
   const folCol = new THREE.Color().setHSL(h, b.foliage[1], clamp(b.foliage[2] + (rand() - 0.5) * 0.1, 0.14, 0.86));
   // Share the cached canopy silhouette so roadside trees match the scattered ones.
   const fol = new THREE.Mesh(foliageGeoFor(shape), mat(folCol.getHex(), { flatShading: true, vertexColors: true, side: THREE.DoubleSide }));
-  fol.position.y = 3 * s * hmul - 0.2 * s;
+  fol.position.set(0.18 * s, 3 * s * hmul - 0.2 * s, 0);
   fol.scale.set(b.sx * s, b.sy * s, b.sx * s);
   fol.castShadow = true;
   g.add(fol);
