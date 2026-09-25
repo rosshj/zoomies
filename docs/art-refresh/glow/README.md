@@ -1,6 +1,6 @@
 # Production-style boost glow
 
-Restored the round additive glow and boost/trickle emitter settings from production/main `0d0198a`: bright circular centres, broad soft halos, larger expanding puffs and a gently rising rainbow trail. Green catnip and charge-tier colours remain. Drift/collision embers keep their existing tapered shape.
+Restored the round additive glow and boost/trickle emitter settings from production/main `0d0198a`: bright circular centres, broad soft halos, larger expanding puffs and a gently rising rainbow trail. Green catnip and charge-tier colours remain. Drift/collision sparks now also use a round radial glow: both particle textures are circular, with no pin-shaped heads or tails. Their now-unnecessary velocity uploads and camera-space rotation shader work have been removed.
 
 The existing two instanced fields, two 64×64 textures, 280-particle cap, pooled objects, partial uploads and early retirement of invisible particles remain. No new lights, postprocessing, geometry or per-frame texture work.
 
@@ -28,3 +28,7 @@ Production:
 ![Production glow trail](production.png)
 
 Validation: particle expiry, recycling, caps and shader warm-up checks; moving-kart visual comparison; gameplay smoke check; web build. No model changes in this follow-up.
+
+Round-spark follow-up: `check:effects-art` verifies quarter-turn symmetry of the baked spark alpha and checks that no velocity/rotation rendering attributes remain. Submission counts and particle limits are unchanged.
+
+![Both particle types are round](round-particles.png)

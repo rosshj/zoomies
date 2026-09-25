@@ -43,8 +43,14 @@ try {
       fx._spawn(new THREE.Vector3(-5+i*2,0.5,0),new THREE.Color().setHSL(i/6,0.7,0.7),{size:1.8,life:2,opacity:0.9,spark:true,v:new THREE.Vector3(Math.cos(i*.5)*6,Math.sin(i*.5)*6,2)});
     }
     fx.update(0);
-    if(fx.sparkField.aVelocity) {
-      for(const value of fx.sparkField.aVelocity.array)if(!Number.isFinite(value))throw Error('Invalid spark velocity');
+    if(fx.sparkField.aVelocity || fx.sparkField.mesh.material.rotationNode)throw Error('Round particles should not upload/project velocity');
+    const sprite = fx.sparkTex.image;
+    const pixels = sprite.getContext('2d').getImageData(0,0,64,64).data;
+    // A tail or elongated head breaks quarter-turn symmetry. Check the actual
+    // baked alpha, so a pin-shaped sprite cannot silently return.
+    for(let y=0;y<64;y++)for(let x=0;x<64;x++) {
+      const a=pixels[(y*64+x)*4+3],b=pixels[(x*64+63-y)*4+3];
+      if(Math.abs(a-b)>2)throw Error('Spark sprite is not round');
     }
     const track = new Track(); const road = track.group.children[0];
     window.__roadMat = toToon(road.material);
