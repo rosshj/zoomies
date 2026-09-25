@@ -29,6 +29,8 @@ jobs:
       - name: item and knockable prop logic
         run: npm run check:items
 
+      - name: prop road/fence clearance and settling
+        run: npm run check:prop-physics
       - name: procedural baked-lighting invariants
         run: npm run check:baked-lighting
       - name: procedural LOD and world-shelter invariants

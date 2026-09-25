@@ -1,3 +1,5 @@
+Latest: [Crate and barrel contact, tumbling and settling](prop-contact/README.md).
+
 Latest: [Biome-specific mounted tunnel lighting](tunnel-lighting/README.md).
 
 Latest: [Higher-quality bakes, distant scenery and full-race measurements](runtime-detail/README.md).
