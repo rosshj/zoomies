@@ -1,3 +1,5 @@
+Latest: [Additional habitat animals and structures](habitat-expansion/README.md).
+
 # Procedural art refresh
 
 [Latest: biome-specific scenery, buildings and wildlife](habitats/README.md).

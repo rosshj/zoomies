@@ -1,3 +1,4 @@
+import { HABITAT_ASSETS, makeHabitatAsset } from './habitat-assets.js';
 import { dressingFor, allowsDressing, habitatFits } from "./biome-dressing.js";
 import * as THREE from "three";
 import { paintSolid, paintSurface, rockGeometry, palmFrond, treeTrunkGeometry, landscapeGrainTexture, landscapeGrainUV } from "./scenery-art.js";
@@ -4539,6 +4540,7 @@ function makeHydrant() {
 }
 
 function makeDressing(kind, biome, density = .5) {
+  if (HABITAT_ASSETS[kind]) return makeHabitatAsset(kind, biome, _solidMat);
   const makers = {
     tree: () => makeTree(biome), palm: () => makeTree(biome),
     cow: makeCow, sheep: makeSheep, deer: makeDeer, goat: makeGoat,
@@ -6056,6 +6058,8 @@ export function assetCatalog() {
   });
   for(const [kind,bn] of [['hut','beach'],['stiltHut','wetlands'],['cabin','forest'],['chalet','alpine'],['adobe','desert'],['pavilion','blossom'],['ruin','volcanic']])
     add('Habitat buildings',kind,()=>makeHabitatBuilding(kind,biome(bn)));
+  for (const [kind, spec] of Object.entries(HABITAT_ASSETS))
+    add(spec.animal ? 'Animals' : 'Habitat structures', spec.name, () => makeHabitatAsset(kind, biome(spec.biome), _solidMat));
   add('Animals','Vulture',()=>makeGull('vulture'));
   add('Animals','Parrot',()=>makeGull('parrot'));
   for(const species of ['gull','vulture','parrot','heron'])add('Animals',`Sky bird — ${species}`,()=>makeSkyBirdAsset(0xffffff,species));
