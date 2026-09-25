@@ -1045,10 +1045,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   }
 
   // Ears on pivots so they can flick/lag. Point cats darken at the ear tips.
-  // Broad, bevelled bases bury into the scalp; the inset is part of the same
-  // silhouette and keeps clear of hats while the existing ear pivots flick.
-  const earGeo = catEarGeometry();
-  const innerGeo = catEarGeometry(true);
+  // Keep the rounded silhouette compact, closer to the production ears'
+  // exposed size. Scale shell and inset together before baking; the roots
+  // stay buried in the scalp and the original accessory/animation pivots stay put.
+  const earGeo = catEarGeometry().scale(.8, .8, .8);
+  const innerGeo = catEarGeometry(true).scale(.8, .8, .8);
   const ears = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
