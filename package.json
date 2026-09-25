@@ -37,7 +37,9 @@
     "check:runtime-art": "node tools/runtime-art-check.mjs",
     "check:scenery-shadows": "node tools/scenery-shadow-check.mjs",
     "check:baked-lighting": "node tools/baked-lighting-check.mjs",
-    "check:living": "node tools/living-world-check.mjs"
+    "check:living": "node tools/living-world-check.mjs",
+    "check:environment-particles": "node tools/environment-particles-check.mjs",
+    "check:environment-render": "node tools/environment-particles-render-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

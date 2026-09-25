@@ -55,7 +55,7 @@ try {
     const track = new Track(); const road = track.group.children[0];
     window.__roadMat = toToon(road.material);
     window.__roadColor = new THREE.Color().fromBufferAttribute(road.geometry.attributes.color,5);
-    return {cap:fx.maxParts, fields:2, smokeTexture:[fx.smokeTex.image.width,fx.smokeTex.image.height],sparkTexture:[fx.sparkTex.image.width,fx.sparkTex.image.height], roadTriangles:road.geometry.index.count/3,roadMap:road.material.map?.image.width||0,roadBump:!!road.material.bumpMap};
+    return {cap:fx.maxParts, fields:fx.environmentField?3:2, smokeTexture:[fx.smokeTex.image.width,fx.smokeTex.image.height],sparkTexture:[fx.sparkTex.image.width,fx.sparkTex.image.height], roadTriangles:road.geometry.index.count/3,roadMap:road.material.map?.image.width||0,roadBump:!!road.material.bumpMap};
   });
   await page.waitForTimeout(1000);
   await page.screenshot({path:path.join(out,'particles.png')});
@@ -68,19 +68,19 @@ try {
       if(f%4===0)fx.trickle(kart);
       if(f%12===0)fx.tireGrit(kart);
       fx.update(1/60);
-      submissions+=fx.smokeField.mesh.count+fx.sparkField.mesh.count;
+      submissions+=fx.smokeField.mesh.count+fx.sparkField.mesh.count+(fx.environmentField?.mesh.count||0);
       invisible+=fx.parts.filter(p=>p.opacity<=0).length;
       peak=Math.max(peak,fx.parts.length);
       if(fx.parts.length>fx.maxParts)throw Error('Particle budget exceeded');
     }
     fx.update(5);
-    if(fx.parts.length||fx.smokeField.mesh.count||fx.sparkField.mesh.count)throw Error('Expired particles still submitted');
+    if(fx.parts.length||fx.smokeField.mesh.count||fx.sparkField.mesh.count||fx.environmentField?.mesh.count)throw Error('Expired particles still submitted');
     for(let i=0;i<fx.maxParts+20;i++)fx._spawn(kart.position,new THREE.Color(1,1,1),{life:2,opacity:.15,size:1});
     if(fx.parts.length!==fx.maxParts)throw Error('Cap/recycling failed');
     fx.update(.2);const fadedSlots=fx.parts.length;
     fx.update(5);
     fx.warmup(new THREE.Vector3(0,-100,0));fx.update(1/60);
-    if(fx.smokeField.mesh.count!==1||fx.sparkField.mesh.count!==1)throw Error('Warm-up fields retired before first draw');
+    if(fx.smokeField.mesh.count!==1||fx.sparkField.mesh.count!==1||(fx.environmentField&&fx.environmentField.mesh.count!==1))throw Error('Warm-up fields retired before first draw');
     fx.update(5);
     return {submissions,invisible,peak,fadedSlots};
   });

@@ -24,8 +24,9 @@ import { ChaseCam } from "./split.js";
 import { HairballManager } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal, formatTime } from "./hud.js";
-import { BIOME_NAMES, buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { BIOME_NAMES, buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
+import { environmentProfile, looseSurface } from "./environment-particles.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { encodeWorld, decodeWorld } from "./worldcfg.js";
 import {
@@ -721,6 +722,7 @@ const _bootQuality = (() => {
 const HEADLIGHT_BUDGET = _bootQuality === "high" ? 6 : _bootQuality === "medium" ? 4 : 2;
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
+const _leafViews = [];
 const _leafKarts = []; // scratch: karts for the leaf wakes
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
 let _hlRamp = 1;
@@ -957,6 +959,21 @@ const _warmPos = new THREE.Vector3();
 const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
+function emitSurfaceDebris(kart, dt, visibility) {
+  const speed=Math.abs(kart.speed||0);if(kart.airborne || speed<4)return;
+  const n=track.samples,row=Math.floor((kart.trackT||0)*n)%n,p=track._pts[row],t=track._tans[row];
+  const lateral=(kart.position.x-p.x)*-t.z+(kart.position.z-p.z)*t.x;
+  const biome=biomeNameAt(kart.position.x,kart.position.z,kart.groundY),spec=environmentProfile(biome);
+  const sliding=kart.drifting||kart.spinTimer>0;
+  const loose=looseSurface(biome,kart.position.x,kart.position.z,lateral,track.halfWidth,row,sliding);
+  const pace=Math.min(1,speed/(kart.maxSpeed||65));
+  const amount=loose*(sliding?1:pace*.65)*visibility;
+  _dustCol.set(spec.tile===3||spec.tile===4||spec.tile===6?spec.colors[0]:0x9a968b);
+  if(amount>.015)effects.dust(kart,_dustCol,amount,dt,biome);
+  if(pace>.18)effects.wakeDebris(kart,_wakeCol,pace*(spec.tile<3||spec.tile===5?.2+loose*.8:loose)*visibility,dt,biome);
+  if(sliding&&pace>.5&&spec.tile!==4)effects.tireGrit(kart,dt*visibility);
+}
+
 const hud = new HUD();
 const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
@@ -2140,6 +2157,8 @@ function applyQuality(q, persist = true) {
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
   _shaftTex.autoUpdate = fullFx; // don't re-render the god-ray target when it's unused
   if (world.grass) world.grass.visible = liveWorld;
+  world.groundLeaves?.setQuality(q,saverOn);
+  effects.environmentScale = q === "low" ? .4 : saverOn ? .65 : 1;
   if (gpuParticles) gpuParticles.setVisible(liveWorld && !saverOn); // hidden = its compute is skipped too
   // Weather: draw half the rain/snow instances in Battery saver (the field is
   // random-scattered, so any prefix is an even subset).
@@ -6960,7 +6979,11 @@ function loopBody(now) {
     // pigeon flocks go live/scatter for whichever player gets close).
     world.update(now / 1000, dt,
       splitActive && player2 ? splitPlayers.map((k) => k.position) : player ? player.position : null);
-    if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
+    if (gpuParticles) {
+      const at=player?.position||camera.position;
+      gpuParticles.setEnvironment(biomeNameAt(at.x,at.z,at.y));
+      gpuParticles.update(dt, camera.position);
+    }
     _seg.world = performance.now() - _t;
   }
 
@@ -6987,7 +7010,9 @@ function loopBody(now) {
     // Alloc-free scratch list (same pattern as the headlight candidates).
     _leafKarts.length = 0;
     for (const k of karts) _leafKarts.push(k);
-    world.groundLeaves.update(_leafKarts, camera.position, dt); // kick up leaves in the karts' wake
+    _leafViews.length=0;
+    if(splitActive)for(const c of _sCams)_leafViews.push(c.camera);
+    world.groundLeaves.update(_leafKarts, camera.position, dt, _leafViews); // kick up leaves in the karts' wake
   }
   updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
@@ -7198,30 +7223,6 @@ function loopBody(now) {
       effects.skid(player);
     }
 
-    // Dust kicked off the track, tinted to the local ground. A thick plume while
-    // sliding/cornering hard, a faint veil while just driving at speed — only when
-    // the kart is actually on the ground (no dust mid-jump). One color sample/frame.
-    if (!player.airborne && _sp > 6) {
-      biomeDustColor(player.position.x, player.position.z, _dustCol);
-      let amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
-      // Flat-out (top ~10% of the speed range): the faint cruising veil thickens
-      // into a proper plume, so max speed is visibly working the road.
-      const _snDust = _sp / player.maxSpeed;
-      if (_snDust > 0.9) amt = Math.max(amt, 0.45 + 0.3 * Math.min(1, (_snDust - 0.9) / 0.1));
-      if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
-      if (amt > 0.02) effects.dust(player, _dustCol, amt);
-    }
-    // The world reacting to your speed (the strongest speed cue there is):
-    // biome debris yanked airborne in the wake from ~60% of top speed, and
-    // pale tire grit flicked off the rear wheels once flat-out.
-    if (!player.airborne && _sp > 6) {
-      const _snFx = Math.min(1, _sp / player.maxSpeed);
-      if (_snFx > 0.6) {
-        biomeDebrisColor(player.position.x, player.position.z, _wakeCol);
-        effects.wakeDebris(player, _wakeCol, Math.min(1, (_snFx - 0.6) / 0.35));
-      }
-      if (_snFx > 0.85) effects.tireGrit(player);
-    }
     // Grass bow-wave: the roadside blades shove away from the kart, harder
     // with speed (the uniform is read by buildGrass's position node).
     {
@@ -7260,7 +7261,7 @@ function loopBody(now) {
         _yarnShim.position = y.mesh.position;
         _yarnShim.heading = y.mesh.rotation.y;
         _yarnShim.groundY = y.mesh.position.y - 0.55;
-        effects.dust(_yarnShim, _yarnDustCol, 0.9);
+        effects.dust(_yarnShim, _yarnDustCol, 0.55, dt);
       },
       onYarnHit: (k) => {
         effects.tootBurst(k, 2, false);
@@ -7305,14 +7306,9 @@ function loopBody(now) {
         effects.driftSparks(k);
         effects.skid(k);
       }
-      // Dust for the rest of the field, but ONLY for karts near the camera and
-      // only when they're sliding — so distant traffic and the shared particle
-      // budget stay protected (the player's own dust is handled above).
-      if (k !== player && !k.airborne && (k.drifting || k.spinTimer > 0) &&
-          k.position.distanceToSquared(camera.position) < 70 * 70) {
-        biomeDustColor(k.position.x, k.position.z, _dustCol);
-        effects.dust(k, _dustCol, 0.5);
-      }
+      // Surface reactions include every local player and nearby AI. Biome
+      // lookup uses road height; no extra nearest-road query per particle.
+      if(k.isPlayer || k.position.distanceToSquared(camera.position)<55*55) emitSurfaceDebris(k,dt,k.isPlayer?1:.4);
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
         audio.hit(sfxPos(k));
@@ -7574,14 +7570,14 @@ rendererReady
         }
       }
     } catch { /* diagnostics only */ }
-    // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
+    // Small matte ambient grains. Falling petals/leaves have their own shapes.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
-      count: 450, // sweet spot: 650 read as "too many", 280 as "none" — this is the sparse-but-present middle
+      count: 240, // lower compute/overdraw budget; these are subtle atmosphere
       tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
-      // A touch more opaque so the (now fewer) specks actually catch the light.
-      opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
-      size: night ? 0.52 : 0.42,
+      // Light comes from the world illumination, including at night.
+      opacity: night ? .25 : .4,
+      size: .14,
     }).then((p) => { gpuParticles = p; if (p) p.setVisible(quality !== "low" && !saverOn); }); // Low and Battery saver hide the motes (and skip their compute)
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))

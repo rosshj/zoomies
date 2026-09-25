@@ -33,6 +33,8 @@ jobs:
         run: npm run check:prop-physics
       - name: biome road prop placement, reactions and budgets
         run: npm run check:biome-props
+      - name: environmental particle budgets and emission timing
+        run: npm run check:environment-particles
       - name: procedural baked-lighting invariants
         run: npm run check:baked-lighting
       - name: procedural LOD and world-shelter invariants

@@ -1,15 +1,16 @@
 import * as THREE from "three";
-import { attribute, texture, color } from "three/tsl";
+import { attribute, texture, color, vec2, uv, float } from "three/tsl";
+
+import { environmentAtlas, environmentProfile, ENVIRONMENT_LIMITS, emissionCount, debrisLight } from "./environment-particles.js";
+import { uWindDir } from "./wind.js";
 
 // Cel particle effects (procedural sprites): rainbow toot clouds, boost trail,
 // drift/wall sparks, plus reusable tyre skid-mark quads.
 //
-// All particles render through just TWO instanced meshes (one per texture: soft
-// smoke, hot spark), both additive — instead of one THREE.Sprite each. A field of
-// karts all boosting/tooting/drifting used to spawn hundreds of individual sprites,
-// each its own draw call (they don't batch); now it's 2 draw calls total. Per-
-// particle position/colour/scale/opacity are pushed into instanced attributes each
-// frame; the simulation (in `parts`) is unchanged.
+// Gameplay particles retain two additive fields. Loose environmental material
+// uses one normal-blended atlas field, sharing the same bounded particle pool.
+// Shape/rotation data is packed into one attribute to fit the eight-buffer
+// minimum supported by WebGPU. Only live instance ranges upload each frame.
 const _DUST_FALLBACK = new THREE.Color(0xd8c8a8); // warm tan if no biome tint supplied
 // Scratch objects reused by every emitter, so spawning particles allocates
 // nothing per call: _spawn clones pos/v and unpacks the colour into scalars, so
@@ -43,6 +44,10 @@ export class EffectsManager {
     // the whole budget so an all-smoke or all-spark frame still fits.
     this.smokeField = this._makeField(this.smokeTex);
     this.sparkField = this._makeField(this.sparkTex);
+    this.environmentField = this._makeField(environmentAtlas(), true);
+    this.environmentCount = 0;
+    this.environmentScale = 1;
+    this._emission = new WeakMap();
 
     // Skid marks: ONE continuous ribbon mesh shared by every kart — a ring buffer
     // of quads where each new quad reuses the previous quad's far edge as its near
@@ -91,18 +96,18 @@ export class EffectsManager {
     this._pool = [];
   }
 
-  // Build one instanced billboard field (additive) reading per-instance position,
+  // Build one instanced billboard field reading per-instance position,
   // colour, scale and opacity from instanced attributes. The texture's painted alpha
   // shapes each particle; the tint comes from aColor.
-  _makeField(tex) {
-    const cap = this.maxParts;
+  _makeField(tex, environment = false) {
+    const cap = environment ? ENVIRONMENT_LIMITS.wake : this.maxParts;
     const geo = new THREE.PlaneGeometry(1, 1);
     const mk = (n) => {
       const a = new THREE.InstancedBufferAttribute(new Float32Array(cap * n), n);
       a.setUsage(THREE.DynamicDrawUsage);
       return a;
     };
-    const aPos = mk(3), aColor = mk(3), aScale = mk(1), aOpacity = mk(1);
+    const aPos = mk(3), aColor = mk(3), aScale = mk(environment ? 4 : 1), aOpacity = mk(1);
     geo.setAttribute("aPos", aPos);
     geo.setAttribute("aColor", aColor);
     geo.setAttribute("aScale", aScale);
@@ -110,13 +115,18 @@ export class EffectsManager {
     const mat = new THREE.SpriteNodeMaterial({
       transparent: true,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      fog: false,
+      blending: environment ? THREE.NormalBlending : THREE.AdditiveBlending,
+      fog: environment,
     });
     mat.positionNode = attribute("aPos"); // sprite centre (world space)
-    mat.scaleNode = attribute("aScale");
-    mat.colorNode = attribute("aColor");
-    mat.opacityNode = texture(tex).a.mul(attribute("aOpacity")); // painted mask × fade
+    mat.scaleNode = environment ? attribute("aScale","vec4").xy : attribute("aScale");
+    mat.colorNode = environment ? attribute("aColor").mul(debrisLight) : attribute("aColor");
+    const tile = attribute("aScale","vec4").z;
+    const atlasUV = environment ? vec2(uv().x.add(tile.mod(4)).div(4), uv().y.add(float(1).sub(tile.div(4).floor())).div(2)) : uv();
+    const sample = texture(tex, atlasUV);
+    if(environment)mat.colorNode=attribute("aColor").mul(debrisLight).mul(sample.rgb);
+    mat.opacityNode = sample.a.mul(attribute("aOpacity"));
+    if(environment) mat.rotationNode = attribute("aScale","vec4").w;
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.frustumCulled = false;
     mesh.renderOrder = 4;
@@ -127,19 +137,21 @@ export class EffectsManager {
 
   _spawn(pos, color, opts) {
     let p;
-    if (this.parts.length >= this.maxParts) {
-      // Over budget: recycle the particle closest to death in place (the old
-      // shift() moved the whole array per eviction — O(n) each, spiky in bursts).
-      let idx = 0, best = Infinity;
-      for (let i = 0; i < this.parts.length; i++) {
-        if (this.parts[i].life < best) { best = this.parts[i].life; idx = i; }
-      }
-      p = this.parts[idx];
+    const env = !!opts.env;
+    if (this.parts.length >= this.maxParts || (env && this.environmentCount >= ENVIRONMENT_LIMITS.wake)) {
+      // Environmental work never evicts a boost/drift particle. Gameplay effects
+      // reclaim environmental slots first when the shared 280-slot pool is full.
+      let idx = -1, best = Infinity;
+      for (let i=0;i<this.parts.length;i++) if(this.parts[i].env && this.parts[i].life<best){best=this.parts[i].life;idx=i;}
+      if(idx<0){if(env)return;for(let i=0;i<this.parts.length;i++)if(this.parts[i].life<best){best=this.parts[i].life;idx=i;}}
+      p=this.parts[idx];if(p.env)this.environmentCount--;
     } else {
-      p = this._pool.pop();
-      if (!p) p = { pos: new THREE.Vector3(), v: new THREE.Vector3(), r: 0, g: 0, b: 0, life: 0, opacity: 0, scale: 1, spark: false, grow: 0, damp: 2, gravity: 0 };
+      p=this._pool.pop() || {pos:new THREE.Vector3(),v:new THREE.Vector3()};
       this.parts.push(p);
     }
+    p.env=env;if(env)this.environmentCount++;
+    p.tile=opts.tile??7;p.angle=opts.angle??0;p.spin=opts.spin??0;p.aspect=opts.aspect??1;
+    p.floor=opts.floor??-Infinity;p.initialOpacity=opts.opacity??.9;p.maxLife=opts.life;
     p.pos.copy(pos);
     p.r = color.r; p.g = color.g; p.b = color.b;
     p.opacity = opts.opacity ?? 0.9;
@@ -164,6 +176,7 @@ export class EffectsManager {
     // Stay above zero through the warm-up lifetime despite the 1.5/s fade.
     this._spawn(pos, _col, { spark: false, life: 0.12, opacity: 0.2, size: 0.5, v: _vel });
     this._spawn(pos, _col, { spark: true, life: 0.12, opacity: 0.2, size: 0.5, v: _vel });
+    this._spawn(pos,_col,{env:true,tile:7,life:.12,opacity:.2,size:.5});
     if (this.skidFill === 0) {
       this.skidFill = 1;
       this.skidHead = 1;
@@ -429,73 +442,44 @@ export class EffectsManager {
     this._spawn(_pos, _col, { additive: true, size: 1.1, life: 0.4, grow: 1.6, v: _vel, opacity: 0.12 });
   }
 
-  // Dust kicked off the track surface — soft, ground-coloured puffs that splay out
-  // low behind the rear wheels and settle. Heavier while skidding/drifting, a faint
-  // veil while just driving. Routed through the existing smoke field (no new draw
-  // calls) and capped by `amount` so a whole field of karts can't flood the budget.
-  dust(kart, color, amount = 1) {
-    // Probabilistic emission: `amount` scales both the chance and the puff count,
-    // so light cruising dust is a rare single puff and a hard skid is a steady plume.
-    if (Math.random() > amount * 0.9) return;
-    const n = amount > 0.6 && Math.random() < amount ? 2 : 1;
-    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
-    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
-    const groundY = (kart.groundY ?? kart.y ?? 0) + 0.15;
-    for (let i = 0; i < n; i++) {
-      const side = (Math.random() < 0.5 ? -1 : 1) * (0.9 + Math.random() * 0.7);
-      _pos
-        .copy(kart.position)
-        .addScaledVector(_fwd, -1.7 - Math.random())
-        .addScaledVector(_right, side);
-      _pos.y = groundY;
-      _vel
-        .set(0, 0.7 + Math.random() * 1.1, 0)
-        .addScaledVector(_right, side * (1.4 + Math.random() * 2)) // splay outward from the tyre
-        .addScaledVector(_fwd, -(1 + Math.random() * 1.8)); // and trail backward
-      _col.copy(color || _DUST_FALLBACK).multiplyScalar(0.82 + Math.random() * 0.3);
-      this._spawn(_pos, _col, {
-        size: 1.0 + Math.random() * 1.0,
-        life: 0.45 + Math.random() * 0.4,
-        grow: 2.4,
-        v: _vel,
-        damp: 2.4,
-        gravity: 2.2, // billows up then settles back to the ground
-        opacity: (0.32 + Math.random() * 0.22) * (0.6 + amount * 0.5),
-      });
+  _rate(kart, channel, rate, dt) {
+    let state=this._emission.get(kart);
+    if(!state){state={};this._emission.set(kart,state);}
+    return emissionCount(state,channel,rate*this.environmentScale,dt);
+  }
+
+  // Material dust is normally blended and follows daylight/fog, never bloom.
+  dust(kart, color, amount = 1, dt = 1/60, biome = 'meadow') {
+    const n=this._rate(kart,'dust',Math.max(0,amount)*16,dt);
+    _right.set(Math.cos(kart.heading),0,-Math.sin(kart.heading));
+    _fwd.set(Math.sin(kart.heading),0,Math.cos(kart.heading));
+    for(let i=0;i<n;i++){
+      const side=Math.random()<.5?-1:1;
+      _pos.copy(kart.position).addScaledVector(_fwd,-1.8).addScaledVector(_right,side*1.25);
+      _pos.y=(kart.groundY??kart.position.y)+.18;
+      _vel.copy(_right).multiplyScalar(side*(.6+Math.random())).addScaledVector(_fwd,-.7);_vel.y=.35+Math.random()*.5;
+      _col.copy(color||_DUST_FALLBACK).multiplyScalar(.85+Math.random()*.1);
+      this._spawn(_pos,_col,{env:true,tile:7,size:.65+Math.random()*.35,aspect:.65,life:.65+Math.random()*.2,grow:1.4,
+        opacity:.16+Math.min(1,amount)*.15,v:_vel,damp:1.6,gravity:.65,floor:_pos.y-.1,angle:Math.random()*6.28,spin:.15});
     }
   }
 
-  // Wake wash — flecks of the local biome's loose debris (leaves, petals, sand,
-  // paper scraps) yanked into the air by the kart's slipstream and arcing back
-  // down behind it. Complements the static ground-leaf pop (scenery.js
-  // buildGroundLeaves lifts the carpet in place) with airborne matter, so the
-  // world visibly REACTS to your velocity — the strongest speed cue there is.
-  // `color` comes from biomeDebrisColor; `strength` 0..1 ramps rate and count.
-  wakeDebris(kart, color, strength = 1) {
-    if (Math.random() > 0.22 + strength * 0.5) return;
-    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
-    const n = strength > 0.8 && Math.random() < 0.4 ? 2 : 1;
-    const groundY = (kart.groundY ?? kart.position.y) + 0.25;
-    for (let i = 0; i < n; i++) {
-      _pos
-        .copy(kart.position)
-        .addScaledVector(_fwd, -(2 + Math.random() * 1.5));
-      _pos.x += (Math.random() - 0.5) * 2.4;
-      _pos.z += (Math.random() - 0.5) * 2.4;
-      _pos.y = groundY;
-      _vel
-        .set((Math.random() - 0.5) * 5, 2.5 + Math.random() * 3.5, (Math.random() - 0.5) * 5)
-        .addScaledVector(_fwd, -(4 + Math.random() * 7)); // flung backward in the wake
-      _col.copy(color).multiplyScalar(0.85 + Math.random() * 0.3);
-      this._spawn(_pos, _col, {
-        spark: Math.random() < 0.35, // a few tight flecks among the soft ones
-        size: 0.24 + Math.random() * 0.2,
-        life: 0.55 + Math.random() * 0.35,
-        v: _vel,
-        damp: 1.6,
-        gravity: 10, // arcs up then settles — debris, not smoke
-        opacity: 0.75,
-      });
+  // A few recognisable pieces, with material-specific lift/drag. All use one
+  // atlas field; botanical pieces flutter while grains/clumps fall quickly.
+  wakeDebris(kart, color, strength = 1, dt = 1/60, biome = 'meadow') {
+    const spec=environmentProfile(biome),n=this._rate(kart,'wake',Math.max(0,strength)*10,dt);
+    _fwd.set(Math.sin(kart.heading),0,Math.cos(kart.heading));
+    _right.set(Math.cos(kart.heading),0,-Math.sin(kart.heading));
+    for(let i=0;i<n;i++){
+      const side=Math.random()<.5?-1:1,light=spec.tile<3||spec.tile===5;
+      _pos.copy(kart.position).addScaledVector(_fwd,-2).addScaledVector(_right,side*(1.1+Math.random()*.4));
+      _pos.y=(kart.groundY??kart.position.y)+.15;
+      _vel.copy(_fwd).multiplyScalar(-1-Math.random()*2).addScaledVector(_right,side*(.4+Math.random()));
+      _vel.y=(.7+Math.random())*spec.lift*2;
+      _col.set(spec.colors[(Math.random()*spec.colors.length)|0]);
+      this._spawn(_pos,_col,{env:true,tile:spec.tile,size:spec.size*(.8+Math.random()*.6),aspect:light?.8:1,
+        life:light?1.0+Math.random()*.4:.4+Math.random()*.25,opacity:.8,v:_vel,damp:light?1.1:2.2,
+        gravity:light?2.5:7,floor:_pos.y-.1,angle:Math.random()*6.28,spin:(Math.random()-.5)*(light?5:2)});
     }
   }
 
@@ -503,30 +487,15 @@ export class EffectsManager {
   // chips backward that arc down under hard gravity. Small, low and short-lived
   // (deliberately unlike the wind streaks), it makes the tarmac itself read as
   // being WORKED at full speed.
-  tireGrit(kart) {
-    if (Math.random() > 0.55) return;
-    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
-    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
-    const side = Math.random() < 0.5 ? -1.3 : 1.3; // one rear wheel or the other
-    _pos
-      .copy(kart.position)
-      .addScaledVector(_fwd, -1.5)
-      .addScaledVector(_right, side);
-    _pos.y = (kart.groundY ?? kart.position.y) + 0.2;
-    _vel
-      .set(0, 2.5 + Math.random() * 2.5, 0)
-      .addScaledVector(_fwd, -(9 + Math.random() * 8))
-      .addScaledVector(_right, side * (0.6 + Math.random() * 1.4)); // splays off the tyre's outside edge
-    _col.setHex(0xd8cdb4).multiplyScalar(0.8 + Math.random() * 0.4);
-    this._spawn(_pos, _col, {
-      spark: true,
-      size: 0.15 + Math.random() * 0.1,
-      life: 0.3 + Math.random() * 0.15,
-      v: _vel,
-      damp: 0.6,
-      gravity: 20,
-      opacity: 0.55,
-    });
+  tireGrit(kart, dt = 1/60) {
+    const n=this._rate(kart,'grit',3,dt);
+    _fwd.set(Math.sin(kart.heading),0,Math.cos(kart.heading));
+    for(let i=0;i<n;i++){
+      _pos.copy(kart.position).addScaledVector(_fwd,-1.6);_pos.y=(kart.groundY??kart.position.y)+.12;
+      _vel.copy(_fwd).multiplyScalar(-3);_vel.y=.7;
+      _col.setHex(0x858077);
+      this._spawn(_pos,_col,{env:true,tile:3,size:.08,life:.3,opacity:.65,v:_vel,gravity:8,floor:_pos.y-.08});
+    }
   }
 
   // Lay continuous tyre marks: extend a ribbon from each rear wheel by appending a
@@ -618,27 +587,37 @@ export class EffectsManager {
       p.pos.addScaledVector(p.v, dt);
       p.v.multiplyScalar(1 - Math.min(1, p.damp * dt));
       if (p.grow) p.scale += p.grow * dt;
-      p.opacity = Math.max(0, p.opacity - dt * 1.5);
+      if(p.env){
+        p.angle+=p.spin*dt;
+        p.v.x+=uWindDir.value.x*.3*dt;p.v.z+=uWindDir.value.y*.3*dt;
+        if(p.pos.y<p.floor){p.pos.y=p.floor;p.v.y=0;p.v.multiplyScalar(Math.exp(-7*dt));p.life=Math.min(p.life,.25);}
+        p.opacity=p.initialOpacity*Math.min(1,p.life/.3);
+      }else p.opacity = Math.max(0, p.opacity - dt * 1.5);
       if (p.life <= 0 || p.opacity <= 0) {
         // Swap-remove (order doesn't matter — the fields repack every frame);
         // splice() shifted the whole tail per death, O(n²) when a burst fades.
         this.parts[i] = this.parts[this.parts.length - 1];
         this.parts.pop();
+        if(p.env)this.environmentCount--;
         this._pool.push(p);
       }
     }
-    // Pack the live particles into the two instanced fields (by texture).
-    let ns = 0, np = 0;
+    // Pack live particles into the two glow fields and the material atlas.
+    let ns = 0, np = 0, ne = 0;
     for (const p of this.parts) {
-      const f = p.spark ? this.sparkField : this.smokeField;
-      const idx = p.spark ? np++ : ns++;
+      const f = p.env ? this.environmentField : p.spark ? this.sparkField : this.smokeField;
+      const idx = p.env ? ne++ : p.spark ? np++ : ns++;
       f.aPos.setXYZ(idx, p.pos.x, p.pos.y, p.pos.z);
       f.aColor.setXYZ(idx, p.r, p.g, p.b);
-      f.aScale.setX(idx, p.scale);
+      if(p.env){
+        const flutter=p.tile<3||p.tile===5 ? .45+.55*Math.abs(Math.cos(p.angle*1.7)) : 1;
+        f.aScale.setXYZW(idx,p.scale*flutter,p.scale*p.aspect,p.tile,p.angle);
+      }else f.aScale.setX(idx, p.scale);
       f.aOpacity.setX(idx, p.opacity);
     }
     this._flush(this.smokeField, ns);
     this._flush(this.sparkField, np);
+    this._flush(this.environmentField, ne);
     // Upload skid-ribbon edits once per frame — but only the quads appended this
     // frame (two ranges if the ring wrapped), not the whole ~80 KB buffer. A bare
     // needsUpdate re-uploaded every byte of the ring on every frame any kart was
@@ -661,7 +640,7 @@ export class EffectsManager {
     field.aPos.needsUpdate = true;
     field.aColor.addUpdateRange(0, count * 3);
     field.aColor.needsUpdate = true;
-    field.aScale.addUpdateRange(0, count);
+    field.aScale.addUpdateRange(0, count * field.aScale.itemSize);
     field.aScale.needsUpdate = true;
     field.aOpacity.addUpdateRange(0, count);
     field.aOpacity.needsUpdate = true;

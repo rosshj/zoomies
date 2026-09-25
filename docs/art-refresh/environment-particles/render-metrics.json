@@ -1,0 +1,572 @@
+[
+  {
+    "backend": "webgl",
+    "warmPrograms": 8,
+    "burstPrograms": 8,
+    "atlas": [
+      256,
+      128
+    ],
+    "budgets": {
+      "shared": 280,
+      "environment": 80,
+      "rows": [
+        {
+          "biome": "blossom",
+          "ground": 1900,
+          "falling": 320,
+          "bins": [
+            209,
+            182,
+            197,
+            194,
+            187,
+            191,
+            191,
+            189,
+            177,
+            183
+          ]
+        },
+        {
+          "biome": "lavender",
+          "ground": 1414,
+          "falling": 233,
+          "bins": [
+            147,
+            136,
+            139,
+            144,
+            143,
+            140,
+            140,
+            139,
+            137,
+            149
+          ]
+        },
+        {
+          "biome": "forest",
+          "ground": 1900,
+          "falling": 107,
+          "bins": [
+            180,
+            177,
+            200,
+            165,
+            192,
+            202,
+            182,
+            208,
+            199,
+            195
+          ]
+        },
+        {
+          "biome": "autumn",
+          "ground": 1900,
+          "falling": 320,
+          "bins": [
+            201,
+            198,
+            189,
+            197,
+            165,
+            202,
+            185,
+            197,
+            187,
+            179
+          ]
+        },
+        {
+          "biome": "jungle",
+          "ground": 1900,
+          "falling": 137,
+          "bins": [
+            182,
+            188,
+            193,
+            188,
+            183,
+            200,
+            188,
+            197,
+            197,
+            184
+          ]
+        },
+        {
+          "biome": "wetlands",
+          "ground": 1610,
+          "falling": 73,
+          "bins": [
+            158,
+            155,
+            152,
+            165,
+            159,
+            178,
+            178,
+            159,
+            159,
+            147
+          ]
+        },
+        {
+          "biome": "meadow",
+          "ground": 990,
+          "falling": 0,
+          "bins": [
+            84,
+            95,
+            97,
+            96,
+            98,
+            111,
+            107,
+            101,
+            100,
+            101
+          ]
+        },
+        {
+          "biome": "savanna",
+          "ground": 1427,
+          "falling": 52,
+          "bins": [
+            146,
+            135,
+            133,
+            143,
+            154,
+            159,
+            146,
+            145,
+            139,
+            127
+          ]
+        },
+        {
+          "biome": "beach",
+          "ground": 537,
+          "falling": 0,
+          "bins": [
+            63,
+            63,
+            44,
+            51,
+            45,
+            60,
+            64,
+            51,
+            46,
+            50
+          ]
+        },
+        {
+          "biome": "desert",
+          "ground": 637,
+          "falling": 0,
+          "bins": [
+            63,
+            71,
+            62,
+            66,
+            62,
+            60,
+            70,
+            68,
+            53,
+            62
+          ]
+        },
+        {
+          "biome": "mesa",
+          "ground": 537,
+          "falling": 0,
+          "bins": [
+            63,
+            63,
+            44,
+            51,
+            45,
+            60,
+            64,
+            51,
+            46,
+            50
+          ]
+        },
+        {
+          "biome": "alpine",
+          "ground": 1056,
+          "falling": 0,
+          "bins": [
+            102,
+            95,
+            103,
+            110,
+            104,
+            111,
+            106,
+            115,
+            113,
+            97
+          ]
+        },
+        {
+          "biome": "tundra",
+          "ground": 1418,
+          "falling": 0,
+          "bins": [
+            147,
+            126,
+            134,
+            151,
+            143,
+            157,
+            144,
+            145,
+            144,
+            127
+          ]
+        },
+        {
+          "biome": "city",
+          "ground": 357,
+          "falling": 0,
+          "bins": [
+            34,
+            45,
+            37,
+            37,
+            33,
+            31,
+            38,
+            38,
+            33,
+            31
+          ]
+        },
+        {
+          "biome": "volcanic",
+          "ground": 769,
+          "falling": 72,
+          "bins": [
+            71,
+            76,
+            73,
+            80,
+            78,
+            75,
+            87,
+            72,
+            88,
+            69
+          ]
+        }
+      ],
+      "mixedCounts": {
+        "lavender": 79,
+        "alpine": 293,
+        "jungle": 65,
+        "desert": 73,
+        "autumn": 46,
+        "volcanic": 41,
+        "beach": 16
+      }
+    },
+    "heightGate": "pixel-identical at +12 road height",
+    "ambient": {
+      "count": 240,
+      "blend": "normal"
+    },
+    "errors": []
+  },
+  {
+    "backend": "webgpu",
+    "warmPrograms": 9,
+    "burstPrograms": 9,
+    "atlas": [
+      256,
+      128
+    ],
+    "budgets": {
+      "shared": 280,
+      "environment": 80,
+      "rows": [
+        {
+          "biome": "blossom",
+          "ground": 1900,
+          "falling": 320,
+          "bins": [
+            209,
+            182,
+            197,
+            194,
+            187,
+            191,
+            191,
+            189,
+            177,
+            183
+          ]
+        },
+        {
+          "biome": "lavender",
+          "ground": 1414,
+          "falling": 233,
+          "bins": [
+            147,
+            136,
+            139,
+            144,
+            143,
+            140,
+            140,
+            139,
+            137,
+            149
+          ]
+        },
+        {
+          "biome": "forest",
+          "ground": 1900,
+          "falling": 107,
+          "bins": [
+            180,
+            177,
+            200,
+            165,
+            192,
+            202,
+            182,
+            208,
+            199,
+            195
+          ]
+        },
+        {
+          "biome": "autumn",
+          "ground": 1900,
+          "falling": 320,
+          "bins": [
+            201,
+            198,
+            189,
+            197,
+            165,
+            202,
+            185,
+            197,
+            187,
+            179
+          ]
+        },
+        {
+          "biome": "jungle",
+          "ground": 1900,
+          "falling": 137,
+          "bins": [
+            182,
+            188,
+            193,
+            188,
+            183,
+            200,
+            188,
+            197,
+            197,
+            184
+          ]
+        },
+        {
+          "biome": "wetlands",
+          "ground": 1610,
+          "falling": 73,
+          "bins": [
+            158,
+            155,
+            152,
+            165,
+            159,
+            178,
+            178,
+            159,
+            159,
+            147
+          ]
+        },
+        {
+          "biome": "meadow",
+          "ground": 990,
+          "falling": 0,
+          "bins": [
+            84,
+            95,
+            97,
+            96,
+            98,
+            111,
+            107,
+            101,
+            100,
+            101
+          ]
+        },
+        {
+          "biome": "savanna",
+          "ground": 1427,
+          "falling": 52,
+          "bins": [
+            146,
+            135,
+            133,
+            143,
+            154,
+            159,
+            146,
+            145,
+            139,
+            127
+          ]
+        },
+        {
+          "biome": "beach",
+          "ground": 537,
+          "falling": 0,
+          "bins": [
+            63,
+            63,
+            44,
+            51,
+            45,
+            60,
+            64,
+            51,
+            46,
+            50
+          ]
+        },
+        {
+          "biome": "desert",
+          "ground": 637,
+          "falling": 0,
+          "bins": [
+            63,
+            71,
+            62,
+            66,
+            62,
+            60,
+            70,
+            68,
+            53,
+            62
+          ]
+        },
+        {
+          "biome": "mesa",
+          "ground": 537,
+          "falling": 0,
+          "bins": [
+            63,
+            63,
+            44,
+            51,
+            45,
+            60,
+            64,
+            51,
+            46,
+            50
+          ]
+        },
+        {
+          "biome": "alpine",
+          "ground": 1056,
+          "falling": 0,
+          "bins": [
+            102,
+            95,
+            103,
+            110,
+            104,
+            111,
+            106,
+            115,
+            113,
+            97
+          ]
+        },
+        {
+          "biome": "tundra",
+          "ground": 1418,
+          "falling": 0,
+          "bins": [
+            147,
+            126,
+            134,
+            151,
+            143,
+            157,
+            144,
+            145,
+            144,
+            127
+          ]
+        },
+        {
+          "biome": "city",
+          "ground": 357,
+          "falling": 0,
+          "bins": [
+            34,
+            45,
+            37,
+            37,
+            33,
+            31,
+            38,
+            38,
+            33,
+            31
+          ]
+        },
+        {
+          "biome": "volcanic",
+          "ground": 769,
+          "falling": 72,
+          "bins": [
+            71,
+            76,
+            73,
+            80,
+            78,
+            75,
+            87,
+            72,
+            88,
+            69
+          ]
+        }
+      ],
+      "mixedCounts": {
+        "lavender": 79,
+        "alpine": 293,
+        "jungle": 65,
+        "desert": 73,
+        "autumn": 46,
+        "volcanic": 41,
+        "beach": 16
+      }
+    },
+    "heightGate": "pixel-identical at +12 road height",
+    "ambient": {
+      "count": 240,
+      "blend": "normal"
+    },
+    "errors": []
+  }
+]

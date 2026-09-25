@@ -1,3 +1,5 @@
+import { buildEnvironmentCover } from "./environment-cover.js";
+import { ENVIRONMENT_PROFILES, environmentAtlas, debrisLight } from "./environment-particles.js";
 import { LivingDetails, buildBiomeEvents, makeSailboat } from './living-scenery.js';
 import { bakeWorldShelter } from './world-shelter.js';
 import { SceneryLOD } from './scenery-lod.js';
@@ -9,17 +11,16 @@ import * as THREE from "three";
 import { paintSolid, paintSurface, rockGeometry, palmFrond, treeTrunkGeometry, landscapeGrainTexture, landscapeGrainUV } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv } from "three/tsl";
+import { attribute, color as tslColor, mix, smoothstep, float, time, positionLocal, positionGeometry, vec3, normalView, positionViewDirection, hash, instanceIndex, uniform, texture, uv, vec2 } from "three/tsl";
 import { rand, makeRng, getSeed } from "./rng.js"; // seeded RNG so the world is identical per seed
 import { cloudClusterGeo } from "./scene.js"; // the sky ring's cloud lump (asset catalog shows one)
-import { makeLeafGeo } from "./props.js"; // shared leaf silhouette (used by piles + ground scatter)
 import { mergeMeshes } from "./models.js"; // bake rigid sub-assemblies (animals) into one mesh
 // Track set pieces (river bridge / canyon / giant forest / overpass): the
 // planner lives on the track (track.features); these helpers shape the terrain
 // around the runs and build their structures. See features.js for the system.
 import { featureHeightMod, featureKeepClear, featureSpanBlock, featureTreeBlock, featureWaterEntries, giantTreeBoost, buildFeatureStructures, makeWindTurbine, makeBillboard, BILLBOARD_SIGNS, makeTrain, makeDuck, makeGoat } from "./features.js";
 import { uSunViewNode, uSunColNode } from "./toon.js"; // shared per-frame sun nodes (grass backlight reads them)
-import { windLean, windGustDrift, bakeBendWeights, setWind, setWindClock, windStrengthAt, uKartPos } from "./wind.js"; // the world's one wind field
+import { windLean, windGustDrift, bakeBendWeights, setWind, setWindClock, windStrengthAt, uKartPos, uWindDir, uWindClock } from "./wind.js"; // the world's one wind field
 
 // Registries of animated parts, filled in as the world is built and driven from
 // buildWorld's update(): continuous spinners (windmill sails, Ferris wheel,
@@ -88,6 +89,7 @@ function refreshGrassLight() {
     c.g += sun.color.g * k;
     c.b += sun.color.b * k;
   }
+  debrisLight.value.copy(c);
 }
 
 // ---- Biomes ----
@@ -601,7 +603,6 @@ export function buildWorld(scene, track, opts = {}) {
   buildMountains(scene, heightAt, track, trackReach);
   buildTrees(scene, track, heightAt, flatten);
   const groundLeaves = buildGroundLeaves(scene, track, heightAt); // loose scattered leaves (leafy biomes feel carpeted; kick up in a kart's wake)
-  buildBlossomPetals(scene, track, heightAt); // GPU-animated cherry petals drifting down over blossom sectors (no per-frame CPU)
   buildForests(scene, track, heightAt); // dense woods hugging the road in forest/alpine
   buildRocks(scene, track, heightAt, flatten);
   // Ground tint for feature shells (the tunnel's mountain), matching the
@@ -1968,295 +1969,14 @@ function scatter(count, track, flatten, minFlat, range) {
   return out;
 }
 
-// Loose leaves scattered across the ground (in addition to the knockable piles) so
-// leafy biomes feel carpeted and lived-in. The shared leaf silhouette, small and
-// autumn-toned, denser in autumn/forest. They gently RUSTLE in the wind (the
-// "alive" part). Split into spatial CHUNKS so off-screen leaves frustum-cull — a
-// single track-spanning mesh could never cull, so every leaf was processed every
-// frame; chunking lets us carry far more leaves for less cost. No shadow (flat).
-const GROUND_LEAF_COLS = [0xc4471f, 0xe07b1e, 0xf0c040, 0xd23a2a, 0x9c6b1f, 0x7a2e1e, 0xe8a838];
-// Fallen cherry-blossom petals: candy pinks + a few near-whites, so the blossom
-// biome floor reads as a pink carpet that kicks up in the same wake as the leaves.
-const PETAL_COLS = [0xffc7dd, 0xff9fc4, 0xffd9e6, 0xf7b0cf, 0xffe3ef, 0xff8fb8];
-const FOREST_LEAF_COLS = [0x3f6b2c, 0x4f7d34, 0x6b8e3a, 0x5a4327, 0x2f5520, 0x7a5a2c];
-const MEADOW_DEBRIS_COLS = [0x9fd06a, 0x8cc457, 0xb6e07a, 0xe8e26a, 0xfbfbfb, 0xc7e08a]; // clippings + wildflower specks
-const SAVANNA_DEBRIS_COLS = [0xcdae5e, 0xb8973f, 0xd9c070, 0xa07f3a, 0xe0cb84]; // dry golden grass
-const DESERT_DEBRIS_COLS = [0xd2b074, 0xc49a5a, 0xbf8f4a, 0xddc590, 0xb98e50]; // sand + dry scrub
-const SNOW_DEBRIS_COLS = [0xeef4fa, 0xdfeaf2, 0xffffff, 0xcfe0ec, 0xe6eef5]; // frost flecks / snow tufts
-// Per-biome ground debris that scatters across the verge and kicks up in a kart's
-// wake. Every biome gets something appropriate so the whole track feels alive, not
-// just the leafy ones: snow flecks on the cold biomes, sand on the desert, dry
-// grass on the savanna, leaves/petals/clippings elsewhere. Shared wake shader.
-const GROUND_DEBRIS = {
-  autumn: { dens: 1.0, cols: GROUND_LEAF_COLS },
-  blossom: { dens: 0.9, cols: PETAL_COLS },
-  forest: { dens: 0.7, cols: FOREST_LEAF_COLS },
-  meadow: { dens: 0.36, cols: MEADOW_DEBRIS_COLS },
-  savanna: { dens: 0.5, cols: SAVANNA_DEBRIS_COLS },
-  desert: { dens: 0.26, cols: DESERT_DEBRIS_COLS },
-  alpine: { dens: 0.42, cols: SNOW_DEBRIS_COLS },
-  tundra: { dens: 0.5, cols: SNOW_DEBRIS_COLS },
-};
-
-// Colour for one airborne fleck of the LOCAL biome's loose debris (the wake
-// wash the karts throw up at speed — see effects.wakeDebris): a random pick
-// from the same palettes as the ground-leaf carpet, so what flies up behind a
-// kart matches what's lying on the verge. Biomes without a carpet get their
-// own small palettes (city litter, beach sand, jungle leaves); anything else
-// falls back to the dust tint. Writes/returns `out` (caller owns it).
-const WAKE_DEBRIS_COLS = {
-  autumn: GROUND_LEAF_COLS,
-  blossom: PETAL_COLS,
-  forest: FOREST_LEAF_COLS,
-  meadow: MEADOW_DEBRIS_COLS,
-  savanna: SAVANNA_DEBRIS_COLS,
-  desert: DESERT_DEBRIS_COLS,
-  mesa: DESERT_DEBRIS_COLS,
-  alpine: SNOW_DEBRIS_COLS,
-  tundra: SNOW_DEBRIS_COLS,
-  city: [0xd8d8d2, 0xbfc3c7, 0xe8e6da, 0xaab0b6], // paper scraps + street grit
-  beach: [0xe8d9ae, 0xf2e8c8, 0xd9c493, 0xfbf6e4], // sand + shell chips
-  jungle: [0x2f6e33, 0x4a8f3c, 0x6aa84f, 0x3c5a24], // deep green leaf bits
-};
-export function biomeDebrisColor(x, z, out = new THREE.Color()) {
-  const pal = WAKE_DEBRIS_COLS[biomeAt(x, z).name];
-  if (!pal) return biomeDustColor(x, z, out);
-  return out.set(pal[(Math.random() * pal.length) | 0]);
+// Ground cover and ambient fall share regional shapes, light and wake budgets.
+export function biomeDebrisColor(x,z,out=new THREE.Color()) {
+  const spec=ENVIRONMENT_PROFILES[biomeAt(x,z).name] || ENVIRONMENT_PROFILES.meadow;
+  return out.set(spec.colors[Math.floor(Math.random()*spec.colors.length)]);
 }
-
-function buildGroundLeaves(scene, track, heightAt) {
-  const N = track.samples;
-  const up = new THREE.Vector3(0, 1, 0);
-  const placements = [];
-  const MAX = 1900;
-  for (let i = 0; i < N && placements.length < MAX; i++) {
-    const p = track._pts[i];
-    const b = biomeAt(p.x, p.z);
-    const cfg = GROUND_DEBRIS[b.name];
-    const dens = cfg ? cfg.dens : 0;
-    if (dens <= 0) continue;
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const tries = Math.ceil(dens * 6);
-    for (let k = 0; k < tries && placements.length < MAX; k++) {
-      if (rand() > dens) continue;
-      const lat = (rand() * 2 - 1) * (track.halfWidth + 12); // on the road edges + verge
-      const x = p.x + side.x * lat + (rand() - 0.5) * 5;
-      const z = p.z + side.z * lat + (rand() - 0.5) * 5;
-      if (_inLake(x, z)) continue;
-      placements.push({ x, y: heightAt(x, z), z, cols: cfg.cols });
-    }
-  }
-  if (!placements.length) return null;
-
-  // Kart-wake uniforms: the few karts nearest the camera (updated each frame from
-  // main.js). Leaves within uWakeR of one POP UP and flutter, settling as the kart
-  // passes — all on the GPU, no per-leaf CPU physics.
-  const wakes = [0, 1, 2, 3].map(() => uniform(new THREE.Vector3(1e6, 1e6, 1e6)));
-  // A lingering wake TRAIL behind the nearest kart: each puff is (x,y,z,strength)
-  // and decays over ~1.5s, so leaves you drive over stay kicked up and flutter
-  // back down in your wake instead of snapping flat the instant the kart passes.
-  const PUFFS = 8;
-  const puffs = Array.from({ length: PUFFS }, () => uniform(new THREE.Vector4(1e6, 1e6, 1e6, 0)));
-  const uWakeR = uniform(13.0); // generous so leaves you drive near clearly react (even passing at speed)
-
-  // Shared material across all chunk meshes: wind rustle + kart-wake pop.
-  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
-  const _ph = hash(instanceIndex).mul(6.2832);
-  const _t = time.add(_ph);
-  const _base = attribute("aBase");
-  const _amp = positionGeometry.length().mul(0.45); // idle wind: outer edges rock more than the centre (a touch livelier so none look dead)
-  const _sway = windGustDrift(_base.x, _base.z, .4, hash(instanceIndex), .03).mul(_amp);
-  // Wake lift: sum each kart's nearby influence (1 at the kart, 0 past the radius).
-  // Built as an immutable node expression (no toVar/assign — those need an Fn scope).
-  let _liftSum = float(0);
-  for (const w of wakes) {
-    const dx = _base.x.sub(w.x);
-    const dz = _base.z.sub(w.z);
-    const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
-    _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus());
-  }
-  // Trail puffs add their (decaying) strength, so a leaf stays lifted after the
-  // kart has gone, then eases back down as the puffs fade — reads as real flutter.
-  for (const pf of puffs) {
-    const dx = _base.x.sub(pf.x);
-    const dz = _base.z.sub(pf.z);
-    const d = dx.mul(dx).add(dz.mul(dz)).sqrt();
-    _liftSum = _liftSum.add(smoothstep(float(0), uWakeR, d).oneMinus().mul(pf.w));
-  }
-  const _lift = _liftSum.min(1.0);
-  // The leaf geo is baked flat (normal +Y) and instances use yaw-only rotation, so
-  // a local +Y offset is world-up: pop the whole leaf up, plus a fast flutter.
-  const _pop = vec3(0, 1, 0).mul(_lift.mul(5.0)); // big, obvious pop when a kart passes
-  const _wflut = vec3(_t.mul(9.0).sin(), _t.mul(6.5).cos(), _t.mul(7.5).sin()).mul(_lift.mul(2.1)); // strong scatter/swirl in the wake
-  mat.positionNode = positionLocal.add(_sway).add(_pop).add(_wflut);
-
-  // Bucket placements into coarse chunks so off-screen leaves cull as a group; each
-  // chunk gets its own geo carrying an aBase attribute (per-leaf world position).
-  // 200u (was 130) ≈ half the chunk count/draws; still far smaller than the world,
-  // so off-screen chunks cull just as effectively.
-  const CHUNK = 200;
-  const buckets = new Map();
-  for (const s of placements) {
-    const key = Math.round(s.x / CHUNK) + "_" + Math.round(s.z / CHUNK);
-    let arr = buckets.get(key);
-    if (!arr) buckets.set(key, (arr = []));
-    arr.push(s);
-  }
-  const dummy = new THREE.Object3D();
-  const _c = new THREE.Color();
-  for (const arr of buckets.values()) {
-    const geo = makeLeafGeo();
-    geo.rotateX(-Math.PI / 2); // lie flat; instances rotate yaw-only so the wake pop stays world-up
-    const aBase = new Float32Array(arr.length * 3);
-    const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
-    arr.forEach((s, i) => {
-      dummy.position.set(s.x, s.y + 0.03, s.z);
-      dummy.rotation.set(0, rand() * Math.PI * 2, 0); // yaw only
-      dummy.scale.setScalar(0.5 + rand() * 0.5);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      const pal = s.cols || GROUND_LEAF_COLS;
-      mesh.setColorAt(i, _c.set(pal[(rand() * pal.length) | 0]));
-      aBase[i * 3] = s.x; aBase[i * 3 + 1] = s.y; aBase[i * 3 + 2] = s.z;
-    });
-    geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(aBase, 3));
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.castShadow = false; // flat on the ground — shadow not worth the shadow-pass cost
-    mesh.receiveShadow = true;
-    mesh.layers.set(1);
-    scene.add(mesh);
-  }
-
-  // Each frame, point the wake at the karts nearest the camera (those whose wake
-  // you'd actually see kicking up leaves).
-  const _sorted = [];
-  let _puffHead = 0;
-  const _lastDrop = new THREE.Vector3(1e6, 1e6, 1e6);
-  return {
-    update(karts, camPos, dt = 0.016) {
-      _sorted.length = 0;
-      // Only moving karts kick leaves (same 2.5 u/s gate as the leaf piles) —
-      // otherwise the grid at the start line levitates its leaf carpet.
-      for (const k of karts) if (k && k.position && Math.abs(k.speed || 0) > 2.5) _sorted.push(k);
-      _sorted.sort((a, b) => a.position.distanceToSquared(camPos) - b.position.distanceToSquared(camPos));
-      for (let i = 0; i < wakes.length; i++) {
-        const k = _sorted[i];
-        if (k) wakes[i].value.copy(k.position);
-        else wakes[i].value.set(1e6, 1e6, 1e6);
-      }
-      // Fade the lingering trail (~1.5s e-fold).
-      const decay = Math.exp(-dt / 0.6);
-      for (const pf of puffs) pf.value.w *= decay;
-      // Drop a fresh full-strength puff behind the nearest kart once it's moved a
-      // few units, building a trail of disturbed leaves that flutters down behind it.
-      const lead = _sorted[0];
-      if (lead && _lastDrop.distanceToSquared(lead.position) > 9) {
-        _puffHead = (_puffHead + 1) % puffs.length;
-        puffs[_puffHead].value.set(lead.position.x, lead.position.y, lead.position.z, 1);
-        _lastDrop.copy(lead.position);
-      }
-    },
-  };
-}
-
-// Biomes that get ambient airborne fall, with their palette and how fast/tumbly it
-// drifts: cherry petals float slowly over blossom, autumn leaves spin down a touch
-// faster over the autumn wood. (Snow/rain are handled by the weather system.)
-const AMBIENT_FALL = {
-  blossom: { cols: PETAL_COLS, speed: 0.12, tumble: 0.18 },
-  autumn: { cols: GROUND_LEAF_COLS, speed: 0.17, tumble: 0.34 },
-};
-
-// Ambient rain of petals/leaves over the biomes that have it: each speck drifts
-// down, sways, snaps back to the top and falls again — the whole loop runs in the
-// vertex shader off `time`, so there is ZERO per-frame CPU and no buffer uploads.
-// Each speck falls within its own column (XZ fixed at spawn) so chunk bounds stay
-// tight and off-screen chunks frustum-cull as a group. One InstancedMesh field per
-// biome (shared fall material per biome), built only for biomes actually in play.
-function buildBlossomPetals(scene, track, heightAt) {
-  for (const [name, cfg] of Object.entries(AMBIENT_FALL)) buildAmbientFall(scene, track, heightAt, name, cfg);
-}
-
-function buildAmbientFall(scene, track, heightAt, biomeName, cfg) {
-  const N = track.samples;
-  const cols = [];
-  const MAX = 460;
-  for (let i = 0; i < N && cols.length < MAX; i++) {
-    const p = track._pts[i];
-    if (biomeAt(p.x, p.z).name !== biomeName) continue;
-    const side = new THREE.Vector3().crossVectors(track._tans[i], UP_Y).normalize();
-    for (let k = 0; k < 5 && cols.length < MAX; k++) {
-      const lat = (rand() * 2 - 1) * (track.halfWidth + 16); // over the road + verge
-      const x = p.x + side.x * lat + (rand() - 0.5) * 6;
-      const z = p.z + side.z * lat + (rand() - 0.5) * 6;
-      if (_inLake(x, z)) continue;
-      cols.push({ x, y: heightAt(x, z), z });
-    }
-  }
-  if (!cols.length) return; // this biome not active on the map — nothing to build
-
-  const FALL_H = 9.0; // metres a speck falls before wrapping back to the top
-  const mat = new THREE.MeshStandardNodeMaterial({ roughness: 1, side: THREE.DoubleSide, flatShading: true });
-  const _ph = hash(instanceIndex).mul(6.2832);
-  // Per-speck fall clock: fract() ramps 0→1 forever; (1-fract) maps it to a
-  // descent from FALL_H down to 0, then an instant (and visually hidden) reset.
-  const _fallClock = time.mul(cfg.speed).add(hash(instanceIndex));
-  const _fall = float(FALL_H).mul(_fallClock.fract().oneMinus());
-  // Drift + flutter. Geo is baked flat with yaw-only instances, so a local +Y
-  // offset is world-up (same trick as the ground leaves) — and because three
-  // folds the instance matrix into positionLocal before this runs, positionLocal
-  // .xz IS the speck's world position, which is exactly what the wind field
-  // wants to be sampled at. So petals blow the way the trees are leaning,
-  // instead of milling about on a clock of their own.
-  const _t = time.mul(1.4).add(_ph);
-  const _drift = windGustDrift(positionLocal.x, positionLocal.z, 1.15, hash(instanceIndex));
-  const _flut = vec3(0, _t.mul(2.3).sin().mul(cfg.tumble), 0);
-  // FLURRY: blast through a blossom grove and the fall is disturbed — specks
-  // near the kart are thrown outward and UP, hardest at speed, settling back as
-  // you pull away. Ambient weather you can also disturb beats ambient weather
-  // you can only watch, and the petals were the one biome signature that stayed
-  // completely indifferent to the race happening inside it.
-  // positionLocal.xz is the speck's world column (three has already folded the
-  // instance matrix in), so these are world-space deltas.
-  const _kdx = positionLocal.x.sub(uKartPos.x);
-  const _kdz = positionLocal.z.sub(uKartPos.z);
-  const _kd = _kdx.mul(_kdx).add(_kdz.mul(_kdz)).sqrt().max(0.001);
-  const _kick = smoothstep(2.5, 12, _kd).oneMinus().pow(1.6).mul(uKartPos.w);
-  const _flurry = vec3(
-    _kdx.div(_kd).mul(_kick).mul(3.4),
-    _kick.mul(2.8).mul(_t.mul(3.1).sin().mul(0.25).add(0.85)), // lift, with a churn
-    _kdz.div(_kd).mul(_kick).mul(3.4)
-  );
-  mat.positionNode = positionLocal.add(vec3(0, 1, 0).mul(_fall.add(0.6))).add(_drift).add(_flut).add(_flurry);
-
-  const CHUNK = 200; // (was 130 — see the ground-leaf chunk note)
-  const buckets = new Map();
-  for (const c of cols) {
-    const key = Math.round(c.x / CHUNK) + "_" + Math.round(c.z / CHUNK);
-    let arr = buckets.get(key);
-    if (!arr) buckets.set(key, (arr = []));
-    arr.push(c);
-  }
-  const dummy = new THREE.Object3D();
-  const _c = new THREE.Color();
-  for (const arr of buckets.values()) {
-    const geo = makeLeafGeo();
-    geo.rotateX(-Math.PI / 2); // lie flat; instances rotate yaw-only so the fall stays world-up
-    const mesh = new THREE.InstancedMesh(geo, mat, arr.length);
-    arr.forEach((c, i) => {
-      dummy.position.set(c.x, c.y, c.z); // column base; the shader lifts each speck by _fall
-      dummy.rotation.set(0, rand() * Math.PI * 2, 0);
-      dummy.scale.setScalar(0.45 + rand() * 0.4);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      mesh.setColorAt(i, _c.set(cfg.cols[(rand() * cfg.cols.length) | 0]));
-    });
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    mesh.castShadow = false; // tiny airborne specks — not worth a shadow pass
-    mesh.frustumCulled = true;
-    mesh.layers.set(1); // keep out of the rear-view mirror render
-    scene.add(mesh);
-  }
+function buildGroundLeaves(scene,track,heightAt) {
+  return buildEnvironmentCover(scene,track,heightAt,biomeAt,rand,
+    (x,z)=>featureSpanBlock(track.features,x,z),_inLake);
 }
 
 // A scribbly tumbleweed ball and a soft seed-fluff dot, drawn to canvases and
@@ -2361,7 +2081,7 @@ function buildWindDebris(scene, track, heightAt) {
       const x = p.x + side.x * dirS * dist + (rand() - 0.5) * 10;
       const z = p.z + side.z * dirS * dist + (rand() - 0.5) * 10;
       if (track.distanceToCenter(x, z) < track.halfWidth + 2) continue;
-      if (_inLake(x, z)) continue;
+      if (_inLake(x, z) || !biomes.includes(biomeAt(x,z).name) || featureSpanBlock(track.features,x,z)) continue;
       bases.push(x, heightAt(x, z) + cfg.baseLift, z);
     }
     if (!bases.length) return;
@@ -2372,6 +2092,9 @@ function buildWindDebris(scene, track, heightAt) {
     mat.map = debrisTexture(kind);
     mat.color = new THREE.Color(cfg.tint);
     mat.opacity = cfg.opacity;
+    mat.colorNode = texture(mat.map).rgb.mul(tslColor(cfg.tint)).mul(debrisLight);
+    mat.opacityNode = texture(mat.map).a.mul(cfg.opacity);
+    if(kind === "paper") mat.rotationNode = uWindClock.mul(.5).add(hash(instanceIndex).mul(6.28));
     const b = attribute("aBase");
     // Carried by the shared field: downwind on the gust, back as it passes,
     // hopping when it's actually being shoved.
@@ -2430,23 +2153,26 @@ function buildRoadCrossers(scene, track, heightAt) {
     geo.setAttribute("aBase", new THREE.InstancedBufferAttribute(new Float32Array(bases), 3));
     geo.setAttribute("aSide", new THREE.InstancedBufferAttribute(new Float32Array(sides), 2));
     const mat = new THREE.SpriteNodeMaterial({ transparent: true, depthWrite: false });
-    mat.map = debrisTexture(kind);
-    mat.color = new THREE.Color(cfg.tint);
+    const tile=kind==='leaf' ? (biome==='blossom'||biome==='lavender'?0:1) : kind==='paper'?5:7;
+    const atlasUV=vec2(uv().x.add(tile%4).div(4),uv().y.add(1-Math.floor(tile/4)).div(2));
+    const sample=texture(environmentAtlas(),atlasUV);
+    mat.colorNode=sample.rgb.mul(tslColor(cfg.tint)).mul(debrisLight);
+    if(kind!=='streak')mat.rotationNode=uWindClock.mul(.45).add(hash(instanceIndex).mul(6.28));
     const b = attribute("aBase");
     const sd = attribute("aSide");
     const ph = hash(instanceIndex);
     // -1 -> +1 across the road, wrapping; per-mote phase AND speed variation so
     // the field never marches in step.
-    const u = time.mul(cfg.rate).mul(ph.mul(0.5).add(0.75)).add(ph.mul(7.31)).fract().mul(2).sub(1);
+    const u = uWindClock.mul(cfg.rate).mul(ph.mul(0.5).add(0.75)).add(ph.mul(7.31)).fract().mul(2).sub(1);
     const hop = time.add(ph.mul(6.2832)).mul(cfg.hopSpd).sin().abs().mul(cfg.hop); // skittering bounce
     const drift = time.add(ph.mul(9.7)).mul(0.9).sin().mul(cfg.driftAmp); // small along-road wobble
     mat.positionNode = vec3(
-      b.x.add(sd.x.mul(u.mul(span))).sub(sd.y.mul(drift)),
+      b.x.add(sd.x.mul(u.mul(span)).mul(sd.x.mul(uWindDir.x).add(sd.y.mul(uWindDir.y)).sign())).sub(sd.y.mul(drift)),
       b.y.add(hop),
-      b.z.add(sd.y.mul(u.mul(span))).add(sd.x.mul(drift))
+      b.z.add(sd.y.mul(u.mul(span)).mul(sd.x.mul(uWindDir.x).add(sd.y.mul(uWindDir.y)).sign())).add(sd.x.mul(drift))
     );
     // Fade at both ends of the crossing so the wrap is invisible.
-    mat.opacityNode = float(cfg.opacity).mul(smoothstep(1.0, 0.82, u.abs()));
+    mat.opacityNode = sample.a.mul(cfg.opacity).mul(smoothstep(.82,1,u.abs()).oneMinus());
     const mesh = new THREE.InstancedMesh(geo, mat, count);
     mesh.name = `roadCrosser:${kind}:${biome}`; // findable in headless probes
     mesh.frustumCulled = false; // instances span whole biome stretches
@@ -2464,6 +2190,8 @@ function buildRoadCrossers(scene, track, heightAt) {
   build("leaf", "autumn", { ...leaf, want: 12, tint: 0xc05f1a });
   build("leaf", "jungle", { ...leaf, tint: 0x3f7d33 });
   build("leaf", "blossom", { ...leaf, size: 0.34, tint: 0xff9fc4, hop: 0.45 }); // petals, floatier
+  build("leaf", "lavender", { ...leaf, want:6, size:.24, tint:0xc9a9db, hop:.2 });
+  build("leaf", "wetlands", { ...leaf, want:6, tint:0x798a5b, hop:.15 });
   const wisp = { want: 10, size: 2.4, aspect: 0.4, lift: 0.3, opacity: 0.42, rate: 0.09, hopSpd: 1.2, hop: 0.15, driftAmp: 2.2 };
   build("streak", "desert", { ...wisp, tint: 0xe3c88f });
   build("streak", "mesa", { ...wisp, tint: 0xd9b184 });
