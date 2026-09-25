@@ -23,7 +23,7 @@ import { ChaseCam } from "./split.js";
 import { HairballManager } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal, formatTime } from "./hud.js";
-import { buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { BIOME_NAMES, buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { encodeWorld, decodeWorld } from "./worldcfg.js";
@@ -509,6 +509,7 @@ const BLOOM_THRESHOLD = _bloomNode.threshold.value;
 // greener, the city reads flat and contrasty. Multipliers on top of the mood's
 // saturation/exposure/contrast, crossfaded over ~1.5s at the borders.
 const BIOME_GRADE = {
+  lavender: { sat: 1.03, exp: 1, con: 1 }, wetlands: { sat: .95, exp: 1, con: 1 }, volcanic: { sat: .94, exp: 1.04, con: 1.02 },
   meadow:  { sat: 1.0,  exp: 1.0,  con: 1.0 },
   desert:  { sat: 1.06, exp: 1.05, con: 1.0 },
   savanna: { sat: 1.05, exp: 1.03, con: 1.0 },
@@ -3383,7 +3384,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "mesa", "blossom", "jungle", "savanna", "tundra", "city", "beach"];
+const ALL_BIOMES = BIOME_NAMES;
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
@@ -4534,6 +4535,9 @@ const FEATURED_TRACKS = [
   { name: "Snowcap Sprint", sub: "🏔 Alpine · Sunset", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
   { name: "Maple Falls", sub: "🍂 Autumn · Sunset", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
   { name: "Petal Parade", sub: "🌸 Blossom · Midday", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
+  { name: "Lavender Loop", sub: "🪻 Countryside · Sunset", cfg: { mode: "custom", seed: "BLOOM", size: 0.5, curviness: 0.5, twist: 0.42, hilliness: 0.3, hills: 0.45, biomes: ["lavender"], timeOfDay: "sunset" } },
+  { name: "Willow Wash", sub: "🌧 Wetlands · Midday", cfg: { mode: "custom", seed: "REED", size: 0.5, curviness: 0.4, twist: 0.4, hilliness: 0.2, hills: 0.3, biomes: ["wetlands"], timeOfDay: "midday" } },
+  { name: "Basalt Blast", sub: "🌋 Badlands · Sunset", cfg: { mode: "custom", seed: "BASALT", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["volcanic"], timeOfDay: "sunset" } },
 ];
 const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
 function trackCardCurrent(cfg) {

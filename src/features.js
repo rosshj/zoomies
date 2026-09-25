@@ -51,24 +51,24 @@ const smooth01 = (t) => {
 // clearR: candidate arcs must keep OTHER passes of the loop this far away
 // (only kinds whose WATER carve can't locally yield need it).
 const KIND_SPECS = [
-  { kind: "causeway", biomes: ["beach"], halfFrac: 0.026, flatW: 3.2, curvW: 150, clearR: 68 },
+  { kind: "causeway", biomes: ["beach", "wetlands"], halfFrac: 0.026, flatW: 3.2, curvW: 150, clearR: 68 },
   // Tunnels run LONG now (a proper underground stretch, ~3.5% of the lap each
   // way) and fall back to shorter arcs when a seed can't place the long one —
   // better a classic tunnel than none.
   // clearR: the tube shell reaches halfWidth+2.6 out and 15 up — taller than a
   // crossover deck's clearance — so no other pass of the lap may come near the
   // arc at all, or the arch pokes up through the road running above it.
-  { kind: "tunnel", biomes: ["alpine", "desert", "tundra", "mesa"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
+  { kind: "tunnel", biomes: ["alpine", "desert", "tundra", "mesa", "volcanic"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
   { kind: "dam", biomes: ["alpine", "forest"], halfFrac: 0.024, flatW: 3.2, curvW: 170, clearR: 72 },
   { kind: "overpass", biomes: ["city"], halfFrac: 0.038, flatW: 2.6, curvW: 120 },
-  { kind: "canyon", biomes: ["desert", "alpine", "tundra", "mesa"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
-  { kind: "shelf", biomes: ["alpine", "desert", "savanna", "mesa"], halfFrac: 0.042, flatW: 0.8, curvW: 70 },
+  { kind: "canyon", biomes: ["desert", "alpine", "tundra", "mesa", "volcanic"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
+  { kind: "shelf", biomes: ["alpine", "desert", "savanna", "mesa", "volcanic"], halfFrac: 0.042, flatW: 0.8, curvW: 70 },
   { kind: "giant", biomes: ["forest", "jungle"], halfFrac: 0.045, flatW: 0.3, curvW: 20 },
-  { kind: "bridge", biomes: ["meadow", "autumn", "blossom", "savanna", "tundra", "beach", "forest", "jungle"], halfFrac: 0.032, flatW: 3.0, curvW: 150, clearR: 0 },
+  { kind: "bridge", biomes: ["meadow", "autumn", "blossom", "savanna", "tundra", "beach", "forest", "jungle", "lavender", "wetlands"], halfFrac: 0.032, flatW: 3.0, curvW: 150, clearR: 0 },
   // Treatments (dressing only — no terrain change beyond what's above).
-  { kind: "arches", biomes: ["desert", "mesa"], halfFrac: 0.028, flatW: 0.5, curvW: 60 },
+  { kind: "arches", biomes: ["desert", "mesa", "volcanic"], halfFrac: 0.028, flatW: 0.5, curvW: 60 },
   { kind: "windfarm", biomes: ["savanna", "tundra", "meadow"], halfFrac: 0.038, flatW: 0.4, curvW: 30 },
-  { kind: "flowers", biomes: ["meadow", "blossom"], halfFrac: 0.04, flatW: 0.4, curvW: 20 },
+  { kind: "flowers", biomes: ["meadow", "blossom", "lavender"], halfFrac: 0.04, flatW: 0.4, curvW: 20 },
   { kind: "billboards", biomes: ["city"], halfFrac: 0.024, flatW: 0.8, curvW: 60 },
   { kind: "rail", biomes: ["city"], halfFrac: 0.01, flatW: 1.0, curvW: 120 },
 ];
@@ -275,8 +275,11 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
         shoreR: track.halfWidth + 23,
         blendR: track.halfWidth + 36,
       };
+    } else if (spec.kind === "arches") {
+      run.volcanic = biomeNames[run.c] === "volcanic";
     } else if (spec.kind === "flowers") {
       run.flowerHue = rng(); // poppy / lavender / sunflower per seed
+      if (biomeNames[run.c] === "lavender") run.flowerHue=.5;
     } else if (spec.kind === "rail") {
       run.rail = makeRailLine(track, run, rng);
       if (!run.rail) continue;
@@ -1047,7 +1050,9 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       for (const [ux, uy, uz] of [[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1],[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]]) {
         const lx = ux * sx / 2, lz = uz * sz / 2;
         positions.push(cx + lx * c + lz * sn, cy + uy * sy / 2, cz - lx * sn + lz * c);
-        colors.push(col.r, col.g, col.b);
+        const shade=uy>0 ? 1 : .58;
+        const face=uz>0 ? .92 : .8;
+        colors.push(col.r*shade*face,col.g*shade*face,col.b*shade*face);
       }
       for (const [a, b2, c2] of [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]]) {
         indices.push(base + a, base + b2, base + c2);
@@ -1284,8 +1289,14 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   }
 
   if (pierBoxes.length) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0xa8a49b, roughness: 1 });
-    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, pierBoxes.length);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xa8a49b, vertexColors: true, roughness: 1 });
+    const pierGeo = new THREE.BoxGeometry(1,1,1,1,2,1), p=pierGeo.attributes.position;
+    for(let i=0;i<p.count;i++) {
+      const y=p.getY(i),w=y<-.25 ? 1.22 : y>.25 ? 1.08 : .9;
+      p.setXYZ(i,p.getX(i)*w,y,p.getZ(i)*w);
+    }
+    pierGeo.computeVertexNormals();paintSurface(pierGeo,{low:.58});
+    const mesh = new THREE.InstancedMesh(pierGeo, mat, pierBoxes.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const pv = new THREE.Vector3();
@@ -1390,13 +1401,23 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   scene.add(tube);
 
   // Portal rings: a stone arch face at each end.
-  const portalMat = new THREE.MeshStandardMaterial({ color: 0x8d857a, roughness: 1 });
+  const portalMat = new THREE.MeshStandardMaterial({ color: 0xaaa493, vertexColors: true, roughness: 1 });
   for (const end of [t0, t1]) {
     const idx = ((end % N) + N) % N;
     const p = track._pts[idx];
     const side = sideAt(track, idx);
     const yaw = Math.atan2(track._tans[idx].x, track._tans[idx].z);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(halfW + 1.2, 2.2, 8, 20, Math.PI), portalMat);
+    const archGeo=new THREE.TorusGeometry(halfW+1.2,2.2,6,20,Math.PI);
+    paintSurface(archGeo,{low:.58});
+    const ap=archGeo.attributes.position,ac=archGeo.attributes.color;
+    for(let v=0;v<ap.count;v++) {
+      const angle=Math.atan2(ap.getY(v),ap.getX(v));
+      const seam=Math.pow(Math.abs(Math.cos(angle*10)),12);
+      const recess=ap.getZ(v)<0 ? .75 : 1;
+      const shade=(1-.22*seam)*recess;
+      ac.setXYZ(v,ac.getX(v)*shade,ac.getY(v)*shade,ac.getZ(v)*shade);
+    }
+    const ring = new THREE.Mesh(archGeo, portalMat);
     ring.position.set(p.x, p.y + 0.4, p.z);
     ring.rotation.y = yaw;
     ring.scale.y = (APEX + 1.5) / (halfW + 1.2);
@@ -1813,7 +1834,7 @@ function buildArches(scene, track, run, rng) {
     sv.set(csp.sx / 2, csp.sy / 2, csp.sz / 2);
     m.compose(pv, q, sv);
     mesh.setMatrixAt(i, m);
-    col.setHSL(0.05, 0.48, 0.35 + rng() * 0.09);
+    col.setHSL(run.volcanic ? .73 : .05, run.volcanic ? .12 : .48, (run.volcanic ? .23 : .35) + rng() * .09);
     mesh.setColorAt(i, col);
   });
   mesh.instanceMatrix.needsUpdate = true;
@@ -1831,31 +1852,42 @@ export const BILLBOARD_SIGNS = [
   ["PAWS ⚡ POWER", "#facc15", "#141005"],
 ];
 let _billboardPoleMat = null;
+const _billboardLooks = new Map();
 export function makeBillboard([text, fg, bg] = BILLBOARD_SIGNS[0], lit = false, litLevel = 1) {
   if (!_billboardPoleMat) _billboardPoleMat = new THREE.MeshStandardMaterial({ color: 0x30343c, roughness: 0.6, metalness: 0.4 });
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 128;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, 256, 128);
-  ctx.strokeStyle = fg;
-  ctx.lineWidth = 6;
-  ctx.strokeRect(6, 6, 244, 116);
-  ctx.fillStyle = fg;
-  ctx.font = "bold 34px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 128, 64);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const panelMat = new THREE.MeshStandardMaterial({
-    map: tex,
-    emissiveMap: tex,
-    emissive: 0xffffff,
-    emissiveIntensity: lit ? 1.6 * litLevel + 0.4 : 0.12,
-    roughness: 0.6,
-  });
+  const key=JSON.stringify([text,fg,bg,lit?litLevel:0]);
+  let panelMat=_billboardLooks.get(key);
+  if (!panelMat) {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 128;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.strokeStyle = fg;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(6, 6, 244, 116);
+    // Inset frame, shaded lower edge and painted corner fasteners: no extra meshes.
+    ctx.fillStyle="rgba(0,0,0,.28)";ctx.fillRect(12,106,232,9);
+    ctx.fillStyle=fg;
+    for(const x of [14,242])for(const y of [14,114]){ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();}
+    ctx.fillStyle = fg;
+    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 128, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    panelMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: 0xffffff,
+      emissiveIntensity: lit ? 1.6 * litLevel + 0.4 : 0.12,
+      roughness: 0.6,
+    });
+    panelMat.userData.shared=true;
+    _billboardLooks.set(key,panelMat);
+  }
   const g = new THREE.Group();
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 8.6, 8), _billboardPoleMat);
   pole.position.y = 4.3;

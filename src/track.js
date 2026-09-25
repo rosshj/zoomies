@@ -226,6 +226,7 @@ function _loopOK(pts, minR, xover = null) {
 // so crossing a biome border changes how the road DRIVES, not just how it looks.
 const BIOME_RHYTHM = {
   city: 1.0, forest: 0.8, autumn: 0.65, blossom: 0.6, alpine: 0.6,
+  lavender: 0.48, wetlands: 0.28, volcanic: 0.7,
   meadow: 0.5, tundra: 0.45, beach: 0.35, savanna: 0.3, desert: 0.18,
 };
 // The summit: a per-seed mountain in the ELEVATION PROFILE — a big Gaussian

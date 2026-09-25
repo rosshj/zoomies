@@ -30,7 +30,15 @@ try {
     let s=12345; Math.random=()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};
     localStorage.setItem('zoomies-quality-v2','medium');
   });
-  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
+  const biomeRecipes = {
+    lavender: {seed:'BLOOM',size:.5,curviness:.5,twist:.42,hilliness:.3,hills:.45,timeOfDay:'sunset'},
+    wetlands: {seed:'REED',size:.5,curviness:.4,twist:.4,hilliness:.2,hills:.3,timeOfDay:'midday'},
+    volcanic: {seed:'BASALT',size:.5,curviness:.55,twist:.5,hilliness:.6,hills:.6,timeOfDay:'sunset'},
+  };
+  const recipe = biomeRecipes[process.env.BIOME];
+  const world = recipe ? Buffer.from(JSON.stringify({cfg:{mode:'custom',...recipe,biomes:[process.env.BIOME]},seed:recipe.seed,laps:3})).toString('base64url') : '';
+
+  await page.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1&w=${world}${process.env.TOD ? "&tod=" + encodeURIComponent(process.env.TOD) : ""}`,{timeout:150000,waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>window.__zoomies?.track,null,{timeout:150000});
   await page.evaluate(()=>{
     const z=window.__zoomies, c=z.camera;
@@ -44,7 +52,11 @@ try {
   });
   console.error('Landscape ready; capturing four fixed views.');
   const views=[];
-  for(const [name,t] of [['track-a',.06],['track-b',.38],['track-c',.72],['mountain',null]]){
+  const featureViews = process.env.FEATURES ? await page.evaluate(() => {
+    const track=window.__zoomies.track;
+    return track.features.runs.filter(r=>['bridge','tunnel','causeway'].includes(r.kind)).map(r=>[r.kind,((r.i0-6+track.samples)%track.samples)/track.samples]);
+  }) : [];
+  for(const [name,t] of [['track-a',.06],['track-b',.38],['track-c',.72],['mountain',null],...featureViews]){
     await page.evaluate(({t})=>{
       const z=window.__zoomies;
       if(t!==null){const a=z.track.getPointAt(t),b=z.track.getPointAt(t+.025),dir=b.clone().sub(a).normalize();window.__setLandscapeCamera([a.x-dir.x*22,a.y+12,a.z-dir.z*22],[b.x,b.y,b.z]);}
@@ -75,8 +87,10 @@ try {
   });
   if(scene.invalid||scene.missingColors)errors.push('Invalid landscape geometry or missing colors');
   if(!process.env.BASELINE && scene.waterMeshes && scene.waterMaterials!==1)errors.push('Identical lake materials must be shared');
-  const result={scene,views,errors};
+  const biome = await page.evaluate(async () => { const {biomeNameAt,biomeWeatherAt}=await import("/src/scenery.js");const p=window.__zoomies.track._pts[0];return {name:biomeNameAt(p.x,p.z),weather:biomeWeatherAt(p.x,p.z)}; });
+  if(process.env.BIOME && biome.name!==process.env.BIOME) errors.push("Requested biome did not load");
+  const result={biome,scene,views,errors};
   await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result,null,2));
   if(errors.length)process.exitCode=1;
-} finally {await browser?.close();server.close();}
+} finally {await browser?.close();server.closeAllConnections();server.close();}

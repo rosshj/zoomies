@@ -20,8 +20,8 @@ const server = http.createServer(async (req, res) => {
 });
 await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 let browser;
-const extra = { 'Building — village': 6, 'Building — snowy': 6, Barrel: 96, Cactus: 96, Cow: 208, Sheep: 144, Deer: 144, Goat: 232, Gull: 80, Pigeon: 88, Duck: 78, 'Sky train': 528, 'Tree — forest': 42 };
-const shots = new Set(['Mountain — alpine', 'Mountain — meadow', 'Mountain — desert','Tower', 'City tower', 'Building — snowy','Cloud', 'Sky bird', 'Tree — meadow', 'Tree — forest', 'Tree — blossom', 'Tree — savanna', 'Tree — beach', 'Grass tuft', 'Wildflowers', 'Cow', 'Sheep', 'Pigeon', 'Gull', 'Crate', 'Barrel', 'Building — village', 'Hot-air balloon', 'Rock', 'Cactus', 'Duck', 'Goat', 'Sky train']);
+const extra = { Sign: 25, 'Building — village': 6, 'Building — snowy': 6, Barrel: 96, Cactus: 96, Cow: 208, Sheep: 144, Deer: 144, Goat: 232, Gull: 80, Pigeon: 88, Duck: 78, 'Sky train': 528, 'Tree — forest': 42 };
+const shots = new Set(['Street lamp','Fence','Racing banner','Timber footbridge','Bench','Planter','Sign','Billboard','Tree — wetlands','Tree — lavender','Basalt columns','Mountain — volcanic','Mountain — lavender','Mountain — wetlands','Mountain — alpine', 'Mountain — meadow', 'Mountain — desert','Tower', 'City tower', 'Building — snowy','Cloud', 'Sky bird', 'Tree — meadow', 'Tree — forest', 'Tree — blossom', 'Tree — savanna', 'Tree — beach', 'Grass tuft', 'Wildflowers', 'Cow', 'Sheep', 'Pigeon', 'Gull', 'Crate', 'Barrel', 'Building — village', 'Hot-air balloon', 'Rock', 'Cactus', 'Duck', 'Goat', 'Sky train']);
 try {
   browser = await chromium.launch({
     executablePath: process.env.PW_CHROME || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome',
@@ -62,6 +62,8 @@ try {
     rows.push(row);
     if (row.invalid || row.missingColors) errors.push(`${name}: invalid buffers or missing painted attributes`);
     if (name.startsWith('Mountain —') && (row.triangles > 504 || row.batches !== 1)) errors.push(`${name}: mountain budget exceeded`);
+    const newBudgets = { 'Racing banner': [280, 2], 'Timber footbridge': [1700, 1], 'Tree — wetlands': [230, 2], 'Tree — lavender': [360, 2], 'Basalt columns': [72, 3] };
+    if (newBudgets[name] && (row.triangles > newBudgets[name][0] || row.batches > newBudgets[name][1])) errors.push(`${name}: new asset budget exceeded`);
     const base = budgets[name];
     if (!process.env.BASELINE && base) {
       if (row.triangles > base[0] + (extra[name] || 0)) errors.push(`${name}: triangle budget exceeded (${row.triangles})`);
@@ -69,6 +71,12 @@ try {
     }
     if (out && shots.has(name)) await page.screenshot({ path: path.join(out, name.replaceAll(' — ', '-').replaceAll(' ', '-') + '.png') });
   }
+  const sharedBillboards = await page.evaluate(async () => {
+    const {makeBillboard, BILLBOARD_SIGNS} = await import('/src/features.js');
+    const a=makeBillboard(BILLBOARD_SIGNS[0],true),b=makeBillboard(BILLBOARD_SIGNS[0],true);
+    return a.children[1].material === b.children[1].material;
+  });
+  if (!sharedBillboards) errors.push('Identical billboard materials are not shared');
   if (out) await fs.writeFile(path.join(out, 'metrics.json'), JSON.stringify({ rows, errors }, null, 2));
   console.log(JSON.stringify({ assets: rows.length, errors, totalTriangles: rows.reduce((n, r) => n + r.triangles, 0) }, null, 2));
   if (errors.length) process.exitCode = 1;

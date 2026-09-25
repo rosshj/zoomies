@@ -1,5 +1,9 @@
 # Procedural art refresh
 
+[Latest: trackside structures, three new biomes, and measured rendering costs](trackside/README.md).
+
+Current kart particles are circular additive glows; older ember illustrations below are historical.
+
 The cats keep their animated rigs and procedural coats, with sculpted ears and
 visible pink insets, ink-rimmed irises, curved smiles, and tapered tabby markings.
 Karts gain rounded tire shoulders, a tapered nose panel, and flush side stripes.

@@ -69,14 +69,24 @@ try {
     }
     for (const accessory of CAT_ACCESSORIES) inspect(createCat(0x8c9298, { pattern: 'solid', accessory }));
     const { setSeed } = await import('/src/rng.js');
+    const { BIOME_NAMES, planBiomeWedges, biomeNameAt, biomeWeatherAt } = await import('/src/scenery.js');
+    const classic = planBiomeWedges(null, 'CLASSIC').order;
+    assert(classic.length === 11 && !classic.includes('lavender'), 'classic biome layout changed');
+    assert(BIOME_NAMES.length === new Set(BIOME_NAMES).size, 'duplicate biome names');
     const tracks = [];
     const recipes = [null,
+      ...["lavender","wetlands","volcanic"].map(b=>({mode:"custom",seed:"ART-"+b,size:.5,curviness:.5,twist:.42,hilliness:.4,hills:.45,biomes:[b]})),
       { mode: 'custom', seed: 'ART-CITY', size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ['city'] },
       { mode: 'custom', seed: 'ART-HILLS', size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ['alpine', 'tundra'] },
     ];
     for (const recipe of recipes) {
       setSeed(recipe?.seed || 'ART-CLASSIC');
       const track = new Track(recipe);
+      if (recipe?.biomes.length === 1) {
+        const p = track._pts[0], name = recipe.biomes[0];
+        assert(biomeNameAt(p.x, p.z, p.y) === name, 'selected biome not applied');
+        assert(biomeWeatherAt(p.x, p.z) === (name === 'wetlands' ? 'rain' : 'none'), 'biome weather mismatch');
+      }
       tracks.push({ seed: recipe?.seed || 'classic', ...inspect(track.group) });
       // Paint must stay narrow on curves, use a bounded mesh, and never bridge
       // a dash gap with one giant triangle (including the closing loop segment).
