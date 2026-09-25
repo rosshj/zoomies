@@ -3202,6 +3202,7 @@ function buildCityRoadDetails(scene, track, heightAt) {
 }
 
 function buildStringLights(scene, track, level = 0, heightAt = null) {
+  const tunnels = { runs: (track.features?.runs || []).filter(run => run.kind === "tunnel") };
   const up = new THREE.Vector3(0, 1, 0);
   const N = track.samples;
   const SPANS = 5;
@@ -3220,6 +3221,8 @@ function buildStringLights(scene, track, level = 0, heightAt = null) {
   for (let s = 0; s < SPANS; s++) {
     const i = Math.floor(((s + 0.5) / SPANS + rand() * 0.12) * N) % N;
     const p = track._pts[i];
+    // Tunnels provide their own fittings, including mixed-biome edges.
+    if (featureSpanBlock(tunnels, p.x, p.z)) continue;
     // Festive bulb strings don't belong downtown — city stretches get traffic
     // lights instead (buildTrafficLights).
     if (!habitatFits(biomeNameAt,p.x,p.z,n=>dressingFor(n).festive,track.halfWidth+5)) continue;

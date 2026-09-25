@@ -1,3 +1,4 @@
+import { buildTunnelLighting } from "./tunnel-lighting.js";
 import { dressingFor, habitatFits } from "./biome-dressing.js";
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
@@ -1379,7 +1380,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
 // ---- Tunnel ------------------------------------------------------------------
 // An arched tube swept along the run (castShadow=true is what darkens the road
 // inside — the tube occludes the sun), stone portal rings at both ends, and
-// warm ceiling lamps so the interior reads as a place, not a void.
+// biome-specific mounted lamps with generation-time surface spill.
 function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   const N = track.samples;
   // The tube spans the middle of the run; the ridge fades past its ends so the
@@ -1552,85 +1553,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     }
   }
 
-  // Festive string lights draped across the tunnel ceiling: sagging spans of
-  // multicolour bulbs that glow in the dark interior.
-  {
-    const FESTIVE = [0xff5b4d, 0xffd24d, 0x54d98b, 0x4da3ff, 0xff8ee0, 0xfff4d6];
-    const bulbGeo = new THREE.SphereGeometry(0.16, 6, 5);
-    const spanStep = Math.max(6, Math.round(17 / (track.length / N)));
-    const spans = [];
-    for (let i = t0 + spanStep; i <= t1 - 3; i += spanStep) spans.push(i);
-    const PER = 11;
-    // ONE draw call for every bulb: bake them all into a single vertex-coloured
-    // merged mesh on an unlit material. (This replaced one InstancedMesh PER
-    // colour — six draws — which existed because instanceColor can't tint
-    // emissive. But a bulb is pure emission: unlit vertex colour × 2.2 feeds
-    // the tone mapper the exact HDR values the emissive material did, and the
-    // lit component on a 0.16u sphere in a dark tunnel was invisible.)
-    const bulbGeos = [];
-    const wirePts = [];
-    const bc = new THREE.Color();
-    let bi = 0;
-    for (const i of spans) {
-      const idx = ((i % N) + N) % N;
-      const p = track._pts[idx];
-      const side = sideAt(track, idx);
-      const aW = halfW * 0.8;
-      const aY = APEX * 0.6;
-      for (let k = 0; k < PER; k++) {
-        const f = k / (PER - 1); // 0..1 across the span
-        const sx = -aW + f * 2 * aW;
-        // Anchored on the walls, sagging in the middle.
-        const y = p.y + aY - Math.sin(Math.PI * f) * 1.8;
-        const x = p.x + side.x * sx;
-        const z = p.z + side.z * sx;
-        bc.set(FESTIVE[(bi + k) % FESTIVE.length]).multiplyScalar(2.2);
-        const g = bulbGeo.clone().translate(x, y, z);
-        const cAttr = new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 3), 3);
-        for (let v = 0; v < cAttr.count; v++) cAttr.setXYZ(v, bc.r, bc.g, bc.b);
-        g.setAttribute("color", cAttr);
-        bulbGeos.push(g);
-        bi++;
-        wirePts.push(x, y + 0.14, z);
-      }
-    }
-    if (bulbGeos.length) {
-      const merged = mergeGeometries(bulbGeos, false);
-      scene.add(new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors: true })));
-    }
-    // A thin dark wire through each span's bulbs.
-    const wg = new THREE.BufferGeometry();
-    wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
-    const wIdx = [];
-    for (let s = 0; s < spans.length; s++) {
-      for (let k = 0; k < PER - 1; k++) wIdx.push(s * PER + k, s * PER + k + 1);
-    }
-    wg.setIndex(wIdx);
-    const wire = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x1c1a17 }));
-    scene.add(wire);
-  }
-
-  // Ceiling lamps: warm glow discs down the crown.
-  const lampCount = Math.max(3, Math.floor((t1 - t0) / 14));
-  const glowGeo = new THREE.PlaneGeometry(2.6, 2.6);
-  const glowTex = lampGlowCanvas();
-  const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, color: 0xffd98a });
-  const lamps = new THREE.InstancedMesh(glowGeo, glowMat, lampCount);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
-  const pv = new THREE.Vector3();
-  const sv = new THREE.Vector3(1, 1, 1);
-  for (let k = 0; k < lampCount; k++) {
-    const i = t0 + Math.round(((k + 0.5) / lampCount) * (t1 - t0));
-    const idx = ((i % N) + N) % N;
-    const p = track._pts[idx];
-    pv.set(p.x, p.y + APEX - 1.1, p.z);
-    m.compose(pv, q, sv);
-    lamps.setMatrixAt(k, m);
-  }
-  lamps.instanceMatrix.needsUpdate = true;
-  lamps.renderOrder = 2;
-  scene.add(lamps);
+  buildTunnelLighting(scene, track, run, t0, t1, profile, geo);
   void anims;
 }
 

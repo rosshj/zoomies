@@ -1,3 +1,5 @@
+Latest: [Biome-specific mounted tunnel lighting](tunnel-lighting/README.md).
+
 Latest: [Higher-quality bakes, distant scenery and full-race measurements](runtime-detail/README.md).
 
 Latest: [Procedurally baked shelter and contact shading](baked-lighting/README.md).
