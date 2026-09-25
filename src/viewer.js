@@ -20,6 +20,7 @@ import {
   disposeGroup,
 } from "./models.js";
 import { assetCatalog } from "./scenery.js";
+import { ROAD_PROPS, makeRoadProp } from "./road-prop-assets.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
 import { KART_PRESETS } from "./presets.js";
@@ -137,6 +138,7 @@ KART_STYLES.forEach(([n, style, color]) =>
 );
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
+for (const [kind, spec] of Object.entries(ROAD_PROPS)) entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
 entries.push(...assetCatalog());
 
 // ---------------------------------------------------------------------------
@@ -478,7 +480,7 @@ renderer.setAnimationLoop((now) => {
 // stage through this: show an arbitrary garage preset, recolour the backdrop,
 // switch on the game's cel shading, and freeze the animation at a chosen pose.
 window.__viewer = {
-  orbit, camera, scene,
+  orbit, camera, scene, backend: renderer.backend?.isWebGPUBackend ? "webgpu" : "webgl",
   setBackground, setGameLook,
   // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
   showPreset(spec) {

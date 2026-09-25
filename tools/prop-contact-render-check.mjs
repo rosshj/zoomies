@@ -39,7 +39,7 @@ try{for(const backend of ['webgl','webgpu']){
   for(const pr of props._props)if(pr.mode==='ground')check(pr);
   // Place a crate and barrel side by side on a steep real section, then launch
   // both into the fence. Others retain their normal generated placements.
-  const shown=[props._props.find(p=>p.mode==='ground'&&p.kind==='crate'),props._props.find(p=>p.kind==='barrel')];
+  const shown=[props._props.find(p=>p.mode==='ground'&&p.kind==='crate'),props._props.find(p=>p.kind==='barrel'||p.profile?.shape==='cylinder')];
   if(shown.some(p=>!p))throw Error('Missing prop kind');
   let index=20;for(let i=20;i<track.samples-20;i++)if(Math.abs(track._tans[i].y)>.15){index=i;break;}
   const base=track._pts[index],side=new T.Vector3().crossVectors(track._tans[index],new T.Vector3(0,1,0)).normalize();

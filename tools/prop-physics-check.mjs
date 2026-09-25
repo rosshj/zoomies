@@ -4,24 +4,8 @@ import assert from 'node:assert/strict';
 import * as T from 'three';
 import { PropPhysics } from '../src/prop-physics.js';
 import { makeCrateProp, makeBarrelProp } from '../src/props.js';
-function trackFixture(hills = true, crossing = false) {
-  const samples = 240, halfWidth = 9, radius = 70, _pts = [], _tans = [];
-  for (let i = 0; i < samples; i++) {
-    const a = i / samples * Math.PI * 2;
-    _pts.push(new T.Vector3(Math.sin(a) * radius, crossing ? 12 * Math.cos(a) : hills ? 8 * Math.sin(a * 3) : 0,
-      crossing ? Math.sin(a * 2) * radius : Math.cos(a) * radius));
-  }
-  for (let i = 0; i < samples; i++) _tans.push(_pts[(i + 1) % samples].clone().sub(_pts[(i - 1 + samples) % samples]).normalize());
-  const positions = [], index = [];
-  for (let i = 0; i <= samples; i++) {
-    const p = _pts[i % samples], side = new T.Vector3().crossVectors(_tans[i % samples], new T.Vector3(0, 1, 0)).normalize();
-    for (let j = 0; j <= 10; j++) { const v = p.clone().addScaledVector(side, -halfWidth + j / 10 * halfWidth * 2); positions.push(v.x, v.y + .02, v.z); }
-    if (i < samples) for (let j = 0; j < 10; j++) { const a = i * 11 + j, b = a + 11; index.push(a, b, a + 1, a + 1, b, b + 1); }
-  }
-  const geometry = new T.BufferGeometry(); geometry.setAttribute('position', new T.Float32BufferAttribute(positions, 3)); geometry.setIndex(index); geometry.computeVertexNormals();
-  const length = _pts.reduce((v, p, i) => v + p.distanceTo(_pts[(i + 1) % samples]), 0);
-  return { samples, length, halfWidth, _pts, _tans, roadSurface: { geometry, rowWidth: 11 } };
-}
+import { trackFixture } from './fixtures/prop-track.mjs';
+
 const ray = new T.Raycaster(), origin = new T.Vector3(), down = new T.Vector3(0, -1, 0);
 let poses = 0, vertices = 0, sideLandings = 0, worstStepMs = 0;
 const restingPoses = new Map();

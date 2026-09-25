@@ -95,18 +95,25 @@ export class PropPhysics {
     return a.y + ((x - a.x) * dx + (z - a.z) * dz) * slope + .02;
   }
   prepare(pr, points, roadIndex) {
-    pr.hull = points; pr.worldHull = points.map(() => new THREE.Vector3());
-    pr.radius = Math.sqrt(Math.max(...points.map(p => p.lengthSq())));
+    pr.hull = points;
+    const sphere = pr.profile?.sphereRadius;
+    pr.worldHull = sphere ? Array.from({length:8},()=>new THREE.Vector3()) : points.map(() => new THREE.Vector3());
+    pr.radius = sphere || Math.sqrt(Math.max(...points.map(p => p.lengthSq())));
     pr.roadIndex = roadIndex; pr.quiet = 0; pr.settleTarget = new THREE.Quaternion();
     pr.invInertia = 1 / Math.max(.2, Math.max(...points.map(p => p.lengthSq())) * .4);
     const road = this.locate(pr); pr.roadIndex = road.i;
     this.height(pr.pos.x, pr.pos.z, road.i, this.normal);
     pr.quat.setFromUnitVectors(UP, this.normal);
+    if (pr.profile?.stand) pr.quat.multiply(this.q.setFromAxisAngle(new THREE.Vector3(1,0,0),Math.PI/2));
     this.resolve(pr, true);
     pr.mesh.position.copy(pr.pos); pr.mesh.quaternion.copy(pr.quat);
   }
   transform(pr) {
-    for (let k = 0; k < pr.hull.length; k++) pr.worldHull[k].copy(pr.hull[k]).applyQuaternion(pr.quat);
+    if (pr.profile?.sphereRadius) {
+      // An orientation-independent circle bounds the footprint; the ground
+      // contact below is analytic, using the actual local road normal.
+      for(let k=0;k<8;k++){const a=k*Math.PI/4;pr.worldHull[k].set(Math.sin(a)*pr.radius,0,Math.cos(a)*pr.radius);}
+    } else for (let k = 0; k < pr.hull.length; k++) pr.worldHull[k].copy(pr.hull[k]).applyQuaternion(pr.quat);
   }
   resolve(pr, seat = false) {
     this.transform(pr);
@@ -130,7 +137,12 @@ export class PropPhysics {
     pr.groundY = this.height(pr.pos.x, pr.pos.z, road.i, this.normal);
     let bottom = -Infinity;
     this.contact.set(0, 0, 0); let contacts = 0;
-    for (const p of pr.worldHull) {
+    if (pr.profile?.sphereRadius) {
+      this.contact.copy(this.normal).multiplyScalar(-pr.radius);
+      bottom = this.height(pr.pos.x+this.contact.x,pr.pos.z+this.contact.z,road.i)+SKIN-this.contact.y;
+      contacts=1;
+    }
+    if (!pr.profile?.sphereRadius) for (const p of pr.worldHull) {
       const support = this.height(pr.pos.x + p.x, pr.pos.z + p.z, road.i) + SKIN - p.y;
       if (support > bottom + .025) { bottom = support; this.contact.copy(p); contacts = 1; }
       else if (support >= bottom - .025) { bottom = Math.max(bottom, support); this.contact.add(p); contacts++; }
@@ -141,8 +153,9 @@ export class PropPhysics {
     return true;
   }
   stablePose(pr) {
+    if (pr.profile?.shape === 'sphere') { pr.settleTarget.copy(pr.quat); return; }
     const candidates = [];
-    if (pr.kind === 'barrel') {
+    if (pr.kind === 'barrel' || pr.profile?.shape === 'cylinder') {
       this.axis.copy(UP).applyQuaternion(pr.quat);
       if (Math.abs(this.axis.dot(this.normal)) > .72) candidates.push(UP, new THREE.Vector3(0, -1, 0));
       else for (let k = 0; k < 12; k++) candidates.push(new THREE.Vector3(Math.sin((k + .5) * Math.PI / 6), 0, Math.cos((k + .5) * Math.PI / 6)));
@@ -170,8 +183,8 @@ export class PropPhysics {
         }
         continue;
       }
-      pr.vel.y -= 30 * h;
-      pr.vel.multiplyScalar(Math.exp(-.22 * h));
+      pr.vel.y -= (pr.profile?.gravity ?? 30) * h;
+      pr.vel.multiplyScalar(Math.exp(-(pr.profile?.airDrag ?? .22) * h));
       pr.pos.addScaledVector(pr.vel, h);
       const speed = pr.angVel.length();
       if (speed > 1e-8) {
@@ -181,17 +194,35 @@ export class PropPhysics {
       if (this.resolve(pr)) {
         this.velocity.crossVectors(pr.angVel, this.contact).add(pr.vel);
         const vn = this.velocity.dot(this.normal);
+        pr.contactImpact = Math.max(pr.contactImpact || 0, -vn);
         if (vn < 0) {
           this.cross.crossVectors(this.contact, this.normal);
-          const impulse = -(1 + (vn < -2 ? .26 : 0)) * vn / (1 + pr.invInertia * this.cross.lengthSq());
+          const impulse = -(1 + (vn < -2 ? (pr.profile?.restitution ?? .26) : 0)) * vn / (1 + pr.invInertia * this.cross.lengthSq());
           pr.vel.addScaledVector(this.normal, impulse);
           pr.angVel.addScaledVector(this.cross, impulse * pr.invInertia);
         }
         // Time-based contact friction avoids frame-rate-dependent stop distances.
         const normalSpeed = pr.vel.dot(this.normal);
         this.delta.copy(pr.vel).addScaledVector(this.normal, -normalSpeed);
-        pr.vel.addScaledVector(this.delta, -(1 - Math.exp(-7 * h)));
-        pr.angVel.multiplyScalar(Math.exp(-9 * h));
+        pr.vel.addScaledVector(this.delta, -(1 - Math.exp(-(pr.profile?.friction ?? 7) * h)));
+        if (pr.profile) {
+          this.delta.copy(pr.vel).addScaledVector(this.normal, -normalSpeed);
+          // Dry contact has static/rolling resistance, not just air-like drag;
+          // otherwise a wheel can slide forever down even a modest grade.
+          const speed = this.delta.length();
+          const resistance = pr.profile.sound === 'ice' ? .09 : .42;
+          if(speed>1e-6)pr.vel.addScaledVector(this.delta,-Math.min(1,resistance*(pr.profile.gravity??30)*this.normal.y*h/speed));
+          if(pr.profile.shape==='sphere'||pr.profile.shape==='cylinder'){
+            this.cross.crossVectors(this.normal,this.delta).multiplyScalar(1/Math.max(.1,pr.radius));
+            const blend=1-Math.exp(-5*h);
+            if(pr.profile.shape==='sphere')pr.angVel.lerp(this.cross,blend);
+            else {
+              this.axis.copy(UP).applyQuaternion(pr.quat);
+              if(Math.abs(this.axis.dot(this.normal))<.4)pr.angVel.addScaledVector(this.axis,(this.cross.dot(this.axis)-pr.angVel.dot(this.axis))*blend);
+            }
+          }
+        }
+        pr.angVel.multiplyScalar(Math.exp(-(pr.profile?.angularDrag ?? 9) * h));
         if (pr.vel.lengthSq() < 2.5 && pr.angVel.lengthSq() < 4) pr.quiet += h;
         else pr.quiet = 0;
         if (pr.quiet > .12) { this.stablePose(pr); pr.settle = true; pr.vel.set(0, 0, 0); pr.angVel.set(0, 0, 0); }

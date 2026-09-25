@@ -573,6 +573,8 @@ let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
+  biomeNameAt,
+  onImpact: (kind, pos, strength) => audio.propImpact(kind, pos, strength),
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
