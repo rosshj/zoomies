@@ -1,13 +1,17 @@
 // Knockable roadside props (crates, barrels, leaf piles). These use a small custom
-// physics integrator rather than a full engine: each prop is clamped to the actual
-// road surface every frame (so it never floats or falls through the curved/sloped
-// track), bounces off the ground and the barriers, and tumbles when launched. The
+// physics integrator rather than a full engine: rotating hulls contact the rendered
+// road, bounce inside the fences and settle on stable faces. Sleeping props skip
+// collision work; moving props use small bounded integration steps. The
 // kart isn't simulated — when it drives near a prop we fling the prop along its
 // motion. Cosmetic (placement is seeded, so a seed always lays out the same
 // props; their tumble is per-frame and never needs to reproduce).
 import * as THREE from "three";
+import { PropPhysics, crateHull, barrelHull } from "./prop-physics.js";
 import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";
+import { ROAD_PROPS, ROAD_PROP_BIOMES, makeRoadProp } from "./road-prop-assets.js";
+import { PropDebris } from "./prop-debris.js";
+import { windStrengthAt, uWindDir } from "./wind.js";
 import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
 
 export async function initProps(scene, track, opts = {}) {
@@ -19,7 +23,6 @@ export async function initProps(scene, track, opts = {}) {
   }
 }
 
-const GRAV = 30;
 // Leaves are light: weak gravity so they hang and flutter rather than drop, and
 // a wake (wind) that lingers a beat after the kart passes.
 const LEAF_GRAV = 8.5; // much gentler than crates/barrels — leaves drift down
@@ -35,6 +38,32 @@ const woodMat = new THREE.MeshStandardMaterial({ color: 0xb5803f, roughness: 0.8
 const woodTop = new THREE.MeshStandardMaterial({ color: 0xcd9a55, roughness: 0.85 });
 const barrelMat = new THREE.MeshStandardMaterial({ color: 0xc24a3a, roughness: 0.6, metalness: 0.15 });
 const bandMat = new THREE.MeshStandardMaterial({ color: 0xe6e2d6, roughness: 0.5, metalness: 0.4 });
+// Small, shared canvas paintings add readable joinery without extra draw calls.
+// Lazy creation keeps this module importable in non-DOM simulation tools.
+let propPaintReady = false;
+function preparePropPaint() {
+  if (propPaintReady || typeof document === "undefined") return;
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = "#e3c398"; ctx.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? "#d7b585" : "#eed3a5";
+    ctx.fillRect(3, i * 32 + 2, 122, 28);
+    ctx.fillStyle = "#96704b"; ctx.fillRect(4, i * 32 + 30, 120, 2);
+  }
+  ctx.strokeStyle = "#986b42"; ctx.lineWidth = 15;
+  ctx.strokeRect(7, 7, 114, 114);
+  ctx.beginPath(); ctx.moveTo(12, 113); ctx.lineTo(113, 12); ctx.stroke();
+  ctx.strokeStyle = "#f5dfb8"; ctx.lineWidth = 8;
+  ctx.beginPath(); ctx.moveTo(12, 110); ctx.lineTo(110, 12); ctx.stroke();
+  ctx.fillStyle = "#58483d";
+  for (const x of [10, 118]) for (const y of [10, 118]) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  woodMat.map = t; woodTop.map = t;
+  woodMat.needsUpdate = woodTop.needsUpdate = true;
+  propPaintReady = true;
+}
+
 // Module-lifetime materials: mark them shared so disposeGroup() (models.js)
 // never disposes them out from under the next crate/barrel built.
 for (const m of [woodMat, woodTop, barrelMat, bandMat]) m.userData.shared = true;
@@ -44,6 +73,7 @@ for (const m of [woodMat, woodTop, barrelMat, bandMat]) m.userData.shared = true
 // that a box holds a power-up is that it floats; the ones sitting on the ground
 // (which tumble when you hit them) hold nothing.
 export const makeCrateProp = (rand = Math.random) => {
+  preparePropPaint();
   const s = 1.5 + rand() * 0.6;
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.BoxGeometry(s, s, s), woodMat));
@@ -53,22 +83,25 @@ export const makeCrateProp = (rand = Math.random) => {
   // No castShadow: the sun map is baked ONCE, so a knocked/floating crate would
   // leave a ghost shadow at its bake pose. The instanced blob shadow in build()
   // tracks the live prop instead (the viewer's studio has no baked map at all).
-  return { mesh: g, rest: s / 2 };
+  return { mesh: g, rest: s / 2, hull: crateHull(s) };
 };
 export const makeBarrelProp = (rand = Math.random) => {
   // The barrel tumbles as one rigid body, so body + bands bake into a single
   // multi-material mesh (2 draws instead of 3 meshes).
   const r = 0.7 + rand() * 0.2;
   const h = 1.9 + rand() * 0.3;
-  const parts = [new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, 12), barrelMat)];
+  const parts = [new THREE.Mesh(new THREE.LatheGeometry([
+    [0, -h / 2], [r * 0.82, -h / 2], [r * 0.97, -h * 0.3],
+    [r, 0], [r * 0.97, h * 0.3], [r * 0.82, h / 2], [0, h / 2],
+  ].map(([x, y]) => new THREE.Vector2(x, y)), 12), barrelMat)];
   for (const yy of [-h * 0.3, h * 0.3]) {
-    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.04, r * 1.04, h * 0.12, 12), bandMat);
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.995, r * 0.995, h * 0.12, 12), bandMat);
     band.position.y = yy;
     parts.push(band);
   }
   const g = new THREE.Group();
   g.add(mergeMeshes(parts, { castShadow: false })); // blob-shadowed, like the crates
-  return { mesh: g, rest: h / 2 };
+  return { mesh: g, rest: h / 2, hull: barrelHull(r, h) };
 };
 
 // A small leaf silhouette (a pointed oval ~0.48 long) in the XY plane, so callers
@@ -145,6 +178,8 @@ function build(scene, track, opts) {
   // ("ground" knockable | "float" power-up | "rising" transition). Which grounded
   // crate gets promoted into a floating box is decided at runtime (any settled,
   // on-road, non-spent crate is eligible — see promoteOne).
+  const physics = new PropPhysics(track);
+  const hoverOrientation = new THREE.Quaternion();
   const addProp = (x, z, groundY, built, o = {}) => {
     const mesh = built.mesh;
     const restY = groundY + built.rest;
@@ -152,13 +187,16 @@ function build(scene, track, opts) {
     group.add(mesh);
     const pr = {
       mesh, rest: built.rest, hit: 0, asleep: true, settle: false,
+      profile: built.profile || null, biome: o.biome || null, home: new THREE.Vector3(x, groundY, z), windAt: 0, sfxAt: 0,
       kind: o.kind || "crate", mode: o.mode || "ground", spent: false,
       groundY, phase: rand() * Math.PI * 2, t: 0,
       pos: new THREE.Vector3(x, restY, z),
       vel: new THREE.Vector3(), angVel: new THREE.Vector3(), quat: new THREE.Quaternion(),
     };
-    if (pr.mode === "float") mesh.position.y = restY + HOVER; // start hovering, no pop
+    physics.prepare(pr, built.hull, o.roadIndex);
+    if (pr.mode === "float") mesh.position.y = pr.pos.y + HOVER; // start hovering, no pop
     props.push(pr);
+    return pr;
   };
 
   // Leaf piles: a mound of little leaf-shaped cards that BURST upward and scatter
@@ -241,31 +279,79 @@ function build(scene, track, opts) {
     const side = new THREE.Vector3().crossVectors(track._tans[idx], up).normalize();
     const lat = (rand() * 2 - 1) * (track.halfWidth * 0.45); // near the centre line
     const x = p.x + side.x * lat, z = p.z + side.z * lat;
-    addProp(x, z, track.groundInfo(x, z).y, makeCrate(), { kind: "crate", mode: "float" });
+    addProp(x, z, track.groundInfo(x, z).y, makeCrate(), { kind: "crate", mode: "float", roadIndex: idx, biome: opts.biomeNameAt?.(x,z,p.y) || "meadow" });
   }
 
-  const MAX = 64;
-  const stepSamples = Math.max(6, Math.round((N * 26) / track.length));
-  for (let i = 0; i < N && props.length + leafPiles.length < MAX; i += stepSamples) {
-    if (rand() < 0.45) continue;
-    const p = track._pts[i];
-    const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-    const fwd = new THREE.Vector3(track._tans[i].x, 0, track._tans[i].z).normalize();
-    const cluster = 1 + ((rand() * 3) | 0);
-    const kindRoll = rand();
-    const isPile = kindRoll >= 0.8;
-    const onRoad = isPile ? rand() < 0.5 : true; // crates/barrels never off-road
-    const dir = rand() < 0.5 ? 1 : -1;
-    for (let c = 0; c < cluster && props.length + leafPiles.length < MAX; c++) {
-      const lat = onRoad ? (rand() * 2 - 1) * (track.halfWidth - 3) : dir * (track.halfWidth + 3 + rand() * 7);
-      const along = (rand() - 0.5) * 6;
-      const x = p.x + side.x * lat + fwd.x * along;
-      const z = p.z + side.z * lat + fwd.z * along;
-      const groundY = track.groundInfo(x, z).y;
-      if (kindRoll < 0.8) {
-        if (kindRoll < 0.5) addProp(x, z, groundY, makeCrate(), { kind: "crate" });
-        else addProp(x, z, groundY, makeBarrel(), { kind: "barrel" });
-      } else addLeafPile(x, z, groundAt(x, z)); // piles sit on the real ground (groundY is road-curve height -> floats off-road)
+  // Keep the original total cap, spread evenly over the full lap. Every third
+  // ground slot is a universal crate reserved for power-up replenishment.
+  const MAX = 64, slots = MAX - props.length;
+  const regionalCounts = new Map();
+  const crateBiomes = new Set(props.map(p=>p.biome));
+  const biomeAt = opts.biomeNameAt || (() => "meadow");
+  const leafBiomes = new Set(['meadow','forest','autumn','blossom','jungle','lavender','wetlands']);
+  const anchors = scene.userData?.biomePlacements || [];
+  for (let slot = 0; slot < slots; slot++) {
+    let i = Math.floor((slot + .25 + rand() * .5) * N / slots) % N;
+    let p = track._pts[i], side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+    let biome = biomeAt(p.x,p.z,p.y), roster = ROAD_PROP_BIOMES[biome] || ROAD_PROP_BIOMES.meadow;
+    if (slot % 3 === 0 || !crateBiomes.has(biome)) {
+      crateBiomes.add(biome);
+      const lat = (rand() * 2 - 1) * (track.halfWidth - 3);
+      addProp(p.x+side.x*lat,p.z+side.z*lat,p.y,makeCrate(),{kind:'crate',roadIndex:i,biome});
+      continue;
+    }
+    if (slot % 11 === 0 && (biome === 'city' || biome === 'volcanic')) {
+      const lat=(rand()<.5?-1:1)*(track.halfWidth-3.4);
+      addProp(p.x+side.x*lat,p.z+side.z*lat,p.y,makeBarrel(),{kind:'barrel',roadIndex:i,biome});
+      continue;
+    }
+    // Foliage bursts are regional too; snow/desert/city never get leaf piles.
+    if (slot % 13 === 0 && leafBiomes.has(biome)) {
+      const lat = (rand()<.5?-1:1)*(track.halfWidth-2.5);
+      addLeafPile(p.x+side.x*lat,p.z+side.z*lat,p.y);continue;
+    }
+    const count = regionalCounts.get(biome) || 0;
+    const kind = roster[count % roster.length]; regionalCounts.set(biome,count+1);
+    const spec = ROAD_PROPS[kind];
+    // Bias toward a compatible roadside stall/tree/building when one is nearby.
+    // Move only within this slot's short road window and retain the same biome.
+    let anchor = null, best = 60 * 60;
+    for (const a of anchors) if (spec.anchors?.includes(a.kind) && a.biome===biome) {
+      const d=(a.x-p.x)**2+(a.z-p.z)**2;if(d<best){best=d;anchor=a;}
+    }
+    if(anchor){
+      const span=Math.max(1,Math.round(12*N/track.length));
+      for(let k=-span;k<=span;k++){
+        const j=(i+k+N)%N,q=track._pts[j],d=(q.x-anchor.x)**2+(q.z-anchor.z)**2;
+        if(d<best&&biomeAt(q.x,q.z,q.y)===biome){best=d;p=q;}
+      }
+      i=track._pts.indexOf(p);side.crossVectors(track._tans[i],up).normalize();
+    }
+    const sign=anchor?Math.sign((anchor.x-p.x)*side.x+(anchor.z-p.z)*side.z)||1:rand()<.5?-1:1;
+    const lat=sign*(track.halfWidth-3.0-rand()*.8),x=p.x+side.x*lat,z=p.z+side.z*lat;
+    // At seams, leave a crate instead of introducing a foreign regional object.
+    const fits=[[0,0],[3,0],[-3,0],[0,3],[0,-3]].every(([dx,dz])=>biomeAt(x+dx,z+dz,p.y)===biome);
+    addProp(x,z,p.y,fits?makeRoadProp(kind):makeCrate(),{kind:fits?kind:'crate',roadIndex:i,biome});
+  }
+  const debris = new PropDebris(group,physics);
+  let clock = 0, windCheck = 0;
+  function impact(pr, strength, burst = false) {
+    if (clock >= pr.sfxAt) {
+      opts.onImpact?.(pr.profile?.sound || (pr.kind==='barrel'?'metal':'wood'),pr.pos,Math.min(1,strength/35));
+      pr.sfxAt=clock+.18;
+    }
+    if (!burst || pr.used || !pr.profile) return;
+    const spec=pr.profile;
+    if(spec.burst)debris.burst(spec.burst,pr);
+    if((spec.burst && spec.burst!=="dust")||spec.deform)pr.used=true;
+    if(spec.vanish){pr.broken=true;pr.mesh.visible=false;pr.asleep=true;pr.settle=false;return;}
+    if(spec.depleted||spec.deform){
+      const built=makeRoadProp(pr.kind,true);
+      built.mesh.children[0].material=pr.mesh.children[0].material;
+      pr.mesh.remove(pr.mesh.children[0]);pr.mesh.add(built.mesh.children[0]);
+      pr.hull=built.hull;pr.worldHull=built.hull.map(()=>new THREE.Vector3());pr.rest=built.rest;
+      pr.radius=Math.sqrt(Math.max(...pr.hull.map(p=>p.lengthSq())));pr.invInertia=1/Math.max(.2,pr.radius*pr.radius*.4);
+      physics.resolve(pr);pr.mesh.position.copy(pr.pos);
     }
   }
 
@@ -306,7 +392,7 @@ function build(scene, track, opts) {
       const mp = pr.mesh.position;
       // Ground height under the prop: only re-sample when it has moved in XZ.
       if (pr._shGy === undefined || mp.x !== pr._shX || mp.z !== pr._shZ) {
-        pr._shGy = groundAt(mp.x, mp.z);
+        pr._shGy = physics.height(mp.x, mp.z, pr.roadIndex);
         pr._shX = mp.x;
         pr._shZ = mp.z;
       }
@@ -315,6 +401,8 @@ function build(scene, track, opts) {
       // Footprint from the prop's size, shrinking with height (perspective cue).
       const s = (pr.rest * 3.1) / (1 + h * 0.16);
       _shDummy.position.set(mp.x, gy + 0.07, mp.z);
+      physics.height(mp.x, mp.z, pr.roadIndex, physics.normal);
+      _shDummy.quaternion.setFromUnitVectors(up, physics.normal);
       _shDummy.scale.setScalar(pr.mesh.visible ? s : 0.0001);
       _shDummy.updateMatrix();
       _shadowMesh.setMatrixAt(i, _shDummy.matrix);
@@ -337,80 +425,11 @@ function build(scene, track, opts) {
     const ex = px - (ax + dx * t), ez = pz - (az + dz * t);
     return ex * ex + ez * ez;
   };
-  // scratch
-  const _e = new THREE.Euler();
-  const _e2 = new THREE.Euler();
-  const _qT = new THREE.Quaternion();
-  const _wq = new THREE.Quaternion();
   const _moving = []; // pooled swept-kart records (refilled in place each frame)
-
-  // Advance one prop's custom rigid motion: gravity, integrate spin, clamp to the
-  // road surface (bounce), bounce off the barriers, then settle upright at rest.
-  function stepProp(pr, dt) {
-    if (pr.asleep && !pr.settle) return;
-    if (pr.settle) {
-      _e.setFromQuaternion(pr.quat, "YXZ");
-      _qT.setFromEuler(_e2.set(0, _e.y, 0));
-      pr.quat.slerp(_qT, Math.min(1, dt * 6));
-      const gy = track.groundInfo(pr.pos.x, pr.pos.z).y;
-      pr.pos.y = gy + pr.rest;
-      if (pr.quat.angleTo(_qT) < 0.02) pr.settle = false;
-      pr.mesh.position.copy(pr.pos);
-      pr.mesh.quaternion.copy(pr.quat);
-      return;
-    }
-    pr.vel.y -= GRAV * dt;
-    pr.vel.x *= 1 - 0.22 * dt;
-    pr.vel.z *= 1 - 0.22 * dt;
-    pr.pos.addScaledVector(pr.vel, dt);
-    // Integrate orientation: q += 0.5 * (0,w) * q * dt.
-    _wq.set(pr.angVel.x, pr.angVel.y, pr.angVel.z, 0).multiply(pr.quat);
-    pr.quat.x += 0.5 * _wq.x * dt;
-    pr.quat.y += 0.5 * _wq.y * dt;
-    pr.quat.z += 0.5 * _wq.z * dt;
-    pr.quat.w += 0.5 * _wq.w * dt;
-    pr.quat.normalize();
-
-    const gi = track.groundInfo(pr.pos.x, pr.pos.z);
-    const restY = gi.y + pr.rest;
-    if (pr.pos.y <= restY) {
-      pr.pos.y = restY;
-      if (pr.vel.y < 0) pr.vel.y = -pr.vel.y * 0.42; // bounce off the ground
-      pr.vel.x *= 0.66;
-      pr.vel.z *= 0.66;
-      pr.angVel.multiplyScalar(0.72);
-      if (pr.vel.lengthSq() < 1.4 && Math.abs(pr.vel.y) < 1.0 && pr.angVel.lengthSq() < 1.6) {
-        pr.asleep = true;
-        pr.settle = true; // ease upright onto the road
-      }
-    }
-    // Bounce off the barriers: reflect the outward velocity at the fence and keep
-    // the WHOLE prop inside it. The fence's inner face sits at halfWidth + 0.8;
-    // rest ≈ the prop's half-extent, so this stops the body clipping through.
-    const maxD = track.halfWidth + 0.8 - pr.rest - 0.15;
-    if (gi.dist > maxD) {
-      const eps = 0.6;
-      const nx = track.distanceToCenter(pr.pos.x + eps, pr.pos.z) - track.distanceToCenter(pr.pos.x - eps, pr.pos.z);
-      const nz = track.distanceToCenter(pr.pos.x, pr.pos.z + eps) - track.distanceToCenter(pr.pos.x, pr.pos.z - eps);
-      const nl = Math.hypot(nx, nz) || 1;
-      const ox = nx / nl, oz = nz / nl; // outward (toward increasing distance)
-      const vn = pr.vel.x * ox + pr.vel.z * oz;
-      if (vn > 0) {
-        pr.vel.x -= 1.4 * vn * ox;
-        pr.vel.z -= 1.4 * vn * oz;
-      }
-      // Resolve the full overshoot: dt is capped, so this is at most a few units
-      // in the frame the prop crosses the fence — never a visible teleport, and a
-      // prop can never come to rest embedded in (or beyond) the fence.
-      pr.pos.x -= ox * (gi.dist - maxD);
-      pr.pos.z -= oz * (gi.dist - maxD);
-    }
-    pr.mesh.position.copy(pr.pos);
-    pr.mesh.quaternion.copy(pr.quat);
-  }
 
   function update(dt, karts) {
     dt = Math.min(dt, 0.05);
+    clock += dt;
     // Pooled records — no per-frame array/object churn (this runs every frame).
     let movingN = 0;
     const moving = _moving;
@@ -448,7 +467,7 @@ function build(scene, track, opts) {
     // are mid-transition and ignore contact.
     for (const mk of moving) {
       for (const pr of props) {
-        if (pr.hit > 0) continue;
+        if (pr.broken || pr.hit > 0) continue;
         if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > HIT_R * HIT_R) continue;
         if (pr.kind === "crate" && pr.mode === "float") {
           // onItem returns false when the kart is on its pickup cooldown — leave
@@ -458,11 +477,11 @@ function build(scene, track, opts) {
             // tumbles with physics (from its hover height) to rest on the ground —
             // a spent box, no longer floating. A roadside crate rises to replace it.
             pr.quat.copy(pr.mesh.quaternion); // continue from its current spun pose
-            pr.pos.y = pr.groundY + pr.rest + HOVER; // fall from the hover height
+            pr.pos.copy(pr.mesh.position); // keep the actual bobbed pickup pose
             pr.mode = "ground";
             pr.spent = true; // a used box never floats again
             pr.asleep = false;
-            pr.settle = false;
+            pr.settle = false; pr.quiet = 0;
             const launch = 13 + Math.min(mk.speed, 150) * 0.8;
             const lift = 5 + Math.min(mk.speed, 120) * 0.05;
             pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
@@ -474,19 +493,36 @@ function build(scene, track, opts) {
           continue;
         }
         if (pr.mode !== "ground") continue; // rising / sinking: not knockable
-        const launch = 16 + Math.min(mk.speed, 150) * 0.95;
-        const lift = 7 + Math.min(mk.speed, 120) * 0.06;
+        const launch = (16 + Math.min(mk.speed, 150) * 0.95) * (pr.profile?.launch ?? 1);
+        const lift = (7 + Math.min(mk.speed, 120) * 0.06) * (pr.profile?.lift ?? 1);
         pr.asleep = false;
-        pr.settle = false;
+        pr.settle = false; pr.quiet = 0;
         pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
         const sm = 11 + Math.random() * 10; // tumble end-over-end about the across axis
         pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
         pr.hit = 0.4;
+        impact(pr,mk.speed,true);
       }
     }
     glowT += dt;
     glowMat.opacity = 0.24 + 0.1 * Math.sin(glowT * 2.6); // slow breathing pulse
+    // At most two resting lightweight objects wake per second, near racers,
+    // away from an imminent collision, and only within a small home envelope.
+    if(clock>=windCheck){
+      windCheck=clock+1;let woke=0;
+      for(const pr of props){
+        if(woke>=2)break;
+        if(!pr.profile?.wind||pr.broken||!pr.asleep||pr.mode!=='ground'||clock<pr.windAt||pr.pos.distanceToSquared(pr.home)>25)continue;
+        let distance=Infinity;for(const k of karts||[])if(k)distance=Math.min(distance,(k.x-pr.pos.x)**2+(k.z-pr.pos.z)**2);
+        const gust=windStrengthAt(pr.pos.x,pr.pos.z);
+        if(distance<18*18||distance>85*85||gust<.5)continue;
+        pr.windAt=clock+8;pr.asleep=pr.settle=false;pr.quiet=0;
+        pr.vel.set(uWindDir.value.x*gust*3,.7,uWindDir.value.y*gust*3);
+        pr.angVel.set(uWindDir.value.y*gust,0,-uWindDir.value.x*gust);woke++;
+      }
+    }
     for (const pr of props) {
+      if(pr.broken)continue;
       if (pr.hit > 0) pr.hit -= dt;
       if (pr.glow) pr.glow.visible = pr.kind === "crate" && pr.mode !== "ground" && itemsEnabled;
       // Floating-box lifecycle (crates only): hover, or ride a rise/sink ramp.
@@ -504,20 +540,26 @@ function build(scene, track, opts) {
           pr.t = Math.min(1, pr.t + dt / RISE_TIME);
           const u = pr.mode === "rising" ? pr.t : 1 - pr.t; // 0 grounded .. 1 floating
           const ease = u * u * (3 - 2 * u);
-          pr.mesh.position.set(pr.pos.x, restY + (floatY - restY) * ease, pr.pos.z);
-          pr.mesh.rotation.y += dt * 1.0;
+          pr.mesh.position.set(pr.pos.x, (pr.riseY ?? restY) + (floatY - (pr.riseY ?? restY)) * ease, pr.pos.z);
+          if (pr.riseQuat) pr.mesh.quaternion.copy(pr.riseQuat).slerp(hoverOrientation, ease);
+
           if (pr.t >= 1) {
             if (pr.mode === "rising") { pr.mode = "float"; pr.t = 0; }
             else { // landed — back to an ordinary, upright, knockable crate
               pr.mode = "ground"; pr.t = 0; pr.asleep = true; pr.settle = false;
               pr.quat.identity(); pr.angVel.set(0, 0, 0); pr.vel.set(0, 0, 0);
-              pr.pos.y = restY; pr.mesh.position.copy(pr.pos); pr.mesh.rotation.set(0, 0, 0);
+              physics.prepare(pr, pr.hull, pr.roadIndex);
             }
           }
         }
+        // Rising and spinning power-ups retain the same full-hull clearance.
+        pr.quat.copy(pr.mesh.quaternion); pr.pos.copy(pr.mesh.position);
+        physics.resolve(pr);
+        pr.mesh.position.copy(pr.pos);
         continue;
       }
-      stepProp(pr, dt);
+      pr.contactImpact=0;physics.step(pr, dt);
+      if(pr.contactImpact>3)impact(pr,pr.contactImpact);
     }
 
     // Keep the floating pool topped up: after a pickup (and a short beat), promote
@@ -529,6 +571,8 @@ function build(scene, track, opts) {
       for (const pr of props) if (pr.kind === "crate" && (pr.mode === "float" || pr.mode === "rising")) floatingNow++;
       if (floatingNow < boxCount && promoteTimer <= 0 && promoteOne()) promoteTimer = PROMOTE_STAGGER;
     }
+
+    debris.update(dt);
 
     // Re-project every prop's blob shadow now that positions are final.
     updatePropShadows();
@@ -657,7 +701,7 @@ function build(scene, track, opts) {
       // Any settled, on-the-road crate can rise — EXCEPT a spent box (a used one
       // never floats again). On-road-now also excludes crates knocked into the weeds.
       if (pr.kind !== "crate" || pr.mode !== "ground" || pr.spent || pr.hit > 0) continue;
-      if (!pr.asleep) continue; // still tumbling — wait until it has settled
+      if (!pr.asleep || pr.settle) continue; // still tumbling — wait until it has settled
       if (track.distanceToCenter(pr.pos.x, pr.pos.z) > track.halfWidth + 1) continue;
       let d = 1e9;
       for (const q of props) {
@@ -669,9 +713,10 @@ function build(scene, track, opts) {
     }
     if (!best) return false;
     best.mode = "rising"; best.t = 0; best.asleep = true; best.settle = false;
-    best.groundY = track.groundInfo(best.pos.x, best.pos.z).y; // re-anchor: it may have moved
-    best.quat.identity(); best.pos.y = best.groundY + best.rest;
-    best.mesh.quaternion.identity();
+    // Rise from the actual landed face. Uprighting while still on the road
+    // would sweep corners through the asphalt and nearby fence.
+    best.riseY = best.pos.y;
+    best.riseQuat = best.quat.clone();
     return true;
   }
 
@@ -703,7 +748,7 @@ function build(scene, track, opts) {
   }
 
   const groundN = props.filter((p) => p.kind === "crate" && p.mode === "ground").length + props.filter((p) => p.kind === "barrel").length;
-  console.log(`[zoomies] knockable props: ${groundN} crates/barrels + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`);
+  console.log(`[zoomies] knockable props: ${groundN} universal crates/barrels + ${props.filter(p=>p.profile).length} biome props + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`);
   // _props is a debug hook (headless placement/physics probes) — not gameplay API.
-  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled, _props: props };
+  return { update, group, count: props.length + leafPiles.length, boxTargets, setItemsEnabled, _props: props, _debris: debris };
 }

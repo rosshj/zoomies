@@ -67,9 +67,12 @@ const FEATURED = [
   { name: "Snowcap Sprint", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
   { name: "Maple Falls", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
   { name: "Petal Parade", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
+  { name: "Lavender Loop", sub: "🪻 Countryside · Sunset", cfg: { mode: "custom", seed: "BLOOM", size: 0.5, curviness: 0.5, twist: 0.42, hilliness: 0.3, hills: 0.45, biomes: ["lavender"], timeOfDay: "sunset" } },
+  { name: "Willow Wash", sub: "🌧 Wetlands · Midday", cfg: { mode: "custom", seed: "REED", size: 0.5, curviness: 0.4, twist: 0.4, hilliness: 0.2, hills: 0.3, biomes: ["wetlands"], timeOfDay: "midday" } },
+  { name: "Basalt Blast", sub: "🌋 Badlands · Sunset", cfg: { mode: "custom", seed: "BASALT", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["volcanic"], timeOfDay: "sunset" } },
 ];
 
-const BIOMES = ["meadow", "forest", "desert", "mesa", "city", "beach", "jungle", "alpine", "tundra", "autumn", "blossom"];
+const BIOMES = ["meadow", "forest", "desert", "mesa", "city", "beach", "jungle", "alpine", "tundra", "autumn", "blossom", "savanna", "lavender", "wetlands", "volcanic"];
 const TODS = ["midday", "sunset", "night"];
 
 // Deterministic RNG so a sweep is reproducible and a failing seed can be

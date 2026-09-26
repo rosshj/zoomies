@@ -1,0 +1,94 @@
+{
+  "editorResult": {
+    "styles": [
+      "Cage",
+      "Club Racer",
+      "Sprint",
+      "Shifter",
+      "Endurance",
+      "Rental Pro",
+      "Vintage Racer",
+      "Dirt Oval",
+      "Flat Tracker",
+      "Rallycross",
+      "Crosskart",
+      "Dune Racer",
+      "Streamliner",
+      "GP",
+      "Roadster",
+      "Buggy",
+      "Finned"
+    ]
+  },
+  "save": {
+    "cat": 0,
+    "kart": 34,
+    "customCat": {
+      "name": "My Cat",
+      "type": "classic",
+      "fur": 15771696,
+      "pattern": "spotted",
+      "accessory": "cap",
+      "accessoryColor": null
+    },
+    "customKart": {
+      "name": "Legacy Kart",
+      "color": 3314570,
+      "style": 6,
+      "number": 77,
+      "livery": 2
+    },
+    "v": 3,
+    "catId": null,
+    "kartId": "custom"
+  },
+  "racers": [
+    {
+      "name": "You",
+      "player": true,
+      "style": 6,
+      "livery": 2
+    },
+    {
+      "name": "Dumpling",
+      "style": 16,
+      "livery": 3
+    },
+    {
+      "name": "Shadow",
+      "style": 3,
+      "livery": 5
+    },
+    {
+      "name": "Pepper",
+      "style": 8,
+      "livery": 7
+    },
+    {
+      "name": "Snow",
+      "style": 16,
+      "livery": 7
+    },
+    {
+      "name": "Pudding",
+      "style": 1,
+      "livery": 4
+    }
+  ],
+  "presetStyle": 5,
+  "legacyPaint": [
+    "Chevron",
+    "GT Stripe",
+    "Heritage",
+    "Works",
+    "Rally Blocks",
+    "Endurance",
+    "Team Stripe",
+    "Twin Stripe"
+  ],
+  "legacyRace": {
+    "kartStyle": 0,
+    "kartLivery": 7
+  },
+  "errors": []
+}

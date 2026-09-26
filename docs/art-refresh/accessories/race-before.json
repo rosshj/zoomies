@@ -1,0 +1,72 @@
+[
+  {
+    "biome": "meadow",
+    "quality": "high",
+    "requestedBackend": "webgpu",
+    "drawingBuffer": [
+      1100,
+      700
+    ],
+    "frames": 2400,
+    "meanFps": 60.00245112138802,
+    "onePercentLow": 59.523809523799216,
+    "p95Ms": 16.700000000004366,
+    "p99Ms": 16.80000000000291,
+    "worstMs": 16.80000000000291,
+    "cpuMedianMs": 5.0999999940395355,
+    "cpuP99Ms": 6.799999982118607,
+    "drawsMean": 608.1133333333333,
+    "simSeconds": 39.98170000000046,
+    "readout": "60 FPS \u00b7 WGPU \u00b7 915dc \u00b7 cpu 6ms \u00b7 sun 98\u00b0 \u00b7 1.0x H",
+    "backend": "webgpu",
+    "memory": {
+      "attributes": 1553,
+      "attributesSize": 40793556,
+      "geometries": 504,
+      "indexAttributes": 334,
+      "indexAttributesSize": 3652740,
+      "indirectStorageAttributes": 0,
+      "indirectStorageAttributesSize": 0,
+      "programs": 289,
+      "programsSize": 1234763,
+      "readbackBuffers": 0,
+      "readbackBuffersSize": 0,
+      "renderTargets": 14,
+      "storageAttributes": 2,
+      "storageAttributesSize": 7680,
+      "textures": 52,
+      "texturesSize": 163395641,
+      "uniformBuffers": 1508,
+      "uniformBuffersSize": 741456,
+      "total": 209825836
+    },
+    "lod": {
+      "batches": 20,
+      "nearTriangles": 7876,
+      "farTriangles": 4874,
+      "farBatches": 8
+    },
+    "bake": {
+      "occluders": 73,
+      "vertices": 102980,
+      "shaded": 6984,
+      "ms": 133.60000002384186
+    },
+    "playerT": 0.7800294604610091,
+    "errors": [],
+    "logs": [
+      "[zoomies] FREEZE: one frame took 533ms (menu, WGPU) \u00b7 530 shader/pipeline creates \u00b7 geo 462 tex 52 \u00b7 render 464 \u00b7 atmos 0 \u00b7 minimap 1 \u00b7 world 2 \u00b7 other 66ms",
+      "[zoomies] FREEZE: one frame took 467ms (menu, WGPU) \u00b7 4 shader/pipeline creates \u00b7 geo 484 tex 52 \u00b7 render 3 \u00b7 atmos 0 \u00b7 minimap 0 \u00b7 world 0 \u00b7 other 463ms",
+      "[zoomies] perf race: avg 57 fps \u00b7 1% low 60 \u00b7 worst 198ms \u00b7 main 4.9/24ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 883dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 59 fps \u00b7 1% low 60 \u00b7 worst 50ms \u00b7 main 5.5/11ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 912dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 50ms \u00b7 main 5.4/11ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 819dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 5.2/8ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 505dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 5.3/7ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 822dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 5.0/7ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 460dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 5.2/11ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 700dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 4.9/7ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 352dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 5.1/7ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 777dc \u00b7 1.00x H \u00b7 WGPU",
+      "[zoomies] perf race: avg 60 fps \u00b7 1% low 60 \u00b7 worst 17ms \u00b7 main 4.8/7ms \u00b7 tick 16.7ms \u00b7 gate 10.0ms \u00b7 366dc \u00b7 1.00x H \u00b7 WGPU"
+    ]
+  }
+]

@@ -1,0 +1,88 @@
+{
+  "result": {
+    "device": "ANGLE (Apple, ANGLE Metal Renderer: Apple M3 Pro, Unspecified Version)",
+    "viewport": [
+      1100,
+      700
+    ],
+    "drawingBuffer": [
+      1100,
+      700
+    ],
+    "views": [
+      {
+        "t": 0.06,
+        "batchesMsPerRender": [
+          1.3292728999999999,
+          0.8436125000000001,
+          1.02807915,
+          0.6057604000000001,
+          1.0655104,
+          1.01092915,
+          0.7987854,
+          0.9862916500000001,
+          0.77685415
+        ],
+        "medianMsPerRender": 0.9862916500000001,
+        "render": {
+          "calls": 2684,
+          "frameCalls": 2,
+          "drawCalls": 397,
+          "triangles": 382721,
+          "points": 0,
+          "lines": 48,
+          "timestamp": 0
+        }
+      },
+      {
+        "t": 0.38,
+        "batchesMsPerRender": [
+          0.7863708,
+          0.99453125,
+          0.46458744999999996,
+          0.4720625,
+          1.15026245,
+          0.7081729,
+          1.0299353999999998,
+          0.7177562,
+          0.8395333
+        ],
+        "medianMsPerRender": 0.7863708,
+        "render": {
+          "calls": 3086,
+          "frameCalls": 2,
+          "drawCalls": 264,
+          "triangles": 289995,
+          "points": 0,
+          "lines": 138,
+          "timestamp": 0
+        }
+      },
+      {
+        "t": 0.72,
+        "batchesMsPerRender": [
+          0.9859354,
+          0.9833875000000001,
+          0.79354165,
+          1.3725458,
+          0.74118125,
+          1.95956455,
+          1.1927083,
+          0.7600833,
+          1.4216187
+        ],
+        "medianMsPerRender": 0.9859354,
+        "render": {
+          "calls": 3488,
+          "frameCalls": 2,
+          "drawCalls": 489,
+          "triangles": 469313,
+          "points": 0,
+          "lines": 48,
+          "timestamp": 0
+        }
+      }
+    ]
+  },
+  "errors": []
+}

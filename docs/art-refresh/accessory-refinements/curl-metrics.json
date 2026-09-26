@@ -1,0 +1,222 @@
+[
+  {
+    "accessory": "crown",
+    "triangles": 8420,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "aviator",
+    "triangles": 9519,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "wizard",
+    "triangles": 8629,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "catEye",
+    "triangles": 8868,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "space",
+    "triangles": 10132,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "shark",
+    "triangles": 8188,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "unicorn",
+    "triangles": 9032,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "rain",
+    "triangles": 8720,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "bee",
+    "triangles": 9064,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "detective",
+    "triangles": 8780,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "crown",
+    "triangles": 8420,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "aviator",
+    "triangles": 9519,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "wizard",
+    "triangles": 8629,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "catEye",
+    "triangles": 8868,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "space",
+    "triangles": 10132,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "shark",
+    "triangles": 8188,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "unicorn",
+    "triangles": 9032,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "rain",
+    "triangles": 8720,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "bee",
+    "triangles": 9064,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "detective",
+    "triangles": 8780,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.4710482880473137,
+      0.192702729254961
+    ],
+    "backend": "webgpu"
+  }
+]

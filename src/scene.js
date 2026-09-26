@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { paintSurface } from "./scenery-art.js";
 import { mergeGeometries, mergeVertices } from "three/addons/utils/BufferGeometryUtils.js";
 import { attribute, uniform, color as tslColor } from "three/tsl";
 import { USE_WEBGPU, IS_IOS } from "./gpu.js";
@@ -11,36 +12,36 @@ import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 // through, handled in the main loop.
 export const MOODS = [
   {
-    // Midday: a bright sunny afternoon (the original look).
+    // Midday: warm direct light, cool sky fill and restrained ground bounce.
     name: "Midday", tod: "midday", weather: "none",
-    sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.5,
+    sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.25,
     skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
-    hemiSky: 0xcfe6ff, hemiGround: 0x5a7a4e, hemiI: 0.92,
+    hemiSky: 0xcfe6ff, hemiGround: 0x626854, hemiI: 1.02,
     bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
     sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
-    cloud: 0xffffff, sat: 1.3, contrast: 1.02,
+    cloud: 0xffffff, sat: 1.16, contrast: 1.02,
   },
   {
-    // Sunset: a low, warm sun; golden glow, deep blue overhead, long shadows.
+    // Sunset: warm direct light against cool sky fill, retaining long shadows.
     name: "Sunset", tod: "sunset", weather: "none",
-    sunDir: [0.62, 0.15, 0.42], sunColor: 0xffb066, sunI: 2.2,
+    sunDir: [0.62, 0.15, 0.42], sunColor: 0xffb066, sunI: 2.05,
     skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
-    hemiSky: 0xffc79a, hemiGround: 0x4a3a30, hemiI: 0.84,
+    hemiSky: 0x9baed6, hemiGround: 0x554a40, hemiI: 0.96,
     bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.13,
     sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.4, starI: 0.15,
-    cloud: 0xffd6ad, sat: 1.36, contrast: 1.03,
+    cloud: 0xffd6ad, sat: 1.18, contrast: 1.03,
   },
   {
     // Night: a cool moon, dark blue sky and stars. Kept "well lit" by moonlight +
     // (in scenery) warm street lamps and kart headlights, not pitch black. Snow is
     // darkened at the albedo level (in buildTerrain) so it doesn't read self-lit.
     name: "Night", tod: "night", weather: "none",
-    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.15,
+    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.08,
     skyTop: 0x060a1a, skyHorizon: 0x17263f, skyWarm: 0x17263f,
-    hemiSky: 0x33456a, hemiGround: 0x10151f, hemiI: 0.56,
+    hemiSky: 0x465778, hemiGround: 0x171d29, hemiI: 0.62,
     bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.16,
     sunCore: [1.25, 1.35, 1.65], sunSize: 28, sunVisible: true, rays: false, starI: 1,
-    cloud: 0x2a3551, sat: 1.32, contrast: 1.1,
+    cloud: 0x2a3551, sat: 1.14, contrast: 1.04,
   },
 ];
 
@@ -51,11 +52,11 @@ export function moodForTimeOfDay(tod) {
 
 // Sets up renderer, scene, lights, sky and a chase camera, and returns an
 // applyMood() the game uses to switch time-of-day / weather lighting.
-// One low-poly cloud cluster: a plume of crumple-jittered icosahedron lumps
+// One low-poly cloud cluster: a plume of softly sculpted icosahedron lobes
 // (big head tapering to a tail) with the underside clamped FLAT — the classic
-// stylised paper-cloud silhouette. Flat-shaded by the cloud material, so the
-// jitter reads as crisp facets. Origin: flat base on y=0, plume along X,
-// roughly centred. Shared by the sky ring (createScene) and the asset viewer.
+// stylised cumulus silhouette. Painted cool undersides and smooth normals keep
+// the lobes soft while the shared toon ramp keeps the lighting banded.
+// Origin: flat base on y=0, plume along X, roughly centred. Shared by the sky ring (createScene) and the asset viewer.
 export function cloudClusterGeo(rand = Math.random) {
   const geos = [];
   const n = 4 + Math.floor(rand() * 3); // 4-6 lumps
@@ -77,12 +78,12 @@ export function cloudClusterGeo(rand = Math.random) {
     const g = mergeVertices(raw);
     const p = g.attributes.position;
     for (let v = 0; v < p.count; v++) {
-      const jit = 0.85 + rand() * 0.3;
+      const jit = 0.97 + rand() * 0.06;
       p.setXYZ(v, p.getX(v) * jit, p.getY(v) * jit, p.getZ(v) * jit);
     }
-    g.translate(x, r * 0.3 + (rand() - 0.5) * r * 0.2, (rand() - 0.5) * baseR * 0.4);
+    g.translate(x, r * 0.46 + (rand() - 0.5) * r * 0.12, (rand() - 0.5) * baseR * 0.4);
     geos.push(g);
-    x += r * (1.05 + rand() * 0.35);
+    x += r * (0.72 + rand() * 0.25);
   }
   const geo = mergeGeometries(geos);
   // Flat underside: clamp everything that dips below the base plane.
@@ -90,7 +91,7 @@ export function cloudClusterGeo(rand = Math.random) {
   for (let v = 0; v < p.count; v++) if (p.getY(v) < 0) p.setY(v, 0);
   geo.translate(-x / 2, 0, 0);
   geo.computeVertexNormals();
-  return geo;
+  return paintSurface(geo, { low: 0.66, high: 1, faces: 0.02 });
 }
 
 export function createScene() {
@@ -199,9 +200,8 @@ export function createScene() {
   // some are in frame from every camera angle — as individual puff meshes that
   // was ~60-75 draw calls every frame. Bake every cluster into ONE merged mesh
   // (they all share cloudMat, which applyMood recolours) for a single draw.
-  // flatShading gives the crumpled low-poly facets; the silhouette comes from
-  // cloudClusterGeo (jittered icosahedron lumps over a clamped flat base).
-  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true });
+  // Painted undersides keep the flat base legible without another cloud layer.
+  const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
   const puffGeos = [];
   for (let i = 0; i < 16; i++) {
     // Sit them out beyond the playable hills and high up, so they read as

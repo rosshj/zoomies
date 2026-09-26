@@ -1,0 +1,777 @@
+{
+  "baselineCommit": "fffadf30606c522cca0e630f61072b17b1227f2e",
+  "baseline": [
+    {
+      "biome": "alpine",
+      "backend": "webgl",
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 7562
+      },
+      "lighting": null,
+      "changedRoadChannels": 0,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 41,
+        "triangles": 209645,
+        "points": 0,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 87,
+        "attributesSize": 3107716,
+        "geometries": 19,
+        "indexAttributes": 17,
+        "indexAttributesSize": 595692,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 41,
+        "programsSize": 125722,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 58,
+        "uniformBuffersSize": 85360,
+        "total": 21674141
+      },
+      "errors": []
+    },
+    {
+      "biome": "tundra",
+      "backend": "webgl",
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 7562
+      },
+      "lighting": null,
+      "changedRoadChannels": 0,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 41,
+        "triangles": 209537,
+        "points": 0,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 87,
+        "attributesSize": 3107608,
+        "geometries": 19,
+        "indexAttributes": 17,
+        "indexAttributesSize": 595692,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 41,
+        "programsSize": 125722,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 58,
+        "uniformBuffersSize": 84784,
+        "total": 21673457
+      },
+      "errors": []
+    },
+    {
+      "biome": "desert",
+      "backend": "webgl",
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 7562
+      },
+      "lighting": null,
+      "changedRoadChannels": 0,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 100421,
+        "points": 0,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1829516,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 408024,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 34,
+        "programsSize": 107338,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 39,
+        "uniformBuffersSize": 7440,
+        "total": 20111969
+      },
+      "errors": []
+    },
+    {
+      "biome": "mesa",
+      "backend": "webgl",
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 7562
+      },
+      "lighting": null,
+      "changedRoadChannels": 0,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 100421,
+        "points": 0,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1829516,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 408024,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 34,
+        "programsSize": 107338,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 39,
+        "uniformBuffersSize": 7440,
+        "total": 20111969
+      },
+      "errors": []
+    },
+    {
+      "biome": "volcanic",
+      "backend": "webgl",
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 7562
+      },
+      "lighting": null,
+      "changedRoadChannels": 0,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 100421,
+        "points": 0,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1829516,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 408024,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 34,
+        "programsSize": 107338,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 39,
+        "uniformBuffersSize": 7440,
+        "total": 20111969
+      },
+      "errors": []
+    }
+  ],
+  "current": [
+    {
+      "biome": "alpine",
+      "backend": "webgl",
+      "style": {
+        "biome": "alpine",
+        "style": "ceiling LED strips",
+        "fixtures": 22
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4166
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 1364
+      },
+      "changedRoadChannels": 1878,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 41,
+        "triangles": 206249,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 87,
+        "attributesSize": 3022888,
+        "geometries": 19,
+        "indexAttributes": 17,
+        "indexAttributesSize": 574992,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 40,
+        "programsSize": 126990,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 56,
+        "uniformBuffersSize": 85104,
+        "total": 21569625
+      },
+      "errors": []
+    },
+    {
+      "biome": "tundra",
+      "backend": "webgl",
+      "style": {
+        "biome": "tundra",
+        "style": "sealed twin battens",
+        "fixtures": 28
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4874
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 2072
+      },
+      "changedRoadChannels": 1947,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 41,
+        "triangles": 206849,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 87,
+        "attributesSize": 3056956,
+        "geometries": 19,
+        "indexAttributes": 17,
+        "indexAttributesSize": 579240,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 40,
+        "programsSize": 126990,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 56,
+        "uniformBuffersSize": 84528,
+        "total": 21607365
+      },
+      "errors": []
+    },
+    {
+      "biome": "desert",
+      "backend": "webgl",
+      "style": {
+        "biome": "desert",
+        "style": "sodium tunnel lamps",
+        "fixtures": 24
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4290
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 1488
+      },
+      "changedRoadChannels": 1947,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 97149,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1750704,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 388068,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 33,
+        "programsSize": 108606,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 37,
+        "uniformBuffersSize": 7184,
+        "total": 20014213
+      },
+      "errors": []
+    },
+    {
+      "biome": "mesa",
+      "backend": "webgl",
+      "style": {
+        "biome": "mesa",
+        "style": "guarded amber bulkheads",
+        "fixtures": 30
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 5382
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 2580
+      },
+      "changedRoadChannels": 1947,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 98241,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1803312,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 394620,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 33,
+        "programsSize": 108606,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 37,
+        "uniformBuffersSize": 7184,
+        "total": 20073373
+      },
+      "errors": []
+    },
+    {
+      "biome": "volcanic",
+      "backend": "webgl",
+      "style": {
+        "biome": "volcanic",
+        "style": "industrial panel lights",
+        "fixtures": 22
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4694
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 1892
+      },
+      "changedRoadChannels": 1878,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 97553,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1770032,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 390492,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 33,
+        "programsSize": 108606,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 37,
+        "uniformBuffersSize": 7184,
+        "total": 20035965
+      },
+      "errors": []
+    },
+    {
+      "biome": "alpine",
+      "backend": "webgpu",
+      "style": {
+        "biome": "alpine",
+        "style": "ceiling LED strips",
+        "fixtures": 22
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4166
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 1364
+      },
+      "changedRoadChannels": 1878,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 41,
+        "triangles": 206249,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 59,
+        "attributesSize": 2329128,
+        "geometries": 19,
+        "indexAttributes": 17,
+        "indexAttributesSize": 1149984,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 43,
+        "programsSize": 151065,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 63,
+        "uniformBuffersSize": 258080,
+        "total": 21647908
+      },
+      "errors": []
+    },
+    {
+      "biome": "tundra",
+      "backend": "webgpu",
+      "style": {
+        "biome": "tundra",
+        "style": "sealed twin battens",
+        "fixtures": 28
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4874
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 2072
+      },
+      "changedRoadChannels": 1947,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 41,
+        "triangles": 206849,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 59,
+        "attributesSize": 2363196,
+        "geometries": 19,
+        "indexAttributes": 17,
+        "indexAttributesSize": 1158480,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 43,
+        "programsSize": 151065,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 63,
+        "uniformBuffersSize": 257504,
+        "total": 21689896
+      },
+      "errors": []
+    },
+    {
+      "biome": "desert",
+      "backend": "webgpu",
+      "style": {
+        "biome": "desert",
+        "style": "sodium tunnel lamps",
+        "fixtures": 24
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4290
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 1488
+      },
+      "changedRoadChannels": 1947,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 97149,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1750704,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 776136,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 33,
+        "programsSize": 115829,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 37,
+        "uniformBuffersSize": 6880,
+        "total": 20409200
+      },
+      "errors": []
+    },
+    {
+      "biome": "mesa",
+      "backend": "webgpu",
+      "style": {
+        "biome": "mesa",
+        "style": "guarded amber bulkheads",
+        "fixtures": 30
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 5382
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 2580
+      },
+      "changedRoadChannels": 1947,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 98241,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1803312,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 789240,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 33,
+        "programsSize": 115829,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 37,
+        "uniformBuffersSize": 6880,
+        "total": 20474912
+      },
+      "errors": []
+    },
+    {
+      "biome": "volcanic",
+      "backend": "webgpu",
+      "style": {
+        "biome": "volcanic",
+        "style": "industrial panel lights",
+        "fixtures": 22
+      },
+      "span": [
+        116,
+        174
+      ],
+      "structures": {
+        "draws": 8,
+        "triangles": 4694
+      },
+      "lighting": {
+        "draws": 3,
+        "triangles": 1892
+      },
+      "changedRoadChannels": 1878,
+      "outside": 0,
+      "rendered": {
+        "calls": 24,
+        "frameCalls": 3,
+        "drawCalls": 27,
+        "triangles": 97553,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 45,
+        "attributesSize": 1770032,
+        "geometries": 17,
+        "indexAttributes": 15,
+        "indexAttributesSize": 780984,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 33,
+        "programsSize": 115829,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 2,
+        "storageAttributes": 0,
+        "storageAttributesSize": 0,
+        "textures": 8,
+        "texturesSize": 17759651,
+        "uniformBuffers": 37,
+        "uniformBuffersSize": 6880,
+        "total": 20433376
+      },
+      "errors": []
+    }
+  ]
+}

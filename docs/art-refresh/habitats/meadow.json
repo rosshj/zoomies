@@ -1,0 +1,1214 @@
+{
+  "biome": {
+    "name": "meadow",
+    "weather": "none"
+  },
+  "scene": {
+    "triangles": 768551,
+    "mountainTriangles": 26712,
+    "batches": 1051,
+    "invalid": 0,
+    "missingColors": 0,
+    "waterMeshes": 5,
+    "waterMaterials": 1
+  },
+  "views": [
+    {
+      "name": "track-a",
+      "render": {
+        "calls": 1172,
+        "frameCalls": 15,
+        "drawCalls": 349,
+        "triangles": 358970,
+        "points": 0,
+        "lines": 48,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1976,
+        "attributesSize": 30308780,
+        "geometries": 600,
+        "indexAttributes": 350,
+        "indexAttributesSize": 2107056,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 376,
+        "programsSize": 1280719,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60548361,
+        "uniformBuffers": 1531,
+        "uniformBuffersSize": 553264,
+        "total": 94803580
+      }
+    },
+    {
+      "name": "track-b",
+      "render": {
+        "calls": 2807,
+        "frameCalls": 15,
+        "drawCalls": 162,
+        "triangles": 318724,
+        "points": 0,
+        "lines": 48,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1976,
+        "attributesSize": 30308780,
+        "geometries": 600,
+        "indexAttributes": 350,
+        "indexAttributesSize": 2107056,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 376,
+        "programsSize": 1280719,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60548361,
+        "uniformBuffers": 1531,
+        "uniformBuffersSize": 553264,
+        "total": 94803580
+      }
+    },
+    {
+      "name": "track-c",
+      "render": {
+        "calls": 4427,
+        "frameCalls": 15,
+        "drawCalls": 189,
+        "triangles": 278780,
+        "points": 0,
+        "lines": 48,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1980,
+        "attributesSize": 30310076,
+        "geometries": 602,
+        "indexAttributes": 352,
+        "indexAttributesSize": 2107200,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 376,
+        "programsSize": 1280719,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60548361,
+        "uniformBuffers": 1533,
+        "uniformBuffersSize": 553808,
+        "total": 94805564
+      }
+    },
+    {
+      "name": "mountain",
+      "render": {
+        "calls": 6032,
+        "frameCalls": 15,
+        "drawCalls": 207,
+        "triangles": 344006,
+        "points": 0,
+        "lines": 48,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1980,
+        "attributesSize": 30310076,
+        "geometries": 602,
+        "indexAttributes": 352,
+        "indexAttributesSize": 2107200,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 376,
+        "programsSize": 1280719,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60548361,
+        "uniformBuffers": 1533,
+        "uniformBuffersSize": 553808,
+        "total": 94805564
+      }
+    }
+  ],
+  "dressing": {
+    "placements": [
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": 427.0996994140667,
+        "z": 113.7696038589279
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 425.8606710514859,
+        "z": 124.48415987690456
+      },
+      {
+        "kind": "planter",
+        "biome": "meadow",
+        "x": 418.9421334953336,
+        "z": 145.6153065155072
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": 420.8937513459677,
+        "z": 169.60449773680392
+      },
+      {
+        "kind": "planter",
+        "biome": "meadow",
+        "x": 413.87872016801896,
+        "z": 167.5640178802676
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 416.60902179236103,
+        "z": 181.1385638168572
+      },
+      {
+        "kind": "sign",
+        "biome": "meadow",
+        "x": 409.59127726415073,
+        "z": 178.46282405218614
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": 410.2844944541096,
+        "z": 191.95652531022338
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": 404.59376597021566,
+        "z": 189.16938640825614
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": 403.772152822449,
+        "z": 202.15562425625296
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 391.5003000578583,
+        "z": 222.0247239688064
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": 380.1031618914823,
+        "z": 227.23833957585222
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 368.38684190165367,
+        "z": 246.84071242454246
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": 350.90428616470876,
+        "z": 263.39186881667314
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 340.2460216644409,
+        "z": 267.74700744678523
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 297.21650973524555,
+        "z": 215.13051468760636
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 337.7457890646548,
+        "z": 284.8840550250919
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 282.34004040200955,
+        "z": 228.0137162044793
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 308.6106198042706,
+        "z": 294.0022747054311
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 283.45915671065535,
+        "z": 315.0731629310464
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 241.00621235639056,
+        "z": 252.65201286982216
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 228.17715439570733,
+        "z": 252.7018049025211
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 252.45263898117776,
+        "z": 327.9247829478919
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 198.096084992537,
+        "z": 271.0982987744752
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 197.27722942989337,
+        "z": 287.7688190566627
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 167.76449984948687,
+        "z": 302.35084390129504
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 150.55847200334736,
+        "z": 331.3269114952288
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 192.54203714930995,
+        "z": 368.3247298430723
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 188.45909269231743,
+        "z": 378.3323726043245
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 118.19081884987965,
+        "z": 349.0506399621379
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 155.11983457991505,
+        "z": 405.2571096259529
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 108.70738049060697,
+        "z": 367.02038078415166
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 141.6696492294479,
+        "z": 422.2375075493921
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 129.58521981603928,
+        "z": 446.3247813319678
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 112.69312611552671,
+        "z": 443.1081554118014
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 57.193793550357775,
+        "z": 467.77951838619003
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 31.730527138637203,
+        "z": 458.69087850861877
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 19.038006383795587,
+        "z": 462.12800433415805
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -12.37595198094399,
+        "z": 382.519408101085
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -80.30788888818311,
+        "z": 433.2875397152276
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -72.90905669430259,
+        "z": 363.4505565705351
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -81.89509985767992,
+        "z": 340.45474798155664
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -121.59589760369656,
+        "z": 405.83786176098596
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -98.74661846482799,
+        "z": 329.59461521206157
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -121.81167706984849,
+        "z": 324.883744886504
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -155.73766380701653,
+        "z": 391.64039494790796
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -136.12545037638515,
+        "z": 328.10985336342196
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -155.20766787704235,
+        "z": 316.821207605119
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -179.28221918872435,
+        "z": 384.5819177655669
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -174.69347228825478,
+        "z": 308.3129498416016
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -194.70829210196172,
+        "z": 373.9596337214168
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -184.4511612506729,
+        "z": 305.31158585237733
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -205.45178945123106,
+        "z": 376.8073595157734
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -214.30980133142035,
+        "z": 291.0985929171857
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -242.0569312261634,
+        "z": 286.76220530773355
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -270.6051944134692,
+        "z": 351.4218220430457
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -280.7197044247342,
+        "z": 348.0383697587833
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -288.8693204623354,
+        "z": 341.66506106840006
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -302.4677914441484,
+        "z": 348.51589330279984
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -289.5997433775547,
+        "z": 267.1798371281247
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -300.11505201123657,
+        "z": 261.2015176056714
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -368.9432577986695,
+        "z": 262.9912229064366
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -302.77933586895193,
+        "z": 240.0144656974408
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -315.54336665923273,
+        "z": 232.14414693909148
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -313.66610373039634,
+        "z": 222.08434039407945
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -387.66477285864164,
+        "z": 235.16728239422665
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -312.5401691981958,
+        "z": 197.60910623963827
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -385.77985215392994,
+        "z": 177.86340108063584
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -381.83031529661304,
+        "z": 166.18851814425472
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -374.9270581785343,
+        "z": 134.06804301935864
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -301.208777237502,
+        "z": 126.07875830905193
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -455.0399206296162,
+        "z": -244.69131706957023
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -503.9770984880981,
+        "z": -177.54374262022188
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -489.85131380522364,
+        "z": -257.3307044351357
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -533.7723338188634,
+        "z": -192.44373100466476
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -558.3149338742986,
+        "z": -189.24660230834894
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -576.9285106623614,
+        "z": -187.76629282432026
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -618.0603343797604,
+        "z": -250.93389756092938
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -623.5658083257072,
+        "z": -231.7537934055842
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -637.2831375679137,
+        "z": -224.0215077074792
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -588.242264858495,
+        "z": -180.6981164966105
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -589.3717802300085,
+        "z": -167.83820565137006
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -653.694071000638,
+        "z": -159.43553182347696
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -657.8299911544299,
+        "z": -144.17401102614508
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -585.4335641318477,
+        "z": -154.59316402550385
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -649.284589898425,
+        "z": -129.66410526290207
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -582.5643153646733,
+        "z": -52.9270329267787
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -547.8623564867615,
+        "z": -125.47493008164787
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -569.8354458091161,
+        "z": -52.152339569666054
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -560.8117930580564,
+        "z": -41.6071716558109
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -509.74218671378367,
+        "z": -31.36200368980618
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -497.3947808266335,
+        "z": -46.346662156757425
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -500.42947869533714,
+        "z": -113.54904354015943
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -325.13223349923663,
+        "z": -193.98834822359035
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -324.7598246587757,
+        "z": -205.44633734062225
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": -297.52762440658114,
+        "z": -231.13983114526803
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -240.93143495425997,
+        "z": -202.58454413294442
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": -288.5975551285013,
+        "z": -237.01992466023154
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -274.1933874775161,
+        "z": -270.3671070165517
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -193.80844994402472,
+        "z": -284.2622249056347
+      },
+      {
+        "kind": "bush",
+        "biome": "meadow",
+        "x": -236.1075009219638,
+        "z": -312.39827453638554
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -231.92058976855645,
+        "z": -321.6524636345409
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": -233.8123892079232,
+        "z": -335.04939214732536
+      },
+      {
+        "kind": "sign",
+        "biome": "meadow",
+        "x": -227.50318388047387,
+        "z": -331.89114410984854
+      },
+      {
+        "kind": "sign",
+        "biome": "meadow",
+        "x": -221.7646645408307,
+        "z": -341.46962585347546
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -216.98482232086735,
+        "z": -350.90080508084026
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -214.8518122299026,
+        "z": -362.33657095908393
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": -210.91622194985194,
+        "z": -372.6088910742866
+      },
+      {
+        "kind": "sign",
+        "biome": "meadow",
+        "x": -162.69551109913294,
+        "z": -348.9435606823814
+      },
+      {
+        "kind": "sign",
+        "biome": "meadow",
+        "x": -199.05679691650164,
+        "z": -376.5538821017386
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": -151.5233279909876,
+        "z": -352.8475449253219
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -196.66651368938287,
+        "z": -387.00413761275746
+      },
+      {
+        "kind": "planter",
+        "biome": "meadow",
+        "x": -151.58752483106105,
+        "z": -365.8353027269759
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -139.51120926779677,
+        "z": -370.6046280606242
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -145.48614862241698,
+        "z": -374.60427268435745
+      },
+      {
+        "kind": "bush",
+        "biome": "meadow",
+        "x": -140.07127523746857,
+        "z": -383.12986861375634
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": -182.5231792962163,
+        "z": -411.0086219257675
+      },
+      {
+        "kind": "farmhouse",
+        "biome": "meadow",
+        "x": -176.25182661183652,
+        "z": -419.3239105176309
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": -169.77556024067394,
+        "z": -428.35183853993374
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -146.30470073209005,
+        "z": -458.24128748164657
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -95.44649556424201,
+        "z": -404.510084785609
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -113.57286777334895,
+        "z": -472.0159719644291
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": -96.95084624482502,
+        "z": -493.5081301982539
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": -42.94817775073779,
+        "z": -425.60527024835164
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -46.323023259788584,
+        "z": -495.44341201636615
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": -34.78715005035861,
+        "z": -505.20102788029203
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": -23.217588741165578,
+        "z": -506.93960758877955
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": -2.512645355319109,
+        "z": -493.9334051406882
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 0.6175092005823153,
+        "z": -425.9514830310154
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 18.29978902307269,
+        "z": -426.5704211298552
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 52.83892528109831,
+        "z": -495.24579847830404
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": 43.20027801091465,
+        "z": -416.41704985110033
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 59.72279710438936,
+        "z": -478.33456535489154
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 68.50747704898758,
+        "z": -409.69228971626956
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 95.64161508950873,
+        "z": -483.2329252540259
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 126.45833807552914,
+        "z": -470.91554423138984
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 133.1782452557983,
+        "z": -460.46747098391546
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": 124.19866768209869,
+        "z": -379.51465376644956
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 142.87484734260363,
+        "z": -375.41205344581806
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 258.9364402155647,
+        "z": -392.97559375131675
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 233.49853806950415,
+        "z": -317.76827600079025
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 281.3558372613845,
+        "z": -373.51370781695374
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 298.44015229490213,
+        "z": -362.6821676728846
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": 307.58875962999684,
+        "z": -357.2330835656563
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": 272.18090351695014,
+        "z": -290.23317065786034
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 321.0688777826709,
+        "z": -338.34569616019786
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": 325.35178306773145,
+        "z": -327.18067306248776
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": 303.0671252246993,
+        "z": -257.44292134080484
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 358.28982395799477,
+        "z": -316.4238017992266
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 361.8535418659603,
+        "z": -303.76576679244755
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 369.4713892338512,
+        "z": -295.02012587867495
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 330.8619951251218,
+        "z": -239.40490620566945
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": 388.227710206866,
+        "z": -265.9688586645906
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": 408.5923188223858,
+        "z": -225.47968262759548
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 423.43913234322383,
+        "z": -148.4966460444569
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": 436.5721511812648,
+        "z": -138.2458125528221
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 435.175064392079,
+        "z": -126.07300594419323
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": 430.90182668469924,
+        "z": -103.90541575789783
+      },
+      {
+        "kind": "sheep",
+        "biome": "meadow",
+        "x": 433.9848060018767,
+        "z": -93.26491572692962
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 419.0522211175456,
+        "z": -84.9966828666175
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 420.87741799005846,
+        "z": -55.927934320823944
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 430.06106486266134,
+        "z": -45.54694044326407
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 420.1440591962258,
+        "z": -36.73456790544642
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 421.51800508643277,
+        "z": -10.538999093507462
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": 416.4064073909559,
+        "z": 17.226381075917313
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 429.5213136802731,
+        "z": 25.453951034004323
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 434.5345763656502,
+        "z": 35.32526385312954
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 423.13235971715073,
+        "z": 46.91994891316218
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 425.9371899396921,
+        "z": 86.83951590862866
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 258.9238758479696,
+        "z": 408.7443100433496
+      }
+    ],
+    "birds": [
+      {
+        "x": -334.1361849493713,
+        "z": -73.4655286245096,
+        "radius": 53.34348095441237,
+        "species": "swallow"
+      },
+      {
+        "x": -630.5502903477967,
+        "z": -90.42519055019764,
+        "radius": 64.51237435545772,
+        "species": "swallow"
+      },
+      {
+        "x": -455.01971870179483,
+        "z": -25.12125918404243,
+        "radius": 51.77007733704522,
+        "species": "swallow"
+      },
+      {
+        "x": 363.03390260613685,
+        "z": 42.46248149294125,
+        "radius": 67.76622786745429,
+        "species": "swallow"
+      },
+      {
+        "x": 357.8419914757299,
+        "z": 118.74820231964898,
+        "radius": 62.31704372772947,
+        "species": "swallow"
+      },
+      {
+        "x": -58.558884143593204,
+        "z": -417.499353327372,
+        "radius": 72.93190171103925,
+        "species": "swallow"
+      }
+    ],
+    "invalid": [],
+    "wrongBirds": []
+  },
+  "errors": []
+}

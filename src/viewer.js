@@ -1,3 +1,4 @@
+import { setWindClock } from './wind.js';
 // Asset viewer (viewer.html) — a dev tool for inspecting the game's procedural
 // assets one at a time. It imports the SAME modules the game runs (models,
 // scenery, props), so every mesh here is byte-for-byte what ships in a race —
@@ -19,9 +20,11 @@ import {
   disposeGroup,
 } from "./models.js";
 import { assetCatalog } from "./scenery.js";
+import { ROAD_PROPS, makeRoadProp } from "./road-prop-assets.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
-import { KART_PRESETS } from "./presets.js";
+import { KART_STYLES as BODY_STYLES } from "./kart-styles.js";
+import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -40,6 +43,7 @@ const KART_STYLES = [
   ["Buggy", 2, 0x43a047],
   ["Finned", 3, 0xfdd835],
   ["Cage", 4, 0x3949ab],
+  ...BODY_STYLES.slice(5).map((s,i)=>[s.name,i+5,KART_PRESETS[10+i*2].color]),
 ];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -75,7 +79,7 @@ let rideKartIdx = 0;
 function buildCatAsset(fur, opts) {
   if (poseMode !== "drive") return animatedCat(fur, { ...opts, pose: poseMode });
   const preset = KART_PRESETS[rideKartIdx] || KART_PRESETS[0];
-  const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number });
+  const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number, livery:preset.livery });
   const cat = createCat(fur, { ...opts, pose: "kart" });
   cat.scale.setScalar(0.62);
   cat.position.set(0, 0.85, -0.35);
@@ -88,7 +92,7 @@ function buildCatAsset(fur, opts) {
     animate: (t) => {
       const dt = Math.max(0, Math.min(0.05, t - last));
       last = t;
-      if (dt > 0) updateCatRig(rig, dt, 0, 0, false, false, true);
+      if (dt > 0) updateCatRig(rig, dt, Math.sin(t*.9)*.45, 0, false, false, true, false, 18);
       for (let j = 0; j < wheels.length; j++) {
         const w = wheels[j];
         w.rotation.order = "YXZ";
@@ -102,8 +106,9 @@ function buildCatAsset(fur, opts) {
 }
 
 const entries = [];
+for(const c of CAT_PRESETS)entries.push({group:"Racers",kind:"cat",name:c.name,build:()=>buildCatAsset(c.fur,{...c})});
 for (const p of CAT_PATTERNS)
-  entries.push({ group: "Cats", kind: "cat", name: `Cat — ${cap(p)}`, build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
+  entries.push({ group: "Cats", kind: "cat", name: `Cat — ${p==="mittedPoint"?"Mitted points":cap(p)}`, build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {
   if (a === "none") continue;
   entries.push({
@@ -134,8 +139,10 @@ function animatedKart(color, opts) {
 KART_STYLES.forEach(([n, style, color]) =>
   entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(color, { style, number: style + 1 }) })
 );
+KART_PRESETS.forEach(k=>entries.push({group:"Garage karts",name:k.name,build:()=>animatedKart(k.color,k)}));
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
+for (const [kind, spec] of Object.entries(ROAD_PROPS)) entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
 entries.push(...assetCatalog());
 
 // ---------------------------------------------------------------------------
@@ -469,6 +476,7 @@ renderer.setAnimationLoop((now) => {
     orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta)
   );
   camera.lookAt(orbit.target);
+  setWindClock(animPlaying ? now / 1000 : animT);
   renderer.render(scene, camera);
 });
 
@@ -476,12 +484,12 @@ renderer.setAnimationLoop((now) => {
 // stage through this: show an arbitrary garage preset, recolour the backdrop,
 // switch on the game's cel shading, and freeze the animation at a chosen pose.
 window.__viewer = {
-  orbit, camera, scene,
+  orbit, camera, scene, backend: renderer.backend?.isWebGPUBackend ? "webgpu" : "webgl",
   setBackground, setGameLook,
   // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
   showPreset(spec) {
-    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { pattern: spec.pattern, accessory: spec.accessory }));
-    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number }));
+    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { ...spec }));
+    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number, livery:spec.livery }));
   },
   freeze(t = 0) { animPlaying = false; animT = t; curAnim?.(t); refreshAnimPlayBtn(); },
 };

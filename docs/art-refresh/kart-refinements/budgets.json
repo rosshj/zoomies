@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Club Racer",
+    "beforeTriangles": 5904,
+    "afterTriangles": 6348,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  },
+  {
+    "name": "Sprint",
+    "beforeTriangles": 5916,
+    "afterTriangles": 6208,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Shifter",
+    "beforeTriangles": 6488,
+    "afterTriangles": 6300,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Endurance",
+    "beforeTriangles": 6196,
+    "afterTriangles": 6296,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Rental Pro",
+    "beforeTriangles": 6292,
+    "afterTriangles": 6392,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Vintage Racer",
+    "beforeTriangles": 6824,
+    "afterTriangles": 6552,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  },
+  {
+    "name": "Dirt Oval",
+    "beforeTriangles": 6052,
+    "afterTriangles": 6248,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  },
+  {
+    "name": "Flat Tracker",
+    "beforeTriangles": 6588,
+    "afterTriangles": 6936,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  },
+  {
+    "name": "Rallycross",
+    "beforeTriangles": 7912,
+    "afterTriangles": 8508,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  },
+  {
+    "name": "Crosskart",
+    "beforeTriangles": 7324,
+    "afterTriangles": 8240,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  },
+  {
+    "name": "Dune Racer",
+    "beforeTriangles": 7164,
+    "afterTriangles": 7744,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Streamliner",
+    "beforeTriangles": 6064,
+    "afterTriangles": 6356,
+    "beforeBatches": 21,
+    "afterBatches": 21
+  }
+]

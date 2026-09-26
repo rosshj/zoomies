@@ -503,6 +503,34 @@ class AudioEngine {
     o.stop(now + 0.18);
   }
 
+  // Short material-specific prop contacts. Distance rejection and a shared
+  // voice-rate limit happen before allocating Web Audio nodes.
+  propImpact(kind, pos, strength = .5) {
+    if (!this.ctx || !this.sfxOn || this.ctx.state !== "running" || !this._spatial(pos)) return;
+    const now = this.ctx.currentTime;
+    if (now - (this._lastPropImpact ?? -1) < .065) return;
+    this._lastPropImpact = now;
+    const sounds = {
+      wood:[190,.12,900], coconut:[440,.11,1700], rubber:[125,.19,450],
+      hay:[85,.12,300], rustle:[105,.18,2200], fruit:[180,.10,650],
+      plastic:[330,.12,1400], pot:[710,.16,3200], snow:[95,.13,1300],
+      ice:[950,.13,2800], stone:[145,.11,750], metal:[620,.23,2400],
+    };
+    const [pitch,duration,filter] = sounds[kind] || sounds.wood;
+    const tone = this._osc(kind === "metal" ? "triangle" : "sine", pitch);
+    tone.frequency.exponentialRampToValueAtTime(pitch * (kind === "rubber" ? .38 : .72), now + duration);
+    const gain = this._route(tone,pos,.08+Math.min(1,strength)*.16);
+    if(!gain){tone.disconnect();return;}
+    gain.gain.setValueAtTime(gain._peak,now);
+    gain.gain.exponentialRampToValueAtTime(.0001,now+duration);
+    const noise=this._noiseSource(),band=this.ctx.createBiquadFilter(),mix=this.ctx.createGain();
+    band.type='bandpass';band.frequency.value=filter;band.Q.value=.8;
+    mix.gain.value=kind==='rustle'||kind==='snow'||kind==='hay'?.8:.22;
+    noise.connect(band);band.connect(mix);mix.connect(gain);
+    tone.start(now);tone.stop(now+duration+.02);noise.start(now);noise.stop(now+duration);
+    tone.onended=()=>{tone.disconnect();noise.disconnect();band.disconnect();mix.disconnect();gain.disconnect();};
+  }
+
   // Wall scrape: a brief metallic noise hiss.
   scrape(pos = null) {
     if (!this.ctx) return;

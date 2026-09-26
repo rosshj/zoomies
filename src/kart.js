@@ -125,10 +125,10 @@ export function shadowTexture() {
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-  // Darker + a broader solid core so the shadow reads from the chase cam (the
-  // old soft 0.5 core faded out within the kart's own footprint and vanished).
-  g.addColorStop(0, "rgba(0,0,0,0.82)");
-  g.addColorStop(0.55, "rgba(0,0,0,0.6)");
+  // A firm contact core with a lighter penumbra, baked into the same 64px
+  // mask. Same three gradient stops and runtime sampling cost.
+  g.addColorStop(0, "rgba(0,0,0,0.86)");
+  g.addColorStop(0.55, "rgba(0,0,0,0.36)");
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
@@ -145,7 +145,7 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1, rng = Math.random, headless = false }) {
+  constructor({ color, catColor, catType, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, kartLivery, name, isPlayer, skill = 1, rng = Math.random, headless = false }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
@@ -257,14 +257,14 @@ export class Kart {
       // the world axis, so the kart only tilts to the grade when facing ±Z — on a
       // looping track it mostly wouldn't pitch at all.
       this.group.rotation.order = "YXZ";
-      const { group: kart, wheels, brakeMat, flames, flag } = createKartModel(color, { style: kartStyle, number: kartNumber });
+      const { group: kart, wheels, brakeMat, flames, flag } = createKartModel(color, { style: kartStyle, number: kartNumber, livery:kartLivery });
       this.wheels = wheels;
       for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
       this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
       this.flames = flames; // boost exhaust flames; shown/flickered while boosting
       this.flag = flag; // roadster pennant pivot (flapped in update); null elsewhere
       this.group.add(kart);
-      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart" });
+      const cat = createCat(catColor, { type:catType, pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart" });
       cat.scale.setScalar(0.62);
       cat.position.set(0, 0.85, -0.35);
       this.group.add(cat);
@@ -817,7 +817,7 @@ export class Kart {
     // lifts while tooting).
     // Blink only on the post-race victory lap (the racing rig already gives a
     // moving cat plenty of life); never mid-race.
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished, this.gloatTimer > 0);
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished, this.gloatTimer > 0, this.speed);
 
     // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
     // long axis along the sun azimuth (independent of which way the kart faces),

@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { installSceneryRendering } from "./scenery-shadows.js";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
 import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
@@ -23,8 +24,9 @@ import { ChaseCam } from "./split.js";
 import { HairballManager } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal, formatTime } from "./hud.js";
-import { buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle, biomeDustColor, biomeDebrisColor } from "./scenery.js";
+import { BIOME_NAMES, buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle } from "./scenery.js";
 import { EffectsManager } from "./effects.js";
+import { environmentProfile, looseSurface } from "./environment-particles.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { encodeWorld, decodeWorld } from "./worldcfg.js";
 import {
@@ -78,12 +80,14 @@ let trackConfig = loadTrackConfig(); // `let`: a cup race replaces this with the
 // Garage presets live in src/presets.js (pure data) so the catalog-screenshot
 // tool can import them without booting the game.
 import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } from "./presets.js";
+import { KART_STYLES, KART_LIVERIES, savedKartIndex, savedKartStyle } from "./kart-styles.js";
+import { CAT_TYPES, CAT_TYPE_IDS, savedCatIndex } from "./cat-types.js";
 // A "Custom" slot sits one past the last preset in each stepper; landing on it
 // reveals the creator (colour / pattern / accessory / name) and the look is read
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
-const KART_STYLE_COUNT = 5; // GP / roadster / buggy / finned / cage (see createKartModel STYLES)
+const KART_STYLE_COUNT = KART_STYLES.length;
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -94,6 +98,7 @@ function sanitizeCustomCat(c) {
   c = c && typeof c === "object" ? c : {};
   return {
     name: _clampName(c.name, DEFAULT_CUSTOM_CAT.name),
+    type: CAT_TYPE_IDS.includes(c.type) ? c.type : "classic",
     fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
     pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
     accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
@@ -103,15 +108,14 @@ function sanitizeCustomCat(c) {
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
-  // Legacy migration: the Cage was style 6 before the moto/minivan models were
-  // removed and the table compacted — map old saves onto its new slot.
-  const raw = k && k.style === 6 ? 4 : k.style;
+  const raw = k.style;
   const style = _clampInt(raw, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
     style,
     number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
+    livery: _clampInt(k.livery, 0, KART_LIVERIES.length-1, 0),
   };
 }
 function loadGarageConfig() {
@@ -119,10 +123,10 @@ function loadGarageConfig() {
     const c = JSON.parse(localStorage.getItem(GARAGE_KEY));
     if (c && typeof c === "object") {
       return {
-        cat: clampIdx(c.cat, CAT_PRESETS.length + 1), // +1: the Custom slot is valid
-        kart: clampIdx(c.kart, KART_PRESETS.length + 1),
+        cat: savedCatIndex(c, CAT_PRESETS.length), // +1: the Custom slot is valid
+        kart: savedKartIndex(c, KART_PRESETS.length),
         customCat: sanitizeCustomCat(c.customCat),
-        customKart: sanitizeCustomKart(c.customKart),
+        customKart: sanitizeCustomKart({...c.customKart,style:savedKartStyle(c)}),
       };
     }
   } catch {
@@ -131,13 +135,9 @@ function loadGarageConfig() {
   // Marmalade in the Ember kart (the original "You"), with sensible custom defaults.
   return { cat: 0, kart: 0, customCat: sanitizeCustomCat(), customKart: sanitizeCustomKart() };
 }
-function clampIdx(v, n) {
-  v = Number.isInteger(v) ? v : 0;
-  return v < 0 ? 0 : v >= n ? 0 : v;
-}
 function saveGarageConfig(c) {
   try {
-    localStorage.setItem(GARAGE_KEY, JSON.stringify(c));
+    localStorage.setItem(GARAGE_KEY, JSON.stringify({...c,v:3,catId:c.cat===CUSTOM_CAT_IDX?"custom":null,kartId:c.kart===CUSTOM_KART_IDX?"custom":null}));
   } catch {
     /* ignore */
   }
@@ -147,16 +147,16 @@ function saveGarageConfig(c) {
 function catSpec(cfg) {
   if (cfg.cat === CUSTOM_CAT_IDX) {
     const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
-    return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
+    return { name: c.name, type:c.type, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
   }
   const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
   // Preset cats may override their pattern's default accessory (presets.js).
-  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
+  return { name: p.name, type:p.type, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
 }
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {
     const k = cfg.customKart || DEFAULT_CUSTOM_KART;
-    return { name: k.name, color: k.color, style: k.style, number: k.number };
+    return { name: k.name, color: k.color, style: k.style, number: k.number, livery:k.livery };
   }
   return KART_PRESETS[cfg.kart] || KART_PRESETS[0];
 }
@@ -165,7 +165,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
-  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  return { catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: cat.name };
 }
 
 const _qs = new URLSearchParams(location.search);
@@ -333,6 +333,8 @@ let DIFFICULTY = "medium"; // default for a fresh profile: the middle of the lad
 try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
 
 const { renderer, scene, camera, sun, applyMood, setFogScale, ready: rendererReady, skyMesh, starField } = createScene();
+installSceneryRendering(renderer, sun);
+const _lodViews = [camera];
 // Debug hook (console / headless tooling): inspect the live scene graph and
 // renderer counters without instrumenting a build.
 window.__zoomies = { scene, camera, renderer }; // world/track/karts attached below once built
@@ -390,7 +392,7 @@ const _uVignette = uniform(0.12); // eased — corners were reading too dark
 // but sunset/night read too dark in the shadowed areas, so lift their darks more.
 // Night/sunset brightness now comes mostly from exposure + ambient (see MOODS), so
 // keep the shadow-lift modest here — too much lift greyed the blacks (washed out).
-const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.045 : TIME_OF_DAY === "sunset" ? 0.04 : 0.02;
+const _shadowLiftTOD = TIME_OF_DAY === "night" ? 0.05 : TIME_OF_DAY === "sunset" ? 0.045 : 0.035;
 const _uShadowLift = uniform(_shadowLiftTOD);
 // (Depth-of-field removed for frame rate — it was a per-frame 16-tap blur plus a
 // full-screen copy. The look held up fine without it.)
@@ -509,6 +511,7 @@ const BLOOM_THRESHOLD = _bloomNode.threshold.value;
 // greener, the city reads flat and contrasty. Multipliers on top of the mood's
 // saturation/exposure/contrast, crossfaded over ~1.5s at the borders.
 const BIOME_GRADE = {
+  lavender: { sat: 1.03, exp: 1, con: 1 }, wetlands: { sat: .95, exp: 1, con: 1 }, volcanic: { sat: .94, exp: 1.04, con: 1.02 },
   meadow:  { sat: 1.0,  exp: 1.0,  con: 1.0 },
   desert:  { sat: 1.06, exp: 1.05, con: 1.0 },
   savanna: { sat: 1.05, exp: 1.03, con: 1.0 },
@@ -569,6 +572,8 @@ let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
   size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
+  biomeNameAt,
+  onImpact: (kind, pos, strength) => audio.propImpact(kind, pos, strength),
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
@@ -715,6 +720,7 @@ const _bootQuality = (() => {
 const HEADLIGHT_BUDGET = _bootQuality === "high" ? 6 : _bootQuality === "medium" ? 4 : 2;
 const _hlBase = 68 * LIGHT_LEVEL; // full intensity (dimmer at dusk, full at night)
 const _hlPool = []; // { light, target } reused across karts
+const _leafViews = [];
 const _leafKarts = []; // scratch: karts for the leaf wakes
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
 let _hlRamp = 1;
@@ -951,6 +957,21 @@ const _warmPos = new THREE.Vector3();
 const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
+function emitSurfaceDebris(kart, dt, visibility) {
+  const speed=Math.abs(kart.speed||0);if(kart.airborne || speed<4)return;
+  const n=track.samples,row=Math.floor((kart.trackT||0)*n)%n,p=track._pts[row],t=track._tans[row];
+  const lateral=(kart.position.x-p.x)*-t.z+(kart.position.z-p.z)*t.x;
+  const biome=biomeNameAt(kart.position.x,kart.position.z,kart.groundY),spec=environmentProfile(biome);
+  const sliding=kart.drifting||kart.spinTimer>0;
+  const loose=looseSurface(biome,kart.position.x,kart.position.z,lateral,track.halfWidth,row,sliding);
+  const pace=Math.min(1,speed/(kart.maxSpeed||65));
+  const amount=loose*(sliding?1:pace*.65)*visibility;
+  _dustCol.set(spec.tile===3||spec.tile===4||spec.tile===6?spec.colors[0]:0x9a968b);
+  if(amount>.015)effects.dust(kart,_dustCol,amount,dt,biome);
+  if(pace>.18)effects.wakeDebris(kart,_wakeCol,pace*(spec.tile<3||spec.tile===5?.2+loose*.8:loose)*visibility,dt,biome);
+  if(sliding&&pace>.5&&spec.tile!==4)effects.tireGrit(kart,dt*visibility);
+}
+
 const hud = new HUD();
 const _hudOpts = { lapNum: 0, totalLaps: 0, place: 0, totalKarts: 0, speedKmh: 0, time: 0 }; // reused hud.update arg
 
@@ -1071,34 +1092,31 @@ const ROSTER = [
 let karts = [];
 let player = null;
 
-// First palette colour not already taken (the garage palettes are bigger than the
-// field, so there's always a free one).
-function _pickUnused(palette, used) {
-  for (const c of palette) if (!used.has(c)) return c;
-  return palette[0];
-}
-// The per-race roster: the player (slot 0) wears the garage selection; the AI keep
-// their names/skills but get nudged off the player's kart + cat colours so the
-// player stands out. A time-trial field is the player alone.
+// The player wears the garage selection; AI keep their driving traits and draw
+// distinct named cats from a deterministic shuffle of the complete roster.
+// A time-trial field is the player alone.
 // The AI lineup for a given player look (deterministic: same look → same
 // rivals). Shared by the race build AND the start-line grid tableau, so the
 // cats you see waiting on the grid are exactly the cats you race.
-function aiRoster(look) {
-  const usedKart = new Set([look.color]);
-  const usedCat = new Set([look.catColor]);
-  return ROSTER.slice(1).map((cfg, i) => {
-    let { color, catColor } = cfg;
-    if (usedKart.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), usedKart);
-    usedKart.add(color);
-    if (usedCat.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), usedCat);
-    usedCat.add(catColor);
-    // Spread body styles + give each rival its own number so the field varies.
-    return { ...cfg, color, catColor, kartStyle: i % 3, kartNumber: 11 + i * 6 };
+function aiRoster(look, otherHumans=[]) {
+  const usedKart = new Set([look.color,...otherHumans.map(c=>c.color)]);
+  const signature=c=>`${c.catColor}|${c.catType||'classic'}|${c.catPattern||''}`;
+  const usedCat=new Set([look,...otherHumans].map(signature));
+  const rng=makeRng(WORLD_SEED+'|cats|'+signature(look));
+  const pool=CAT_PRESETS.map(c=>({name:c.name,catColor:c.fur,catType:c.type,catPattern:c.pattern,catAccessory:c.accessory}));
+  for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  const kartPool=[...KART_PRESETS];
+  for(let i=kartPool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[kartPool[i],kartPool[j]]=[kartPool[j],kartPool[i]];}
+  return ROSTER.slice(1).map((cfg,i)=>{
+    const kart=kartPool.find(k=>!usedKart.has(k.color))||kartPool[i];
+    usedKart.add(kart.color);
+    const cat=pool.find(c=>!usedCat.has(signature(c)));usedCat.add(signature(cat));
+    return {...cfg,...cat,color:kart.color,kartStyle:kart.style,kartNumber:kart.number,kartLivery:kart.livery};
   });
 }
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, kartLivery:look.kartLivery };
   if (timeTrial) return [playerCfg];
   if (raceMode === "split") {
     // Versus: 2-4 humans + AI to fill the same six-kart field (and headlight
@@ -1107,8 +1125,6 @@ function raceRoster() {
     // no AI skill scaling) wearing its startline pick; rivals recolour away
     // from EVERY human so nobody impersonates a player.
     playerCfg.name = "Player 1";
-    const humanKartColors = new Set([look.color]);
-    const humanCatColors = new Set([look.catColor]);
     const seatCfgs = [];
     for (let seat = 2; seat <= splitCount; seat++) {
       const { cat: sc, kart: sk } = seatLook(seat);
@@ -1118,20 +1134,15 @@ function raceRoster() {
         seat,
         color: sk.color,
         catColor: sc.fur,
+        catType: sc.type,
         catPattern: sc.pattern,
         catAccessory: sc.accessory,
         kartStyle: sk.style,
         kartNumber: sk.number,
+        kartLivery: sk.livery,
       });
-      humanKartColors.add(sk.color);
-      humanCatColors.add(sc.fur);
     }
-    const ais = aiRoster(look).slice(0, 6 - 1 - seatCfgs.length).map((cfg) => {
-      let { color, catColor } = cfg;
-      if (humanKartColors.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), humanKartColors);
-      if (humanCatColors.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), humanCatColors);
-      return { ...cfg, color, catColor };
-    });
+    const ais = aiRoster(look, seatCfgs).slice(0, 5 - seatCfgs.length);
     return [playerCfg, ...seatCfgs, ...ais];
   }
   return [playerCfg, ...aiRoster(look)];
@@ -1477,7 +1488,7 @@ function updateAtmosphere() {
     vis = _ss(0.02, 0.45, facing) * (1 - _ss(1.0, 2.4, off));
   }
   // Rain clouds the sun: fade the shafts/flare/backlight as it picks up.
-  const clear = 1 - 0.7 * weather.rainAmount;
+  const clear = 1 - 0.8 * weather.rainAmount;
   vis *= clear;
   godrayPass.uniforms.uVis.value = vis; // (flarePass is a dead stub — no write)
   // Refresh the shaft target every OTHER frame while the sun shows (soft, low-
@@ -1515,6 +1526,16 @@ function updateAtmosphere() {
 // minimap while playing.
 function renderFrame() {
   if (!_rendererReady) return; // WebGPURenderer must finish init() before first render
+  // Upload/draw both LOD variants under the splash. Normal racing only selects
+  // already-warmed geometry; a first distant switch should not compile mid-race.
+  if (_warmAllFrames > 0) {
+    for (const e of world.lod.entries) e.mesh.geometry = _warmAllFrames % 2 ? e.far : e.near;
+  } else {
+    const multi = splitActive && player2 && state !== State.MENU && _sCams.length;
+    _lodViews.length = multi ? splitPlayers.length : 1;
+    for (let i = 0; i < _lodViews.length; i++) _lodViews[i] = multi ? _sCams[i].camera : camera;
+    world.lod.update(_lodViews);
+  }
   renderer.info.reset(); // count draw calls across the whole frame (autoReset is off)
   let _t = performance.now();
   // Versus (2P): the shared camera mirrors P1's view so everything that reads
@@ -2067,7 +2088,7 @@ const qualityBalBtn = document.getElementById("set-quality-balanced");
 // and the quad itself — a shadow-casting shadow is an Escher print.
 function applyKartShadowMode(kart) {
   if (!kart || !kart.group) return;
-  const real = quality === "high";
+  const real = quality === "high" && !saverOn;
   if (kart.groundShadow) kart.groundShadow.visible = !real;
   kart.group.traverse((o) => {
     if (!o.isMesh || o === kart.shadowQuad || o === kart.shieldMesh) return;
@@ -2096,10 +2117,9 @@ function applyQuality(q, persist = true) {
   const high = q === "high";
   // Real-time shadows: the frustum stays world-fitted (a moving boundary
   // pops long shadows — tried and rejected, see updateAtmosphere), but on
-  // High the MAP re-renders — at most 30Hz, and only while a kart is moving
-  // (see _tickShadow) — so karts cast true shadows (their quads hide) and the
-  // canopies' wind sway animates in the shadows too. The map is never on
-  // three's per-frame autoUpdate; Battery saver keeps it fully static.
+  // High the map re-renders at most 30Hz while karts move. All scenery
+  // uses its original shadow geometry regardless of visual LOD. Battery saver
+  // freezes scenery shadows and restores the karts' projected shadows.
   sun.shadow.autoUpdate = false;
   _shadowLive = high && !saverOn;
   sun.shadow.needsUpdate = true; // one fresh map for the new mode (static tiers hold it)
@@ -2125,6 +2145,8 @@ function applyQuality(q, persist = true) {
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
   _shaftTex.autoUpdate = fullFx; // don't re-render the god-ray target when it's unused
   if (world.grass) world.grass.visible = liveWorld;
+  world.groundLeaves?.setQuality(q,saverOn);
+  effects.environmentScale = q === "low" ? .4 : saverOn ? .65 : 1;
   if (gpuParticles) gpuParticles.setVisible(liveWorld && !saverOn); // hidden = its compute is skipped too
   // Weather: draw half the rain/snow instances in Battery saver (the field is
   // random-scattered, so any prefix is an even subset).
@@ -3062,7 +3084,7 @@ function warmGarageKart() {
   try {
     const cat = catSpec(garageConfig);
     const kart = kartSpec(garageConfig);
-    const wk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
+    const wk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: "warm", isPlayer: false, skill: 1 });
     wk.group.traverse((o) => {
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3106,8 +3128,8 @@ function warmRosterGeometries() {
     if (i >= roster.length || state !== State.MENU) return;
     const cfg = roster[i++];
     try {
-      const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber });
-      const cat = createCat(cfg.catColor, { pattern: cfg.catPattern });
+      const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber, livery:cfg.kartLivery });
+      const cat = createCat(cfg.catColor, { type:cfg.catType, pattern: cfg.catPattern, accessory:cfg.catAccessory });
       _disposeGroup(group);
       _disposeGroup(cat);
     } catch { /* warm-up only */ }
@@ -3383,7 +3405,7 @@ refreshInstallUI();
 // Edits a draft recipe; "Apply" persists it and reloads to rebuild the world
 // from the new track (rebuilding scenery + track in place is a later upgrade).
 const trackPanel = document.getElementById("track-panel");
-const ALL_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "mesa", "blossom", "jungle", "savanna", "tundra", "city", "beach"];
+const ALL_BIOMES = BIOME_NAMES;
 // Biomes are laid out as angular wedges around the track. A small/tight loop only
 // sweeps through a few of those wedges, so picking 5 biomes on a tiny map left some
 // never visited (the reported "not all biomes show" bug). Cap the count to what a
@@ -3644,12 +3666,12 @@ const _previewCache = { key: null, kart: null };
 function _previewKey(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  return [cat.fur, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
+  return [cat.fur, cat.type, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number, kart.livery].join("|");
 }
 function _buildPreviewKart(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: cat.name, isPlayer: false, skill: 1 });
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3690,7 +3712,7 @@ function buildGaragePreview() {
 // offer. Custom picks aren't limited to these — they just seed quick choices.
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Cage"];
+const KART_STYLE_NAMES = KART_STYLES.map(s=>s.name);
 // 24 curated names each: the studios' Surprise-me pool AND the pad-friendly
 // name picker's grid (a text field has no on-screen keyboard on a controller).
 const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel", "Luna", "Oreo",
@@ -3752,8 +3774,10 @@ function _syncAccColorGrid(accId, chosenColor) {
 function syncCreators() {
   if (!_garageDraft) return;
   const c = _garageDraft.customCat;
+  const typeName=document.getElementById("cat-type-name");
+  if(typeName)typeName.textContent=CAT_TYPES[c.type]?.label||"Classic";
   const patName = document.getElementById("cat-pat-name");
-  if (patName) patName.textContent = _cap(c.pattern);
+  if (patName) patName.textContent = c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern);
   const accName = document.getElementById("cat-acc-name");
   if (accName) accName.textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
   const ni = document.getElementById("cat-custom-name");
@@ -3763,6 +3787,9 @@ function syncCreators() {
   const k = _garageDraft.customKart;
   const styleName = document.getElementById("kart-style-name");
   if (styleName) styleName.textContent = KART_STYLE_NAMES[k.style] || "GP";
+  document.getElementById('kart-livery-row')?.classList.remove('hidden');
+  const liveryName=document.getElementById('kart-livery-name');
+  if(liveryName)liveryName.textContent=KART_LIVERIES[k.livery];
   const numName = document.getElementById("kart-num-name");
   if (numName) numName.textContent = String(k.number);
   const nk = document.getElementById("kart-custom-name");
@@ -3848,7 +3875,7 @@ function editCustomKart(patch, rebuild = true) {
   if (rebuild) buildGaragePreview();
 }
 function stepCustom(which, list, dir) {
-  if (which === "pattern" || which === "accessory") {
+  if (which === "type" || which === "pattern" || which === "accessory") {
     const i = list.indexOf(_garageDraft.customCat[which]);
     const patch = { [which]: list[(i + dir + list.length) % list.length] };
     // Switching accessory resets its colour to that type's natural default.
@@ -3866,23 +3893,26 @@ function renderGarage(timeSec, dt = 0.016) {
   _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
   const p = _garagePreview.position;
   const ang = timeSec * 0.5;
-  const r = 11.2; // well back so the whole kart reads small and never clips
-  camera.position.set(p.x + Math.sin(ang) * r, p.y + 3.1, p.z + Math.cos(ang) * r);
+  // Fit the six-unit kart envelope inside the open left half on narrower
+  // windows too. A fixed distance/pan cropped wheels and tall cages there.
+  const halfFov=Math.tan(19*Math.PI/180);
+  const r=Math.max(11.2,7.4/(halfFov*camera.aspect));
+  camera.position.set(p.x + Math.sin(ang) * r, p.y + 1.55+r*.16, p.z + Math.cos(ang) * r);
   if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
-  _garageLook.set(p.x, p.y + 1.25, p.z);
+  _garageLook.set(p.x, p.y + 1.55, p.z);
   camera.lookAt(_garageLook);
   // Pan the aim right along the camera's screen-right axis so the kart sits in
   // the open left half (the card covers the right). Re-aim after the shift.
   _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-  _garageLook.addScaledVector(_garageRight, 3.4);
+  _garageLook.addScaledVector(_garageRight, r*halfFov*camera.aspect*.52);
   camera.lookAt(_garageLook);
   renderFrame();
 }
 
 // --- Start-line grid tableau ----------------------------------------------
 // The "Start line" screen renders the ACTUAL starting grid behind the panel:
-// your preview kart parked in pole and the real AI lineup (aiRoster — the same
-// cats you'll race) on the slots behind, shot from in front of the gantry.
+// your preview kart parked in pole and the actual guest/AI lineup on the
+// slots behind, shot from in front of the gantry.
 // Rivals are built staggered (one per frame-ish) so entering the screen never
 // hitches, and cached like the showroom preview so re-entry is instant.
 let _gridOpen = false;
@@ -3894,10 +3924,6 @@ const _gridCamBase = new THREE.Vector3();
 const _gridLook = new THREE.Vector3();
 const _gridSide = new THREE.Vector3();
 const _gridRight = new THREE.Vector3();
-function _gridRivalKey() {
-  const look = playerLook();
-  return [look.color, look.catColor].join("|"); // rival de-clash depends only on these
-}
 function _buildGridRival(cfg) {
   const k = new Kart({ ...cfg, isPlayer: false });
   k.group.traverse((o) => {
@@ -3933,13 +3959,13 @@ function _placeGridField() {
   for (const k of _gridRivals) scene.remove(k.group);
   _gridRivals = [];
   if (raceMode === "tt") { _aimGridCamera(); return; }
-  const rkey = _gridRivalKey();
+  const roster = raceRoster().slice(1);
+  const rkey = JSON.stringify(roster);
   if (_gridRivalCache.key !== rkey) {
     for (const k of _gridRivalCache.karts) _disposeGroup(k.group);
     _gridRivalCache.karts = [];
     _gridRivalCache.key = rkey;
   }
-  const roster = aiRoster(playerLook());
   const placeRival = (i) => {
     if (!_gridOpen || i >= roster.length) {
       if (_gridOpen && state === State.MENU) beginWarmAll(1); // compile any new pipelines off-tap
@@ -4011,6 +4037,7 @@ function closeStartGrid() {
 window.__zoomies.startGrid = () => ({ open: _gridOpen, rivals: _gridRivals.length, player: !!(_previewCache.kart && _previewCache.kart.group.parent) });
 
 // Custom-cat creator controls.
+for(const [suffix,dir] of [["prev",-1],["next",1]])document.getElementById(`cat-type-${suffix}`)?.addEventListener("click",()=>stepCustom("type",CAT_TYPE_IDS,dir));
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
 document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
 document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
@@ -4021,7 +4048,7 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
   const accessory = _pick(CAT_ACCESSORIES);
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
-    fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
+    type:_pick(CAT_TYPE_IDS), fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
     accessoryColor: pal.length ? _pick(pal) : null,
   });
 });
@@ -4033,11 +4060,12 @@ const _stepKartStyle = (dir) => {
 };
 document.getElementById("kart-style-prev")?.addEventListener("click", () => _stepKartStyle(-1));
 document.getElementById("kart-style-next")?.addEventListener("click", () => _stepKartStyle(1));
+for(const [suffix,dir] of [['prev',-1],['next',1]])document.getElementById(`kart-livery-${suffix}`)?.addEventListener('click',()=>editCustomKart({livery:(_garageDraft.customKart.livery+dir+KART_LIVERIES.length)%KART_LIVERIES.length}));
 document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
 document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
 document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
-  color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
+  color: _pick(KART_COLOR_SWATCHES), livery:Math.floor(Math.random()*KART_LIVERIES.length), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
 // Name picker (both studios): "✏️ Pick" swaps the creator for a grid of the
@@ -4146,6 +4174,7 @@ function renderCatCards() {
     grid.appendChild(racerGridCard({
       img: `assets/catalog/cat-${i}.jpg`,
       name: c.name,
+      sub: (_pickingSeat || isUnlocked(profile,`cat.${i}`)) ? (CAT_TYPES[c.type]?.label || "Classic") : undefined,
       // Couch rule: a guest's seat pass rides any preset free — Versus pays
       // no treats, and P1's locks/prices (and wallet!) are P1's alone.
       buyId: _pickingSeat ? null : `cat.${i}`,
@@ -4534,6 +4563,9 @@ const FEATURED_TRACKS = [
   { name: "Snowcap Sprint", sub: "🏔 Alpine · Sunset", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
   { name: "Maple Falls", sub: "🍂 Autumn · Sunset", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
   { name: "Petal Parade", sub: "🌸 Blossom · Midday", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
+  { name: "Lavender Loop", sub: "🪻 Countryside · Sunset", cfg: { mode: "custom", seed: "BLOOM", size: 0.5, curviness: 0.5, twist: 0.42, hilliness: 0.3, hills: 0.45, biomes: ["lavender"], timeOfDay: "sunset" } },
+  { name: "Willow Wash", sub: "🌧 Wetlands · Midday", cfg: { mode: "custom", seed: "REED", size: 0.5, curviness: 0.4, twist: 0.4, hilliness: 0.2, hills: 0.3, biomes: ["wetlands"], timeOfDay: "midday" } },
+  { name: "Basalt Blast", sub: "🌋 Badlands · Sunset", cfg: { mode: "custom", seed: "BASALT", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["volcanic"], timeOfDay: "sunset" } },
 ];
 const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
 function trackCardCurrent(cfg) {
@@ -6625,7 +6657,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, kartLivery:look.kartLivery, name: "Ghost", isPlayer: false, skill: 1 });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).
@@ -6942,7 +6974,11 @@ function loopBody(now) {
     // pigeon flocks go live/scatter for whichever player gets close).
     world.update(now / 1000, dt,
       splitActive && player2 ? splitPlayers.map((k) => k.position) : player ? player.position : null);
-    if (gpuParticles) gpuParticles.update(dt, camera.position); // step the GPU compute motes (follows the camera)
+    if (gpuParticles) {
+      const at=player?.position||camera.position;
+      gpuParticles.setEnvironment(biomeNameAt(at.x,at.z,at.y));
+      gpuParticles.update(dt, camera.position);
+    }
     _seg.world = performance.now() - _t;
   }
 
@@ -6969,7 +7005,9 @@ function loopBody(now) {
     // Alloc-free scratch list (same pattern as the headlight candidates).
     _leafKarts.length = 0;
     for (const k of karts) _leafKarts.push(k);
-    world.groundLeaves.update(_leafKarts, camera.position, dt); // kick up leaves in the karts' wake
+    _leafViews.length=0;
+    if(splitActive)for(const c of _sCams)_leafViews.push(c.camera);
+    world.groundLeaves.update(_leafKarts, camera.position, dt, _leafViews); // kick up leaves in the karts' wake
   }
   updateRearThreat(); // HUD warning when a kart can hairball you from behind
 
@@ -7180,30 +7218,6 @@ function loopBody(now) {
       effects.skid(player);
     }
 
-    // Dust kicked off the track, tinted to the local ground. A thick plume while
-    // sliding/cornering hard, a faint veil while just driving at speed — only when
-    // the kart is actually on the ground (no dust mid-jump). One color sample/frame.
-    if (!player.airborne && _sp > 6) {
-      biomeDustColor(player.position.x, player.position.z, _dustCol);
-      let amt = _drift ? 1.0 : _hardTurn ? 0.75 : Math.min(0.35, (_sp - 6) / 90);
-      // Flat-out (top ~10% of the speed range): the faint cruising veil thickens
-      // into a proper plume, so max speed is visibly working the road.
-      const _snDust = _sp / player.maxSpeed;
-      if (_snDust > 0.9) amt = Math.max(amt, 0.45 + 0.3 * Math.min(1, (_snDust - 0.9) / 0.1));
-      if (player.catnipBoosting) amt = Math.max(amt, 0.8); // catnip throws up a thick plume
-      if (amt > 0.02) effects.dust(player, _dustCol, amt);
-    }
-    // The world reacting to your speed (the strongest speed cue there is):
-    // biome debris yanked airborne in the wake from ~60% of top speed, and
-    // pale tire grit flicked off the rear wheels once flat-out.
-    if (!player.airborne && _sp > 6) {
-      const _snFx = Math.min(1, _sp / player.maxSpeed);
-      if (_snFx > 0.6) {
-        biomeDebrisColor(player.position.x, player.position.z, _wakeCol);
-        effects.wakeDebris(player, _wakeCol, Math.min(1, (_snFx - 0.6) / 0.35));
-      }
-      if (_snFx > 0.85) effects.tireGrit(player);
-    }
     // Grass bow-wave: the roadside blades shove away from the kart, harder
     // with speed (the uniform is read by buildGrass's position node).
     {
@@ -7242,7 +7256,7 @@ function loopBody(now) {
         _yarnShim.position = y.mesh.position;
         _yarnShim.heading = y.mesh.rotation.y;
         _yarnShim.groundY = y.mesh.position.y - 0.55;
-        effects.dust(_yarnShim, _yarnDustCol, 0.9);
+        effects.dust(_yarnShim, _yarnDustCol, 0.55, dt);
       },
       onYarnHit: (k) => {
         effects.tootBurst(k, 2, false);
@@ -7287,14 +7301,9 @@ function loopBody(now) {
         effects.driftSparks(k);
         effects.skid(k);
       }
-      // Dust for the rest of the field, but ONLY for karts near the camera and
-      // only when they're sliding — so distant traffic and the shared particle
-      // budget stay protected (the player's own dust is handled above).
-      if (k !== player && !k.airborne && (k.drifting || k.spinTimer > 0) &&
-          k.position.distanceToSquared(camera.position) < 70 * 70) {
-        biomeDustColor(k.position.x, k.position.z, _dustCol);
-        effects.dust(k, _dustCol, 0.5);
-      }
+      // Surface reactions include every local player and nearby AI. Biome
+      // lookup uses road height; no extra nearest-road query per particle.
+      if(k.isPlayer || k.position.distanceToSquared(camera.position)<55*55) emitSurfaceDebris(k,dt,k.isPlayer?1:.4);
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
         audio.hit(sfxPos(k));
@@ -7376,7 +7385,7 @@ function loopBody(now) {
     }
     _lightning = Math.max(0, _lightning - dt * 3.2);
     const flash = _lightning > 0 ? Math.max(0, 0.45 + 0.55 * Math.sin(_lightning * 42)) * _lightning : 0;
-    renderer.toneMappingExposure = moodExposure * (1 - 0.1 * wet - 0.12 * _snowBlend) * (1 + flash * 1.5) * _bgExp;
+    renderer.toneMappingExposure = moodExposure * (1 - 0.18 * wet - 0.12 * _snowBlend) * (1 + flash * 1.1) * _bgExp;
 
     // Screen shake + flash when the player gets spun out.
     if (player.spinTimer > 0 && prevPlayerSpin <= 0) triggerHit();
@@ -7556,14 +7565,14 @@ rendererReady
         }
       }
     } catch { /* diagnostics only */ }
-    // Ambient GPU compute motes: warm dust by day, cool sparkles at night.
+    // Small matte ambient grains. Falling petals/leaves have their own shapes.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
-      count: 450, // sweet spot: 650 read as "too many", 280 as "none" — this is the sparse-but-present middle
+      count: 240, // lower compute/overdraw budget; these are subtle atmosphere
       tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
-      // A touch more opaque so the (now fewer) specks actually catch the light.
-      opacity: night ? 0.5 : TIME_OF_DAY === "sunset" ? 0.3 : 0.22,
-      size: night ? 0.52 : 0.42,
+      // Light comes from the world illumination, including at night.
+      opacity: night ? .25 : .4,
+      size: .14,
     }).then((p) => { gpuParticles = p; if (p) p.setVisible(quality !== "low" && !saverOn); }); // Low and Battery saver hide the motes (and skip their compute)
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
@@ -7571,7 +7580,7 @@ rendererReady
     _boot.renderer = performance.now();
     // Draw the whole world for the first frames (see warmAllStep); when the
     // pass retires, dismiss the native splash and queue the kart-family warm.
-    beginWarmAll(2, () => {
+    beginWarmAll(3, () => { // two unculled draws: full detail, then distant geometry
       // Only now dismiss the splash (and apply the rest of the native chrome):
       // the warm frames' compile stall must happen BEHIND the splash, not under
       // a frozen first frame. No-op on the web.

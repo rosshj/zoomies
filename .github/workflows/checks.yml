@@ -24,5 +24,22 @@ jobs:
         run: npm run check:worldcfg
       - name: progression economy (treats/unlocks/cups)
         run: npm run check:progress
+      - name: cat roster, unlocks and save migration
+        run: npm run check:cat-roster
+      - name: kart roster, liveries and save migration
+        run: npm run check:kart-roster
       - name: kart sim determinism
         run: npm run check:sim
+      - name: item and knockable prop logic
+        run: npm run check:items
+
+      - name: prop road/fence clearance and settling
+        run: npm run check:prop-physics
+      - name: biome road prop placement, reactions and budgets
+        run: npm run check:biome-props
+      - name: environmental particle budgets and emission timing
+        run: npm run check:environment-particles
+      - name: procedural baked-lighting invariants
+        run: npm run check:baked-lighting
+      - name: procedural LOD and world-shelter invariants
+        run: npm run check:runtime-art

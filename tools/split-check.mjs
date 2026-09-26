@@ -6,6 +6,8 @@
 // per-half chips updating, and the two-humans finish gate reaching a Versus
 // results screen with no economy payout.
 import { chromium } from "playwright-core";
+import {CAT_PRESETS,KART_PRESETS} from "../src/presets.js";
+import {catType} from "../src/cat-types.js";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,7 +35,7 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: process.env.NATIVE ? [] : ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
 });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const errors = [];
@@ -41,12 +43,16 @@ const page = await ctx.newPage();
 page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 
+if (process.env.QUALITY) await ctx.addInitScript(q => localStorage.setItem('zoomies-quality-v2', q), process.env.QUALITY);
 const SPLITFX = process.env.SPLITFX === "1";
-await ctx.addInitScript((fx) => {
+const P2_CAT=Number(process.env.P2_CAT||3);
+const P2_KART=Number(process.env.P2_KART||2);
+await ctx.addInitScript(({fx,p2Cat,p2Kart,p1Kart}) => {
+  if(p1Kart!==null){localStorage.setItem("zoomies-garage-v1",JSON.stringify({v:3,cat:0,kart:p1Kart}));localStorage.setItem("zoomies-profile-v1",JSON.stringify({unlocked:[`kart.${p1Kart}`]}));}
   try { localStorage.setItem("zoomies-fps", "1"); } catch {}
   try { localStorage.setItem("zoomies-mode-v1", "split"); } catch {}
   // P2's startline pick (persisted): Snow (cat 3) in Clover (kart 2).
-  try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: 3, kart: 2 })); } catch {}
+  try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: p2Cat, kart: p2Kart })); } catch {}
   window.zoomiesDesktop = { quit: () => {} }; // the shell bridge gates the mode
   // P1's controller (visible from boot — the check drives it, not a human).
   window.__pad = {
@@ -58,7 +64,7 @@ await ctx.addInitScript((fx) => {
   navigator.getGamepads = () => [window.__pad];
   // SPLITFX=1: exercise the full-post-chain split path ("Versus effects").
   if (fx) try { localStorage.setItem("zoomies-splitfx", "1"); } catch {}
-}, SPLITFX);
+}, {fx:SPLITFX,p2Cat:P2_CAT,p2Kart:P2_KART,p1Kart:process.env.P1_KART?Number(process.env.P1_KART):null});
 
 await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, { waitUntil: "load", timeout: 150000 });
 await page.waitForSelector("#start-btn", { timeout: 60000 });
@@ -92,6 +98,8 @@ const seam = await page.evaluate(() => {
     karts: z.karts.length,
     humans: humans.length,
     names: humans.map((k) => k.name),
+    bodies:humans.map(k=>{const d=k.group.children.find(c=>c.userData.kartStyle!==undefined).userData;return {style:d.kartStyle,livery:d.kartLivery};}),
+    types: humans.map(k=>k.group.children.find(c=>c.userData.catType)?.userData.catType),
     hudSplit: document.getElementById("hud").classList.contains("split"),
     chipsShown: !document.getElementById("split-hud").classList.contains("hidden"),
   };
@@ -109,7 +117,18 @@ check("split cams share the game camera's layer mask",
   layers.c1 === layers.main && layers.c2 === layers.main, layers);
 check("six karts, two humans", seam.karts === 6 && seam.humans === 2, seam);
 check("split HUD is up", seam.hudSplit && seam.chipsShown, seam);
-check("P2 wears the startline pick (Snow · Clover)", seam.names.includes("Snow (P2)"), seam);
+check("P2 wears the selected preset and morphology", seam.names.includes(`${CAT_PRESETS[P2_CAT].name} (P2)`) && seam.types[1]===catType(CAT_PRESETS[P2_CAT].type).label, seam);
+
+check("P2 retains kart chassis and livery",seam.bodies[1].style===KART_PRESETS[P2_KART].style&&seam.bodies[1].livery===(KART_PRESETS[P2_KART].livery??0),seam);
+
+// Observe the actual render integration, not just the LOD unit's camera API.
+await page.evaluate(() => {
+  const lod=window.__zoomies.world.lod,update=lod.update;
+  lod.update=function(cameras){window.__lodCameraCount=cameras.length;return update.call(this,cameras);};
+});
+await page.waitForTimeout(100);
+const lodViews=await page.evaluate(()=>window.__lodCameraCount);
+check("scenery LOD considers both player cameras", lodViews===2, {lodViews});
 
 // Drive: P1 holds RT (pad), P2 holds ArrowUp (keyboard). Both must move —
 // independently (P2's key must not budge P1).
@@ -154,44 +173,27 @@ check("the two halves show different views", halvesDiff > 4, { halvesDiff: Math.
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 await page.keyboard.up("ArrowUp");
 
-// PAIRING: P1's view must be the TOP half. With only P1 (pad) driving, the
-// top half's image changes far more over time than idle P2's bottom half —
-// a translating chase cam vs a parked one. This is the fence for the
-// setViewport y-origin flip (WebGPU measures y from the TOP; GL-convention
-// rects rendered every view into the OTHER half, so the player read the
-// other seat's chip — the reported "always 6th").
-const snap = () => page.evaluate(() => new Promise((resolve) => {
-  requestAnimationFrame(() => {
-    const gl = window.__zoomies.renderer.domElement;
-    const c = document.createElement("canvas");
-    c.width = 160; c.height = 100;
-    c.getContext("2d").drawImage(gl, 0, 0, 160, 100);
-    resolve([...c.getContext("2d").getImageData(0, 0, 160, 100).data]);
-  });
-}));
-// Let P2 coast to a stop first (only P1's throttle is still held).
-for (let t = 0; t < 30; t++) {
-  const s2 = await page.evaluate(() =>
-    Math.abs(window.__zoomies.karts.find((k) => k.isPlayer && /\(P2\)$/.test(k.name)).speed));
-  if (s2 < 2) break;
-  await page.waitForTimeout(1000);
-}
-const snapA = await snap();
-await page.waitForTimeout(3000);
-const snapB = await snap();
-const tdiff = (y0, y1) => {
-  let sum = 0, n = 0;
-  for (let y = y0; y < y1; y++) {
-    for (let px = 8; px < 152; px++) {
-      const a = (y * 160 + px) * 4;
-      sum += Math.abs(snapA[a] - snapB[a]) + Math.abs(snapA[a + 1] - snapB[a + 1]);
-      n++;
-    }
-  }
-  return sum / Math.max(1, n);
-};
-const pairing = { top: +tdiff(4, 46).toFixed(2), bottom: +tdiff(54, 96).toFixed(2) };
-check("P1's (driving) view is the TOP half", pairing.top > pairing.bottom * 1.25, pairing);
+// A layer-isolated color marker verifies the actual viewport assignment.
+// Motion differences are unreliable: a parked cat can be hit, and wind/weather
+// can change its image more than a moving camera's road-dominated image.
+const pairing=await page.evaluate(async()=>{
+  const T=await import('three'),z=window.__zoomies,{c1,c2}=z.splitCams();
+  const masks=[c1.layers.mask,c2.layers.mask],dir=new T.Vector3();
+  const marker=new T.Mesh(new T.PlaneGeometry(100,100),new T.MeshBasicMaterial({color:0xff00ff,depthTest:false,depthWrite:false,toneMapped:false,fog:false}));
+  marker.layers.set(29);marker.frustumCulled=false;marker.renderOrder=1000000;
+  marker.onBeforeRender=(_r,_s,camera)=>{camera.getWorldDirection(dir);marker.position.copy(camera.position).addScaledVector(dir,2);marker.quaternion.copy(camera.quaternion);marker.updateMatrixWorld();};
+  c1.layers.enable(29);c2.layers.disable(29);z.scene.add(marker);
+  try{
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+    return await new Promise(resolve=>requestAnimationFrame(()=>{
+      const c=document.createElement('canvas');c.width=160;c.height=100;const ctx=c.getContext('2d');ctx.drawImage(z.renderer.domElement,0,0,160,100);
+      const d=ctx.getImageData(0,0,160,100).data;
+      const fraction=(y0,y1)=>{let n=0,hit=0;for(let y=y0;y<y1;y++)for(let x=15;x<145;x++){const i=(y*160+x)*4;n++;if(d[i]>100&&d[i+2]>100&&d[i+1]<Math.min(d[i],d[i+2])*.65)hit++;}return hit/n;};
+      resolve({top:fraction(5,45),bottom:fraction(55,95)});
+    }));
+  }finally{z.scene.remove(marker);c1.layers.mask=masks[0];c2.layers.mask=masks[1];marker.geometry.dispose();marker.material.dispose();}
+});
+check("P1's layer renders in the TOP half only",pairing.top>.7&&pairing.bottom<.2,pairing);
 await page.evaluate(() => { const b = window.__pad.buttons[7]; b.pressed = false; b.value = 0; });
 
 // Placement must respond to real progress: warp P2 a third of a lap ahead of
@@ -267,6 +269,7 @@ check("both human rows tinted, the winner alone gold", fin.humanRows === 2 && fi
 check("no treats paid for a couch match", fin.earningsHidden && !fin.noteHidden && /no treats/.test(fin.note), fin);
 
 console.log(JSON.stringify({ errors }, null, 2));
-await browser.close();
+await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);
+server.closeAllConnections();
 server.close();
 process.exit(errors.length ? 1 : 0);

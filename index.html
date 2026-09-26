@@ -476,6 +476,14 @@
               <div class="swatch-grid" id="cat-color-grid"></div>
             </div>
             <div class="creator-row">
+              <span class="creator-label">Type</span>
+              <div class="mini-stepper">
+                <button id="cat-type-prev" class="garage-arrow" aria-label="Previous cat type">◀</button>
+                <span class="mini-name" id="cat-type-name">Classic</span>
+                <button id="cat-type-next" class="garage-arrow" aria-label="Next cat type">▶</button>
+              </div>
+            </div>
+            <div class="creator-row">
               <span class="creator-label">Pattern</span>
               <div class="mini-stepper">
                 <button id="cat-pat-prev" class="garage-arrow" aria-label="Previous pattern">◀</button>
@@ -547,6 +555,14 @@
                 <button id="kart-style-prev" class="garage-arrow" aria-label="Previous body">◀</button>
                 <span class="mini-name" id="kart-style-name">GP</span>
                 <button id="kart-style-next" class="garage-arrow" aria-label="Next body">▶</button>
+              </div>
+            </div>
+            <div class="creator-row hidden" id="kart-livery-row">
+              <span class="creator-label">Livery</span>
+              <div class="mini-stepper">
+                <button id="kart-livery-prev" class="garage-arrow" aria-label="Previous livery">◀</button>
+                <span class="mini-name" id="kart-livery-name">Team Stripe</span>
+                <button id="kart-livery-next" class="garage-arrow" aria-label="Next livery">▶</button>
               </div>
             </div>
             <div class="creator-row">
@@ -862,6 +878,9 @@
               <button data-biome="tundra" class="biome-chip">❄️ Tundra</button>
               <button data-biome="city" class="biome-chip">🏙 City</button>
               <button data-biome="beach" class="biome-chip">🏖 Beach</button>
+              <button data-biome="lavender" class="biome-chip">🪻 Lavender</button>
+              <button data-biome="wetlands" class="biome-chip">🦆 Wetlands</button>
+              <button data-biome="volcanic" class="biome-chip">🌋 Volcanic</button>
           </div>
           <div class="env-label">Style</div>
           <div class="tod-grid trio" id="track-style">

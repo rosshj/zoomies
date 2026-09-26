@@ -226,6 +226,7 @@ function _loopOK(pts, minR, xover = null) {
 // so crossing a biome border changes how the road DRIVES, not just how it looks.
 const BIOME_RHYTHM = {
   city: 1.0, forest: 0.8, autumn: 0.65, blossom: 0.6, alpine: 0.6,
+  lavender: 0.48, wetlands: 0.28, volcanic: 0.7,
   meadow: 0.5, tundra: 0.45, beach: 0.35, savanna: 0.3, desert: 0.18,
 };
 // The summit: a per-seed mountain in the ELEVATION PROFILE — a big Gaussian
@@ -996,19 +997,31 @@ function puddleBlob(cx, cz, baseR, stretchZ) {
   return g;
 }
 
-// Fine grayscale noise used as the road's bump map (asphalt grain).
-function noiseTexture() {
+// Painted aggregate: one colour lookup replaces noisy bump-normal work. All
+// detail is baked into a tiny repeating canvas; no new road geometry or passes.
+function asphaltTexture() {
   const c = document.createElement("canvas");
-  c.width = c.height = 64;
+  c.width = c.height = 128;
   const ctx = c.getContext("2d");
-  const img = ctx.createImageData(64, 64);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = 140 + Math.random() * 115;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 255;
+  for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+    const n = Math.random(); // same 4096 draws as the former bump texture
+    const patch = Math.sin(x * Math.PI / 16) * Math.cos(y * Math.PI / 32);
+    const v = Math.round(239 + patch * 4 + (n - 0.5) * 10);
+    ctx.fillStyle = `rgb(${v},${v},${v})`;
+    ctx.fillRect(x * 2, y * 2, 2, 2);
+    // Sparse cut-stone flecks, restrained enough to minify without sparkling.
+    if (n < 0.14 || n > 0.94) {
+      const chip = n < 0.14 ? v - 17 : Math.min(255, v + 12);
+      ctx.fillStyle = `rgb(${chip},${chip},${chip})`;
+      ctx.fillRect(x * 2, y * 2, n < 0.07 ? 2 : 1, 1);
+    }
   }
-  ctx.putImageData(img, 0, 0);
-  return new THREE.CanvasTexture(c);
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 6);
+  texture.anisotropy = 8;
+  return texture;
 }
 
 // A closed race track built from a smooth 3D Catmull-Rom loop. The curve now
@@ -1173,7 +1186,7 @@ export class Track {
     const uvs = [];
     const colors = [];
     const indices = [];
-    const base = new THREE.Color(0x53535b); // asphalt
+    const base = new THREE.Color(0x585860); // asphalt, balanced against painted grain
     const c = new THREE.Color();
 
     const hash = (a, b) => {
@@ -1276,17 +1289,16 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
-    const bump = noiseTexture();
-    bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
-    bump.repeat.set(6, 6);
-    bump.anisotropy = 8;
+    // Exact rendered ribbon used by the generation-time terrain clearance pass.
+    this.roadSurface = { geometry: geo, rowWidth: vpr };
+
+    const asphalt = asphaltTexture();
     const road = new THREE.Mesh(
       geo,
       new THREE.MeshStandardMaterial({
         vertexColors: true,
         roughness: 0.95,
-        bumpMap: bump,
-        bumpScale: 0.25,
+        map: asphalt,
         // DoubleSide: the strip's triangle winding follows the loop's direction,
         // and custom-generated tracks can run CLOCKWISE — with the default
         // FrontSide the whole road was back-face culled from above on those
@@ -1540,30 +1552,35 @@ export class Track {
       const t = this._tans[((k % div) + div) % div];
       return Math.atan2(t.x, t.z);
     };
-    for (let i = 0; i <= div; i++) {
-      const idx = i % div;
-      const p = this._pts[idx];
-      const side = this._sideAt(idx);
-      // Local curvature: how much the heading turns over a short look-ahead. On
-      // bends the verge becomes a red/white rumble kerb; straights stay sandy —
-      // or, in the CITY, concrete sidewalk slabs (alternating tone = paving joints).
-      let d = tanAng(idx + 10) - tanAng(idx);
+    // Duplicate the ends of each painted section: shared vertex colours blended
+    // red into white across every band, making the kerbs look airbrushed. Each
+    // section now has a solid colour and a raised, bevelled outer shoulder.
+    // One mesh/material still covers BOTH verges around the entire circuit.
+    for (let i = 0; i < div; i++) {
+      const p = this._pts[i];
+      let d = tanAng(i + 10) - tanAng(i);
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
       const urban = biomeRoadStyle(p.x, p.z).kind === "urban";
-      if (Math.abs(d) > 0.055) c.copy(Math.floor(i / 2) % 2 === 0 ? red : white);
-      else if (urban) c.copy(Math.floor(i / 3) % 2 === 0 ? concrete : concreteSeam);
+      const bend = Math.abs(d) > 0.055;
+      // World-space band length remains readable on long and short circuits.
+      if (bend) c.copy(Math.floor(i * this.length / div / 4.5) % 2 === 0 ? red : white);
+      else if (urban) c.copy(Math.floor(i * this.length / div / 6) % 2 === 0 ? concrete : concreteSeam);
       else c.copy(sand);
-      const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
-      const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
-      const rIn = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
-      const rOut = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth - trim);
-      positions.push(lOut.x, lOut.y, lOut.z, lIn.x, lIn.y, lIn.z, rIn.x, rIn.y, rIn.z, rOut.x, rOut.y, rOut.z);
-      for (let v = 0; v < 4; v++) colors.push(c.r, c.g, c.b);
-      if (i < div) {
-        const a = i * 4;
-        indices.push(a, a + 1, a + 4, a + 1, a + 5, a + 4);
-        indices.push(a + 2, a + 3, a + 6, a + 3, a + 7, a + 6);
+      for (const sign of [-1, 1]) {
+        const base = positions.length / 3;
+        for (const k of [i, (i + 1) % div]) {
+          const center = this._pts[k], side = this._sideAt(k);
+          for (const [offset, height, shade] of [[0, 0, 0.78], [0.48, 0.12, 1], [trim, 0, 0.86]]) {
+            const distance = sign * (this.halfWidth + offset);
+            positions.push(center.x + side.x * distance, center.y + height, center.z + side.z * distance);
+            colors.push(c.r * shade, c.g * shade, c.b * shade);
+          }
+        }
+        for (let j = 0; j < 2; j++) {
+          const v = base + j;
+          indices.push(v, v + 1, v + 3, v + 1, v + 4, v + 3);
+        }
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -1858,9 +1875,8 @@ export class Track {
   }
 
   _buildCenterLine() {
-    // The centre line only appears in the built-up town stretches and the alpine
-    // (snowy) pass. A per-sample 0/1 visibility field is box-blurred so the line
-    // fades in and out over distance instead of stopping abruptly.
+    // The centre line appears in built-up town stretches outside forest/snow.
+    // Blur zone visibility so paint fades gently at the edges of settlements.
     const div = this.samples;
     const ZONES = 6; // matches the town/farm zoning in scenery.buildRoadside
     let vis = new Float32Array(div);
@@ -1882,29 +1898,36 @@ export class Track {
       vis = out;
     }
 
-    const hw = 0.24; // half-width of the line
-    // Dash the line instead of painting it solid: a repeating on/off beat along
-    // the samples. Dashes strobe past at speed — a strong, cheap optic-flow cue
-    // right where the player looks — where the old continuous stripe just slid.
-    // Baked into the same per-vertex alpha as the zone fade, so dash ends stay
-    // soft (painted, not clinical) and it's still one mesh / one draw.
-    const DASH = 8; // samples per on+off cycle…
-    const DASH_ON = 5; // …of which this many are painted
-    const positions = [];
-    const alphas = [];
-    const indices = [];
-    for (let i = 0; i <= div; i++) {
-      const idx = i % div;
-      const p = this._pts[idx];
-      const side = this._sideAt(idx);
-      const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
-      const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
-      positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-      const dash = idx % DASH < DASH_ON ? 1 : 0;
-      alphas.push(vis[idx] * dash, vis[idx] * dash);
-      if (i < div) {
-        const k = i * 2;
-        indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    const hw = 0.19;
+    // Clip geometry at physical dash boundaries: crisp paint ends with no
+    // transparent triangles spanning the gaps. Fit whole cycles around the loop.
+    const step = this.length / div;
+    const period = this.length / Math.max(1, Math.floor(this.length / Math.max(14, step * 8)));
+    const on = period * 0.6;
+    const positions = [], alphas = [], indices = [];
+    let lastEnd = -1, lastRing = -1;
+    const ring = (i, f) => {
+      f = Math.max(0, Math.min(1, f)); // distance arithmetic can overshoot by an ulp
+      const next = (i + 1) % div;
+      const p = this._pts[i].clone().lerp(this._pts[next], f);
+      const side = this._sideAt(i).clone().lerp(this._sideAt(next), f).normalize();
+      const k = positions.length / 3;
+      positions.push(p.x-side.x*hw,p.y+.05,p.z-side.z*hw,
+        p.x+side.x*hw,p.y+.05,p.z+side.z*hw);
+      const alpha = vis[i] + (vis[next] - vis[i]) * f;
+      alphas.push(alpha, alpha);
+      return k;
+    };
+    for (let i = 0; i < div; i++) {
+      if (vis[i] + vis[(i+1)%div] === 0) continue;
+      const start = i * step, end = (i+1) * step;
+      for (let cycle = Math.floor(start / period); cycle * period < end; cycle++) {
+        const lo = Math.max(start, cycle * period), hi = Math.min(end, cycle * period + on);
+        if (hi - lo < 1e-7) continue;
+        const a = Math.abs(lo-lastEnd) < 1e-7 ? lastRing : ring(i, (lo-start)/step);
+        const b = ring(i, (hi-start)/step);
+        indices.push(a,a+1,b,a+1,b+1,b);
+        lastEnd = hi; lastRing = b;
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -1923,7 +1946,7 @@ export class Track {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    mat.colorNode = tslColor(0xf4cf3a);
+    mat.colorNode = tslColor(0xe9ca79);
     mat.opacityNode = attribute("aAlpha");
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 1;

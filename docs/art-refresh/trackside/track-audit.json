@@ -1,0 +1,47 @@
+{
+  "seconds": 30,
+  "tracks": [
+    {
+      "name": "Lavender Loop",
+      "seed": "BLOOM",
+      "outcome": "pass",
+      "grindPct": 0.6,
+      "meanSpeed": 35.4,
+      "simSeconds": 31,
+      "wallSeconds": 32,
+      "minProgress": 0.32,
+      "wedged": 0,
+      "maxAir": 0,
+      "errors": []
+    },
+    {
+      "name": "Willow Wash",
+      "seed": "REED",
+      "outcome": "pass",
+      "grindPct": 0.5,
+      "meanSpeed": 34.7,
+      "simSeconds": 34,
+      "wallSeconds": 36,
+      "minProgress": 0.32,
+      "wedged": 0,
+      "maxAir": 0,
+      "errors": []
+    },
+    {
+      "name": "Basalt Blast",
+      "seed": "BASALT",
+      "outcome": "pass",
+      "grindPct": 3.4,
+      "meanSpeed": 33.3,
+      "simSeconds": 32,
+      "wallSeconds": 32,
+      "minProgress": 0.32,
+      "wedged": 0,
+      "maxAir": 0,
+      "errors": []
+    }
+  ],
+  "passed": 3,
+  "failed": 0,
+  "inconclusive": 0
+}

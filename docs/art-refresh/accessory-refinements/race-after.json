@@ -1,0 +1,58 @@
+[
+  {
+    "biome": "meadow",
+    "quality": "high",
+    "requestedBackend": "webgpu",
+    "drawingBuffer": [
+      1100,
+      700
+    ],
+    "frames": 2400,
+    "meanFps": 60.00230104697637,
+    "onePercentLow": 59.523809523799216,
+    "p95Ms": 16.799999999995634,
+    "p99Ms": 16.80000000000291,
+    "worstMs": 16.80000000000291,
+    "cpuMedianMs": 5,
+    "cpuP99Ms": 6.699999988079071,
+    "drawsMean": 564.3620833333333,
+    "simSeconds": 39.98180000000029,
+    "readout": "60 FPS \u00b7 WGPU \u00b7 326dc \u00b7 cpu 5ms \u00b7 sun 116\u00b0 \u00b7 1.0x H",
+    "backend": "webgpu",
+    "memory": {
+      "attributes": 1606,
+      "attributesSize": 42114156,
+      "geometries": 521,
+      "indexAttributes": 333,
+      "indexAttributesSize": 3658500,
+      "indirectStorageAttributes": 0,
+      "indirectStorageAttributesSize": 0,
+      "programs": 291,
+      "programsSize": 1229285,
+      "readbackBuffers": 0,
+      "readbackBuffersSize": 0,
+      "renderTargets": 14,
+      "storageAttributes": 2,
+      "storageAttributesSize": 7680,
+      "textures": 59,
+      "texturesSize": 163482996,
+      "uniformBuffers": 1488,
+      "uniformBuffersSize": 733024,
+      "total": 211225641
+    },
+    "lod": {
+      "batches": 20,
+      "nearTriangles": 7876,
+      "farTriangles": 4874,
+      "farBatches": 10
+    },
+    "bake": {
+      "occluders": 73,
+      "vertices": 102980,
+      "shaded": 6984,
+      "ms": 136.69999998807907
+    },
+    "playerT": 0.8059497374394687,
+    "errors": []
+  }
+]

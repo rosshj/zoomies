@@ -1,5 +1,5 @@
 // GPU compute particles (WebGPU): a camera-following field of drifting ambient
-// motes — dust/pollen by day, faint sparkles at night — simulated entirely on the
+// motes — subtle, matte biome dust/pollen — simulated entirely on the
 // GPU via a TSL compute shader. The CPU never touches per-particle data: a compute
 // pass integrates positions in storage buffers each frame, and the motes render as
 // instanced billboarded sprites reading those buffers. This is the "many dynamic
@@ -9,6 +9,8 @@
 // emulates it), so it works everywhere the game does. Wrapped in try/catch so a
 // device that can't run it just skips the motes rather than breaking the race.
 import * as THREE from "three";
+import { debrisLight, environmentProfile } from "./environment-particles.js";
+import { uWindDir, uWindAir } from "./wind.js";
 import { instancedArray, instanceIndex, Fn, deltaTime, hash, vec3, float, uniform, uv, color, smoothstep } from "three/tsl";
 
 export async function initGpuParticles(scene, renderer, opts = {}) {
@@ -21,9 +23,9 @@ export async function initGpuParticles(scene, renderer, opts = {}) {
 }
 
 async function build(scene, renderer, opts) {
-  const COUNT = opts.count ?? 3000;
+  const COUNT = opts.count ?? 240;
   const BOX = opts.box ?? 60; // half-extent (x,z) of the box that follows the camera
-  const HEIGHT = opts.height ?? 38; // motes live in a 0..HEIGHT band
+  const HEIGHT = opts.height ?? 16; // camera-relative band follows hills
   const tint = new THREE.Color(opts.tint ?? 0xfff0c8);
 
   const positions = instancedArray(COUNT, "vec3");
@@ -57,29 +59,31 @@ async function build(scene, renderer, opts) {
     // Swirl: lateral nudge from a slow sine of height — turns straight fall into a
     // lazy weave. Cheap (no time uniform; the changing y drives the phase).
     const sway = pos.y.mul(0.7).sin().mul(0.25);
-    pos.x.addAssign(vel.x.add(sway).mul(deltaTime));
+    pos.x.addAssign(vel.x.add(sway).add(uWindDir.x.mul(uWindAir).mul(.25)).mul(deltaTime));
     pos.y.addAssign(vel.y.mul(deltaTime));
-    pos.z.addAssign(vel.z.sub(sway).mul(deltaTime));
+    pos.z.addAssign(vel.z.sub(sway).add(uWindDir.y.mul(uWindAir).mul(.25)).mul(deltaTime));
     const relX = pos.x.sub(uCam.x).add(BOX).add(BOX * 2000.0).mod(BOX * 2.0).sub(BOX);
     const relZ = pos.z.sub(uCam.z).add(BOX).add(BOX * 2000.0).mod(BOX * 2.0).sub(BOX);
     pos.x.assign(uCam.x.add(relX));
     pos.z.assign(uCam.z.add(relZ));
-    pos.y.assign(pos.y.add(HEIGHT * 2000.0).mod(HEIGHT)); // fall + wrap back to the top
+    pos.y.assign(pos.y.sub(uCam.y).add(HEIGHT * 2000.5).mod(HEIGHT).sub(HEIGHT*.5).add(uCam.y));
   })().compute(COUNT);
 
   // Render: instanced billboarded sprites reading the position buffer per-instance.
   const mat = new THREE.SpriteNodeMaterial({
     transparent: true,
     depthWrite: false,
-    blending: THREE.AdditiveBlending,
+    blending: THREE.NormalBlending,
     fog: true,
   });
   mat.positionNode = positions.toAttribute();
-  mat.colorNode = uTint;
-  mat.scaleNode = float(opts.size ?? 0.5);
-  // Soft round mote (radial alpha falloff over the quad), faded by uOpacity.
-  const d = uv().sub(0.5).length();
-  mat.opacityNode = smoothstep(0.5, 0.0, d).mul(uOpacity);
+  mat.colorNode = uTint.mul(debrisLight);
+  mat.scaleNode = float(opts.size ?? 0.14);
+  // A soft round grain with no square root, glow or near-camera diamonds.
+  // Fade before vertical wrap so the reset remains hidden on elevated tracks.
+  const d = uv().sub(.5);
+  const heightFade=smoothstep(HEIGHT*.35,HEIGHT*.5,positions.toAttribute().y.sub(uCam.y).abs()).oneMinus();
+  mat.opacityNode = smoothstep(.025,.24,d.dot(d)).oneMinus().mul(uOpacity).mul(heightFade);
 
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, COUNT);
   mesh.frustumCulled = false;
@@ -89,8 +93,14 @@ async function build(scene, renderer, opts) {
 
   console.log(`[zoomies] GPU particles: ${COUNT} compute motes`);
 
-  let visible = true;
+  let visible = true, biome = null;
+  const pale=new THREE.Color(0xe0d8c4);
   return {
+    mesh,
+    setEnvironment(name) {
+      if(name===biome)return;biome=name;
+      uTint.value.set(environmentProfile(name).colors[0]).lerp(pale,name==='volcanic'?.15:.65);
+    },
     setTint(hex) { uTint.value.set(hex); },
     setOpacity(v) { uOpacity.value = v; },
     // Low quality hides the motes AND skips the per-frame GPU compute step.

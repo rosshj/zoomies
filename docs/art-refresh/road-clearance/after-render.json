@@ -1,0 +1,187 @@
+{
+  "biome": {
+    "name": "tundra",
+    "weather": "snow"
+  },
+  "scene": {
+    "triangles": 633425,
+    "mountainTriangles": 34272,
+    "batches": 784,
+    "invalid": 0,
+    "missingColors": 0,
+    "waterMeshes": 3,
+    "waterMaterials": 1
+  },
+  "views": [
+    {
+      "name": "track-a",
+      "render": {
+        "calls": 1652,
+        "frameCalls": 15,
+        "drawCalls": 209,
+        "triangles": 324328,
+        "points": 900,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1260,
+        "attributesSize": 20635144,
+        "geometries": 384,
+        "indexAttributes": 296,
+        "indexAttributesSize": 2063976,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 364,
+        "programsSize": 1663425,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 39,
+        "texturesSize": 60493761,
+        "uniformBuffers": 1096,
+        "uniformBuffersSize": 859616,
+        "total": 85721322
+      }
+    },
+    {
+      "name": "track-b",
+      "render": {
+        "calls": 3287,
+        "frameCalls": 15,
+        "drawCalls": 243,
+        "triangles": 350606,
+        "points": 900,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1262,
+        "attributesSize": 20635304,
+        "geometries": 385,
+        "indexAttributes": 297,
+        "indexAttributesSize": 2063988,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 366,
+        "programsSize": 1666940,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60581120,
+        "uniformBuffers": 1098,
+        "uniformBuffersSize": 859936,
+        "total": 85812688
+      }
+    },
+    {
+      "name": "track-c",
+      "render": {
+        "calls": 4922,
+        "frameCalls": 15,
+        "drawCalls": 118,
+        "triangles": 241748,
+        "points": 900,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1262,
+        "attributesSize": 20635304,
+        "geometries": 385,
+        "indexAttributes": 297,
+        "indexAttributesSize": 2063988,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 366,
+        "programsSize": 1666940,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60581120,
+        "uniformBuffers": 1098,
+        "uniformBuffersSize": 859936,
+        "total": 85812688
+      }
+    },
+    {
+      "name": "mountain",
+      "render": {
+        "calls": 6542,
+        "frameCalls": 15,
+        "drawCalls": 258,
+        "triangles": 357934,
+        "points": 900,
+        "lines": 60,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1262,
+        "attributesSize": 20635304,
+        "geometries": 385,
+        "indexAttributes": 297,
+        "indexAttributesSize": 2063988,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 366,
+        "programsSize": 1666940,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60581120,
+        "uniformBuffers": 1098,
+        "uniformBuffersSize": 859936,
+        "total": 85812688
+      }
+    },
+    {
+      "name": "clearance",
+      "render": {
+        "calls": 8162,
+        "frameCalls": 15,
+        "drawCalls": 206,
+        "triangles": 352742,
+        "points": 900,
+        "lines": 60,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1262,
+        "attributesSize": 20635304,
+        "geometries": 385,
+        "indexAttributes": 297,
+        "indexAttributesSize": 2063988,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 366,
+        "programsSize": 1666940,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60581120,
+        "uniformBuffers": 1098,
+        "uniformBuffersSize": 859936,
+        "total": 85812688
+      }
+    }
+  ],
+  "dressing": {
+    "invalid": [],
+    "wrongBirds": []
+  },
+  "errors": []
+}

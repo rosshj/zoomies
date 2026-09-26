@@ -1,0 +1,752 @@
+{
+  "biome": {
+    "name": "volcanic",
+    "weather": "none"
+  },
+  "scene": {
+    "triangles": 452538,
+    "mountainTriangles": 31752,
+    "batches": 719,
+    "invalid": 0,
+    "missingColors": 0,
+    "waterMeshes": 3,
+    "waterMaterials": 1
+  },
+  "views": [
+    {
+      "name": "track-a",
+      "render": {
+        "calls": 1697,
+        "frameCalls": 15,
+        "drawCalls": 332,
+        "triangles": 235042,
+        "points": 900,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1073,
+        "attributesSize": 18135608,
+        "geometries": 344,
+        "indexAttributes": 238,
+        "indexAttributesSize": 1928232,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 271,
+        "programsSize": 1153148,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60546995,
+        "uniformBuffers": 964,
+        "uniformBuffersSize": 492000,
+        "total": 82261383
+      }
+    },
+    {
+      "name": "track-b",
+      "render": {
+        "calls": 3302,
+        "frameCalls": 15,
+        "drawCalls": 200,
+        "triangles": 241193,
+        "points": 900,
+        "lines": 90,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1073,
+        "attributesSize": 18135608,
+        "geometries": 344,
+        "indexAttributes": 238,
+        "indexAttributesSize": 1928232,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 271,
+        "programsSize": 1153148,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60546995,
+        "uniformBuffers": 964,
+        "uniformBuffersSize": 492000,
+        "total": 82261383
+      }
+    },
+    {
+      "name": "track-c",
+      "render": {
+        "calls": 4922,
+        "frameCalls": 15,
+        "drawCalls": 94,
+        "triangles": 167580,
+        "points": 900,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1073,
+        "attributesSize": 18135608,
+        "geometries": 344,
+        "indexAttributes": 238,
+        "indexAttributesSize": 1928232,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 271,
+        "programsSize": 1153148,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60546995,
+        "uniformBuffers": 964,
+        "uniformBuffersSize": 492000,
+        "total": 82261383
+      }
+    },
+    {
+      "name": "mountain",
+      "render": {
+        "calls": 6557,
+        "frameCalls": 15,
+        "drawCalls": 134,
+        "triangles": 177689,
+        "points": 900,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1073,
+        "attributesSize": 18135608,
+        "geometries": 344,
+        "indexAttributes": 238,
+        "indexAttributesSize": 1928232,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 271,
+        "programsSize": 1153148,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60546995,
+        "uniformBuffers": 965,
+        "uniformBuffersSize": 492160,
+        "total": 82261543
+      }
+    }
+  ],
+  "dressing": {
+    "placements": [
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -428.1292601860018,
+        "z": -191.58368249571345
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -429.06788927891716,
+        "z": -204.15450313654662
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -422.69869790674494,
+        "z": -212.4195305125063
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -417.50667780640214,
+        "z": -208.9612572821243
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -416.57462740327236,
+        "z": -220.89507762170254
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -411.24418024484817,
+        "z": -230.07657805455094
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -405.81078641386523,
+        "z": -225.93769720697895
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -404.08116478891947,
+        "z": -238.00663656425766
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -397.4497880210778,
+        "z": -246.48674981752742
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -390.979055438753,
+        "z": -255.39384824768985
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -381.9782787060225,
+        "z": -261.5801781475891
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -377.5733481639034,
+        "z": -256.9181396165489
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -374.1874517859399,
+        "z": -268.93278617988034
+      },
+      {
+        "kind": "sign",
+        "biome": "volcanic",
+        "x": -362.7373169067012,
+        "z": -271.7836834146516
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": -357.81940690512215,
+        "z": -282.7615580965552
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -346.9744300248216,
+        "z": -305.92442041903837
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -299.8139743669955,
+        "z": -246.46605029774065
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -336.7536916631831,
+        "z": -311.0641084087743
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -326.60192337273327,
+        "z": -317.1380970249307
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -284.8373634020847,
+        "z": -251.56537264807704
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -268.51834300215137,
+        "z": -255.45379568172478
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -235.04580000746077,
+        "z": -264.9292897440098
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -218.04307161322896,
+        "z": -264.9831248343942
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -230.328129514655,
+        "z": -335.3606762996574
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -209.6118669446875,
+        "z": -270.8507947383417
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -220.6504255896131,
+        "z": -338.4608009404851
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -191.30154142886352,
+        "z": -284.4517143685087
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -170.54380323360505,
+        "z": -283.9097438251714
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -140.95009297329608,
+        "z": -371.0151207942479
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -86.94077674480721,
+        "z": -313.5338622804531
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -126.1546831890173,
+        "z": -378.1565079785037
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -83.09067552871812,
+        "z": -326.6667064234871
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -71.4249922528688,
+        "z": -326.4453483012991
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -103.16641996827661,
+        "z": -393.00912960625624
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -33.93329337726972,
+        "z": -344.50651774805357
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -72.13233208897745,
+        "z": -415.7294676578774
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -47.78247164720987,
+        "z": -419.8631615482961
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -38.24504828247632,
+        "z": -423.46721465062535
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 2.611477440516774,
+        "z": -365.93810143179485
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -23.824783525314363,
+        "z": -441.44120152434374
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 19.24991837391548,
+        "z": -369.78884660738026
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -10.304991258733239,
+        "z": -438.2610173961227
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 12.333573821017927,
+        "z": -442.08411688447165
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 33.34500636889775,
+        "z": -455.18262897302776
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 470.61306495063786,
+        "z": -217.74225270221092
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 281.0399335838816,
+        "z": 162.2484531478457
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 313.92122999591083,
+        "z": 332.88732778406876
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 332.2601893345149,
+        "z": 336.0252104437729
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 403.83099810270465,
+        "z": 336.78100270720563
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 367.87602928772475,
+        "z": 404.16273662654686
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 426.68162187068316,
+        "z": 350.79382228156555
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 437.90615957423483,
+        "z": 362.0343746891855
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": 443.0088870338057,
+        "z": 376.44778014201376
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 415.37226323709865,
+        "z": 446.33979457702776
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 433.1164480900408,
+        "z": 438.78597456518776
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 444.0863896741661,
+        "z": 446.474998505617
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 469.23373444004415,
+        "z": 456.9965892815112
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 483.58809222748795,
+        "z": 461.27873134708074
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 558.1223479321702,
+        "z": 366.4451358351159
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 553.6068524781049,
+        "z": 349.6509595964551
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 473.1021579228437,
+        "z": 372.7962446036385
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 466.0798259513505,
+        "z": 355.0994332681496
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 478.2631790251661,
+        "z": 280.6102543397396
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 417.95209848639274,
+        "z": 327.9087850834785
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": 245.42960217232834,
+        "z": 315.0283638504939
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 221.21960276539863,
+        "z": 326.5633919460026
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 188.36598300857014,
+        "z": 262.11543887673673
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": 175.53289712602742,
+        "z": 256.763517336175
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": 160.48381967384057,
+        "z": 274.15304883411284
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": 163.13552453557728,
+        "z": 280.682719405386
+      },
+      {
+        "kind": "sign",
+        "biome": "volcanic",
+        "x": 179.66244737166878,
+        "z": 321.3793154835226
+      },
+      {
+        "kind": "ruin",
+        "biome": "volcanic",
+        "x": 172.8844036809053,
+        "z": 329.6061392867956
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": 27.978727262540176,
+        "z": 424.4088011537935
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -16.60112436684687,
+        "z": 447.47497723863773
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -56.540134340939126,
+        "z": 379.5849871523263
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -74.60718789539632,
+        "z": 448.6848048015225
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -82.54821052960861,
+        "z": 464.3433439003622
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -103.21706105757451,
+        "z": 392.58874125857056
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -93.82895185272177,
+        "z": 467.03416784419255
+      },
+      {
+        "kind": "vulture",
+        "biome": "volcanic",
+        "x": -118.92707516189404,
+        "z": 466.6290439605337
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -411.87283298681336,
+        "z": 15.40422510091519
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -481.1124284762327,
+        "z": 26.296041338695417
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -410.3850289201324,
+        "z": -63.24246778080143
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -410.8576783543489,
+        "z": -88.86729173858708
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -469.2332219157609,
+        "z": -104.71695861376841
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -475.95951861043636,
+        "z": -117.55947844824554
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -465.62602258384777,
+        "z": -136.36820739533331
+      },
+      {
+        "kind": "rock",
+        "biome": "volcanic",
+        "x": -458.49883088677603,
+        "z": -156.435406075468
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -448.0029704871495,
+        "z": -163.22497656147826
+      },
+      {
+        "kind": "basalt",
+        "biome": "volcanic",
+        "x": -387.33634430577126,
+        "z": -153.96174306703074
+      },
+      {
+        "kind": "rockSpire",
+        "biome": "volcanic",
+        "x": -174.66317254094133,
+        "z": -425.51369348360936
+      },
+      {
+        "kind": "rockSpire",
+        "biome": "volcanic",
+        "x": 511.7912805027073,
+        "z": -271.9728969501771
+      },
+      {
+        "kind": "rockSpire",
+        "biome": "volcanic",
+        "x": 608.674688008571,
+        "z": 394.2754375919635
+      }
+    ],
+    "birds": [
+      {
+        "x": 423.34249580569775,
+        "z": 423.47294506906303,
+        "radius": 53.71546889515594,
+        "species": "vulture"
+      },
+      {
+        "x": 75.36978573879425,
+        "z": 367.2244135554411,
+        "radius": 53.511503097601235,
+        "species": "vulture"
+      },
+      {
+        "x": 280.08390137926335,
+        "z": -376.45417285476697,
+        "radius": 51.92452000081539,
+        "species": "vulture"
+      },
+      {
+        "x": -379.2003054290255,
+        "z": -291.2678988195248,
+        "radius": 49.34764100564644,
+        "species": "vulture"
+      },
+      {
+        "x": 323.2255660154445,
+        "z": 194.48613399644273,
+        "radius": 67.16695432644337,
+        "species": "vulture"
+      },
+      {
+        "x": -269.1447902824841,
+        "z": -217.42879107924824,
+        "radius": 62.27092637075111,
+        "species": "vulture"
+      }
+    ],
+    "invalid": [],
+    "wrongBirds": []
+  },
+  "errors": []
+}

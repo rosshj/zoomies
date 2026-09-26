@@ -121,6 +121,8 @@ const result = {
 };
 console.log(JSON.stringify(result, null, 2));
 
-await browser.close();
+// Chrome can finish the probe but stall its close handshake on macOS.
+await Promise.race([browser.close(), new Promise(r => setTimeout(r, 5000))]);
+server.closeAllConnections();
 server.close();
 process.exit(errors.length ? 1 : 0);
