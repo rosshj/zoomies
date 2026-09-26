@@ -100,35 +100,35 @@
   {
     "name": "Timber",
     "type": "Maine Coon",
-    "triangles": 9728,
-    "draws": 21,
+    "triangles": 8944,
+    "draws": 20,
     "backend": "webgl"
   },
   {
     "name": "Fjord",
     "type": "Norwegian Forest",
-    "triangles": 9756,
+    "triangles": 8972,
     "draws": 20,
     "backend": "webgl"
   },
   {
     "name": "Marple",
     "type": "Persian",
-    "triangles": 9609,
+    "triangles": 8825,
     "draws": 16,
     "backend": "webgl"
   },
   {
     "name": "Duchess",
     "type": "Turkish Angora",
-    "triangles": 8402,
+    "triangles": 7618,
     "draws": 17,
     "backend": "webgl"
   },
   {
     "name": "Russet",
     "type": "Somali",
-    "triangles": 8144,
+    "triangles": 7360,
     "draws": 19,
     "backend": "webgl"
   },
@@ -156,28 +156,28 @@
   {
     "name": "Crumpet",
     "type": "Selkirk Rex",
-    "triangles": 9377,
+    "triangles": 8993,
     "draws": 16,
     "backend": "webgl"
   },
   {
     "name": "Marshmallow",
     "type": "Ragdoll",
-    "triangles": 9336,
+    "triangles": 8936,
     "draws": 20,
     "backend": "webgl"
   },
   {
     "name": "Chai",
     "type": "Birman",
-    "triangles": 9996,
+    "triangles": 9596,
     "draws": 19,
     "backend": "webgl"
   },
   {
     "name": "Skipper",
     "type": "Turkish Van",
-    "triangles": 8731,
+    "triangles": 8331,
     "draws": 19,
     "backend": "webgl"
   },
@@ -198,14 +198,14 @@
   {
     "name": "Fizz",
     "type": "Devon Rex",
-    "triangles": 8732,
+    "triangles": 8348,
     "draws": 19,
     "backend": "webgl"
   },
   {
     "name": "Noodle",
     "type": "Cornish Rex",
-    "triangles": 7880,
+    "triangles": 7496,
     "draws": 16,
     "backend": "webgl"
   },
@@ -226,7 +226,7 @@
   {
     "name": "Clover",
     "type": "American Curl",
-    "triangles": 9697,
+    "triangles": 9297,
     "draws": 19,
     "backend": "webgl"
   },
@@ -380,35 +380,35 @@
   {
     "name": "Timber",
     "type": "Maine Coon",
-    "triangles": 9728,
-    "draws": 21,
+    "triangles": 8944,
+    "draws": 20,
     "backend": "webgpu"
   },
   {
     "name": "Fjord",
     "type": "Norwegian Forest",
-    "triangles": 9756,
+    "triangles": 8972,
     "draws": 20,
     "backend": "webgpu"
   },
   {
     "name": "Marple",
     "type": "Persian",
-    "triangles": 9609,
+    "triangles": 8825,
     "draws": 16,
     "backend": "webgpu"
   },
   {
     "name": "Duchess",
     "type": "Turkish Angora",
-    "triangles": 8402,
+    "triangles": 7618,
     "draws": 17,
     "backend": "webgpu"
   },
   {
     "name": "Russet",
     "type": "Somali",
-    "triangles": 8144,
+    "triangles": 7360,
     "draws": 19,
     "backend": "webgpu"
   },
@@ -436,28 +436,28 @@
   {
     "name": "Crumpet",
     "type": "Selkirk Rex",
-    "triangles": 9377,
+    "triangles": 8993,
     "draws": 16,
     "backend": "webgpu"
   },
   {
     "name": "Marshmallow",
     "type": "Ragdoll",
-    "triangles": 9336,
+    "triangles": 8936,
     "draws": 20,
     "backend": "webgpu"
   },
   {
     "name": "Chai",
     "type": "Birman",
-    "triangles": 9996,
+    "triangles": 9596,
     "draws": 19,
     "backend": "webgpu"
   },
   {
     "name": "Skipper",
     "type": "Turkish Van",
-    "triangles": 8731,
+    "triangles": 8331,
     "draws": 19,
     "backend": "webgpu"
   },
@@ -478,14 +478,14 @@
   {
     "name": "Fizz",
     "type": "Devon Rex",
-    "triangles": 8732,
+    "triangles": 8348,
     "draws": 19,
     "backend": "webgpu"
   },
   {
     "name": "Noodle",
     "type": "Cornish Rex",
-    "triangles": 7880,
+    "triangles": 7496,
     "draws": 16,
     "backend": "webgpu"
   },
@@ -506,7 +506,7 @@
   {
     "name": "Clover",
     "type": "American Curl",
-    "triangles": 9697,
+    "triangles": 9297,
     "draws": 19,
     "backend": "webgpu"
   },

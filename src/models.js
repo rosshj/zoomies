@@ -1067,7 +1067,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const fitBody=g=>{
     const p=g.attributes.position;
     for(let i=0;i<p.count;i++){
-      const y=p.getY(i),w=(type.belly-1)*(1-THREE.MathUtils.smoothstep(y,1.1,1.6));
+      const y=p.getY(i);
+      // Long fur broadens the continuous upper torso; separate surface puffs
+      // read as lumps, especially on pale coats. The chest decal uses this
+      // same deformation so its marking stays flush with the body.
+      const ruff=(type.ruff||0)*.035*Math.exp(-(((y-1.28)/.38)**2));
+      const w=(type.belly-1)*(1-THREE.MathUtils.smoothstep(y,1.1,1.6))+ruff;
       const curl=type.curl ? .018*Math.sin(Math.atan2(p.getZ(i),p.getX(i))*10+y*18):0;
       p.setX(i,p.getX(i)*(1+w+curl));p.setZ(i,p.getZ(i)*(1+w+curl));
     }
@@ -1314,20 +1319,6 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     whiskers[sx < 0 ? "L" : "R"] = pivot;
   }
 
-  if(type.ruff){
-    for(let i=-2;i<=2;i++){
-      const tuft=new THREE.Mesh(new THREE.SphereGeometry(.145*type.ruff,8,6),chestMat);
-      tuft.scale.set(.95,1.35,.55);tuft.rotation.z=i*.18;tuft.position.set(i*.19,1.28+Math.abs(i)*.045,.84-Math.abs(i)*.025);catStatic.push(tuft);
-    }
-  }
-  if(type.tufts||type.curl){
-    for(const sx of [-1,1])for(let i=0;i<3;i++){
-      const tuft=new THREE.Mesh(new THREE.SphereGeometry(type.curl ? .105 : .115,8,5),fur);
-      tuft.scale.set(type.curl?1:.72,type.curl?1:1.5,.7);
-      tuft.position.set(sx*(.69+i*.035),-.04-i*.12,.30);
-      tuft.rotation.z=-sx*(.75+i*.16);headStatic.push(tuft);
-    }
-  }
   if(type.folds){
     for(let i=0;i<3;i++){
       const fold=new THREE.Mesh(new THREE.TorusGeometry(.23+i*.05,.011,4,12,1.7),fur);

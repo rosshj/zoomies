@@ -14,25 +14,25 @@
 | Moo | Classic | Collar | 7,516 | 19 |
 | Misty | Classic | Wizard Hat | 8,100 | 19 |
 | Biscuit | Classic | Chef Hat | 7,926 | 19 |
-| Timber | Maine Coon | Dragon Hood | 9,728 | 21 |
-| Fjord | Norwegian Forest | Viking Helmet | 9,756 | 20 |
-| Marple | Persian | Detective Hat | 9,609 | 16 |
-| Duchess | Turkish Angora | Crown | 8,402 | 17 |
-| Russet | Somali | Scarf | 8,144 | 19 |
+| Timber | Maine Coon | Dragon Hood | 8,944 | 20 |
+| Fjord | Norwegian Forest | Viking Helmet | 8,972 | 20 |
+| Marple | Persian | Detective Hat | 8,825 | 16 |
+| Duchess | Turkish Angora | Crown | 7,618 | 17 |
+| Russet | Somali | Scarf | 7,360 | 19 |
 | Winston | British Shorthair | Top Hat | 8,302 | 19 |
 | Pudding | Exotic Shorthair | Mushroom Cap | 8,593 | 18 |
 | Pebble | Chartreux | Rain Hat | 8,167 | 16 |
-| Crumpet | Selkirk Rex | Straw Sunhat | 9,377 | 16 |
-| Marshmallow | Ragdoll | Unicorn Horn | 9,336 | 20 |
-| Chai | Birman | Flower Lei | 9,996 | 19 |
-| Skipper | Turkish Van | Pirate Hat | 8,731 | 19 |
+| Crumpet | Selkirk Rex | Straw Sunhat | 8,993 | 16 |
+| Marshmallow | Ragdoll | Unicorn Horn | 8,936 | 20 |
+| Chai | Birman | Flower Lei | 9,596 | 19 |
+| Skipper | Turkish Van | Pirate Hat | 8,331 | 19 |
 | Opal | Khao Manee | Cat-Eye Goggles | 7,752 | 17 |
 | Orbit | Sphynx | Space Helmet | 10,104 | 18 |
-| Fizz | Devon Rex | Bee Antennae | 8,732 | 19 |
-| Noodle | Cornish Rex | Oversized Mustache | 7,880 | 16 |
+| Fizz | Devon Rex | Bee Antennae | 8,348 | 19 |
+| Noodle | Cornish Rex | Oversized Mustache | 7,496 | 16 |
 | Saffron | Abyssinian | Sombrero | 9,770 | 19 |
 | Dumpling | Scottish Fold | Rubber-duck Hat | 7,988 | 19 |
-| Clover | American Curl | Frog Hood | 9,697 | 19 |
+| Clover | American Curl | Frog Hood | 9,297 | 19 |
 | Rumpus | Manx | Bandana | 7,496 | 20 |
 | Yoshi | Japanese Bobtail | Propeller Beanie | 7,897 | 19 |
 | Inky | Bombay | Shark Fin | 7,460 | 16 |

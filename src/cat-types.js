@@ -2,7 +2,7 @@
 // accessory anchors; changes are baked only while constructing a model.
 const families = {
   classic: { cheek:1, jaw:1, belly:1, tail:1, plume:1 },
-  longhair: { cheek:1.16, jaw:1.08, belly:1.04, tail:1, plume:1.7, ruff:1, tufts:1 },
+  longhair: { cheek:1.16, jaw:1.08, belly:1.04, tail:1, plume:1.7, ruff:1 },
   plush: { cheek:1.20, jaw:1.12, belly:1.06, tail:.85, plume:1.25 },
   masked: { cheek:1.08, jaw:1.03, belly:1, tail:1, plume:1.4, ruff:.6 },
   sleek: { cheek:.83, jaw:.91, belly:.91, tail:1.02, plume:.82 },
@@ -12,7 +12,7 @@ const families = {
 const type=(label,family,extra={})=>({label,family,ear:'classic',...families[family],...extra});
 export const CAT_TYPES = {
   classic:type('Classic','classic'),
-  maine:type('Maine Coon','longhair',{cheek:1.2,jaw:1.15,tufts:1.2}),
+  maine:type('Maine Coon','longhair',{cheek:1.2,jaw:1.15}),
   forest:type('Norwegian Forest','longhair',{ruff:1.2,cheek:1.10,plume:1.85}),
   persian:type('Persian','longhair',{cheek:1.28,jaw:1.16,ear:'round',tail:.8,plume:1.8}),
   angora:type('Turkish Angora','longhair',{cheek:1.06,belly:.95,plume:1.65,ruff:.65}),

@@ -19,7 +19,7 @@ Six new morphology families supplement the original shape. The same animation ri
 | Distinctive ears/tails | Scottish Fold, American Curl, Manx, Japanese Bobtail |
 | Athletic | Bombay, Ocicat, Egyptian Mau, Toyger, Snow Bengal |
 
-Details include sculpted cheek tufts and chest ruffs, tapered bushy tails, coat waves, a few Sphynx forehead folds, folded/curled/rounded/wider ears, a Manx without a visible tail, a pom-shaped bobtail and two different iris colors on Opal. Coats add **bicolor, mitted points, Van patches, ticking and broad tiger stripes** to the original 12 patterns. Markings remain procedural canvas textures generated once; fur uses opaque geometry.
+Details include smooth fuller cheeks and continuous chest silhouettes, tapered bushy tails, coat waves, a few Sphynx forehead folds, folded/curled/rounded/wider ears, a Manx without a visible tail, a pom-shaped bobtail and two different iris colors on Opal. Coats add **bicolor, mitted points, Van patches, ticking and broad tiger stripes** to the original 12 patterns. Markings remain procedural canvas textures generated once; fur uses opaque geometry.
 
 Headwear openings are generated from each ear shape's convex envelope, with separate geometry-cache keys. The crown of the head, facial attachment points, neck band and paw reach remain standardized so the existing accessory collection is interchangeable. Hats anchor the ears while the head and accessories retain their animation.
 
@@ -32,13 +32,21 @@ Headwear openings are generated from each ear shape's convex envelope, with sepa
 - Old saves used index 14 for Custom Cat. Loading an old save migrates that slot to the new custom index. New saves carry a version and an explicit custom marker, preserving custom selections across later roster expansions. The old outfit, colors and name are retained.
 - The changes are cosmetic: collider dimensions, driving stats, abilities and race field size are unchanged.
 
+## Smooth silhouette correction
+
+The separate chest and cheek puffs read as lumps on pale cats. They have been removed from all 12 affected types, including Persian and Turkish Angora. Long-haired types retain broad, continuous chest volume by shaping the torso and its matching coat decal together; wide cheeks, ears and tails keep each type recognizable. Curly types retain their subtle continuous coat waves without raised cheek beads.
+
+![Marple after smoothing](smooth-cat-16.png) ![Duchess after smoothing](smooth-cat-17.png)
+
+Each affected cat loses **384–784 triangles**, with no increase in material batches or per-frame work. Timber also drops from 21 to 20 batches. [Per-cat comparison against `309e8e0`](smooth-silhouettes.json). All 40 cats were rendered again on WebGL/WebGPU, the 3,321-combination compatibility sweep passed, and catalog portraits and all galleries were regenerated. The frame measurements below are from the preceding roster build; this correction was checked for geometry cost, not re-benchmarked for FPS.
+
 ## Runtime cost
 
 Morphology, coat painting, hat openings and geometry merging happen during model construction. The original rig updates each frame; there is no new fur shader, simulation, light or per-frame morphology work. Each race still constructs six racers. Catalog portraits are static, lazy-loaded images rather than 40 live models.
 
-Cheek/chest additions merge into the existing rigid clusters. Tail geometry is shared by fullness recipe; the existing bounded model/material/texture caches remain in use. Some types add material batches (for example, Opal's second iris color), so this is not a claim of zero rendering cost.
+Cheek and chest shaping uses the existing surfaces, with no separate fur-puff meshes. Tail geometry is shared by fullness recipe; the existing bounded model/material/texture caches remain in use. Some types add material batches (for example, Opal's second iris color), so this is not a claim of zero rendering cost.
 
-The compatibility sweep covers **3,321** type × accessory × pose combinations (27 × 41 × 3), with a maximum **11,087 triangles and 24 material batches** per complete cat. These budget counts include hidden rig meshes and are not renderer frame timings. [Compatibility results](compatibility.json) · [Native WebGL/WebGPU preset metrics](metrics.json).
+The compatibility sweep covers **3,321** type × accessory × pose combinations (27 × 41 × 3), with a maximum **10,667 triangles and 24 material batches** per complete cat. These budget counts include hidden rig meshes and are not renderer frame timings. [Compatibility results](compatibility.json) · [Native WebGL/WebGPU preset metrics](metrics.json).
 
 Native Chrome on Apple M3 Pro, WebGPU High, 1100 × 700 drawing buffer, six racers in Meadow; 8-second warm-up followed by 40 seconds (2,400 sampled frames per run). Runs executed sequentially.
 

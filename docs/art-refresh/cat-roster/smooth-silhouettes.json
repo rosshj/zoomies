@@ -1,0 +1,86 @@
+[
+  {
+    "name": "Timber",
+    "beforeTriangles": 9728,
+    "afterTriangles": 8944,
+    "beforeBatches": 21,
+    "afterBatches": 20
+  },
+  {
+    "name": "Fjord",
+    "beforeTriangles": 9756,
+    "afterTriangles": 8972,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Marple",
+    "beforeTriangles": 9609,
+    "afterTriangles": 8825,
+    "beforeBatches": 16,
+    "afterBatches": 16
+  },
+  {
+    "name": "Duchess",
+    "beforeTriangles": 8402,
+    "afterTriangles": 7618,
+    "beforeBatches": 17,
+    "afterBatches": 17
+  },
+  {
+    "name": "Russet",
+    "beforeTriangles": 8144,
+    "afterTriangles": 7360,
+    "beforeBatches": 19,
+    "afterBatches": 19
+  },
+  {
+    "name": "Crumpet",
+    "beforeTriangles": 9377,
+    "afterTriangles": 8993,
+    "beforeBatches": 16,
+    "afterBatches": 16
+  },
+  {
+    "name": "Marshmallow",
+    "beforeTriangles": 9336,
+    "afterTriangles": 8936,
+    "beforeBatches": 20,
+    "afterBatches": 20
+  },
+  {
+    "name": "Chai",
+    "beforeTriangles": 9996,
+    "afterTriangles": 9596,
+    "beforeBatches": 19,
+    "afterBatches": 19
+  },
+  {
+    "name": "Skipper",
+    "beforeTriangles": 8731,
+    "afterTriangles": 8331,
+    "beforeBatches": 19,
+    "afterBatches": 19
+  },
+  {
+    "name": "Fizz",
+    "beforeTriangles": 8732,
+    "afterTriangles": 8348,
+    "beforeBatches": 19,
+    "afterBatches": 19
+  },
+  {
+    "name": "Noodle",
+    "beforeTriangles": 7880,
+    "afterTriangles": 7496,
+    "beforeBatches": 16,
+    "afterBatches": 16
+  },
+  {
+    "name": "Clover",
+    "beforeTriangles": 9697,
+    "afterTriangles": 9297,
+    "beforeBatches": 19,
+    "afterBatches": 19
+  }
+]
