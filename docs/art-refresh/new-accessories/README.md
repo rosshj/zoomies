@@ -28,6 +28,14 @@ All 19 requested accessories are available in the Custom Cat studio and asset vi
 | Detective Hat | Deerstalker crown, front/rear peaks, side flaps and broad stitching. |
 | Shell Necklace | Five large scalloped shells with readable ribs on a fitted cord. |
 
+## Angled helmet neckline
+
+The helmet opening follows the marked neckline at roughly 24 degrees: low under the chin and high at the nape. Both the lower dome edge and collar come from the same tilted intersection with the ellipsoid. The dome is also about 6% narrower; the headset and single mic stay aligned with the face. The blinking status lamps follow the new rim.
+
+[Neckline before/after, side and front](neckline-comparison.png)
+
+This is generation-time shaping only. The complete spotted helmet cat still has **9,816 triangles and 21 batches**, including the same single transparent dome; animation, materials and lights are unchanged. The 82 WebGL/WebGPU selection renders, 738 pose/color checks and web build pass. Reviewed front, side, rear and driving views. No new FPS benchmark was run for this geometry-only reshaping; earlier measurements below remain labeled for the builds tested.
+
 ## Fit refinements
 
 The dragon tail now starts inside the rear of the hood above its hem, so the broad root stays attached as it flutters. The mushroom cap sits on a short white stem with fitted ear openings. The space dome is about 14% narrower and shallower, retaining ear/muzzle clearance, with closer earcups and **one** boom microphone beside the mouth. Ski goggles now use a single curved shield with a nose cutout, a deep foam seal and a broad elastic strap.

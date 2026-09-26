@@ -136,8 +136,20 @@ export function createExtraAccessory(id, color, helpers) {
     }
     case 'space': {
       covered=true;
-      const rim=ring(.918,.06,color,0,-.497,.04);rim.scale.z=1/1.08;
-      const seal=ring(.918,.023,dark,0,-.545,.04);seal.scale.z=1/1.08;
+      // Cut the ellipsoid on the neckline: lower under the chin, higher at
+      // the nape. The rim and dome share the exact boundary, so no gap opens.
+      // y = -.13 - .44 * (z - .04), about 24 degrees from horizontal.
+      const domePoint=(u,v,out=new THREE.Vector3())=>{
+        const a=u*TAU,b=.44*Math.sin(a),r=Math.hypot(1.2,b);
+        const edge=Math.atan2(b,1.2)+Math.acos(-.26/r),p=v*edge;
+        return out.set(-1.02*Math.cos(a)*Math.sin(p),.13+1.2*Math.cos(p),.04+Math.sin(a)*Math.sin(p));
+      };
+      class Neckline extends THREE.Curve {
+        getPoint(t,out=new THREE.Vector3()){return domePoint(t,1,out);}
+      }
+      const neckline=new Neckline();
+      add(new THREE.TubeGeometry(neckline,24,.06,5,true),color);
+      add(new THREE.TubeGeometry(neckline,24,.023,5,true),dark,0,-.045,0);
       for(const sx of [-1,1]){
         ball(.15,dark,sx*.81,.13,.035,[.45,1,1]);
         ball(.145,color,sx*.865,.13,.035,[.4,1,1]);
@@ -149,13 +161,20 @@ export function createExtraAccessory(id, color, helpers) {
       ball(.08,0x17232d,.19,-.30,.89,[1.35,.65,.65]);
       // A closer-fitting ellipsoid still clears the anchored ears and muzzle.
       // One front surface, with no transmission/refraction or extra light.
-      const g=new THREE.SphereGeometry(1,24,14,0,TAU,0,2.12);g.scale(1.08,1.2,1);g.translate(0,.13,.04);g.userData.shared=true;
+      const g=new THREE.SphereGeometry(1,24,14,0,TAU,0,2.12),p=g.attributes.position,sample=new THREE.Vector3();
+      for(let i=0;i<p.count;i++){
+        domePoint((i%25)/24,Math.floor(i/25)/14,sample);
+        p.setXYZ(i,sample.x,sample.y,sample.z);
+      }
+      g.computeVertexNormals();g.userData.shared=true;
       const domeKey='extra|space|dome';if(!cache.has(domeKey))cacheGeometry(domeKey,g);else g.dispose();
       dome=new THREE.Mesh(cache.get(domeKey),glass);dome.renderOrder=2;group.add(dome);
       line([[-.53,.90,.60],[-.37,1.04,.57],[-.17,1.10,.59]],.016,0xe5fbff);
-      line([[.922,-.49,.04],[1.08,.13,.04],[.891,.81,.04],[.53,1.175,.04]],.01,0xc4e3eb);
+      line([[.996,-.13,.04],[1.02,.13,.04],[.841,.81,.04],[.50,1.175,.04]],.01,0xc4e3eb);
       pivot('blink',0,0,0);
-      for(const sx of [-1,1])ball(.04,sx<0?0x7effa9:0xff6d6d,sx*.55,-.46,.72);
+      for(const [u,c] of [[1/6,0x7effa9],[1/3,0xff6d6d]]){
+        const p=domePoint(u,1);ball(.04,c,p.x,p.y+.045,p.z+.018);
+      }
       break;
     }
     case 'dragon': {
