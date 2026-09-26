@@ -80,6 +80,7 @@ let trackConfig = loadTrackConfig(); // `let`: a cup race replaces this with the
 // Garage presets live in src/presets.js (pure data) so the catalog-screenshot
 // tool can import them without booting the game.
 import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } from "./presets.js";
+import { CAT_TYPES, CAT_TYPE_IDS, savedCatIndex } from "./cat-types.js";
 // A "Custom" slot sits one past the last preset in each stepper; landing on it
 // reveals the creator (colour / pattern / accessory / name) and the look is read
 // from garageConfig.customCat / .customKart instead of the preset arrays.
@@ -96,6 +97,7 @@ function sanitizeCustomCat(c) {
   c = c && typeof c === "object" ? c : {};
   return {
     name: _clampName(c.name, DEFAULT_CUSTOM_CAT.name),
+    type: CAT_TYPE_IDS.includes(c.type) ? c.type : "classic",
     fur: _clampColor(c.fur, DEFAULT_CUSTOM_CAT.fur),
     pattern: CAT_PATTERNS.includes(c.pattern) ? c.pattern : DEFAULT_CUSTOM_CAT.pattern,
     accessory: CAT_ACCESSORIES.includes(c.accessory) ? c.accessory : DEFAULT_CUSTOM_CAT.accessory,
@@ -121,7 +123,7 @@ function loadGarageConfig() {
     const c = JSON.parse(localStorage.getItem(GARAGE_KEY));
     if (c && typeof c === "object") {
       return {
-        cat: clampIdx(c.cat, CAT_PRESETS.length + 1), // +1: the Custom slot is valid
+        cat: savedCatIndex(c, CAT_PRESETS.length), // +1: the Custom slot is valid
         kart: clampIdx(c.kart, KART_PRESETS.length + 1),
         customCat: sanitizeCustomCat(c.customCat),
         customKart: sanitizeCustomKart(c.customKart),
@@ -139,7 +141,7 @@ function clampIdx(v, n) {
 }
 function saveGarageConfig(c) {
   try {
-    localStorage.setItem(GARAGE_KEY, JSON.stringify(c));
+    localStorage.setItem(GARAGE_KEY, JSON.stringify({...c,v:2,catId:c.cat===CUSTOM_CAT_IDX?"custom":null}));
   } catch {
     /* ignore */
   }
@@ -149,11 +151,11 @@ function saveGarageConfig(c) {
 function catSpec(cfg) {
   if (cfg.cat === CUSTOM_CAT_IDX) {
     const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
-    return { name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
+    return { name: c.name, type:c.type, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
   }
   const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
   // Preset cats may override their pattern's default accessory (presets.js).
-  return { name: p.name, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
+  return { name: p.name, type:p.type, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
 }
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {
@@ -167,7 +169,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
-  return { catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  return { catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
 }
 
 const _qs = new URLSearchParams(location.search);
@@ -1100,28 +1102,30 @@ function _pickUnused(palette, used) {
   for (const c of palette) if (!used.has(c)) return c;
   return palette[0];
 }
-// The per-race roster: the player (slot 0) wears the garage selection; the AI keep
-// their names/skills but get nudged off the player's kart + cat colours so the
-// player stands out. A time-trial field is the player alone.
+// The player wears the garage selection; AI keep their driving traits and draw
+// distinct named cats from a deterministic shuffle of the complete roster.
+// A time-trial field is the player alone.
 // The AI lineup for a given player look (deterministic: same look → same
 // rivals). Shared by the race build AND the start-line grid tableau, so the
 // cats you see waiting on the grid are exactly the cats you race.
-function aiRoster(look) {
-  const usedKart = new Set([look.color]);
-  const usedCat = new Set([look.catColor]);
-  return ROSTER.slice(1).map((cfg, i) => {
-    let { color, catColor } = cfg;
-    if (usedKart.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), usedKart);
+function aiRoster(look, otherHumans=[]) {
+  const usedKart = new Set([look.color,...otherHumans.map(c=>c.color)]);
+  const signature=c=>`${c.catColor}|${c.catType||'classic'}|${c.catPattern||''}`;
+  const usedCat=new Set([look,...otherHumans].map(signature));
+  const rng=makeRng(WORLD_SEED+'|cats|'+signature(look));
+  const pool=CAT_PRESETS.map(c=>({name:c.name,catColor:c.fur,catType:c.type,catPattern:c.pattern,catAccessory:c.accessory}));
+  for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  return ROSTER.slice(1).map((cfg,i)=>{
+    let color=cfg.color;
+    if(usedKart.has(color))color=_pickUnused(KART_PRESETS.map(k=>k.color),usedKart);
     usedKart.add(color);
-    if (usedCat.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), usedCat);
-    usedCat.add(catColor);
-    // Spread body styles + give each rival its own number so the field varies.
-    return { ...cfg, color, catColor, kartStyle: i % 3, kartNumber: 11 + i * 6 };
+    const cat=pool.find(c=>!usedCat.has(signature(c)));usedCat.add(signature(cat));
+    return {...cfg,...cat,color,kartStyle:i%3,kartNumber:11+i*6};
   });
 }
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
   if (timeTrial) return [playerCfg];
   if (raceMode === "split") {
     // Versus: 2-4 humans + AI to fill the same six-kart field (and headlight
@@ -1130,8 +1134,6 @@ function raceRoster() {
     // no AI skill scaling) wearing its startline pick; rivals recolour away
     // from EVERY human so nobody impersonates a player.
     playerCfg.name = "Player 1";
-    const humanKartColors = new Set([look.color]);
-    const humanCatColors = new Set([look.catColor]);
     const seatCfgs = [];
     for (let seat = 2; seat <= splitCount; seat++) {
       const { cat: sc, kart: sk } = seatLook(seat);
@@ -1141,20 +1143,14 @@ function raceRoster() {
         seat,
         color: sk.color,
         catColor: sc.fur,
+        catType: sc.type,
         catPattern: sc.pattern,
         catAccessory: sc.accessory,
         kartStyle: sk.style,
         kartNumber: sk.number,
       });
-      humanKartColors.add(sk.color);
-      humanCatColors.add(sc.fur);
     }
-    const ais = aiRoster(look).slice(0, 6 - 1 - seatCfgs.length).map((cfg) => {
-      let { color, catColor } = cfg;
-      if (humanKartColors.has(color)) color = _pickUnused(KART_PRESETS.map((k) => k.color), humanKartColors);
-      if (humanCatColors.has(catColor)) catColor = _pickUnused(CAT_PRESETS.map((c) => c.fur), humanCatColors);
-      return { ...cfg, color, catColor };
-    });
+    const ais = aiRoster(look, seatCfgs).slice(0, 5 - seatCfgs.length);
     return [playerCfg, ...seatCfgs, ...ais];
   }
   return [playerCfg, ...aiRoster(look)];
@@ -3096,7 +3092,7 @@ function warmGarageKart() {
   try {
     const cat = catSpec(garageConfig);
     const kart = kartSpec(garageConfig);
-    const wk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
+    const wk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
     wk.group.traverse((o) => {
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3141,7 +3137,7 @@ function warmRosterGeometries() {
     const cfg = roster[i++];
     try {
       const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber });
-      const cat = createCat(cfg.catColor, { pattern: cfg.catPattern });
+      const cat = createCat(cfg.catColor, { type:cfg.catType, pattern: cfg.catPattern, accessory:cfg.catAccessory });
       _disposeGroup(group);
       _disposeGroup(cat);
     } catch { /* warm-up only */ }
@@ -3678,12 +3674,12 @@ const _previewCache = { key: null, kart: null };
 function _previewKey(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  return [cat.fur, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
+  return [cat.fur, cat.type, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
 }
 function _buildPreviewKart(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3786,8 +3782,10 @@ function _syncAccColorGrid(accId, chosenColor) {
 function syncCreators() {
   if (!_garageDraft) return;
   const c = _garageDraft.customCat;
+  const typeName=document.getElementById("cat-type-name");
+  if(typeName)typeName.textContent=CAT_TYPES[c.type]?.label||"Classic";
   const patName = document.getElementById("cat-pat-name");
-  if (patName) patName.textContent = _cap(c.pattern);
+  if (patName) patName.textContent = c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern);
   const accName = document.getElementById("cat-acc-name");
   if (accName) accName.textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
   const ni = document.getElementById("cat-custom-name");
@@ -3882,7 +3880,7 @@ function editCustomKart(patch, rebuild = true) {
   if (rebuild) buildGaragePreview();
 }
 function stepCustom(which, list, dir) {
-  if (which === "pattern" || which === "accessory") {
+  if (which === "type" || which === "pattern" || which === "accessory") {
     const i = list.indexOf(_garageDraft.customCat[which]);
     const patch = { [which]: list[(i + dir + list.length) % list.length] };
     // Switching accessory resets its colour to that type's natural default.
@@ -3915,8 +3913,8 @@ function renderGarage(timeSec, dt = 0.016) {
 
 // --- Start-line grid tableau ----------------------------------------------
 // The "Start line" screen renders the ACTUAL starting grid behind the panel:
-// your preview kart parked in pole and the real AI lineup (aiRoster — the same
-// cats you'll race) on the slots behind, shot from in front of the gantry.
+// your preview kart parked in pole and the actual guest/AI lineup on the
+// slots behind, shot from in front of the gantry.
 // Rivals are built staggered (one per frame-ish) so entering the screen never
 // hitches, and cached like the showroom preview so re-entry is instant.
 let _gridOpen = false;
@@ -3928,10 +3926,6 @@ const _gridCamBase = new THREE.Vector3();
 const _gridLook = new THREE.Vector3();
 const _gridSide = new THREE.Vector3();
 const _gridRight = new THREE.Vector3();
-function _gridRivalKey() {
-  const look = playerLook();
-  return [look.color, look.catColor].join("|"); // rival de-clash depends only on these
-}
 function _buildGridRival(cfg) {
   const k = new Kart({ ...cfg, isPlayer: false });
   k.group.traverse((o) => {
@@ -3967,13 +3961,13 @@ function _placeGridField() {
   for (const k of _gridRivals) scene.remove(k.group);
   _gridRivals = [];
   if (raceMode === "tt") { _aimGridCamera(); return; }
-  const rkey = _gridRivalKey();
+  const roster = raceRoster().slice(1);
+  const rkey = JSON.stringify(roster);
   if (_gridRivalCache.key !== rkey) {
     for (const k of _gridRivalCache.karts) _disposeGroup(k.group);
     _gridRivalCache.karts = [];
     _gridRivalCache.key = rkey;
   }
-  const roster = aiRoster(playerLook());
   const placeRival = (i) => {
     if (!_gridOpen || i >= roster.length) {
       if (_gridOpen && state === State.MENU) beginWarmAll(1); // compile any new pipelines off-tap
@@ -4045,6 +4039,7 @@ function closeStartGrid() {
 window.__zoomies.startGrid = () => ({ open: _gridOpen, rivals: _gridRivals.length, player: !!(_previewCache.kart && _previewCache.kart.group.parent) });
 
 // Custom-cat creator controls.
+for(const [suffix,dir] of [["prev",-1],["next",1]])document.getElementById(`cat-type-${suffix}`)?.addEventListener("click",()=>stepCustom("type",CAT_TYPE_IDS,dir));
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
 document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
 document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
@@ -4055,7 +4050,7 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
   const accessory = _pick(CAT_ACCESSORIES);
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
-    fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
+    type:_pick(CAT_TYPE_IDS), fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
     accessoryColor: pal.length ? _pick(pal) : null,
   });
 });
@@ -4180,6 +4175,7 @@ function renderCatCards() {
     grid.appendChild(racerGridCard({
       img: `assets/catalog/cat-${i}.jpg`,
       name: c.name,
+      sub: (_pickingSeat || isUnlocked(profile,`cat.${i}`)) ? (CAT_TYPES[c.type]?.label || "Classic") : undefined,
       // Couch rule: a guest's seat pass rides any preset free — Versus pays
       // no treats, and P1's locks/prices (and wallet!) are P1's alone.
       buyId: _pickingSeat ? null : `cat.${i}`,
@@ -6662,7 +6658,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).

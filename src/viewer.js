@@ -23,7 +23,7 @@ import { assetCatalog } from "./scenery.js";
 import { ROAD_PROPS, makeRoadProp } from "./road-prop-assets.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
-import { KART_PRESETS } from "./presets.js";
+import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
 
 // ---------------------------------------------------------------------------
 // Catalog: cats (one per coat pattern, on a fur tone that shows it off),
@@ -104,8 +104,9 @@ function buildCatAsset(fur, opts) {
 }
 
 const entries = [];
+for(const c of CAT_PRESETS)entries.push({group:"Racers",kind:"cat",name:c.name,build:()=>buildCatAsset(c.fur,{...c})});
 for (const p of CAT_PATTERNS)
-  entries.push({ group: "Cats", kind: "cat", name: `Cat — ${cap(p)}`, build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
+  entries.push({ group: "Cats", kind: "cat", name: `Cat — ${p==="mittedPoint"?"Mitted points":cap(p)}`, build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
 for (const a of CAT_ACCESSORIES) {
   if (a === "none") continue;
   entries.push({
@@ -484,7 +485,7 @@ window.__viewer = {
   setBackground, setGameLook,
   // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
   showPreset(spec) {
-    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { pattern: spec.pattern, accessory: spec.accessory }));
+    if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { ...spec }));
     else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number }));
   },
   freeze(t = 0) { animPlaying = false; animT = t; curAnim?.(t); refreshAnimPlayBtn(); },

@@ -70,7 +70,7 @@ export function migrateProfile(raw) {
 
 export const STARTER_UNLOCKS = ["cat.0", "cat.1", "cat.2", "kart.0", "kart.1", "kart.2"];
 
-// Price ladder: a PROGRESSIVE climb totalling ~2,400 treats (was 4,800) — the
+// Original price ladder: a progressive climb totalling ~2,400 treats — the
 // cheapest cats/karts land after a couple of races (100-150), the top of each
 // column is a ~400 goal, and the creators sit at 250 each so designing your own
 // racer is an early-mid milestone rather than an end-game grind. Cup and
@@ -86,6 +86,9 @@ export const CATALOG = [
   { id: "cat.11", price: 400 },      // Moo — the cow cat
   { id: "cat.12", diff: "medium" },  // Misty — win any cup on Medium or harder
   { id: "cat.13", diff: "hard" },    // Biscuit — win any cup on Hard (or Expert)
+  // Added racers keep the original prices/unlocks intact. Every type can also
+  // be mixed in the existing Custom Cat creator.
+  ...Array.from({length:26},(_,i)=>({id:`cat.${i+14}`,price:180+Math.floor(i/5)*30})),
   // Karts.
   { id: "kart.0", price: 0 }, { id: "kart.1", price: 0 }, { id: "kart.2", price: 0 },
   { id: "kart.3", price: 100 }, { id: "kart.4", price: 100 }, { id: "kart.5", price: 120 },

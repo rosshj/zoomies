@@ -69,7 +69,7 @@ export function createExtraAccessory(id, color, helpers) {
     for(let i=0;i<ix.count-radial*6;i+=3){const b=ix.getX(i+1);ix.setX(i+1,ix.getX(i+2));ix.setX(i+2,b);}
     g.computeVertexNormals();return g;
   };
-  const key=`extra|${id}|${color}`,group=new THREE.Group(),parts=[],moving=[];
+  const key=`extra|${id}|${color}|${helpers.fitKey||"classic"}`,group=new THREE.Group(),parts=[],moving=[];
   let target=parts,body=false,covered=false,motion=null,dome=null;
   const add=(g,c=color,x=0,y=0,z=0,scale=null)=>{
     const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color:c}));

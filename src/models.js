@@ -1,4 +1,6 @@
 import * as THREE from "three";
+import { catType } from "./cat-types.js";
+import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { EXTRA_ACCESSORIES, EXTRA_ACCESSORY_COLORS, createExtraAccessory, updateExtraAccessory } from "./cat-accessories.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
@@ -147,7 +149,7 @@ function underglowTexture() {
 // The catalogue the custom-cat creator offers, and each breed's signature
 // accessory (the default when opts.accessory isn't given). Real cat coat
 // patterns, plus the accessory each preset breed wears.
-export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie", "bengal", "cow", "smoke"];
+export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie", "bengal", "cow", "smoke", "bicolor", "mittedPoint", "van", "ticked", "tiger"];
 // The complete wardrobe is available through the Custom Cat creator.
 export const CAT_ACCESSORIES = [
   "none", "cap", "headphones", "beanie", "flower", "fedora", "sunglasses", "bandana", "collar", "bow",
@@ -215,7 +217,7 @@ function catPalette(furColor, override) {
   // Masked breeds (Siamese point / snowshoe) wear seal-brown extremities and
   // blue eyes; a snowshoe is white-bodied so its points must be a fixed bold
   // brown rather than a tint of the (white) coat.
-  const masked = pattern === "point" || pattern === "snowshoe";
+  const masked = ["point","snowshoe","bicolor","mittedPoint"].includes(pattern);
   return {
     pattern,
     fur,
@@ -282,8 +284,8 @@ export function disposeGroup(root) {
     for (const m of mats) if (!m?.userData?.shared) m?.dispose?.();
   });
 }
-function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
-  const key = `s|${furColor.getHexString()}|${stripeColor.getHexString()}|${count}|${axis}`;
+function makeStripeTexture(furColor, stripeColor, count, axis = "u", width = 1) {
+  const key = `s|${furColor.getHexString()}|${stripeColor.getHexString()}|${count}|${axis}|${width}`;
   if (_coatTexCache.has(key)) return _coatTexCache.get(key);
   const S = 256;
   const c = document.createElement("canvas");
@@ -295,7 +297,7 @@ function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
   const pitch = S / count;
   for (let i = 0; i < count; i++) {
     const c0 = (i + 0.5) * pitch + (i % 2 ? pitch * 0.16 : -pitch * 0.16); // wobble off the grid
-    const w = pitch * (0.16 + (i % 3) * 0.02); // thin mackerel bars, not chunky bands
+    const w = width * pitch * (0.16 + (i % 3) * 0.02); // thin mackerel bars, not chunky bands
     // Each stripe broken into short, offset dashes (pattern varies per stripe) so
     // it reads like real tabby fur ticking, not an even barcode of rings.
     const segs = i % 3 === 0
@@ -321,6 +323,25 @@ function makeStripeTexture(furColor, stripeColor, count, axis = "u") {
   const t = _finishTex(c);
   return _cacheTex(key, t);
 }
+function makeTypeCoat(furColor, stripeColor, pattern) {
+  const key=`typecoat|${pattern}|${furColor.getHexString()}|${stripeColor.getHexString()}`;
+  if(_coatTexCache.has(key))return _coatTexCache.get(key);
+  const c=document.createElement('canvas');c.width=c.height=256;
+  const ctx=c.getContext('2d');ctx.fillStyle='#'+furColor.getHexString();ctx.fillRect(0,0,256,256);
+  if(pattern==='van'){
+    ctx.fillStyle='#be814f';
+    for(const [x,y,rx,ry] of [[70,85,38,60],[166,70,33,47]]){ctx.beginPath();ctx.ellipse(x,y,rx,ry,.3,0,Math.PI*2);ctx.fill();}
+  }else{
+    ctx.fillStyle='#'+stripeColor.getHexString();ctx.globalAlpha=.23;
+    for(let i=0;i<750;i++){
+      const x=(i*73.71)%256,y=(i*43.29)%256;
+      ctx.fillRect(x,y,2+(i%3),1.5);
+    }
+    ctx.globalAlpha=.10;ctx.fillRect(0,16,256,30);ctx.fillRect(0,190,256,36);
+  }
+  return _cacheTex(key,_finishTex(c));
+}
+
 // Painted spotted/rosetted coat (ginger spotted tabby): a deterministic scatter
 // of bold rounded spots — drawn once, no tiling.
 function makeSpotTexture(furColor, spotColor) {
@@ -710,13 +731,18 @@ function accessoryPlaque(w, h, depth, r) {
 // Cached supporting planes include its beveled front/back, avoiding boxy
 // notches around the narrower tips. Only model construction uses these planes.
 const CAT_EAR_SCALE = .8;
-let _accessoryEarHulls;
-function accessoryEarHulls() {
-  if (_accessoryEarHulls) return _accessoryEarHulls;
-  _accessoryEarHulls = [-1, 1].map(sx => {
-    const g = catEarGeometry().scale(CAT_EAR_SCALE,CAT_EAR_SCALE,CAT_EAR_SCALE).rotateZ(-sx*.22).translate(sx*.45,.55,-.02);
+const _accessoryEarHulls = new Map();
+function accessoryEarHulls(earType="classic") {
+  if (_accessoryEarHulls.has(earType)) return _accessoryEarHulls.get(earType);
+  const hulls = [-1, 1].map(sx => {
+    const g = catEarGeometry(false,earType).scale(CAT_EAR_SCALE,CAT_EAR_SCALE,CAT_EAR_SCALE).rotateZ(-sx*.22).translate(sx*.45,.55,-.02);
     const p = g.attributes.position, ix = g.index;
     const vertices = Array.from({length:p.count}, (_, i) => new THREE.Vector3().fromBufferAttribute(p,i));
+    if(earType!=="classic"){
+      const hull=new ConvexHull().setFromPoints(vertices);
+      const planes=hull.faces.map(f=>new THREE.Plane(f.normal.clone().negate(),f.constant+.003));
+      g.dispose();return planes;
+    }
     const center = new THREE.Vector3(sx*.45,.7,-.02), planes = [], keys = new Set();
     for (let i = 0; i < (ix?.count ?? p.count); i += 3) {
       const [a,b,c] = [0,1,2].map(j => vertices[ix ? ix.getX(i+j) : i+j]);
@@ -732,12 +758,12 @@ function accessoryEarHulls() {
     g.dispose();
     return planes;
   });
-  return _accessoryEarHulls;
+  _accessoryEarHulls.set(earType,hulls);return hulls;
 }
 
 // Subtract the ears during generation, interpolating normals/UVs at the cuts.
 // The result merges normally: no clipping shader, extra material or frame work.
-function cutAccessoryEarSlots(mesh) {
+function cutAccessoryEarSlots(mesh,earType="classic") {
   mesh.updateMatrix();
   const source = mesh.geometry.clone().applyMatrix4(mesh.matrix);
   const g = source.index ? source.toNonIndexed() : source;
@@ -748,7 +774,7 @@ function cutAccessoryEarSlots(mesh) {
     n: new THREE.Vector3().fromBufferAttribute(n, i + j),
     uv: new THREE.Vector2().fromBufferAttribute(uv, i + j),
   })));
-  for (const planes of accessoryEarHulls()) {
+  for (const planes of accessoryEarHulls(earType)) {
     const outside = [];
     for (const face of faces) {
       // Most hat triangles never touch an ear; avoid splitting those at all.
@@ -861,6 +887,7 @@ function torsoRibbonGeo(x0, x1, y0, y1, off, rows = 8) {
   return g;
 }
 
+const _plumeCache=new Map();
 let _catConstGeo = null;
 function catConstGeo() {
   if (_catConstGeo) return _catConstGeo;
@@ -883,6 +910,7 @@ function catConstGeo() {
   _catConstGeo = {
     tail: _sharedGeo(new THREE.TubeGeometry(tailCurve, 28, 0.15, 10)),
     tailTipPos: tailCurve.getPoint(1),
+    bobtail: _sharedGeo(new THREE.SphereGeometry(.25,10,7)),
     tailTip: _sharedGeo(new THREE.SphereGeometry(0.15, 12, 12)),
     eyelid: _sharedGeo(new THREE.SphereGeometry(0.26, 14, 10)),
     mouth: _sharedGeo(new THREE.BufferGeometry().setFromPoints([
@@ -905,7 +933,7 @@ function catConstGeo() {
 // One sculpted ear: broad at the scalp, softly rounded at the tip, shallow
 // front-to-back. The pink inset follows the front surface instead of nesting
 // a second cone inside it (which hid the pink and looked like horns).
-function catEarGeometry(inner = false) {
+function catEarGeometry(inner = false, earType = "classic") {
   const shape = new THREE.Shape();
   shape.moveTo(-0.30, -0.12);
   shape.quadraticCurveTo(-0.34, 0.04, -0.08, 0.48);
@@ -916,12 +944,26 @@ function catEarGeometry(inner = false) {
     const geo = new THREE.ShapeGeometry(shape, 5);
     geo.scale(0.64, 0.65, 1);
     geo.translate(0, 0.035, 0.146);
-    return geo;
+    return sculptEar(geo,earType);
   }
-  return new THREE.ExtrudeGeometry(shape, {
+  return sculptEar(new THREE.ExtrudeGeometry(shape, {
     depth: 0.15, steps: 1, bevelEnabled: true,
     bevelThickness: 0.07, bevelSize: 0.055, bevelSegments: 2, curveSegments: 5,
-  }).translate(0, 0, -0.09);
+  }).translate(0, 0, -0.09),earType);
+}
+
+function sculptEar(g,kind) {
+  if(kind==="classic")return g;
+  const p=g.attributes.position;
+  for(let i=0;i<p.count;i++){
+    let x=p.getX(i),y=p.getY(i),z=p.getZ(i),t=THREE.MathUtils.smoothstep(y,.08,.58);
+    if(kind==="round"){x*=1.05;y*=.78;}
+    if(kind==="wide"){x*=1.13;y*=.96;}
+    if(kind==="fold"){y-=t*.38;z+=t*.23;}
+    if(kind==="curl"){y-=t*.13;z-=t*t*.23;}
+    p.setXYZ(i,x,y,z);
+  }
+  g.computeVertexNormals();return g;
 }
 
 // Builds a low-poly cat sitting upright (the driver). Returns a Group whose
@@ -947,7 +989,9 @@ const ARM_POSES = {
 // rig still drives them.
 export function createCat(furColor = 0xf0a830, opts = {}) {
   const cat = new THREE.Group();
+  const type=catType(opts.type),typeKey=type.label;
   const pal = catPalette(furColor, opts.pattern);
+  if(type.eye!=null)pal.eye.setHex(type.eye);
   const pat = pal.pattern;
   const isTabby = pat === "tabby";
   const isSpotted = pat === "spotted";
@@ -955,16 +999,18 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const isTortie = pat === "tortie";
   const isBengal = pat === "bengal";
   const isCow = pat === "cow";
-  const isTextured = isTabby || isSpotted || isCalico || isTortie || isBengal || isCow; // coat carries a painted pattern
+  const isTicked=pat==="ticked",isTiger=pat==="tiger",isVan=pat==="van";
+  const isBicolor=pat==="bicolor",isMittedPoint=pat==="mittedPoint";
+  const isTextured = isTabby || isSpotted || isCalico || isTortie || isBengal || isCow || isTicked || isTiger; // coat carries a painted pattern
   const isTuxedo = pat === "tuxedo";
   const isMitted = pat === "mitted";
   const isSolid = pat === "solid";
   const isSmoke = pat === "smoke";             // dark coat, pale silver chest — structural only
-  const isPoint = pat === "point";
+  const isPoint = pat === "point" || isBicolor || isMittedPoint;
   const isSnow = pat === "snowshoe";
   const hasMask = isPoint || isSnow;           // dark face mask + colour points
-  const hasBib = isTuxedo || isMitted;         // big white chest
-  const whitePaws = isTuxedo || isMitted || isSnow || isCalico || isCow; // calicos + cow cats have white socks
+  const hasBib = isTuxedo || isMitted || isBicolor || isMittedPoint;         // big white chest
+  const whitePaws = isTuxedo || isMitted || isSnow || isCalico || isCow || isBicolor || isMittedPoint || isVan; // calicos + cow cats have white socks
   const colorExtremity = isPoint || isSnow;    // ears/mask/tail take the point colour
 
   // Colour-dependent materials come from the shared cache: two cats with the same
@@ -996,6 +1042,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     if (isBengal) return forTail
       ? makeStripeTexture(pal.fur, pal.stripe, 6, "v")   // bengals wear a RINGED tail
       : makeRosetteTexture(pal.fur, pal.stripe);         // two-tone rosettes on the body
+    if (isTicked) return makeTypeCoat(pal.fur,pal.stripe,"ticked");
+    if (isTiger) return makeStripeTexture(pal.fur,pal.stripe,forTail?5:9,"v",2.2);
     if (isCow) return makeCowTexture(pal.fur);           // big black patches on white
     return null;
   }
@@ -1003,10 +1051,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const coat = isTextured
     ? sharedMat(`ccoat|${coatKey}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(false) }))
     : fur;
-  const tailCoat = isTextured
+  const tailCoat = isVan ? sharedMat("cvanTail",()=>new THREE.MeshStandardMaterial({color:0xbe814f,roughness:.92})) : isTextured
     ? sharedMat(`ctail|${coatKey}`, () => new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, map: coatTex(true) }))
     : extremity;
 
+  const headCoat=isVan?sharedMat(`cvanHead|${furHex}`,()=>new THREE.MeshStandardMaterial({map:makeTypeCoat(pal.fur,pal.stripe,'van'),roughness:.92})):coat;
   // Rigid clusters are collected and baked at the end: `catStatic` sits on the
   // cat root, `headStatic` rides with the (animated) head.
   const catStatic = [];
@@ -1015,6 +1064,16 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // Body (sitting torso) — painted pattern for tabbies/spotted cats.
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.9, 0.78, 6, 16), coat);
   body.position.y = 1.0;
+  const fitBody=g=>{
+    const p=g.attributes.position;
+    for(let i=0;i<p.count;i++){
+      const y=p.getY(i),w=(type.belly-1)*(1-THREE.MathUtils.smoothstep(y,1.1,1.6));
+      const curl=type.curl ? .018*Math.sin(Math.atan2(p.getZ(i),p.getX(i))*10+y*18):0;
+      p.setX(i,p.getX(i)*(1+w+curl));p.setZ(i,p.getZ(i)*(1+w+curl));
+    }
+    g.computeVertexNormals();return g;
+  };
+  body.geometry.translate(0,1,0);fitBody(body.geometry);body.geometry.translate(0,-1,0);
   catStatic.push(body);
 
   // Chest + belly fluff. Tuxedo/mitten cats get a big white bib; solid coats keep
@@ -1023,13 +1082,13 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // the body colour; everyone else gets the soft white chest.
   const chestMat = isSmoke
     ? sharedMat("csmoke", () => new THREE.MeshStandardMaterial({ color: 0xc9ced6, roughness: 0.92 }))
-    : (isSolid || isTortie) ? fur : white;
+    : (isSolid || isTortie || isTicked) ? fur : white;
   // A PAINTED-ON round chest patch: a thin decal shell that CONFORMS to the
   // torso (every vertex sits on the body's own cross-section radius + 0.018),
   // so it reads as a coat marking — flat like paint, and nothing for the
   // bandana flap or the front legs to collide with. (Every proud-ball
   // version before it shaded as a 3D lump and clipped the neckwear.)
-  const chest = new THREE.Mesh(chestDecalGeo(hasBib), chestMat);
+  const chest = new THREE.Mesh(type===catType("classic")?chestDecalGeo(hasBib):fitBody(chestDecalGeo(hasBib).clone()), chestMat);
   catStatic.push(chest);
 
   // Front paws — posed for the scenario (opts.pose):
@@ -1133,9 +1192,14 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   head.position.set(0, 2.06, 0.12);
   cat.add(head);
 
-  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.78, 20, 20), coat);
+  const skull = new THREE.Mesh(new THREE.SphereGeometry(0.78, 20, 20), headCoat);
   skull.scale.set(1.04, 0.98, 0.96);
-  headStatic.push(skull);
+  const skullP=skull.geometry.attributes.position;
+  for(let i=0;i<skullP.count;i++){
+    const y=skullP.getY(i),blend=1-THREE.MathUtils.smoothstep(y,-.25,.35);
+    skullP.setX(i,skullP.getX(i)*(1+(type.jaw-1)*blend));
+  }
+  skull.geometry.computeVertexNormals();headStatic.push(skull);
   // Masked breeds (Siamese point / snowshoe): a dark mask across the eyes +
   // muzzle bridge. The white cheeks/muzzle below and the eyes on top leave a
   // band of colour around the eyes — the signature masked face. (Tabby/spotted
@@ -1148,11 +1212,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   }
   // Cheeks — fuller floof for a rounder face. White, except solid coats keep the
   // body colour so the face isn't oddly two-toned.
-  const cheekMat = isSolid ? fur : white;
+  const cheekMat = isSolid || isTicked ? fur : white;
   for (const sx of [-1, 1]) {
     const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.38, 14, 14), cheekMat);
     cheek.position.set(sx * 0.36, -0.18, 0.52);
-    cheek.scale.set(0.95, 0.74, 0.72);
+    cheek.scale.set(0.95*type.cheek, 0.74, 0.72);
     headStatic.push(cheek);
   }
 
@@ -1160,8 +1224,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // Keep the rounded silhouette compact, closer to the production ears'
   // exposed size. Scale shell and inset together before baking; the roots
   // stay buried in the scalp and the original accessory/animation pivots stay put.
-  const earGeo = catEarGeometry().scale(CAT_EAR_SCALE, CAT_EAR_SCALE, CAT_EAR_SCALE);
-  const innerGeo = catEarGeometry(true).scale(CAT_EAR_SCALE, CAT_EAR_SCALE, CAT_EAR_SCALE);
+  const earGeo = catEarGeometry(false,type.ear).scale(CAT_EAR_SCALE, CAT_EAR_SCALE, CAT_EAR_SCALE);
+  const innerGeo = catEarGeometry(true,type.ear).scale(CAT_EAR_SCALE, CAT_EAR_SCALE, CAT_EAR_SCALE);
   const ears = {};
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Group();
@@ -1173,14 +1237,14 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const inner = new THREE.Mesh(innerGeo, pink);
     inner.position.set(0, 0.05, 0);
     inner.rotation.z = sx * -0.22;
-    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${sx}` })); // one mesh per ear; the pivot flicks it
+    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${type.ear}|${sx}` })); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
   // Eyes — one painted eyeball each (iris + slit pupil + catch-lights baked into
   // the texture), so it's a single clean ball. Merged into the head like the rest.
   for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), eyeballMat);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.23, 16, 16), sx>0&&type.eyeR!=null?sharedMat(`ceye|${type.eyeR}`,()=>new THREE.MeshStandardMaterial({map:makeEyeTexture(new THREE.Color(type.eyeR)),roughness:.32})):eyeballMat);
     eye.position.set(sx * 0.31, 0.1, 0.6);
     eye.scale.set(0.96, 1.12, 0.7);
     headStatic.push(eye);
@@ -1207,7 +1271,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
 
   // Muzzle + nose + a tiny "ω" smile. White, except solid coats (a clean grey
   // face shouldn't sprout a white snout).
-  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), isSolid ? fur : white);
+  const muzzle = new THREE.Mesh(new THREE.SphereGeometry(0.34, 14, 14), (isSolid || isTicked) ? fur : white);
   muzzle.position.set(0, -0.2, 0.66);
   muzzle.scale.set(1.12, 0.7, 0.62);
   headStatic.push(muzzle);
@@ -1248,6 +1312,37 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     head.add(pivot);
     pivot.add(new THREE.LineSegments(sx < 0 ? catConstGeo().whiskerL : catConstGeo().whiskerR, whiskerMat));
     whiskers[sx < 0 ? "L" : "R"] = pivot;
+  }
+
+  if(type.ruff){
+    for(let i=-2;i<=2;i++){
+      const tuft=new THREE.Mesh(new THREE.SphereGeometry(.145*type.ruff,8,6),chestMat);
+      tuft.scale.set(.95,1.35,.55);tuft.rotation.z=i*.18;tuft.position.set(i*.19,1.28+Math.abs(i)*.045,.84-Math.abs(i)*.025);catStatic.push(tuft);
+    }
+  }
+  if(type.tufts||type.curl){
+    for(const sx of [-1,1])for(let i=0;i<3;i++){
+      const tuft=new THREE.Mesh(new THREE.SphereGeometry(type.curl ? .105 : .115,8,5),fur);
+      tuft.scale.set(type.curl?1:.72,type.curl?1:1.5,.7);
+      tuft.position.set(sx*(.69+i*.035),-.04-i*.12,.30);
+      tuft.rotation.z=-sx*(.75+i*.16);headStatic.push(tuft);
+    }
+  }
+  if(type.folds){
+    for(let i=0;i<3;i++){
+      const fold=new THREE.Mesh(new THREE.TorusGeometry(.23+i*.05,.011,4,12,1.7),fur);
+      fold.position.set(0,.23+i*.07,.70-i*.035);fold.rotation.z=.7;headStatic.push(fold);
+    }
+  }
+  if(isBicolor){
+    // A painted V follows the mask surface rather than protruding from it.
+    const g=new THREE.PlaneGeometry(1,1,6,10),p=g.attributes.position,uv=g.attributes.uv;
+    for(let i=0;i<p.count;i++){
+      const v=uv.getY(i),y=-.23+v*.63,x=(uv.getX(i)*2-1)*(.02+.24*Math.pow(1-v,.7));
+      const z=.46+.6*Math.sqrt(Math.max(.001,.54*.54-(x/.96)**2-(y-.02)**2))+.009;
+      p.setXYZ(i,x,y,z);
+    }
+    g.computeVertexNormals();headStatic.push(new THREE.Mesh(g,white));
   }
 
   // --- Accessory: each breed has a signature piece, but a custom cat can pick
@@ -1667,11 +1762,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fin.position.set(0, 1.02, .955); acc.add(fin); // tail fin at the bottom, apex tucked into the body
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), accMat(0x1a1a1a, 0.4));
     eye.position.set(0.05, 1.32, 1.02); acc.add(eye);  }
-  const extraAccessory = createExtraAccessory(accId, accCol, {latheDeform, taperedTube, accessoryPlaque, cutAccessoryEarSlots, neckBandGeo});
+  const extraAccessory = createExtraAccessory(accId, accCol, {latheDeform, taperedTube, accessoryPlaque, cutAccessoryEarSlots:mesh=>cutAccessoryEarSlots(mesh,type.ear), neckBandGeo, fitKey:type.ear});
   if (extraAccessory) (extraAccessory.body ? cat : head).add(extraAccessory.group);
   const fittedHeadwear = ["cap", "beanie", "fedora", "party", "crown", "pirate", "tophat", "cowboy", "aviator", "helmet", "chef", "wizard", "viking"].includes(accId);
   if (fittedHeadwear) {
-    for (const part of acc.children) cutAccessoryEarSlots(part);
+    for (const part of acc.children) cutAccessoryEarSlots(part,type.ear);
   }
   // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie,
   // scarf, fish charm) sits on the body. `acc` is at the origin, so its
@@ -1687,12 +1782,31 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.6, -0.7);
   tailPivot.add(tail);
+  tailPivot.scale.set(type.tail,type.tail,type.tail);
+  tailPivot.visible=type.tail>0;
+  if(type.plume!==1 && _plumeCache.has(type.plume))tail.geometry=_plumeCache.get(type.plume);
+  else if(type.plume!==1){
+    const tg=tail.geometry.clone(),p=tg.attributes.position;
+    // TubeGeometry rows follow the shared curve: expand each cross section
+    // about its center, preserving the tail path and tip attachment.
+    const radial=10,rows=p.count/(radial+1),center=new THREE.Vector3();
+    for(let row=0;row<rows;row++){
+      center.set(0,0,0);for(let j=0;j<radial;j++)center.add(new THREE.Vector3().fromBufferAttribute(p,row*(radial+1)+j));center.multiplyScalar(1/radial);
+      const fullness=type.plume>1 ? .85+(type.plume-.85)*Math.sin(Math.PI*row/(rows-1)) : type.plume;
+      for(let j=0;j<=radial;j++){const i=row*(radial+1)+j;p.setXYZ(i,center.x+(p.getX(i)-center.x)*fullness,center.y+(p.getY(i)-center.y)*fullness,center.z+(p.getZ(i)-center.z)*fullness);}
+    }
+    tg.computeVertexNormals();tg.userData.shared=true;_plumeCache.set(type.plume,tg);tail.geometry=tg;
+  }
   // Tail tip cap: white for tuxedo, a dark tip for tabby/spotted coats, the
   // point colour for masked breeds, otherwise the coat colour.
   const tipMat = isTuxedo ? white : isTextured ? stripeMat : extremity;
   const tip = new THREE.Mesh(catConstGeo().tailTip, tipMat);
-  tip.position.copy(catConstGeo().tailTipPos);
+  tip.position.copy(catConstGeo().tailTipPos);tip.scale.setScalar(type.plume>1 ? .85 : type.plume);
   tailPivot.add(tip);
+  if(type.tail>0&&type.tail<.4){
+    tail.geometry=catConstGeo().bobtail;tail.position.set(0,.18,-.31);
+    tailPivot.scale.setScalar(1);tip.visible=false;
+  }
   cat.add(tailPivot);
 
   // Bake the rigid clusters: the head cluster (skull/face/eyes/headwear) rides
@@ -1705,9 +1819,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   // matching an accent piece (e.g. a white cap button on a white cap) collapses
   // two materials into one and changes the merged group layout.
   const accKey = `${accId}:${accCol}`;
-  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${pat}|${accToBody ? "none" : accKey}` }));
-  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${pat}|${accToBody ? accKey : "none"}|${pose}` }));
+  head.add(mergeMeshes(headStatic, { castShadow: false, geoKey: `chead|${typeKey}|${pat}|${accToBody ? "none" : accKey}` }));
+  cat.add(mergeMeshes(catStatic, { castShadow: false, geoKey: `cbody|${typeKey}|${pat}|${accToBody ? accKey : "none"}|${pose}` }));
 
+  cat.userData.catType=typeKey;
   cat.userData.tail = tailPivot;
   cat.userData.rig = {
     head,

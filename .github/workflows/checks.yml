@@ -24,6 +24,8 @@ jobs:
         run: npm run check:worldcfg
       - name: progression economy (treats/unlocks/cups)
         run: npm run check:progress
+      - name: cat roster, unlocks and save migration
+        run: npm run check:cat-roster
       - name: kart sim determinism
         run: npm run check:sim
       - name: item and knockable prop logic

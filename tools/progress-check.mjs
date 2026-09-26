@@ -44,14 +44,14 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   // The price ladder: ~2,400 treats for the whole catalog, cheapest tiles at
   // 100-150, each column climbing to a ~400 goal, creators at 250 apiece.
   const priced = CATALOG.filter((c) => typeof c.price === "number" && c.price > 0);
-  const total = priced.reduce((s, c) => s + c.price, 0);
-  check(`catalog totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
+  const total = priced.filter(c=>!c.id.startsWith("cat.")||Number(c.id.slice(4))<14).reduce((s,c)=>s+c.price,0);
+  check(`original catalog still totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
   check("cheapest cat and kart are 100-150", catalogEntry("cat.3").price <= 150 && catalogEntry("kart.3").price <= 150 && catalogEntry("cat.3").price >= 100);
   check("top of the cat ladder is ~400", Math.max(...priced.filter((c) => c.id.startsWith("cat.")).map((c) => c.price)) === 400);
   check("custom creators cost 250 each", catalogEntry("custom.cat").price === 250 && catalogEntry("custom.kart").price === 250);
-  const ladder = (prefix) => priced.filter((c) => c.id.startsWith(prefix)).map((c) => c.price);
+  const ladder = (prefix) => priced.filter((c) => c.id.startsWith(prefix)&&(!c.id.startsWith("cat.")||Number(c.id.slice(4))<14)).map((c) => c.price);
   const climbs = (a) => a.every((v, i) => i === 0 || v >= a[i - 1]);
-  check("cat and kart prices climb monotonically", climbs(ladder("cat.")) && climbs(ladder("kart.")));
+  check("original cat and kart prices climb monotonically", climbs(ladder("cat.")) && climbs(ladder("kart.")));
   p.treats = 9999;
   check("cup exclusives can't be bought", !buyUnlock(p, "cat.9") && !isUnlocked(p, "cat.9"));
   check("difficulty prizes can't be bought", !buyUnlock(p, "cat.13") && !isUnlocked(p, "cat.13"));

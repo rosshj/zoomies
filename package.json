@@ -40,7 +40,10 @@
     "check:baked-lighting": "node tools/baked-lighting-check.mjs",
     "check:living": "node tools/living-world-check.mjs",
     "check:environment-particles": "node tools/environment-particles-check.mjs",
-    "check:environment-render": "node tools/environment-particles-render-check.mjs"
+    "check:environment-render": "node tools/environment-particles-render-check.mjs",
+    "check:cat-roster": "node tools/cat-roster-data-check.mjs",
+    "check:cat-roster-art": "node tools/cat-roster-check.mjs",
+    "check:cat-roster-ui": "node tools/cat-roster-ui-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

@@ -2,6 +2,7 @@
 // ART_ROOT selects a checkout. AI drives the human kart only inside this probe.
 // MODELS overrides models.js for a focused before/after comparison. ACCESSORY
 // forces the same accessory on every cat to stress its worst rendering case.
+// CAT_TYPE and CAT_PATTERN similarly pin morphology and coat across the field.
 import {chromium} from 'playwright-core';
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -10,12 +11,16 @@ const root=process.env.ART_ROOT||path.resolve(new URL('..',import.meta.url).path
 await fs.mkdir(out,{recursive:true});
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'};
 async function sourceFile(file) {
- if(!file.endsWith('/src/models.js')||(!process.env.MODELS&&!process.env.ACCESSORY))return fs.readFile(file);
+ if(!file.endsWith('/src/models.js')||(!process.env.MODELS&&!process.env.ACCESSORY&&!process.env.CAT_TYPE&&!process.env.CAT_PATTERN))return fs.readFile(file);
  let code=await fs.readFile(process.env.MODELS||file,'utf8');
- if(process.env.ACCESSORY){
+ if(process.env.ACCESSORY||process.env.CAT_TYPE||process.env.CAT_PATTERN){
   if(!code.includes('export function createCat('))throw Error('Cat factory changed; update the probe');
   code=code.replace('export function createCat(', 'function createCatForProbe(');
-  code+=`\nexport function createCat(fur,opts={}) { return createCatForProbe(fur,{...opts,accessory:${JSON.stringify(process.env.ACCESSORY)}}); }`;
+  const override={};
+  if(process.env.ACCESSORY)override.accessory=process.env.ACCESSORY;
+  if(process.env.CAT_TYPE)override.type=process.env.CAT_TYPE;
+  if(process.env.CAT_PATTERN)override.pattern=process.env.CAT_PATTERN;
+  code+=`\nexport function createCat(fur,opts={}) { return createCatForProbe(fur,{...opts,...${JSON.stringify(override)}}); }`;
  }
  return code;
 }

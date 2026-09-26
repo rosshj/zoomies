@@ -53,7 +53,7 @@ const CAT_ANGLES = [
   { theta: 0.42, phi: 1.38, r: 0.92, ty: -0.12 },  // low ¾
 ];
 const shots = [];
-CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), angle: CAT_ANGLES[i % CAT_ANGLES.length], spec: { kind: "cat", name: c.name, fur: c.fur, pattern: c.pattern, accessory: c.accessory } }));
+CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), angle: CAT_ANGLES[i % CAT_ANGLES.length], spec: { kind: "cat", ...c } }));
 // Karts shoot WIDE (3:2) — they're wide subjects, and the pick-your-kart grid
 // + Cat-alog show them on wide tiles.
 KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastBg(k.color), wide: true, spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number } }));
@@ -85,7 +85,8 @@ await page.goto(`http://127.0.0.1:${PORT}/viewer.html?webgl=1&plain=1`, { waitUn
 await page.waitForFunction(() => window.__viewer && window.__viewer.showPreset, null, { timeout: 60000 });
 await page.evaluate(() => window.__viewer.setGameLook(true)); // ship the in-game look
 
-for (const shot of shots) {
+const selectedShots=shots.filter(s=>!process.env.CATS_ONLY||s.file.startsWith("cat-"));
+for (const shot of selectedShots) {
   // Karts render on a wide 3:2 canvas; everything else stays square.
   await page.setViewportSize(shot.wide ? { width: 480, height: 320 } : { width: SIZE, height: SIZE });
   await page.evaluate(({ spec, bg, zoom, angle }) => {
@@ -122,5 +123,5 @@ for (const shot of shots) {
   console.log(`  shot ${shot.file}  bg ${shot.bg}`);
 }
 
-console.log(errors.length ? `errors: ${JSON.stringify(errors)}` : `all ${shots.length} shots → assets/catalog/`);
+console.log(errors.length ? `errors: ${JSON.stringify(errors)}` : `all ${selectedShots.length} shots → assets/catalog/`);
 await browser.close(); server.close(); process.exit(errors.length ? 1 : 0);
