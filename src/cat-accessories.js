@@ -21,7 +21,7 @@ export const EXTRA_ACCESSORIES = {
   straw: ['Straw Sunhat', 0xdcb978],
   ski: ['Ski Goggles', 0x36a9cb],
   lei: ['Flower Lei', 0xf270ad],
-  detective: ['Detective Hat', 0x956f4a],
+  detective: ['Safari Hat', 0x956f4a],
   shells: ['Shell Necklace', 0xe4cdb0],
 };
 export const EXTRA_ACCESSORY_COLORS = Object.fromEntries(Object.entries(EXTRA_ACCESSORIES).map(([id,[,color]]) =>
@@ -98,7 +98,6 @@ export function createExtraAccessory(id, color, helpers) {
   const hood=()=>cap([[.7,-.42],[.86,-.05],[.79,.29],[.67,.51],[.47,.72],[.22,.83],[0,.86]],color,(v,a,r)=>{
     if(v.y<.4){const side=1-Math.max(0,Math.cos(a))**2;v.y+=(.4-v.y)*(1-side);const fit=(.7+(r-.7)*side)/r;v.x*=fit;v.z*=fit;}
   });
-  const band=(c=0x343a49,y=.22,r=.79)=>{const m=ring(r,.04,c,0,y,0);m.scale.z=.96;};
   const dark=0x28333f, ivory=0xffedd1;
   const pivot=(kind,x,y,z)=>{target=moving;motion={kind,phase:0,base:new THREE.Vector3(x,y,z)};};
   switch(id){
@@ -115,8 +114,10 @@ export function createExtraAccessory(id, color, helpers) {
       ball(.075,ivory,0,.025,0);break;
     }
     case 'catEye': {
-      line([[-.61,.16,.90],[-.69,.16,.63],[-.72,.16,.36],[-.80,.16,0],[-.55,.16,-.57],[0,.16,-.755],[.55,.16,-.57],[.80,.16,0],[.72,.16,.36],[.69,.16,.63],[.61,.16,.90]],.035,dark,28);
+      line([[-.56,.16,.875],[-.69,.16,.63],[-.72,.16,.36],[-.80,.16,0],[-.55,.16,-.57],[0,.16,-.755],[.55,.16,-.57],[.80,.16,0],[.72,.16,.36],[.69,.16,.63],[.56,.16,.875]],.035,dark,28);
       for(const sx of [-1,1]){
+        // Overlapping hinges join the curved temples to the outer frame.
+        add(plaque(.13,.085,.075,.025),color,sx*.575,.16,.86);
         shape([[-.23,-.13],[.17,-.16],[.29,.2],[-.23,.15]].map(([x,y])=>[x*sx,y]),.065,color,sx*.34,.12,.87);
         const lens=add(plaque(.33,.23,.018,.06),0x63d8ec,sx*.34,.12,.915);
         lens.rotation.z=sx*.06;
@@ -162,12 +163,9 @@ export function createExtraAccessory(id, color, helpers) {
       const neckline=new Neckline();
       add(new THREE.TubeGeometry(neckline,24,.06,5,true),color);
       add(new THREE.TubeGeometry(neckline,24,.023,5,true),dark,0,-.045,0);
-      for(const sx of [-1,1]){
-        ball(.15,dark,sx*.81,.13,.035,[.45,1,1]);
-        ball(.145,color,sx*.865,.13,.035,[.4,1,1]);
-        line([[sx*.87,.22,.015],[sx*.96,.56,-.07],[sx*.91,.88,-.09]],.025,dark);
-        ball(.055,0xffbf41,sx*.91,.88,-.09);
-      }
+      // Single right-side communications headset; no antenna stalks.
+      ball(.15,dark,.81,.13,.035,[.45,1,1]);
+      ball(.145,color,.865,.13,.035,[.4,1,1]);
       // Exactly one boom, attached to the right earcup, ends by the mouth.
       line([[.88,.1,.08],[.88,-.1,.48],[.67,-.28,.78],[.24,-.30,.88]],.025,dark,12);
       ball(.08,0x17232d,.19,-.30,.89,[1.35,.65,.65]);
@@ -202,21 +200,32 @@ export function createExtraAccessory(id, color, helpers) {
       for(let i=0;i<4;i++)ball(.075,0xefc067,0,-.2-i*.24,-.20-i*.03,[.4,1,1.3]);break;
     }
     case 'shark': {
-      band(dark,.55,.62);
-      const fin=shape([[-.38,0],[.4,0],[.24,.18],[-.06,.72],[-.13,.4]],.12,color,0,.64,-.08);
-      fin.rotation.y=Math.PI/2;
-      shape([[-.26,0],[.3,0],[.15,.09],[-.06,.5],[-.09,.22]],.125,0xa5c3d7,0,.66,-.08).rotation.y=Math.PI/2;
+      // A curved root follows the scalp and deliberately penetrates it.
+      // Do not apply the clothing clearance projection to this root.
+      const root=[];
+      for(let i=0;i<=8;i++){
+        const u=-.38+i*.78/8,z=-u-.08;
+        root.push([u,.7644*Math.sqrt(1-(z/.7488)**2)-.075]);
+      }
+      const fin=shape([...root,[.24,.91],[-.06,1.38],[-.13,1.03]],.12,color);
+      fin.geometry.translate(0,0,-.06);fin.position.z=-.08;fin.rotation.y=Math.PI/2;
+      // A flush vertex tint gives the fin a pale leading face, no overlay.
+      const fp=fin.geometry.attributes.position,fc=[];
+      for(let i=0;i<fp.count;i++){
+        const c=new THREE.Color(fp.getZ(i)>.05?0xa5c3d7:color);fc.push(c.r,c.g,c.b);
+      }
+      fin.geometry.setAttribute('color',new THREE.Float32BufferAttribute(fc,3));
       break;
     }
     case 'unicorn': {
-      cap([[0,.69],[.17,.69],[.14,.98],[.085,1.28],[0,1.62]],ivory,null,14).position.z=.35;
-      const pts=[];for(let i=0;i<=48;i++){const t=i/48,y=.71+t*.86;
-        const profile=[[.69,.17],[.98,.14],[1.28,.085],[1.62,0]];let j=1;while(y>profile[j][0])j++;
+      cap([[0,.58],[.17,.58],[.14,.89],[.085,1.19],[0,1.53]],ivory,null,14).position.z=.35;
+      const pts=[];for(let i=0;i<=48;i++){const t=i/48,y=.62+t*.86;
+        const profile=[[.58,.17],[.89,.14],[1.19,.085],[1.53,0]];let j=1;while(y>profile[j][0])j++;
         const [ya,ra]=profile[j-1],[yb,rb]=profile[j],r=ra+(rb-ra)*(y-ya)/(yb-ya)+.01;
         pts.push([Math.cos(t*TAU*3)*r,y,Math.sin(t*TAU*3)*r+.35]);}
       line(pts,.018,0xe5b359,48);
       const rainbow=[0xf477ae,0xf7c650,0x78c997,0x75bce8,0xb895e5];
-      const maneCurve=new THREE.CatmullRomCurve3([[0,.75,-.18],[0,.65,-.43],[0,.40,-.64],[0,.05,-.76],[0,-.28,-.73]].map(p=>new THREE.Vector3(...p)));
+      const maneCurve=new THREE.CatmullRomCurve3([[0,.70,.30],[0,.75,.04],[0,.72,-.18],[0,.62,-.43],[0,.40,-.64],[0,.05,-.76],[0,-.28,-.73]].map(p=>new THREE.Vector3(...p)));
       const mane=new THREE.TubeGeometry(maneCurve,20,.115,6,false),rgb=[];
       for(let i=0;i<mane.attributes.position.count;i++){
         const t=1-mane.attributes.uv.getX(i),c=new THREE.Color(rainbow[Math.min(4,Math.floor(t*5))]);rgb.push(c.r,c.g,c.b);
@@ -243,7 +252,7 @@ export function createExtraAccessory(id, color, helpers) {
       cap([[.147,1.03],[.119,1.16]],ivory,null,16);break;
     }
     case 'bee': {
-      band(color,.55,.62);pivot('feelers',0,.59,0);
+      pivot('feelers',0,.59,0);
       for(const sx of [-1,1]){
         line([[sx*.26,0,0],[sx*.38,.32,-.04],[sx*.52,.55,.015]],.027,dark);
         ball(.11,color,sx*.52,.55,.015);ring(.09,.018,dark,sx*.52,.55,.015);
@@ -297,11 +306,21 @@ export function createExtraAccessory(id, color, helpers) {
       }break;
     }
     case 'detective': {
+      // Keep the saved id, but replace the deerstalker with a canvas safari
+      // hat: a broad drooping brim, low pinched crown and attached leather band.
       covered=true;
-      add(new THREE.SphereGeometry(.64,20,10,0,TAU,0,Math.PI/2),color,0,.49,0,[1,.74,1.05]).userData.paint="seams";
-      for(const sz of [-1,1])ball(.32,color,0,.5,sz*.55,[1.48,.1,1.05]);
-      for(const sx of [-1,1])ball(.2,0x6a503b,sx*.72,.47,0,[.4,.9,1.12]);
-      ball(.05,ivory,0,1,0);break;
+      cap([[0,.55],[.57,.55],[1.01,.47],[1.04,.51],[.90,.60],[.65,.64],[0,.64]],color,v=>{v.z*=1.06;});
+      const crown=cap([[.64,.61],[.61,.91],[.48,1.10],[.23,1.15],[0,1.13]],color,(v,a)=>{
+        v.z*=1.06;
+        if(v.y>.85)v.x*=1-.10*Math.max(0,Math.cos(a))**4;
+      });
+      crown.userData.paint='seams';
+      // Evenly sized stitches only on the crown, not stretched over the brim.
+      const cp=crown.geometry.attributes.position,cu=crown.geometry.attributes.uv;
+      for(let i=0;i<cp.count;i++)cu.setY(i,(cp.getY(i)-.61)/.54);
+      cap([[.652,.64],[.634,.76],[.621,.85]],0x604633,(v)=>{v.z*=1.06;});
+      add(plaque(.14,.10,.025,.025),0xdab667,0,.75,.678);
+      break;
     }
     case 'shells': {
       body=true;add(neck(.09),0x8d765b);
@@ -320,8 +339,8 @@ export function createExtraAccessory(id, color, helpers) {
   }
   const fitted=covered||['mushroom','cone','duck','unicorn','shark','bee','catEye','ski'].includes(id);
   if(body)for(const p of parts)helpers.fitBodyPart(p);
-  else if(fitted&&id!=='space')for(const p of parts){p.userData.fitLow=id==='catEye'||id==='ski';helpers.fitHeadwear(p);}
-  if(covered&&id!=='space')for(const p of parts)earSlots(p);
+  else if(fitted&&!['space','shark','unicorn'].includes(id))for(const p of parts){p.userData.fitLow=id==='catEye'||id==='ski';helpers.fitHeadwear(p);}
+  if(covered&&!['space','rain','detective'].includes(id))for(const p of parts)earSlots(p);
   if(parts.length)group.add(bake(parts,key+'|fixed',fabric,color));
   if(moving.length){
     const child=bake(moving,key+'|moving',id==='space'?lights:fabric);

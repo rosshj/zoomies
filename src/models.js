@@ -918,6 +918,7 @@ function catConstGeo() {
 // Resolve visible hat/scalp contact once. Hidden underside faces stay inside
 // the hat; visible shell faces get a small clearance around the actual skull.
 function fitHeadwear(mesh,type) {
+  if(mesh.userData.embeddedRoot)return;
   mesh.updateMatrix();const g=mesh.geometry.clone().applyMatrix4(mesh.matrix),p=g.attributes.position,n=g.attributes.normal;
   for(let i=0;i<p.count;i++){
     const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
@@ -1548,8 +1549,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     rim.position.set(0, 0.73, 0.10); rim.rotation.x = Math.PI / 2; acc.add(rim);
     const pom = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(0xf0f0f0));
     pom.position.set(0, 1.64, 0.10); acc.add(pom);  } else if (accId === "crown") {
-    // royal crown — ONE molded zigzag ring (a wall whose top edge rises and
-    // falls into six points), small and perched high between the ears.
+    // One tall molded ring with its lower edge seated inside the curved scalp.
     const S = 48, POINTS = 6;
     const pos = [], uvArr = [], idxArr = [];
     for (let i = 0; i <= S; i++) {
@@ -1557,10 +1557,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       // triangle wave: 0 at valleys, 1 at each of the six tips
       const tri = 1 - Math.abs(((i / S) * POINTS * 2) % 2 - 1);
       const rb = 0.29, rt = 0.31 + tri * 0.02;
-      // A narrow ring sits forward between the ears. The surface fit below
-      // seats its lower edge just outside the curved scalp.
-      pos.push(Math.sin(a) * rb, 0.73, Math.cos(a) * rb + 0.13);
-      pos.push(Math.sin(a) * rt, 0.86 + tri * 0.24, Math.cos(a) * rt + 0.13);
+      const x=Math.sin(a)*rb,z=Math.cos(a)*rb+.13;
+      const seat=.7644*Math.sqrt(1-(x/.8112)**2-(z/.7488)**2)-.055;
+      pos.push(x, seat, z);
+      pos.push(Math.sin(a) * rt, 0.9 + tri * 0.34, Math.cos(a) * rt + 0.13);
       uvArr.push(i / S, 0, i / S, 1);
     }
     for (let i = 0; i < S; i++) {
@@ -1574,7 +1574,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     cg.computeVertexNormals();
     const crown = new THREE.Mesh(cg,
       new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.35, metalness: 0.7, side: THREE.DoubleSide }));
-    acc.add(crown);
+    crown.userData.embeddedRoot=true;acc.add(crown);
     const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), accMat(0xe23b3b, 0.25, 0.3));
     jewel.position.set(0, 0.81, 0.44); acc.add(jewel);  } else if (accId === "pirate") {
     // tricorn — ONE lathed surface: dome + brim in a single profile, then the
@@ -1654,8 +1654,6 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // Goggles rest ON the cap's surface (centres pushed out along the dome's
     // normal, tilted to lie against the slope) so they never sink into it.
     const gm = accMat(0x8a8f98, 0.4, 0.6);
-    const strap = new THREE.Mesh(latheDeform([[.719,.44],[.68,.52]], 24), gm);
-    strap.scale.set(1.02,1,.98); strap.position.z = .02; acc.add(strap);
     for (const sx of [-1, 1]) {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.035, 8, 18), gm);
       ring.position.set(sx * 0.24, 0.57, 0.61); ring.rotation.x = -0.52; acc.add(ring);
@@ -1762,7 +1760,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     mesh.updateMatrix();const g=mesh.geometry.clone().applyMatrix4(mesh.matrix);
     fitBody(g);mesh.geometry.dispose();mesh.geometry=g;mesh.position.set(0,0,0);mesh.rotation.set(0,0,0);mesh.scale.set(1,1,1);
   };
-  const coveredEars=accId==='helmet'||accId==='viking';
+  const coveredEars=['helmet','viking','rain','detective'].includes(accId);
   const fittedHeadwear = ["cap", "beanie", "fedora", "party", "crown", "pirate", "tophat", "cowboy", "aviator", "helmet", "chef", "wizard", "viking"].includes(accId);
   const betweenEars=["party","crown"].includes(accId);
   if(fittedHeadwear)for(const part of acc.children){

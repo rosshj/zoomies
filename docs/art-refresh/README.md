@@ -1,3 +1,5 @@
+[Latest: accessory fit refinements and Safari Hat](accessory-refinements/README.md).
+
 [Latest: thinner ears and refitted accessories](wardrobe-fit/README.md).
 
 Latest: [Forty procedural cat racers, six new shape families and measured costs](cat-roster/README.md).

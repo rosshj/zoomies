@@ -1,0 +1,222 @@
+[
+  {
+    "accessory": "crown",
+    "triangles": 7820,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "aviator",
+    "triangles": 9048,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "wizard",
+    "triangles": 8212,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "catEye",
+    "triangles": 8268,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "space",
+    "triangles": 9532,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "shark",
+    "triangles": 7588,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "unicorn",
+    "triangles": 8432,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "rain",
+    "triangles": 8120,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "bee",
+    "triangles": 8464,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "detective",
+    "triangles": 8180,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "crown",
+    "triangles": 7820,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "aviator",
+    "triangles": 9048,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "wizard",
+    "triangles": 8212,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "catEye",
+    "triangles": 8268,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "space",
+    "triangles": 9532,
+    "draws": 21,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "shark",
+    "triangles": 7588,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "unicorn",
+    "triangles": 8432,
+    "draws": 20,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "rain",
+    "triangles": 8120,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "bee",
+    "triangles": 8464,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "detective",
+    "triangles": 8180,
+    "draws": 19,
+    "earSize": [
+      0.4620368331670761,
+      0.29478780180215836,
+      0.24613575264811516
+    ],
+    "backend": "webgpu"
+  }
+]

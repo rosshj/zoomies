@@ -124,4 +124,4 @@ for (const shot of selectedShots) {
 }
 
 console.log(errors.length ? `errors: ${JSON.stringify(errors)}` : `all ${selectedShots.length} shots → assets/catalog/`);
-await browser.close(); server.close(); process.exit(errors.length ? 1 : 0);
+await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]); server.closeAllConnections(); server.close(); process.exit(errors.length ? 1 : 0);

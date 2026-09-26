@@ -15,7 +15,7 @@ export function accessoryPaint(color){
     ctx.beginPath();ctx.rect(0,0,128,128);ctx.clip();ctx.fillStyle=hex;ctx.fillRect(0,0,128,128);
     if(name==='stars'){
       ctx.fillStyle='#f5cf62';
-      for(const [x,y,r] of [[24,35,11],[85,68,13],[40,110,8],[111,17,7]]){
+      for(const [x,y,r] of [[24,35,11],[85,68,13],[40,110,8],[111,17,7],[9,78,8],[116,101,7]]){
         ctx.beginPath();for(let i=0;i<10;i++){const a=-Math.PI/2+i*Math.PI/5,d=i%2?r*.42:r;ctx.lineTo(x+Math.cos(a)*d,y+Math.sin(a)*d);}ctx.closePath();ctx.fill();
       }
     }else if(name==='spots'){

@@ -17,7 +17,8 @@ try{
   page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.goto(`http://127.0.0.1:${server.address().port}/viewer.html?${backend}=1&plain=1`);await page.waitForFunction(()=>window.__viewer);
   const allAccessories=await page.evaluate(async()=> (await import('/src/models.js')).CAT_ACCESSORIES);
-  const accessories=process.env.UPDATE_ACCESSORIES?allAccessories.filter(id=>process.env.UPDATE_ACCESSORIES.split(',').includes(id)):allAccessories;
+  const filter=process.env.UPDATE_ACCESSORIES||process.env.ACCESSORIES;
+  const accessories=filter?allAccessories.filter(id=>filter.split(',').includes(id)):allAccessories;
   for(const accessory of accessories){
    const result=await page.evaluate(async ({accessory,type})=>{
     const v=window.__viewer;v.setBackground('#c5d6df');v.setGameLook(true);
@@ -34,7 +35,7 @@ try{
    if(result.backend!==backend)throw Error('Backend fallback');rows.push(result);
    if(backend==='webgpu'){
      await page.screenshot({path:path.join(out,accessory+'.png')});
-     for(const [name,theta,phi] of [['side',1.6,1.4],['back',3.2,1.4],['top',.65,.45],['under',2.5,2.05]]){
+     for(const [name,theta,phi] of [['front',0,1.4],['side',1.6,1.4],['back',3.2,1.4],['top',.65,.45],['under',2.5,2.05]]){
        await page.evaluate(async ({theta,phi})=>{window.__viewer.orbit.theta=theta;window.__viewer.orbit.phi=phi;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));},{theta,phi});
        await page.screenshot({path:path.join(out,accessory+'-'+name+'.png')});
      }
@@ -130,10 +131,11 @@ try{
    rows.splice(0,rows.length,...merged);
  }
  const sheet=await browser.newPage({viewport:{width:1440,height:460}});
- for(const angle of ['', '-side', '-back', '-top', '-under', '-drive','-motion']){
+ for(const angle of ['', '-front', '-side', '-back', '-top', '-under', '-drive','-motion']){
    const cards=await Promise.all(rows.filter(r=>r.backend==='webgpu').map(async r=>`<div><img src="data:image/png;base64,${(await fs.readFile(path.join(out,r.accessory+angle+'.png'))).toString('base64')}"><p>${r.accessory}</p></div>`));
    await sheet.setContent(`<style>body{margin:0;background:#c5d6df;font:18px system-ui}.grid{display:grid;grid-template-columns:repeat(4,1fr)}img{width:360px;height:440px}p{margin:0;text-align:center;height:20px}</style><div class="grid">${cards.join('')}</div>`);
    await sheet.screenshot({path:path.join(out,'accessories'+angle+'.png'),fullPage:true});
  }
  await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify(rows,null,2));console.log(JSON.stringify({renders:rendered,galleryEntries:rows.length,variants:process.env.MODELS||process.env.GALLERY_ONLY?0:rows.length*9,errors:[]}));
-}finally{await browser.close();server.closeAllConnections();server.close();}
+}finally{await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);server.closeAllConnections();server.close();}
+process.exit(0);

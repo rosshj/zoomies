@@ -72,7 +72,7 @@
   {
     "name": "Ziggy",
     "type": "Classic",
-    "triangles": 9040,
+    "triangles": 8992,
     "draws": 21,
     "backend": "webgl"
   },
@@ -114,7 +114,7 @@
   {
     "name": "Marple",
     "type": "Persian",
-    "triangles": 8980,
+    "triangles": 8180,
     "draws": 16,
     "backend": "webgl"
   },
@@ -149,7 +149,7 @@
   {
     "name": "Pebble",
     "type": "Chartreux",
-    "triangles": 8664,
+    "triangles": 8120,
     "draws": 16,
     "backend": "webgl"
   },
@@ -184,22 +184,22 @@
   {
     "name": "Opal",
     "type": "Khao Manee",
-    "triangles": 8148,
+    "triangles": 8268,
     "draws": 17,
     "backend": "webgl"
   },
   {
     "name": "Orbit",
     "type": "Sphynx",
-    "triangles": 10172,
+    "triangles": 9532,
     "draws": 18,
     "backend": "webgl"
   },
   {
     "name": "Fizz",
     "type": "Devon Rex",
-    "triangles": 8704,
-    "draws": 19,
+    "triangles": 8464,
+    "draws": 18,
     "backend": "webgl"
   },
   {
@@ -247,7 +247,7 @@
   {
     "name": "Inky",
     "type": "Bombay",
-    "triangles": 7816,
+    "triangles": 7588,
     "draws": 16,
     "backend": "webgl"
   },
@@ -352,7 +352,7 @@
   {
     "name": "Ziggy",
     "type": "Classic",
-    "triangles": 9040,
+    "triangles": 8992,
     "draws": 21,
     "backend": "webgpu"
   },
@@ -394,7 +394,7 @@
   {
     "name": "Marple",
     "type": "Persian",
-    "triangles": 8980,
+    "triangles": 8180,
     "draws": 16,
     "backend": "webgpu"
   },
@@ -429,7 +429,7 @@
   {
     "name": "Pebble",
     "type": "Chartreux",
-    "triangles": 8664,
+    "triangles": 8120,
     "draws": 16,
     "backend": "webgpu"
   },
@@ -464,22 +464,22 @@
   {
     "name": "Opal",
     "type": "Khao Manee",
-    "triangles": 8148,
+    "triangles": 8268,
     "draws": 17,
     "backend": "webgpu"
   },
   {
     "name": "Orbit",
     "type": "Sphynx",
-    "triangles": 10172,
+    "triangles": 9532,
     "draws": 18,
     "backend": "webgpu"
   },
   {
     "name": "Fizz",
     "type": "Devon Rex",
-    "triangles": 8704,
-    "draws": 19,
+    "triangles": 8464,
+    "draws": 18,
     "backend": "webgpu"
   },
   {
@@ -527,7 +527,7 @@
   {
     "name": "Inky",
     "type": "Bombay",
-    "triangles": 7816,
+    "triangles": 7588,
     "draws": 16,
     "backend": "webgpu"
   },

@@ -1,5 +1,7 @@
 # Thinner ears and fitted accessories
 
+Follow-up: [embedded roots, simpler helmet, covered rain hat and Safari Hat](../accessory-refinements/README.md). The galleries and measurements below document the preceding pass.
+
 This pass replaces thick slab ears with thin, cupped pinnae, then refits the procedural wardrobe around them. The five ear shapes remain distinct. Inner-ear coloring follows coat pigmentation: pale coats get a soft ivory fringe and muted skin, dark/point coats get subdued brown or charcoal interiors, and Sphynx has more exposed skin. Calico, tortie, cow and Van coats also receive appropriate contrasting outer-ear patches. These are stylized coat-aware treatments, not genetically exact breed simulations.
 
 ## Fit and surface detail

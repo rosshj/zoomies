@@ -58,7 +58,7 @@ try{
       const rig=cat.userData.rig;for(let k=0;k<30;k++)updateCatRig(rig,1/60,.7,.4,false,false,true,false,24);
       if(!Number.isFinite(rig.head.rotation.z)||!Number.isFinite(rig.tail.rotation.x))throw Error('Broken rig');
       if(type==='manx'&&rig.tail.visible)throw Error('Manx tail visible');
-      if(['helmet','viking'].includes(accessory)?rig.earL.visible:!rig.earL.visible)throw Error('Wrong costume ear coverage');
+      if(['helmet','viking','rain','detective'].includes(accessory)?rig.earL.visible:!rig.earL.visible)throw Error('Wrong costume ear coverage');
       if(['classic','round','wide'].includes(desc.ear)){
        const g=rig.earL.children[0].geometry;g.computeBoundingBox();
        if(g.boundingBox.max.z-g.boundingBox.min.z>.09)throw Error('Thick slab ears returned');
@@ -84,4 +84,5 @@ try{
   await page.screenshot({path:`${out}/roster${angle}.png`,fullPage:true});
  }
  console.log(JSON.stringify({renders:rows.length,errors:[]}));
-}finally{await browser.close();server.closeAllConnections();server.close();}
+}finally{await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);server.closeAllConnections();server.close();}
+process.exit(0);
