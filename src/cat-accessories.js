@@ -102,34 +102,60 @@ export function createExtraAccessory(id, color, helpers) {
       }
       ball(.075,ivory,0,.025,0);break;
     }
-    case 'catEye': case 'ski': {
+    case 'catEye': {
       band();
       for(const sx of [-1,1]){
-        id==='catEye'?shape([[-.23,-.13],[.17,-.16],[.29,.2],[-.23,.15]].map(([x,y])=>[x*sx,y]),.065,color,sx*.34,.12,.87):add(plaque(.51,.34,.07,.09),color,sx*.29,.12,.87);
-        const lens=add(plaque(id==='catEye'?.33:.4,.23,.018,.06),id==='catEye'?0x63d8ec:0x263749,sx*(id==='catEye'?.34:.29),.12,.915);
+        shape([[-.23,-.13],[.17,-.16],[.29,.2],[-.23,.15]].map(([x,y])=>[x*sx,y]),.065,color,sx*.34,.12,.87);
+        const lens=add(plaque(.33,.23,.018,.06),0x63d8ec,sx*.34,.12,.915);
         lens.rotation.z=sx*.06;
-        // Baked reflection streaks read as gloss without environment captures.
-        const glint=add(plaque(.07,.15,.009,.02),id==='catEye'?0xe6ffff:0xa1bdce,sx*.33-.065,.15,.933);glint.rotation.z=-.45;
+        const glint=add(plaque(.07,.15,.009,.02),0xe6ffff,sx*.33-.065,.15,.933);glint.rotation.z=-.45;
       }
       add(plaque(.22,.07,.05,.025),color,0,.15,.89);break;
     }
+    case 'ski': {
+      // One wraparound shield with a nose cutout, deep foam seal and broad
+      // elastic strap. Curvature and highlights are baked, not transparent.
+      cap([[.79,.06],[.835,.06],[.835,.24],[.79,.24],[.79,.06]],dark).scale.z=.94;
+      for(const sx of [-1,1]){
+        const strap=add(new THREE.BoxGeometry(.11,.17,.46),dark,sx*.72,.15,.53);strap.rotation.y=-sx*.23;
+        add(plaque(.11,.19,.045,.025),color,sx*.7,.15,.755);
+      }
+      const outline=[[-.69,.07],[-.66,.26],[-.56,.36],[-.32,.4],[0,.38],[.32,.4],[.56,.36],[.66,.26],[.69,.07],[.59,-.14],[.23,-.16],[.12,-.05],[0,.005],[-.12,-.05],[-.23,-.16],[-.59,-.14]];
+      const shield=(sx,sy,depth,c,z)=>{
+        const m=shape(outline.map(([x,y])=>[x*sx,(y-.12)*sy+.12]),depth,c,0,0,z);
+        const p=m.geometry.attributes.position;
+        for(let i=0;i<p.count;i++)p.setZ(i,p.getZ(i)-.5*p.getX(i)**2);
+        m.geometry.computeVertexNormals();return m;
+      };
+      shield(1.035,1.1,.12,0x17232d,.915);
+      shield(1,1,.095,color,.978);
+      shield(.87,.77,.025,0x263749,1.04);
+      line([[-.49,.26,.946],[-.29,.30,1.024],[-.08,.30,1.062]],.014,0xa1bdce,8);
+      line([[.35,.01,1.005],[.46,.055,.96]],.012,0x617c93,4);
+      break;
+    }
     case 'space': {
       covered=true;
-      ring(1.04,.09,color,0,-.56,.02);ring(1.05,.032,dark,0,-.62,.02);
+      const rim=ring(.918,.06,color,0,-.497,.04);rim.scale.z=1/1.08;
+      const seal=ring(.918,.023,dark,0,-.545,.04);seal.scale.z=1/1.08;
       for(const sx of [-1,1]){
-        ball(.15,color,sx*1.04,.17,0,[.5,1,1]);
-        line([[sx*.97,.22,-.1],[sx*1.08,.67,-.12],[sx*1.03,.93,-.12]],.027,dark);
-        ball(.065,0xffbf41,sx*1.03,.93,-.12);
+        ball(.15,dark,sx*.81,.13,.035,[.45,1,1]);
+        ball(.145,color,sx*.865,.13,.035,[.4,1,1]);
+        line([[sx*.87,.22,.015],[sx*.96,.56,-.07],[sx*.91,.88,-.09]],.025,dark);
+        ball(.055,0xffbf41,sx*.91,.88,-.09);
       }
-      // A single front-sided, unlit dome: no refraction, transmission, or second surface pass.
-      const g=new THREE.SphereGeometry(1.25,24,14,0,TAU,0,2.12);g.scale(1,1.02,.93);g.translate(0,.08,.02);g.userData.shared=true;
+      // Exactly one boom, attached to the right earcup, ends by the mouth.
+      line([[.88,.1,.08],[.88,-.1,.48],[.67,-.28,.78],[.24,-.30,.88]],.025,dark,12);
+      ball(.08,0x17232d,.19,-.30,.89,[1.35,.65,.65]);
+      // A closer-fitting ellipsoid still clears the anchored ears and muzzle.
+      // One front surface, with no transmission/refraction or extra light.
+      const g=new THREE.SphereGeometry(1,24,14,0,TAU,0,2.12);g.scale(1.08,1.2,1);g.translate(0,.13,.04);g.userData.shared=true;
       const domeKey='extra|space|dome';if(!cache.has(domeKey))cacheGeometry(domeKey,g);else g.dispose();
       dome=new THREE.Mesh(cache.get(domeKey),glass);dome.renderOrder=2;group.add(dome);
-      // Tiny opaque reflection marks keep the dome legible at racing distance.
-      line([[-.6,.86,.78],[-.42,1,.78],[-.2,1.07,.76]],.02,0xe5fbff);
-      line([[1.04,-.5,.1],[1.24,.12,.1],[1.04,.8,.1],[.62,1.19,.1]],.012,0xc4e3eb);
+      line([[-.53,.90,.60],[-.37,1.04,.57],[-.17,1.10,.59]],.016,0xe5fbff);
+      line([[.922,-.49,.04],[1.08,.13,.04],[.891,.81,.04],[.53,1.175,.04]],.01,0xc4e3eb);
       pivot('blink',0,0,0);
-      for(const sx of [-1,1])ball(.047,sx<0?0x7effa9:0xff6d6d,sx*.68,-.51,.84);
+      for(const sx of [-1,1])ball(.04,sx<0?0x7effa9:0xff6d6d,sx*.55,-.46,.72);
       break;
     }
     case 'dragon': {
@@ -143,9 +169,11 @@ export function createExtraAccessory(id, color, helpers) {
         const m=add(new THREE.SphereGeometry(.075,6,4),y>.6?0x82c493:0x3b8669,Math.sin(a)*r+n.x*.02,y+n.y*.02,Math.cos(a)*r+n.z*.02,[1,.6,.22]);
         m.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n);
       }
-      pivot('tail',0,-.15,-.84);
-      add(tube([new THREE.Vector3(),new THREE.Vector3(0,-.35,-.1),new THREE.Vector3(.06,-.7,-.17),new THREE.Vector3(0,-.95,-.3)],.15,.018,10,7),color);
-      for(let i=0;i<4;i++)ball(.075,0xefc067,0,-i*.2,-.08-i*.04,[.4,1,1.3]);break;
+      // Bury the broad root in the hood, above the hem. Rotation is about
+      // this attached root so flutter cannot open a gap under the hood.
+      pivot('tail',0,.12,-.78);
+      add(tube([new THREE.Vector3(0,.10,.20),new THREE.Vector3(0,-.3,-.13),new THREE.Vector3(.06,-.76,-.23),new THREE.Vector3(0,-1.22,-.35)],.19,.018,12,7),color);
+      for(let i=0;i<4;i++)ball(.075,0xefc067,0,-.2-i*.24,-.20-i*.03,[.4,1,1.3]);break;
     }
     case 'shark': {
       band(dark,.55,.62);
@@ -209,12 +237,16 @@ export function createExtraAccessory(id, color, helpers) {
     }
     case 'mushroom': {
       covered=true;
-      cap([[0,.7],[.42,.7],[.83,.72],[.93,.79],[.91,.85],[.77,1.08],[.5,1.27],[.22,1.32],[0,1.33]],color);
-      cap([[.36,.7],[.75,.705],[.9,.765]],ivory);
+      // White chef-style stem supports the raised cap; ear slots are cut
+      // through the stem and cap together during generation.
+      cap([[0,.49],[.5,.49],[.54,.57],[.51,.83],[.49,1.06],[0,1.06]],0xfff4de);
+      const lift=.29;
+      cap([[0,.7],[.42,.7],[.83,.72],[.93,.79],[.91,.85],[.77,1.08],[.5,1.27],[.22,1.32],[0,1.33]],color).position.y=lift;
+      cap([[.36,.7],[.75,.705],[.9,.765]],ivory).position.y=lift;
       for(const [a,r] of [[0,.65],[1.2,.65],[2.4,.65],[3.7,.8],[5,.55],[.5,.25]]){
         const y=r>.5?1.27-(r-.5)*(.19/.27):1.32-(r-.22)*(.05/.28);
         const n=new THREE.Vector3(Math.sin(a)*.57,.82,Math.cos(a)*.57).normalize();
-        const m=ball(.115,ivory,Math.sin(a)*r+n.x*.02,y+n.y*.02,Math.cos(a)*r+n.z*.02,[1,.9,.2]);
+        const m=ball(.115,ivory,Math.sin(a)*r+n.x*.02,y+lift+n.y*.02,Math.cos(a)*r+n.z*.02,[1,.9,.2]);
         m.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n);
       }break;
     }

@@ -265,7 +265,7 @@
   },
   {
     "accessory": "space",
-    "triangles": 9816,
+    "triangles": 9396,
     "draws": 21,
     "earSize": [
       0.578859806060791,
@@ -276,7 +276,7 @@
   },
   {
     "accessory": "dragon",
-    "triangles": 8944,
+    "triangles": 8916,
     "draws": 20,
     "earSize": [
       0.578859806060791,
@@ -386,7 +386,7 @@
   },
   {
     "accessory": "mushroom",
-    "triangles": 9137,
+    "triangles": 8565,
     "draws": 19,
     "earSize": [
       0.578859806060791,
@@ -408,7 +408,7 @@
   },
   {
     "accessory": "ski",
-    "triangles": 7824,
+    "triangles": 7848,
     "draws": 19,
     "earSize": [
       0.578859806060791,
@@ -716,7 +716,7 @@
   },
   {
     "accessory": "space",
-    "triangles": 9816,
+    "triangles": 9396,
     "draws": 21,
     "earSize": [
       0.578859806060791,
@@ -727,7 +727,7 @@
   },
   {
     "accessory": "dragon",
-    "triangles": 8944,
+    "triangles": 8916,
     "draws": 20,
     "earSize": [
       0.578859806060791,
@@ -837,7 +837,7 @@
   },
   {
     "accessory": "mushroom",
-    "triangles": 9137,
+    "triangles": 8565,
     "draws": 19,
     "earSize": [
       0.578859806060791,
@@ -859,7 +859,7 @@
   },
   {
     "accessory": "ski",
-    "triangles": 7824,
+    "triangles": 7848,
     "draws": 19,
     "earSize": [
       0.578859806060791,
