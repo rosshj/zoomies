@@ -1,3 +1,5 @@
+[Updated shapes and measurements from the refinement pass](../kart-refinements/README.md). The gallery and measurements below record the initial roster implementation.
+
 # Twelve procedural racing chassis
 
 Add 12 sturdy racing designs with two named team editions each: **34 garage presets across 17 chassis**, including the original ten presets/five styles. The new models retain the game's cel-shaded materials and existing driving behavior.

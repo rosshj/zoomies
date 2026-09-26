@@ -1,3 +1,5 @@
+[Latest: refined racing-kart shapes, fittings and performance](kart-refinements/README.md).
+
 [Latest: twelve racing chassis, team liveries and kart performance](racing-karts/README.md).
 
 [Latest: accessory fit refinements and Safari Hat](accessory-refinements/README.md).

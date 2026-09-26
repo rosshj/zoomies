@@ -2059,9 +2059,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       spoke.position.set(sx * 0.17, 1.4, 0.55);
       spoke.rotation.x = IN_PLANE; // flat against the wheel's face
     }
-    // Seat where the cat sits — same height in every body so the cat always fits.
-    const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
-    seat.position.set(0, 1.06, -0.5);
+    // The racing bucket uses slimmer padding; the driver mount stays unchanged.
+    const seat = add(new THREE.Mesh(rbox(st.racing?1.30:1.5, st.racing?.44:.66, 1.5, st.racing?.18:.28, st.racing?1:undefined), dark));
+    seat.position.set(0, st.racing?.99:1.06, -0.5);
 
     if(st.racing){
       buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,livery:racingPaint(bodyColor,liveryIdx,kartNumber)});
@@ -2414,15 +2414,19 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     ], st.racing?16:24), tire);
     t.rotation.z = Math.PI / 2;
     parts.push(t);
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.56, radius * 0.56, 0.53, st.racing?12:20), _kRim);
+    const rimGeo=st.racing?new THREE.LatheGeometry([
+      [radius*.30,-.235],[radius*.49,-.235],[radius*.54,-.275],[radius*.58,-.275],
+      [radius*.58,.275],[radius*.54,.275],[radius*.49,.235],[radius*.30,.235],
+    ].map(([r,y])=>new THREE.Vector2(r,y)),12):new THREE.CylinderGeometry(radius*.56,radius*.56,.53,20);
+    const ring = new THREE.Mesh(rimGeo, _kRim);
     ring.rotation.z = Math.PI / 2;
     parts.push(ring);
-    const bore = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, 0.55, st.racing?10:16), dark);
+    const bore = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, st.racing?.475:.55, st.racing?10:16), dark);
     bore.rotation.z = Math.PI / 2;
     parts.push(bore);
     for (let i = 0; i < 4; i++) {
       const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.57, st.racing?6:8), dark);
+      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, st.racing?.49:.57, st.racing?6:8), dark);
       lug.rotation.z = Math.PI / 2;
       lug.position.set(0, Math.cos(ang) * radius * 0.44, Math.sin(ang) * radius * 0.44);
       parts.push(lug);

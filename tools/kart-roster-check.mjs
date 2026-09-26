@@ -18,7 +18,7 @@ try{
     v.orbit.theta=.65;v.orbit.phi=1.1;v.orbit.target.set(0,k.style>=13&&k.style<=14?1.6:.8,0);v.orbit.radius=8.4;
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
     if(v.backend!==new URLSearchParams(location.search).keys().next().value)throw Error('Backend fallback');
-    if(k.style>=5&&(triangles>13000||batches>22))throw Error(`${k.name} over budget: ${triangles}/${batches}`);
+    if(k.style>=5&&(triangles>9000||batches>21))throw Error(`${k.name} over budget: ${triangles}/${batches}`);
     return {...k,triangles,batches,backend:v.backend};
    },i);rows.push(result);
    if(backend==='webgpu'){
