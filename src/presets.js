@@ -49,44 +49,43 @@ export const CAT_PRESETS = [
 
 ];
 
-// Each kart: a colour, a body silhouette (style 0=GP / 1=roadster / 2=buggy /
-// 3=finned speedster / 4=cage buggy), and a racing number on the side roundels.
+// Stable preset ids: curated body color, chassis, racing number and livery.
 export const KART_PRESETS = [
-  { name: "Ember", color: 0xe53935, style: 0, number: 5 },
-  { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7 },
-  { name: "Clover", color: 0x43a047, style: 2, number: 3 },
-  { name: "Tangerine", color: 0xfb8c00, style: 0, number: 9 },
-  { name: "Grape", color: 0x8e24aa, style: 1, number: 4 },
-  { name: "Sunbeam", color: 0xfdd835, style: 2, number: 1 },
-  { name: "Teal", color: 0x00897b, style: 0, number: 8 },
-  { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
-  { name: "Nova", color: 0xec407a, style: 3, number: 6 },
-  { name: "Prowler", color: 0x3949ab, style: 4, number: 12 }, // off-road buggy with a full roll cage
+  { name: "Ember", color: 0xe53935, style: 0, number: 5, livery: 3 },
+  { name: "Lagoon", color: 0x1e88e5, style: 1, number: 7, livery: 4 },
+  { name: "Clover", color: 0x43a047, style: 2, number: 3, livery: 6 },
+  { name: "Tangerine", color: 0xfb8c00, style: 0, number: 9, livery: 5 },
+  { name: "Grape", color: 0x8e24aa, style: 1, number: 4, livery: 1 },
+  { name: "Sunbeam", color: 0xfdd835, style: 2, number: 1, livery: 0 },
+  { name: "Teal", color: 0x00897b, style: 0, number: 8, livery: 7 },
+  { name: "Comet", color: 0x26c6da, style: 3, number: 2, livery: 0 }, // jet-age finned speedster
+  { name: "Nova", color: 0xec407a, style: 3, number: 6, livery: 5 },
+  { name: "Prowler", color: 0x3949ab, style: 4, number: 12, livery: 6 }, // off-road buggy with a full roll cage
   // Two team editions per new chassis. Existing ids and cup rewards stay stable.
   { name: "Club Racer", color: 0xd84d3e, style: 5, number: 20, livery: 0 },
-  { name: "Club Cobalt", color: 0x3078c4, style: 5, number: 21, livery: 1 },
+  { name: "Club Cobalt", color: 0x3078c4, style: 5, number: 21, livery: 3 },
   { name: "Sprint", color: 0x207d79, style: 6, number: 23, livery: 1 },
-  { name: "Sprint Citrus", color: 0xf2b93b, style: 6, number: 24, livery: 2 },
-  { name: "Shifter", color: 0x3457a1, style: 7, number: 26, livery: 2 },
-  { name: "Shifter Frost", color: 0xe6e9e5, style: 7, number: 27, livery: 0 },
-  { name: "Endurance", color: 0xae3549, style: 8, number: 29, livery: 0 },
-  { name: "Endurance Gold", color: 0xe8b444, style: 8, number: 30, livery: 1 },
-  { name: "Rental Pro", color: 0x50677b, style: 9, number: 32, livery: 1 },
-  { name: "Rental Orange", color: 0xe98036, style: 9, number: 33, livery: 2 },
-  { name: "Vintage Racer", color: 0x286b50, style: 10, number: 35, livery: 2 },
-  { name: "Vintage Ivory", color: 0xe7dcc4, style: 10, number: 36, livery: 0 },
-  { name: "Dirt Oval", color: 0xe6bf38, style: 11, number: 38, livery: 0 },
-  { name: "Oval Scarlet", color: 0xbb3f3d, style: 11, number: 39, livery: 1 },
-  { name: "Flat Tracker", color: 0xbf652f, style: 12, number: 41, livery: 1 },
+  { name: "Sprint Citrus", color: 0xf2b93b, style: 6, number: 24, livery: 6 },
+  { name: "Shifter", color: 0x3457a1, style: 7, number: 26, livery: 5 },
+  { name: "Shifter Frost", color: 0xe6e9e5, style: 7, number: 27, livery: 7 },
+  { name: "Endurance", color: 0xae3549, style: 8, number: 29, livery: 7 },
+  { name: "Endurance Gold", color: 0xe8b444, style: 8, number: 30, livery: 3 },
+  { name: "Rental Pro", color: 0x50677b, style: 9, number: 32, livery: 6 },
+  { name: "Rental Orange", color: 0xe98036, style: 9, number: 33, livery: 0 },
+  { name: "Vintage Racer", color: 0x286b50, style: 10, number: 35, livery: 4 },
+  { name: "Vintage Ivory", color: 0xe7dcc4, style: 10, number: 36, livery: 4 },
+  { name: "Dirt Oval", color: 0xe6bf38, style: 11, number: 38, livery: 5 },
+  { name: "Oval Scarlet", color: 0xbb3f3d, style: 11, number: 39, livery: 7 },
+  { name: "Flat Tracker", color: 0xbf652f, style: 12, number: 41, livery: 4 },
   { name: "Tracker Slate", color: 0x526b7c, style: 12, number: 42, livery: 2 },
-  { name: "Rallycross", color: 0x4a7561, style: 13, number: 44, livery: 2 },
-  { name: "Rally Arctic", color: 0xe6e8df, style: 13, number: 45, livery: 0 },
-  { name: "Crosskart", color: 0x364e75, style: 14, number: 47, livery: 0 },
+  { name: "Rallycross", color: 0x4a7561, style: 13, number: 44, livery: 6 },
+  { name: "Rally Arctic", color: 0xe6e8df, style: 13, number: 45, livery: 2 },
+  { name: "Crosskart", color: 0x364e75, style: 14, number: 47, livery: 5 },
   { name: "Crosskart Lime", color: 0xa1bd38, style: 14, number: 48, livery: 1 },
-  { name: "Dune Racer", color: 0xc49d69, style: 15, number: 50, livery: 1 },
-  { name: "Dune Copper", color: 0xb86346, style: 15, number: 51, livery: 2 },
-  { name: "Streamliner", color: 0xabb8c5, style: 16, number: 53, livery: 2 },
-  { name: "Stream Azure", color: 0x328db0, style: 16, number: 54, livery: 0 },
+  { name: "Dune Racer", color: 0xc49d69, style: 15, number: 50, livery: 0 },
+  { name: "Dune Copper", color: 0xb86346, style: 15, number: 51, livery: 6 },
+  { name: "Streamliner", color: 0xabb8c5, style: 16, number: 53, livery: 3 },
+  { name: "Stream Azure", color: 0x328db0, style: 16, number: 54, livery: 7 },
 
 ];
 

@@ -56,6 +56,22 @@ try{
  const style=await p.evaluate(()=>window.__zoomies.karts.find(k=>k.isPlayer).group.children.find(o=>o.userData.kartStyle!==undefined).userData.kartStyle);
  if(style!==5)throw Error('New preset mistaken for legacy Custom Kart');
  if(errors.length)throw Error(errors.join('\n'));
- const result={editorResult,save,racers,presetStyle:style,errors};await fs.writeFile(`${out}/results.json`,JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+ // Original chassis must expose all schemes and preserve them in saved races.
+ await load();await editor();
+ const legacyPaint=await p.evaluate(()=>{
+  while(document.querySelector('#kart-style-name').textContent!=='GP')document.querySelector('#kart-style-next').click();
+  if(document.querySelector('#kart-livery-next').getClientRects().length===0)throw Error('Original chassis paint control hidden');
+  const labels=new Set();for(let i=0;i<8;i++){labels.add(document.querySelector('#kart-livery-name').textContent);document.querySelector('#kart-livery-next').click();}
+  if(labels.size!==8)throw Error('Missing paint schemes');
+  while(document.querySelector('#kart-livery-name').textContent!=='Endurance')document.querySelector('#kart-livery-next').click();
+  document.querySelector('#kart-edit-use').click();return [...labels];
+ });
+ await load();await editor();
+ if(await p.locator('#kart-style-name').textContent()!=='GP'||await p.locator('#kart-livery-name').textContent()!=='Endurance')throw Error('Original chassis paint lost on reload');
+ await p.evaluate(()=>{document.querySelector('#kart-edit-use').click();document.querySelector('#go-btn').click();});await p.waitForFunction(()=>window.__zoomies.karts?.length===6,null,{timeout:180000});
+ const legacyRace=await p.evaluate(()=>window.__zoomies.karts.find(k=>k.isPlayer).group.children.find(o=>o.userData.kartStyle!==undefined).userData);
+ if(legacyRace.kartStyle!==0||legacyRace.kartLivery!==7)throw Error('Original chassis race paint dropped');
+ if(errors.length)throw Error(errors.join('\n'));
+ const result={editorResult,save,racers,presetStyle:style,legacyPaint,legacyRace,errors};await fs.writeFile(`${out}/results.json`,JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 }finally{await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);server.closeAllConnections();server.close();}
 process.exit(0);

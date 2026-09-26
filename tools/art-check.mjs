@@ -55,7 +55,7 @@ try {
         const kart = createKartModel(color, { style });
         const stats = inspect(kart.group);
         assert(stats.triangles < baseline[style] * 0.65, `style ${style}: triangle budget`);
-        assert(stats.batches === batches[style], `style ${style}: added material batches`);
+        assert(stats.batches <= batches[style], `style ${style}: added material batches`);
         assert(kart.wheels.length === 4, 'wheel rig missing');
         if (color === 0xe53935) karts.push({ style, ...stats });
       }

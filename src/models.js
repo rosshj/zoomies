@@ -1,7 +1,7 @@
 import * as THREE from "three";
 import { accessoryPaint, paintUV } from "./accessory-paint.js";
-import { KART_STYLES } from "./kart-styles.js";
-import { buildRacingShell, racingPaint } from "./racing-karts.js";
+import { KART_STYLES, KART_LIVERIES } from "./kart-styles.js";
+import { buildRacingShell, racingPaint, panelPaintUV } from "./racing-karts.js";
 import { catType } from "./cat-types.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { EXTRA_ACCESSORIES, EXTRA_ACCESSORY_COLORS, createExtraAccessory, updateExtraAccessory } from "./cat-accessories.js";
@@ -1983,7 +1983,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // barely out-reach their front wheels).
   const st = KART_STYLES[opts.style ?? 0] || KART_STYLES[0];
   const styleIdx = KART_STYLES.indexOf(st);
-  const liveryIdx = Number.isInteger(opts.livery) && opts.livery>=0 && opts.livery<3 ? opts.livery : 0;
+  const liveryIdx = Number.isInteger(opts.livery) && opts.livery>=0 && opts.livery<KART_LIVERIES.length ? opts.livery : 0;
   group.userData.kartStyle=styleIdx;group.userData.kartLivery=liveryIdx;
   const kartNumber = opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
@@ -2026,19 +2026,8 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // headlight bulbs, tail lights, flames, underglow) stay separate below.
   const shell = [];
   const add = (mesh) => { shell.push(mesh); return mesh; };
-  // Numbered roundel decals (a plane pair facing outward). Position varies by
-  // body: the kart fairings.
-  const numMat = st.racing ? null : sharedMat(`knum|${kartNumber}`, () =>
-    new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
-  const roundels = [];
-  const addRoundels = (x, y, z, size = 0.62) => {
-    for (const sx of [-1, 1]) {
-      const roundel = new THREE.Mesh(new THREE.PlaneGeometry(size, size), numMat);
-      roundel.position.set(sx * x, y, z);
-      roundel.rotation.y = sx * Math.PI / 2; // face outward (±X)
-      roundels.push(roundel);
-    }
-  };
+  const livery=racingPaint(bodyColor,liveryIdx,kartNumber,st);
+  const trimTop=(g,w,d)=>panelPaintUV(g,'trim',(x,y,z)=>[x/w+.5,z/d+.5]);
 
   {
     // Steering wheel — shared by van and karts (same spot the cat's driving
@@ -2064,7 +2053,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     seat.position.set(0, st.racing?.99:1.06, -0.5);
 
     if(st.racing){
-      buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,livery:racingPaint(bodyColor,liveryIdx,kartNumber,st)});
+      buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,livery});
     }else{
       // --- Go-kart: a LOW, OPEN chassis like the real thing — flat floor pan,
       // exposed side rails, a bare bucket seat, a narrow nose cone with the
@@ -2087,7 +2076,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       // and the racing stripe lying FLUSH on its face like paint.
       const snout = st.snout ?? 1.55;
       const RAKE = 0.39; // the panel's climb toward the wheel
-      const stub = add(new THREE.Mesh(rbox(0.95, 0.26, 1.9, 0.13), paint));
+      const stub = add(new THREE.Mesh(trimTop(rbox(0.95, 0.26, 1.9, 0.13),.95,1.9), livery));
       stub.position.set(0, 0.44, snout - 0.45);
       const cowlGeo = rbox(0.98, 0.24, 1.55, 0.12);
       // Taper one continuous panel toward the nose, keeping its flat decal face.
@@ -2096,22 +2085,11 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
         cowlPos.setX(i, cowlPos.getX(i) * (0.88 - cowlPos.getZ(i) * 0.22));
       }
       cowlGeo.computeVertexNormals();
-      const cowl = add(new THREE.Mesh(cowlGeo, paint));
+      const cowl = add(new THREE.Mesh(panelPaintUV(cowlGeo,'hood',(x,y,z)=>[x/1.04+.5,z/1.55+.5]), livery));
       cowl.position.set(0, 0.78, 1.0);
       // +RAKE = front end dips into the stub, rear rises to the wheel, and the
       // panel's face tilts up-FORWARD so the number reads from the front.
       cowl.rotation.x = RAKE;
-      // Decals lie a hair proud of the panel, exactly parallel to its face —
-      // painted on, not floating (the face normal is (0, cos RAKE, sin RAKE)).
-      // The roundel sits mid-panel, BELOW where the steering column lands, so
-      // the post never crosses the number; the stripe runs beneath it.
-      const cowlNum = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), numMat);
-      cowlNum.position.set(0, 0.935, 0.98);
-      cowlNum.rotation.x = -(Math.PI / 2 - RAKE);
-      roundels.push(cowlNum);
-      const noseStripe = add(new THREE.Mesh(new THREE.PlaneGeometry(0.3, 0.55), stripe));
-      noseStripe.position.set(0, 0.715, 1.51);
-      noseStripe.rotation.x = -(Math.PI / 2 - RAKE);
       // Little accent winglets flanking the panel (the reference's red fins).
       for (const sx of [-1, 1]) {
         const winglet = add(new THREE.Mesh(rbox(0.36, 0.12, 0.52, 0.05), accent));
@@ -2175,22 +2153,12 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       bumperR.position.set(0, 0.42, -2.35);
       // Low side pods between the wheels — ONE clean shape each, shortened so
       // they stay out of the tyres' space, with a nearly FLAT outer face
-      // (small corner radius) so the flush roundel conforms like paint.
+      // (small corner radius) with the number painted into the outer surface.
       const podLen = st.tire >= 1.2 ? 1.25 : 1.62; // fat-tyre styles need shorter pods
       for (const sx of [-1, 1]) {
-        const pod = add(new THREE.Mesh(rbox(0.46, 0.5, podLen, 0.07), paint));
+        const pod = add(new THREE.Mesh(panelPaintUV(rbox(0.46, 0.5, podLen, 0.07),'side',(x,y,z)=>[.5-sx*z/podLen,.5-y/.5],sx), livery));
         pod.position.set(sx * 1.12, 0.5, -0.12);
       }
-      // Flush livery along the side pods: a cream shoulder and dark lower sill.
-      // Both reuse existing shell materials, so there are no extra draw calls.
-      for (const sx of [-1, 1]) {
-        for (const [y, h, mat] of [[0.68, 0.045, stripe], [0.32, 0.065, accent]]) {
-          const inlay = add(new THREE.Mesh(new THREE.PlaneGeometry(podLen - 0.2, h), mat));
-          inlay.position.set(sx * 1.354, y, -0.12);
-          inlay.rotation.y = sx * Math.PI / 2;
-        }
-      }
-      addRoundels(1.36, 0.5, -0.12, 0.4);
       // Bare bucket seat: tall back + side bolsters (nothing to sink into now).
       const seatBack = add(new THREE.Mesh(rbox(1.35, 1.05, 0.34, 0.16), dark));
       seatBack.position.set(0, 1.38, -1.26);
@@ -2247,17 +2215,13 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       }
     }
   }
-  // Both roundels share one material — merge them into one mesh (one draw).
-  // Positions are style-dependent, so the merge cache keys on the style.
-  if(roundels.length)group.add(mergeMeshes(roundels, { geoKey: `kroundel|${styleIdx}` }));
-
   // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
   let flagPivot = null; // the roadster's pennant pivot (returned for live flapping)
   if (st.wing === "big") {
     // Pylon runs all the way down to the floor pan (no rear deck any more).
     const pylon = add(new THREE.Mesh(rbox(0.34, 1.1, 0.34, 0.1), dark));
     pylon.position.set(0, 1.06, -2.3);
-    const wing = add(new THREE.Mesh(rbox(2.7, 0.14, 0.74, 0.06), paint));
+    const wing = add(new THREE.Mesh(trimTop(rbox(2.7, 0.14, 0.74, 0.06),2.7,.74), livery));
     wing.position.set(0, 1.62, -2.32);
     for (const sx of [-1, 1]) {
       const plate = add(new THREE.Mesh(rbox(0.08, 0.36, 0.78, 0.03), accent));
@@ -2265,7 +2229,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     }
   } else if (st.wing === "lip") {
     // Ducktail lip spoiler perched on the rear bumper…
-    const lip = add(new THREE.Mesh(rbox(2.0, 0.12, 0.5, 0.06), paint));
+    const lip = add(new THREE.Mesh(trimTop(rbox(2.0, 0.12, 0.5, 0.06),2,.5), livery));
     lip.position.set(0, 0.72, -2.32);
     lip.rotation.x = -0.18;
     // …plus a tall CURVED whip aerial off the rear corner flying a triangular
@@ -2300,7 +2264,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     // Two clean raked fins, nothing else (the accent edge caps and the centre
     // spine fin cluttered the tail into a jumble of plates).
     for (const sx of [-1, 1]) {
-      const fin = add(new THREE.Mesh(rbox(0.14, 0.95, 1.1, 0.07), paint));
+      const fin = add(new THREE.Mesh(panelPaintUV(rbox(0.14, 0.95, 1.1, 0.07),'trim',(x,y,z)=>[.5+sx*z/1.1,.5-y/.95],sx,'side'), livery));
       fin.position.set(sx * 0.72, 1.02, -2.15);
       fin.rotation.x = -0.34; // rake the fin back
       fin.rotation.z = sx * 0.12; // splay outward a touch

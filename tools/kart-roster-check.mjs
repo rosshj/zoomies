@@ -38,7 +38,7 @@ try{
   }
   if(!process.env.GALLERY_ONLY)await page.evaluate(async()=>{
    const {createKartModel,disposeGroup}=await import('/src/models.js');
-   for(let style=5;style<17;style++)for(let livery=0;livery<3;livery++)for(const color of [0xe53935,0xfafafa,0x182030]){
+   for(let style=0;style<17;style++)for(let livery=0;livery<8;livery++)for(const color of [0xe53935,0xfafafa,0x182030]){
     const a=createKartModel(color,{style,livery,number:37}),b=createKartModel(color,{style,livery,number:37});
     if(a.wheels.length!==4||a.brakeMat===b.brakeMat||a.flames===b.flames)throw Error('Rig sharing regression');
     for(let i=0;i<4;i++){
@@ -49,7 +49,7 @@ try{
     }
     const shells=a.group.children.filter(o=>o.isMesh&&o.geometry.groups.length>=4),others=b.group.children.filter(o=>o.isMesh&&o.geometry.groups.length>=4);
     if(shells[0].geometry!==others[0].geometry)throw Error('Shell not shared');
-    a.group.traverse(o=>{if(o.isMesh){const n=o.geometry.index?.count??o.geometry.attributes.position.count;for(const g of o.geometry.groups)if(g.start+g.count>n||!o.material[g.materialIndex])throw Error('Bad material group');}});
+    a.group.traverse(o=>{if(o.isMesh){const n=o.geometry.index?.count??o.geometry.attributes.position.count;for(const g of o.geometry.groups)if(g.start+g.count>n||!(Array.isArray(o.material)?o.material[g.materialIndex]:o.material))throw Error('Bad material group');}});
     disposeGroup(a.group);disposeGroup(b.group);
    }
   });
@@ -62,6 +62,6 @@ try{
   await page.setContent(`<style>body{margin:0;background:#c5d6df;font:18px system-ui}.grid{display:grid;grid-template-columns:repeat(3,1fr)}img{width:480px;display:block}p{margin:0;height:24px;text-align:center}</style><div class="grid">${cards.join('')}</div>`);
   await page.screenshot({path:`${out}/karts${angle}.png`,fullPage:true});
  }
- console.log(JSON.stringify({renders:rows.length,variants:216,errors:[]}));
+ console.log(JSON.stringify({renders:rows.length,variants:816,errors:[]}));
 }finally{await Promise.race([browser.close(),new Promise(r=>setTimeout(r,5000))]);server.closeAllConnections();server.close();}
 process.exit(0);

@@ -1,3 +1,5 @@
+[Next pass: eight racing schemes across all 34 karts, including the original models](../garage-liveries/README.md). The measurements below describe the earlier number-alignment pass.
+
 # Fitted kart liveries and centered numbers
 
 The previous texture placed the number badge at x=161 in a 256px image, then reused it on noses, side pods and an upright plate. That shifted nose numbers off the centerline, stretched side lettering, and repeated paint over panel edges.

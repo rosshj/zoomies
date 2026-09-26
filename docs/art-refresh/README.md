@@ -1,3 +1,5 @@
+[Latest: all 34 karts repainted, eight racing schemes and reduced render batches](garage-liveries/README.md).
+
 [Latest: fitted liveries, centered numbers and stripe layouts](kart-liveries/README.md).
 
 [Latest: refined racing-kart shapes, fittings and performance](kart-refinements/README.md).

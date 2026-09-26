@@ -3787,7 +3787,7 @@ function syncCreators() {
   const k = _garageDraft.customKart;
   const styleName = document.getElementById("kart-style-name");
   if (styleName) styleName.textContent = KART_STYLE_NAMES[k.style] || "GP";
-  document.getElementById('kart-livery-row')?.classList.toggle('hidden',!KART_STYLES[k.style]?.racing);
+  document.getElementById('kart-livery-row')?.classList.remove('hidden');
   const liveryName=document.getElementById('kart-livery-name');
   if(liveryName)liveryName.textContent=KART_LIVERIES[k.livery];
   const numName = document.getElementById("kart-num-name");

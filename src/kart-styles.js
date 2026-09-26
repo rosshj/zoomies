@@ -19,7 +19,7 @@ export const KART_STYLES=[
   race('Dune Racer',{kind:'dune',nose:.6,pod:.34,tread:true,tire:1.15,suspension:true,hoopOnly:true}),
   race('Streamliner',{kind:'stream',nose:.64,pod:.46,stream:true}),
 ];
-export const KART_LIVERIES=['Team Stripe','Twin Stripe','Chevron'];
+export const KART_LIVERIES=['Team Stripe','Twin Stripe','Chevron','GT Stripe','Heritage','Works','Rally Blocks','Endurance'];
 export function savedKartIndex(config,count){
   if(config.kartId==='custom'||((config.v??1)<3&&config.kart===10))return count;
   return Number.isInteger(config.kart)&&config.kart>=0&&config.kart<count+1?config.kart:0;
