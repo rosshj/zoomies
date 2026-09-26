@@ -258,7 +258,7 @@ export function createExtraAccessory(id, color, helpers) {
       covered=true;
       // White chef-style stem supports the raised cap; ear slots are cut
       // through the stem and cap together during generation.
-      cap([[0,.49],[.5,.49],[.54,.57],[.51,.83],[.49,1.06],[0,1.06]],0xfff4de);
+      cap([[0,.49],[.38,.49],[.41,.57],[.39,.83],[.37,1.06],[0,1.06]],0xfff4de);
       const lift=.29;
       cap([[0,.7],[.42,.7],[.83,.72],[.93,.79],[.91,.85],[.77,1.08],[.5,1.27],[.22,1.32],[0,1.33]],color).position.y=lift;
       cap([[.36,.7],[.75,.705],[.9,.765]],ivory).position.y=lift;

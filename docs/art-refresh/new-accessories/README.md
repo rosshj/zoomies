@@ -28,6 +28,12 @@ All 19 requested accessories are available in the Custom Cat studio and asset vi
 | Detective Hat | Deerstalker crown, front/rear peaks, side flaps and broad stitching. |
 | Shell Necklace | Five large scalloped shells with readable ribs on a fitted cord. |
 
+## Slimmer mushroom stem
+
+The white stem is about 24% narrower to expose more of both ears. The cap and stem height remain the same. The complete spotted cat now uses 9,205 triangles and 19 batches. Both graphics backends, all 738 pose/color checks and the web build pass.
+
+[Stem before/after](stem-comparison.png)
+
 ## Angled helmet neckline
 
 The helmet opening follows the marked neckline at roughly 24 degrees: low under the chin and high at the nape. Both the lower dome edge and collar come from the same tilted intersection with the ellipsoid. The dome is also about 6% narrower; the headset and single mic stay aligned with the face. The blinking status lamps follow the new rim.
