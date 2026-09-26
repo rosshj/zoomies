@@ -1,3 +1,5 @@
+[Latest paint and number-placement pass](../kart-liveries/README.md). The views below record the preceding shape refinement.
+
 # Racing-kart refinement pass
 
 Refine all twelve new procedural chassis and their 24 team editions. The cel-shaded materials, racing behavior, unlocks, saved IDs and original ten karts remain unchanged.

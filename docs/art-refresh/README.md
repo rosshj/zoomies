@@ -1,3 +1,5 @@
+[Latest: fitted liveries, centered numbers and stripe layouts](kart-liveries/README.md).
+
 [Latest: refined racing-kart shapes, fittings and performance](kart-refinements/README.md).
 
 [Latest: twelve racing chassis, team liveries and kart performance](racing-karts/README.md).

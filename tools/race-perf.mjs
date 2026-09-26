@@ -4,6 +4,7 @@
 // forces the same accessory on every cat to stress its worst rendering case.
 // CAT_TYPE and CAT_PATTERN pin morphology/coat; KART_STYLE pins the chassis.
 // ACCESSORIES_FILE overrides the extra wardrobe alongside a prior MODELS build.
+// RACING_KARTS_FILE pins the procedural shell/paint module for livery comparisons.
 import {chromium} from 'playwright-core';
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -12,6 +13,7 @@ const root=process.env.ART_ROOT||path.resolve(new URL('..',import.meta.url).path
 await fs.mkdir(out,{recursive:true});
 const mime={'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'};
 async function sourceFile(file) {
+ if(file.endsWith("/src/racing-karts.js")&&process.env.RACING_KARTS_FILE)return fs.readFile(process.env.RACING_KARTS_FILE);
  if(file.endsWith("/src/cat-accessories.js")&&process.env.ACCESSORIES_FILE)return fs.readFile(process.env.ACCESSORIES_FILE);
  if(!file.endsWith('/src/models.js')||(!process.env.MODELS&&!process.env.ACCESSORY&&!process.env.CAT_TYPE&&!process.env.CAT_PATTERN&&process.env.KART_STYLE===undefined))return fs.readFile(file);
  let code=await fs.readFile(process.env.MODELS||file,'utf8');

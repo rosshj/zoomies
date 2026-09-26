@@ -1,31 +1,90 @@
 import * as THREE from 'three';
 
-// One cached opaque paint material, including number/team marks. No floating
-// decals or extra passes. A bounded palette cache is shared by all chassis.
+// Separate nose, side and upright-plate layouts in one opaque 256px atlas.
+// UVs select a panel; paint stays in the existing material batch.
+const TILES={hood:[4,4,152,248],side:[164,4,88,108],plate:[164,120,88,108]};
+const SOLID_UV=[208/256,1-242/256];
 const paints=new Map();
-export function racingPaint(color,livery,number){
-  const key=`${color}|${livery}|${number}`;
+const hoodSize=st=>st.vintage?[.88,1.76]:[Math.max(.43,st.nose)*2,1.81];
+export function racingPaint(color,livery,number,st){
+  const [hoodW,hoodH]=hoodSize(st),sideW=st.tire>1?1.16:1.55;
+  const key=`${color}|${livery}|${number}|${hoodW}|${hoodH}|${sideW}`;
   if(paints.has(key))return paints.get(key);
   const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
   const c=canvas.getContext('2d'),base=new THREE.Color(color);
-  c.fillStyle='#'+base.getHexString();c.fillRect(0,0,256,256);
-  c.fillStyle='#'+base.clone().multiplyScalar(.42).getHexString();c.fillRect(0,186,256,70);
+  const body='#'+base.getHexString(),shade='#'+base.clone().multiplyScalar(.42).getHexString();
   const ink=base.r*.2126+base.g*.7152+base.b*.0722>.62?'#303846':'#f5f1e5';
-  c.fillStyle=ink;
-  if(livery===1){c.fillRect(60,0,22,256);c.fillRect(174,0,22,256);}
-  else if(livery===2){for(const y of [-75,10,95]){c.beginPath();c.moveTo(0,y);c.lineTo(128,y+55);c.lineTo(256,y);c.lineTo(256,y+24);c.lineTo(128,y+79);c.lineTo(0,y+24);c.fill();}}
-  else{c.fillRect(34,0,44,256);c.fillStyle='#252b34';c.fillRect(82,0,9,256);}
-  c.fillStyle='#252b34';c.beginPath();c.roundRect(99,79,124,99,18);c.fill();
-  c.fillStyle='#f5f1e5';c.beginPath();c.roundRect(103,83,116,91,14);c.fill();
-  c.fillStyle='#202631';c.textAlign='center';c.textBaseline='middle';c.font='bold 65px sans-serif';c.fillText(String(number),161,130,105);
-  // Fine pinstripes and panel fasteners are paint, not floating geometry.
-  c.fillStyle=ink;c.fillRect(8,12,2,163);c.fillRect(246,12,2,163);
-  c.fillStyle='#adb4b7';for(const x of [19,237])for(const y of [24,168]){c.beginPath();c.arc(x,y,2.5,0,Math.PI*2);c.fill();}
-  c.font='bold 17px sans-serif';c.fillStyle='#f5f1e5';c.fillText(['APEX','VECTOR','SUMMIT'][livery],160,219);
+  c.fillStyle=body;c.fillRect(0,0,256,256);
+  // Draw in physical panel proportions, not texture-pixel proportions. This
+  // keeps glyphs readable on both broad fairings and narrow side panels.
+  const tile=(role,w,h,draw)=>{
+    const [x,y,tw,th]=TILES[role];c.save();c.beginPath();c.rect(x,y,tw,th);c.clip();
+    c.translate(x+tw/2,y+th/2);c.scale(tw/(w*100),th/(h*100));draw(w*100,h*100);c.restore();
+  };
+  const text=(label,x,y,w,h,color,font='bold 80px sans-serif')=>{
+    c.save();c.font=font;c.textAlign='left';c.textBaseline='alphabetic';
+    const m=c.measureText(label),iw=m.actualBoundingBoxLeft+m.actualBoundingBoxRight,ih=m.actualBoundingBoxAscent+m.actualBoundingBoxDescent;
+    const fit=Math.min(w/Math.max(iw,1),h/Math.max(ih,1));
+    c.translate(x,y);c.scale(fit,fit);c.fillStyle=color;
+    // Optical centering uses the actual ink bounds, including italic overhang.
+    c.fillText(label,(m.actualBoundingBoxLeft-m.actualBoundingBoxRight)/2,(m.actualBoundingBoxAscent-m.actualBoundingBoxDescent)/2);c.restore();
+  };
+  const badge=(x,y,w,h)=>{
+    c.fillStyle='#252b34';c.beginPath();c.roundRect(x-w/2,y-h/2,w,h,Math.min(w,h)*.16);c.fill();
+    c.fillStyle='#f7f2df';c.beginPath();c.roundRect(x-w/2+1.5,y-h/2+1.5,w-3,h-3,Math.min(w,h)*.12);c.fill();
+    text(String(number),x,y,w-10,h-10,'#202631','bold italic 80px sans-serif');
+  };
+  tile('hood',hoodW,hoodH,(w,h)=>{
+    c.fillStyle=ink;
+    if(livery===0){
+      c.fillRect(-w*.35,-h/2,w*.13,h);c.fillRect(-w*.19,-h/2,w*.025,h);
+    }else if(livery===1){
+      for(const s of [-1,1])c.fillRect(s*w*.29-w*.045,-h/2,w*.09,h);
+    }else{
+      for(const y of [-h*.43,-h*.22,h*.30]){
+        c.beginPath();c.moveTo(-w/2,y);c.lineTo(0,y+h*.11);c.lineTo(w/2,y);
+        c.lineTo(w/2,y+h*.05);c.lineTo(0,y+h*.16);c.lineTo(-w/2,y+h*.05);c.fill();
+      }
+    }
+    c.fillStyle=shade;c.fillRect(-w/2,h*.37,w,h*.13);
+    badge(0,h*.10,Math.min(w*.66,82),52);
+    // Keep the team word above the badge, clear of the taper and front bumper.
+    text(['APEX','VECTOR','SUMMIT'][livery],0,-h*.24,Math.min(w*.58,44),h*.055,ink);
+  });
+  tile('side',sideW,.48,(w,h)=>{
+    c.fillStyle=ink;
+    if(livery===2){
+      for(const s of [-1,1]){c.beginPath();c.moveTo(s*w*.46,-h*.38);c.lineTo(s*w*.29,0);c.lineTo(s*w*.46,h*.38);c.lineTo(s*w*.36,h*.38);c.lineTo(s*w*.19,0);c.lineTo(s*w*.36,-h*.38);c.fill();}
+    }else{
+      c.fillRect(-w/2,-h*.35,w,h*.09);
+      if(livery===1)c.fillRect(-w/2,h*.26,w,h*.09);
+    }
+    badge(0,0,66,26);
+  });
+  tile('plate',.72,.43,()=>badge(0,0,61,34));
   const map=new THREE.CanvasTexture(canvas);map.colorSpace=THREE.SRGBColorSpace;map.anisotropy=2;map.userData.shared=true;
   const mat=new THREE.MeshStandardMaterial({map,roughness:.4});mat.userData.shared=true;mat.userData.paint=true;
   if(paints.size>=64)paints.delete(paints.keys().next().value);
   paints.set(key,mat);return mat;
+}
+
+// Split UV seams without adding triangles. A side number belongs on the outer
+// side face, never repeated/stretched over the pod's top or end caps.
+function panelPaintUV(geometry,role,project,side=1){
+  const g=geometry.index?geometry.toNonIndexed():geometry,p=g.attributes.position,uv=g.attributes.uv;
+  const a=new THREE.Vector3(),b=new THREE.Vector3(),c=new THREE.Vector3(),n=new THREE.Vector3();
+  const [x,y,w,h]=TILES[role];
+  for(let i=0;i<p.count;i+=3){
+    a.fromBufferAttribute(p,i);b.fromBufferAttribute(p,i+1);c.fromBufferAttribute(p,i+2);
+    n.crossVectors(b.sub(a),c.sub(a)).normalize();
+    const painted=role==='side'?n.x*side>.65:role==='plate'?n.z>.65:n.y>.3;
+    for(let j=i;j<i+3;j++){
+      if(!painted){uv.setXY(j,...SOLID_UV);continue;}
+      const [u,v]=project(p.getX(j),p.getY(j),p.getZ(j));
+      uv.setXY(j,(x+Math.max(0,Math.min(1,u))*w)/256,1-(y+Math.max(0,Math.min(1,v))*h)/256);
+    }
+  }
+  uv.needsUpdate=true;return g;
 }
 
 // All twelve builds use the same seat, steering, wheel and exhaust anchors.
@@ -61,7 +120,15 @@ export function buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,li
       if(j)for(let i=0;i<8;i++){const a=(j-1)*8+i,b=(j-1)*8+(i+1)%8,d=j*8+i,e=j*8+(i+1)%8;ix.push(a,b,d,b,e,d);}
     });
     for(let i=1;i<7;i++){ix.push(0,i+1,i);const b=(rows.length-1)*8;ix.push(b,b+i,b+i+1);}
-    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(ix);g.computeVertexNormals();return mesh(g,m,x);
+    const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(ix);g.computeVertexNormals();
+    if(m===livery){
+      const centerY=(rows[1][3]+rows[2][3])*.25+.155;
+      const mapped=panelPaintUV(g,side?'side':'hood',side
+        ?(px,py,z)=>[.5+(x>0?-1:1)*(z+.045)/len,.5-(py-centerY)/.48]
+        :(px,py,z)=>[px/(maxW*2)+.5,(z-min)/len],Math.sign(x));
+      return mesh(mapped,m,x);
+    }
+    return mesh(g,m,x);
   };
   panel([[-2.32,.87,.28,.44],[-1.72,1.01,.28,.44],[.8,.92,.28,.44],[2.12,.59,.3,.44]],dark);
   for(const s of [-1,1]){
@@ -79,8 +146,7 @@ export function buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,li
   }
   // Narrow driving fairing slopes down from the steering column.
   if(st.vintage){
-    const g=new THREE.SphereGeometry(1,16,8),p=g.attributes.position,uv=g.attributes.uv;
-    for(let i=0;i<p.count;i++)uv.setXY(i,p.getX(i)*.5+.5,.5-p.getZ(i)*.5);
+    const g=panelPaintUV(new THREE.SphereGeometry(1,16,8),'hood',(x,y,z)=>[x*.5+.5,z*.5+.5]);
     const o=mesh(g,livery,0,.65,1.25);o.scale.set(.44,.32,.88);
     box(.48,.16,.65,paint,0,.65,.38);
     for(const s of [-1,1])for(let i=0;i<3;i++)box(.02,.07,.23,dark,s*.425,.69,1.12+i*.19,.01);
@@ -129,7 +195,7 @@ export function buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,li
     bar([.83,.7,-1.0],[.55,.65,-1.6],.035);
   }
   if(st.kind==='flat'){
-    const plate=box(.72,.43,.075,livery,0,1.04,.83,.035);plate.rotation.x=-.13;
+    const plate=box(.72,.43,.075,livery,0,1.04,.83,.035);plate.geometry=panelPaintUV(plate.geometry,'plate',(x,y)=>[x/.72+.5,.5-y/.43]);plate.rotation.x=-.13;
   }
   if(st.oval){
     panel([[-2.27,1.18,.42,.81],[-1.98,1.18,.4,.75]],paint);

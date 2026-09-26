@@ -2064,7 +2064,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     seat.position.set(0, st.racing?.99:1.06, -0.5);
 
     if(st.racing){
-      buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,livery:racingPaint(bodyColor,liveryIdx,kartNumber)});
+      buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,livery:racingPaint(bodyColor,liveryIdx,kartNumber,st)});
     }else{
       // --- Go-kart: a LOW, OPEN chassis like the real thing — flat floor pan,
       // exposed side rails, a bare bucket seat, a narrow nose cone with the
