@@ -817,7 +817,7 @@ export class Kart {
     // lifts while tooting).
     // Blink only on the post-race victory lap (the racing rig already gives a
     // moving cat plenty of life); never mid-race.
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished, this.gloatTimer > 0);
+    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished, this.gloatTimer > 0, this.speed);
 
     // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
     // long axis along the sun azimuth (independent of which way the kart faces),

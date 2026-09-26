@@ -60,6 +60,35 @@ try{
   if(!process.env.MODELS)await page.evaluate(async()=>{
     const {createCat,updateCatRig,CAT_ACCESSORIES}=await import('/src/models.js');
     const assert=(ok,msg)=>{if(!ok)throw Error(msg);};
+    const {EXTRA_ACCESSORIES,updateExtraAccessory}=await import('/src/cat-accessories.js');
+    const {ACCESSORY_LABELS,ACCESSORY_COLORS}=await import('/src/models.js');
+    assert(new Set(CAT_ACCESSORIES).size===CAT_ACCESSORIES.length,'Duplicate accessory ids');
+    for(const id of Object.keys(EXTRA_ACCESSORIES)){
+      assert(CAT_ACCESSORIES.includes(id)&&ACCESSORY_LABELS[id]&&ACCESSORY_COLORS[id].length,'Missing wardrobe registration');
+      const a=createCat(0xc8966a,{pattern:'spotted',accessory:id,pose:'kart'});
+      const b=createCat(0xc8966a,{pattern:'spotted',accessory:id,pose:'kart'});
+      const parts=[];a.traverse(o=>{if(o.userData.accessoryId===id)parts.push(o);});
+      assert(parts.length===1,`${id}: accessory omitted or duplicated`);
+      let draws=0,transparent=0,triangles=0;
+      parts[0].traverse(o=>{if(o.isMesh){
+        draws++;triangles+=(o.geometry.index?.count??o.geometry.attributes.position.count)/3;
+        assert(o.geometry.userData.shared&&o.material.userData.shared,`${id}: unshared resources`);
+        if(o.material.transparent){transparent++;assert(!o.material.depthWrite&&o.material.side===0,`${id}: dome pass budget`);}
+      }});
+      assert(draws<=3&&triangles<3000,`${id}: extra accessory budget`);
+      assert(transparent===(id==='space'?1:0),`${id}: unexpected transparency`);
+      if(a.userData.rig.accessory){
+        assert(a.userData.rig.accessory.object!==b.userData.rig.accessory.object,`${id}: shared animated transform`);
+      }
+    }
+    const makeMotion=()=>createCat(0xc8966a,{accessory:'propeller',pose:'kart'}).userData.rig.accessory;
+    const slow=makeMotion(),fast=makeMotion();updateExtraAccessory(slow,.02,0,0);updateExtraAccessory(fast,.02,0,30);
+    assert(fast.object.rotation.y>slow.object.rotation.y*5,'Propeller does not follow speed');
+    const angles=[];
+    for(const hz of [30,60,120]){const m=makeMotion();for(let i=0;i<hz*2;i++)updateExtraAccessory(m,1/hz,.2,20);angles.push(m.object.rotation.y);}
+    assert(Math.max(...angles)-Math.min(...angles)<1e-6,'Propeller depends on frame rate');
+    const blinkA=createCat(0xc8966a,{accessory:'space'}).userData.rig.accessory,blinkB=createCat(0xc8966a,{accessory:'space'}).userData.rig.accessory;
+    updateExtraAccessory(blinkA,1.1,0,0);assert(!blinkA.object.visible&&blinkB.object.visible,'Blink lights leak between cats');
     for(const accessory of CAT_ACCESSORIES)for(const pose of ['sit','kart','stand'])for(const color of ['#ffffff','#0a0a0a','#e23b3b']){
       const cat=createCat(0xc8966a,{pattern:'spotted',accessory,pose,accessoryColor:color});
       let triangles=0;
@@ -83,11 +112,11 @@ try{
   });
   if(errors.length)throw Error(errors.join('\n'));await page.close();
  }
- const sheet=await browser.newPage({viewport:{width:1440,height:2760}});
+ const sheet=await browser.newPage({viewport:{width:1440,height:460}});
  for(const angle of ['', '-side', '-back', '-drive']){
    const cards=await Promise.all(rows.filter(r=>r.backend==='webgpu').map(async r=>`<div><img src="data:image/png;base64,${(await fs.readFile(path.join(out,r.accessory+angle+'.png'))).toString('base64')}"><p>${r.accessory}</p></div>`));
    await sheet.setContent(`<style>body{margin:0;background:#c5d6df;font:18px system-ui}.grid{display:grid;grid-template-columns:repeat(4,1fr)}img{width:360px;height:440px}p{margin:0;text-align:center;height:20px}</style><div class="grid">${cards.join('')}</div>`);
    await sheet.screenshot({path:path.join(out,'accessories'+angle+'.png'),fullPage:true});
  }
- await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify(rows,null,2));console.log(JSON.stringify({renders:rows.length,first:rows[0],errors:[]}));
+ await fs.writeFile(path.join(out,'metrics.json'),JSON.stringify(rows,null,2));console.log(JSON.stringify({renders:rows.length,variants:process.env.MODELS?0:rows.length*9,errors:[]}));
 }finally{await browser.close();server.closeAllConnections();server.close();}

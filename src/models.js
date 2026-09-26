@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { EXTRA_ACCESSORIES, EXTRA_ACCESSORY_COLORS, createExtraAccessory, updateExtraAccessory } from "./cat-accessories.js";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
@@ -147,11 +148,11 @@ function underglowTexture() {
 // accessory (the default when opts.accessory isn't given). Real cat coat
 // patterns, plus the accessory each preset breed wears.
 export const CAT_PATTERNS = ["spotted", "solid", "tuxedo", "snowshoe", "tabby", "mitted", "point", "calico", "tortie", "bengal", "cow", "smoke"];
-// The first ten are the free launch set; everything after "bow" is a PRIZE
-// unlocked through the Cat-alog (see the acc.* entries in src/progress.js).
+// The complete wardrobe is available through the Custom Cat creator.
 export const CAT_ACCESSORIES = [
   "none", "cap", "headphones", "beanie", "flower", "fedora", "sunglasses", "bandana", "collar", "bow",
   "party", "crown", "pirate", "tophat", "cowboy", "aviator", "helmet", "chef", "wizard", "viking", "scarf", "charm",
+  ...Object.keys(EXTRA_ACCESSORIES),
 ];
 // Human-facing labels (ids stay stable for saved garages / breed defaults).
 export const ACCESSORY_LABELS = {
@@ -160,12 +161,14 @@ export const ACCESSORY_LABELS = {
   party: "Party Hat", crown: "Crown", pirate: "Pirate Hat", tophat: "Top Hat", cowboy: "Cowboy Hat",
   aviator: "Aviator Cap", helmet: "Racing Helmet", chef: "Chef Hat", wizard: "Wizard Hat",
   viking: "Viking Helmet", scarf: "Scarf", charm: "Fish Charm",
+  ...Object.fromEntries(Object.entries(EXTRA_ACCESSORIES).map(([id, [label]]) => [id, label])),
 };
 // A sensible colour palette per accessory type — the FIRST entry is the natural
 // default (used when a cat doesn't pick a colour), the rest are the swatches the
 // creator offers. Single source of truth: createCat reads [0], the garage UI
 // renders the whole list.
 export const ACCESSORY_COLORS = {
+  ...EXTRA_ACCESSORY_COLORS,
   none: [],
   cap:        [0xe23b3b, 0x2f6fd6, 0x37b24d, 0x1a1a1a, 0xf5c518, 0xf0f0f0, 0xff8c1a, 0xa259ff, 0x18b6a6], // team-cap colours
   headphones: [0x222831, 0xf0f0f0, 0xe23b3b, 0x2f6fd6, 0xff5fa2, 0x37b24d, 0xf5c518, 0xa259ff, 0x18b6a6], // gadget colours
@@ -1664,6 +1667,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fin.position.set(0, 1.02, .955); acc.add(fin); // tail fin at the bottom, apex tucked into the body
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), accMat(0x1a1a1a, 0.4));
     eye.position.set(0.05, 1.32, 1.02); acc.add(eye);  }
+  const extraAccessory = createExtraAccessory(accId, accCol, {latheDeform, taperedTube, accessoryPlaque, cutAccessoryEarSlots, neckBandGeo});
+  if (extraAccessory) (extraAccessory.body ? cat : head).add(extraAccessory.group);
   const fittedHeadwear = ["cap", "beanie", "fedora", "party", "crown", "pirate", "tophat", "cowboy", "aviator", "helmet", "chef", "wizard", "viking"].includes(accId);
   if (fittedHeadwear) {
     for (const part of acc.children) cutAccessoryEarSlots(part);
@@ -1710,7 +1715,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     earR: ears.R,
     // Headwear holds the ear roots in their openings. The whole head still
     // leans and looks back, but independent ear flicks must not cross the hat.
-    earMotionScale: fittedHeadwear ? 0 : 1,
+    earMotionScale: fittedHeadwear || extraAccessory?.covered ? 0 : 1,
+    accessory: extraAccessory?.motion || null,
     whiskerL: whiskers.L,
     whiskerR: whiskers.R,
     armL: arms.L,
@@ -1740,7 +1746,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
 // appendages lag and overshoot via simple spring-dampers so they whip around
 // corners and flatten back under acceleration. `toot` lifts the tail.
 // `celebrate` triggers the victory pose: sunglasses drop on and one paw pumps.
-export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false, allowBlink = false, gloat = false) {
+export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false, allowBlink = false, gloat = false, speed = 0) {
   if (!rig) return;
   const sp = rig.springs;
   const step = (s, target, k, d) => {
@@ -1774,6 +1780,8 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
   rig.whiskerR.rotation.y = sp.whisker.a;
   rig.tail.rotation.set(sp.tailX.a, sp.tailY.a, 0);
   rig.head.rotation.set(sp.headPitch.a + giggle, sp.gloatYaw.a, sp.headLean.a + gloatAmt * 0.25);
+
+  updateExtraAccessory(rig.accessory, dt, sp.headLean.a, speed);
 
   // --- Victory celebration: shades drop on, right paw pumps the air ---
   if (celebrate) {

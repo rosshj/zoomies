@@ -90,7 +90,7 @@ function buildCatAsset(fur, opts) {
     animate: (t) => {
       const dt = Math.max(0, Math.min(0.05, t - last));
       last = t;
-      if (dt > 0) updateCatRig(rig, dt, 0, 0, false, false, true);
+      if (dt > 0) updateCatRig(rig, dt, Math.sin(t*.9)*.45, 0, false, false, true, false, 18);
       for (let j = 0; j < wheels.length; j++) {
         const w = wheels[j];
         w.rotation.order = "YXZ";

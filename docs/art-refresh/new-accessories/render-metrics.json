@@ -1,0 +1,904 @@
+[
+  {
+    "accessory": "none",
+    "triangles": 7188,
+    "draws": 18,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "cap",
+    "triangles": 7872,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "headphones",
+    "triangles": 7716,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "beanie",
+    "triangles": 8273,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "flower",
+    "triangles": 7860,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "fedora",
+    "triangles": 8067,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "sunglasses",
+    "triangles": 7752,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "bandana",
+    "triangles": 7496,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "collar",
+    "triangles": 7516,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "bow",
+    "triangles": 7800,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "party",
+    "triangles": 7980,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "crown",
+    "triangles": 7618,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "pirate",
+    "triangles": 8331,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "tophat",
+    "triangles": 8635,
+    "draws": 22,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "cowboy",
+    "triangles": 8463,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "aviator",
+    "triangles": 8819,
+    "draws": 21,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "helmet",
+    "triangles": 8846,
+    "draws": 22,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "chef",
+    "triangles": 7926,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "wizard",
+    "triangles": 8100,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "viking",
+    "triangles": 8972,
+    "draws": 21,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "scarf",
+    "triangles": 7360,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "charm",
+    "triangles": 7752,
+    "draws": 22,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "propeller",
+    "triangles": 8337,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "catEye",
+    "triangles": 7752,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "space",
+    "triangles": 9396,
+    "draws": 21,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "dragon",
+    "triangles": 8916,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "shark",
+    "triangles": 7460,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "unicorn",
+    "triangles": 8336,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "sombrero",
+    "triangles": 10067,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "rain",
+    "triangles": 8167,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "cone",
+    "triangles": 7424,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "bee",
+    "triangles": 8348,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "mustache",
+    "triangles": 7496,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "duck",
+    "triangles": 7988,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "frog",
+    "triangles": 8765,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "mushroom",
+    "triangles": 8565,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "straw",
+    "triangles": 8993,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "ski",
+    "triangles": 7848,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "lei",
+    "triangles": 9116,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "detective",
+    "triangles": 8885,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "shells",
+    "triangles": 9396,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgl"
+  },
+  {
+    "accessory": "none",
+    "triangles": 7188,
+    "draws": 18,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "cap",
+    "triangles": 7872,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "headphones",
+    "triangles": 7716,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "beanie",
+    "triangles": 8273,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "flower",
+    "triangles": 7860,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "fedora",
+    "triangles": 8067,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "sunglasses",
+    "triangles": 7752,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "bandana",
+    "triangles": 7496,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "collar",
+    "triangles": 7516,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "bow",
+    "triangles": 7800,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "party",
+    "triangles": 7980,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "crown",
+    "triangles": 7618,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "pirate",
+    "triangles": 8331,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "tophat",
+    "triangles": 8635,
+    "draws": 22,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "cowboy",
+    "triangles": 8463,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "aviator",
+    "triangles": 8819,
+    "draws": 21,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "helmet",
+    "triangles": 8846,
+    "draws": 22,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "chef",
+    "triangles": 7926,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "wizard",
+    "triangles": 8100,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "viking",
+    "triangles": 8972,
+    "draws": 21,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "scarf",
+    "triangles": 7360,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "charm",
+    "triangles": 7752,
+    "draws": 22,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "propeller",
+    "triangles": 8337,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "catEye",
+    "triangles": 7752,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "space",
+    "triangles": 9396,
+    "draws": 21,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "dragon",
+    "triangles": 8916,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "shark",
+    "triangles": 7460,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "unicorn",
+    "triangles": 8336,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "sombrero",
+    "triangles": 10067,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "rain",
+    "triangles": 8167,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "cone",
+    "triangles": 7424,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "bee",
+    "triangles": 8348,
+    "draws": 20,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "mustache",
+    "triangles": 7496,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "duck",
+    "triangles": 7988,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "frog",
+    "triangles": 8765,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "mushroom",
+    "triangles": 8565,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "straw",
+    "triangles": 8993,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "ski",
+    "triangles": 7848,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "lei",
+    "triangles": 9116,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "detective",
+    "triangles": 8885,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  },
+  {
+    "accessory": "shells",
+    "triangles": 9396,
+    "draws": 19,
+    "earSize": [
+      0.578859806060791,
+      0.670140877366066,
+      0.24479998648166656
+    ],
+    "backend": "webgpu"
+  }
+]
