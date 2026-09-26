@@ -6,7 +6,7 @@
 // per-half chips updating, and the two-humans finish gate reaching a Versus
 // results screen with no economy payout.
 import { chromium } from "playwright-core";
-import {CAT_PRESETS} from "../src/presets.js";
+import {CAT_PRESETS,KART_PRESETS} from "../src/presets.js";
 import {catType} from "../src/cat-types.js";
 import http from "node:http";
 import fs from "node:fs";
@@ -46,11 +46,13 @@ page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 if (process.env.QUALITY) await ctx.addInitScript(q => localStorage.setItem('zoomies-quality-v2', q), process.env.QUALITY);
 const SPLITFX = process.env.SPLITFX === "1";
 const P2_CAT=Number(process.env.P2_CAT||3);
-await ctx.addInitScript(({fx,p2Cat}) => {
+const P2_KART=Number(process.env.P2_KART||2);
+await ctx.addInitScript(({fx,p2Cat,p2Kart,p1Kart}) => {
+  if(p1Kart!==null){localStorage.setItem("zoomies-garage-v1",JSON.stringify({v:3,cat:0,kart:p1Kart}));localStorage.setItem("zoomies-profile-v1",JSON.stringify({unlocked:[`kart.${p1Kart}`]}));}
   try { localStorage.setItem("zoomies-fps", "1"); } catch {}
   try { localStorage.setItem("zoomies-mode-v1", "split"); } catch {}
   // P2's startline pick (persisted): Snow (cat 3) in Clover (kart 2).
-  try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: p2Cat, kart: 2 })); } catch {}
+  try { localStorage.setItem("zoomies-p2-racer", JSON.stringify({ cat: p2Cat, kart: p2Kart })); } catch {}
   window.zoomiesDesktop = { quit: () => {} }; // the shell bridge gates the mode
   // P1's controller (visible from boot — the check drives it, not a human).
   window.__pad = {
@@ -62,7 +64,7 @@ await ctx.addInitScript(({fx,p2Cat}) => {
   navigator.getGamepads = () => [window.__pad];
   // SPLITFX=1: exercise the full-post-chain split path ("Versus effects").
   if (fx) try { localStorage.setItem("zoomies-splitfx", "1"); } catch {}
-}, {fx:SPLITFX,p2Cat:P2_CAT});
+}, {fx:SPLITFX,p2Cat:P2_CAT,p2Kart:P2_KART,p1Kart:process.env.P1_KART?Number(process.env.P1_KART):null});
 
 await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, { waitUntil: "load", timeout: 150000 });
 await page.waitForSelector("#start-btn", { timeout: 60000 });
@@ -96,6 +98,7 @@ const seam = await page.evaluate(() => {
     karts: z.karts.length,
     humans: humans.length,
     names: humans.map((k) => k.name),
+    bodies:humans.map(k=>{const d=k.group.children.find(c=>c.userData.kartStyle!==undefined).userData;return {style:d.kartStyle,livery:d.kartLivery};}),
     types: humans.map(k=>k.group.children.find(c=>c.userData.catType)?.userData.catType),
     hudSplit: document.getElementById("hud").classList.contains("split"),
     chipsShown: !document.getElementById("split-hud").classList.contains("hidden"),
@@ -115,6 +118,8 @@ check("split cams share the game camera's layer mask",
 check("six karts, two humans", seam.karts === 6 && seam.humans === 2, seam);
 check("split HUD is up", seam.hudSplit && seam.chipsShown, seam);
 check("P2 wears the selected preset and morphology", seam.names.includes(`${CAT_PRESETS[P2_CAT].name} (P2)`) && seam.types[1]===catType(CAT_PRESETS[P2_CAT].type).label, seam);
+
+check("P2 retains kart chassis and livery",seam.bodies[1].style===KART_PRESETS[P2_KART].style&&seam.bodies[1].livery===(KART_PRESETS[P2_KART].livery??0),seam);
 
 // Observe the actual render integration, not just the LOD unit's camera API.
 await page.evaluate(() => {

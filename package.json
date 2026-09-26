@@ -43,7 +43,10 @@
     "check:environment-render": "node tools/environment-particles-render-check.mjs",
     "check:cat-roster": "node tools/cat-roster-data-check.mjs",
     "check:cat-roster-art": "node tools/cat-roster-check.mjs",
-    "check:cat-roster-ui": "node tools/cat-roster-ui-check.mjs"
+    "check:cat-roster-ui": "node tools/cat-roster-ui-check.mjs",
+    "check:kart-roster": "node tools/kart-roster-data-check.mjs",
+    "check:kart-roster-art": "node tools/kart-roster-check.mjs",
+    "check:kart-roster-ui": "node tools/kart-roster-ui-check.mjs"
   },
   "license": "MIT",
   "dependencies": {

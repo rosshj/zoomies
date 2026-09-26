@@ -23,6 +23,7 @@ import { assetCatalog } from "./scenery.js";
 import { ROAD_PROPS, makeRoadProp } from "./road-prop-assets.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
+import { KART_STYLES as BODY_STYLES } from "./kart-styles.js";
 import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,7 @@ const KART_STYLES = [
   ["Buggy", 2, 0x43a047],
   ["Finned", 3, 0xfdd835],
   ["Cage", 4, 0x3949ab],
+  ...BODY_STYLES.slice(5).map((s,i)=>[s.name,i+5,KART_PRESETS[10+i*2].color]),
 ];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -77,7 +79,7 @@ let rideKartIdx = 0;
 function buildCatAsset(fur, opts) {
   if (poseMode !== "drive") return animatedCat(fur, { ...opts, pose: poseMode });
   const preset = KART_PRESETS[rideKartIdx] || KART_PRESETS[0];
-  const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number });
+  const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number, livery:preset.livery });
   const cat = createCat(fur, { ...opts, pose: "kart" });
   cat.scale.setScalar(0.62);
   cat.position.set(0, 0.85, -0.35);
@@ -137,6 +139,7 @@ function animatedKart(color, opts) {
 KART_STYLES.forEach(([n, style, color]) =>
   entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(color, { style, number: style + 1 }) })
 );
+KART_PRESETS.forEach(k=>entries.push({group:"Garage karts",name:k.name,build:()=>animatedKart(k.color,k)}));
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
 for (const [kind, spec] of Object.entries(ROAD_PROPS)) entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
@@ -486,7 +489,7 @@ window.__viewer = {
   // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
   showPreset(spec) {
     if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { ...spec }));
-    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number }));
+    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number, livery:spec.livery }));
   },
   freeze(t = 0) { animPlaying = false; animT = t; curAnim?.(t); refreshAnimPlayBtn(); },
 };

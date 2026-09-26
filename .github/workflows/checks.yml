@@ -26,6 +26,8 @@ jobs:
         run: npm run check:progress
       - name: cat roster, unlocks and save migration
         run: npm run check:cat-roster
+      - name: kart roster, liveries and save migration
+        run: npm run check:kart-roster
       - name: kart sim determinism
         run: npm run check:sim
       - name: item and knockable prop logic

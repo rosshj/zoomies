@@ -1,3 +1,5 @@
+[Latest: twelve racing chassis, team liveries and kart performance](racing-karts/README.md).
+
 [Latest: accessory fit refinements and Safari Hat](accessory-refinements/README.md).
 
 [Latest: thinner ears and refitted accessories](wardrobe-fit/README.md).

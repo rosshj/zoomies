@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { accessoryPaint, paintUV } from "./accessory-paint.js";
+import { KART_STYLES } from "./kart-styles.js";
+import { buildRacingShell, racingPaint } from "./racing-karts.js";
 import { catType } from "./cat-types.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { EXTRA_ACCESSORIES, EXTRA_ACCESSORY_COLORS, createExtraAccessory, updateExtraAccessory } from "./cat-accessories.js";
@@ -1979,15 +1981,10 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   //   cage      — off-road buggy with a full roll cage
   // Kart styles use `snout` — how far the short lower nose reaches (real karts
   // barely out-reach their front wheels).
-  const STYLES = [
-    { snout: 1.55, wing: "big", tire: 1.0, hoop: false },
-    { snout: 1.45, wing: "lip", tire: 1.06, hoop: false },
-    { snout: 1.3, wing: "none", tire: 1.2, hoop: true },
-    { snout: 1.8, wing: "fin", tire: 0.94, hoop: false },
-    { snout: 1.35, wing: "none", tire: 1.3, hoop: false, cage: true }, // off-road cage buggy
-  ];
-  const st = STYLES[opts.style ?? 0] || STYLES[0];
-  const styleIdx = STYLES.indexOf(st);
+  const st = KART_STYLES[opts.style ?? 0] || KART_STYLES[0];
+  const styleIdx = KART_STYLES.indexOf(st);
+  const liveryIdx = Number.isInteger(opts.livery) && opts.livery>=0 && opts.livery<3 ? opts.livery : 0;
+  group.userData.kartStyle=styleIdx;group.userData.kartLivery=liveryIdx;
   const kartNumber = opts.number ?? 1;
   // Soft "toy gloss" — a gentle sheen, not a mirror (the toon spec is keyed off
   // userData.paint). Accent is a darker shade of the same hue; the stripe is a
@@ -2031,7 +2028,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const add = (mesh) => { shell.push(mesh); return mesh; };
   // Numbered roundel decals (a plane pair facing outward). Position varies by
   // body: the kart fairings.
-  const numMat = sharedMat(`knum|${kartNumber}`, () =>
+  const numMat = st.racing ? null : sharedMat(`knum|${kartNumber}`, () =>
     new THREE.MeshStandardMaterial({ map: makeNumberTexture(kartNumber), transparent: true, roughness: 0.5 }));
   const roundels = [];
   const addRoundels = (x, y, z, size = 0.62) => {
@@ -2066,7 +2063,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     const seat = add(new THREE.Mesh(rbox(1.5, 0.66, 1.5, 0.28), dark));
     seat.position.set(0, 1.06, -0.5);
 
-    {
+    if(st.racing){
+      buildRacingShell(st,{add,rbox,paint,accent,stripe,dark,chrome,livery:racingPaint(bodyColor,liveryIdx,kartNumber)});
+    }else{
       // --- Go-kart: a LOW, OPEN chassis like the real thing — flat floor pan,
       // exposed side rails, a bare bucket seat, a narrow nose cone with the
       // stripe, low side pods, and an engine block behind the seat. The old
@@ -2250,7 +2249,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   }
   // Both roundels share one material — merge them into one mesh (one draw).
   // Positions are style-dependent, so the merge cache keys on the style.
-  group.add(mergeMeshes(roundels, { geoKey: `kroundel|${styleIdx}` }));
+  if(roundels.length)group.add(mergeMeshes(roundels, { geoKey: `kroundel|${styleIdx}` }));
 
   // Rear aero varies by style: a big winged GP, a low ducktail lip, or none.
   let flagPivot = null; // the roadster's pennant pivot (returned for live flapping)
@@ -2344,7 +2343,9 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   // Headlights — a pair set into the nose. Positions are style-dependent →
   // style-keyed merge.
   const hlParts = [];
-  if (st.hoop || st.cage) {
+  if(st.racing){
+    for(const sx of [-1,1]){const lens=new THREE.Mesh(rbox(st.lamps?.36:.19,.105,.025,.025,1),glass);lens.position.set(sx*.71,.59,2.19);hlParts.push(lens);}
+  }else if (st.hoop || st.cage) {
     // FLAT lens discs filling the bucket faces (housings built in the shell) —
     // the thin chrome rim of the housing stays visible around each one.
     for (const sx of [-1, 1]) {
@@ -2395,7 +2396,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
   const wheels = [];
   // `side` is the sign of the wheel's x position so the spokes / hub cap sit on
   // the OUTER face (the visible one) on both sides of the kart.
-  function buildWheel(radius, side) {
+  function buildWheel(radius, side, rear) {
     // Real go-kart wheel: a smooth slick tyre, a wide flat SILVER RING rim,
     // and a deep dark centre bore — no toy spokes. Four lug dots on the ring
     // keep the spin readable while the kart rolls.
@@ -2410,25 +2411,33 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
       new THREE.Vector2(radius * 0.96, 0.20),
       new THREE.Vector2(radius * 0.82, 0.25),
       new THREE.Vector2(radius * 0.52, 0.25),
-    ], 24), tire);
+    ], st.racing?16:24), tire);
     t.rotation.z = Math.PI / 2;
     parts.push(t);
-    const ring = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.56, radius * 0.56, 0.53, 20), _kRim);
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.56, radius * 0.56, 0.53, st.racing?12:20), _kRim);
     ring.rotation.z = Math.PI / 2;
     parts.push(ring);
-    const bore = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, 0.55, 16), dark);
+    const bore = new THREE.Mesh(new THREE.CylinderGeometry(radius * 0.3, radius * 0.3, 0.55, st.racing?10:16), dark);
     bore.rotation.z = Math.PI / 2;
     parts.push(bore);
     for (let i = 0; i < 4; i++) {
       const ang = (i / 4) * Math.PI * 2 + Math.PI / 4;
-      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.57, 8), dark);
+      const lug = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.57, st.racing?6:8), dark);
       lug.rotation.z = Math.PI / 2;
       lug.position.set(0, Math.cos(ang) * radius * 0.44, Math.sin(ang) * radius * 0.44);
       parts.push(lug);
     }
+    if(st.racing){
+      const width=rear?1.24:.92;
+      for(const part of parts)part.scale.y=width;
+      if(st.tread)for(let i=0;i<12;i++){
+        const a=i*Math.PI/6,o=new THREE.Mesh(new THREE.BoxGeometry(.45*width,.035,.16),tire);
+        o.position.set(0,Math.cos(a)*(radius-.018),Math.sin(a)*(radius-.018));o.rotation.x=a;parts.push(o);
+      }
+    }
     // Wheel geometry depends only on (radius, side): every kart of a style
     // shares the same four wheel geometries instead of merging 24 of them.
-    w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}` }));
+    w.add(mergeMeshes(parts, { castShadow: false, geoKey: `kwheel|${radius.toFixed(3)}|${side}|${st.racing?`${rear}|${!!st.tread}`:"legacy"}` }));
     return w;
   }
   {
@@ -2442,7 +2451,7 @@ export function createKartModel(bodyColor = 0xe53935, opts = {}) {
     ];
     for (const [x, z, baseR] of wheelDefs) {
       const radius = baseR * st.tire;
-      const w = buildWheel(radius, Math.sign(x));
+      const w = buildWheel(radius, Math.sign(x), z<0);
       w.position.set(x, radius, z); // centre at radius so the tyre sits on the ground
       group.add(w);
       wheels.push(w);

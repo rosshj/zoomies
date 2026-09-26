@@ -96,6 +96,7 @@ export const CATALOG = [
   { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
   { id: "kart.9", price: 250 },      // Prowler — the caged off-road buggy
+  ...Array.from({length:24},(_,i)=>({id:`kart.${i+10}`,price:260+Math.floor(i/4)*30})),
   // (Accessories carry no catalog entries: the whole wardrobe comes with the
   // Custom Cat creator. Old profiles may still hold acc.* ids — harmless.)
   // The custom creators are features you earn — early-mid milestones.

@@ -62,8 +62,34 @@ export const KART_PRESETS = [
   { name: "Comet", color: 0x26c6da, style: 3, number: 2 }, // jet-age finned speedster
   { name: "Nova", color: 0xec407a, style: 3, number: 6 },
   { name: "Prowler", color: 0x3949ab, style: 4, number: 12 }, // off-road buggy with a full roll cage
+  // Two team editions per new chassis. Existing ids and cup rewards stay stable.
+  { name: "Club Racer", color: 0xd84d3e, style: 5, number: 20, livery: 0 },
+  { name: "Club Cobalt", color: 0x3078c4, style: 5, number: 21, livery: 1 },
+  { name: "Sprint", color: 0x207d79, style: 6, number: 23, livery: 1 },
+  { name: "Sprint Citrus", color: 0xf2b93b, style: 6, number: 24, livery: 2 },
+  { name: "Shifter", color: 0x3457a1, style: 7, number: 26, livery: 2 },
+  { name: "Shifter Frost", color: 0xe6e9e5, style: 7, number: 27, livery: 0 },
+  { name: "Endurance", color: 0xae3549, style: 8, number: 29, livery: 0 },
+  { name: "Endurance Gold", color: 0xe8b444, style: 8, number: 30, livery: 1 },
+  { name: "Rental Pro", color: 0x50677b, style: 9, number: 32, livery: 1 },
+  { name: "Rental Orange", color: 0xe98036, style: 9, number: 33, livery: 2 },
+  { name: "Vintage Racer", color: 0x286b50, style: 10, number: 35, livery: 2 },
+  { name: "Vintage Ivory", color: 0xe7dcc4, style: 10, number: 36, livery: 0 },
+  { name: "Dirt Oval", color: 0xe6bf38, style: 11, number: 38, livery: 0 },
+  { name: "Oval Scarlet", color: 0xbb3f3d, style: 11, number: 39, livery: 1 },
+  { name: "Flat Tracker", color: 0xbf652f, style: 12, number: 41, livery: 1 },
+  { name: "Tracker Slate", color: 0x526b7c, style: 12, number: 42, livery: 2 },
+  { name: "Rallycross", color: 0x4a7561, style: 13, number: 44, livery: 2 },
+  { name: "Rally Arctic", color: 0xe6e8df, style: 13, number: 45, livery: 0 },
+  { name: "Crosskart", color: 0x364e75, style: 14, number: 47, livery: 0 },
+  { name: "Crosskart Lime", color: 0xa1bd38, style: 14, number: 48, livery: 1 },
+  { name: "Dune Racer", color: 0xc49d69, style: 15, number: 50, livery: 1 },
+  { name: "Dune Copper", color: 0xb86346, style: 15, number: 51, livery: 2 },
+  { name: "Streamliner", color: 0xabb8c5, style: 16, number: 53, livery: 2 },
+  { name: "Stream Azure", color: 0x328db0, style: 16, number: 54, livery: 0 },
+
 ];
 
 // What the creators open with (also the look the Cat-alog uses to advertise them).
 export const DEFAULT_CUSTOM_CAT = { type: "classic", name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap", accessoryColor: null };
-export const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0 };
+export const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0, livery: 0 };

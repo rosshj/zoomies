@@ -56,7 +56,7 @@ const shots = [];
 CAT_PRESETS.forEach((c, i) => shots.push({ file: `cat-${i}.jpg`, bg: contrastBg(c.fur), angle: CAT_ANGLES[i % CAT_ANGLES.length], spec: { kind: "cat", ...c } }));
 // Karts shoot WIDE (3:2) — they're wide subjects, and the pick-your-kart grid
 // + Cat-alog show them on wide tiles.
-KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastBg(k.color), wide: true, spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number } }));
+KART_PRESETS.forEach((k, i) => shots.push({ file: `kart-${i}.jpg`, bg: contrastBg(k.color), wide: true, spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number, livery:k.livery } }));
 // The creator tiles advertise "make your own", so they get a look no preset
 // has (the actual creator still opens on the presets.js defaults).
 shots.push({ file: "custom-cat.jpg", bg: contrastBg(0xa259ff), angle: CAT_ANGLES[1], spec: { kind: "cat", name: "Custom Cat", fur: 0xa259ff, pattern: "spotted", accessory: "headphones" } });
@@ -85,7 +85,7 @@ await page.goto(`http://127.0.0.1:${PORT}/viewer.html?webgl=1&plain=1`, { waitUn
 await page.waitForFunction(() => window.__viewer && window.__viewer.showPreset, null, { timeout: 60000 });
 await page.evaluate(() => window.__viewer.setGameLook(true)); // ship the in-game look
 
-const selectedShots=shots.filter(s=>!process.env.CATS_ONLY||s.file.startsWith("cat-"));
+const selectedShots=shots.filter(s=>(!process.env.CATS_ONLY||s.file.startsWith("cat-"))&&(!process.env.KARTS_ONLY||s.file.startsWith("kart-")));
 for (const shot of selectedShots) {
   // Karts render on a wide 3:2 canvas; everything else stays square.
   await page.setViewportSize(shot.wide ? { width: 480, height: 320 } : { width: SIZE, height: SIZE });

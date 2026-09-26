@@ -25,7 +25,7 @@ try{
   const labels=new Set();for(let i=0;i<27;i++){labels.add(document.querySelector('#cat-type-name').textContent);document.querySelector('#cat-type-next').click();}assert(labels.size===27,'Missing creator types');
   while(document.querySelector('#cat-type-name').textContent!=='British Shorthair')document.querySelector('#cat-type-next').click();
   document.querySelector('#cat-edit-use').click();document.querySelector('#kart-grid button').click();
-  const save=JSON.parse(localStorage.getItem('zoomies-garage-v1'));assert(save.v===2&&save.cat===40&&save.catId==='custom'&&save.customCat.type==='british','New save failed');
+  const save=JSON.parse(localStorage.getItem('zoomies-garage-v1'));assert(save.v===3&&save.cat===40&&save.catId==='custom'&&save.customCat.type==='british','New save failed');
   assert(save.customCat.accessory==='propeller'&&save.customCat.accessoryColor===0x4393dc,'Lost old accessory');
   return {labels:[...labels],save};
  });

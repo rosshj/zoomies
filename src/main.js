@@ -80,13 +80,14 @@ let trackConfig = loadTrackConfig(); // `let`: a cup race replaces this with the
 // Garage presets live in src/presets.js (pure data) so the catalog-screenshot
 // tool can import them without booting the game.
 import { CAT_PRESETS, KART_PRESETS, DEFAULT_CUSTOM_CAT, DEFAULT_CUSTOM_KART } from "./presets.js";
+import { KART_STYLES, KART_LIVERIES, savedKartIndex, savedKartStyle } from "./kart-styles.js";
 import { CAT_TYPES, CAT_TYPE_IDS, savedCatIndex } from "./cat-types.js";
 // A "Custom" slot sits one past the last preset in each stepper; landing on it
 // reveals the creator (colour / pattern / accessory / name) and the look is read
 // from garageConfig.customCat / .customKart instead of the preset arrays.
 const CUSTOM_CAT_IDX = CAT_PRESETS.length;
 const CUSTOM_KART_IDX = KART_PRESETS.length;
-const KART_STYLE_COUNT = 5; // GP / roadster / buggy / finned / cage (see createKartModel STYLES)
+const KART_STYLE_COUNT = KART_STYLES.length;
 const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
@@ -107,15 +108,14 @@ function sanitizeCustomCat(c) {
 }
 function sanitizeCustomKart(k) {
   k = k && typeof k === "object" ? k : {};
-  // Legacy migration: the Cage was style 6 before the moto/minivan models were
-  // removed and the table compacted — map old saves onto its new slot.
-  const raw = k && k.style === 6 ? 4 : k.style;
+  const raw = k.style;
   const style = _clampInt(raw, 0, KART_STYLE_COUNT - 1, DEFAULT_CUSTOM_KART.style);
   return {
     name: _clampName(k.name, DEFAULT_CUSTOM_KART.name),
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
     style,
     number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
+    livery: _clampInt(k.livery, 0, KART_LIVERIES.length-1, 0),
   };
 }
 function loadGarageConfig() {
@@ -124,9 +124,9 @@ function loadGarageConfig() {
     if (c && typeof c === "object") {
       return {
         cat: savedCatIndex(c, CAT_PRESETS.length), // +1: the Custom slot is valid
-        kart: clampIdx(c.kart, KART_PRESETS.length + 1),
+        kart: savedKartIndex(c, KART_PRESETS.length),
         customCat: sanitizeCustomCat(c.customCat),
-        customKart: sanitizeCustomKart(c.customKart),
+        customKart: sanitizeCustomKart({...c.customKart,style:savedKartStyle(c)}),
       };
     }
   } catch {
@@ -135,13 +135,9 @@ function loadGarageConfig() {
   // Marmalade in the Ember kart (the original "You"), with sensible custom defaults.
   return { cat: 0, kart: 0, customCat: sanitizeCustomCat(), customKart: sanitizeCustomKart() };
 }
-function clampIdx(v, n) {
-  v = Number.isInteger(v) ? v : 0;
-  return v < 0 ? 0 : v >= n ? 0 : v;
-}
 function saveGarageConfig(c) {
   try {
-    localStorage.setItem(GARAGE_KEY, JSON.stringify({...c,v:2,catId:c.cat===CUSTOM_CAT_IDX?"custom":null}));
+    localStorage.setItem(GARAGE_KEY, JSON.stringify({...c,v:3,catId:c.cat===CUSTOM_CAT_IDX?"custom":null,kartId:c.kart===CUSTOM_KART_IDX?"custom":null}));
   } catch {
     /* ignore */
   }
@@ -160,7 +156,7 @@ function catSpec(cfg) {
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {
     const k = cfg.customKart || DEFAULT_CUSTOM_KART;
-    return { name: k.name, color: k.color, style: k.style, number: k.number };
+    return { name: k.name, color: k.color, style: k.style, number: k.number, livery:k.livery };
   }
   return KART_PRESETS[cfg.kart] || KART_PRESETS[0];
 }
@@ -169,7 +165,7 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
-  return { catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, name: cat.name };
+  return { catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: cat.name };
 }
 
 const _qs = new URLSearchParams(location.search);
@@ -1096,12 +1092,6 @@ const ROSTER = [
 let karts = [];
 let player = null;
 
-// First palette colour not already taken (the garage palettes are bigger than the
-// field, so there's always a free one).
-function _pickUnused(palette, used) {
-  for (const c of palette) if (!used.has(c)) return c;
-  return palette[0];
-}
 // The player wears the garage selection; AI keep their driving traits and draw
 // distinct named cats from a deterministic shuffle of the complete roster.
 // A time-trial field is the player alone.
@@ -1115,17 +1105,18 @@ function aiRoster(look, otherHumans=[]) {
   const rng=makeRng(WORLD_SEED+'|cats|'+signature(look));
   const pool=CAT_PRESETS.map(c=>({name:c.name,catColor:c.fur,catType:c.type,catPattern:c.pattern,catAccessory:c.accessory}));
   for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
+  const kartPool=[...KART_PRESETS];
+  for(let i=kartPool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[kartPool[i],kartPool[j]]=[kartPool[j],kartPool[i]];}
   return ROSTER.slice(1).map((cfg,i)=>{
-    let color=cfg.color;
-    if(usedKart.has(color))color=_pickUnused(KART_PRESETS.map(k=>k.color),usedKart);
-    usedKart.add(color);
+    const kart=kartPool.find(k=>!usedKart.has(k.color))||kartPool[i];
+    usedKart.add(kart.color);
     const cat=pool.find(c=>!usedCat.has(signature(c)));usedCat.add(signature(cat));
-    return {...cfg,...cat,color,kartStyle:i%3,kartNumber:11+i*6};
+    return {...cfg,...cat,color:kart.color,kartStyle:kart.style,kartNumber:kart.number,kartLivery:kart.livery};
   });
 }
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber };
+  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, kartLivery:look.kartLivery };
   if (timeTrial) return [playerCfg];
   if (raceMode === "split") {
     // Versus: 2-4 humans + AI to fill the same six-kart field (and headlight
@@ -1148,6 +1139,7 @@ function raceRoster() {
         catAccessory: sc.accessory,
         kartStyle: sk.style,
         kartNumber: sk.number,
+        kartLivery: sk.livery,
       });
     }
     const ais = aiRoster(look, seatCfgs).slice(0, 5 - seatCfgs.length);
@@ -3092,7 +3084,7 @@ function warmGarageKart() {
   try {
     const cat = catSpec(garageConfig);
     const kart = kartSpec(garageConfig);
-    const wk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: "warm", isPlayer: false, skill: 1 });
+    const wk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: "warm", isPlayer: false, skill: 1 });
     wk.group.traverse((o) => {
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3136,7 +3128,7 @@ function warmRosterGeometries() {
     if (i >= roster.length || state !== State.MENU) return;
     const cfg = roster[i++];
     try {
-      const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber });
+      const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber, livery:cfg.kartLivery });
       const cat = createCat(cfg.catColor, { type:cfg.catType, pattern: cfg.catPattern, accessory:cfg.catAccessory });
       _disposeGroup(group);
       _disposeGroup(cat);
@@ -3674,12 +3666,12 @@ const _previewCache = { key: null, kart: null };
 function _previewKey(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  return [cat.fur, cat.type, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number].join("|");
+  return [cat.fur, cat.type, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number, kart.livery].join("|");
 }
 function _buildPreviewKart(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: cat.name, isPlayer: false, skill: 1 });
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3720,7 +3712,7 @@ function buildGaragePreview() {
 // offer. Custom picks aren't limited to these — they just seed quick choices.
 const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
 const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = ["GP", "Roadster", "Buggy", "Finned", "Cage"];
+const KART_STYLE_NAMES = KART_STYLES.map(s=>s.name);
 // 24 curated names each: the studios' Surprise-me pool AND the pad-friendly
 // name picker's grid (a text field has no on-screen keyboard on a controller).
 const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel", "Luna", "Oreo",
@@ -3795,6 +3787,9 @@ function syncCreators() {
   const k = _garageDraft.customKart;
   const styleName = document.getElementById("kart-style-name");
   if (styleName) styleName.textContent = KART_STYLE_NAMES[k.style] || "GP";
+  document.getElementById('kart-livery-row')?.classList.toggle('hidden',!KART_STYLES[k.style]?.racing);
+  const liveryName=document.getElementById('kart-livery-name');
+  if(liveryName)liveryName.textContent=KART_LIVERIES[k.livery];
   const numName = document.getElementById("kart-num-name");
   if (numName) numName.textContent = String(k.number);
   const nk = document.getElementById("kart-custom-name");
@@ -3898,15 +3893,18 @@ function renderGarage(timeSec, dt = 0.016) {
   _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
   const p = _garagePreview.position;
   const ang = timeSec * 0.5;
-  const r = 11.2; // well back so the whole kart reads small and never clips
-  camera.position.set(p.x + Math.sin(ang) * r, p.y + 3.1, p.z + Math.cos(ang) * r);
+  // Fit the six-unit kart envelope inside the open left half on narrower
+  // windows too. A fixed distance/pan cropped wheels and tall cages there.
+  const halfFov=Math.tan(19*Math.PI/180);
+  const r=Math.max(11.2,7.4/(halfFov*camera.aspect));
+  camera.position.set(p.x + Math.sin(ang) * r, p.y + 1.55+r*.16, p.z + Math.cos(ang) * r);
   if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
-  _garageLook.set(p.x, p.y + 1.25, p.z);
+  _garageLook.set(p.x, p.y + 1.55, p.z);
   camera.lookAt(_garageLook);
   // Pan the aim right along the camera's screen-right axis so the kart sits in
   // the open left half (the card covers the right). Re-aim after the shift.
   _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-  _garageLook.addScaledVector(_garageRight, 3.4);
+  _garageLook.addScaledVector(_garageRight, r*halfFov*camera.aspect*.52);
   camera.lookAt(_garageLook);
   renderFrame();
 }
@@ -4062,11 +4060,12 @@ const _stepKartStyle = (dir) => {
 };
 document.getElementById("kart-style-prev")?.addEventListener("click", () => _stepKartStyle(-1));
 document.getElementById("kart-style-next")?.addEventListener("click", () => _stepKartStyle(1));
+for(const [suffix,dir] of [['prev',-1],['next',1]])document.getElementById(`kart-livery-${suffix}`)?.addEventListener('click',()=>editCustomKart({livery:(_garageDraft.customKart.livery+dir+KART_LIVERIES.length)%KART_LIVERIES.length}));
 document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
 document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
 document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
-  color: _pick(KART_COLOR_SWATCHES), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
+  color: _pick(KART_COLOR_SWATCHES), livery:Math.floor(Math.random()*KART_LIVERIES.length), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
 }));
 
 // Name picker (both studios): "✏️ Pick" swaps the creator for a grid of the
@@ -6658,7 +6657,7 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({ color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, kartLivery:look.kartLivery, name: "Ghost", isPlayer: false, skill: 1 });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).
