@@ -1,3 +1,5 @@
+[Latest: thinner ears and refitted accessories](wardrobe-fit/README.md).
+
 Latest: [Forty procedural cat racers, six new shape families and measured costs](cat-roster/README.md).
 
 Latest: [Nineteen new cat accessories, animations and measured costs](new-accessories/README.md).

@@ -20,7 +20,7 @@ try{
   for(const [i,c] of presets.entries()){
    const result=await page.evaluate(async c=>{
     const v=window.__viewer;v.setBackground('#c5d6df');v.setGameLook(true);v.showPreset({kind:'cat',...c});v.freeze(0);
-    v.orbit.theta=.5;v.orbit.phi=1.36;v.orbit.target.set(0,1.85,.1);v.orbit.radius=5.8;
+    v.orbit.theta=.5;v.orbit.phi=1.36;v.orbit.target.set(0,1.85,.1);v.orbit.radius=6.3;
     const cat=v.scene.children.at(-1);let triangles=0,draws=0;
     cat.traverse(o=>{if(o.isMesh){triangles+=(o.geometry.index?.count??o.geometry.attributes.position.count)/3;draws+=Math.max(1,o.geometry.groups.length);}});
     await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
@@ -29,7 +29,7 @@ try{
    if(result.backend!==backend)throw Error('Renderer fallback');rows.push(result);
    if(backend==='webgpu'){
     await page.screenshot({path:`${out}/cat-${i}.png`});
-    await page.evaluate(async c=>{window.__viewer.showPreset({kind:'cat',...c,accessory:'none'});const v=window.__viewer;v.freeze(0);v.orbit.theta=.5;v.orbit.phi=1.36;v.orbit.target.set(0,1.85,.1);v.orbit.radius=5.8;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));},c);
+    await page.evaluate(async c=>{window.__viewer.showPreset({kind:'cat',...c,accessory:'none'});const v=window.__viewer;v.freeze(0);v.orbit.theta=.5;v.orbit.phi=1.36;v.orbit.target.set(0,1.85,.1);v.orbit.radius=6.3;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));},c);
     await page.screenshot({path:`${out}/cat-${i}-bare.png`});
     await page.evaluate(async()=>{window.__viewer.orbit.theta=3.6;await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));});
     await page.screenshot({path:`${out}/cat-${i}-back.png`});
@@ -58,6 +58,15 @@ try{
       const rig=cat.userData.rig;for(let k=0;k<30;k++)updateCatRig(rig,1/60,.7,.4,false,false,true,false,24);
       if(!Number.isFinite(rig.head.rotation.z)||!Number.isFinite(rig.tail.rotation.x))throw Error('Broken rig');
       if(type==='manx'&&rig.tail.visible)throw Error('Manx tail visible');
+      if(['helmet','viking'].includes(accessory)?rig.earL.visible:!rig.earL.visible)throw Error('Wrong costume ear coverage');
+      if(['classic','round','wide'].includes(desc.ear)){
+       const g=rig.earL.children[0].geometry;g.computeBoundingBox();
+       if(g.boundingBox.max.z-g.boundingBox.min.z>.09)throw Error('Thick slab ears returned');
+      }
+      if(['wizard','helmet','dragon','mushroom','detective','straw'].includes(accessory)){
+       let paint=false;cat.traverse(o=>{for(const m of (Array.isArray(o.material)?o.material:[o.material]))if(m?.map?.userData.accessoryPaint)paint=true;});
+       if(!paint)throw Error('Surface decoration lost its painted material');
+      }
       if(rig.earMotionScale===0&&rig.earL.rotation.x!==0)throw Error('Hat ears not anchored');
       maxTriangles=Math.max(maxTriangles,triangles);maxDraws=Math.max(maxDraws,draws);combinations++;disposeGroup(cat);
      }

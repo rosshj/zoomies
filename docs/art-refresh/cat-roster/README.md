@@ -1,5 +1,7 @@
 # Forty cat racers
 
+Latest update: [thinner coat-aware ears and refitted wardrobe](../wardrobe-fit/README.md). The roster galleries and budget tables below show that update.
+
 The roster grows from 14 to **40 named cats**, matching all **40 wearable accessories** with one signature accessory each. The original cats keep their indexes, names, colors, prices and earned unlocks. The 26 additions are breed-inspired interpretations in the existing procedural, cel-shaded style.
 
 ![The complete roster](roster.png)
@@ -19,7 +21,7 @@ Six new morphology families supplement the original shape. The same animation ri
 | Distinctive ears/tails | Scottish Fold, American Curl, Manx, Japanese Bobtail |
 | Athletic | Bombay, Ocicat, Egyptian Mau, Toyger, Snow Bengal |
 
-Details include smooth fuller cheeks and continuous chest silhouettes, tapered bushy tails, coat waves, a few Sphynx forehead folds, folded/curled/rounded/wider ears, a Manx without a visible tail, a pom-shaped bobtail and two different iris colors on Opal. Coats add **bicolor, mitted points, Van patches, ticking and broad tiger stripes** to the original 12 patterns. Markings remain procedural canvas textures generated once; fur uses opaque geometry.
+Details include smooth fuller cheeks and continuous chest silhouettes, tapered bushy tails, coat waves, subtle Sphynx forehead shaping, folded/curled/rounded/wider ears, a Manx without a visible tail, a pom-shaped bobtail and two different iris colors on Opal. Coats add **bicolor, mitted points, Van patches, ticking and broad tiger stripes** to the original 12 patterns. Markings remain procedural canvas textures generated once; fur uses opaque geometry.
 
 Headwear openings are generated from each ear shape's convex envelope, with separate geometry-cache keys. The crown of the head, facial attachment points, neck band and paw reach remain standardized so the existing accessory collection is interchangeable. Hats anchor the ears while the head and accessories retain their animation.
 
@@ -46,7 +48,7 @@ Morphology, coat painting, hat openings and geometry merging happen during model
 
 Cheek and chest shaping uses the existing surfaces, with no separate fur-puff meshes. Tail geometry is shared by fullness recipe; the existing bounded model/material/texture caches remain in use. Some types add material batches (for example, Opal's second iris color), so this is not a claim of zero rendering cost.
 
-The compatibility sweep covers **3,321** type × accessory × pose combinations (27 × 41 × 3), with a maximum **10,667 triangles and 24 material batches** per complete cat. These budget counts include hidden rig meshes and are not renderer frame timings. [Compatibility results](compatibility.json) · [Native WebGL/WebGPU preset metrics](metrics.json).
+The compatibility sweep covers **3,321** type × accessory × pose combinations (27 × 41 × 3), with a maximum **10,772 triangles and 24 material batches** per complete cat. These budget counts include hidden rig meshes and are not renderer frame timings. [Compatibility results](compatibility.json) · [Native WebGL/WebGPU preset metrics](metrics.json).
 
 Native Chrome on Apple M3 Pro, WebGPU High, 1100 × 700 drawing buffer, six racers in Meadow; 8-second warm-up followed by 40 seconds (2,400 sampled frames per run). Runs executed sequentially.
 

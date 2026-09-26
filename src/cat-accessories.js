@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import {accessoryPaint,paintUV} from './accessory-paint.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Appended ids preserve every existing saved accessory and picker order.
@@ -30,6 +31,14 @@ const shared = m => { m.userData.shared = true; return m; };
 const fabric = shared(new THREE.MeshStandardMaterial({vertexColors:true, roughness:.72}));
 const glass = shared(new THREE.MeshBasicMaterial({color:0xb5e7f2,transparent:true,opacity:.105,depthWrite:false,side:THREE.FrontSide}));
 const lights = shared(new THREE.MeshBasicMaterial({vertexColors:true}));
+const paintedMaterials=new Map();
+const paintMaterial=color=>{
+  if(!paintedMaterials.has(color)){
+    if(paintedMaterials.size>=48)paintedMaterials.delete(paintedMaterials.keys().next().value);
+    paintedMaterials.set(color,shared(new THREE.MeshStandardMaterial({vertexColors:true,roughness:.72,map:accessoryPaint(color)})));
+  }
+  return paintedMaterials.get(color);
+};
 const cache = new Map();
 const TAU = Math.PI * 2;
 function cacheGeometry(key, geometry) {
@@ -39,16 +48,19 @@ function cacheGeometry(key, geometry) {
 
 // One vertex-colored batch per rigid/moving part, regardless of palette size.
 // Cache is bounded like the parent cat cache; all transforms are baked once.
-function bake(parts, key, material = fabric) {
+function bake(parts, key, material = fabric, color=0xffffff) {
+  const painted=parts.some(p=>p.userData.paint);
+  if(painted)material=paintMaterial(color);
   let geometry = cache.get(key);
   if (!geometry) {
     const geos = parts.map(part => {
       part.updateMatrix();
       let g = part.geometry.clone().applyMatrix4(part.matrix);
       if (g.index) { const indexed=g; g=g.toNonIndexed(); indexed.dispose(); }
-      const rgb = new Float32Array(g.attributes.position.count * 3), c = part.material.color;
+      if(painted)paintUV(g,part.userData.paint||'plain');
+      const rgb = new Float32Array(g.attributes.position.count * 3), c = part.userData.paint?new THREE.Color(0xffffff):part.material.color;
       for(let i=0;i<rgb.length;i+=3){rgb[i]=c.r;rgb[i+1]=c.g;rgb[i+2]=c.b;}
-      g.setAttribute('color',new THREE.BufferAttribute(rgb,3));
+      if(!g.attributes.color)g.setAttribute('color',new THREE.BufferAttribute(rgb,3));
       return g;
     });
     geometry=mergeGeometries(geos,false);geos.forEach(g=>g.dispose());
@@ -103,7 +115,7 @@ export function createExtraAccessory(id, color, helpers) {
       ball(.075,ivory,0,.025,0);break;
     }
     case 'catEye': {
-      band();
+      line([[-.61,.16,.90],[-.69,.16,.63],[-.72,.16,.36],[-.80,.16,0],[-.55,.16,-.57],[0,.16,-.755],[.55,.16,-.57],[.80,.16,0],[.72,.16,.36],[.69,.16,.63],[.61,.16,.90]],.035,dark,28);
       for(const sx of [-1,1]){
         shape([[-.23,-.13],[.17,-.16],[.29,.2],[-.23,.15]].map(([x,y])=>[x*sx,y]),.065,color,sx*.34,.12,.87);
         const lens=add(plaque(.33,.23,.018,.06),0x63d8ec,sx*.34,.12,.915);
@@ -178,15 +190,10 @@ export function createExtraAccessory(id, color, helpers) {
       break;
     }
     case 'dragon': {
-      covered=true;hood();
+      covered=true;hood().userData.paint="scales";
       for(const sx of [-1,1]){
         add(tube([new THREE.Vector3(sx*.27,.69,-.32),new THREE.Vector3(sx*.4,1,-.39),new THREE.Vector3(sx*.38,1.14,-.5)],.12,.015,8,7),ivory);
 
-      }
-      for(const [y,r] of [[.56,.627],[.7,.489]])for(const a of [-.8,-.4,0,.4,.8]){
-        const n=new THREE.Vector3(Math.sin(a)*.65,.7,Math.cos(a)*.65).normalize();
-        const m=add(new THREE.SphereGeometry(.075,6,4),y>.6?0x82c493:0x3b8669,Math.sin(a)*r+n.x*.02,y+n.y*.02,Math.cos(a)*r+n.z*.02,[1,.6,.22]);
-        m.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n);
       }
       // Bury the broad root in the hood, above the hem. Rotation is about
       // this attached root so flutter cannot open a gap under the hood.
@@ -209,7 +216,12 @@ export function createExtraAccessory(id, color, helpers) {
         pts.push([Math.cos(t*TAU*3)*r,y,Math.sin(t*TAU*3)*r+.35]);}
       line(pts,.018,0xe5b359,48);
       const rainbow=[0xf477ae,0xf7c650,0x78c997,0x75bce8,0xb895e5];
-      for(let i=0;i<5;i++)ball(.18,rainbow[i],0,.75-i*.19,-.5-i*.095,[.72,1.05,.6]);
+      const maneCurve=new THREE.CatmullRomCurve3([[0,.75,-.18],[0,.65,-.43],[0,.40,-.64],[0,.05,-.76],[0,-.28,-.73]].map(p=>new THREE.Vector3(...p)));
+      const mane=new THREE.TubeGeometry(maneCurve,20,.115,6,false),rgb=[];
+      for(let i=0;i<mane.attributes.position.count;i++){
+        const t=1-mane.attributes.uv.getX(i),c=new THREE.Color(rainbow[Math.min(4,Math.floor(t*5))]);rgb.push(c.r,c.g,c.b);
+      }
+      mane.setAttribute('color',new THREE.Float32BufferAttribute(rgb,3));add(mane,0xffffff);
       pivot('sparkle',0,1.16,.4);
       for(const [x,y] of [[-.22,.14],[.18,-.15]])shape([[0,.06],[.016,.016],[.06,0],[.016,-.016],[0,-.06],[-.016,-.016],[-.06,0],[-.016,.016]],.012,ivory,x,y,.03);
       break;
@@ -255,29 +267,27 @@ export function createExtraAccessory(id, color, helpers) {
       }break;
     }
     case 'mushroom': {
-      covered=true;
-      // White chef-style stem supports the raised cap; ear slots are cut
-      // through the stem and cap together during generation.
-      cap([[0,.49],[.38,.49],[.41,.57],[.39,.83],[.37,1.06],[0,1.06]],0xfff4de);
-      const lift=.29;
-      cap([[0,.7],[.42,.7],[.83,.72],[.93,.79],[.91,.85],[.77,1.08],[.5,1.27],[.22,1.32],[0,1.33]],color).position.y=lift;
+      // Narrow stem seats between the ears; the cap clears their tips.
+      cap([[0,.70],[.28,.70],[.30,.80],[.30,1.18],[0,1.18]],0xfff4de);
+      const lift=.43;
+      const mushroom=cap([[0,.7],[.42,.7],[.83,.72],[.93,.79],[.91,.85],[.77,1.08],[.5,1.27],[.22,1.32],[0,1.33]],color);
+      mushroom.position.y=lift;mushroom.userData.paint='spots';
+      // Project the spots across the cap footprint so they stay round and
+      // readable on its slope instead of stretching around lathe UV rings.
+      const mp=mushroom.geometry.attributes.position,mu=mushroom.geometry.attributes.uv;
+      for(let i=0;i<mp.count;i++)mu.setXY(i,mp.getX(i)/1.9+.5,mp.getZ(i)/1.9+.5);
       cap([[.36,.7],[.75,.705],[.9,.765]],ivory).position.y=lift;
-      for(const [a,r] of [[0,.65],[1.2,.65],[2.4,.65],[3.7,.8],[5,.55],[.5,.25]]){
-        const y=r>.5?1.27-(r-.5)*(.19/.27):1.32-(r-.22)*(.05/.28);
-        const n=new THREE.Vector3(Math.sin(a)*.57,.82,Math.cos(a)*.57).normalize();
-        const m=ball(.115,ivory,Math.sin(a)*r+n.x*.02,y+lift+n.y*.02,Math.cos(a)*r+n.z*.02,[1,.9,.2]);
-        m.quaternion.setFromUnitVectors(new THREE.Vector3(0,0,1),n);
-      }break;
+      break;
     }
     case 'straw': {
-      covered=true;cap([[0,.65],[.43,.65],[.92,.57],[1,.6],[.94,.64],[.5,.7],[.44,.97],[.34,1.08],[0,1.1]],color,(v,a,r)=>{if(r>.55)v.y+=.04*Math.sin(a*3);});
+      covered=true;cap([[0,.65],[.43,.65],[.92,.57],[1,.6],[.94,.64],[.5,.7],[.44,.97],[.34,1.08],[0,1.1]],color,(v,a,r)=>{if(r>.55)v.y+=.04*Math.sin(a*3);}).userData.paint='straw';
       cap([[.499,.7],[.467,.86]],0x5b99b9);
-      for(const r of [.6,.74,.88])ring(r,.009,0xad824a,0,.637,0);break;
+      break;
     }
     case 'lei': {
       body=true;add(neck(.11),0x73a171);
       for(let i=0;i<9;i++){
-        const a=i*TAU/9,x=Math.sin(a)*.925,z=Math.cos(a)*.925,y=1.58-.23*Math.cos(a);
+        const a=i*TAU/9,y=1.66-.23*Math.cos(a),r=Math.sqrt(.81-Math.max(0,y-1.39)**2)+.08,x=Math.sin(a)*r,z=Math.cos(a)*r;
         const center=new THREE.Vector3(x,y,z),normal=new THREE.Vector3(x,.22,z).normalize(),q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1),normal);
         for(let j=0;j<5;j++){
           const p=new THREE.Vector3(Math.cos(j*TAU/5)*.087,Math.sin(j*TAU/5)*.087,0).applyQuaternion(q).add(center);
@@ -288,29 +298,31 @@ export function createExtraAccessory(id, color, helpers) {
     }
     case 'detective': {
       covered=true;
-      add(new THREE.SphereGeometry(.64,20,10,0,TAU,0,Math.PI/2),color,0,.49,0,[1,.74,1.05]);
+      add(new THREE.SphereGeometry(.64,20,10,0,TAU,0,Math.PI/2),color,0,.49,0,[1,.74,1.05]).userData.paint="seams";
       for(const sz of [-1,1])ball(.32,color,0,.5,sz*.55,[1.48,.1,1.05]);
       for(const sx of [-1,1])ball(.2,0x6a503b,sx*.72,.47,0,[.4,.9,1.12]);
-      ring(.56,.016,0x5b4935,0,.66,0);ball(.05,ivory,0,1,0);
-      // Broad stitched panel lines, baked geometry rather than a fabric texture.
-      for(const sx of [-1,1])line([[sx*.4,.78,.27],[sx*.25,.92,.13],[0,.975,0]],.009,0xc5a17a);break;
+      ball(.05,ivory,0,1,0);break;
     }
     case 'shells': {
       body=true;add(neck(.09),0x8d765b);
       for(let i=-2;i<=2;i++){
-        const a=i*.36,x=Math.sin(a)*.935,z=Math.cos(a)*.935,y=1.34+.08*Math.abs(i);
+        const a=i*.36,y=1.66-.23*Math.cos(a),r=Math.sqrt(.81-Math.max(0,y-1.39)**2)+.08,x=Math.sin(a)*r,z=Math.cos(a)*r;
         const outline=[[-.025,-.09]];
         for(let j=0;j<=12;j++){const angle=Math.PI-j*Math.PI/12,r=.13*(1+.065*(j%2?1:-1));outline.push([Math.cos(angle)*r,Math.sin(angle)*r-.04]);}
         outline.push([.025,-.09]);
         const shell=shape(outline,.027,i%2?ivory:color,x,y,z);shell.rotation.y=a;
         for(let j=-1;j<=1;j++){
-          const dx=j*.045;line([[x+dx*.3,y+.075,z+.027],[x+dx,y-.035,z+.029]],.006,0xb89c7c);
+          const dx=j*.045,point=(u,v)=>[x+u*Math.cos(a)+.017*Math.sin(a),y+v,z-u*Math.sin(a)+.017*Math.cos(a)];
+          line([point(dx*.3,.075),point(dx,-.035)],.006,0xb89c7c);
         }
       }break;
     }
   }
-  if(covered)for(const p of parts)earSlots(p);
-  if(parts.length)group.add(bake(parts,key+'|fixed'));
+  const fitted=covered||['mushroom','cone','duck','unicorn','shark','bee','catEye','ski'].includes(id);
+  if(body)for(const p of parts)helpers.fitBodyPart(p);
+  else if(fitted&&id!=='space')for(const p of parts){p.userData.fitLow=id==='catEye'||id==='ski';helpers.fitHeadwear(p);}
+  if(covered&&id!=='space')for(const p of parts)earSlots(p);
+  if(parts.length)group.add(bake(parts,key+'|fixed',fabric,color));
   if(moving.length){
     const child=bake(moving,key+'|moving',id==='space'?lights:fabric);
     const pivotGroup=new THREE.Group();pivotGroup.position.copy(motion.base);pivotGroup.add(child);group.add(pivotGroup);motion.object=pivotGroup;
@@ -329,7 +341,7 @@ export function updateExtraAccessory(motion, dt, turn, speed=0) {
     case 'propeller': o.rotation.y=(o.rotation.y+dt*(2+Math.min(55,Math.abs(speed))*.4))%TAU;break;
     case 'blink': o.visible=Math.sin(t*4)>-.35;break;
     case 'tail': o.rotation.z=Math.sin(t*7)*(.03+Math.min(40,Math.abs(speed))*.002)-turn*.12;o.rotation.x=Math.sin(t*5)*.045;break;
-    case 'trim': o.rotation.z=turn*.08;o.position.y=motion.base.y+Math.abs(turn)*.09*Math.sin(t*9);break;
+    case 'trim': o.rotation.z=turn*.025;o.position.y=motion.base.y+Math.abs(turn)*.015*Math.sin(t*9);break;
     case 'feelers': o.rotation.z=-turn*.2+Math.sin(t*4)*.025;break;
     case 'mustache': o.rotation.z=turn*.08;o.position.y=motion.base.y+Math.sin(t*10)*Math.min(.035,Math.abs(speed)*.001);break;
     case 'sparkle': o.scale.setScalar(.8+Math.sin(t*5)*.2);break;

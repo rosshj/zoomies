@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { accessoryPaint, paintUV } from "./accessory-paint.js";
 import { catType } from "./cat-types.js";
 import { ConvexHull } from "three/addons/math/ConvexHull.js";
 import { EXTRA_ACCESSORIES, EXTRA_ACCESSORY_COLORS, createExtraAccessory, updateExtraAccessory } from "./cat-accessories.js";
@@ -709,7 +710,7 @@ function neckBandGeo(height, center = 1.66, dip = .23) {
   return latheDeform([[1, -.5], [1, 0], [1, .5]], 32, (v, theta) => {
     v.y = center + v.y * height - dip * Math.cos(theta);
     const dy = Math.max(0, v.y - 1.39);
-    const r = Math.sqrt(Math.max(.01, .81 - dy * dy)) + .025;
+    const r = Math.sqrt(Math.max(.01, .81 - dy * dy)) + .06;
     v.x = Math.sin(theta) * r;
     v.z = Math.cos(theta) * r;
   });
@@ -736,27 +737,11 @@ function accessoryEarHulls(earType="classic") {
   if (_accessoryEarHulls.has(earType)) return _accessoryEarHulls.get(earType);
   const hulls = [-1, 1].map(sx => {
     const g = catEarGeometry(false,earType).scale(CAT_EAR_SCALE,CAT_EAR_SCALE,CAT_EAR_SCALE).rotateZ(-sx*.22).translate(sx*.45,.55,-.02);
-    const p = g.attributes.position, ix = g.index;
+    const p = g.attributes.position;
     const vertices = Array.from({length:p.count}, (_, i) => new THREE.Vector3().fromBufferAttribute(p,i));
-    if(earType!=="classic"){
-      const hull=new ConvexHull().setFromPoints(vertices);
-      const planes=hull.faces.map(f=>new THREE.Plane(f.normal.clone().negate(),f.constant+.003));
-      g.dispose();return planes;
-    }
-    const center = new THREE.Vector3(sx*.45,.7,-.02), planes = [], keys = new Set();
-    for (let i = 0; i < (ix?.count ?? p.count); i += 3) {
-      const [a,b,c] = [0,1,2].map(j => vertices[ix ? ix.getX(i+j) : i+j]);
-      const normal = b.clone().sub(a).cross(c.clone().sub(a));
-      if (normal.lengthSq() < 1e-12) continue;
-      normal.normalize();
-      const plane = new THREE.Plane(normal, -normal.dot(a));
-      if (plane.distanceToPoint(center) < 0) plane.negate();
-      if (vertices.some(v => plane.distanceToPoint(v) < -1e-5)) continue;
-      const key = [...plane.normal,plane.constant].map(x=>x.toFixed(4)).join(',');
-      if (!keys.has(key)) { keys.add(key); plane.constant += .003; planes.push(plane); }
-    }
-    g.dispose();
-    return planes;
+    const hull=new ConvexHull().setFromPoints(vertices);
+    const planes=hull.faces.map(f=>new THREE.Plane(f.normal.clone().negate(),f.constant+.003));
+    g.dispose();return planes;
   });
   _accessoryEarHulls.set(earType,hulls);return hulls;
 }
@@ -930,26 +915,67 @@ function catConstGeo() {
   return _catConstGeo;
 }
 
-// One sculpted ear: broad at the scalp, softly rounded at the tip, shallow
-// front-to-back. The pink inset follows the front surface instead of nesting
-// a second cone inside it (which hid the pink and looked like horns).
-function catEarGeometry(inner = false, earType = "classic") {
-  const shape = new THREE.Shape();
-  shape.moveTo(-0.30, -0.12);
-  shape.quadraticCurveTo(-0.34, 0.04, -0.08, 0.48);
-  shape.quadraticCurveTo(0, 0.62, 0.08, 0.48);
-  shape.quadraticCurveTo(0.34, 0.04, 0.30, -0.12);
-  shape.quadraticCurveTo(0, -0.22, -0.30, -0.12);
-  if (inner) {
-    const geo = new THREE.ShapeGeometry(shape, 5);
-    geo.scale(0.64, 0.65, 1);
-    geo.translate(0, 0.035, 0.146);
-    return sculptEar(geo,earType);
+// Resolve visible hat/scalp contact once. Hidden underside faces stay inside
+// the hat; visible shell faces get a small clearance around the actual skull.
+function fitHeadwear(mesh,type) {
+  mesh.updateMatrix();const g=mesh.geometry.clone().applyMatrix4(mesh.matrix),p=g.attributes.position,n=g.attributes.normal;
+  for(let i=0;i<p.count;i++){
+    const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+    if(y<(mesh.userData.fitLow?-.3:.28)||x*n.getX(i)+y*n.getY(i)+z*n.getZ(i)<0)continue;
+    const jaw=1+(type.jaw-1)*(1-THREE.MathUtils.smoothstep(y,-.25,.35));
+    const q=Math.hypot(x/(.8112*jaw),y/.7644,z/.7488);
+    if(q>0&&q<1.035)p.setXYZ(i,x*1.035/q,y*1.035/q,z*1.035/q);
   }
-  return sculptEar(new THREE.ExtrudeGeometry(shape, {
-    depth: 0.15, steps: 1, bevelEnabled: true,
-    bevelThickness: 0.07, bevelSize: 0.055, bevelSegments: 2, curveSegments: 5,
-  }).translate(0, 0, -0.09),earType);
+  g.computeVertexNormals();mesh.geometry.dispose();mesh.geometry=g;
+  mesh.position.set(0,0,0);mesh.rotation.set(0,0,0);mesh.scale.set(1,1,1);
+}
+
+// Thin, cupped pinnae: a continuous painted front and a tapered fur back.
+// Both share the same rim. There is no extruded block or floating pink inset.
+function catEarGeometry(front = false, earType = "classic") {
+  const outline=new THREE.Shape();
+  outline.moveTo(-.29,-.12);outline.quadraticCurveTo(-.31,.05,-.055,.51);
+  outline.quadraticCurveTo(0,.59,.055,.51);outline.quadraticCurveTo(.31,.05,.29,-.12);
+  outline.quadraticCurveTo(0,-.20,-.29,-.12);
+  const edge=outline.getSpacedPoints(24).slice(0,-1),pos=[],uv=[],idx=[],N=edge.length,R=4;
+  const point=(x,y,back)=>{
+    const height=THREE.MathUtils.smoothstep(y,-.12,.56);
+    const cup=.055*(1-Math.min(1,(x/.31)**2))*Math.sin(Math.PI*height);
+    return .025-cup-(back ? .055*(1-.65*height) : 0);
+  };
+  for(let r=0;r<=R;r++)for(let j=0;j<N;j++){
+    const t=r/R,x=edge[j].x*t,y=.13+(edge[j].y-.13)*t;
+    pos.push(x,y,point(x,y,!front));uv.push(x/.64+.5,(y+.2)/.8);
+  }
+  for(let r=0;r<R;r++)for(let j=0;j<N;j++){
+    const a=r*N+j,b=r*N+(j+1)%N,c=a+N,d=b+N;
+    // Outline is clockwise; front faces toward +Z.
+    if(front)idx.push(a,b,c,b,d,c);else idx.push(a,c,b,b,c,d);
+  }
+  if(!front){
+    const base=pos.length/3;
+    for(const e of edge){pos.push(e.x,e.y,point(e.x,e.y,false));uv.push(e.x/.64+.5,(e.y+.2)/.8);}
+    for(let j=0;j<N;j++){const a=R*N+j,b=R*N+(j+1)%N,c=base+j,d=base+(j+1)%N;idx.push(a,c,b,b,c,d);}
+  }
+  const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));g.setIndex(idx);g.computeVertexNormals();
+  return sculptEar(g,earType);
+}
+
+function earFrontMaterial(pal,type){
+  const fur=pal.fur.clone(),skin=new THREE.Color(type.folds?0xc99c94:0xc9958f);
+  const brightness=(fur.r+fur.g+fur.b)/3;
+  // Pigmented dark/point ears retain muted brown/charcoal interiors; pale,
+  // furred ears get an ivory fringe, while Sphynx shows more bare skin.
+  skin.lerp(fur,brightness<.16?.7:brightness<.4?.38:.14);
+  const fringe=fur.clone().lerp(new THREE.Color(0xe8dfd0),type.folds?.04:.28);
+  const key=`earfront|${fur.getHexString()}|${skin.getHexString()}|${type.folds?1:0}`;
+  return sharedMat(key,()=>{
+    const c=document.createElement('canvas');c.width=c.height=128;const ctx=c.getContext('2d');
+    ctx.fillStyle='#'+fur.getHexString();ctx.fillRect(0,0,128,128);
+    ctx.beginPath();ctx.moveTo(28,103);ctx.quadraticCurveTo(34,61,64,16);ctx.quadraticCurveTo(94,61,100,103);ctx.quadraticCurveTo(64,113,28,103);
+    const gradient=ctx.createRadialGradient(64,72,7,64,73,53);gradient.addColorStop(0,'#'+skin.getHexString());gradient.addColorStop(.55,'#'+skin.getHexString());gradient.addColorStop(.82,'#'+fringe.getHexString());gradient.addColorStop(1,'#'+fur.getHexString());ctx.fillStyle=gradient;ctx.fill();
+    const tex=_finishTex(c);_cacheTex(key,tex);return new THREE.MeshStandardMaterial({map:tex,roughness:.94});
+  });
 }
 
 function sculptEar(g,kind) {
@@ -1203,6 +1229,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
   for(let i=0;i<skullP.count;i++){
     const y=skullP.getY(i),blend=1-THREE.MathUtils.smoothstep(y,-.25,.35);
     skullP.setX(i,skullP.getX(i)*(1+(type.jaw-1)*blend));
+    if(type.folds && skullP.getZ(i)>0 && y>.25 && y<.6){
+      const weight=Math.exp(-((skullP.getX(i)/.28)**2))*Math.sin((y-.25)/.35*Math.PI);
+      skullP.setZ(i,skullP.getZ(i)-.009*weight*(.5+.5*Math.cos(y*65)));
+    }
   }
   skull.geometry.computeVertexNormals();headStatic.push(skull);
   // Masked breeds (Siamese point / snowshoe): a dark mask across the eyes +
@@ -1225,10 +1255,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     headStatic.push(cheek);
   }
 
-  // Ears on pivots so they can flick/lag. Point cats darken at the ear tips.
-  // Keep the rounded silhouette compact, closer to the production ears'
-  // exposed size. Scale shell and inset together before baking; the roots
-  // stay buried in the scalp and the original accessory/animation pivots stay put.
+  // Thin ears keep their scalp anchors. Front and back share a closed rim;
+  // coat-aware paint supplies the inner skin and fur fringe.
   const earGeo = catEarGeometry(false,type.ear).scale(CAT_EAR_SCALE, CAT_EAR_SCALE, CAT_EAR_SCALE);
   const innerGeo = catEarGeometry(true,type.ear).scale(CAT_EAR_SCALE, CAT_EAR_SCALE, CAT_EAR_SCALE);
   const ears = {};
@@ -1236,10 +1264,16 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const pivot = new THREE.Group();
     pivot.position.set(sx * 0.45, 0.5, -0.02);
     head.add(pivot);
-    const ear = new THREE.Mesh(earGeo, extremity);
+    const earFur=colorExtremity?pal.point.clone():pal.fur.clone();
+    if(isCalico)earFur.setHex(sx<0?0xbe7448:0x382b29);
+    else if(isTortie&&sx<0)earFur.copy(pal.stripe);
+    else if(isCow&&sx<0)earFur.setHex(0x292a30);
+    else if(isVan)earFur.setHex(0xbe814f);
+    const earShell=sharedMat(`earfur|${earFur.getHexString()}`,()=>new THREE.MeshStandardMaterial({color:earFur,roughness:.94}));
+    const ear = new THREE.Mesh(earGeo, earShell);
     ear.position.y = 0.05;
     ear.rotation.z = sx * -0.22;
-    const inner = new THREE.Mesh(innerGeo, pink);
+    const inner = new THREE.Mesh(innerGeo, earFrontMaterial({...pal,fur:earFur},type));
     inner.position.set(0, 0.05, 0);
     inner.rotation.z = sx * -0.22;
     pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${type.ear}|${sx}` })); // one mesh per ear; the pivot flicks it
@@ -1319,12 +1353,6 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     whiskers[sx < 0 ? "L" : "R"] = pivot;
   }
 
-  if(type.folds){
-    for(let i=0;i<3;i++){
-      const fold=new THREE.Mesh(new THREE.TorusGeometry(.23+i*.05,.011,4,12,1.7),fur);
-      fold.position.set(0,.23+i*.07,.70-i*.035);fold.rotation.z=.7;headStatic.push(fold);
-    }
-  }
   if(isBicolor){
     // A painted V follows the mask surface rather than protruding from it.
     const g=new THREE.PlaneGeometry(1,1,6,10),p=g.attributes.position,uv=g.attributes.uv;
@@ -1514,12 +1542,12 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const knot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(accColDark()));
     knot.position.set(0, 1.42, .965); knot.scale.set(0.9, 1.0, 0.55); acc.add(knot);  } else if (accId === "party") {
     // birthday cone with a white pom and rim
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.46, 0.9, 16), accMat(accCol));
-    cone.position.set(0, 0.88, 0.02); acc.add(cone);
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.05, 8, 20), accMat(0xf0f0f0));
-    rim.position.set(0, 0.46, 0.02); rim.rotation.x = Math.PI / 2; acc.add(rim);
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.30, 0.9, 16), accMat(accCol));
+    cone.position.set(0, 1.17, 0.10); acc.add(cone);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.30, 0.035, 6, 20), accMat(0xf0f0f0));
+    rim.position.set(0, 0.73, 0.10); rim.rotation.x = Math.PI / 2; acc.add(rim);
     const pom = new THREE.Mesh(new THREE.SphereGeometry(0.12, 10, 10), accMat(0xf0f0f0));
-    pom.position.set(0, 1.36, 0.02); acc.add(pom);  } else if (accId === "crown") {
+    pom.position.set(0, 1.64, 0.10); acc.add(pom);  } else if (accId === "crown") {
     // royal crown — ONE molded zigzag ring (a wall whose top edge rises and
     // falls into six points), small and perched high between the ears.
     const S = 48, POINTS = 6;
@@ -1528,11 +1556,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       const a = (i / S) * Math.PI * 2;
       // triangle wave: 0 at valleys, 1 at each of the six tips
       const tri = 1 - Math.abs(((i / S) * POINTS * 2) % 2 - 1);
-      const rb = 0.36, rt = 0.38 + tri * 0.02;
-      // base y0.64: the skull's horizontal radius is ~0.37 there, so the band
-      // bottom meets the scalp instead of hovering above it
-      pos.push(Math.sin(a) * rb, 0.64, Math.cos(a) * rb + 0.08);
-      pos.push(Math.sin(a) * rt, 0.8 + tri * 0.24, Math.cos(a) * rt + 0.08);
+      const rb = 0.29, rt = 0.31 + tri * 0.02;
+      // A narrow ring sits forward between the ears. The surface fit below
+      // seats its lower edge just outside the curved scalp.
+      pos.push(Math.sin(a) * rb, 0.73, Math.cos(a) * rb + 0.13);
+      pos.push(Math.sin(a) * rt, 0.86 + tri * 0.24, Math.cos(a) * rt + 0.13);
       uvArr.push(i / S, 0, i / S, 1);
     }
     for (let i = 0; i < S; i++) {
@@ -1548,7 +1576,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
       new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.35, metalness: 0.7, side: THREE.DoubleSide }));
     acc.add(crown);
     const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 10), accMat(0xe23b3b, 0.25, 0.3));
-    jewel.position.set(0, 0.72, 0.45); acc.add(jewel);  } else if (accId === "pirate") {
+    jewel.position.set(0, 0.81, 0.44); acc.add(jewel);  } else if (accId === "pirate") {
     // tricorn — ONE lathed surface: dome + brim in a single profile, then the
     // brim is folded UP-AND-INWARD in three places (cos 3θ lobes), exactly how
     // a real tricorn is a round hat with its brim pinned up three times.
@@ -1643,20 +1671,8 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // left their cut ends poking out of the rim).
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.5, side: THREE.DoubleSide });
     const profile = [[0.68, 0.26], [0.71, 0.34], [0.68, 0.5], [0.56, 0.68], [0.38, 0.8], [0.18, 0.86], [0, 0.88]];
-    const shell = new THREE.Mesh(latheDeform(profile, 36), m);
+    const shell = new THREE.Mesh(paintUV(latheDeform(profile, 36),"stripe"),sharedMat(`helmetPaint|${accCol}`,()=>new THREE.MeshStandardMaterial({map:accessoryPaint(accCol),roughness:.5,side:THREE.DoubleSide})));
     shell.position.set(0, 0.12, 0.0); shell.scale.set(1.18, 0.95, 1.12); acc.add(shell);
-    // PAINTED-ON stripe: two thin partial-lathe strips of the shell's own
-    // profile (+0.015), one at the front azimuth and one at the back, meeting
-    // at the apex — a nose-to-nape line lying flush on the shell surface.
-    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.5, side: THREE.DoubleSide });
-    const sp = profile.map(([r, y]) => new THREE.Vector2(r + 0.015, y));
-    for (const phi0 of [-0.09, Math.PI - 0.09]) {
-      const sg = new THREE.LatheGeometry(sp, 8, phi0, 0.18);
-      sg.computeVertexNormals();
-      const strip = new THREE.Mesh(sg, stripeMat);
-      strip.position.set(0, 0.12, 0.0); strip.scale.set(1.18, 0.95, 1.12);
-      acc.add(strip);
-    }
     const peak = new THREE.Mesh(rbox(0.56, 0.05, 0.3, 0.04, 1), accMat(0x1a1f26, 0.3, 0.3));
     peak.position.set(0, 0.5, 0.74); peak.rotation.x = -0.25; acc.add(peak);
     // Chin strap TILTED about x so its lower arc swings forward UNDER the
@@ -1688,21 +1704,10 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     const cone = new THREE.Mesh(latheDeform([[.5,.575],[.4,.85],[.3,1.1],[.19,1.35],[.09,1.55],[0,1.7]], 16, v => {
       const t = (v.y - .575) / 1.125;
       v.x += .16 * t ** 3; v.z -= .09 * t * t;
-    }), m); acc.add(cone);
-    // Actual small five-point appliques, flush with the sloping cloth.
-    const starShape = new THREE.Shape();
-    for (let i = 0; i < 10; i++) {
-      const a = Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? .027 : .061;
-      if (i) starShape.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-      else starShape.moveTo(Math.cos(a) * r, Math.sin(a) * r);
-    }
-    starShape.closePath();
-    const starGeo = new THREE.ExtrudeGeometry(starShape, {depth:.012, bevelEnabled:false});
-    for (const [x,y,z,scale] of [[.15,.98,.313,1],[-.1,1.3,.164,.8]]) {
-      const star = new THREE.Mesh(starGeo.clone(), accMat(0xf5c518, .4, .4));
-      star.position.set(x,y,z); star.rotation.x = -.4; star.scale.setScalar(scale); acc.add(star);
-    }
-    starGeo.dispose();  } else if (accId === "viking") {
+    }), sharedMat(`wizardPaint|${accCol}`,()=>new THREE.MeshStandardMaterial({map:accessoryPaint(accCol),roughness:.75})));
+    paintUV(cone.geometry,'stars');acc.add(cone);
+    // Stars are ink in the cone UVs, with no separate geometry.
+  } else if (accId === "viking") {
     // metal dome + rim band + two out-swept horns with ball tips. The dome is
     // WIDER than the skull (x-radius ~0.81) so it caps the head instead of
     // sinking inside it.
@@ -1731,11 +1736,11 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // lies on the torso's own surface (+0.035), so it follows the body curve
     // out of the loop like real fabric — nothing bolted on. The white tip is
     // the same kind of conforming patch a hair prouder, so it reads woven-in.
-    const drape = new THREE.Mesh(torsoRibbonGeo(0.14, 0.46, 1.46, 0.9, 0.035), m);
-    acc.add(drape);
-    const tipMat = new THREE.MeshStandardMaterial({ color: 0xf0f0f0, roughness: 0.85, side: THREE.DoubleSide });
-    const tipPatch = new THREE.Mesh(torsoRibbonGeo(0.14, 0.46, 1.04, 0.88, 0.042, 3), tipMat);
-    acc.add(tipPatch);  } else if (accId === "charm") {
+    const drapeGeo=torsoRibbonGeo(0.14,0.46,1.46,.9,.055),uv=drapeGeo.attributes.uv;
+    for(let i=0;i<uv.count;i++)uv.setY(i,1-uv.getY(i));
+    const drapeMat=sharedMat(`scarfPaint|${accCol}`,()=>new THREE.MeshStandardMaterial({map:accessoryPaint(accCol),roughness:.85,side:THREE.DoubleSide}));
+    acc.add(new THREE.Mesh(paintUV(drapeGeo,'hem'),drapeMat));
+  } else if (accId === "charm") {
     // the collar band with a little silver-blue fish where the bell would be
     // (treats are fish, after all)
     const m = new THREE.MeshStandardMaterial({ color: accCol, roughness: 0.55, side: THREE.DoubleSide });
@@ -1753,17 +1758,30 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     fin.position.set(0, 1.02, .955); acc.add(fin); // tail fin at the bottom, apex tucked into the body
     const eye = new THREE.Mesh(new THREE.SphereGeometry(0.025, 6, 6), accMat(0x1a1a1a, 0.4));
     eye.position.set(0.05, 1.32, 1.02); acc.add(eye);  }
-  const extraAccessory = createExtraAccessory(accId, accCol, {latheDeform, taperedTube, accessoryPlaque, cutAccessoryEarSlots:mesh=>cutAccessoryEarSlots(mesh,type.ear), neckBandGeo, fitKey:type.ear});
-  if (extraAccessory) (extraAccessory.body ? cat : head).add(extraAccessory.group);
+  const fitBodyPart=mesh=>{
+    mesh.updateMatrix();const g=mesh.geometry.clone().applyMatrix4(mesh.matrix);
+    fitBody(g);mesh.geometry.dispose();mesh.geometry=g;mesh.position.set(0,0,0);mesh.rotation.set(0,0,0);mesh.scale.set(1,1,1);
+  };
+  const coveredEars=accId==='helmet'||accId==='viking';
   const fittedHeadwear = ["cap", "beanie", "fedora", "party", "crown", "pirate", "tophat", "cowboy", "aviator", "helmet", "chef", "wizard", "viking"].includes(accId);
-  if (fittedHeadwear) {
-    for (const part of acc.children) cutAccessoryEarSlots(part,type.ear);
+  const betweenEars=["party","crown"].includes(accId);
+  if(fittedHeadwear)for(const part of acc.children){
+    fitHeadwear(part,type);
+    if(!betweenEars&&!coveredEars)cutAccessoryEarSlots(part,type.ear);
   }
+  // Rigid helmets cover the ears as a costume choice, never via live hiding.
+  if(coveredEars){ears.L.visible=false;ears.R.visible=false;}
+  const extraAccessory = createExtraAccessory(accId, accCol, {
+    latheDeform,taperedTube,accessoryPlaque,cutAccessoryEarSlots:mesh=>cutAccessoryEarSlots(mesh,type.ear),
+    fitHeadwear:mesh=>fitHeadwear(mesh,type),fitBodyPart,neckBandGeo,fitKey:type.label,
+  });
+  if(extraAccessory)(extraAccessory.body?cat:head).add(extraAccessory.group);
   // Headwear / eyewear ride with the head; neckwear (bandana, collar, bow tie,
   // scarf, fish charm) sits on the body. `acc` is at the origin, so its
   // children's transforms already read in the right frame — route them into the
   // matching static bucket to merge.
   const accToBody = accId === "bandana" || accId === "collar" || accId === "bow" || accId === "scarf" || accId === "charm";
+  if(accToBody)for(const part of acc.children)fitBodyPart(part);
   (accToBody ? catStatic : headStatic).push(...acc.children);
 
   // Tail on a base pivot (sways + lifts) — fuller, and pattern-matched: tabby
@@ -1822,6 +1840,7 @@ export function createCat(furColor = 0xf0a830, opts = {}) {
     // Headwear holds the ear roots in their openings. The whole head still
     // leans and looks back, but independent ear flicks must not cross the hat.
     earMotionScale: fittedHeadwear || extraAccessory?.covered ? 0 : 1,
+    headMotionScale: accId==="space"?.35:accId==="dragon"?.45:1,
     accessory: extraAccessory?.motion || null,
     whiskerL: whiskers.L,
     whiskerR: whiskers.R,
@@ -1885,7 +1904,8 @@ export function updateCatRig(rig, dt, lat, lon, toot = false, celebrate = false,
   rig.whiskerL.rotation.y = sp.whisker.a;
   rig.whiskerR.rotation.y = sp.whisker.a;
   rig.tail.rotation.set(sp.tailX.a, sp.tailY.a, 0);
-  rig.head.rotation.set(sp.headPitch.a + giggle, sp.gloatYaw.a, sp.headLean.a + gloatAmt * 0.25);
+  const headMotion=rig.headMotionScale??1;
+  rig.head.rotation.set((sp.headPitch.a + giggle)*headMotion, sp.gloatYaw.a*headMotion, (sp.headLean.a + gloatAmt * 0.25)*headMotion);
 
   updateExtraAccessory(rig.accessory, dt, sp.headLean.a, speed);
 
