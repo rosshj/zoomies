@@ -36,7 +36,7 @@ export function toToon(m) {
   // hold — converting one silently strips its vertex/colour animation. (Node
   // materials still pass the isMeshStandardMaterial check above: they copy that
   // flag from the defaults they're initialised with.)
-  if (m.isNodeMaterial) return m;
+  if (m.isNodeMaterial && !m.userData.surfacePaint) return m;
   if (_toonCache.has(m)) return _toonCache.get(m);
   const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
@@ -64,8 +64,9 @@ export function toToon(m) {
   // hang a positionNode, so a swaying material converted the plain way would go
   // silently rigid (exactly how the grass lost its sway once before).
   const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose || ud.windFlex) && matte) {
+  if ((ud.surfacePaint || ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose || ud.windFlex) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
+    if (ud.surfacePaint) t.colorNode = m.colorNode;
     let term = null;
     if (ud.backlight) {
       // glows warm where you look toward the sun through the foliage.

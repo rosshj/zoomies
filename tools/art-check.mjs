@@ -95,6 +95,34 @@ try {
         cats++;
       }
     for (const accessory of CAT_ACCESSORIES) inspect(createCat(0x8c9298, { pattern: "solid", accessory }));
+    // Ear-slot subtraction must preserve the fabric pigment used by shared ink.
+    const inkMaterials = new Set();
+    for (const accessoryColor of [0xff0000, 0x0000ff]) {
+      const wizard = createCat(0x8c9298, { accessory: "wizard", accessoryColor });
+      let paintedVertices = 0;
+      wizard.traverse((o) => {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        for (const [mi, m] of mats.entries())
+          if (m?.userData.surfacePaint) {
+            inkMaterials.add(m);
+            const colors = o.geometry.attributes.color;
+            const ranges = Array.isArray(o.material)
+              ? o.geometry.groups.filter((g) => g.materialIndex === mi)
+              : [{ start: 0, count: colors.count }];
+            for (const g of ranges)
+              for (let i = g.start; i < g.start + g.count; i++) {
+                assert(
+                  Math.abs(colors.getX(i) - (accessoryColor === 0xff0000 ? 1 : 0)) < 1e-6 &&
+                    Math.abs(colors.getZ(i) - (accessoryColor === 0x0000ff ? 1 : 0)) < 1e-6,
+                  "Ear cut lost painted pigment",
+                );
+                paintedVertices++;
+              }
+          }
+      });
+      assert(paintedVertices > 0, "Missing painted wizard surface");
+    }
+    assert(inkMaterials.size === 1, "Accessory recolours must share their atlas material");
     const { setSeed } = await import("/src/rng.js");
     const { BIOME_NAMES, planBiomeWedges, biomeNameAt, biomeWeatherAt } = await import("/src/scenery.js");
     const classic = planBiomeWedges(null, "CLASSIC").order;

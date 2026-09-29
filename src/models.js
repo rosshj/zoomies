@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { accessoryPaint, paintUV } from "./accessory-paint.js";
+import { accessoryMaterial, pigment, paintUV } from "./accessory-paint.js";
 import { KART_STYLES, KART_LIVERIES } from "./kart-styles.js";
 import { buildRacingShell, racingPaint, panelPaintUV } from "./racing-karts.js";
 import { catType } from "./cat-types.js";
@@ -45,6 +45,41 @@ function rbox(w, h, d, r = 0.18, seg = 2) {
 const _geoCache = new Map();
 export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false, geoKey = null } = {}) {
   if (!meshes.length) return null;
+  // Cat matte pigments share a surface material; colours live in the vertices.
+  // Include pigment in geometry keys because those buffers now carry the colour.
+  if (geoKey?.startsWith("c") || geoKey?.startsWith("k")) {
+    geoKey += "|pigments:" + meshes.map((m) => m.material.color?.getHexString() || "none").join(",");
+    for (const mesh of meshes) {
+      const m = mesh.material;
+      if (
+        m.isMeshStandardMaterial &&
+        !m.isNodeMaterial &&
+        !m.map &&
+        !m.transparent &&
+        !m.vertexColors &&
+        !m.emissive?.getHex() &&
+        !m.metalness &&
+        (geoKey.startsWith("c") || m.userData.paint)
+      ) {
+        mesh.geometry = pigment(mesh.geometry.clone(), m.color);
+        mesh.material = sharedMat(
+          `rigid-pigment|${m.side}|${!!m.userData.rim}|${m.userData.paint ? m.roughness : "matte"}`,
+          () => {
+            const mat = new THREE.MeshStandardMaterial({
+              vertexColors: true,
+              roughness: m.userData.paint ? m.roughness : 0.85,
+              side: m.side,
+            });
+            mat.userData.rim = m.userData.rim;
+            mat.userData.paint = m.userData.paint;
+            return mat;
+          },
+        );
+      }
+    }
+  }
+  const hasColors = meshes.some((m) => m.geometry.attributes.color);
+
   // geoKey contract: for a given key, callers always pass parts with identical
   // geometry/transforms and an identical material-identity pattern (same roles
   // collapsing to the same slots), so the cached geometry + fresh material list
@@ -75,8 +110,9 @@ export function mergeMeshes(meshes, { castShadow = false, receiveShadow = false,
     if (geo.index) geo = geo.toNonIndexed();
     // Drop any attributes beyond the common set so every geometry merges cleanly.
     for (const key of Object.keys(geo.attributes)) {
-      if (key !== "position" && key !== "normal" && key !== "uv") geo.deleteAttribute(key);
+      if (key !== "position" && key !== "normal" && key !== "uv" && key !== "color") geo.deleteAttribute(key);
     }
+    if (hasColors && !geo.attributes.color) pigment(geo, 0xffffff);
     if (!byMat.has(m.material)) {
       byMat.set(m.material, []);
       order.push(m.material);
@@ -959,7 +995,8 @@ function cutAccessoryEarSlots(mesh, earType = "classic") {
   const g = source.index ? source.toNonIndexed() : source;
   const p = g.attributes.position,
     n = g.attributes.normal,
-    uv = g.attributes.uv;
+    uv = g.attributes.uv,
+    color = g.attributes.color;
   let faces = [];
   for (let i = 0; i < p.count; i += 3)
     faces.push(
@@ -967,6 +1004,7 @@ function cutAccessoryEarSlots(mesh, earType = "classic") {
         p: new THREE.Vector3().fromBufferAttribute(p, i + j),
         n: new THREE.Vector3().fromBufferAttribute(n, i + j),
         uv: new THREE.Vector2().fromBufferAttribute(uv, i + j),
+        color: color ? new THREE.Vector3().fromBufferAttribute(color, i + j) : null,
       })),
     );
   for (const planes of accessoryEarHulls(earType)) {
@@ -990,7 +1028,12 @@ function cutAccessoryEarSlots(mesh, earType = "classic") {
           (da >= 0 ? keep : cut).push(a);
           if ((da > 0 && db < 0) || (da < 0 && db > 0)) {
             const t = da / (da - db);
-            const v = { p: a.p.clone().lerp(b.p, t), n: a.n.clone().lerp(b.n, t), uv: a.uv.clone().lerp(b.uv, t) };
+            const v = {
+              p: a.p.clone().lerp(b.p, t),
+              n: a.n.clone().lerp(b.n, t),
+              uv: a.uv.clone().lerp(b.uv, t),
+              color: a.color?.clone().lerp(b.color, t),
+            };
             keep.push(v);
             cut.push(v);
           }
@@ -1003,7 +1046,8 @@ function cutAccessoryEarSlots(mesh, earType = "classic") {
   }
   const positions = [],
     normals = [],
-    uvs = [];
+    uvs = [],
+    colors = [];
   const edge = new THREE.Vector3(),
     cross = new THREE.Vector3();
   for (const face of faces)
@@ -1019,12 +1063,14 @@ function cutAccessoryEarSlots(mesh, earType = "classic") {
         positions.push(...v.p);
         normals.push(...v.n.clone().normalize());
         uvs.push(...v.uv);
+        if (v.color) colors.push(...v.color);
       }
     }
   const result = new THREE.BufferGeometry();
   result.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
   result.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
   result.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  if (color) result.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   if (g !== source) g.dispose();
   source.dispose();
   mesh.geometry.dispose();
@@ -1247,37 +1293,23 @@ function catEarGeometry(front = false, earType = "classic") {
   return sculptEar(g, earType);
 }
 
-function earFrontMaterial(pal, type) {
-  const fur = pal.fur.clone(),
-    skin = new THREE.Color(type.folds ? 0xc99c94 : 0xc9958f);
+function paintedEar(source, fur, type, front) {
+  const g = pigment(source.clone(), fur),
+    c = g.attributes.color;
+  if (!front) return g;
+  const skin = new THREE.Color(type.folds ? 0xc99c94 : 0xc9958f);
   const brightness = (fur.r + fur.g + fur.b) / 3;
-  // Pigmented dark/point ears retain muted brown/charcoal interiors; pale,
-  // furred ears get an ivory fringe, while Sphynx shows more bare skin.
   skin.lerp(fur, brightness < 0.16 ? 0.7 : brightness < 0.4 ? 0.38 : 0.14);
   const fringe = fur.clone().lerp(new THREE.Color(0xe8dfd0), type.folds ? 0.04 : 0.28);
-  const key = `earfront|${fur.getHexString()}|${skin.getHexString()}|${type.folds ? 1 : 0}`;
-  return sharedMat(key, () => {
-    const c = document.createElement("canvas");
-    c.width = c.height = 128;
-    const ctx = c.getContext("2d");
-    ctx.fillStyle = "#" + fur.getHexString();
-    ctx.fillRect(0, 0, 128, 128);
-    ctx.beginPath();
-    ctx.moveTo(28, 103);
-    ctx.quadraticCurveTo(34, 61, 64, 16);
-    ctx.quadraticCurveTo(94, 61, 100, 103);
-    ctx.quadraticCurveTo(64, 113, 28, 103);
-    const gradient = ctx.createRadialGradient(64, 72, 7, 64, 73, 53);
-    gradient.addColorStop(0, "#" + skin.getHexString());
-    gradient.addColorStop(0.55, "#" + skin.getHexString());
-    gradient.addColorStop(0.82, "#" + fringe.getHexString());
-    gradient.addColorStop(1, "#" + fur.getHexString());
-    ctx.fillStyle = gradient;
-    ctx.fill();
-    const tex = _finishTex(c);
-    _cacheTex(key, tex);
-    return new THREE.MeshStandardMaterial({ map: tex, roughness: 0.94 });
-  });
+  for (let i = 0; i < c.count; i++) {
+    const radial = Math.floor(i / 24) / 4;
+    const shade =
+      radial < 0.75
+        ? skin.clone().lerp(fringe, THREE.MathUtils.smoothstep(radial, 0.35, 0.75))
+        : fringe.clone().lerp(fur, (radial - 0.75) * 4);
+    c.setXYZ(i, shade.r, shade.g, shade.b);
+  }
+  return g;
 }
 
 function sculptEar(g, kind) {
@@ -1719,16 +1751,16 @@ function buildFittedCat(furColor = 0xf0a830, opts = {}) {
     else if (isCow && sx < 0) earFur.setHex(0x292a30);
     else if (isVan) earFur.setHex(0xbe814f);
     const earShell = sharedMat(
-      `earfur|${earFur.getHexString()}`,
-      () => new THREE.MeshStandardMaterial({ color: earFur, roughness: 0.94 }),
+      "cat-ear-painted",
+      () => new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.94 }),
     );
-    const ear = new THREE.Mesh(earGeo, earShell);
+    const ear = new THREE.Mesh(paintedEar(earGeo, earFur, type, false), earShell);
     ear.position.y = 0.05;
     ear.rotation.z = sx * -0.22;
-    const inner = new THREE.Mesh(innerGeo, earFrontMaterial({ ...pal, fur: earFur }, type));
+    const inner = new THREE.Mesh(paintedEar(innerGeo, earFur, type, true), earShell);
     inner.position.set(0, 0.05, 0);
     inner.rotation.z = sx * -0.22;
-    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${type.ear}|${sx}` })); // one mesh per ear; the pivot flicks it
+    pivot.add(mergeMeshes([ear, inner], { geoKey: `cear|${type.ear}|${sx}|${earFur.getHexString()}|${!!type.folds}` })); // one mesh per ear; the pivot flicks it
     ears[sx < 0 ? "L" : "R"] = pivot;
   }
 
@@ -2319,11 +2351,8 @@ function buildFittedCat(furColor = 0xf0a830, opts = {}) {
       [0, 0.88],
     ];
     const shell = new THREE.Mesh(
-      paintUV(latheDeform(profile, 36), "stripe"),
-      sharedMat(
-        `helmetPaint|${accCol}`,
-        () => new THREE.MeshStandardMaterial({ map: accessoryPaint(accCol), roughness: 0.5, side: THREE.DoubleSide }),
-      ),
+      paintUV(pigment(latheDeform(profile, 36), accCol), "stripe"),
+      accessoryMaterial(0.5, THREE.DoubleSide),
     );
     shell.position.set(0, 0.12, 0.0);
     shell.scale.set(1.18, 0.95, 1.12);
@@ -2393,12 +2422,9 @@ function buildFittedCat(furColor = 0xf0a830, opts = {}) {
           v.z -= 0.09 * t * t;
         },
       ),
-      sharedMat(
-        `wizardPaint|${accCol}`,
-        () => new THREE.MeshStandardMaterial({ map: accessoryPaint(accCol), roughness: 0.75 }),
-      ),
+      accessoryMaterial(0.75),
     );
-    paintUV(cone.geometry, "stars");
+    paintUV(pigment(cone.geometry, accCol), "stars");
     acc.add(cone);
     // Stars are ink in the cone UVs, with no separate geometry.
   } else if (accId === "viking") {
@@ -2447,11 +2473,8 @@ function buildFittedCat(furColor = 0xf0a830, opts = {}) {
     const drapeGeo = torsoRibbonGeo(0.14, 0.46, 1.46, 0.9, 0.055),
       uv = drapeGeo.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
-    const drapeMat = sharedMat(
-      `scarfPaint|${accCol}`,
-      () => new THREE.MeshStandardMaterial({ map: accessoryPaint(accCol), roughness: 0.85, side: THREE.DoubleSide }),
-    );
-    acc.add(new THREE.Mesh(paintUV(drapeGeo, "hem"), drapeMat));
+    const drapeMat = accessoryMaterial(0.85, THREE.DoubleSide);
+    acc.add(new THREE.Mesh(paintUV(pigment(drapeGeo, accCol), "hem"), drapeMat));
   } else if (accId === "charm") {
     // the collar band with a little silver-blue fish where the bell would be
     // (treats are fish, after all)
@@ -2614,6 +2637,27 @@ function buildFittedCat(furColor = 0xf0a830, opts = {}) {
     }),
   );
 
+  cat.traverse((o) => {
+    const m = o.material;
+    if (
+      !o.isMesh ||
+      Array.isArray(m) ||
+      !m?.isMeshStandardMaterial ||
+      m.map ||
+      m.isNodeMaterial ||
+      m.vertexColors ||
+      m.transparent ||
+      m.metalness ||
+      m.emissive?.getHex()
+    )
+      return;
+    o.geometry = pigment(o.geometry.clone(), m.color);
+    o.material = sharedMat(`rigid-pigment|${m.side}|${!!m.userData.rim}|matte`, () => {
+      const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, side: m.side });
+      mat.userData.rim = m.userData.rim;
+      return mat;
+    });
+  });
   cat.userData.catType = typeKey;
   cat.userData.tail = tailPivot;
   cat.userData.rig = {

@@ -21,3 +21,9 @@ Local native Chrome CPU build probe, seed SHADE, Medium, cold/warm city: 4,840/4
 A bounded 64-entry LRU now retains pristine fitted templates, including paws and ear-slot cuts. Each request clones the scene objects and rebinds all rig references; geometry/materials are shared, while springs, eyelids, propellers and blink timers remain independent. Eviction releases resources owned by the template.
 
 Local browser warm builds across all 40 presets averaged 0.066 ms; beanies averaged 0.053 ms (targets 4 ms / 10 ms). These CPU construction timings exclude rendering. Art geometry/batch checks and 738 accessory variants pass; 82 backend render cases reported no errors. The existing propeller frame-rate and independent helmet-blink tests pass, and a beanie render was inspected.
+
+## 4. Shared pigments and paint
+
+Ear fronts/backs use coat-aware vertex pigments and one shared ear surface. Matte cat pieces and solid kart paint also share materials by surface role. A palette-independent procedural ink atlas preserves fixed gold stars/ivory spots while vertex pigment supplies the custom fabric colour; recolours share materials and retain the existing single texture sample. Ear-slot cutting now interpolates vertex pigment as well as normals/UVs.
+
+The same six-preset field measured 82 → 48 source materials and 18 → 12 mapped textures (the separate ink atlas is shared across recolours). Material transparency pixels, geometry/batch budgets, explicit red/blue wizard pigment preservation and shared-atlas assertions pass. Both accessory backends and 738 variants pass. Wizard front and mushroom side renders were visually inspected. Runtime catalog thumbnails were regenerated; review screenshots remain outside the repository.

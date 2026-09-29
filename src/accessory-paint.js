@@ -1,11 +1,13 @@
 import * as THREE from "three";
+import { attribute, texture, mix } from "three/tsl";
 
 // Generated once per palette; a white tile lets undecorated pieces share the
 // same batch. Patterns are UV paint on the original surface, never decals.
 const tiles = { plain: 0, stars: 1, spots: 2, scales: 3, seams: 4, straw: 5, stripe: 6, hem: 7 };
-const textures = new Map();
-export function accessoryPaint(color) {
-  if (textures.has(color)) return textures.get(color);
+let atlas;
+export function accessoryPaint() {
+  if (atlas) return atlas;
+  const color = 0xffffff;
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 256;
@@ -95,17 +97,27 @@ export function accessoryPaint(color) {
     }
     ctx.restore();
   }
-  const tex = new THREE.CanvasTexture(c);
+  const pixels = ctx.getImageData(0, 0, 512, 256);
+  for (let y = 0; y < 256; y++)
+    for (let x = 0; x < 512; x++) {
+      const i = (y * 512 + x) * 4,
+        tile = Math.floor(y / 128) * 4 + Math.floor(x / 128);
+      const accent = [1, 2, 6, 7].includes(tile);
+      // RGB carries neutral shading or fixed ink; alpha chooses pigment vs ink.
+      pixels.data[i + 3] = accent ? 255 - Math.min(pixels.data[i], pixels.data[i + 1], pixels.data[i + 2]) : 0;
+      if (accent && pixels.data[i + 3] > 0) pixels.data[i + 3] = 255;
+    }
+  const tex = new THREE.DataTexture(pixels.data, 512, 256);
+  tex.flipY = true;
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.needsUpdate = true;
   tex.anisotropy = 2;
   tex.userData.shared = true;
   tex.userData.accessoryPaint = true;
-  if (textures.size >= 48) {
-    const oldest = textures.keys().next().value;
-    textures.get(oldest).dispose(); // evicted from the shared pool: free the GPU copy
-    textures.delete(oldest);
-  }
-  textures.set(color, tex);
+  atlas = tex;
   return tex;
 }
 export function paintUV(geometry, pattern = "plain") {
@@ -118,4 +130,29 @@ export function paintUV(geometry, pattern = "plain") {
     uv.setXY(i, ((tile % 4) * 128 + 3 + u * 122) / 512, 1 - (Math.floor(tile / 4) * 128 + 3 + (1 - v) * 122) / 256);
   }
   return geometry;
+}
+
+export function pigment(geometry, color) {
+  const c = color?.isColor ? color : new THREE.Color(color);
+  const rgb = new Float32Array(geometry.attributes.position.count * 3);
+  for (let i = 0; i < rgb.length; i += 3) {
+    rgb[i] = c.r;
+    rgb[i + 1] = c.g;
+    rgb[i + 2] = c.b;
+  }
+  geometry.setAttribute("color", new THREE.BufferAttribute(rgb, 3));
+  return geometry;
+}
+const materials = new Map();
+export function accessoryMaterial(roughness = 0.72, side = THREE.FrontSide) {
+  const key = `${roughness}|${side}`;
+  if (!materials.has(key)) {
+    const m = new THREE.MeshStandardNodeMaterial({ roughness, side });
+    const ink = texture(accessoryPaint());
+    m.colorNode = mix(attribute("color", "vec3").mul(ink.rgb), ink.rgb, ink.a);
+    m.userData.shared = true;
+    m.userData.surfacePaint = true;
+    materials.set(key, m);
+  }
+  return materials.get(key);
 }

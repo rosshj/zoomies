@@ -105,6 +105,26 @@ try {
     await renderer.renderAsync(scene, camera);
     return { rows, render: { ...renderer.info.render }, memory: { ...renderer.info.memory } };
   });
+  result.roster = await page.evaluate(async () => {
+    const { createCat, createKartModel } = await import("/src/models.js");
+    const { CAT_PRESETS, KART_PRESETS } = await import("/src/presets.js");
+    const mats = new Set(),
+      textures = new Set();
+    for (let i = 0; i < 6; i++) {
+      const c = CAT_PRESETS[i],
+        k = KART_PRESETS[i];
+      for (const root of [createCat(c.fur, c), createKartModel(k.color, k).group])
+        root.traverse((o) => {
+          for (const m of Array.isArray(o.material) ? o.material : [o.material])
+            if (m) {
+              mats.add(m);
+              if (m.map) textures.add(m.map);
+            }
+        });
+    }
+    return { materials: mats.size, textures: textures.size };
+  });
+  if (!process.env.BASELINE && result.roster.materials > 50) errors.push("Six-racer material budget exceeds 50");
   const shot = await page.screenshot({ path: path.join(out, "decals.png") });
   result.pixels = await page.evaluate(
     async (data) => {

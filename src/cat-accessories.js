@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { accessoryPaint, paintUV } from "./accessory-paint.js";
+import { accessoryMaterial, paintUV } from "./accessory-paint.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // Appended ids preserve every existing saved accessory and picker order.
@@ -46,21 +46,7 @@ const glass = shared(
   }),
 );
 const lights = shared(new THREE.MeshBasicMaterial({ vertexColors: true }));
-const paintedMaterials = new Map();
-const paintMaterial = (color) => {
-  if (!paintedMaterials.has(color)) {
-    if (paintedMaterials.size >= 48) {
-      const oldest = paintedMaterials.keys().next().value;
-      paintedMaterials.get(oldest).dispose(); // the map belongs to accessoryPaint's own pool
-      paintedMaterials.delete(oldest);
-    }
-    paintedMaterials.set(
-      color,
-      shared(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, map: accessoryPaint(color) })),
-    );
-  }
-  return paintedMaterials.get(color);
-};
+const paintMaterial = () => accessoryMaterial();
 const cache = new Map();
 const TAU = Math.PI * 2;
 function cacheGeometry(key, geometry) {
@@ -89,7 +75,7 @@ function bake(parts, key, material = fabric, color = 0xffffff) {
       }
       if (painted) paintUV(g, part.userData.paint || "plain");
       const rgb = new Float32Array(g.attributes.position.count * 3),
-        c = part.userData.paint ? new THREE.Color(0xffffff) : part.material.color;
+        c = part.material.color;
       for (let i = 0; i < rgb.length; i += 3) {
         rgb[i] = c.r;
         rgb[i + 1] = c.g;
