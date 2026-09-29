@@ -109,3 +109,15 @@ console.log(
     2,
   ),
 );
+
+const keyed = sample(true);
+bakeScenery(keyed, { cacheKey: "unit-roof-layout", ground: null });
+const keyedHits = bakeStats.hits;
+const resized = sample(true);
+resized.children.forEach((o) => o.geometry.scale(1.05, 1, 1));
+bakeScenery(resized, { cacheKey: "unit-roof-layout", ground: null });
+assert.equal(bakeStats.hits, keyedHits + 1, "Generator layout bypasses per-vertex hashing");
+assert.deepEqual(
+  keyed.children[0].geometry.attributes.color.array,
+  resized.children[0].geometry.attributes.color.array,
+);

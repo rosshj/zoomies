@@ -930,7 +930,7 @@ export function buildWorld(scene, track, opts = {}) {
   buildRoadside(scene, track, heightAt, livingDetails); // town & farm zones lining the road
   buildTrafficLights(scene, track, heightAt); // city boulevards: mast-arm signals, always green
   buildCityRoadDetails(scene, track, heightAt); // crosswalks at the signals + manhole covers
-  bakeWorldShelter(scene); // neighbouring shelter, before shared static batching
+  bakeWorldShelter(scene, { detail: _detail }); // neighbouring shelter, before shared static batching
   batchBuildings(scene); // merge the hundreds of static buildings into a few meshes (draw-call slasher)
   batchStaticProps(scene); // same treatment for benches/fences/bushes/stalls etc.
   buildStreetLamps(scene, track, heightAt, lit, litLevel); // roadside lamps (on at dusk/night)
@@ -4692,19 +4692,21 @@ function makeBuilding(density, biome) {
   part(parts, new THREE.BoxGeometry(w + 0.12, 0.18, d + 0.12).translate(0, top - 0.1, 0), trim); // eave band
 
   const flat = rand() < 0.25;
+  let chimney = false,
+    dormer = false;
   if (flat) {
     part(parts, new THREE.BoxGeometry(w + 0.3, 0.5, d + 0.3).translate(0, top + 0.25, 0), roofCol);
     part(parts, new THREE.BoxGeometry(w + 0.4, 0.5, 0.3).translate(0, top + 0.6, d / 2 + 0.05), trim); // front parapet
   } else {
     const roofH = 1.4 + floors * 0.45;
     part(parts, hipRoof(w + 0.8, d + 0.8, roofH).translate(0, top, 0), roofCol);
-    if (rand() < 0.75) {
+    if ((chimney = rand() < 0.75)) {
       const cx = w * 0.25;
       const cz = d * 0.2;
       part(parts, new THREE.BoxGeometry(0.5, 1.6, 0.5).translate(cx, top + roofH * 0.4, cz), 0x8a5a44);
       part(parts, new THREE.BoxGeometry(0.7, 0.22, 0.7).translate(cx, top + roofH * 0.4 + 0.9, cz), 0x333333);
     }
-    if (floors >= 2 && rand() < 0.5) {
+    if ((dormer = floors >= 2 && rand() < 0.5)) {
       part(parts, new THREE.BoxGeometry(1.3, 1.1, 1.0).translate(0, top + 0.35, d / 2 - 0.3), wall);
       part(parts, hipRoof(1.6, 1.4, 0.8).translate(0, top + 0.8, d / 2 - 0.3), roofCol);
     }
@@ -4720,7 +4722,8 @@ function makeBuilding(density, biome) {
   part(parts, new THREE.BoxGeometry(1.4, 2.1, 0.18).translate(dx, base + 1.0, d / 2 + 0.02), trim);
   part(parts, new THREE.BoxGeometry(0.95, 1.65, 0.12).translate(dx, base + 0.82, d / 2 + 0.12), 0x4a2f1c);
   part(parts, new THREE.BoxGeometry(1.6, 0.2, 0.7).translate(dx, base, d / 2 + 0.35), 0x7a6b58); // step
-  if (rand() < 0.4) {
+  const awning = rand() < 0.4;
+  if (awning) {
     const awn = new THREE.BoxGeometry(2.2, 0.22, 1.1);
     awn.rotateX(-0.32);
     awn.translate(dx, base + 2.0, d / 2 + 0.55);
@@ -4732,7 +4735,21 @@ function makeBuilding(density, biome) {
   solid.receiveShadow = true;
   g.add(solid);
   g.userData.isBuilding = true; // collected + merged by batchBuildings() to slash draw calls
-  return bakeScenery(g);
+  // Nearby proportions share scalar shading in identical vertex order. Geometry
+  // remains uniquely sized; only broad recess factors use this bounded archetype.
+  const bakeKey = [
+    "village-v1",
+    floors,
+    !!wing,
+    wing && Math.sign(wing.wx),
+    flat,
+    chimney,
+    dormer,
+    awning,
+    Math.round(w / 2),
+    Math.round(d / 2),
+  ].join(":");
+  return bakeScenery(g, { cacheKey: bakeKey });
 }
 
 // A downtown TOWER for the city biome: a tall glass-and-concrete high-rise with

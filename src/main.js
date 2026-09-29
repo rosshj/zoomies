@@ -703,12 +703,15 @@ scene.add(track.group);
 // initialises (same pattern as the shadow-map size in scene.js).
 const _worldDetail = (() => {
   try {
-    return localStorage.getItem("zoomies-quality-v2") === "high" ? 1.7 : 1;
+    const quality = localStorage.getItem("zoomies-quality-v2");
+    return quality === "high" ? 1.7 : quality === "low" ? 0.7 : 1;
   } catch {
     return 1;
   }
 })();
+const _worldBuildStart = performance.now();
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail });
+const _worldBuildMs = performance.now() - _worldBuildStart;
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
 window.__zoomies.wind = { uWindStr, uWindAir, biomeWindAt }; // debug hook: force a shot was taken at + the per-biome target
@@ -8145,7 +8148,7 @@ function loopBody(now) {
   // "pause before the menu" decomposes into its actual phases.
   if (_boot.frames < 2 && ++_boot.frames === 2) {
     console.log(
-      `[zoomies] boot timeline: scripts ${Math.round(_boot.eval)}ms · world +${Math.round(_boot.world - _boot.eval)}ms · renderer +${Math.round(_boot.renderer - _boot.world)}ms · first frame ${Math.round(rawMs)}ms · menu at ${Math.round(now)}ms`,
+      `[zoomies] boot timeline: scripts ${Math.round(_boot.eval)}ms · world +${Math.round(_boot.world - _boot.eval)}ms (build ${Math.round(_worldBuildMs)}ms, shelter ${Math.round(scene.userData.worldShelter?.ms || 0)}ms) · renderer +${Math.round(_boot.renderer - _boot.world)}ms · first frame ${Math.round(rawMs)}ms · menu at ${Math.round(now)}ms`,
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics

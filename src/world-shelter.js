@@ -29,7 +29,9 @@ function ellipsoidDistance(ray, o) {
     far = (-b + Math.sqrt(d)) / a;
   return far < 0 ? Infinity : Math.max(0, near);
 }
-export function bakeWorldShelter(scene) {
+export function bakeWorldShelter(scene, { detail = 1.7 } = {}) {
+  const rays = detail > 1 ? 24 : detail < 1 ? 4 : 8;
+  const fullReceivers = detail > 1;
   if (scene.userData.worldShelter) return;
   const start = performance.now(),
     occluders = [],
@@ -61,7 +63,16 @@ export function bakeWorldShelter(scene) {
         let moving = false;
         for (let a = o; a && a !== root.parent; a = a.parent)
           if (a.userData.keepLive || a.userData.animated || a.userData.wander) moving = true;
-        if (!moving && o.isMesh && !o.isInstancedMesh && !o.material?.transparent && o.geometry.attributes.color)
+        // Medium/Low retain the existing local building/prop bake. Neighbour
+        // shelter spends its rays on terrain; High also shades rigid structures.
+        if (
+          fullReceivers &&
+          !moving &&
+          o.isMesh &&
+          !o.isInstancedMesh &&
+          !o.material?.transparent &&
+          o.geometry.attributes.color
+        )
           receivers.push({ o, owner: root });
       });
     }
@@ -124,8 +135,8 @@ export function bakeWorldShelter(scene) {
       bitangent.crossVectors(normal, tangent);
       let sum = 0,
         weight = 0;
-      for (let j = 0; j < 24; j++) {
-        const r = Math.sqrt((j + 0.5) / 24),
+      for (let j = 0; j < rays; j++) {
+        const r = Math.sqrt((j + 0.5) / rays),
           a = j * 2.399963229728653;
         ray.direction
           .copy(normal)
@@ -146,5 +157,13 @@ export function bakeWorldShelter(scene) {
     }
     c.needsUpdate = true;
   }
-  scene.userData.worldShelter = { occluders: occluders.length, vertices, shaded, ms: performance.now() - start };
+  scene.userData.worldShelter = {
+    detail,
+    rays,
+    receivers: receivers.length,
+    occluders: occluders.length,
+    vertices,
+    shaded,
+    ms: performance.now() - start,
+  };
 }

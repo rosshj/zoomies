@@ -37,8 +37,13 @@ function makeTree(tris) {
   return { box, left: makeTree(tris.slice(0, middle)), right: makeTree(tris.slice(middle)) };
 }
 
-function occlusion(entries, radius, ground) {
-  const key = keyFor(entries, radius, ground);
+function occlusion(entries, radius, ground, generatorKey) {
+  // Generator keys are valid only for an identical part/vertex layout. Include
+  // counts as a cheap guard when a generator gains a new optional detail.
+  const key = generatorKey
+    ? `generator:${generatorKey}:${radius}:${ground}:` +
+      entries.map((e) => `${e.geometry.attributes.position.count}/${e.geometry.index?.count || 0}`).join(",")
+    : keyFor(entries, radius, ground);
   if (cache.has(key)) {
     const value = cache.get(key);
     cache.delete(key);
@@ -149,7 +154,7 @@ function occlusion(entries, radius, ground) {
 // Only call on a completed, rigid asset, before world placement/static batching.
 // Flexible/emissive pieces and their children are excluded as both receivers and
 // occluders. Cached factors ignore pigment, so biome palettes share the bake.
-export function bakeScenery(root, { radius = 2.4, strength = 0.32, ground = 0 } = {}) {
+export function bakeScenery(root, { radius = 2.4, strength = 0.32, ground = 0, cacheKey = null } = {}) {
   if (root.userData.bakedLighting) return root;
   const started = performance.now(),
     entries = [];
@@ -180,7 +185,7 @@ export function bakeScenery(root, { radius = 2.4, strength = 0.32, ground = 0 } 
     0,
   );
   if (!triangles || triangles > MAX_TRIANGLES) return root;
-  const values = occlusion(entries, radius, ground);
+  const values = occlusion(entries, radius, ground, cacheKey);
   let offset = 0,
     changed = 0;
   for (const { object: o, geometry: original } of entries) {

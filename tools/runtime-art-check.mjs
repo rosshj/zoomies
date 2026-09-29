@@ -134,3 +134,29 @@ console.log(
     world: scene.userData.worldShelter,
   }),
 );
+
+// Lower tiers bake terrain only; the detailed local structure bake stays intact.
+for (const [detail, rays] of [
+  [0.7, 4],
+  [1, 8],
+  [1.7, 24],
+]) {
+  const test = new T.Scene();
+  const ground = new T.Mesh(new T.PlaneGeometry(12, 12, 4, 4).rotateX(-Math.PI / 2));
+  ground.geometry.setAttribute("color", new T.Float32BufferAttribute(new Float32Array(75).fill(1), 3));
+  ground.userData.terrainTile = true;
+  const roof = new T.Mesh(new T.BoxGeometry(8, 0.5, 8));
+  roof.geometry.setAttribute(
+    "color",
+    new T.Float32BufferAttribute(new Float32Array(roof.geometry.attributes.position.count * 3).fill(1), 3),
+  );
+  roof.position.y = 3;
+  const building = new T.Group();
+  building.userData.isBuilding = true;
+  building.add(roof);
+  test.add(ground, building);
+  bakeWorldShelter(test, { detail });
+  assert.equal(test.userData.worldShelter.rays, rays);
+  assert.equal(test.userData.worldShelter.receivers, detail > 1 ? 2 : 1);
+  assert(test.userData.worldShelter.shaded > 0);
+}
