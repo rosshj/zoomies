@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { PropPhysics, crateHull, barrelHull } from "./prop-physics.js";
 import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";
-import { ROAD_PROPS, ROAD_PROP_BIOMES, makeRoadProp } from "./road-prop-assets.js";
+import { ROAD_PROPS, ROAD_PROP_BIOMES, makeRoadProp, roadPropArt } from "./road-prop-assets.js";
 import { PropDebris } from "./prop-debris.js";
 import { windStrengthAt, uWindDir } from "./wind.js";
 import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
@@ -246,6 +246,12 @@ function build(scene, track, opts) {
       quat: new THREE.Quaternion(),
     };
     physics.prepare(pr, built.hull, o.roadIndex);
+    if (pr.profile?.depleted || pr.profile?.deform) {
+      pr.usedArt = roadPropArt(pr.kind, true);
+      // Reserve the replacement's active hull once. Reuse existing vectors
+      // where possible; only one of the two buffers is active at a time.
+      pr.usedWorldHull = pr.usedArt.hull.map((_, i) => pr.worldHull[i] || new THREE.Vector3());
+    }
     if (pr.mode === "float") mesh.position.y = pr.pos.y + HOVER; // start hovering, no pop
     props.push(pr);
     return pr;
@@ -466,15 +472,16 @@ function build(scene, track, opts) {
       return;
     }
     if (spec.depleted || spec.deform) {
-      const built = makeRoadProp(pr.kind, true);
-      built.mesh.children[0].material = pr.mesh.children[0].material;
-      pr.mesh.remove(pr.mesh.children[0]);
-      pr.mesh.add(built.mesh.children[0]);
-      pr.hull = built.hull;
-      pr.worldHull = built.hull.map(() => new THREE.Vector3());
-      pr.rest = built.rest;
-      pr.radius = Math.sqrt(Math.max(...pr.hull.map((p) => p.lengthSq())));
-      pr.invInertia = 1 / Math.max(0.2, pr.radius * pr.radius * 0.4);
+      const art = pr.usedArt;
+      // Keep the live mesh and its converted cel material. Only its immutable
+      // geometry and preallocated collider view change, with no impact-time
+      // scene nodes, arrays or hull vectors created here.
+      pr.mesh.children[0].geometry = art.geometry;
+      pr.hull = art.hull;
+      pr.worldHull = pr.usedWorldHull;
+      pr.rest = art.rest;
+      pr.radius = art.radius;
+      pr.invInertia = art.invInertia;
       physics.resolve(pr);
       pr.mesh.position.copy(pr.pos);
     }

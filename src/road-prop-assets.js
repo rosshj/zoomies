@@ -474,7 +474,14 @@ function buildGeometry(kind, used) {
   const spec = ROAD_PROPS[kind];
   if (spec.shape === "cylinder" || (!spec.sphereRadius && hull.length > HULL_LIMIT))
     hull = ringHull(radialProfile(hull, spec.shape === "cylinder"));
-  return { geometry, hull, rest: -geometry.boundingBox.min.y };
+  const radius = Math.sqrt(Math.max(...hull.map((p) => p.lengthSq())));
+  return {
+    geometry,
+    hull,
+    rest: -geometry.boundingBox.min.y,
+    radius,
+    invInertia: 1 / Math.max(0.2, radius * radius * 0.4),
+  };
 }
 // The (height, radius) silhouette of a point cloud as an upper convex profile:
 // exact per vertex level for true cylinders, or over BANDS bands with each band
@@ -535,7 +542,9 @@ export function ringHull(profile) {
       );
   return hull;
 }
-export function makeRoadProp(kind, used = false) {
+// Cached data access lets impacts change an existing mesh without constructing
+// a throwaway Group/Mesh. Both appearances are warmed during world generation.
+export function roadPropArt(kind, used = false) {
   const key = kind + (used ? ":used" : "");
   let art = cache.get(key);
   if (!art) {
@@ -544,6 +553,10 @@ export function makeRoadProp(kind, used = false) {
   }
   if (!used && (ROAD_PROPS[kind].depleted || ROAD_PROPS[kind].deform) && !cache.has(kind + ":used"))
     cache.set(kind + ":used", buildGeometry(kind, true));
+  return art;
+}
+export function makeRoadProp(kind, used = false) {
+  const art = roadPropArt(kind, used);
   const mesh = new THREE.Group();
   mesh.add(new THREE.Mesh(art.geometry, material));
   if (ROAD_PROPS[kind].stand) mesh.rotation.x = Math.PI / 2;

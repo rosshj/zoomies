@@ -32,7 +32,11 @@ for (const biome of Object.keys(ROAD_PROP_BIOMES)) {
   system.setItemsEnabled(false);
   for (const kind of types) {
     const pr = props.find((p) => p.kind === kind),
-      oldGeometry = pr.mesh.children[0].geometry;
+      oldGeometry = pr.mesh.children[0].geometry,
+      originalMesh = pr.mesh.children[0],
+      originalMaterial = originalMesh.material,
+      reservedHull = pr.usedWorldHull,
+      reservedPoints = reservedHull?.slice();
     // Actual swept-kart impact, with other props away from this segment.
     const t = track._tans[pr.roadIndex],
       start = pr.pos.clone().addScaledVector(t, -7),
@@ -45,7 +49,20 @@ for (const biome of Object.keys(ROAD_PROP_BIOMES)) {
       bursts++;
     }
     if (pr.profile.vanish) assert(pr.broken && !pr.mesh.visible);
-    if (pr.profile.depleted || pr.profile.deform) assert.notEqual(pr.mesh.children[0].geometry, oldGeometry);
+    if (pr.profile.depleted || pr.profile.deform) {
+      assert.notEqual(pr.mesh.children[0].geometry, oldGeometry);
+      assert.equal(pr.mesh.children[0], originalMesh, `${kind}: impact allocated a replacement mesh`);
+      assert.equal(originalMesh.material, originalMaterial, `${kind}: impact replaced the live cel material`);
+      assert.equal(pr.worldHull, reservedHull, `${kind}: impact allocated a hull buffer`);
+      assert(
+        pr.worldHull.every((v, i) => v === reservedPoints[i]),
+        `${kind}: impact allocated hull vectors`,
+      );
+      assert.equal(pr.hull, pr.usedArt.hull);
+      assert.equal(pr.radius, pr.usedArt.radius);
+      assert(pr.worldHull.length <= 64);
+      assert(pr.worldHull.every((p) => [p.x, p.y, p.z].every(Number.isFinite)));
+    }
   }
   for (let i = 0; i < 1800; i++) system.update(1 / 120, []);
   assert.equal(system._debris.activeCount, 0);

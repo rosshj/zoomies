@@ -45,3 +45,13 @@ All 16 single/mixed biome audits pass. The scenery audit now correctly selects s
 All browser `check:*` scripts and catalog capture share executable discovery and renderer flags. Linux defaults to SwiftShader/WebGL; desktop runs probe WebGPU availability, and explicit backend requests remain strict. Fallback runs still capture galleries and exercise behavior. Creator navigation allows time for software shader compilation. The paint assertion now checks the shared atlas node and vertex pigment, and the kart save check expects the already-approved removal of the style-6 remap.
 
 Software WebGL validation includes 41 accessory renders/369 variants, 40 cat renders/3,321 combinations, 34 kart renders/816 variants, material/art budgets, shadow pixels, environmental particle shader/pool checks and all 24 road-prop renders. The native launcher also passed both backends for the four re-molded accessories. Creator save/reload/race checks and software smoke pass. The Linux CI workflow publishes logs and review screenshots as artifacts, not source files; `BROWSER-CHECKS.md` documents the controls.
+
+## 8. Reuse impact replacements
+
+Destructive prop impacts now reuse the live mesh and its converted cel material, swapping cached geometry instead of constructing/discarding a Group and Mesh. Replacement hull arrays are reserved during generation and share existing vector slots; radius and inertia are cached with the art. No replacement scene node, hull array or hull vector is allocated in that impact path.
+
+The actual swept-hit tests assert mesh/material/buffer/vector identity, then run all biome props through settling. All 15 biome rosters, 340,272 regional art-vertex checks, 973 slope/curve/stacked-road poses, 64,788 crate/barrel vertices and item-box checks pass. A rendered destructive basket impact retained 24 WebGL / 26 WebGPU shader programs before/after and passed all 16 single/mixed placement worlds. Node-only 64-active-prop stress measured about 0.93 ms median / 1.26 ms p99, excluding rendering; this is not a phone FPS claim. Software smoke and web build pass.
+
+## Remaining device validation
+
+All eight implementation steps are complete. Ross's phone checks remain: a corner with five or more piled-up props, city track load time, and a long session of garage browsing. This work does not claim measured mobile frame-rate gains. Review galleries are PR links/CI artifacts; no gallery PNGs were added to the source tree. PR #64 remains unmerged.
