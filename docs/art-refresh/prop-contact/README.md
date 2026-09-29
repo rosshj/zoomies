@@ -22,7 +22,7 @@ Floating pickups retain hull clearance, rise from their actual landed pose, and
 fall from the visible bobbed position when collected. Blob shadows now follow
 the road grade.
 
-![Crate and barrel after a fence impact on a generated slope](settled.png)
+*Crate and barrel after a fence impact on a generated slope (settled.png, in the gallery archive)*
 
 The image uses the real generated road and prop models with the game's cel
 materials, without surrounding scenery or full-game postprocessing.

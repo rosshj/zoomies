@@ -2,7 +2,7 @@
 
 24 procedural, cel-shaded road objects add local character and different impact reactions. Universal wooden crates remain the only power-up containers in every biome. Their existing floating pickup, spent-crate and replacement lifecycle stays intact: five active pickups on smaller tracks, seven on larger tracks, with every third ground slot reserved for an ordinary replacement crate. Red barrels remain in city and volcanic regions.
 
-![All 24 procedural road objects](catalog.png)
+*All 24 procedural road objects (catalog.png, in the gallery archive)*
 
 ## Biome roster
 
@@ -27,7 +27,7 @@ Placement is seeded, spread around the full lap, and mostly biased toward road e
 
 Balls, coconuts and floats bounce; wheels, tires, logs and bales roll; ice slides farther; heavy cases move less. Clay pots, snowballs, leaf bundles and mango piles break or scatter. Baskets lose their apples and remain empty, cones bend, and cartons flatten. Pumice sheds a small dust burst. Twelve procedural material sounds vary pitch, noise and decay, with positional attenuation and mute support.
 
-![Basket impact and pooled debris, WebGPU](burst-webgpu.png)
+*Basket impact and pooled debris, WebGPU (burst-webgpu.png, in the gallery archive)*
 
 The image is a focused integration fixture with simultaneous apple, clay and leaf bursts to exercise all three pools. Actual pots, snowballs and fruit piles disappear when broken; emptied baskets and deformed objects persist. No fragments grant items or obstruct karts.
 

@@ -26,11 +26,11 @@ One paired run shows mixed small changes (+0.045, +0.100, −0.058 ms). This is 
 
 ## Visual checks
 
-![Connected palm crown](palm.png)
-![Continuous driving paws](paws.png)
-![Directional boost plume](boost.png)
-![Clipped road dashes](road.png)
-![Softer street lighting with the full night post stack](night.png)
+*Connected palm crown (palm.png, in the gallery archive)*
+*Continuous driving paws (paws.png, in the gallery archive)*
+*Directional boost plume (boost.png, in the gallery archive)*
+*Clipped road dashes (road.png, in the gallery archive)*
+*Softer street lighting with the full night post stack (night.png, in the gallery archive)*
 
 Fixtures: `tools/attachment-art-check.mjs`, `check:scenery`, `check:landscape` (supports `TOD=night`, `NATIVE=1`), `tools/scenery-perf.mjs`. Checks also cover all 36 cat/pattern poses, 22 accessories, five kart styles, particle recycling and decal depth behaviour.
 

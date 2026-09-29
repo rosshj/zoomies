@@ -17,8 +17,8 @@ road image adds approximately 64 KiB of texture storage.
 
 | Before | After |
 | --- | --- |
-| ![Soft circular particles](before-particles.png) | ![Cel puffs and glints](after-particles.png) |
-| ![Previous asphalt material](before-road.png) | ![Painted asphalt grain](after-road.png) |
+| *Soft circular particles (before-particles.png, in the gallery archive)* | *Cel puffs and glints (after-particles.png, in the gallery archive)* |
+| *Previous asphalt material (before-road.png, in the gallery archive)* | *Painted asphalt grain (after-road.png, in the gallery archive)* |
 
 ## Remove invisible particle work
 
@@ -52,7 +52,7 @@ The full-world comparison against the preceding landscape pass keeps the same
 from 99,511,543 to 99,575,701 bytes (+0.064%). The four fixed views render with
 no browser errors. [World counters](world-metrics.json).
 
-![Painted asphalt in the game](world.png)
+*Painted asphalt in the game (world.png, in the gallery archive)*
 
 ## Validation
 

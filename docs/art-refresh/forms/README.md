@@ -20,10 +20,10 @@ adding another lighting or post-processing feature.
 
 | Asset | Before | After |
 | --- | --- | --- |
-| Pine | ![Before pine](before-Tree-forest.png) | ![After pine](after-Tree-forest.png) |
-| Blossom | ![Before blossom](before-Tree-blossom.png) | ![After blossom](after-Tree-blossom.png) |
-| Acacia | ![Before acacia](before-Tree-savanna.png) | ![After acacia](after-Tree-savanna.png) |
-| Facade | ![Before facade](before-Building-village.png) | ![After facade](after-Building-village.png) |
+| Pine | *Before pine (before-Tree-forest.png, in the gallery archive)* | *After pine (after-Tree-forest.png, in the gallery archive)* |
+| Blossom | *Before blossom (before-Tree-blossom.png, in the gallery archive)* | *After blossom (after-Tree-blossom.png, in the gallery archive)* |
+| Acacia | *Before acacia (before-Tree-savanna.png, in the gallery archive)* | *After acacia (after-Tree-savanna.png, in the gallery archive)* |
+| Facade | *Before facade (before-Building-village.png, in the gallery archive)* | *After facade (after-Building-village.png, in the gallery archive)* |
 
 ## Resource budget
 
@@ -48,7 +48,7 @@ crowns, so it does not represent the larger saving in a blossom-heavy scene.
 Shape changes can change pixel coverage/culling; unchanged draw budgets alone
 are not proof of unchanged GPU time.
 
-![Full-world view](world.png)
+*Full-world view (world.png, in the gallery archive)*
 
 [Baseline catalog counters](before-assets.json), [updated counters](after-assets.json),
 [world counters](world.json). Prior-world comparison: [audit result](../audit/world-after.json).

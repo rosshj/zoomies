@@ -28,27 +28,27 @@ fixed sun/ambient lighting; they do not include the full game's postprocessing.
 
 Before:
 
-![Old tunnel strings](before.png)
+*Old tunnel strings (before.png, in the gallery archive)*
 
 Alpine:
 
-![Alpine LED strips](alpine-webgl.png)
+*Alpine LED strips (alpine-webgl.png, in the gallery archive)*
 
 Tundra:
 
-![Tundra twin battens](tundra-webgl.png)
+*Tundra twin battens (tundra-webgl.png, in the gallery archive)*
 
 Desert:
 
-![Desert sodium fittings](desert-webgl.png)
+*Desert sodium fittings (desert-webgl.png, in the gallery archive)*
 
 Mesa:
 
-![Mesa guarded bulkheads](mesa-webgl.png)
+*Mesa guarded bulkheads (mesa-webgl.png, in the gallery archive)*
 
 Volcanic:
 
-![Volcanic industrial panels](volcanic-webgl.png)
+*Volcanic industrial panels (volcanic-webgl.png, in the gallery archive)*
 
 ## Rendering cost and validation
 

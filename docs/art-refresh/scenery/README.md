@@ -27,17 +27,17 @@ Each pair uses the same seed and camera settings in the asset viewer's Game look
 
 | Before | After |
 | --- | --- |
-| ![Cloud before](before-Cloud.png) | ![Cloud after](after-Cloud.png) |
-| ![Bird before](before-Sky-bird.png) | ![Bird after](after-Sky-bird.png) |
-| ![Pine before](before-Tree-forest.png) | ![Pine after](after-Tree-forest.png) |
-| ![Tree before](before-Tree-meadow.png) | ![Tree after](after-Tree-meadow.png) |
-| ![Pigeon before](before-Pigeon.png) | ![Pigeon after](after-Pigeon.png) |
-| ![Cow before](before-Cow.png) | ![Cow after](after-Cow.png) |
-| ![Crate before](before-Crate.png) | ![Crate after](after-Crate.png) |
-| ![Cactus before](before-Cactus.png) | ![Cactus after](after-Cactus.png) |
-| ![Duck before](before-Duck.png) | ![Duck after](after-Duck.png) |
-| ![Goat before](before-Goat.png) | ![Goat after](after-Goat.png) |
-| ![World before](before-world.png) | ![World after](after-world.png) |
+| *Cloud before (before-Cloud.png, in the gallery archive)* | *Cloud after (after-Cloud.png, in the gallery archive)* |
+| *Bird before (before-Sky-bird.png, in the gallery archive)* | *Bird after (after-Sky-bird.png, in the gallery archive)* |
+| *Pine before (before-Tree-forest.png, in the gallery archive)* | *Pine after (after-Tree-forest.png, in the gallery archive)* |
+| *Tree before (before-Tree-meadow.png, in the gallery archive)* | *Tree after (after-Tree-meadow.png, in the gallery archive)* |
+| *Pigeon before (before-Pigeon.png, in the gallery archive)* | *Pigeon after (after-Pigeon.png, in the gallery archive)* |
+| *Cow before (before-Cow.png, in the gallery archive)* | *Cow after (after-Cow.png, in the gallery archive)* |
+| *Crate before (before-Crate.png, in the gallery archive)* | *Crate after (after-Crate.png, in the gallery archive)* |
+| *Cactus before (before-Cactus.png, in the gallery archive)* | *Cactus after (after-Cactus.png, in the gallery archive)* |
+| *Duck before (before-Duck.png, in the gallery archive)* | *Duck after (after-Duck.png, in the gallery archive)* |
+| *Goat before (before-Goat.png, in the gallery archive)* | *Goat after (after-Goat.png, in the gallery archive)* |
+| *World before (before-world.png, in the gallery archive)* | *World after (after-world.png, in the gallery archive)* |
 
 ## Budget and validation
 

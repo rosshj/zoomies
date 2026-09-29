@@ -40,13 +40,13 @@ contact mask, without the full game's post-processing grade.
 
 | Mood | Before | After |
 | --- | --- | --- |
-| Midday | ![Before midday](before-midday.png) | ![After midday](after-midday.png) |
-| Sunset | ![Before sunset](before-sunset.png) | ![After sunset](after-sunset.png) |
-| Night | ![Before night](before-night.png) | ![After night](after-night.png) |
+| Midday | *Before midday (before-midday.png, in the gallery archive)* | *After midday (after-midday.png, in the gallery archive)* |
+| Sunset | *Before sunset (before-sunset.png, in the gallery archive)* | *After sunset (after-sunset.png, in the gallery archive)* |
+| Night | *Before night (before-night.png, in the gallery archive)* | *After night (after-night.png, in the gallery archive)* |
 
 Full game, including its grade:
 
-![Updated world](world.png)
+*Updated world (world.png, in the gallery archive)*
 
 Validation: three mood fixtures, four full-world views, gameplay smoke with no
 browser errors, simulation checks and web build. Raw results:

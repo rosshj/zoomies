@@ -4,11 +4,11 @@ Forepaws now widen gently beyond the wrist and end in a flattened, rounded cap. 
 
 | Before | After |
 | --- | --- |
-| ![Pointed forepaws](before.png) | ![Wider rounded forepaws](after.png) |
+| *Pointed forepaws (before.png, in the gallery archive)* | *Wider rounded forepaws (after.png, in the gallery archive)* |
 
-![Standard viewer lighting](after-standard.png)
+*Standard viewer lighting (after-standard.png, in the gallery archive)*
 
-![Paws on the steering wheel](driving.png)
+*Paws on the steering wheel (driving.png, in the gallery archive)*
 
 This only changes vertex positions and regenerated normals at model creation. Topology, shared geometry caching, materials, animation and draw counts are unchanged. The spotted sitting model remains 7,968 triangles / 20 material batches; the viewer's cat-and-kart composition remains 18,084 triangles / 43 batches. No new per-frame work or shader features are added. These are geometry comparisons, not new FPS measurements.
 

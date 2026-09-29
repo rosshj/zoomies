@@ -21,14 +21,14 @@ Same 240-frame emission sequence via `check:effects-art`, compared with producti
 
 Current:
 
-![Restored glow trail](current.png)
+*Restored glow trail (current.png, in the gallery archive)*
 
 Production:
 
-![Production glow trail](production.png)
+*Production glow trail (production.png, in the gallery archive)*
 
 Validation: particle expiry, recycling, caps and shader warm-up checks; moving-kart visual comparison; gameplay smoke check; web build. No model changes in this follow-up.
 
 Round-spark follow-up: `check:effects-art` verifies quarter-turn symmetry of the baked spark alpha and checks that no velocity/rotation rendering attributes remain. Submission counts and particle limits are unchanged.
 
-![Both particle types are round](round-particles.png)
+*Both particle types are round (round-particles.png, in the gallery archive)*

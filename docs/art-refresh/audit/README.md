@@ -45,7 +45,7 @@ renderer allocation. Cache reuse is also checked.
 
 | Before: invisible depth hides the effect | After: effect remains visible through the gap |
 | --- | --- |
-| ![Before decal fix](before-decals.png) | ![After decal fix](after-decals.png) |
+| *Before decal fix (before-decals.png, in the gallery archive)* | *After decal fix (after-decals.png, in the gallery archive)* |
 
 ### Lakes share their identical material
 
@@ -73,7 +73,7 @@ simulation results (6,187 submissions, zero invisible submissions).
 
 | Before smoke | After smoke |
 | --- | --- |
-| ![Five-lobed smoke](effects-before-particles.png) | ![Rounded smoke](effects-after-particles.png) |
+| *Five-lobed smoke (effects-before-particles.png, in the gallery archive)* | *Rounded smoke (effects-after-particles.png, in the gallery archive)* |
 
 ### Item checks run again, including in CI
 

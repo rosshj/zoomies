@@ -4,7 +4,7 @@
 
 Refine all twelve new procedural chassis and their 24 team editions. The cel-shaded materials, racing behavior, unlocks, saved IDs and original ten karts remain unchanged.
 
-![Refined chassis](after.png)
+*Refined chassis (after.png, in the gallery archive)*
 
 [Before](before.png) · [After](after.png) · [Rear](after-rear.png) · [Side](after-side.png) · [Driving with a tall accessory](after-driver.png) · [Custom creator](creator.png).
 

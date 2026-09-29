@@ -27,11 +27,11 @@ one material batch by `check:scenery`.
 
 | Previous scenery pass | Updated building |
 | --- | --- |
-| ![Previous building](before-building.png) | ![Fitted roof and readable windows](after-building.png) |
+| *Previous building (before-building.png, in the gallery archive)* | *Fitted roof and readable windows (after-building.png, in the gallery archive)* |
 
 | Tapered city tower | Dry mountain | Alpine mountain |
 | --- | --- | --- |
-| ![Tower](after-tower.png) | ![Dry mountain](after-desert.png) | ![Alpine mountain](after-alpine.png) |
+| *Tower (after-tower.png, in the gallery archive)* | *Dry mountain (after-desert.png, in the gallery archive)* | *Alpine mountain (after-alpine.png, in the gallery archive)* |
 
 ## Whole-update resource comparison
 
@@ -59,8 +59,8 @@ returns a failing status for that pre-existing validation issue.
 
 | Original main | Complete graphics update |
 | --- | --- |
-| ![Original landscape](before-world.png) | ![Updated landscape](after-world.png) |
-| ![Original street](before-track.png) | ![Updated street](after-track.png) |
+| *Original landscape (before-world.png, in the gallery archive)* | *Updated landscape (after-world.png, in the gallery archive)* |
+| *Original street (before-track.png, in the gallery archive)* | *Updated street (after-track.png, in the gallery archive)* |
 
 These are geometry, submission and renderer allocation counts, **not a hardware
 FPS benchmark**. The browser runs SwiftShader. Lower geometry reduces rendering

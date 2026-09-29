@@ -74,12 +74,12 @@ Pinned palm crown at two wind phases:
 
 | Phase 2 | Phase 7 |
 | --- | --- |
-| ![Palm wind phase 2](palm-2.png) | ![Palm wind phase 7](palm-7.png) |
+| *Palm wind phase 2 (palm-2.png, in the gallery archive)* | *Palm wind phase 7 (palm-7.png, in the gallery archive)* |
 
-![Gull taking off near the track](gull-takeoff.png)
-![Procedural sailboat on validated beach water](sailboat.png)
-![Soft volcanic steam burst](steam.png)
-![Hinged cottage shutters](shutters.png)
-![Wind-driven hanging shop sign](hanging-sign.png)
+*Gull taking off near the track (gull-takeoff.png, in the gallery archive)*
+*Procedural sailboat on validated beach water (sailboat.png, in the gallery archive)*
+*Soft volcanic steam burst (steam.png, in the gallery archive)*
+*Hinged cottage shutters (shutters.png, in the gallery archive)*
+*Wind-driven hanging shop sign (hanging-sign.png, in the gallery archive)*
 
 Use the preview track maker to choose a biome. Drive near roadside wildlife, watch palms and banners through a gust, or select wetlands/beach for boats and volcanic for occasional steam. The asset viewer also includes the sailboat.

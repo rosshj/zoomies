@@ -2,7 +2,7 @@
 
 All 19 requested accessories are available in the Custom Cat studio and asset viewer, with color swatches and save/load support. Existing accessory IDs and ordering are unchanged. The complete wardrobe now has 40 wearables plus “None”; the new pieces use the existing Custom Cat unlock.
 
-![The new wardrobe](front.png)
+*The new wardrobe (front.png, in the gallery archive)*
 
 [Side views](side.png) · [Rear views](back.png) · [In a kart](driving.png)
 

@@ -6,7 +6,7 @@ The previous texture placed the number badge at x=161 in a 256px image, then reu
 
 The revised procedural paint uses separate nose, side and plate regions in **one 256×256 texture**. Each region is drawn in the physical proportions of its panel, with UV seams that keep the side number on the outer face. Body shapes and geometry budgets remain unchanged.
 
-![Updated liveries](after.png)
+*Updated liveries (after.png, in the gallery archive)*
 
 [Before](before.png) · [After](after.png) · [Centered numbers from above](numbers-top.png) · [Left sides](numbers-left.png) · [Right sides](numbers-right.png).
 
@@ -19,7 +19,7 @@ The revised procedural paint uses separate nose, side and plate regions in **one
 - Badges use a cream field and dark border with consistent padding. Light body colors receive dark stripe graphics; dark colors keep light stripes. Small team lettering is centered above the badge, clear of the narrowing tip and front bumper.
 - Paint on top faces, side faces and end caps is explicitly separated, avoiding folded number fragments and smeared logos.
 
-![Single- and double-digit alignment](numbers-top.png)
+*Single- and double-digit alignment (numbers-top.png, in the gallery archive)*
 
 ## Cost and validation
 

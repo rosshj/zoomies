@@ -1,3 +1,5 @@
+> Gallery images were removed from the repository to keep clones small. They are kept in the `art-refresh-galleries.zip` archive attached to PR #64; each README names the image it refers to.
+
 [Latest: all 34 karts repainted, eight racing schemes and reduced render batches](garage-liveries/README.md).
 
 [Latest: fitted liveries, centered numbers and stripe layouts](kart-liveries/README.md).
@@ -70,10 +72,10 @@ The catalog thumbnails are regenerated from the actual procedural models.
 
 | Main | This branch |
 | --- | --- |
-| ![Original cat](before-cat.png) | ![Updated cat](after-cat.png) |
-| ![Original GP kart](before-kart.png) | ![Updated GP kart](after-kart.png) |
-| ![Original buggy](before-buggy.png) | ![Updated buggy](after-buggy.png) |
-| ![Original circuit](before-world.png) | ![Updated circuit](after-world.png) |
+| *Original cat (before-cat.png, in the gallery archive)* | *Updated cat (after-cat.png, in the gallery archive)* |
+| *Original GP kart (before-kart.png, in the gallery archive)* | *Updated GP kart (after-kart.png, in the gallery archive)* |
+| *Original buggy (before-buggy.png, in the gallery archive)* | *Updated buggy (after-buggy.png, in the gallery archive)* |
+| *Original circuit (before-world.png, in the gallery archive)* | *Updated circuit (after-world.png, in the gallery archive)* |
 
 ## Geometry budget
 

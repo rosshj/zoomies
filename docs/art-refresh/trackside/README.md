@@ -21,9 +21,9 @@ This pass follows `ac5102e` (round kart glows). All art remains procedural and c
 
 Select the new cards in the track selector, or mix the biomes in the track maker. Random recipes can use all three. The default/classic biome roster and wedge seed layout retain the original twelve biomes.
 
-![Lavender Loop](lavender.png)
-![Willow Wash](wetlands.png)
-![Basalt Blast](volcanic.png)
+*Lavender Loop (lavender.png, in the gallery archive)*
+*Willow Wash (wetlands.png, in the gallery archive)*
+*Basalt Blast (volcanic.png, in the gallery archive)*
 
 ## Rendering costs
 
@@ -52,14 +52,14 @@ New biome costs depend on the generated route and visibility; their counts are r
 
 Raw world counts, asset census and race audit are in the JSON files alongside this document.
 
-![Timber footbridge](Timber-footbridge.png)
-![Racing banner](Racing-banner.png)
-![Bench](Bench.png)
-![Planter](Planter.png)
-![Billboard](Billboard.png)
-![Basalt columns](Basalt-columns.png)
-![Tunnel portal](tunnel.png)
-![Volcanic tunnel](volcanic-tunnel.png)
+*Timber footbridge (Timber-footbridge.png, in the gallery archive)*
+*Racing banner (Racing-banner.png, in the gallery archive)*
+*Bench (Bench.png, in the gallery archive)*
+*Planter (Planter.png, in the gallery archive)*
+*Billboard (Billboard.png, in the gallery archive)*
+*Basalt columns (Basalt-columns.png, in the gallery archive)*
+*Tunnel portal (tunnel.png, in the gallery archive)*
+*Volcanic tunnel (volcanic-tunnel.png, in the gallery archive)*
 
 Reproduce with `PW_CHROME=/path/to/chrome NATIVE=1 BIOME=wetlands npm run check:landscape`; use `BIOME=lavender` or `BIOME=volcanic` for the other featured tracks. Omit BIOME for the classic comparison. `TRACKS="Lavender Loop,Willow Wash,Basalt Blast" npm run check:tracks` runs the race audit.
 

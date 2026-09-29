@@ -23,9 +23,9 @@ field (3,360 bytes of capacity; 12 bytes uploaded per live spark).
 
 | Before | After |
 | --- | --- |
-| ![Smooth desert mountain](before-desert.png) | ![Grained desert mountain](after-desert.png) |
-| ![Smooth alpine mountain](before-alpine.png) | ![Grained alpine mountain](after-alpine.png) |
-| ![Star-shaped sparks](before-particles.png) | ![Motion-aligned embers](after-particles.png) |
+| *Smooth desert mountain (before-desert.png, in the gallery archive)* | *Grained desert mountain (after-desert.png, in the gallery archive)* |
+| *Smooth alpine mountain (before-alpine.png, in the gallery archive)* | *Grained alpine mountain (after-alpine.png, in the gallery archive)* |
+| *Star-shaped sparks (before-particles.png, in the gallery archive)* | *Motion-aligned embers (after-particles.png, in the gallery archive)* |
 
 ## Cost and validation
 
@@ -42,7 +42,7 @@ shared texture (**51 → 52**). Renderer-reported allocation changes from
 mountains gain UV attributes as well. This is still about 1% below the original
 pre-refresh world's allocation. [World counters](world-metrics.json).
 
-![Grain in the full landscape](world.png)
+*Grain in the full landscape (world.png, in the gallery archive)*
 
 Resource counters are not frame-time measurements. An extra texture sample has
 a cost even with unchanged triangles and draw calls; hardware WebGPU/iOS frame

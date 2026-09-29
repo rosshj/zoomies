@@ -12,14 +12,14 @@ Baseline: `2e9f0d4`, after the living-world pass. This adds restrained depth whe
 
 | Before | After |
 | --- | --- |
-| ![Village building before](before-Building-village.png) | ![Village building after](after-Building-village.png) |
-| ![Stilt hut before](before-stiltHut.png) | ![Stilt hut after](after-stiltHut.png) |
-| ![Timber footbridge before](before-Timber-footbridge.png) | ![Timber footbridge after](after-Timber-footbridge.png) |
-| ![Forest crossing before](before-forest.png) | ![Forest crossing after](after-forest.png) |
+| *Village building before (before-Building-village.png, in the gallery archive)* | *Village building after (after-Building-village.png, in the gallery archive)* |
+| *Stilt hut before (before-stiltHut.png, in the gallery archive)* | *Stilt hut after (after-stiltHut.png, in the gallery archive)* |
+| *Timber footbridge before (before-Timber-footbridge.png, in the gallery archive)* | *Timber footbridge after (after-Timber-footbridge.png, in the gallery archive)* |
+| *Forest crossing before (before-forest.png, in the gallery archive)* | *Forest crossing after (after-forest.png, in the gallery archive)* |
 
 The forest comparison uses the same HABITAT recipe and camera. Weather, wind and decorative cloud shapes can vary between captures. Asset comparisons use the same catalogue fixtures. These are subtle shading changes; existing geometry and silhouettes remain recognizable.
 
-![Tunnel entrance fading into shelter](after-tunnel.png)
+*Tunnel entrance fading into shelter (after-tunnel.png, in the gallery archive)*
 
 ## Implementation and limits
 

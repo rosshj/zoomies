@@ -91,8 +91,8 @@ Five `SHADE` worlds at detail 1.0, measured with `tools/baked-world-check.mjs`. 
 
 ### Race views
 
-![Forest High, six-kart race](forest-high.png)
-![Wetlands High, rain and six-kart race](wetlands-high.png)
+*Forest High, six-kart race (forest-high.png, in the gallery archive)*
+*Wetlands High, rain and six-kart race (wetlands-high.png, in the gallery archive)*
 
 ## Verification
 

@@ -4,7 +4,7 @@
 
 Add 12 sturdy racing designs with two named team editions each: **34 garage presets across 17 chassis**, including the original ten presets/five styles. The new models retain the game's cel-shaded materials and existing driving behavior.
 
-![Twelve new chassis](chassis.png)
+*Twelve new chassis (chassis.png, in the gallery archive)*
 
 | Chassis | Defining features |
 | --- | --- |
@@ -34,7 +34,7 @@ Use Garage → Custom Kart to cycle all 17 bodies, with the new livery control a
 - [Complete triangle/material table](roster.md) · [raw model metrics](metrics.json)
 - [Desktop creator](ui-creator-rally.png) · [phone creator](ui-creator-phone.png) · [race](ui-race.png)
 
-![Rallycross in the custom creator](ui-creator-rally.png)
+*Rallycross in the custom creator (ui-creator-rally.png, in the gallery archive)*
 
 The showroom camera now scales its distance/pan with aspect ratio, keeping wheels and taller cages inside the available preview area on narrower windows.
 

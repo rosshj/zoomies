@@ -16,7 +16,7 @@ This pass replaces thick slab ears with thin, cupped pinnae, then refits the pro
 
 ## Galleries and checks
 
-![Wardrobe from above](accessories-top.png)
+*Wardrobe from above (accessories-top.png, in the gallery archive)*
 
 [Front](accessories.png) · [Side](accessories-side.png) · [Rear](accessories-back.png) · [Underside](accessories-under.png) · [Driving](accessories-drive.png) · [Animated pose](accessories-motion.png)
 

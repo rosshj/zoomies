@@ -4,7 +4,7 @@ Latest update: [embedded accessories, simpler helmet and the Safari Hat](../acce
 
 The roster grows from 14 to **40 named cats**, matching all **40 wearable accessories** with one signature accessory each. The original cats keep their indexes, names, colors, prices and earned unlocks. The 26 additions are breed-inspired interpretations in the existing procedural, cel-shaded style.
 
-![The complete roster](roster.png)
+*The complete roster (roster.png, in the gallery archive)*
 
 [Without accessories](without-accessories.png) · [Rear silhouettes and tails](rear.png) · [Driving poses](driving.png) · [Complete roster and model budgets](roster-table.md)
 
@@ -38,7 +38,7 @@ Headwear openings are generated from each ear shape's convex envelope, with sepa
 
 The separate chest and cheek puffs read as lumps on pale cats. They have been removed from all 12 affected types, including Persian and Turkish Angora. Long-haired types retain broad, continuous chest volume by shaping the torso and its matching coat decal together; wide cheeks, ears and tails keep each type recognizable. Curly types retain their subtle continuous coat waves without raised cheek beads.
 
-![Marple after smoothing](smooth-cat-16.png) ![Duchess after smoothing](smooth-cat-17.png)
+*Marple after smoothing (smooth-cat-16.png, in the gallery archive)* *Duchess after smoothing (smooth-cat-17.png, in the gallery archive)*
 
 Each affected cat loses **384–784 triangles**, with no increase in material batches or per-frame work. Timber also drops from 21 to 20 batches. [Per-cat comparison against `309e8e0`](smooth-silhouettes.json). All 40 cats were rendered again on WebGL/WebGPU, the 3,321-combination compatibility sweep passed, and catalog portraits and all galleries were regenerated. The frame measurements below are from the preceding roster build; this correction was checked for geometry cost, not re-benchmarked for FPS.
 

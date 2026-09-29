@@ -17,7 +17,7 @@ The fin, horn and crown use deliberately embedded roots instead of the general c
 
 ## Visual review
 
-![Straight-on views](front.png)
+*Straight-on views (front.png, in the gallery archive)*
 
 [Side profiles](side.png) · [Rear](back.png) · [Overhead](top.png) · [Underside](under.png) · [Driving](drive.png) · [Combined animated poses](motion.png)
 

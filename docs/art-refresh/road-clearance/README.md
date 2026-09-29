@@ -40,7 +40,7 @@ No added geometry, textures, lighting passes or per-frame checks. The clearance 
 
 The skirt at the left covered the inside lane and barrier. It now clears the road, while the tunnel remains.
 
-![Before: mountain skirt covering inside lane](before.png)
-![After: clear road and intact tunnel](after.png)
+*Before: mountain skirt covering inside lane (before.png, in the gallery archive)*
+*After: clear road and intact tunnel (after.png, in the gallery archive)*
 
 Reproduce the images with `NATIVE=1 PW_CHROME=/path/to/chrome RECIPE_FILE=docs/art-refresh/road-clearance/recipe.json FOCUS_FILE=docs/art-refresh/road-clearance/focus.json npm run check:landscape`. The `clearance.png` view targets the original intersection. Use `ART_ROOT=/path/to/baseline BASELINE=1 npm run check:terrain` to collect a comparison audit without enforcing the new clearance gate.

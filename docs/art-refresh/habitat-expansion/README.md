@@ -36,12 +36,12 @@ Validation passed: 117 rendered assets with geometry/draw budgets; all 15 single
 
 The asset viewer exposes every model by name. `check:scenery` enforces one draw and a limit of 850 triangles per new animal / 350 per structure. Screenshots below use game materials. The full-world audit checks placement and sampled roaming transforms in all 15 biomes and a mixed map; it does not prove every possible seed or boundary.
 
-![Fox](Fox.png)
-![Antelope](Antelope.png)
-![Seal](Seal.png)
-![Tortoise](Tortoise.png)
-![Frog](Frog.png)
-![Lifeguard tower](Lifeguard-tower.png)
-![Desert well](Desert-well.png)
-![Bird hide](Bird-hide.png)
-![Bee hives](Bee-hives.png)
+*Fox (Fox.png, in the gallery archive)*
+*Antelope (Antelope.png, in the gallery archive)*
+*Seal (Seal.png, in the gallery archive)*
+*Tortoise (Tortoise.png, in the gallery archive)*
+*Frog (Frog.png, in the gallery archive)*
+*Lifeguard tower (Lifeguard-tower.png, in the gallery archive)*
+*Desert well (Desert-well.png, in the gallery archive)*
+*Bird hide (Bird-hide.png, in the gallery archive)*
+*Bee hives (Bee-hives.png, in the gallery archive)*

@@ -2,7 +2,7 @@
 
 All **34 presets / 17 chassis**, including the original ten karts, now have curated racing paint. Eight restrained designs draw from club racing, classic sports cars, works teams and rally competition. Existing names, colors, numbers, unlocks and saved selection IDs remain stable.
 
-![Every kart with its new paint](after.png)
+*Every kart with its new paint (after.png, in the gallery archive)*
 
 [Before this pass](before.png) · [After](after.png) · [Top](top.png) · [Sides](sides.png) · [Rear](rear.png).
 
@@ -19,7 +19,7 @@ All **34 presets / 17 chassis**, including the original ten karts, now have cura
 | Rally Blocks | Two restrained corner color blocks and squared number plates |
 | Endurance | Dark central and side fields, cream digits and fine edge stripes |
 
-![Eight designs on the same original GP chassis](numbers-front.png)
+*Eight designs on the same original GP chassis (numbers-front.png, in the gallery archive)*
 
 [Same chassis from above](numbers-top.png) · [Procedural atlas drawings](atlases.png).
 

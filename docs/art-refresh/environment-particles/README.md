@@ -2,7 +2,7 @@
 
 Environmental debris now uses recognisable procedural shapes and restrained, material-specific motion across all 15 biomes. The approved circular additive boost/drift effects are retained. Dust, leaves, petals, paper and ambient grains use ordinary shading instead of additive glow.
 
-![Enlarged material silhouettes](materials.png)
+*Enlarged material silhouettes (materials.png, in the gallery archive)*
 
 The enlarged gallery shows the actual kart-wake atlas materials. Left to right: blossom, lavender, forest, autumn, jungle; wetlands, meadow, savanna, beach, desert; mesa, alpine, tundra, city, volcanic. Actual grains and snow clumps are much smaller than leaves/petals in game. The 256×128 atlas is generated once by canvas code, including notched petals, leaf veins, grass husks, grains, snow clumps, folded paper and soft dust. No external bitmap assets.
 
@@ -18,7 +18,7 @@ The enlarged gallery shows the actual kart-wake atlas materials. Left to right: 
 
 | Resting cover | Ground-level passing wake |
 | --- | --- |
-| ![Resting petals](rest-webgpu.png) | ![Waking petals](wake-webgpu.png) |
+| *Resting petals (rest-webgpu.png, in the gallery archive)* | *Waking petals (wake-webgpu.png, in the gallery archive)* |
 
 These are isolated GPU fixtures, deliberately close to the particles. The elevated-kart version at +12 units is pixel-identical to the resting version on both graphics backends.
 

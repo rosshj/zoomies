@@ -56,15 +56,15 @@ Each new habitat building is **one draw**, with 92–300 triangles. Bird populat
 - Full-world native renders inspected for beach, meadow, volcanic, wetland, forest and the classic comparison. The asset viewer includes huts, stilt huts, cabins, chalets, adobe buildings, pavilions, ruins, vultures, parrots and flying bird variants.
 - Mobile/WebGPU playtesting and exhaustive seed coverage remain outside these measurements.
 
-![Pasture and barns](meadow.png)
-![Beach](beach.png)
-![Woodland](forest.png)
-![Wetlands](wetlands.png)
-![Volcanic badlands](volcanic.png)
-![Thatched hut](hut.png)
-![Stilt hut](stiltHut.png)
-![Vulture](Vulture.png)
-![Soaring vulture](Sky-bird-vulture.png)
+*Pasture and barns (meadow.png, in the gallery archive)*
+*Beach (beach.png, in the gallery archive)*
+*Woodland (forest.png, in the gallery archive)*
+*Wetlands (wetlands.png, in the gallery archive)*
+*Volcanic badlands (volcanic.png, in the gallery archive)*
+*Thatched hut (hut.png, in the gallery archive)*
+*Stilt hut (stiltHut.png, in the gallery archive)*
+*Vulture (Vulture.png, in the gallery archive)*
+*Soaring vulture (Sky-bird-vulture.png, in the gallery archive)*
 
 Reproduce a full-world habitat view with `PW_CHROME=/path/to/chrome NATIVE=1 DRESSING=1 BIOME=beach npm run check:landscape`. Change BIOME to any of the 15 names. Raw counts and habitat audits are committed alongside this document.
 

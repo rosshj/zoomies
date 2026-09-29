@@ -4,7 +4,7 @@ Reviewed all 21 wearable accessories (plus no accessory) from the front, side an
 
 | Before | After |
 | --- | --- |
-| ![Original accessory set](before.png) | ![Refined accessory set](after.png) |
+| *Original accessory set (before.png, in the gallery archive)* | *Refined accessory set (after.png, in the gallery archive)* |
 
 [Side views](side.png) · [Rear views](back.png) · [Driving poses](driving.png)
 
