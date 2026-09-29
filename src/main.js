@@ -2,7 +2,24 @@ import * as THREE from "three";
 import { installSceneryRendering } from "./scenery-shadows.js";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
 // legacy EffectComposer chain.
-import { pass, mix, vec3, float, smoothstep, luminance, saturation, viewportUV, uniform, color as tslColor, normalView, positionViewDirection, Fn, Loop, If, rtt } from "three/tsl";
+import {
+  pass,
+  mix,
+  vec3,
+  float,
+  smoothstep,
+  luminance,
+  saturation,
+  viewportUV,
+  uniform,
+  color as tslColor,
+  normalView,
+  positionViewDirection,
+  Fn,
+  Loop,
+  If,
+  rtt,
+} from "three/tsl";
 import { bloom } from "three/addons/tsl/display/BloomNode.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
 // (setFogScale arrives via the createScene() destructure below.)
@@ -16,7 +33,16 @@ import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow, KART_COLLIDE_MIN, kartBumpPower } from "./kart.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
 import { setWind, windToward, uWindStr, uWindAir } from "./wind.js";
-import { setLightLevel, disposeGroup as _disposeGroup, createKartModel, createCat, CAT_PATTERNS, CAT_ACCESSORIES, ACCESSORY_COLORS, ACCESSORY_LABELS } from "./models.js";
+import {
+  setLightLevel,
+  disposeGroup as _disposeGroup,
+  createKartModel,
+  createCat,
+  CAT_PATTERNS,
+  CAT_ACCESSORIES,
+  ACCESSORY_COLORS,
+  ACCESSORY_LABELS,
+} from "./models.js";
 import { initProps } from "./props.js";
 import { Input } from "./input.js";
 import { MenuPad } from "./menupad.js";
@@ -24,15 +50,37 @@ import { ChaseCam } from "./split.js";
 import { HairballManager } from "./hairball.js";
 import { ItemManager } from "./items.js";
 import { HUD, ordinal, formatTime } from "./hud.js";
-import { BIOME_NAMES, buildWorld, setSceneryRanges, biomeWeatherAt, biomeWindAt, biomeNameAt, biomeRoadStyle } from "./scenery.js";
+import {
+  BIOME_NAMES,
+  buildWorld,
+  setSceneryRanges,
+  biomeWeatherAt,
+  biomeWindAt,
+  biomeNameAt,
+  biomeRoadStyle,
+} from "./scenery.js";
 import { EffectsManager } from "./effects.js";
 import { environmentProfile, looseSurface } from "./environment-particles.js";
 import { setSeed, getSeed, randomSeed, makeRng } from "./rng.js";
 import { encodeWorld, decodeWorld } from "./worldcfg.js";
 import {
-  migrateProfile, isUnlocked, buyUnlock, catalogEntry, CATALOG, racePayout, checkAchievements, claimAchievement,
-  ACHIEVEMENTS, CUPS, cupById, cupPoints, cupStandings, awardCup, dailySeedFor,
-  encodeProfileToken, decodeProfileToken,
+  migrateProfile,
+  isUnlocked,
+  buyUnlock,
+  catalogEntry,
+  CATALOG,
+  racePayout,
+  checkAchievements,
+  claimAchievement,
+  ACHIEVEMENTS,
+  CUPS,
+  cupById,
+  cupPoints,
+  cupStandings,
+  awardCup,
+  dailySeedFor,
+  encodeProfileToken,
+  decodeProfileToken,
 } from "./progress.js";
 import { audio } from "./audio.js";
 // Menu UI cues — fourteen tiny Web-Audio-synthesized interaction sounds
@@ -115,7 +163,7 @@ function sanitizeCustomKart(k) {
     color: _clampColor(k.color, DEFAULT_CUSTOM_KART.color),
     style,
     number: _clampInt(k.number, 0, 99, DEFAULT_CUSTOM_KART.number),
-    livery: _clampInt(k.livery, 0, KART_LIVERIES.length-1, 0),
+    livery: _clampInt(k.livery, 0, KART_LIVERIES.length - 1, 0),
   };
 }
 function loadGarageConfig() {
@@ -126,7 +174,7 @@ function loadGarageConfig() {
         cat: savedCatIndex(c, CAT_PRESETS.length), // +1: the Custom slot is valid
         kart: savedKartIndex(c, KART_PRESETS.length),
         customCat: sanitizeCustomCat(c.customCat),
-        customKart: sanitizeCustomKart({...c.customKart,style:savedKartStyle(c)}),
+        customKart: sanitizeCustomKart({ ...c.customKart, style: savedKartStyle(c) }),
       };
     }
   } catch {
@@ -137,7 +185,15 @@ function loadGarageConfig() {
 }
 function saveGarageConfig(c) {
   try {
-    localStorage.setItem(GARAGE_KEY, JSON.stringify({...c,v:3,catId:c.cat===CUSTOM_CAT_IDX?"custom":null,kartId:c.kart===CUSTOM_KART_IDX?"custom":null}));
+    localStorage.setItem(
+      GARAGE_KEY,
+      JSON.stringify({
+        ...c,
+        v: 3,
+        catId: c.cat === CUSTOM_CAT_IDX ? "custom" : null,
+        kartId: c.kart === CUSTOM_KART_IDX ? "custom" : null,
+      }),
+    );
   } catch {
     /* ignore */
   }
@@ -147,16 +203,30 @@ function saveGarageConfig(c) {
 function catSpec(cfg) {
   if (cfg.cat === CUSTOM_CAT_IDX) {
     const c = cfg.customCat || DEFAULT_CUSTOM_CAT;
-    return { name: c.name, type:c.type, fur: c.fur, pattern: c.pattern, accessory: c.accessory, accessoryColor: c.accessoryColor };
+    return {
+      name: c.name,
+      type: c.type,
+      fur: c.fur,
+      pattern: c.pattern,
+      accessory: c.accessory,
+      accessoryColor: c.accessoryColor,
+    };
   }
   const p = CAT_PRESETS[cfg.cat] || CAT_PRESETS[0];
   // Preset cats may override their pattern's default accessory (presets.js).
-  return { name: p.name, type:p.type, fur: p.fur, pattern: p.pattern, accessory: p.accessory, accessoryColor: undefined };
+  return {
+    name: p.name,
+    type: p.type,
+    fur: p.fur,
+    pattern: p.pattern,
+    accessory: p.accessory,
+    accessoryColor: undefined,
+  };
 }
 function kartSpec(cfg) {
   if (cfg.kart === CUSTOM_KART_IDX) {
     const k = cfg.customKart || DEFAULT_CUSTOM_KART;
-    return { name: k.name, color: k.color, style: k.style, number: k.number, livery:k.livery };
+    return { name: k.name, color: k.color, style: k.style, number: k.number, livery: k.livery };
   }
   return KART_PRESETS[cfg.kart] || KART_PRESETS[0];
 }
@@ -165,7 +235,18 @@ const garageConfig = loadGarageConfig();
 function playerLook() {
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
-  return { catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, color: kart.color, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: cat.name };
+  return {
+    catColor: cat.fur,
+    catType: cat.type,
+    catPattern: cat.pattern,
+    catAccessory: cat.accessory,
+    catAccessoryColor: cat.accessoryColor,
+    color: kart.color,
+    kartStyle: kart.style,
+    kartNumber: kart.number,
+    kartLivery: kart.livery,
+    name: cat.name,
+  };
 }
 
 const _qs = new URLSearchParams(location.search);
@@ -200,11 +281,19 @@ console.log(`[zoomies] world seed: ${getSeed()} · track: ${trackConfig.mode}`);
 const PROFILE_KEY = "zoomies-profile-v1";
 function loadProfile() {
   let raw = null;
-  try { raw = JSON.parse(localStorage.getItem(PROFILE_KEY)); } catch { /* ignore */ }
+  try {
+    raw = JSON.parse(localStorage.getItem(PROFILE_KEY));
+  } catch {
+    /* ignore */
+  }
   return migrateProfile(raw);
 }
 function saveProfile() {
-  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  } catch {
+    /* ignore */
+  }
 }
 const profile = loadProfile();
 // Grandfather: never confiscate. Whatever the player already had selected when
@@ -214,7 +303,11 @@ const profile = loadProfile();
   ids.push(garageConfig.cat === CUSTOM_CAT_IDX ? "custom.cat" : `cat.${garageConfig.cat}`);
   ids.push(garageConfig.kart === CUSTOM_KART_IDX ? "custom.kart" : `kart.${garageConfig.kart}`);
   let changed = false;
-  for (const id of ids) if (!profile.unlocked.includes(id)) { profile.unlocked.push(id); changed = true; }
+  for (const id of ids)
+    if (!profile.unlocked.includes(id)) {
+      profile.unlocked.push(id);
+      changed = true;
+    }
   if (changed) saveProfile();
 }
 
@@ -222,14 +315,26 @@ const profile = loadProfile();
 // in Settings + a console API. Persisted until explicitly disabled there.
 const DEV_KEY = "zoomies-dev";
 let devMode = false;
-try { devMode = _qs.has("dev") || localStorage.getItem(DEV_KEY) === "1"; } catch { /* ignore */ }
-try { if (devMode) localStorage.setItem(DEV_KEY, "1"); } catch { /* ignore */ }
+try {
+  devMode = _qs.has("dev") || localStorage.getItem(DEV_KEY) === "1";
+} catch {
+  /* ignore */
+}
+try {
+  if (devMode) localStorage.setItem(DEV_KEY, "1");
+} catch {
+  /* ignore */
+}
 
 // Cup run state (a cup is a reload chain — each race is a different seed, and the
 // world is built from the seed at load). Active only while the URL's ?cup= matches.
 const CUP_KEY = "zoomies-cup-v1";
 let _cupState = null;
-try { _cupState = JSON.parse(sessionStorage.getItem(CUP_KEY)); } catch { /* ignore */ }
+try {
+  _cupState = JSON.parse(sessionStorage.getItem(CUP_KEY));
+} catch {
+  /* ignore */
+}
 const _cupParam = _qs.get("cup");
 if (!_cupState || !_cupParam || _cupState.id !== _cupParam || !cupById(_cupState.id)) _cupState = null;
 const _activeCup = _cupState ? cupById(_cupState.id) : null;
@@ -258,24 +363,33 @@ let _racePaid = false; // the payout runs once per race, on the first showResult
 // the shell reloading it — which is otherwise invisible in the logs.
 const RELOAD_CAUSE_KEY = "zoomies-reload-cause";
 function markReload(cause) {
-  try { sessionStorage.setItem(RELOAD_CAUSE_KEY, cause); } catch { /* ignore */ }
+  try {
+    sessionStorage.setItem(RELOAD_CAUSE_KEY, cause);
+  } catch {
+    /* ignore */
+  }
 }
 {
   let _cause = "";
   try {
     _cause = sessionStorage.getItem(RELOAD_CAUSE_KEY) || "";
     if (_cause) sessionStorage.removeItem(RELOAD_CAUSE_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   const _nav = performance.getEntriesByType?.("navigation")?.[0]?.type || "?";
   const _build = document.querySelector('meta[name="zoomies-build"]')?.content || "unknown";
   const _rev = document.querySelector('meta[name="zoomies-rev"]')?.content || "";
-  console.log(`[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""} · build=${_build}${_rev ? ` · rev=${_rev}` : ""}`);
+  console.log(
+    `[zoomies] boot: nav=${_nav}${_cause ? ` · cause=${_cause}` : ""} · build=${_build}${_rev ? ` · rev=${_rev}` : ""}`,
+  );
   // Title-screen stamp: the same facts, readable on a Deck with no terminal.
   const _stampEl = document.getElementById("build-stamp");
   if (_stampEl) {
-    _stampEl.textContent = _build === "dev"
-      ? "dev build"
-      : `build ${_build.replace("T", " ").replace(/:\d\dZ$/, " UTC")}${_rev ? ` · ${_rev}` : ""}`;
+    _stampEl.textContent =
+      _build === "dev"
+        ? "dev build"
+        : `build ${_build.replace("T", " ").replace(/:\d\dZ$/, " UTC")}${_rev ? ` · ${_rev}` : ""}`;
   }
 }
 
@@ -306,8 +420,7 @@ setLightLevel(LIGHT_LEVEL); // karts' headlight bulbs glow (and underglow at nig
 // single name so moving menu<->race never swaps audio elements (that swap left a
 // gap / a rejected play() — "music sometimes didn't start"). Night worlds get
 // their own moodier track.
-const MUSIC_TRACK =
-  TIME_OF_DAY === "night" ? "./assets/music/zoomieslevel1.mp3" : "./assets/music/zoomies.mp3";
+const MUSIC_TRACK = TIME_OF_DAY === "night" ? "./assets/music/zoomieslevel1.mp3" : "./assets/music/zoomies.mp3";
 audio.registerMusic("bg", MUSIC_TRACK);
 
 // The boost meter lives on each kart (kart.boostMeter) so the player and AI
@@ -330,9 +443,22 @@ const AI_DIFFICULTY = {
 const DIFF_ORDER = ["easy", "medium", "hard", "expert"];
 const DIFF_KEY = "zoomies-difficulty";
 let DIFFICULTY = "medium"; // default for a fresh profile: the middle of the ladder
-try { const _d = localStorage.getItem(DIFF_KEY); if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d; } catch {}
+try {
+  const _d = localStorage.getItem(DIFF_KEY);
+  if (_d && AI_DIFFICULTY[_d]) DIFFICULTY = _d;
+} catch {}
 
-const { renderer, scene, camera, sun, applyMood, setFogScale, ready: rendererReady, skyMesh, starField } = createScene();
+const {
+  renderer,
+  scene,
+  camera,
+  sun,
+  applyMood,
+  setFogScale,
+  ready: rendererReady,
+  skyMesh,
+  starField,
+} = createScene();
 installSceneryRendering(renderer, sun);
 const _lodViews = [camera];
 // Debug hook (console / headless tooling): inspect the live scene graph and
@@ -405,7 +531,10 @@ const _uGWeight = uniform(MOOD.rayWeight ?? 1.05);
 // position. NOTE (perf): unlike the old WebGL pass (skipped when the sun was
 // hidden), this runs every frame — uVis just scales the result to 0. Accepted for
 // now; revisit if it costs too much on the WebGL2 fallback backend.
-const _GN = 8, _gDensity = 0.92, _gDecay = 0.9, _gThreshold = 0.67; // 22 -> 14 -> 10 -> 8 samples: facing the sun is the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay + jitter keep the shaft length
+const _GN = 8,
+  _gDensity = 0.92,
+  _gDecay = 0.9,
+  _gThreshold = 0.67; // 22 -> 14 -> 10 -> 8 samples: facing the sun is the worst frame-rate hit (this loop runs per-pixel only then); longer step + tighter decay + jitter keep the shaft length
 // Returns JUST the additive shaft contribution (not the scene), so it can be
 // rendered at HALF resolution and added back to the full-res scene — god-rays are
 // soft/low-frequency, so half-res is ~4x cheaper and nearly indistinguishable.
@@ -449,7 +578,7 @@ const _godrayShafts = Fn(() => {
 const _shaftTex = rtt(_godrayShafts());
 _shaftTex.autoUpdate = false;
 let _shaftFlip = false; // half-rate refresh parity
-let _shaftLive = true;  // whether the target still needs a final black fill
+let _shaftLive = true; // whether the target still needs a final black fill
 // Colour grade applied to whichever composite (high or low) we feed it, so both
 // quality tiers look consistent — Low just composites fewer passes into the base.
 function gradeOutput(base) {
@@ -498,7 +627,9 @@ const _lowOutput = gradeOutput(_plainScene.add(_bloomNode));
 postProcessing.outputNode = _highOutput;
 // composer shim: renderFrame() calls composer.render(); drive the node graph.
 const composer = {
-  render() { postProcessing.render(); },
+  render() {
+    postProcessing.render();
+  },
   setSize() {},
   setPixelRatio() {},
   addPass() {},
@@ -511,19 +642,23 @@ const BLOOM_THRESHOLD = _bloomNode.threshold.value;
 // greener, the city reads flat and contrasty. Multipliers on top of the mood's
 // saturation/exposure/contrast, crossfaded over ~1.5s at the borders.
 const BIOME_GRADE = {
-  lavender: { sat: 1.03, exp: 1, con: 1 }, wetlands: { sat: .95, exp: 1, con: 1 }, volcanic: { sat: .94, exp: 1.04, con: 1.02 },
-  meadow:  { sat: 1.0,  exp: 1.0,  con: 1.0 },
-  desert:  { sat: 1.06, exp: 1.05, con: 1.0 },
+  lavender: { sat: 1.03, exp: 1, con: 1 },
+  wetlands: { sat: 0.95, exp: 1, con: 1 },
+  volcanic: { sat: 0.94, exp: 1.04, con: 1.02 },
+  meadow: { sat: 1.0, exp: 1.0, con: 1.0 },
+  desert: { sat: 1.06, exp: 1.05, con: 1.0 },
   savanna: { sat: 1.05, exp: 1.03, con: 1.0 },
-  beach:   { sat: 1.06, exp: 1.04, con: 0.99 },
-  alpine:  { sat: 0.93, exp: 1.05, con: 1.03 },
-  tundra:  { sat: 0.92, exp: 1.03, con: 1.03 },
-  forest:  { sat: 1.05, exp: 0.93, con: 1.03 },
-  autumn:  { sat: 1.1,  exp: 1.0,  con: 1.0 },
+  beach: { sat: 1.06, exp: 1.04, con: 0.99 },
+  alpine: { sat: 0.93, exp: 1.05, con: 1.03 },
+  tundra: { sat: 0.92, exp: 1.03, con: 1.03 },
+  forest: { sat: 1.05, exp: 0.93, con: 1.03 },
+  autumn: { sat: 1.1, exp: 1.0, con: 1.0 },
   blossom: { sat: 1.07, exp: 1.02, con: 0.99 },
-  city:    { sat: 0.96, exp: 1.0,  con: 1.05 },
+  city: { sat: 0.96, exp: 1.0, con: 1.05 },
 };
-let _bgSat = 1, _bgExp = 1, _bgCon = 1; // smoothed live multipliers
+let _bgSat = 1,
+  _bgExp = 1,
+  _bgCon = 1; // smoothed live multipliers
 let _snowBlend = 0; // 0..1, smoothed, how deep into the white snow section we are
 let _lightning = 0; // current lightning-flash intensity (decays each frame)
 let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (while raining)
@@ -531,9 +666,16 @@ let _lightningNext = 6 + Math.random() * 10; // seconds until the next strike (w
 // updateAtmosphere/prepareRace writes (uSun/uVis/uColor/uWeight) drive the shafts.
 // (enabled is a harmless no-op — uVis=0 already zeroes the contribution.)
 const _passStub = (uniforms) => ({ enabled: false, setSize() {}, uniforms });
-const godrayPass = { enabled: true, setSize() {}, uniforms: {
-  uSun: _uGSun, uVis: _uGVis, uColor: _uGColor, uWeight: _uGWeight,
-} };
+const godrayPass = {
+  enabled: true,
+  setSize() {},
+  uniforms: {
+    uSun: _uGSun,
+    uVis: _uGVis,
+    uColor: _uGColor,
+    uWeight: _uGWeight,
+  },
+};
 const flarePass = _passStub({ uVis: { value: 0 } });
 const fxPass = _passStub({
   uAberr: _uAberr, // LIVE: boost chromatic aberration (driven from updateCamera)
@@ -553,7 +695,11 @@ scene.add(track.group);
 // Read straight from storage: the world builds long before the quality module
 // initialises (same pattern as the shadow-map size in scene.js).
 const _worldDetail = (() => {
-  try { return localStorage.getItem("zoomies-quality-v2") === "high" ? 1.7 : 1; } catch { return 1; }
+  try {
+    return localStorage.getItem("zoomies-quality-v2") === "high" ? 1.7 : 1;
+  } catch {
+    return 1;
+  }
 })();
 const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail });
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
@@ -563,7 +709,6 @@ const items = new ItemManager(scene, track); // yarn balls + milk puddles
 Object.assign(window.__zoomies, { world, track, items }); // items: headless item-behavior probes
 _boot.world = performance.now();
 
-
 // Knockable roadside props (crates/barrels/leaf piles) plus floating POWER-UP
 // BOXES on the racing line. Best-effort: if it fails to build, `props` stays null
 // and the game is fine. Grounded crates just tumble; only the floating boxes hold
@@ -571,7 +716,7 @@ _boot.world = performance.now();
 let props = null;
 initProps(scene, track, {
   seed: WORLD_SEED,
-  size: trackConfig.mode === "custom" ? trackConfig.size ?? 0.5 : 0.5,
+  size: trackConfig.mode === "custom" ? (trackConfig.size ?? 0.5) : 0.5,
   biomeNameAt,
   onImpact: (kind, pos, strength) => audio.propImpact(kind, pos, strength),
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
@@ -605,8 +750,15 @@ function grantItem(kart) {
   // back gets rescue (catnip + hearts).
   const w = rollWeights(f);
   const r = Math.random();
-  let acc = 0, pick = ITEM_ROLL.length - 1;
-  for (let i = 0; i < ITEM_ROLL.length; i++) { acc += w[i]; if (r < acc) { pick = i; break; } }
+  let acc = 0,
+    pick = ITEM_ROLL.length - 1;
+  for (let i = 0; i < ITEM_ROLL.length; i++) {
+    acc += w[i];
+    if (r < acc) {
+      pick = i;
+      break;
+    }
+  }
   switch (ITEM_ROLL[pick].name) {
     case "shield":
       kart.giveShield(10);
@@ -631,8 +783,13 @@ function grantItem(kart) {
     default:
       kart.giveCatnip();
       if (kart === player) hud.showToast("🌿 Catnip boost!");
-      else if (player && !player.finished && player.position && kart.totalProgress < player.totalProgress &&
-               kart.position.distanceToSquared(player.position) < 60 * 60) {
+      else if (
+        player &&
+        !player.finished &&
+        player.position &&
+        kart.totalProgress < player.totalProgress &&
+        kart.position.distanceToSquared(player.position) < 60 * 60
+      ) {
         // A rival close behind just armed the comeback item — a heads-up so
         // the green blur past your shoulder isn't a mystery.
         hud.showToast(`🌿 ${kart.name} has catnip!`);
@@ -649,12 +806,12 @@ function grantItem(kart) {
 // strongest where a target is always just ahead), the back gets RESCUED
 // (catnip 40% of their rolls, hearts a steady 10%).
 const ITEM_ROLL = [
-  { name: "shield", w: [0.28, 0.06, 0.00] },
-  { name: "milk",   w: [0.40, 0.20, 0.06] },
-  { name: "yarn",   w: [0.00, 0.32, 0.20] },
-  { name: "tri",    w: [0.06, 0.26, 0.24] },
-  { name: "life",   w: [0.26, 0.10, 0.10] },
-  { name: "catnip", w: [0.00, 0.06, 0.40] },
+  { name: "shield", w: [0.28, 0.06, 0.0] },
+  { name: "milk", w: [0.4, 0.2, 0.06] },
+  { name: "yarn", w: [0.0, 0.32, 0.2] },
+  { name: "tri", w: [0.06, 0.26, 0.24] },
+  { name: "life", w: [0.26, 0.1, 0.1] },
+  { name: "catnip", w: [0.0, 0.06, 0.4] },
 ];
 function rollWeights(f) {
   const a = f < 0.5 ? 0 : 1;
@@ -725,7 +882,8 @@ const _leafKarts = []; // scratch: karts for the leaf wakes
 const _hlCands = []; // per-frame scratch: karts eligible for a beam, nearest first
 let _hlRamp = 1;
 // Hoisted beam-ranking comparator (camera XZ via module vars, no per-frame closure).
-let _hlCx = 0, _hlCz = 0;
+let _hlCx = 0,
+  _hlCz = 0;
 function _hlCmp(a, b) {
   if (a === player) return -1;
   if (b === player) return 1;
@@ -755,7 +913,9 @@ buildHeadlightPool();
 // only PointLights in the scene at this point are those string-light points.
 if (_bootQuality === "low" || _bootQuality === "balanced") {
   const drop = [];
-  scene.traverse((o) => { if (o.isPointLight) drop.push(o); });
+  scene.traverse((o) => {
+    if (o.isPointLight) drop.push(o);
+  });
   for (const l of drop) l.parent?.remove(l);
   if (drop.length) console.log(`[zoomies] ${_bootQuality}: dropped ${drop.length} string-light points`);
 }
@@ -819,7 +979,10 @@ const menupad = new MenuPad(); // gamepad drives the menus; inert during play
 let splitActive = false;
 let splitCount = 2; // seats in the next split race (2..4, persisted)
 const SPLIT_COUNT_KEY = "zoomies-split-count";
-try { const n = +localStorage.getItem(SPLIT_COUNT_KEY); if (n >= 2 && n <= 4) splitCount = n; } catch {}
+try {
+  const n = +localStorage.getItem(SPLIT_COUNT_KEY);
+  if (n >= 2 && n <= 4) splitCount = n;
+} catch {}
 let splitPlayers = []; // human karts, seat order, during a split race
 let player2 = null; // alias: splitPlayers[1]
 let _extraInputs = []; // Input instances for seats 2..4 (index 0 = seat 2)
@@ -835,8 +998,11 @@ let _splitGrace = null;
 let _splitGrace10 = false;
 window.__zoomies.split = () => ({ active: splitActive, p2: !!player2, count: splitPlayers.length, grace: _splitGrace }); // debug hook
 window.__zoomies.state = () => state; // debug hook (menupad check asserts pause/resume around sheets)
-window.__zoomies.debugGrace = (s) => { if (_splitGrace !== null) _splitGrace = s; }; // headless check fast-forwards the finish grace
-window.__zoomies.splitCams = () => (_sCams.length ? { c1: _sCams[0].camera, c2: _sCams[1]?.camera, cams: _sCams.map((c) => c.camera) } : null); // debug hook
+window.__zoomies.debugGrace = (s) => {
+  if (_splitGrace !== null) _splitGrace = s;
+}; // headless check fast-forwards the finish grace
+window.__zoomies.splitCams = () =>
+  _sCams.length ? { c1: _sCams[0].camera, c2: _sCams[1]?.camera, cams: _sCams.map((c) => c.camera) } : null; // debug hook
 
 // Per-half status chips: lap · place · held items, change-gated like every
 // other per-frame HUD write. The items matter — P2 has no powerups row.
@@ -886,13 +1052,17 @@ function setupSplitInputs() {
     if (_extraInputs.length === 1) window.__zoomies.input2 = inp; // debug hook (split probes read P2's channel)
   }
   const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])]
-    .filter((p) => p && p.connected).map((p) => p.index);
+    .filter((p) => p && p.connected)
+    .map((p) => p.index);
   // Seat rule: pads are dealt in seat order; the FIRST seat left without a pad
   // gets the keyboard; the keyboard is P1's spare when every seat has a pad.
   // (2P with one pad: P1 pad, P2 keyboard — same as it's always been.)
   let kbSeat = -1;
   for (let s = 0; s < splitCount; s++) {
-    if (s >= pads.length) { kbSeat = s; break; }
+    if (s >= pads.length) {
+      kbSeat = s;
+      break;
+    }
   }
   input.setSources({ keyboard: kbSeat === 0 || kbSeat === -1, pads: pads.length ? [pads[0]] : [] });
   for (let s = 1; s < splitCount; s++) {
@@ -938,16 +1108,16 @@ function splitRects(count) {
   const halfH = Math.floor(H / 2);
   if (count <= 2) {
     return [
-      { x: 0, y: 0, w: W, h: halfH },                    // P1 top row
-      { x: 0, y: halfH, w: W, h: H - halfH },            // P2 bottom row
+      { x: 0, y: 0, w: W, h: halfH }, // P1 top row
+      { x: 0, y: halfH, w: W, h: H - halfH }, // P2 bottom row
     ];
   }
   const halfW = Math.floor(W / 2);
   return [
-    { x: 0, y: 0, w: halfW, h: halfH },                  // P1 top-left
-    { x: halfW, y: 0, w: W - halfW, h: halfH },          // P2 top-right
-    { x: 0, y: halfH, w: halfW, h: H - halfH },          // P3 bottom-left
-    { x: halfW, y: halfH, w: W - halfW, h: H - halfH },  // P4 bottom-right
+    { x: 0, y: 0, w: halfW, h: halfH }, // P1 top-left
+    { x: halfW, y: 0, w: W - halfW, h: halfH }, // P2 top-right
+    { x: 0, y: halfH, w: halfW, h: H - halfH }, // P3 bottom-left
+    { x: halfW, y: halfH, w: W - halfW, h: H - halfH }, // P4 bottom-right
   ].slice(0, count);
 }
 const hairballs = new HairballManager(scene);
@@ -958,18 +1128,30 @@ const _warmDir = new THREE.Vector3(0, -1, 0);
 const _dustCol = new THREE.Color(); // reused each frame for the biome-tinted kart dust
 const _wakeCol = new THREE.Color(); // reused each frame for the biome wake-wash debris tint
 function emitSurfaceDebris(kart, dt, visibility) {
-  const speed=Math.abs(kart.speed||0);if(kart.airborne || speed<4)return;
-  const n=track.samples,row=Math.floor((kart.trackT||0)*n)%n,p=track._pts[row],t=track._tans[row];
-  const lateral=(kart.position.x-p.x)*-t.z+(kart.position.z-p.z)*t.x;
-  const biome=biomeNameAt(kart.position.x,kart.position.z,kart.groundY),spec=environmentProfile(biome);
-  const sliding=kart.drifting||kart.spinTimer>0;
-  const loose=looseSurface(biome,kart.position.x,kart.position.z,lateral,track.halfWidth,row,sliding);
-  const pace=Math.min(1,speed/(kart.maxSpeed||65));
-  const amount=loose*(sliding?1:pace*.65)*visibility;
-  _dustCol.set(spec.tile===3||spec.tile===4||spec.tile===6?spec.colors[0]:0x9a968b);
-  if(amount>.015)effects.dust(kart,_dustCol,amount,dt,biome);
-  if(pace>.18)effects.wakeDebris(kart,_wakeCol,pace*(spec.tile<3||spec.tile===5?.2+loose*.8:loose)*visibility,dt,biome);
-  if(sliding&&pace>.5&&spec.tile!==4)effects.tireGrit(kart,dt*visibility);
+  const speed = Math.abs(kart.speed || 0);
+  if (kart.airborne || speed < 4) return;
+  const n = track.samples,
+    row = Math.floor((kart.trackT || 0) * n) % n,
+    p = track._pts[row],
+    t = track._tans[row];
+  const lateral = (kart.position.x - p.x) * -t.z + (kart.position.z - p.z) * t.x;
+  const biome = biomeNameAt(kart.position.x, kart.position.z, kart.groundY),
+    spec = environmentProfile(biome);
+  const sliding = kart.drifting || kart.spinTimer > 0;
+  const loose = looseSurface(biome, kart.position.x, kart.position.z, lateral, track.halfWidth, row, sliding);
+  const pace = Math.min(1, speed / (kart.maxSpeed || 65));
+  const amount = loose * (sliding ? 1 : pace * 0.65) * visibility;
+  _dustCol.set(spec.tile === 3 || spec.tile === 4 || spec.tile === 6 ? spec.colors[0] : 0x9a968b);
+  if (amount > 0.015) effects.dust(kart, _dustCol, amount, dt, biome);
+  if (pace > 0.18)
+    effects.wakeDebris(
+      kart,
+      _wakeCol,
+      pace * (spec.tile < 3 || spec.tile === 5 ? 0.2 + loose * 0.8 : loose) * visibility,
+      dt,
+      biome,
+    );
+  if (sliding && pace > 0.5 && spec.tile !== 4) effects.tireGrit(kart, dt * visibility);
 }
 
 const hud = new HUD();
@@ -1043,36 +1225,44 @@ function updateBoostUI() {
 // math over the live field, so it covers the player and the AI alike. Strength
 // ramps with how close + how centred you are in the wake. Only a trailing kart has a wake to sit in, so it's a natural
 // catch-up mechanic; popping the boost pulls you out — "draft, then pass".
-const DRAFT_MIN = 3.0;    // u: nearer than this you're basically touching — no draft (don't reward ramming)
-const DRAFT_MAX = 13;     // u: how far back the wake still helps (widened — the draft was too fiddly to catch)
-const DRAFT_LANE = 3.4;   // u: half-width of the wake at the leader; fans out with distance (a cone)
-const DRAFT_ALIGN = 0.5;  // min cos(heading delta): must travel roughly the same way (~60°)
+const DRAFT_MIN = 3.0; // u: nearer than this you're basically touching — no draft (don't reward ramming)
+const DRAFT_MAX = 13; // u: how far back the wake still helps (widened — the draft was too fiddly to catch)
+const DRAFT_LANE = 3.4; // u: half-width of the wake at the leader; fans out with distance (a cone)
+const DRAFT_ALIGN = 0.5; // min cos(heading delta): must travel roughly the same way (~60°)
 const DRAFT_MINSPEED = 8; // u/s: both karts must actually be moving
 function updateSlipstream(field) {
-  for (const k of field) { k.slipstream = 0; k._drafted = 0; }
+  for (const k of field) {
+    k.slipstream = 0;
+    k._drafted = 0;
+  }
   for (const k of field) {
     if (k.finished || k.spinTimer > 0 || Math.abs(k.speed) < DRAFT_MINSPEED) continue;
-    let best = 0, bestT = null;
+    let best = 0,
+      bestT = null;
     for (const t of field) {
       if (t === k || Math.abs(t.speed) < DRAFT_MINSPEED) continue;
-      const tfx = Math.sin(t.heading), tfz = Math.cos(t.heading);
+      const tfx = Math.sin(t.heading),
+        tfz = Math.cos(t.heading);
       // Same direction of travel? (guards head-on / crossing strands on loop maps)
       if (Math.sin(k.heading) * tfx + Math.cos(k.heading) * tfz < DRAFT_ALIGN) continue;
-      const dx = k.position.x - t.position.x, dz = k.position.z - t.position.z;
+      const dx = k.position.x - t.position.x,
+        dz = k.position.z - t.position.z;
       const behind = -(dx * tfx + dz * tfz); // + = I'm behind the leader, in its wake
       if (behind < DRAFT_MIN || behind > DRAFT_MAX) continue;
       const lateral = Math.abs(dx * tfz - dz * tfx); // sideways offset from the leader's line
-      const lane = DRAFT_LANE + behind * 0.12;       // wake widens behind
+      const lane = DRAFT_LANE + behind * 0.12; // wake widens behind
       if (lateral > lane) continue;
       const distF = 0.35 + 0.65 * ((DRAFT_MAX - behind) / (DRAFT_MAX - DRAFT_MIN)); // closer = stronger
-      const s = distF * (1 - lateral / lane);        // centred = stronger
-      if (s > best) { best = s; bestT = t; }
+      const s = distF * (1 - lateral / lane); // centred = stronger
+      if (s > best) {
+        best = s;
+        bestT = t;
+      }
     }
     k.slipstream = best;
     if (bestT) bestT._drafted = Math.max(bestT._drafted, best); // for the leader's wake fx
   }
 }
-
 
 // --- Karts: 1 player + 5 AI rivals ---
 // `skill` is a narrow pace spread (1.00-1.06: the difficulty table sets the
@@ -1084,7 +1274,7 @@ const ROSTER = [
   { name: "You", color: 0xe53935, catColor: 0xf0a830, isPlayer: true, skill: 1.0 },
   { name: "Mittens", color: 0x1e88e5, catColor: 0x9e9e9e, skill: 1.03, lane: -0.35, aggro: 0.8 },
   { name: "Whiskers", color: 0x43a047, catColor: 0x3e2723, skill: 1.05, lane: 0.45, aggro: 1.25 },
-  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.00, lane: 0.1, aggro: 1.1 },
+  { name: "Pumpkin", color: 0xfb8c00, catColor: 0xffffff, skill: 1.0, lane: 0.1, aggro: 1.1 },
   { name: "Shadow", color: 0x8e24aa, catColor: 0x212121, skill: 1.06, lane: -0.5, aggro: 0.7 },
   { name: "Biscuit", color: 0xfdd835, catColor: 0xd7a86e, skill: 1.02, lane: 0.3, aggro: 1.4 },
 ];
@@ -1098,25 +1288,56 @@ let player = null;
 // The AI lineup for a given player look (deterministic: same look → same
 // rivals). Shared by the race build AND the start-line grid tableau, so the
 // cats you see waiting on the grid are exactly the cats you race.
-function aiRoster(look, otherHumans=[]) {
-  const usedKart = new Set([look.color,...otherHumans.map(c=>c.color)]);
-  const signature=c=>`${c.catColor}|${c.catType||'classic'}|${c.catPattern||''}`;
-  const usedCat=new Set([look,...otherHumans].map(signature));
-  const rng=makeRng(WORLD_SEED+'|cats|'+signature(look));
-  const pool=CAT_PRESETS.map(c=>({name:c.name,catColor:c.fur,catType:c.type,catPattern:c.pattern,catAccessory:c.accessory}));
-  for(let i=pool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
-  const kartPool=[...KART_PRESETS];
-  for(let i=kartPool.length-1;i>0;i--){const j=Math.floor(rng()*(i+1));[kartPool[i],kartPool[j]]=[kartPool[j],kartPool[i]];}
-  return ROSTER.slice(1).map((cfg,i)=>{
-    const kart=kartPool.find(k=>!usedKart.has(k.color))||kartPool[i];
+function aiRoster(look, otherHumans = []) {
+  const usedKart = new Set([look.color, ...otherHumans.map((c) => c.color)]);
+  const signature = (c) => `${c.catColor}|${c.catType || "classic"}|${c.catPattern || ""}`;
+  const usedCat = new Set([look, ...otherHumans].map(signature));
+  const rng = makeRng(WORLD_SEED + "|cats|" + signature(look));
+  const pool = CAT_PRESETS.map((c) => ({
+    name: c.name,
+    catColor: c.fur,
+    catType: c.type,
+    catPattern: c.pattern,
+    catAccessory: c.accessory,
+  }));
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const kartPool = [...KART_PRESETS];
+  for (let i = kartPool.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [kartPool[i], kartPool[j]] = [kartPool[j], kartPool[i]];
+  }
+  return ROSTER.slice(1).map((cfg, i) => {
+    const kart = kartPool.find((k) => !usedKart.has(k.color)) || kartPool[i];
     usedKart.add(kart.color);
-    const cat=pool.find(c=>!usedCat.has(signature(c)));usedCat.add(signature(cat));
-    return {...cfg,...cat,color:kart.color,kartStyle:kart.style,kartNumber:kart.number,kartLivery:kart.livery};
+    const cat = pool.find((c) => !usedCat.has(signature(c)));
+    usedCat.add(signature(cat));
+    return {
+      ...cfg,
+      ...cat,
+      color: kart.color,
+      kartStyle: kart.style,
+      kartNumber: kart.number,
+      kartLivery: kart.livery,
+    };
   });
 }
 function raceRoster() {
   const look = playerLook();
-  const playerCfg = { ...ROSTER[0], color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, kartLivery:look.kartLivery };
+  const playerCfg = {
+    ...ROSTER[0],
+    color: look.color,
+    catColor: look.catColor,
+    catType: look.catType,
+    catPattern: look.catPattern,
+    catAccessory: look.catAccessory,
+    catAccessoryColor: look.catAccessoryColor,
+    kartStyle: look.kartStyle,
+    kartNumber: look.kartNumber,
+    kartLivery: look.kartLivery,
+  };
   if (timeTrial) return [playerCfg];
   if (raceMode === "split") {
     // Versus: 2-4 humans + AI to fill the same six-kart field (and headlight
@@ -1206,8 +1427,12 @@ function buildKarts() {
     scene.add(kart.group);
     karts.push(kart);
     if (cfg.isPlayer) {
-      if (cfg.seat) { splitPlayers[cfg.seat - 1] = kart; }
-      else { player = kart; splitPlayers[0] = kart; }
+      if (cfg.seat) {
+        splitPlayers[cfg.seat - 1] = kart;
+      } else {
+        player = kart;
+        splitPlayers[0] = kart;
+      }
     }
   });
   if (!splitActive) splitPlayers = [];
@@ -1269,8 +1494,7 @@ let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
 function layoutStage() {
   const iw = window.innerWidth;
   const ih = window.innerHeight;
-  const rawAngle =
-    (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
+  const rawAngle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0;
   const a = ((rawAngle % 360) + 360) % 360;
   const portrait = ih > iw;
 
@@ -1363,7 +1587,10 @@ function updateRearThreat() {
       if (aim < 0.78) return false; // not aimed at you
       // Ready + dead-on + in solid range = imminent; otherwise just a warning.
       const ready = (k.shootCooldown ?? Infinity) <= 0.25;
-      if (ready && aim > 0.86 && dist < 46) { state = "lock"; return true; }
+      if (ready && aim > 0.86 && dist < 46) {
+        state = "lock";
+        return true;
+      }
       state = "warn"; // keep scanning in case another kart is a full lock
       return false;
     };
@@ -1403,27 +1630,54 @@ const _shCorner = new THREE.Vector3();
 function fitSunShadow() {
   const cam = sun.shadow.camera;
   // World bounds from the track's sampled points (they carry the hills' y).
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minY = Infinity,
+    maxY = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (const q of track._pts || []) {
-    if (q.x < minX) minX = q.x; if (q.x > maxX) maxX = q.x;
-    if (q.y < minY) minY = q.y; if (q.y > maxY) maxY = q.y;
-    if (q.z < minZ) minZ = q.z; if (q.z > maxZ) maxZ = q.z;
+    if (q.x < minX) minX = q.x;
+    if (q.x > maxX) maxX = q.x;
+    if (q.y < minY) minY = q.y;
+    if (q.y > maxY) maxY = q.y;
+    if (q.z < minZ) minZ = q.z;
+    if (q.z > maxZ) maxZ = q.z;
   }
-  if (!Number.isFinite(minX)) { minX = minZ = -400; maxX = maxZ = 400; minY = 0; maxY = 0; }
+  if (!Number.isFinite(minX)) {
+    minX = minZ = -400;
+    maxX = maxZ = 400;
+    minY = 0;
+    maxY = 0;
+  }
   const M = 80; // roadside scenery strip (towns/trees sit within this of the track)
-  minX -= M; maxX += M; minZ -= M; maxZ += M;
-  minY -= 12; maxY += 45; // below bridges/dips + above buildings/treetops
+  minX -= M;
+  maxX += M;
+  minZ -= M;
+  maxZ += M;
+  minY -= 12;
+  maxY += 45; // below bridges/dips + above buildings/treetops
   // Project the world box's 8 corners into the light basis and fit the ortho
   // bounds exactly around them.
   _shRight.crossVectors(_shUp, _sunDir).normalize();
   _shUpL.crossVectors(_sunDir, _shRight).normalize();
-  let r0 = Infinity, r1 = -Infinity, u0 = Infinity, u1 = -Infinity, f0 = Infinity, f1 = -Infinity;
+  let r0 = Infinity,
+    r1 = -Infinity,
+    u0 = Infinity,
+    u1 = -Infinity,
+    f0 = Infinity,
+    f1 = -Infinity;
   for (let i = 0; i < 8; i++) {
     _shCorner.set(i & 1 ? maxX : minX, i & 2 ? maxY : minY, i & 4 ? maxZ : minZ);
-    const r = _shCorner.dot(_shRight), u = _shCorner.dot(_shUpL), f = _shCorner.dot(_sunDir);
-    if (r < r0) r0 = r; if (r > r1) r1 = r;
-    if (u < u0) u0 = u; if (u > u1) u1 = u;
-    if (f < f0) f0 = f; if (f > f1) f1 = f;
+    const r = _shCorner.dot(_shRight),
+      u = _shCorner.dot(_shUpL),
+      f = _shCorner.dot(_sunDir);
+    if (r < r0) r0 = r;
+    if (r > r1) r1 = r;
+    if (u < u0) u0 = u;
+    if (u > u1) u1 = u;
+    if (f < f0) f0 = f;
+    if (f > f1) f1 = f;
   }
   sun.target.position
     .set(0, 0, 0)
@@ -1628,7 +1882,10 @@ function renderFrame() {
     }
   }
   // First real frame is on screen — fade out the boot loading screen to reveal it.
-  if (!_loadHidden) { _loadHidden = true; hideLoadingScreen(); }
+  if (!_loadHidden) {
+    _loadHidden = true;
+    hideLoadingScreen();
+  }
 }
 let _loadHidden = false;
 function hideLoadingScreen() {
@@ -1677,7 +1934,10 @@ function setupMinimap() {
   const W = canvas.width;
   const H = canvas.height;
   const pad = 12;
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (const p of track._pts) {
     if (p.x < minX) minX = p.x;
     if (p.x > maxX) maxX = p.x;
@@ -1710,7 +1970,10 @@ function paintTrackMap(canvas, controlPoints, glyphs = null) {
   const H = canvas.height;
   const pad = 16;
   ctx.clearRect(0, 0, W, H);
-  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
   for (const p of points) {
     if (p.x < minX) minX = p.x;
     if (p.x > maxX) maxX = p.x;
@@ -1838,8 +2101,8 @@ let gpuParticles = null; // GPU ambient motes — created async once the rendere
 //   high   — full effects + UNCAPPED frame rate (up to 120)   (laptops/desktops)
 // medium and high look IDENTICAL; high only unlocks the frame rate (the 60fps cap
 // keeps phones cool — see the loop). low is the only tier that dials the visuals back.
-const QUALITY_KEY = "zoomies-quality";        // legacy low/high pref — read once to migrate
-const QUALITY_KEY_V2 = "zoomies-quality-v2";  // low | balanced | medium | high
+const QUALITY_KEY = "zoomies-quality"; // legacy low/high pref — read once to migrate
+const QUALITY_KEY_V2 = "zoomies-quality-v2"; // low | balanced | medium | high
 // Read once at boot (with the legacy-key migration + the Deck default) — see
 // _bootQuality by the night light pool, which needs the tier before this module.
 let quality = _bootQuality;
@@ -1850,7 +2113,10 @@ let quality = _bootQuality;
 const FPS_CAP_KEY = "zoomies-fps-cap"; // auto | 60 | 45 | 40 | 30
 const FPS_CAPS = ["auto", "60", "45", "40", "30"];
 let fpsCap = "auto";
-try { const v = localStorage.getItem(FPS_CAP_KEY); if (FPS_CAPS.includes(v)) fpsCap = v; } catch {}
+try {
+  const v = localStorage.getItem(FPS_CAP_KEY);
+  if (FPS_CAPS.includes(v)) fpsCap = v;
+} catch {}
 // Battery saver: one switch for the handheld posture — a 30fps cap on phones
 // (none on the Deck: its 60Hz panel can't pace 45 evenly and ~40 read as
 // "slow and stuttering" in the field; an explicit cap still wins), 20fps menus, a 1.25×
@@ -1859,7 +2125,11 @@ try { const v = localStorage.getItem(FPS_CAP_KEY); if (FPS_CAPS.includes(v)) fps
 // pause-on-blur. ON by default on Steam Deck, off elsewhere.
 const SAVER_KEY = "zoomies-saver";
 let saverOn = IS_DECK;
-try { const v = localStorage.getItem(SAVER_KEY); if (v === "1") saverOn = true; else if (v === "0") saverOn = false; } catch {}
+try {
+  const v = localStorage.getItem(SAVER_KEY);
+  if (v === "1") saverOn = true;
+  else if (v === "0") saverOn = false;
+} catch {}
 // High-tier real-time shadows are throttled in the loop (see _tickShadow);
 // this flag is what applyQuality hands it. Declared here, before the boot-time
 // applyQuality call below.
@@ -1902,7 +2172,7 @@ function applyResolution() {
   _shaftTex.pixelRatio = 1;
   _shaftTex.setSize(
     Math.max(1, Math.round(stageState.W * pr * 0.42)),
-    Math.max(1, Math.round(stageState.H * pr * 0.42))
+    Math.max(1, Math.round(stageState.H * pr * 0.42)),
   );
 }
 
@@ -2040,7 +2310,10 @@ function updateDRS(rawMs, dt) {
     // Main thread already eating most of the budget: the frame is CPU-bound
     // and fewer pixels can't help — don't even probe (see cpu Nms on the
     // counter; the Deck's 12ms of 16.7 is exactly this).
-    if (_mainEma > _budget * 0.6) { _drsCooldown = 2.0; return; }
+    if (_mainEma > _budget * 0.6) {
+      _drsCooldown = 2.0;
+      return;
+    }
     // Genuinely sustained overload drops two rungs in one move.
     _drsProbe = { before: _frameMs, rung: _drsRung };
     _drsRung = Math.min(DRS_RUNGS.length - 1, _drsRung + (_frameMs > _budget * 1.67 ? 2 : 1));
@@ -2112,7 +2385,11 @@ function applyQuality(q, persist = true) {
   // and its look otherwise stay.
   const fullFx = (q === "medium" || q === "high") && !saverOn;
   const liveWorld = q !== "low";
-  if (persist) { try { localStorage.setItem(QUALITY_KEY_V2, q); } catch {} }
+  if (persist) {
+    try {
+      localStorage.setItem(QUALITY_KEY_V2, q);
+    } catch {}
+  }
   // --- High = same 60fps, spent on the WORLD (see the loop's frame cap) ---
   const high = q === "high";
   // Real-time shadows: the frustum stays world-fitted (a moving boundary
@@ -2135,7 +2412,7 @@ function applyQuality(q, persist = true) {
   setSceneryRanges(high ? 1.9 : 1);
   // Build-time density (grass verges, critter budget) is baked per launch —
   // tell the player when their switch lands.
-  if (persist && high !== (_worldDetail > 1)) {
+  if (persist && high !== _worldDetail > 1) {
     hud.showToast?.(high ? "🌿 Extra world detail on the next launch" : "World detail returns to standard next launch");
   }
   // Marquee glow on every tier; Low runs the bloom pyramid at quarter res and
@@ -2145,12 +2422,13 @@ function applyQuality(q, persist = true) {
   postProcessing.needsUpdate = true; // recompile the node graph for the new composite
   _shaftTex.autoUpdate = fullFx; // don't re-render the god-ray target when it's unused
   if (world.grass) world.grass.visible = liveWorld;
-  world.groundLeaves?.setQuality(q,saverOn);
-  effects.environmentScale = q === "low" ? .4 : saverOn ? .65 : 1;
+  world.groundLeaves?.setQuality(q, saverOn);
+  effects.environmentScale = q === "low" ? 0.4 : saverOn ? 0.65 : 1;
   if (gpuParticles) gpuParticles.setVisible(liveWorld && !saverOn); // hidden = its compute is skipped too
   // Weather: draw half the rain/snow instances in Battery saver (the field is
   // random-scattered, so any prefix is an even subset).
-  for (const f of [weather.rainField, weather.snowField]) if (f?.mesh) f.mesh.count = saverOn ? Math.round(weather.count / 2) : weather.count;
+  for (const f of [weather.rainField, weather.snowField])
+    if (f?.mesh) f.mesh.count = saverOn ? Math.round(weather.count / 2) : weather.count;
   renderScale = 1; // reset DRS on a manual quality change
   _drsRung = 0; // keep the rung index in sync (updateDRS owns both)
   qualityLowBtn?.classList.toggle("is-active", q === "low");
@@ -2179,18 +2457,32 @@ fpsCapSeg?.querySelectorAll(".seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     if (!FPS_CAPS.includes(b.dataset.cap)) return;
     fpsCap = b.dataset.cap;
-    try { localStorage.setItem(FPS_CAP_KEY, fpsCap); } catch {}
+    try {
+      localStorage.setItem(FPS_CAP_KEY, fpsCap);
+    } catch {}
     refreshPaceUI();
-  }));
+  }),
+);
 saverToggle?.addEventListener("click", () => {
   saverOn = !saverOn;
-  try { localStorage.setItem(SAVER_KEY, saverOn ? "1" : "0"); } catch {}
+  try {
+    localStorage.setItem(SAVER_KEY, saverOn ? "1" : "0");
+  } catch {}
   applyQuality(quality, false);
   refreshPaceUI();
 });
 refreshPaceUI();
-window.__zoomies.setSaver = (on) => { saverOn = !!on; applyQuality(quality, false); refreshPaceUI(); }; // debug hook (pacing probe)
-window.__zoomies.setFpsCap = (c) => { if (FPS_CAPS.includes(c)) { fpsCap = c; refreshPaceUI(); } }; // debug hook (pacing probe)
+window.__zoomies.setSaver = (on) => {
+  saverOn = !!on;
+  applyQuality(quality, false);
+  refreshPaceUI();
+}; // debug hook (pacing probe)
+window.__zoomies.setFpsCap = (c) => {
+  if (FPS_CAPS.includes(c)) {
+    fpsCap = c;
+    refreshPaceUI();
+  }
+}; // debug hook (pacing probe)
 
 // Lap count + difficulty live on the Game Mode screen as segmented rows (inside
 // the Grand Prix card), replacing the old cycle-tap buttons. Laps persist like
@@ -2205,28 +2497,36 @@ if (_worldLaps) {
   } catch {}
 }
 function refreshRaceOptSegs() {
-  document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
-    b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
-  document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
-    b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
+  document
+    .querySelectorAll("#laps-seg .seg-btn")
+    .forEach((b) => b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
+  document
+    .querySelectorAll("#diff-seg .seg-btn")
+    .forEach((b) => b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
 }
 document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     TOTAL_LAPS = Number(b.dataset.laps);
-    try { localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS)); } catch {}
+    try {
+      localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS));
+    } catch {}
     refreshRaceOptSegs();
     refreshStakes();
-  }));
+  }),
+);
 // Rivals segment (#diff-seg in index.html: Easy / Medium / Hard / Expert). The
 // handler + refreshRaceOptSegs are data-driven off data-diff, so adding a tier
 // is one button plus its AI_DIFFICULTY row.
 document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     DIFFICULTY = b.dataset.diff;
-    try { localStorage.setItem(DIFF_KEY, DIFFICULTY); } catch {}
+    try {
+      localStorage.setItem(DIFF_KEY, DIFFICULTY);
+    } catch {}
     refreshRaceOptSegs();
     refreshStakes();
-  }));
+  }),
+);
 
 // On Android, also try a real orientation lock (best-effort; iOS ignores it).
 function lockLandscape() {
@@ -2289,21 +2589,31 @@ const flyCatch = document.getElementById("fly-catch");
 const flyExitBtn = document.getElementById("fly-exit");
 const flyHint = document.getElementById("fly-hint");
 const _fly = {
-  yaw: 0, pitch: 0,
+  yaw: 0,
+  pitch: 0,
   pointers: new Map(), // active pointerId → last stage-local {x, y}
   keys: new Set(),
-  fwd: new THREE.Vector3(), right: new THREE.Vector3(), up: new THREE.Vector3(),
+  fwd: new THREE.Vector3(),
+  right: new THREE.Vector3(),
+  up: new THREE.Vector3(),
   // Two-finger baseline (centroid / separation / finger-pair angle). The whole
   // gesture is decomposed against these in ONE place per event, so pan, pinch
   // and twist compose instead of fighting (the old code let each finger apply
   // its own half-pan AND re-applied the pinch per event — zooming lurched).
-  cx: 0, cy: 0, dist: 0, ang: 0,
+  cx: 0,
+  cy: 0,
+  dist: 0,
+  ang: 0,
   // Ground anchor under the pinch centroid, solved once per gesture: pan maps
   // finger pixels to world units 1:1 at this depth (the map sticks to your
   // fingers), pinch zooms toward it, twist orbits around it.
-  focal: new THREE.Vector3(), focalDist: 80, focalRay: new THREE.Vector3(),
+  focal: new THREE.Vector3(),
+  focalDist: 80,
+  focalRay: new THREE.Vector3(),
   // Release inertia: look (rad/s) and pan (world units/s), damped per frame.
-  lookVX: 0, lookVY: 0, panV: new THREE.Vector3(),
+  lookVX: 0,
+  lookVY: 0,
+  panV: new THREE.Vector3(),
   tPrev: 0, // last gesture event timeStamp (ms) for velocity estimates
 };
 function _flyBasis() {
@@ -2320,7 +2630,10 @@ function _flySpeedScale() {
 function _flyClamp() {
   const p = camera.position;
   const r = Math.hypot(p.x, p.z);
-  if (r > 1500) { p.x *= 1500 / r; p.z *= 1500 / r; } // stay over the world
+  if (r > 1500) {
+    p.x *= 1500 / r;
+    p.z *= 1500 / r;
+  } // stay over the world
   const g = track?.groundInfo?.(p.x, p.z)?.y ?? 0;
   p.y = Math.min(600, Math.max(g + 1.2, p.y));
 }
@@ -2365,7 +2678,8 @@ const _flyPt = (e) => stageToLocal(e.clientX, e.clientY);
 function _flyTwoState() {
   const [a, b] = [..._fly.pointers.values()];
   return {
-    cx: (a.x + b.x) / 2, cy: (a.y + b.y) / 2,
+    cx: (a.x + b.x) / 2,
+    cy: (a.y + b.y) / 2,
     dist: Math.max(24, Math.hypot(a.x - b.x, a.y - b.y)), // floor: churning tiny pinches can't explode the ratio
     ang: Math.atan2(b.y - a.y, b.x - a.x),
   };
@@ -2392,8 +2706,13 @@ function _flySolveFocal(sx, sy) {
   const r = _flyStageRay(sx, sy, _fly.focalRay);
   let dist = 0;
   for (let t = 6; t <= 520; t += t < 120 ? 6 : 16) {
-    const x = camera.position.x + r.x * t, y = camera.position.y + r.y * t, z = camera.position.z + r.z * t;
-    if (y <= (world?.heightAt?.(x, z) ?? 0)) { dist = t; break; }
+    const x = camera.position.x + r.x * t,
+      y = camera.position.y + r.y * t,
+      z = camera.position.z + r.z * t;
+    if (y <= (world?.heightAt?.(x, z) ?? 0)) {
+      dist = t;
+      break;
+    }
   }
   _fly.focalDist = Math.min(500, Math.max(4, dist || 160));
   _fly.focal.copy(camera.position).addScaledVector(r, _fly.focalDist);
@@ -2407,7 +2726,11 @@ flyCatch?.addEventListener("pointerdown", (e) => {
   // Capture can throw for a pointer that's already gone (fast cancel races,
   // synthetic events) — losing capture just means a finger that slides off
   // the layer stops tracking, never a broken gesture.
-  try { flyCatch.setPointerCapture(e.pointerId); } catch { /* keep going */ }
+  try {
+    flyCatch.setPointerCapture(e.pointerId);
+  } catch {
+    /* keep going */
+  }
   const q = _flyPt(e);
   _fly.pointers.set(e.pointerId, { x: q.x, y: q.y });
   // A fresh touch grabs the world: any glide-out stops dead (map-app feel).
@@ -2420,13 +2743,16 @@ flyCatch?.addEventListener("pointermove", (e) => {
   const p = _fly.pointers.get(e.pointerId);
   if (!p || state !== State.FLYVIEW) return;
   const q = _flyPt(e);
-  const dx = q.x - p.x, dy = q.y - p.y;
-  p.x = q.x; p.y = q.y;
+  const dx = q.x - p.x,
+    dy = q.y - p.y;
+  p.x = q.x;
+  p.y = q.y;
   const dtEv = Math.min(0.05, Math.max(0.004, (e.timeStamp - _fly.tPrev) / 1000));
   _flyBasis();
   if (_fly.pointers.size === 1) {
     // Look: drag right looks right, drag up looks up — with a release flick.
-    const dyaw = -dx * 0.0042, dpitch = -dy * 0.0032;
+    const dyaw = -dx * 0.0042,
+      dpitch = -dy * 0.0032;
     _fly.yaw += dyaw;
     _fly.pitch = Math.max(-1.35, Math.min(1.35, _fly.pitch + dpitch));
     _fly.lookVX = _fly.lookVX * 0.6 + (dyaw / dtEv) * 0.4;
@@ -2437,7 +2763,9 @@ flyCatch?.addEventListener("pointermove", (e) => {
     // separation, rotation from the finger-pair angle — all anchored to the
     // ground point solved at gesture start.
     const s = _flyTwoState();
-    const startX = camera.position.x, startY = camera.position.y, startZ = camera.position.z;
+    const startX = camera.position.x,
+      startY = camera.position.y,
+      startZ = camera.position.z;
     // Pan: world units per stage pixel at the anchor depth, so the terrain
     // under your fingers tracks them 1:1 (drag right → the world comes with
     // you). 0.6018 = 2·tan(62°/2 · vertical fov).
@@ -2468,8 +2796,11 @@ flyCatch?.addEventListener("pointermove", (e) => {
     let da = s.ang - _fly.ang;
     while (da > Math.PI) da -= Math.PI * 2;
     while (da < -Math.PI) da += Math.PI * 2;
-    const th = -da, c = Math.cos(th), sn = Math.sin(th);
-    const ox = camera.position.x - _fly.focal.x, oz = camera.position.z - _fly.focal.z;
+    const th = -da,
+      c = Math.cos(th),
+      sn = Math.sin(th);
+    const ox = camera.position.x - _fly.focal.x,
+      oz = camera.position.z - _fly.focal.z;
     camera.position.x = _fly.focal.x + ox * c + oz * sn;
     camera.position.z = _fly.focal.z - ox * sn + oz * c;
     _fly.yaw += th;
@@ -2478,7 +2809,10 @@ flyCatch?.addEventListener("pointermove", (e) => {
     _fly.panV.x = _fly.panV.x * 0.6 + ((camera.position.x - startX) / dtEv) * 0.4;
     _fly.panV.y = _fly.panV.y * 0.6 + ((camera.position.y - startY) / dtEv) * 0.4;
     _fly.panV.z = _fly.panV.z * 0.6 + ((camera.position.z - startZ) / dtEv) * 0.4;
-    _fly.cx = s.cx; _fly.cy = s.cy; _fly.dist = s.dist; _fly.ang = s.ang;
+    _fly.cx = s.cx;
+    _fly.cy = s.cy;
+    _fly.dist = s.dist;
+    _fly.ang = s.ang;
     _fly.tPrev = e.timeStamp;
   }
 });
@@ -2500,19 +2834,24 @@ const _flyEndPointer = (e) => {
 };
 flyCatch?.addEventListener("pointerup", _flyEndPointer);
 flyCatch?.addEventListener("pointercancel", _flyEndPointer);
-flyCatch?.addEventListener("wheel", (e) => {
-  if (state !== State.FLYVIEW) return;
-  e.preventDefault();
-  // Zoom along the ray under the CURSOR (map-style), not the view centre.
-  const q = stageToLocal(e.clientX, e.clientY);
-  camera.position.addScaledVector(
-    _flyStageRay(q.x, q.y, _fly.focalRay),
-    -e.deltaY * 0.05 * _flySpeedScale()
-  );
-  _flyClamp();
-}, { passive: false });
-window.addEventListener("keydown", (e) => { if (state === State.FLYVIEW) _fly.keys.add(e.code); });
-window.addEventListener("keyup", (e) => { _fly.keys.delete(e.code); });
+flyCatch?.addEventListener(
+  "wheel",
+  (e) => {
+    if (state !== State.FLYVIEW) return;
+    e.preventDefault();
+    // Zoom along the ray under the CURSOR (map-style), not the view centre.
+    const q = stageToLocal(e.clientX, e.clientY);
+    camera.position.addScaledVector(_flyStageRay(q.x, q.y, _fly.focalRay), -e.deltaY * 0.05 * _flySpeedScale());
+    _flyClamp();
+  },
+  { passive: false },
+);
+window.addEventListener("keydown", (e) => {
+  if (state === State.FLYVIEW) _fly.keys.add(e.code);
+});
+window.addEventListener("keyup", (e) => {
+  _fly.keys.delete(e.code);
+});
 
 // Per-frame flight (keyboard movement + aiming). Touch moves the camera in the
 // event handlers above; this applies held keys, glides out any release
@@ -2555,11 +2894,7 @@ function updateFlyCamera(dt) {
   if (K.has("ArrowDown")) _fly.pitch = Math.max(-1.35, _fly.pitch - turn * 0.7);
   _flyClamp();
   _flyBasis();
-  camera.lookAt(
-    camera.position.x + _fly.fwd.x,
-    camera.position.y + _fly.fwd.y,
-    camera.position.z + _fly.fwd.z
-  );
+  camera.lookAt(camera.position.x + _fly.fwd.x, camera.position.y + _fly.fwd.y, camera.position.z + _fly.fwd.z);
 }
 // True while a single-player race is "parked" in the background (you opened the
 // main menu mid-race). The race state/karts are kept intact so you can resume
@@ -2602,7 +2937,9 @@ function toMenu() {
       u.searchParams.delete("daily");
       history.replaceState(null, "", u);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 // Resume a parked race: drop back into it exactly where it was (paused), so the
 // player can read the scene before unpausing.
@@ -2713,7 +3050,10 @@ function closeSubScreen(el) {
 // mechanical toggle instead. Dynamic elements (prize tiles, claim cards) speak
 // through imperative outcome cues, so they need no attributes.
 function cueifyButton(el) {
-  if (el.classList.contains("seg-btn")) { el.dataset.cuelumeToggle = ""; return; }
+  if (el.classList.contains("seg-btn")) {
+    el.dataset.cuelumeToggle = "";
+    return;
+  }
   el.dataset.cuelumePress = "";
   el.dataset.cuelumeRelease = "";
   el.dataset.cuelumeHover = "tick";
@@ -2769,8 +3109,11 @@ document.getElementById("chrome-treats")?.addEventListener("click", () => {
 // (the same button a tap would use), one screen per press. Ordered by stacking:
 // settings/help float over catalog, which floats over the config panels.
 const ESC_EXITS = [
-  ["settings", "settings-back"], ["howto", "howto-back"], ["install-help", "install-help-back"],
-  ["catalog", "catalog-back"], ["track-panel", "track-back"],
+  ["settings", "settings-back"],
+  ["howto", "howto-back"],
+  ["install-help", "install-help-back"],
+  ["catalog", "catalog-back"],
+  ["track-panel", "track-back"],
 ];
 function escCloseTopScreen() {
   for (const [scr, btn] of ESC_EXITS) {
@@ -2800,7 +3143,9 @@ const FPS_KEY = "zoomies-fps";
 const fpsEl = document.getElementById("fps-counter");
 const fpsToggle = document.getElementById("set-fps-toggle");
 let showFps = false;
-try { showFps = localStorage.getItem(FPS_KEY) === "1"; } catch {}
+try {
+  showFps = localStorage.getItem(FPS_KEY) === "1";
+} catch {}
 function applyFpsSetting() {
   if (fpsEl) fpsEl.classList.toggle("hidden", !showFps);
   if (fpsToggle) {
@@ -2810,7 +3155,9 @@ function applyFpsSetting() {
 }
 fpsToggle?.addEventListener("click", () => {
   showFps = !showFps;
-  try { localStorage.setItem(FPS_KEY, showFps ? "1" : "0"); } catch {}
+  try {
+    localStorage.setItem(FPS_KEY, showFps ? "1" : "0");
+  } catch {}
   applyFpsSetting();
 });
 applyFpsSetting();
@@ -2829,7 +3176,8 @@ let splitFxOn = false;
 // + bloom and shares the LIVE grade uniforms (sat/contrast/vignette), so the
 // biome grade drives both halves. God rays stay solo-only (heaviest pass,
 // and its sun uniforms are single-view).
-let _splitFx1 = null, _splitFx2 = null;
+let _splitFx1 = null,
+  _splitFx2 = null;
 function buildSplitFx(cam) {
   const p = new THREE.PostProcessing(renderer);
   const sp = pass(scene, cam);
@@ -2838,7 +3186,11 @@ function buildSplitFx(cam) {
   p.outputNode = gradeOutput(vec3(tex.sample(viewportUV).rgb).add(bl));
   return p;
 }
-try { splitFxOn = localStorage.getItem(SPLITFX_KEY) === "1"; } catch { /* default off */ }
+try {
+  splitFxOn = localStorage.getItem(SPLITFX_KEY) === "1";
+} catch {
+  /* default off */
+}
 const splitFxToggle = document.getElementById("set-splitfx-toggle");
 function applySplitFxSetting() {
   if (splitFxToggle) {
@@ -2848,7 +3200,11 @@ function applySplitFxSetting() {
 }
 splitFxToggle?.addEventListener("click", () => {
   splitFxOn = !splitFxOn;
-  try { localStorage.setItem(SPLITFX_KEY, splitFxOn ? "1" : "0"); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(SPLITFX_KEY, splitFxOn ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
   applySplitFxSetting();
 });
 applySplitFxSetting();
@@ -2860,7 +3216,9 @@ const RUMBLE_KEY = "zoomies-rumble";
 const rumbleToggle = document.getElementById("set-rumble-toggle");
 function applyRumbleSetting() {
   let on = true;
-  try { on = localStorage.getItem(RUMBLE_KEY) !== "0"; } catch {}
+  try {
+    on = localStorage.getItem(RUMBLE_KEY) !== "0";
+  } catch {}
   if (rumbleToggle) {
     rumbleToggle.textContent = on ? "On" : "Off";
     rumbleToggle.classList.toggle("off", !on);
@@ -2868,8 +3226,12 @@ function applyRumbleSetting() {
 }
 rumbleToggle?.addEventListener("click", () => {
   let on = true;
-  try { on = localStorage.getItem(RUMBLE_KEY) !== "0"; } catch {}
-  try { localStorage.setItem(RUMBLE_KEY, on ? "0" : "1"); } catch {}
+  try {
+    on = localStorage.getItem(RUMBLE_KEY) !== "0";
+  } catch {}
+  try {
+    localStorage.setItem(RUMBLE_KEY, on ? "0" : "1");
+  } catch {}
   applyRumbleSetting();
 });
 applyRumbleSetting();
@@ -2879,7 +3241,9 @@ applyRumbleSetting();
 const TRACKVIEW_KEY = "zoomies-trackview";
 const trackviewToggle = document.getElementById("set-trackview-toggle");
 let trackviewOn = false;
-try { trackviewOn = localStorage.getItem(TRACKVIEW_KEY) === "1"; } catch {}
+try {
+  trackviewOn = localStorage.getItem(TRACKVIEW_KEY) === "1";
+} catch {}
 function applyTrackviewSetting() {
   document.getElementById("trackview-btn")?.classList.toggle("hidden", !trackviewOn);
   if (trackviewToggle) {
@@ -2889,7 +3253,9 @@ function applyTrackviewSetting() {
 }
 trackviewToggle?.addEventListener("click", () => {
   trackviewOn = !trackviewOn;
-  try { localStorage.setItem(TRACKVIEW_KEY, trackviewOn ? "1" : "0"); } catch {}
+  try {
+    localStorage.setItem(TRACKVIEW_KEY, trackviewOn ? "1" : "0");
+  } catch {}
   applyTrackviewSetting();
 });
 applyTrackviewSetting();
@@ -2902,7 +3268,11 @@ applyTrackviewSetting();
 const WEBGL_PREF_KEY = "zoomies-prefer-webgl";
 const compatToggle = document.getElementById("set-compat-toggle");
 function readCompat() {
-  try { return localStorage.getItem(WEBGL_PREF_KEY) === "1"; } catch { return false; }
+  try {
+    return localStorage.getItem(WEBGL_PREF_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 function applyCompatUI() {
   const on = readCompat();
@@ -2916,7 +3286,9 @@ compatToggle?.addEventListener("click", () => {
   try {
     if (on) localStorage.setItem(WEBGL_PREF_KEY, "1");
     else localStorage.removeItem(WEBGL_PREF_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   applyCompatUI();
   // The backend is chosen at load, so restart to apply. Drop any ?webgl/?webgpu so
   // the localStorage flag is the single source of truth on the next load.
@@ -2940,7 +3312,9 @@ advToggle?.addEventListener("click", () => {
   // screen — scroll the settings overlay down so they're not stranded off-screen.
   if (open) {
     const body = document.querySelector("#settings .flow-body");
-    setTimeout(() => { if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" }); }, 60);
+    setTimeout(() => {
+      if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
+    }, 60);
   }
 });
 
@@ -2954,7 +3328,9 @@ const TILT_KEY = "zoomies-tiltdebug";
 const tiltEl = document.getElementById("tilt-counter");
 const tiltToggle = document.getElementById("set-tilt-toggle");
 let showTilt = false;
-try { showTilt = localStorage.getItem(TILT_KEY) === "1"; } catch {}
+try {
+  showTilt = localStorage.getItem(TILT_KEY) === "1";
+} catch {}
 function applyTiltSetting() {
   if (tiltEl) tiltEl.classList.toggle("hidden", !showTilt);
   if (tiltToggle) {
@@ -2964,7 +3340,9 @@ function applyTiltSetting() {
 }
 tiltToggle?.addEventListener("click", () => {
   showTilt = !showTilt;
-  try { localStorage.setItem(TILT_KEY, showTilt ? "1" : "0"); } catch {}
+  try {
+    localStorage.setItem(TILT_KEY, showTilt ? "1" : "0");
+  } catch {}
   applyTiltSetting();
 });
 applyTiltSetting();
@@ -3026,7 +3404,9 @@ let _perfElapsed = 0;
 // from the background is a resume gap (ignore); anywhere else it's a genuine
 // freeze the player felt, and it must be REPORTED, not silently dropped.
 let _lastVisChange = 0;
-document.addEventListener("visibilitychange", () => { _lastVisChange = performance.now(); });
+document.addEventListener("visibilitychange", () => {
+  _lastVisChange = performance.now();
+});
 // When the last GO fired. The residual "first race of the session" hitch lands
 // in the first seconds of racing and is shorter than the normal FREEZE bar, so
 // frames in a short window after GO report at a much lower threshold.
@@ -3084,7 +3464,20 @@ function warmGarageKart() {
   try {
     const cat = catSpec(garageConfig);
     const kart = kartSpec(garageConfig);
-    const wk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: "warm", isPlayer: false, skill: 1 });
+    const wk = new Kart({
+      color: kart.color,
+      catColor: cat.fur,
+      catType: cat.type,
+      catPattern: cat.pattern,
+      catAccessory: cat.accessory,
+      catAccessoryColor: cat.accessoryColor,
+      kartStyle: kart.style,
+      kartNumber: kart.number,
+      kartLivery: kart.livery,
+      name: "warm",
+      isPlayer: false,
+      skill: 1,
+    });
     wk.group.traverse((o) => {
       const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
       for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3101,7 +3494,9 @@ function warmGarageKart() {
     wk.group.position.set(0, -60, 0);
     scene.add(wk.group);
     _kartWarm = { group: wk.group, frames: 3 };
-  } catch { /* warm-up only — never let it break the menu */ }
+  } catch {
+    /* warm-up only — never let it break the menu */
+  }
 }
 function warmKartStep() {
   if (!_kartWarm) return;
@@ -3128,11 +3523,17 @@ function warmRosterGeometries() {
     if (i >= roster.length || state !== State.MENU) return;
     const cfg = roster[i++];
     try {
-      const { group } = createKartModel(cfg.color, { style: cfg.kartStyle, number: cfg.kartNumber, livery:cfg.kartLivery });
-      const cat = createCat(cfg.catColor, { type:cfg.catType, pattern: cfg.catPattern, accessory:cfg.catAccessory });
+      const { group } = createKartModel(cfg.color, {
+        style: cfg.kartStyle,
+        number: cfg.kartNumber,
+        livery: cfg.kartLivery,
+      });
+      const cat = createCat(cfg.catColor, { type: cfg.catType, pattern: cfg.catPattern, accessory: cfg.catAccessory });
       _disposeGroup(group);
       _disposeGroup(cat);
-    } catch { /* warm-up only */ }
+    } catch {
+      /* warm-up only */
+    }
     setTimeout(step, 150);
   };
   setTimeout(step, 400);
@@ -3148,8 +3549,7 @@ function logPerfSummary(rawMs) {
     // not a freeze (a real >3s stall without shader creates has never occurred
     // outside backgrounding).
     const fromBackground =
-      performance.now() - _lastVisChange < 1500 ||
-      (rawMs > 3000 && _gpuCreates - _gpuCreatesLast < 3);
+      performance.now() - _lastVisChange < 1500 || (rawMs > 3000 && _gpuCreates - _gpuCreatesLast < 3);
     if (!fromBackground) {
       const phase = state === State.RACING ? "race" : state === State.PAUSED ? "pause" : "menu";
       // Attribution: how many GPU pipeline/shader objects were created since
@@ -3162,7 +3562,7 @@ function logPerfSummary(rawMs) {
       const other = Math.max(0, rawMs - _seg.render - _seg.atmos - _seg.minimap - _seg.world);
       console.warn(
         `[zoomies] FREEZE: one frame took ${Math.round(rawMs)}ms (${phase}, ${renderer?.backend?.isWebGPUBackend ? "WGPU" : "WGL2"}) · ${creates} shader/pipeline creates · geo ${mem?.geometries ?? "?"} tex ${mem?.textures ?? "?"} · render ${Math.round(_seg.render)} · atmos ${Math.round(_seg.atmos)} · minimap ${Math.round(_seg.minimap)} · world ${Math.round(_seg.world)} · other ${Math.round(other)}ms` +
-          (sinceGo < 6000 ? ` · +${Math.round(sinceGo)}ms after GO` : "")
+          (sinceGo < 6000 ? ` · +${Math.round(sinceGo)}ms after GO` : ""),
       );
     }
     return; // either way, keep it out of the percentile stats
@@ -3183,7 +3583,7 @@ function logPerfSummary(rawMs) {
   // main at 6ms is the pipeline/GPU; main at 18ms is JS + draw submission.
   const mainAvg = _perfMain.n ? _perfMain.sum / _perfMain.n : 0;
   console.log(
-    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · main ${mainAvg.toFixed(1)}/${_perfMain.max.toFixed(0)}ms · tick ${_tickMs().toFixed(1)}ms${_shellHz ? ` (os ${_shellHz}Hz)` : ""} · gate ${_gateMs(_targetFps()).toFixed(1)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`
+    `[zoomies] perf ${phase}: avg ${Math.round(1000 / avgMs)} fps · 1% low ${Math.round(1000 / p99)} · worst ${Math.round(worst)}ms · main ${mainAvg.toFixed(1)}/${_perfMain.max.toFixed(0)}ms · tick ${_tickMs().toFixed(1)}ms${_shellHz ? ` (os ${_shellHz}Hz)` : ""} · gate ${_gateMs(_targetFps()).toFixed(1)}ms · ${dc}dc · ${renderScale.toFixed(2)}x ${quality[0].toUpperCase()} · ${backend}`,
   );
   _perfMain.sum = _perfMain.max = _perfMain.n = 0;
   _perfFrames.length = 0;
@@ -3203,42 +3603,46 @@ let _platformA = null;
 // keep the game's music silent for this session — SFX still play. Flipping
 // music ON in Settings overrides it. Exposed as a promise so the boot-time
 // autoplay can wait for the verdict instead of starting-then-aborting a track.
-const _audioPolicyReady = getPlatform().then(async (p) => {
-  _platformA = p;
-  // Native app-state events (visibilitychange isn't delivered at backgrounding
-  // in the app): drive the audio engine's suspend/restore, and update the
-  // freeze filter's timestamp so a background gap never logs as a FREEZE.
-  p.app.onStateChange((active) => {
-    _lastVisChange = performance.now();
-    console.log(`[zoomies] app-state: active=${active}`);
-    // Pause the race HERE, not off document.hidden — that event isn't
-    // delivered at backgrounding in the app, so locking the phone mid-race
-    // left the race live: on unlock the engine blared at pre-lock pitch
-    // while the sim caught up (the "sped-up audio" report).
-    if (!active && state === State.RACING) pauseGame();
-    audio.setAppActive(active);
-    if (active) {
-      audio.unlock();
-      // Belt-and-braces: the first touch after returning re-establishes the
-      // audio session with a real user gesture behind it (the timing that an
-      // app-switcher round trip provided by accident).
-      const once = () => {
-        window.removeEventListener("pointerdown", once, true);
-        p.audio.reactivate().catch(() => {});
+const _audioPolicyReady = getPlatform()
+  .then(async (p) => {
+    _platformA = p;
+    // Native app-state events (visibilitychange isn't delivered at backgrounding
+    // in the app): drive the audio engine's suspend/restore, and update the
+    // freeze filter's timestamp so a background gap never logs as a FREEZE.
+    p.app.onStateChange((active) => {
+      _lastVisChange = performance.now();
+      console.log(`[zoomies] app-state: active=${active}`);
+      // Pause the race HERE, not off document.hidden — that event isn't
+      // delivered at backgrounding in the app, so locking the phone mid-race
+      // left the race live: on unlock the engine blared at pre-lock pitch
+      // while the sim caught up (the "sped-up audio" report).
+      if (!active && state === State.RACING) pauseGame();
+      audio.setAppActive(active);
+      if (active) {
         audio.unlock();
-      };
-      window.addEventListener("pointerdown", once, true);
+        // Belt-and-braces: the first touch after returning re-establishes the
+        // audio session with a real user gesture behind it (the timing that an
+        // app-switcher round trip provided by accident).
+        const once = () => {
+          window.removeEventListener("pointerdown", once, true);
+          p.audio.reactivate().catch(() => {});
+          audio.unlock();
+        };
+        window.addEventListener("pointerdown", once, true);
+      }
+    });
+    try {
+      const other = await p.audio.otherAudioPlaying();
+      console.log(`[zoomies] audio policy: otherAudioPlaying=${other}`);
+      if (other) {
+        audio.setMusicAllowed(false);
+        console.log("[zoomies] other audio detected — game music muted for this session (SFX unaffected)");
+      }
+    } catch {
+      /* best-effort */
     }
-  });
-  try {
-    const other = await p.audio.otherAudioPlaying();
-    console.log(`[zoomies] audio policy: otherAudioPlaying=${other}`);
-    if (other) {
-      audio.setMusicAllowed(false);
-      console.log("[zoomies] other audio detected — game music muted for this session (SFX unaffected)");
-    }
-  } catch { /* best-effort */ }
-}).catch(() => {});
+  })
+  .catch(() => {});
 const _feel = { spin: false, tier: 0, boost: false, air: false, finished: false, last: 0, rumble: 0 };
 function updateHaptics(nowMs) {
   if (!_platformA || !player || state !== State.RACING) return;
@@ -3268,7 +3672,10 @@ function updateHaptics(nowMs) {
   if (_feel.air && !air && (player._squash || 0) > 0.35) fire("light");
   _feel.air = air;
   // Crossing the finish line: Apple's "success" double-tap pattern.
-  if (player.finished && !_feel.finished) { _feel.last = nowMs; h.success(); }
+  if (player.finished && !_feel.finished) {
+    _feel.last = nowMs;
+    h.success();
+  }
   _feel.finished = player.finished;
   // The one exception to "discrete moments only": a faint metronome of the
   // LIGHTEST tick available while boosting (or pinned at the very top of the
@@ -3298,7 +3705,13 @@ document.getElementById("howto-back")?.addEventListener("click", () => closeSubS
 //  · the How to Play cards: pad → keyboard → touch.
 const _coarsePointer = !!(window.matchMedia && window.matchMedia("(pointer: coarse)").matches);
 let _touchSeen = false;
-window.addEventListener("touchstart", () => { _touchSeen = true; }, { passive: true, capture: true });
+window.addEventListener(
+  "touchstart",
+  () => {
+    _touchSeen = true;
+  },
+  { passive: true, capture: true },
+);
 let _padSeen = false; // a pad has driven something this session (hides the touch HUD)
 const _inputUI = { touchHud: null, legend: null, howto: "" };
 function refreshInputSurfaces() {
@@ -3316,7 +3729,8 @@ function refreshInputSurfaces() {
   const how = menupad.hasPad ? "pad" : (_touchSeen || _coarsePointer) && !window.zoomiesDesktop ? "touch" : "keyboard";
   if (how !== _inputUI.howto) {
     _inputUI.howto = how;
-    for (const g of howtoOverlay?.querySelectorAll(".how-grid") || []) g.classList.toggle("hidden", g.dataset.input !== how);
+    for (const g of howtoOverlay?.querySelectorAll(".how-grid") || [])
+      g.classList.toggle("hidden", g.dataset.input !== how);
   }
 }
 refreshInputSurfaces();
@@ -3332,8 +3746,7 @@ const installGo = document.getElementById("install-help-go"); // native install 
 const installBack = document.getElementById("install-help-back");
 const installGateNote = document.getElementById("install-gate-note");
 const _isIOS =
-  /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 // The native (Capacitor) app IS the installed app — it just doesn't report the
 // PWA standalone signals (it loads from capacitor://localhost, which matches
 // neither display-mode:standalone nor navigator.standalone). Count it as
@@ -3438,7 +3851,9 @@ function syncTrackPanel() {
   if (_trackDraft.biomes.length > maxBiomes) _trackDraft.biomes = _trackDraft.biomes.slice(0, maxBiomes);
   const atCap = _trackDraft.biomes.length >= maxBiomes;
   const hint = document.getElementById("biome-max-hint");
-  if (hint) hint.textContent = maxBiomes >= ALL_BIOMES.length ? "(all available)" : `(pick up to ${maxBiomes} — bigger map = more)`;
+  if (hint)
+    hint.textContent =
+      maxBiomes >= ALL_BIOMES.length ? "(all available)" : `(pick up to ${maxBiomes} — bigger map = more)`;
   trackPanel?.querySelectorAll("#track-biomes .biome-chip").forEach((chip) => {
     const on = _trackDraft.biomes.includes(chip.dataset.biome);
     chip.classList.toggle("on", on);
@@ -3453,8 +3868,12 @@ function syncTrackPanel() {
   const near = (a, b) => Math.abs(a - b) < 0.011;
   const styleId = Object.keys(TRACK_STYLES).find((k) => {
     const s = TRACK_STYLES[k];
-    return near(s.curviness, _trackDraft.curviness ?? 0.5) && near(s.twist, _trackDraft.twist ?? 0.5)
-      && near(s.hilliness, _trackDraft.hilliness ?? 0.5) && near(s.hills, _trackDraft.hills ?? 0.5);
+    return (
+      near(s.curviness, _trackDraft.curviness ?? 0.5) &&
+      near(s.twist, _trackDraft.twist ?? 0.5) &&
+      near(s.hilliness, _trackDraft.hilliness ?? 0.5) &&
+      near(s.hills, _trackDraft.hills ?? 0.5)
+    );
   });
   trackPanel?.querySelectorAll("#track-style .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", chip.dataset.style === styleId);
@@ -3499,10 +3918,7 @@ function openTrackPanel() {
     curviness: trackConfig.curviness ?? 0.5,
     hilliness: trackConfig.hilliness ?? 0.5,
     hills: trackConfig.hills ?? 0.5,
-    biomes:
-      Array.isArray(trackConfig.biomes) && trackConfig.biomes.length
-        ? [...trackConfig.biomes]
-        : [...ALL_BIOMES],
+    biomes: Array.isArray(trackConfig.biomes) && trackConfig.biomes.length ? [...trackConfig.biomes] : [...ALL_BIOMES],
     // Set-piece chips: absent config means "all on".
     features: Array.isArray(trackConfig.features) ? [...trackConfig.features] : [...ALL_FEATS],
     twist: trackConfig.twist ?? 0.5,
@@ -3546,12 +3962,15 @@ document.getElementById("track-surprise")?.addEventListener("click", () => {
   syncTrackPanel();
 });
 // Time-of-day picker (single-select: midday / sunset / night / random).
-document.getElementById("track-tod")?.querySelectorAll(".biome-chip").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    _trackDraft.timeOfDay = chip.dataset.tod;
-    syncTrackPanel();
+document
+  .getElementById("track-tod")
+  ?.querySelectorAll(".biome-chip")
+  .forEach((chip) => {
+    chip.addEventListener("click", () => {
+      _trackDraft.timeOfDay = chip.dataset.tod;
+      syncTrackPanel();
+    });
   });
-});
 // Set-piece chips: plain multi-toggles (deselecting all = a plain-roads map).
 trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
   chip.addEventListener("click", () => {
@@ -3573,9 +3992,10 @@ function refreshMenuMap() {
   // The menu map shows the LIVE world, so its set pieces (planned at build)
   // can be drawn right on the loop, and the track gets its generated name.
   paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig), featureGlyphs(track.features));
-  const name = trackConfig.mode === "custom"
-    ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
-    : "Classic circuit";
+  const name =
+    trackConfig.mode === "custom"
+      ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
+      : "Classic circuit";
   const label = document.getElementById("menu-map-label");
   if (label) label.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
@@ -3666,12 +4086,36 @@ const _previewCache = { key: null, kart: null };
 function _previewKey(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  return [cat.fur, cat.type, cat.pattern, cat.accessory, cat.accessoryColor, cat.name, kart.color, kart.style, kart.number, kart.livery].join("|");
+  return [
+    cat.fur,
+    cat.type,
+    cat.pattern,
+    cat.accessory,
+    cat.accessoryColor,
+    cat.name,
+    kart.color,
+    kart.style,
+    kart.number,
+    kart.livery,
+  ].join("|");
 }
 function _buildPreviewKart(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
-  const pk = new Kart({ color: kart.color, catColor: cat.fur, catType:cat.type, catPattern: cat.pattern, catAccessory: cat.accessory, catAccessoryColor: cat.accessoryColor, kartStyle: kart.style, kartNumber: kart.number, kartLivery:kart.livery, name: cat.name, isPlayer: false, skill: 1 });
+  const pk = new Kart({
+    color: kart.color,
+    catColor: cat.fur,
+    catType: cat.type,
+    catPattern: cat.pattern,
+    catAccessory: cat.accessory,
+    catAccessoryColor: cat.accessoryColor,
+    kartStyle: kart.style,
+    kartNumber: kart.number,
+    kartLivery: kart.livery,
+    name: cat.name,
+    isPlayer: false,
+    skill: 1,
+  });
   pk.group.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
     for (const m of mats) if (m.isMeshStandardMaterial) m.userData.rim = true;
@@ -3710,15 +4154,69 @@ function buildGaragePreview() {
 // --- Custom creator -------------------------------------------------------
 // Curated fur tones (real cat colours) and bold kart liveries the swatch grids
 // offer. Custom picks aren't limited to these — they just seed quick choices.
-const CAT_FUR_SWATCHES = [0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6, 0x6b4a2f];
-const KART_COLOR_SWATCHES = [0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d, 0xeeeeee];
-const KART_STYLE_NAMES = KART_STYLES.map(s=>s.name);
+const CAT_FUR_SWATCHES = [
+  0xf0a830, 0xc8966a, 0x8c9298, 0x2a2a2a, 0xfbfbfb, 0xf3dcb6, 0x4a3328, 0x9aa2a8, 0x5a3b2a, 0xd9b38c, 0xe8e2d6,
+  0x6b4a2f,
+];
+const KART_COLOR_SWATCHES = [
+  0xe53935, 0x1e88e5, 0x43a047, 0xfb8c00, 0x8e24aa, 0xfdd835, 0x00897b, 0x26c6da, 0xec407a, 0x5e35b1, 0x16181d,
+  0xeeeeee,
+];
+const KART_STYLE_NAMES = KART_STYLES.map((s) => s.name);
 // 24 curated names each: the studios' Surprise-me pool AND the pad-friendly
 // name picker's grid (a text field has no on-screen keyboard on a controller).
-const CUSTOM_CAT_NAMES = ["Biscuit", "Mochi", "Pumpkin", "Waffles", "Bandit", "Noodle", "Mittens", "Gizmo", "Tofu", "Pixel", "Luna", "Oreo",
-  "Peanut", "Nacho", "Boots", "Sushi", "Muffin", "Toffee", "Olive", "Maple", "Sprout", "Truffle", "Widget", "Dumpling"];
-const CUSTOM_KART_NAMES = ["Bolt", "Zephyr", "Rascal", "Turbo", "Pounce", "Dash", "Rocket", "Maverick", "Blaze", "Whirl", "Nitro", "Vortex",
-  "Jet", "Streak", "Zoom", "Rumble", "Thunder", "Flash", "Meteor", "Skitter", "Sprocket", "Piston", "Drifter", "Tornado"];
+const CUSTOM_CAT_NAMES = [
+  "Biscuit",
+  "Mochi",
+  "Pumpkin",
+  "Waffles",
+  "Bandit",
+  "Noodle",
+  "Mittens",
+  "Gizmo",
+  "Tofu",
+  "Pixel",
+  "Luna",
+  "Oreo",
+  "Peanut",
+  "Nacho",
+  "Boots",
+  "Sushi",
+  "Muffin",
+  "Toffee",
+  "Olive",
+  "Maple",
+  "Sprout",
+  "Truffle",
+  "Widget",
+  "Dumpling",
+];
+const CUSTOM_KART_NAMES = [
+  "Bolt",
+  "Zephyr",
+  "Rascal",
+  "Turbo",
+  "Pounce",
+  "Dash",
+  "Rocket",
+  "Maverick",
+  "Blaze",
+  "Whirl",
+  "Nitro",
+  "Vortex",
+  "Jet",
+  "Streak",
+  "Zoom",
+  "Rumble",
+  "Thunder",
+  "Flash",
+  "Meteor",
+  "Skitter",
+  "Sprocket",
+  "Piston",
+  "Drifter",
+  "Tornado",
+];
 const _hex6 = (v) => "#" + (v >>> 0).toString(16).padStart(6, "0");
 const _cap = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const _pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -3752,8 +4250,13 @@ function _syncAccColorGrid(accId, chosenColor) {
   if (!row || !grid) return;
   const palette = ACCESSORY_COLORS[accId] || [];
   row.classList.toggle("hidden", palette.length === 0);
-  if (palette.length === 0) { grid.replaceChildren(); grid._accId = accId; return; }
-  if (grid._accId !== accId) { // repopulate only when the accessory (hence palette) changed
+  if (palette.length === 0) {
+    grid.replaceChildren();
+    grid._accId = accId;
+    return;
+  }
+  if (grid._accId !== accId) {
+    // repopulate only when the accessory (hence palette) changed
     grid.replaceChildren();
     for (const c of palette) {
       const b = document.createElement("button");
@@ -3766,7 +4269,7 @@ function _syncAccColorGrid(accId, chosenColor) {
     }
     grid._accId = accId;
   }
-  const effective = (chosenColor != null) ? chosenColor : palette[0];
+  const effective = chosenColor != null ? chosenColor : palette[0];
   for (const b of grid.children) b.classList.toggle("selected", Number(b.dataset.color) === effective);
 }
 
@@ -3774,8 +4277,8 @@ function _syncAccColorGrid(accId, chosenColor) {
 function syncCreators() {
   if (!_garageDraft) return;
   const c = _garageDraft.customCat;
-  const typeName=document.getElementById("cat-type-name");
-  if(typeName)typeName.textContent=CAT_TYPES[c.type]?.label||"Classic";
+  const typeName = document.getElementById("cat-type-name");
+  if (typeName) typeName.textContent = CAT_TYPES[c.type]?.label || "Classic";
   const patName = document.getElementById("cat-pat-name");
   if (patName) patName.textContent = c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern);
   const accName = document.getElementById("cat-acc-name");
@@ -3787,9 +4290,9 @@ function syncCreators() {
   const k = _garageDraft.customKart;
   const styleName = document.getElementById("kart-style-name");
   if (styleName) styleName.textContent = KART_STYLE_NAMES[k.style] || "GP";
-  document.getElementById('kart-livery-row')?.classList.remove('hidden');
-  const liveryName=document.getElementById('kart-livery-name');
-  if(liveryName)liveryName.textContent=KART_LIVERIES[k.livery];
+  document.getElementById("kart-livery-row")?.classList.remove("hidden");
+  const liveryName = document.getElementById("kart-livery-name");
+  if (liveryName) liveryName.textContent = KART_LIVERIES[k.livery];
   const numName = document.getElementById("kart-num-name");
   if (numName) numName.textContent = String(k.number);
   const nk = document.getElementById("kart-custom-name");
@@ -3799,19 +4302,26 @@ function syncCreators() {
 // The studios gate USING a design on the creator purchase (design freely —
 // window shopping stays). Each editor carries its own note + Buy row.
 function refreshEditorLocks() {
-  for (const [which, id, label] of [["cat", "custom.cat", "Custom Cat"], ["kart", "custom.kart", "Custom Kart"]]) {
+  for (const [which, id, label] of [
+    ["cat", "custom.cat", "Custom Cat"],
+    ["kart", "custom.kart", "Custom Kart"],
+  ]) {
     const note = document.getElementById(which + "-edit-note");
     const buy = document.getElementById(which + "-edit-buy");
     if (!note || !buy) continue;
     const owned = isUnlocked(profile, id);
     const entry = catalogEntry(id);
     buy.classList.toggle("hidden", owned);
-    if (owned) { note.textContent = ""; continue; }
+    if (owned) {
+      note.textContent = "";
+      continue;
+    }
     buy.textContent = `🐟 Unlock the ${label} creator · ${entry.price}`;
     buy.disabled = profile.treats < entry.price;
-    note.textContent = profile.treats < entry.price
-      ? `🔒 Design freely — unlocking the creator lets you race it. Unlocks at 🐟 ${entry.price} — you have 🐟 ${profile.treats}.`
-      : `🔒 Design freely — unlock the creator to race your design.`;
+    note.textContent =
+      profile.treats < entry.price
+        ? `🔒 Design freely — unlocking the creator lets you race it. Unlocks at 🐟 ${entry.price} — you have 🐟 ${profile.treats}.`
+        : `🔒 Design freely — unlock the creator to race your design.`;
   }
 }
 function syncGarageUI() {
@@ -3828,9 +4338,17 @@ function refreshRacerSummary() {
   const kart = kartSpec(garageConfig);
   el.textContent = `${cat.name} · ${kart.name}`;
   const ct = document.getElementById("racer-thumb-cat");
-  if (ct) ct.src = garageConfig.cat === CUSTOM_CAT_IDX ? "assets/catalog/custom-cat.jpg" : `assets/catalog/cat-${garageConfig.cat}.jpg`;
+  if (ct)
+    ct.src =
+      garageConfig.cat === CUSTOM_CAT_IDX
+        ? "assets/catalog/custom-cat.jpg"
+        : `assets/catalog/cat-${garageConfig.cat}.jpg`;
   const kt = document.getElementById("racer-thumb-kart");
-  if (kt) kt.src = garageConfig.kart === CUSTOM_KART_IDX ? "assets/catalog/custom-kart.jpg" : `assets/catalog/kart-${garageConfig.kart}.jpg`;
+  if (kt)
+    kt.src =
+      garageConfig.kart === CUSTOM_KART_IDX
+        ? "assets/catalog/custom-kart.jpg"
+        : `assets/catalog/kart-${garageConfig.kart}.jpg`;
 }
 // Entering any racer-family screen (cat / kart / the two studios): open the
 // showroom once — the draft persists across the whole family and commits when
@@ -3840,12 +4358,13 @@ function openRacerStep() {
     // A seat pass (startSeatPick) has already seated the draft on that seat's
     // racer before arriving here — reseeding from P1's save would clobber it
     // and quietly run the whole pass on P1's picks instead.
-    if (!_pickingSeat) _garageDraft = {
-      cat: garageConfig.cat,
-      kart: garageConfig.kart,
-      customCat: { ...garageConfig.customCat },
-      customKart: { ...garageConfig.customKart },
-    };
+    if (!_pickingSeat)
+      _garageDraft = {
+        cat: garageConfig.cat,
+        kart: garageConfig.kart,
+        customCat: { ...garageConfig.customCat },
+        customKart: { ...garageConfig.customKart },
+      };
     const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
     _garageAnchor.copy(slot.position);
     _garageOpen = true;
@@ -3856,7 +4375,10 @@ function openRacerStep() {
 // build waits for the slide to land so the transition never stutters.
 function refreshRacerPreview() {
   if (_previewCache.key === _previewKey(_garageDraft)) buildGaragePreview();
-  else setTimeout(() => { if (_garageOpen) buildGaragePreview(); }, 470);
+  else
+    setTimeout(() => {
+      if (_garageOpen) buildGaragePreview();
+    }, 470);
 }
 function closeGarage() {
   _garageOpen = false;
@@ -3895,16 +4417,19 @@ function renderGarage(timeSec, dt = 0.016) {
   const ang = timeSec * 0.5;
   // Fit the six-unit kart envelope inside the open left half on narrower
   // windows too. A fixed distance/pan cropped wheels and tall cages there.
-  const halfFov=Math.tan(19*Math.PI/180);
-  const r=Math.max(11.2,7.4/(halfFov*camera.aspect));
-  camera.position.set(p.x + Math.sin(ang) * r, p.y + 1.55+r*.16, p.z + Math.cos(ang) * r);
-  if (camera.fov !== 38) { camera.fov = 38; camera.updateProjectionMatrix(); }
+  const halfFov = Math.tan((19 * Math.PI) / 180);
+  const r = Math.max(11.2, 7.4 / (halfFov * camera.aspect));
+  camera.position.set(p.x + Math.sin(ang) * r, p.y + 1.55 + r * 0.16, p.z + Math.cos(ang) * r);
+  if (camera.fov !== 38) {
+    camera.fov = 38;
+    camera.updateProjectionMatrix();
+  }
   _garageLook.set(p.x, p.y + 1.55, p.z);
   camera.lookAt(_garageLook);
   // Pan the aim right along the camera's screen-right axis so the kart sits in
   // the open left half (the card covers the right). Re-aim after the shift.
   _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-  _garageLook.addScaledVector(_garageRight, r*halfFov*camera.aspect*.52);
+  _garageLook.addScaledVector(_garageRight, r * halfFov * camera.aspect * 0.52);
   camera.lookAt(_garageLook);
   renderFrame();
 }
@@ -3958,7 +4483,10 @@ function _placeGridField() {
   clearTimeout(_gridBuildTimer);
   for (const k of _gridRivals) scene.remove(k.group);
   _gridRivals = [];
-  if (raceMode === "tt") { _aimGridCamera(); return; }
+  if (raceMode === "tt") {
+    _aimGridCamera();
+    return;
+  }
   const roster = raceRoster().slice(1);
   const rkey = JSON.stringify(roster);
   if (_gridRivalCache.key !== rkey) {
@@ -3972,7 +4500,10 @@ function _placeGridField() {
       return;
     }
     let k = _gridRivalCache.karts[i];
-    if (!k) { k = _buildGridRival(roster[i]); _gridRivalCache.karts[i] = k; }
+    if (!k) {
+      k = _buildGridRival(roster[i]);
+      _gridRivalCache.karts[i] = k;
+    }
     const slot = track.gridSlot(i + 1);
     k.placeAt(slot.position, slot.heading, track);
     scene.add(k.group);
@@ -3990,13 +4521,15 @@ function _aimGridCamera() {
   const s0 = track.gridSlot(0);
   const s1 = track.gridSlot(1);
   const h = s0.heading;
-  const fwdX = Math.sin(h), fwdZ = Math.cos(h);
+  const fwdX = Math.sin(h),
+    fwdZ = Math.cos(h);
   _gridSide.set(fwdZ, 0, -fwdX); // right of the direction of travel
   _gridCamBase.copy(s0.position).add(s1.position).multiplyScalar(0.5); // front-row centre
   _gridLook.set(_gridCamBase.x - fwdX * 7, _gridCamBase.y + 1.0, _gridCamBase.z - fwdZ * 7);
   // Stand on the POLE side (slot 0 sits at +_gridSide) so your kart is the one
   // nearest the lens, with the rivals receding behind it.
-  _gridCamBase.x += fwdX * 11.5; _gridCamBase.z += fwdZ * 11.5;
+  _gridCamBase.x += fwdX * 11.5;
+  _gridCamBase.z += fwdZ * 11.5;
   _gridCamBase.addScaledVector(_gridSide, 6.4);
   _gridCamBase.y += 3.4;
 }
@@ -4009,7 +4542,10 @@ function renderStartGrid(timeSec, dt) {
   _gridCamPos.addScaledVector(_gridSide, Math.sin(timeSec * 0.24) * 0.9);
   _gridCamPos.y += Math.sin(timeSec * 0.5) * 0.22;
   camera.position.copy(_gridCamPos);
-  if (camera.fov !== 42) { camera.fov = 42; camera.updateProjectionMatrix(); }
+  if (camera.fov !== 42) {
+    camera.fov = 42;
+    camera.updateProjectionMatrix();
+  }
   camera.lookAt(_gridLook);
   // Pan the aim toward screen-right so the field sits in the open left half.
   _gridRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
@@ -4034,21 +4570,35 @@ function closeStartGrid() {
   _gridRivals = [];
 }
 // Debug hook so headless probes can assert the tableau state.
-window.__zoomies.startGrid = () => ({ open: _gridOpen, rivals: _gridRivals.length, player: !!(_previewCache.kart && _previewCache.kart.group.parent) });
+window.__zoomies.startGrid = () => ({
+  open: _gridOpen,
+  rivals: _gridRivals.length,
+  player: !!(_previewCache.kart && _previewCache.kart.group.parent),
+});
 
 // Custom-cat creator controls.
-for(const [suffix,dir] of [["prev",-1],["next",1]])document.getElementById(`cat-type-${suffix}`)?.addEventListener("click",()=>stepCustom("type",CAT_TYPE_IDS,dir));
+for (const [suffix, dir] of [
+  ["prev", -1],
+  ["next", 1],
+])
+  document.getElementById(`cat-type-${suffix}`)?.addEventListener("click", () => stepCustom("type", CAT_TYPE_IDS, dir));
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
 document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
 document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
 document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
 document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
-document.getElementById("cat-custom-name")?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
+document
+  .getElementById("cat-custom-name")
+  ?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("cat-randomize")?.addEventListener("click", () => {
   const accessory = _pick(CAT_ACCESSORIES);
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
-    type:_pick(CAT_TYPE_IDS), fur: _pick(CAT_FUR_SWATCHES), pattern: _pick(CAT_PATTERNS), accessory, name: _pick(CUSTOM_CAT_NAMES),
+    type: _pick(CAT_TYPE_IDS),
+    fur: _pick(CAT_FUR_SWATCHES),
+    pattern: _pick(CAT_PATTERNS),
+    accessory,
+    name: _pick(CUSTOM_CAT_NAMES),
     accessoryColor: pal.length ? _pick(pal) : null,
   });
 });
@@ -4060,13 +4610,33 @@ const _stepKartStyle = (dir) => {
 };
 document.getElementById("kart-style-prev")?.addEventListener("click", () => _stepKartStyle(-1));
 document.getElementById("kart-style-next")?.addEventListener("click", () => _stepKartStyle(1));
-for(const [suffix,dir] of [['prev',-1],['next',1]])document.getElementById(`kart-livery-${suffix}`)?.addEventListener('click',()=>editCustomKart({livery:(_garageDraft.customKart.livery+dir+KART_LIVERIES.length)%KART_LIVERIES.length}));
-document.getElementById("kart-num-prev")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
-document.getElementById("kart-num-next")?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
-document.getElementById("kart-custom-name")?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
-document.getElementById("kart-randomize")?.addEventListener("click", () => editCustomKart({
-  color: _pick(KART_COLOR_SWATCHES), livery:Math.floor(Math.random()*KART_LIVERIES.length), style: Math.floor(Math.random() * KART_STYLE_COUNT), number: Math.floor(Math.random() * 100), name: _pick(CUSTOM_KART_NAMES),
-}));
+for (const [suffix, dir] of [
+  ["prev", -1],
+  ["next", 1],
+])
+  document
+    .getElementById(`kart-livery-${suffix}`)
+    ?.addEventListener("click", () =>
+      editCustomKart({ livery: (_garageDraft.customKart.livery + dir + KART_LIVERIES.length) % KART_LIVERIES.length }),
+    );
+document
+  .getElementById("kart-num-prev")
+  ?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 99) % 100 }));
+document
+  .getElementById("kart-num-next")
+  ?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
+document
+  .getElementById("kart-custom-name")
+  ?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
+document.getElementById("kart-randomize")?.addEventListener("click", () =>
+  editCustomKart({
+    color: _pick(KART_COLOR_SWATCHES),
+    livery: Math.floor(Math.random() * KART_LIVERIES.length),
+    style: Math.floor(Math.random() * KART_STYLE_COUNT),
+    number: Math.floor(Math.random() * 100),
+    name: _pick(CUSTOM_KART_NAMES),
+  }),
+);
 
 // Name picker (both studios): "✏️ Pick" swaps the creator for a grid of the
 // curated names — every one a <button>, so the pad's ring walks it — plus
@@ -4077,7 +4647,10 @@ function _wireNamePicker(which, names, apply) {
   const picker = document.getElementById(`${which}-name-picker`);
   const grid = document.getElementById(`${which}-name-grid`);
   if (!card || !picker || !grid) return;
-  const close = () => { picker.classList.add("hidden"); card.classList.remove("picking-name"); };
+  const close = () => {
+    picker.classList.add("hidden");
+    card.classList.remove("picking-name");
+  };
   const open = () => {
     const cur = document.getElementById(`${which}-custom-name`)?.value || "";
     grid.replaceChildren();
@@ -4086,7 +4659,10 @@ function _wireNamePicker(which, names, apply) {
       b.type = "button";
       b.textContent = n;
       b.classList.toggle("is-active", n === cur);
-      b.addEventListener("click", () => { apply(n); close(); });
+      b.addEventListener("click", () => {
+        apply(n);
+        close();
+      });
       grid.appendChild(b);
     }
     picker.classList.remove("hidden");
@@ -4095,7 +4671,10 @@ function _wireNamePicker(which, names, apply) {
   };
   document.getElementById(`${which}-name-pick`)?.addEventListener("click", open);
   document.getElementById(`${which}-name-close`)?.addEventListener("click", close);
-  document.getElementById(`${which}-name-random`)?.addEventListener("click", () => { apply(_pick(names)); close(); });
+  document.getElementById(`${which}-name-random`)?.addEventListener("click", () => {
+    apply(_pick(names));
+    close();
+  });
   _namePickers.push(close);
 }
 const _namePickers = [];
@@ -4139,7 +4718,10 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
   b.append(shot, nm, sb);
   cueifyButton(b);
   b.addEventListener("click", () => {
-    if (owned) { onPick(); return; }
+    if (owned) {
+      onPick();
+      return;
+    }
     const entry = catalogEntry(buyId);
     if (entry && typeof entry.price === "number") {
       if (b.dataset.confirm) {
@@ -4155,7 +4737,10 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
       } else {
         b.dataset.confirm = "1";
         sb.textContent = `Tap again to unlock · 🐟 ${entry.price}`;
-        setTimeout(() => { delete b.dataset.confirm; sb.textContent = prizeHow(buyId); }, 4000);
+        setTimeout(() => {
+          delete b.dataset.confirm;
+          sb.textContent = prizeHow(buyId);
+        }, 4000);
       }
       return;
     }
@@ -4171,26 +4756,35 @@ function renderCatCards() {
   if (!grid) return;
   grid.replaceChildren();
   CAT_PRESETS.forEach((c, i) => {
-    grid.appendChild(racerGridCard({
-      img: `assets/catalog/cat-${i}.jpg`,
-      name: c.name,
-      sub: (_pickingSeat || isUnlocked(profile,`cat.${i}`)) ? (CAT_TYPES[c.type]?.label || "Classic") : undefined,
-      // Couch rule: a guest's seat pass rides any preset free — Versus pays
-      // no treats, and P1's locks/prices (and wallet!) are P1's alone.
-      buyId: _pickingSeat ? null : `cat.${i}`,
-      current: _garageDraft?.cat === i,
-      onPick: () => { _garageDraft.cat = i; flowGo("kart"); },
-      rerender: renderCatCards,
-    }));
+    grid.appendChild(
+      racerGridCard({
+        img: `assets/catalog/cat-${i}.jpg`,
+        name: c.name,
+        sub: _pickingSeat || isUnlocked(profile, `cat.${i}`) ? CAT_TYPES[c.type]?.label || "Classic" : undefined,
+        // Couch rule: a guest's seat pass rides any preset free — Versus pays
+        // no treats, and P1's locks/prices (and wallet!) are P1's alone.
+        buyId: _pickingSeat ? null : `cat.${i}`,
+        current: _garageDraft?.cat === i,
+        onPick: () => {
+          _garageDraft.cat = i;
+          flowGo("kart");
+        },
+        rerender: renderCatCards,
+      }),
+    );
   });
   if (!_pickingSeat) {
-    grid.appendChild(racerGridCard({
-      img: "assets/catalog/custom-cat.jpg",
-      name: "Custom Cat",
-      sub: isUnlocked(profile, "custom.cat") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.cat")}`,
-      current: _garageDraft?.cat === CUSTOM_CAT_IDX,
-      onPick: () => flowGo("cat-edit"),
-    }));
+    grid.appendChild(
+      racerGridCard({
+        img: "assets/catalog/custom-cat.jpg",
+        name: "Custom Cat",
+        sub: isUnlocked(profile, "custom.cat")
+          ? "✨ your design — tap to edit"
+          : `✨ design one · ${prizeHow("custom.cat")}`,
+        current: _garageDraft?.cat === CUSTOM_CAT_IDX,
+        onPick: () => flowGo("cat-edit"),
+      }),
+    );
   }
 }
 function renderKartCards() {
@@ -4198,24 +4792,33 @@ function renderKartCards() {
   if (!grid) return;
   grid.replaceChildren();
   KART_PRESETS.forEach((k, i) => {
-    grid.appendChild(racerGridCard({
-      img: `assets/catalog/kart-${i}.jpg`,
-      name: k.name,
-      // Same couch rule as the cats: seat passes never see locks or prices.
-      buyId: _pickingSeat ? null : `kart.${i}`,
-      current: _garageDraft?.kart === i,
-      onPick: () => { _garageDraft.kart = i; commitRacer(); },
-      rerender: renderKartCards,
-    }));
+    grid.appendChild(
+      racerGridCard({
+        img: `assets/catalog/kart-${i}.jpg`,
+        name: k.name,
+        // Same couch rule as the cats: seat passes never see locks or prices.
+        buyId: _pickingSeat ? null : `kart.${i}`,
+        current: _garageDraft?.kart === i,
+        onPick: () => {
+          _garageDraft.kart = i;
+          commitRacer();
+        },
+        rerender: renderKartCards,
+      }),
+    );
   });
   if (!_pickingSeat) {
-    grid.appendChild(racerGridCard({
-      img: "assets/catalog/custom-kart.jpg",
-      name: "Custom Kart",
-      sub: isUnlocked(profile, "custom.kart") ? "✨ your design — tap to edit" : `✨ design one · ${prizeHow("custom.kart")}`,
-      current: _garageDraft?.kart === CUSTOM_KART_IDX,
-      onPick: () => flowGo("kart-edit"),
-    }));
+    grid.appendChild(
+      racerGridCard({
+        img: "assets/catalog/custom-kart.jpg",
+        name: "Custom Kart",
+        sub: isUnlocked(profile, "custom.kart")
+          ? "✨ your design — tap to edit"
+          : `✨ design one · ${prizeHow("custom.kart")}`,
+        current: _garageDraft?.kart === CUSTOM_KART_IDX,
+        onPick: () => flowGo("kart-edit"),
+      }),
+    );
   }
 }
 // Kart chosen → the racer is complete: save it and roll on to the start line.
@@ -4247,7 +4850,11 @@ function commitRacer() {
       cat: Math.min(_garageDraft.cat, CAT_PRESETS.length - 1),
       kart: Math.min(_garageDraft.kart, KART_PRESETS.length - 1),
     };
-    try { localStorage.setItem(_seatKey(_pickingSeat), JSON.stringify(_seatPicks[_pickingSeat])); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(_seatKey(_pickingSeat), JSON.stringify(_seatPicks[_pickingSeat]));
+    } catch {
+      /* ignore */
+    }
     // One seat per visit, straight back to the start line. Leaving the racer
     // family closes the showroom, so the next entry reseeds the shared draft
     // from P1's save — a finished seat pass can't leak its picks into P1's.
@@ -4268,12 +4875,25 @@ function commitRacer() {
 // Versus labels whose racer is being picked on each pass.
 function refreshRacerEyebrows() {
   const c = document.getElementById("cat-eyebrow");
-  if (c) c.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your cat` : raceMode === "split" ? "Player 1 · Step 3 of 5" : "Step 3 of 5";
+  if (c)
+    c.textContent = _pickingSeat
+      ? `🎮 Player ${_pickingSeat} — pick your cat`
+      : raceMode === "split"
+        ? "Player 1 · Step 3 of 5"
+        : "Step 3 of 5";
   const k = document.getElementById("kart-eyebrow");
-  if (k) k.textContent = _pickingSeat ? `🎮 Player ${_pickingSeat} — pick your kart` : raceMode === "split" ? "Player 1 · Step 4 of 5" : "Step 4 of 5";
+  if (k)
+    k.textContent = _pickingSeat
+      ? `🎮 Player ${_pickingSeat} — pick your kart`
+      : raceMode === "split"
+        ? "Player 1 · Step 4 of 5"
+        : "Step 4 of 5";
 }
 // Studio actions: Unlock buys the creator; Use adopts the design and rolls on.
-for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
+for (const [which, id] of [
+  ["cat", "custom.cat"],
+  ["kart", "custom.kart"],
+]) {
   document.getElementById(which + "-edit-buy")?.addEventListener("click", () => {
     if (buyUnlock(profile, id)) {
       saveProfile();
@@ -4284,12 +4904,20 @@ for (const [which, id] of [["cat", "custom.cat"], ["kart", "custom.kart"]]) {
   });
 }
 document.getElementById("cat-edit-use")?.addEventListener("click", () => {
-  if (!isUnlocked(profile, "custom.cat")) { uiCue("error"); refreshEditorLocks(); return; }
+  if (!isUnlocked(profile, "custom.cat")) {
+    uiCue("error");
+    refreshEditorLocks();
+    return;
+  }
   _garageDraft.cat = CUSTOM_CAT_IDX;
   flowGo("kart");
 });
 document.getElementById("kart-edit-use")?.addEventListener("click", () => {
-  if (!isUnlocked(profile, "custom.kart")) { uiCue("error"); refreshEditorLocks(); return; }
+  if (!isUnlocked(profile, "custom.kart")) {
+    uiCue("error");
+    refreshEditorLocks();
+    return;
+  }
   _garageDraft.kart = CUSTOM_KART_IDX;
   commitRacer();
 });
@@ -4361,8 +4989,17 @@ window.addEventListener("keydown", (e) => {
   const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
   const dir = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" }[e.code];
   if (dir && !typing && (state === State.MENU || state === State.PAUSED || state === State.FINISHED)) {
-    if (menupad.keyNav(dir)) { e.preventDefault(); if (t instanceof Element && t !== document.body) t.blur(); }
-  } else if (e.code === "Enter" && !typing && !(t && t.tagName === "BUTTON") && state !== State.RACING && state !== State.COUNTDOWN) {
+    if (menupad.keyNav(dir)) {
+      e.preventDefault();
+      if (t instanceof Element && t !== document.body) t.blur();
+    }
+  } else if (
+    e.code === "Enter" &&
+    !typing &&
+    !(t && t.tagName === "BUTTON") &&
+    state !== State.RACING &&
+    state !== State.COUNTDOWN
+  ) {
     if (menupad.keyActivate()) e.preventDefault();
   }
 });
@@ -4400,7 +5037,12 @@ const MODE_KEY = "zoomies-mode-v1";
 // Which cup the Cup Series mode races (persisted; mid-cup boots override it).
 const CUP_CHOICE_KEY = "zoomies-cup-choice";
 let _cupChoice = CUPS[0].id;
-try { const c = localStorage.getItem(CUP_CHOICE_KEY); if (cupById(c)) _cupChoice = c; } catch { /* ignore */ }
+try {
+  const c = localStorage.getItem(CUP_CHOICE_KEY);
+  if (cupById(c)) _cupChoice = c;
+} catch {
+  /* ignore */
+}
 if (_cupState && _activeCup) _cupChoice = _activeCup.id;
 let raceMode = "gp";
 try {
@@ -4421,7 +5063,11 @@ const RACER_FAMILY = ["cat", "kart", "cat-edit", "kart-edit"];
 // the flow was so the boot lands back mid-flow instead of on the title.
 const FLOW_RESUME_KEY = "zoomies-flow-resume";
 function saveFlowResume(step) {
-  try { sessionStorage.setItem(FLOW_RESUME_KEY, step); } catch { /* ignore */ }
+  try {
+    sessionStorage.setItem(FLOW_RESUME_KEY, step);
+  } catch {
+    /* ignore */
+  }
 }
 function flowGo(step, dir = 1, instant = false) {
   const next = document.getElementById("flow-" + step);
@@ -4437,11 +5083,28 @@ function flowGo(step, dir = 1, instant = false) {
   else if (step === "mode") refreshModeCards();
   else if (step === "track") renderTrackCards();
   else if (step === "cup") renderCupOptions();
-  else if (step === "cat") { openRacerStep(); renderCatCards(); refreshRacerEyebrows(); }
-  else if (step === "kart") { openRacerStep(); renderKartCards(); refreshRacerEyebrows(); }
-  else if (step === "cat-edit") { openRacerStep(); _garageDraft.cat = CUSTOM_CAT_IDX; syncGarageUI(); refreshRacerPreview(); }
-  else if (step === "kart-edit") { openRacerStep(); _garageDraft.kart = CUSTOM_KART_IDX; syncGarageUI(); refreshRacerPreview(); }
-  else if (step === "startline") { refreshStartline(); openStartGrid(); }
+  else if (step === "cat") {
+    openRacerStep();
+    renderCatCards();
+    refreshRacerEyebrows();
+  } else if (step === "kart") {
+    openRacerStep();
+    renderKartCards();
+    refreshRacerEyebrows();
+  } else if (step === "cat-edit") {
+    openRacerStep();
+    _garageDraft.cat = CUSTOM_CAT_IDX;
+    syncGarageUI();
+    refreshRacerPreview();
+  } else if (step === "kart-edit") {
+    openRacerStep();
+    _garageDraft.kart = CUSTOM_KART_IDX;
+    syncGarageUI();
+    refreshRacerPreview();
+  } else if (step === "startline") {
+    refreshStartline();
+    openStartGrid();
+  }
   if (changing) {
     if (instant) menuFlowEl.classList.add("flow-instant");
     if (cur) {
@@ -4472,7 +5135,8 @@ function refreshScrollHint() {
   const more = body.scrollHeight > body.clientHeight + 4 && body.scrollTop < body.scrollHeight - body.clientHeight - 4;
   scr.classList.toggle("can-scroll", more);
 }
-for (const body of menuFlowEl.querySelectorAll(".flow-body")) body.addEventListener("scroll", refreshScrollHint, { passive: true });
+for (const body of menuFlowEl.querySelectorAll(".flow-body"))
+  body.addEventListener("scroll", refreshScrollHint, { passive: true });
 window.addEventListener("resize", () => setTimeout(refreshScrollHint, 60));
 // Back is always the same edge: one step toward the title. The racer's back
 // depends on how you got there.
@@ -4483,7 +5147,10 @@ function flowBack() {
   // kart step: the shared draft still holds the guest's picks there, and
   // committing would silently overwrite P1's saved garage with them.)
   if (_pickingSeat && (flowStep === "cat" || flowStep === "kart")) {
-    if (flowStep === "kart") { flowGo("cat", -1); return true; }
+    if (flowStep === "kart") {
+      flowGo("cat", -1);
+      return true;
+    }
     _pickingSeat = 0;
     refreshRacerEyebrows();
     flowGo("startline", -1);
@@ -4509,19 +5176,30 @@ menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("cl
 // line (the series brings its own track + racer context).
 function refreshTitlePlay() {
   if (!startBtn) return;
-  if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
+  if (raceMode === "cup" && _cupState && _activeCup)
+    startBtn.textContent = `▶ RACE ${_cupState.race + 1} OF ${_activeCup.races.length}`;
   else startBtn.textContent = "▶  Let's Go!";
 }
 // A returning player (a saved mode + a saved racer) lands straight on the
 // start line — its Edit links (racer, map) and Back still reach every step,
 // so the full flow is one tap away instead of five taps in the way.
 function hasSavedSetup() {
-  try { return !!localStorage.getItem(MODE_KEY) && !!localStorage.getItem(GARAGE_KEY); } catch { return false; }
+  try {
+    return !!localStorage.getItem(MODE_KEY) && !!localStorage.getItem(GARAGE_KEY);
+  } catch {
+    return false;
+  }
 }
 startBtn?.addEventListener("click", () => {
   audio.unlock(); // the opening tap doubles as the audio unlock
-  if (raceMode === "cup" && _cupState && _activeCup) { flowGo("startline"); return; }
-  if (hasSavedSetup() && !_dailyActive) { flowGo("startline"); return; }
+  if (raceMode === "cup" && _cupState && _activeCup) {
+    flowGo("startline");
+    return;
+  }
+  if (hasSavedSetup() && !_dailyActive) {
+    flowGo("startline");
+    return;
+  }
   flowGo("mode");
 });
 
@@ -4532,7 +5210,9 @@ function applyModeUI() {
 }
 function setRaceMode(mode) {
   raceMode = mode;
-  try { localStorage.setItem(MODE_KEY, mode); } catch {}
+  try {
+    localStorage.setItem(MODE_KEY, mode);
+  } catch {}
   applyModeUI();
 }
 
@@ -4541,38 +5221,193 @@ function setRaceMode(mode) {
 function refreshModeCards() {
   const sub = document.getElementById("mode-daily-sub");
   if (sub) {
-    sub.textContent = profile.dailyPaid === todayStr()
-      ? "Bonus banked for today — race it again or come back tomorrow"
-      : "Everyone races today's track — finish for bonus treats!";
+    sub.textContent =
+      profile.dailyPaid === todayStr()
+        ? "Bonus banked for today — race it again or come back tomorrow"
+        : "Everyone races today's track — finish for bonus treats!";
   }
 }
-document.getElementById("mode-gp")?.addEventListener("click", () => { setRaceMode("gp"); flowGo("track"); });
-document.getElementById("mode-tt")?.addEventListener("click", () => { setRaceMode("tt"); flowGo("track"); });
-document.getElementById("mode-split")?.addEventListener("click", () => { setRaceMode("split"); flowGo("track"); });
-document.getElementById("mode-cup")?.addEventListener("click", () => { setRaceMode("cup"); flowGo("cup"); });
+document.getElementById("mode-gp")?.addEventListener("click", () => {
+  setRaceMode("gp");
+  flowGo("track");
+});
+document.getElementById("mode-tt")?.addEventListener("click", () => {
+  setRaceMode("tt");
+  flowGo("track");
+});
+document.getElementById("mode-split")?.addEventListener("click", () => {
+  setRaceMode("split");
+  flowGo("track");
+});
+document.getElementById("mode-cup")?.addEventListener("click", () => {
+  setRaceMode("cup");
+  flowGo("cup");
+});
 
 // --- Track step: featured recipes painted from the real generator ----------
 // Fixed seeds/knobs so the cards are stable, nameable places. Picking a card
 // that isn't already built saves the recipe and reloads (the world is built
 // from the config at boot), resuming the flow at the Racer step.
 const FEATURED_TRACKS = [
-  { name: "Buttercup Run", sub: "🌳 Meadow · Midday", cfg: { mode: "custom", seed: "MEOW", size: 0.45, curviness: 0.5, twist: 0.42, hilliness: 0.35, hills: 0.5, biomes: ["meadow", "forest"], timeOfDay: "midday" } },
-  { name: "Whisker Canyon", sub: "⛰️ Desert · Sunset", cfg: { mode: "custom", seed: "DUNE", size: 0.55, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["desert", "mesa"], timeOfDay: "sunset" } },
-  { name: "Neon Alley", sub: "🏙 City · Night", cfg: { mode: "custom", seed: "NEON", size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ["city"], timeOfDay: "night" } },
-  { name: "Tuna Cove", sub: "🏖 Beach · Midday", cfg: { mode: "custom", seed: "TUNA", size: 0.5, curviness: 0.5, twist: 0.45, hilliness: 0.35, hills: 0.45, biomes: ["beach", "jungle"], timeOfDay: "midday" } },
-  { name: "Snowcap Sprint", sub: "🏔 Alpine · Sunset", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
-  { name: "Maple Falls", sub: "🍂 Autumn · Sunset", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
-  { name: "Petal Parade", sub: "🌸 Blossom · Midday", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
-  { name: "Lavender Loop", sub: "🪻 Countryside · Sunset", cfg: { mode: "custom", seed: "BLOOM", size: 0.5, curviness: 0.5, twist: 0.42, hilliness: 0.3, hills: 0.45, biomes: ["lavender"], timeOfDay: "sunset" } },
-  { name: "Willow Wash", sub: "🌧 Wetlands · Midday", cfg: { mode: "custom", seed: "REED", size: 0.5, curviness: 0.4, twist: 0.4, hilliness: 0.2, hills: 0.3, biomes: ["wetlands"], timeOfDay: "midday" } },
-  { name: "Basalt Blast", sub: "🌋 Badlands · Sunset", cfg: { mode: "custom", seed: "BASALT", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["volcanic"], timeOfDay: "sunset" } },
+  {
+    name: "Buttercup Run",
+    sub: "🌳 Meadow · Midday",
+    cfg: {
+      mode: "custom",
+      seed: "MEOW",
+      size: 0.45,
+      curviness: 0.5,
+      twist: 0.42,
+      hilliness: 0.35,
+      hills: 0.5,
+      biomes: ["meadow", "forest"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Whisker Canyon",
+    sub: "⛰️ Desert · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "DUNE",
+      size: 0.55,
+      curviness: 0.55,
+      twist: 0.5,
+      hilliness: 0.6,
+      hills: 0.6,
+      biomes: ["desert", "mesa"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Neon Alley",
+    sub: "🏙 City · Night",
+    cfg: {
+      mode: "custom",
+      seed: "NEON",
+      size: 0.5,
+      curviness: 0.45,
+      twist: 0.55,
+      hilliness: 0.3,
+      hills: 0.4,
+      biomes: ["city"],
+      timeOfDay: "night",
+    },
+  },
+  {
+    name: "Tuna Cove",
+    sub: "🏖 Beach · Midday",
+    cfg: {
+      mode: "custom",
+      seed: "TUNA",
+      size: 0.5,
+      curviness: 0.5,
+      twist: 0.45,
+      hilliness: 0.35,
+      hills: 0.45,
+      biomes: ["beach", "jungle"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Snowcap Sprint",
+    sub: "🏔 Alpine · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "PEAK",
+      size: 0.5,
+      curviness: 0.55,
+      twist: 0.5,
+      hilliness: 0.7,
+      hills: 0.65,
+      biomes: ["alpine", "tundra"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Maple Falls",
+    sub: "🍂 Autumn · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "LEAF",
+      size: 0.5,
+      curviness: 0.55,
+      twist: 0.48,
+      hilliness: 0.5,
+      hills: 0.55,
+      biomes: ["autumn", "forest"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Petal Parade",
+    sub: "🌸 Blossom · Midday",
+    cfg: {
+      mode: "custom",
+      seed: "POSY",
+      size: 0.45,
+      curviness: 0.5,
+      twist: 0.4,
+      hilliness: 0.3,
+      hills: 0.45,
+      biomes: ["blossom", "meadow"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Lavender Loop",
+    sub: "🪻 Countryside · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "BLOOM",
+      size: 0.5,
+      curviness: 0.5,
+      twist: 0.42,
+      hilliness: 0.3,
+      hills: 0.45,
+      biomes: ["lavender"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Willow Wash",
+    sub: "🌧 Wetlands · Midday",
+    cfg: {
+      mode: "custom",
+      seed: "REED",
+      size: 0.5,
+      curviness: 0.4,
+      twist: 0.4,
+      hilliness: 0.2,
+      hills: 0.3,
+      biomes: ["wetlands"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Basalt Blast",
+    sub: "🌋 Badlands · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "BASALT",
+      size: 0.5,
+      curviness: 0.55,
+      twist: 0.5,
+      hilliness: 0.6,
+      hills: 0.6,
+      biomes: ["volcanic"],
+      timeOfDay: "sunset",
+    },
+  },
 ];
 const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
 function trackCardCurrent(cfg) {
   if (cfg.mode !== "custom") return trackConfig.mode !== "custom";
-  return trackConfig.mode === "custom"
-    && _TRACK_CFG_KEYS.every((k) => trackConfig[k] === cfg[k])
-    && String(trackConfig.biomes || []) === String(cfg.biomes || []);
+  return (
+    trackConfig.mode === "custom" &&
+    _TRACK_CFG_KEYS.every((k) => trackConfig[k] === cfg[k]) &&
+    String(trackConfig.biomes || []) === String(cfg.biomes || [])
+  );
 }
 function renderTrackCards() {
   const grid = document.getElementById("track-grid");
@@ -4598,13 +5433,22 @@ function renderTrackCards() {
     cueifyButton(b);
     b.addEventListener("click", () => chooseTrackCard(cfg));
     grid.appendChild(b);
-    try { paintTrackMap(canvas, previewLoopPoints(cfg)); } catch { /* a bad recipe just leaves a blank shot */ }
+    try {
+      paintTrackMap(canvas, previewLoopPoints(cfg));
+    } catch {
+      /* a bad recipe just leaves a blank shot */
+    }
   };
   addCard("Classic Circuit", "🏁 The original loop", { mode: "classic" }, trackConfig.mode !== "custom");
   for (const t of FEATURED_TRACKS) addCard(t.name, t.sub, t.cfg, trackCardCurrent(t.cfg));
   // The player's own recipe, when the live world isn't one of the cards above.
   if (trackConfig.mode === "custom" && !FEATURED_TRACKS.some((t) => trackCardCurrent(t.cfg))) {
-    addCard(trackTitle(track.features, WORLD_SEED), `🛠 My track · ${TOD_LABELS[trackConfig.timeOfDay] || "Midday"}`, { ...trackConfig }, true);
+    addCard(
+      trackTitle(track.features, WORLD_SEED),
+      `🛠 My track · ${TOD_LABELS[trackConfig.timeOfDay] || "Midday"}`,
+      { ...trackConfig },
+      true,
+    );
   }
   const mk = document.createElement("button");
   mk.className = "tap-card track-maker-card";
@@ -4614,7 +5458,10 @@ function renderTrackCards() {
   grid.appendChild(mk);
 }
 function chooseTrackCard(cfg) {
-  if (trackCardCurrent(cfg)) { flowGo("cat"); return; } // already built → onward
+  if (trackCardCurrent(cfg)) {
+    flowGo("cat");
+    return;
+  } // already built → onward
   saveTrackConfig({ ...trackConfig, ...cfg });
   saveFlowResume("cat");
   uiCue("loading");
@@ -4638,7 +5485,14 @@ function refreshStakes() {
   document.getElementById("stakes-row")?.classList.toggle("hidden", !show);
   if (!show) return;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
-  const top = racePayout({ place: 1, field: ROSTER.length, laps: TOTAL_LAPS, difficulty: DIFFICULTY, daily, stats: {} }).total;
+  const top = racePayout({
+    place: 1,
+    field: ROSTER.length,
+    laps: TOTAL_LAPS,
+    difficulty: DIFFICULTY,
+    daily,
+    stats: {},
+  }).total;
   const est = estimatedRaceMinutes();
   el.textContent = (est ? `≈ ${est} min · ` : "") + `Win up to 🐟 ${top}`;
 }
@@ -4648,7 +5502,11 @@ function refreshStakes() {
 // a stopwatch. Null when the track isn't built yet (menu boot order).
 function estimatedRaceMinutes() {
   let len = 0;
-  try { len = track.length; } catch { return null; }
+  try {
+    len = track.length;
+  } catch {
+    return null;
+  }
   if (!(len > 0)) return null;
   const secs = TOTAL_LAPS * 73 * (len / 2811) + 4;
   const halves = Math.max(1, Math.round(secs / 30)) / 2;
@@ -4669,7 +5527,9 @@ for (let seat = 2; seat <= 4; seat++) {
         kart: ((v.kart % KART_PRESETS.length) + KART_PRESETS.length) % KART_PRESETS.length,
       };
     }
-  } catch { /* fresh default */ }
+  } catch {
+    /* fresh default */
+  }
   _seatPicks[seat] = pick;
 }
 function seatLook(seat) {
@@ -4681,11 +5541,13 @@ function seatLook(seat) {
 // as two parked karts after GO. Returns one label per seat (0-based); "" =
 // that seat has nothing.
 function _seatInputLabels() {
-  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])]
-    .filter((p) => p && p.connected);
+  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter((p) => p && p.connected);
   let kbSeat = -1;
   for (let s = 0; s < splitCount; s++) {
-    if (s >= pads.length) { kbSeat = s; break; }
+    if (s >= pads.length) {
+      kbSeat = s;
+      break;
+    }
   }
   const labels = [];
   for (let s = 0; s < splitCount; s++) {
@@ -4742,13 +5604,19 @@ for (let seat = 2; seat <= 4; seat++) {
 // Pads announce themselves on their first button press — re-deal the badges
 // live so plugging in / waking a pad updates the start line while it's open.
 for (const ev of ["gamepadconnected", "gamepaddisconnected"]) {
-  window.addEventListener(ev, () => { if (flowStep === "startline") refreshSeatTiles(); });
+  window.addEventListener(ev, () => {
+    if (flowStep === "startline") refreshSeatTiles();
+  });
 }
 // Seat count: how many humans share the screen (2 rows / quadrants).
 for (let n = 2; n <= 4; n++) {
   document.getElementById(`split-count-${n}`)?.addEventListener("click", () => {
     splitCount = n;
-    try { localStorage.setItem(SPLIT_COUNT_KEY, String(n)); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(SPLIT_COUNT_KEY, String(n));
+    } catch {
+      /* ignore */
+    }
     refreshSeatTiles();
   });
 }
@@ -4763,18 +5631,22 @@ function refreshStartline() {
   const cupDef = cupById(_cupChoice);
   const midCup = raceMode === "cup" && _cupState && _activeCup;
   document.getElementById("laps-row")?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split"));
-  document.getElementById("diff-row")?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split" || (raceMode === "cup" && !midCup)));
+  document
+    .getElementById("diff-row")
+    ?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split" || (raceMode === "cup" && !midCup)));
   refreshSeatTiles(); // seat tiles + count segment (hidden outside split)
   if (note) {
     let txt = "";
     if (_dailyActive) txt = "📅 Today's challenge — everyone races the same track. Daily bonus when you finish!";
-    else if (midCup) txt = `${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1} of ${_activeCup.races.length}. Points carry across the series.`;
+    else if (midCup)
+      txt = `${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1} of ${_activeCup.races.length}. Points carry across the series.`;
     else if (raceMode === "cup" && cupDef) {
       txt = `${cupDef.emoji} ${cupDef.name} — ${cupDef.races.length} races, points and trophies.`;
       if (cupDef.unlockId && !profile.trophies[cupDef.id]) txt += ` 🎁 First win: ${unlockName(cupDef.unlockId)}.`;
     } else if (raceMode === "tt") {
       const pb = loadTimeTrial()[0];
-      txt = pb ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
+      txt = pb
+        ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
         : "⏱ One flying lap against the clock — set your first PB!";
     } else if (raceMode === "split") {
       txt = "🛋️ Versus is for bragging rights — no treats.";
@@ -4793,7 +5665,8 @@ document.getElementById("startline-edit")?.addEventListener("click", () => flowG
 document.getElementById("go-btn")?.addEventListener("click", () => {
   if (raceMode === "tt") startTimeTrial();
   else if (raceMode === "cup") {
-    if (_cupState && _activeCup) beginRace(); // continue the series (this tap grants tilt)
+    if (_cupState && _activeCup)
+      beginRace(); // continue the series (this tap grants tilt)
     else startCup(_cupChoice);
   } else startRace();
 });
@@ -4808,7 +5681,9 @@ if (window.zoomiesDesktop) {
   // touch line, Compatibility mode (the shell pins WebGL2), the tilt debug
   // toggle and the pause card's tilt bar have no meaning without a phone.
   const qn = document.getElementById("quality-note");
-  if (qn) qn.innerHTML = "<b>Low</b> — integrated GPUs and older laptops (simplest effects, bare verges). <b>Balanced</b> — most laptops / Steam Deck: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — gaming laptops / desktops (full effects, 60fps). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)";
+  if (qn)
+    qn.innerHTML =
+      "<b>Low</b> — integrated GPUs and older laptops (simplest effects, bare verges). <b>Balanced</b> — most laptops / Steam Deck: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — gaming laptops / desktops (full effects, 60fps). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)";
   for (const id of ["touch-controls-note", "compat-row", "compat-note", "tilt-row", "indicator-btn"]) {
     document.getElementById(id)?.classList.add("hidden");
   }
@@ -4837,7 +5712,9 @@ refreshRaceOptSegs();
   try {
     _resume = sessionStorage.getItem(FLOW_RESUME_KEY);
     sessionStorage.removeItem(FLOW_RESUME_KEY);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   if (_resume === "racer") _resume = "cat"; // pre-split marker from an old build
   if (_resume && document.getElementById("flow-" + _resume)) {
     // Deferred: the racer step's enter hook touches state (menu cinematic,
@@ -4852,7 +5729,12 @@ refreshRaceOptSegs();
 setTimeout(() => {
   if (state !== State.MENU || _garageOpen || _previewCache.kart) return;
   try {
-    const draft = { cat: garageConfig.cat, kart: garageConfig.kart, customCat: { ...garageConfig.customCat }, customKart: { ...garageConfig.customKart } };
+    const draft = {
+      cat: garageConfig.cat,
+      kart: garageConfig.kart,
+      customCat: { ...garageConfig.customCat },
+      customKart: { ...garageConfig.customKart },
+    };
     const pk = _buildPreviewKart(draft);
     _previewCache.kart = pk;
     _previewCache.key = _previewKey(draft);
@@ -4860,8 +5742,12 @@ setTimeout(() => {
     pk.group.position.set(slot.position.x, slot.position.y - 80, slot.position.z);
     scene.add(pk.group);
     beginWarmAll(2); // culling-off frames so the buried kart actually draws
-    setTimeout(() => { if (!_gridOpen && pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group); }, 800);
-  } catch { /* prewarm is best-effort */ }
+    setTimeout(() => {
+      if (!_gridOpen && pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group);
+    }, 800);
+  } catch {
+    /* prewarm is best-effort */
+  }
 }, 2500);
 
 // --- Progression UI wiring (treats chip, cups, daily, Cat-alog, backup, dev) ---
@@ -4877,8 +5763,11 @@ function refreshTreatsChip() {
 function refreshCatalogTile() {
   const alertDot = document.getElementById("catalog-tile-alert");
   if (!alertDot) return;
-  const hot = profile.pendingClaims.length > 0
-    || CATALOG.some((e) => typeof e.price === "number" && e.price > 0 && e.price <= profile.treats && !isUnlocked(profile, e.id));
+  const hot =
+    profile.pendingClaims.length > 0 ||
+    CATALOG.some(
+      (e) => typeof e.price === "number" && e.price > 0 && e.price <= profile.treats && !isUnlocked(profile, e.id),
+    );
   alertDot.classList.toggle("hidden", !hot);
 }
 
@@ -4899,16 +5788,32 @@ function startCup(id) {
   const cup = cupById(id);
   if (!cup) return;
   audio.unlock();
-  try { input.enableMotion(); } catch { /* ignore */ } // grab iOS tilt permission inside the tap
-  try { sessionStorage.setItem(CUP_KEY, JSON.stringify({ id, race: 0, points: {}, diff: DIFFICULTY })); } catch { /* ignore */ }
+  try {
+    input.enableMotion();
+  } catch {
+    /* ignore */
+  } // grab iOS tilt permission inside the tap
+  try {
+    sessionStorage.setItem(CUP_KEY, JSON.stringify({ id, race: 0, points: {}, diff: DIFFICULTY }));
+  } catch {
+    /* ignore */
+  }
   markReload("cup-start");
   location.href = cupRaceURL(cup, 0);
 }
 document.getElementById("results-next-btn")?.addEventListener("click", () => {
   if (!_cupState || !_activeCup) return;
   _cupState.race++;
-  try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
-  try { input.enableMotion(); } catch { /* ignore */ } // tap = motion permission survives the reload
+  try {
+    sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState));
+  } catch {
+    /* ignore */
+  }
+  try {
+    input.enableMotion();
+  } catch {
+    /* ignore */
+  } // tap = motion permission survives the reload
   markReload("cup-next");
   location.href = cupRaceURL(_activeCup, _cupState.race);
 });
@@ -4920,9 +5825,16 @@ document.getElementById("results-next-btn")?.addEventListener("click", () => {
 document.getElementById("mode-daily")?.addEventListener("click", () => {
   setRaceMode("gp"); // the daily rides the single-race path (payout adds the bonus)
   const today = dailySeedFor(todayStr());
-  if (_dailyActive && WORLD_SEED === today) { flowGo("cat"); return; }
+  if (_dailyActive && WORLD_SEED === today) {
+    flowGo("cat");
+    return;
+  }
   audio.unlock();
-  try { input.enableMotion(); } catch { /* ignore */ }
+  try {
+    input.enableMotion();
+  } catch {
+    /* ignore */
+  }
   uiCue("loading");
   saveFlowResume("cat");
   markReload("daily-start");
@@ -4944,16 +5856,22 @@ function renderCupOptions() {
     b.className = "tap-card cup-tap";
     const prize = won
       ? `<span class="cup-pill won">🏆 Won on ${won}</span>`
-      : cup.unlockId ? `<span class="cup-pill prize">🎁 Win ${unlockName(cup.unlockId)}</span>` : "";
+      : cup.unlockId
+        ? `<span class="cup-pill prize">🎁 Win ${unlockName(cup.unlockId)}</span>`
+        : "";
     b.innerHTML =
-      `<span class="tap-chip" style="background:${CUP_CHIP_COLORS[i % CUP_CHIP_COLORS.length]}">${cup.emoji}</span>`
-      + `<span class="tap-text"><span class="tap-title">${cup.name}</span><span class="tap-sub">${cup.desc}</span></span>`
-      + `<span class="tap-chev">›</span>`
-      + `<span class="cup-meta"><span class="cup-pill">🏁 ${cup.races.length} races</span>${prize}</span>`;
+      `<span class="tap-chip" style="background:${CUP_CHIP_COLORS[i % CUP_CHIP_COLORS.length]}">${cup.emoji}</span>` +
+      `<span class="tap-text"><span class="tap-title">${cup.name}</span><span class="tap-sub">${cup.desc}</span></span>` +
+      `<span class="tap-chev">›</span>` +
+      `<span class="cup-meta"><span class="cup-pill">🏁 ${cup.races.length} races</span>${prize}</span>`;
     cueifyButton(b);
     b.addEventListener("click", () => {
       _cupChoice = cup.id;
-      try { localStorage.setItem(CUP_CHOICE_KEY, cup.id); } catch { /* ignore */ }
+      try {
+        localStorage.setItem(CUP_CHOICE_KEY, cup.id);
+      } catch {
+        /* ignore */
+      }
       clearCupRun(); // picking a (new) cup abandons any half-run series
       flowGo("cat");
     });
@@ -4968,7 +5886,10 @@ renderCupOptions();
 // you start. Any other mode shows the live world map as before.
 function refreshMenuMapCycle() {
   const cupDef = raceMode === "cup" ? cupById(_cupChoice) : null;
-  if (_mapCycleTimer) { clearInterval(_mapCycleTimer); _mapCycleTimer = null; }
+  if (_mapCycleTimer) {
+    clearInterval(_mapCycleTimer);
+    _mapCycleTimer = null;
+  }
   // Cup previews aren't editable — drop the Edit affordance while cycling.
   document.getElementById("menu-map-btn")?.classList.toggle("map-no-edit", !!cupDef);
   const canvas = document.getElementById("menu-map");
@@ -4983,9 +5904,12 @@ function refreshMenuMapCycle() {
     const race = cupDef.races[_mapCycleIdx % cupDef.races.length];
     paintTrackMap(canvas, previewLoopPoints(race.cfg));
     // Two lines on the small chip: the cup's name, then which race is showing.
-    if (label) label.replaceChildren(
-      `${cupDef.emoji} ${cupDef.name}`, document.createElement("br"),
-      `Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`);
+    if (label)
+      label.replaceChildren(
+        `${cupDef.emoji} ${cupDef.name}`,
+        document.createElement("br"),
+        `Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`,
+      );
   };
   paint();
   canvas.style.opacity = "1";
@@ -5035,7 +5959,10 @@ function beginPrizeBuy(tile, id, name, price) {
     tile.appendChild(c);
     tile.classList.add("shake");
     uiCue("error");
-    setTimeout(() => { c.remove(); tile.classList.remove("shake"); }, 1400);
+    setTimeout(() => {
+      c.remove();
+      tile.classList.remove("shake");
+    }, 1400);
     return;
   }
   const txt = document.createElement("span");
@@ -5046,7 +5973,10 @@ function beginPrizeBuy(tile, id, name, price) {
   yes.textContent = "✓ Yes!";
   yes.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    if (!buyUnlock(profile, id)) { c.remove(); return; }
+    if (!buyUnlock(profile, id)) {
+      c.remove();
+      return;
+    }
     saveProfile();
     refreshTreatsChip();
     c.remove();
@@ -5062,7 +5992,10 @@ function beginPrizeBuy(tile, id, name, price) {
   const no = document.createElement("button");
   no.className = "pc-no";
   no.textContent = "✕";
-  no.addEventListener("click", (ev) => { ev.stopPropagation(); c.remove(); });
+  no.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    c.remove();
+  });
   c.append(txt, yes, no);
   tile.appendChild(c);
 }
@@ -5073,17 +6006,26 @@ function beginPrizeBuy(tile, id, name, price) {
 // scrolled past. With nothing pending it goes straight through to onDone.
 function showClaimScreen(onDone) {
   const pending = ACHIEVEMENTS.filter((a) => profile.pendingClaims.includes(a.id));
-  if (!pending.length) { onDone(); return; }
+  if (!pending.length) {
+    onDone();
+    return;
+  }
   const scr = document.getElementById("claim-screen");
   const list = document.getElementById("claim-list");
   const cont = document.getElementById("claim-continue");
-  if (!scr || !list || !cont) { onDone(); return; }
+  if (!scr || !list || !cont) {
+    onDone();
+    return;
+  }
   list.innerHTML = "";
   cont.classList.add("hidden");
   // Pad players press A, not "TAP!" — the copy follows the input in hand.
   const pad = menupad.hasPad;
   const sub = document.getElementById("claim-sub");
-  if (sub) sub.textContent = pad ? "Press Ⓐ on each badge to collect its treats 🐟" : "Tap each badge to collect its treats 🐟";
+  if (sub)
+    sub.textContent = pad
+      ? "Press Ⓐ on each badge to collect its treats 🐟"
+      : "Tap each badge to collect its treats 🐟";
   for (const a of pending) {
     const card = document.createElement("button");
     card.type = "button";
@@ -5103,7 +6045,10 @@ function showClaimScreen(onDone) {
     });
     list.appendChild(card);
   }
-  cont.onclick = () => { scr.classList.add("hidden"); onDone(); };
+  cont.onclick = () => {
+    scr.classList.add("hidden");
+    onDone();
+  };
   scr.classList.remove("hidden");
   uiCue("chime"); // gentle "you've got badges" attention
 }
@@ -5113,7 +6058,10 @@ function claimScreenBack() {
   const scr = document.getElementById("claim-screen");
   if (!scr || scr.classList.contains("hidden")) return false;
   const waiting = [...scr.querySelectorAll(".claim-card:not(.claimed)")];
-  if (waiting.length) { for (const c of waiting) c.click(); return true; }
+  if (waiting.length) {
+    for (const c of waiting) c.click();
+    return true;
+  }
   document.getElementById("claim-continue")?.click();
   return true;
 }
@@ -5122,8 +6070,8 @@ function prizeTile(id, name, colorHex, how, owned) {
   // the till; the confirm's ✓/✕ inside are buttons too and stop propagation.
   const d = document.createElement("button");
   d.type = "button";
-  d.className = "prize-tile" + (owned ? " owned" : "")
-    + (id.startsWith("kart.") || id === "custom.kart" ? " wide" : "");
+  d.className =
+    "prize-tile" + (owned ? " owned" : "") + (id.startsWith("kart.") || id === "custom.kart" ? " wide" : "");
   // Real render of the prize (tools/catalog-shots.mjs). If a shot is missing,
   // fall back to the old colour swatch so the tile never shows a broken image.
   const im = document.createElement("img");
@@ -5155,7 +6103,10 @@ function prizeHow(id) {
   const e = catalogEntry(id);
   if (!e) return "";
   if (typeof e.price === "number" && e.price > 0) return `🐟 ${e.price}`;
-  if (e.cup) { const c = cupById(e.cup); return `🏆 win the ${c ? c.name : e.cup}`; }
+  if (e.cup) {
+    const c = cupById(e.cup);
+    return `🏆 win the ${c ? c.name : e.cup}`;
+  }
   if (e.diff) return e.diff === "hard" ? "🎖 win any cup on Hard" : "🎖 win any cup on Medium+";
   return "free";
 }
@@ -5163,7 +6114,12 @@ function renderPrizes() {
   const box = document.getElementById("catalog-prizes");
   if (!box) return;
   box.innerHTML = "";
-  const head = (t) => { const h = document.createElement("div"); h.className = "prize-head"; h.textContent = t; box.appendChild(h); };
+  const head = (t) => {
+    const h = document.createElement("div");
+    h.className = "prize-head";
+    h.textContent = t;
+    box.appendChild(h);
+  };
   head("🐱 Cats");
   const catGrid = document.createElement("div");
   catGrid.className = "prize-grid";
@@ -5183,8 +6139,12 @@ function renderPrizes() {
   head("✨ Creators");
   const cGrid = document.createElement("div");
   cGrid.className = "prize-grid";
-  cGrid.appendChild(prizeTile("custom.cat", "Custom Cat", "#f0a830", prizeHow("custom.cat"), isUnlocked(profile, "custom.cat")));
-  cGrid.appendChild(prizeTile("custom.kart", "Custom Kart", "#e53935", prizeHow("custom.kart"), isUnlocked(profile, "custom.kart")));
+  cGrid.appendChild(
+    prizeTile("custom.cat", "Custom Cat", "#f0a830", prizeHow("custom.cat"), isUnlocked(profile, "custom.cat")),
+  );
+  cGrid.appendChild(
+    prizeTile("custom.kart", "Custom Kart", "#e53935", prizeHow("custom.kart"), isUnlocked(profile, "custom.kart")),
+  );
   box.appendChild(cGrid);
 }
 function setCatalogTab(prizes) {
@@ -5233,7 +6193,9 @@ function renderCatalog() {
           saveProfile();
           refreshTreatsChip();
           sparkleBurst(d, 10);
-          b.replaceWith(Object.assign(document.createElement("span"), { className: "ach-pay", textContent: `+${a.pay} 🐟` }));
+          b.replaceWith(
+            Object.assign(document.createElement("span"), { className: "ach-pay", textContent: `+${a.pay} 🐟` }),
+          );
           const bal = document.getElementById("catalog-treats");
           if (bal) bal.textContent = `🐟 ${profile.treats}`;
         });
@@ -5263,12 +6225,24 @@ document.getElementById("backup-copy")?.addEventListener("click", async () => {
   const tok = encodeProfileToken(profile);
   if (backupField) backupField.value = tok;
   let copied = false;
-  try { await navigator.clipboard.writeText(tok); copied = true; } catch { /* no clipboard access */ }
-  if (backupNote) backupNote.textContent = copied ? "Backup code copied to the clipboard ✓ (it's in the box too)" : "Your code is in the box above — select it and copy.";
+  try {
+    await navigator.clipboard.writeText(tok);
+    copied = true;
+  } catch {
+    /* no clipboard access */
+  }
+  if (backupNote)
+    backupNote.textContent = copied
+      ? "Backup code copied to the clipboard ✓ (it's in the box too)"
+      : "Your code is in the box above — select it and copy.";
 });
 document.getElementById("backup-paste")?.addEventListener("click", async () => {
   let txt = "";
-  try { txt = await navigator.clipboard?.readText?.(); } catch { /* denied / unsupported */ }
+  try {
+    txt = await navigator.clipboard?.readText?.();
+  } catch {
+    /* denied / unsupported */
+  }
   if (txt && backupField) {
     backupField.value = txt.trim();
     if (backupNote) backupNote.textContent = "Pasted — press Restore to import it.";
@@ -5279,10 +6253,20 @@ document.getElementById("backup-paste")?.addEventListener("click", async () => {
 document.getElementById("backup-restore")?.addEventListener("click", () => {
   const tok = (backupField?.value || "").trim();
   const note = backupNote;
-  if (!tok) { if (note) note.textContent = "Paste your backup code in the box first (it starts with ZP1.)."; return; }
+  if (!tok) {
+    if (note) note.textContent = "Paste your backup code in the box first (it starts with ZP1.).";
+    return;
+  }
   const restored = decodeProfileToken(tok);
-  if (!restored) { if (note) note.textContent = "That code didn't parse — check it and try again."; return; }
-  try { localStorage.setItem(PROFILE_KEY, JSON.stringify(restored)); } catch { /* ignore */ }
+  if (!restored) {
+    if (note) note.textContent = "That code didn't parse — check it and try again.";
+    return;
+  }
+  try {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(restored));
+  } catch {
+    /* ignore */
+  }
   if (note) note.textContent = "Profile restored — reloading…";
   markReload("profile-restore");
   setTimeout(() => location.reload(), 400);
@@ -5297,7 +6281,11 @@ document.querySelector("#settings .flow-h")?.addEventListener("click", () => {
   if (devMode) return;
   if (++_devTaps >= 7) {
     devMode = true;
-    try { localStorage.setItem(DEV_KEY, "1"); } catch { /* ignore */ }
+    try {
+      localStorage.setItem(DEV_KEY, "1");
+    } catch {
+      /* ignore */
+    }
     installDevApi();
     applyDevUI();
   }
@@ -5309,7 +6297,23 @@ document.getElementById("dev-treats")?.addEventListener("click", () => {
 });
 document.getElementById("dev-unlock")?.addEventListener("click", () => {
   for (const a of ACHIEVEMENTS) if (!profile.achievements.includes(a.id)) profile.achievements.push(a.id);
-  for (const e of ["cat.3","cat.4","cat.5","cat.6","cat.7","cat.8","cat.9","kart.3","kart.4","kart.5","kart.6","kart.7","kart.8","custom.cat","custom.kart"]) {
+  for (const e of [
+    "cat.3",
+    "cat.4",
+    "cat.5",
+    "cat.6",
+    "cat.7",
+    "cat.8",
+    "cat.9",
+    "kart.3",
+    "kart.4",
+    "kart.5",
+    "kart.6",
+    "kart.7",
+    "kart.8",
+    "custom.cat",
+    "custom.kart",
+  ]) {
     if (!profile.unlocked.includes(e)) profile.unlocked.push(e);
   }
   for (const cup of CUPS) if (!profile.trophies[cup.id]) profile.trophies[cup.id] = "hard";
@@ -5318,29 +6322,48 @@ document.getElementById("dev-unlock")?.addEventListener("click", () => {
 });
 document.getElementById("dev-reset")?.addEventListener("click", () => {
   if (!window.confirm("Reset ALL progression (treats, unlocks, trophies, achievements)?")) return;
-  try { localStorage.removeItem(PROFILE_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(PROFILE_KEY);
+  } catch {
+    /* ignore */
+  }
   markReload("profile-reset");
   location.reload();
 });
 document.getElementById("dev-off")?.addEventListener("click", () => {
   devMode = false;
-  try { localStorage.removeItem(DEV_KEY); } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(DEV_KEY);
+  } catch {
+    /* ignore */
+  }
   applyDevUI();
 });
 // Console API for the same powers (guarded by dev mode).
 function installDevApi() {
   if (!devMode || !window.__zoomies) return;
   window.__zoomies.dev = {
-    grantTreats(n = 1000) { profile.treats += Math.max(0, n | 0); saveProfile(); refreshTreatsChip(); return profile.treats; },
-    unlockAll() { document.getElementById("dev-unlock")?.click(); return profile.unlocked.length; },
-    profile() { return profile; },
-    exportToken() { return encodeProfileToken(profile); },
+    grantTreats(n = 1000) {
+      profile.treats += Math.max(0, n | 0);
+      saveProfile();
+      refreshTreatsChip();
+      return profile.treats;
+    },
+    unlockAll() {
+      document.getElementById("dev-unlock")?.click();
+      return profile.unlocked.length;
+    },
+    profile() {
+      return profile;
+    },
+    exportToken() {
+      return encodeProfileToken(profile);
+    },
   };
 }
 installDevApi();
 applyDevUI();
 refreshTreatsChip();
-
 
 // --- Race-entry veil ---
 // The first moments of COUNTDOWN are where the remaining big hitches live:
@@ -5390,7 +6413,10 @@ function startTimeTrial() {
 function setTimeTrialHud(on) {
   for (const el of [ttBestEl, ttDeltaEl]) el?.classList.toggle("hidden", !on);
   if (ttBestEl) ttBestEl.textContent = on ? (ttBest != null ? `PB ${formatLap(ttBest)}` : "PB — (set one!)") : "";
-  if (ttDeltaEl) { ttDeltaEl.textContent = ""; ttDeltaEl.className = "hidden"; }
+  if (ttDeltaEl) {
+    ttDeltaEl.textContent = "";
+    ttDeltaEl.className = "hidden";
+  }
   if (timerEl) timerEl.classList.remove("ahead", "behind");
 }
 function beginRace() {
@@ -5412,23 +6438,25 @@ function beginRace() {
   if (_racePrepPending) return; // double-tap while the deferred build is queued
   _racePrepPending = true;
   showRaceVeil(); // hold the countdown behind a cover until frames settle
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    _racePrepPending = false;
-    prepareRace();
-    countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
-    countdownCalibrated = false;
-    prevCountN = 99;
-    track.setStartLight?.("off"); // gantry dark until the countdown's first red
-    state = State.COUNTDOWN;
-    // Behind the veil, redo the draw-everything pass with the RACE scene (karts,
-    // ghost, warmed effects now exist): any pipeline/upload the boot pass could
-    // not have covered takes its hit here instead of mid-race. The veil's
-    // stability gate won't drop until these heavy frames are done. This fully
-    // supersedes the 12-view prewarm spin (same pipelines, fewer renders) — and
-    // the two must never overlap (12 renders × culling disabled = one huge frame).
-    _prewarmed = true;
-    beginWarmAll(2);
-  }));
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      _racePrepPending = false;
+      prepareRace();
+      countdown = 2.999; // "3","2","1" for 1s each, GO exactly as control unlocks
+      countdownCalibrated = false;
+      prevCountN = 99;
+      track.setStartLight?.("off"); // gantry dark until the countdown's first red
+      state = State.COUNTDOWN;
+      // Behind the veil, redo the draw-everything pass with the RACE scene (karts,
+      // ghost, warmed effects now exist): any pipeline/upload the boot pass could
+      // not have covered takes its hit here instead of mid-race. The veil's
+      // stability gate won't drop until these heavy frames are done. This fully
+      // supersedes the 12-view prewarm spin (same pipelines, fewer renders) — and
+      // the two must never overlap (12 renders × culling disabled = one huge frame).
+      _prewarmed = true;
+      beginWarmAll(2);
+    }),
+  );
 }
 let _racePrepPending = false;
 
@@ -5588,7 +6616,11 @@ function updateFireworks(dt) {
   // can't set them off beforehand.
   if (!_fireworksDone && track.archApex) {
     let winner = null;
-    for (const k of karts) if (k.finished) { winner = k; break; }
+    for (const k of karts)
+      if (k.finished) {
+        winner = k;
+        break;
+      }
     // `winner` is null until someone crosses the line (i.e. the whole race) —
     // guard it, or this throws every frame and freezes the race at the green light.
     const wp = winner && winner.position;
@@ -5617,7 +6649,7 @@ function updateFireworks(dt) {
         _fwPos.set(
           base.x + (Math.random() - 0.5) * 2.5,
           base.y + 5 + Math.random() * 5,
-          base.z + (Math.random() - 0.5) * 2.5
+          base.z + (Math.random() - 0.5) * 2.5,
         );
       } else {
         _fwPos.copy(track.archApex); // fallback: burst from the arch
@@ -5709,7 +6741,7 @@ function updateCamera(dt, snap = false) {
     _camDesired.set(
       player.position.x + Math.sin(_finishCamAngle) * r,
       player.position.y + 6,
-      player.position.z + Math.cos(_finishCamAngle) * r
+      player.position.z + Math.cos(_finishCamAngle) * r,
     );
     _camLook.set(player.position.x, player.position.y + 1.5, player.position.z);
     const lerp = snap ? 1 : 1 - Math.pow(0.02, dt);
@@ -5851,7 +6883,9 @@ function updateCamera(dt, snap = false) {
   // the target pitch, but never faster than a fixed rad/s, then rebuild the aim at
   // that smoothed pitch (keeping its horizontal/yaw direction). Computed from the
   // pre-shake eye so screen shake never feeds the smoother.
-  const _dx = _camAim.x - camPos.x, _dy = _camAim.y - camPos.y, _dz = _camAim.z - camPos.z;
+  const _dx = _camAim.x - camPos.x,
+    _dy = _camAim.y - camPos.y,
+    _dz = _camAim.z - camPos.z;
   const _horiz = Math.hypot(_dx, _dz) || 1e-3;
   const _tgtPitch = Math.atan2(_dy, _horiz);
   if (snap || !Number.isFinite(_camPitch)) {
@@ -5918,9 +6952,13 @@ function resolveCollisions() {
       // heavy shove + speed scrub, not a wipeout — the item is a comeback, not
       // a weapon), unless the rival is shielding. The catnip kart keeps going.
       if (a.catnipBoosting && !b.catnipBoosting && !b.shielding && b.spinTimer <= 0) {
-        b.knock.x += nx * 14; b.knock.z += nz * 14; b.speed *= 0.8;
+        b.knock.x += nx * 14;
+        b.knock.z += nz * 14;
+        b.speed *= 0.8;
       } else if (b.catnipBoosting && !a.catnipBoosting && !a.shielding && a.spinTimer <= 0) {
-        a.knock.x -= nx * 14; a.knock.z -= nz * 14; a.speed *= 0.8;
+        a.knock.x -= nx * 14;
+        a.knock.z -= nz * 14;
+        a.speed *= 0.8;
       }
     }
   }
@@ -5934,7 +6972,8 @@ function _placeCmp(a, b) {
   // Real finishers by time, then karts still running by progress, then the
   // DNFs (settled by the finish clock) by progress — a kart that timed out
   // never out-ranks one that's still racing.
-  const fa = a.finished && !a.dnf, fb = b.finished && !b.dnf;
+  const fa = a.finished && !a.dnf,
+    fb = b.finished && !b.dnf;
   if (fa && fb) return a.finishTime - b.finishTime;
   if (fa) return -1;
   if (fb) return 1;
@@ -5992,7 +7031,7 @@ function applyHumanControls(kart, inp, dt) {
   if (inp.consumeMilk() && kart.milkBottles > 0 && kart.spinTimer <= 0) {
     kart.milkBottles = 0;
     items.dropMilk(kart);
-    const _seatIdx = splitActive ? splitPlayers.indexOf(kart) : (kart === player ? 0 : -1);
+    const _seatIdx = splitActive ? splitPlayers.indexOf(kart) : kart === player ? 0 : -1;
     hud.showToast(_seatIdx > 0 ? `🥛 P${_seatIdx + 1} spilled!` : "🥛 Spilled!");
   }
   if (inp.consumeBoost() && kart.boostMeter >= 1) {
@@ -6062,9 +7101,10 @@ function aiActions(dt) {
     // to keep the pack competitive.
     // Rubber-band against the LEADING human (Versus has two): banding to a
     // trailing P2 would let the pack idle while P1 runs away.
-    const gap = (splitActive && splitPlayers.length
-      ? Math.max(...splitPlayers.map((h) => h.totalProgress))
-      : player.totalProgress) - k.totalProgress;
+    const gap =
+      (splitActive && splitPlayers.length
+        ? Math.max(...splitPlayers.map((h) => h.totalProgress))
+        : player.totalProgress) - k.totalProgress;
     // Catch up strongly when behind, and ease off a LITTLE when leading (5% on
     // easy/medium so a runaway rival waits; 2% on hard/expert, where the
     // front-runners stay honest instead of waiting for the player).
@@ -6292,11 +7332,17 @@ function settleRaceRewards() {
   s.heartSaves += _raceStats.heartSaves;
   s.boxes += _raceStats.boxes;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
-  if (daily) { profile.dailyPaid = todayStr(); s.dailies++; }
+  if (daily) {
+    profile.dailyPaid = todayStr();
+    s.dailies++;
+  }
   const payout = racePayout({
-    place: player.place, field: raceField().length,
+    place: player.place,
+    field: raceField().length,
     laps: TOTAL_LAPS,
-    difficulty: DIFFICULTY, daily, stats: _raceStats,
+    difficulty: DIFFICULTY,
+    daily,
+    stats: _raceStats,
   });
   profile.treats += payout.total;
   s.treatsEarned += payout.total;
@@ -6316,7 +7362,11 @@ function settleRaceRewards() {
       cup.award = awardCup(profile, _activeCup.id, standings, "You", DIFFICULTY);
       clearCupRun();
     } else {
-      try { sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState)); } catch { /* ignore */ }
+      try {
+        sessionStorage.setItem(CUP_KEY, JSON.stringify(_cupState));
+      } catch {
+        /* ignore */
+      }
     }
   }
   const fresh = checkAchievements(profile);
@@ -6325,7 +7375,11 @@ function settleRaceRewards() {
   return { payout, fresh, cup };
 }
 function clearCupRun() {
-  try { sessionStorage.removeItem(CUP_KEY); } catch { /* ignore */ }
+  try {
+    sessionStorage.removeItem(CUP_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 // The earnings panel under the standings: itemized treats, achievement banners,
@@ -6334,7 +7388,9 @@ function renderRaceEarnings(settled) {
   const box = document.getElementById("results-earnings");
   const nextBtn = document.getElementById("results-next-btn");
   if (!box) return;
-  if (!settled) { return; } // re-renders keep the panel from the first settle
+  if (!settled) {
+    return;
+  } // re-renders keep the panel from the first settle
   box.innerHTML = "";
   box.classList.remove("hidden");
   const { payout, fresh, cup } = settled;
@@ -6348,21 +7404,32 @@ function renderRaceEarnings(settled) {
     head.className = "earn-cup-head";
     head.textContent = `${cup.cupDef.emoji} ${cup.cupDef.name} standings`;
     box.appendChild(head);
-    cup.standings.forEach((r, i) => box.appendChild(earnRow(`${i + 1}. ${r.name}`, `${r.pts} pts`, r.name === "You" ? "earn-you" : "")));
+    cup.standings.forEach((r, i) =>
+      box.appendChild(earnRow(`${i + 1}. ${r.name}`, `${r.pts} pts`, r.name === "You" ? "earn-you" : "")),
+    );
     if (!cup.last) {
-      document.getElementById("results-title").textContent = `${cup.cupDef.emoji} Race ${cup.raceIndex + 1}/${cup.cupDef.races.length} · ${cup.cupDef.name}`;
+      document.getElementById("results-title").textContent =
+        `${cup.cupDef.emoji} Race ${cup.raceIndex + 1}/${cup.cupDef.races.length} · ${cup.cupDef.name}`;
       if (nextBtn) {
         nextBtn.textContent = `▶ Race ${cup.raceIndex + 2} of ${cup.cupDef.races.length}`;
         nextBtn.classList.remove("hidden");
       }
     } else {
       const youWon = cup.standings[0] && cup.standings[0].name === "You";
-      document.getElementById("results-title").textContent = youWon ? `🏆 ${cup.cupDef.name} Champion!` : `${cup.cupDef.emoji} ${cup.cupDef.name} — ${ordinal(1 + cup.standings.findIndex((r) => r.name === "You"))}`;
+      document.getElementById("results-title").textContent = youWon
+        ? `🏆 ${cup.cupDef.name} Champion!`
+        : `${cup.cupDef.emoji} ${cup.cupDef.name} — ${ordinal(1 + cup.standings.findIndex((r) => r.name === "You"))}`;
       if (cup.award) {
-        if (cup.award.treats > 0) box.appendChild(earnRow(`🏆 ${cup.cupDef.name} won`, `+${cup.award.treats}`, "earn-ach"));
-        if (cup.award.unlockId) box.appendChild(earnRow(`🎁 Exclusive unlocked: ${unlockName(cup.award.unlockId)}`, "NEW", "earn-ach"));
-        for (const id of cup.award.extraUnlocks || []) box.appendChild(earnRow(`🎖 ${AI_DIFFICULTY[DIFFICULTY].label} prize unlocked: ${unlockName(id)}`, "NEW", "earn-ach"));
-        if (!cup.award.firstWin && cup.award.upgraded) box.appendChild(earnRow(`🏆 Trophy upgraded to ${cup.award.difficulty}`, "", "earn-ach"));
+        if (cup.award.treats > 0)
+          box.appendChild(earnRow(`🏆 ${cup.cupDef.name} won`, `+${cup.award.treats}`, "earn-ach"));
+        if (cup.award.unlockId)
+          box.appendChild(earnRow(`🎁 Exclusive unlocked: ${unlockName(cup.award.unlockId)}`, "NEW", "earn-ach"));
+        for (const id of cup.award.extraUnlocks || [])
+          box.appendChild(
+            earnRow(`🎖 ${AI_DIFFICULTY[DIFFICULTY].label} prize unlocked: ${unlockName(id)}`, "NEW", "earn-ach"),
+          );
+        if (!cup.award.firstWin && cup.award.upgraded)
+          box.appendChild(earnRow(`🏆 Trophy upgraded to ${cup.award.difficulty}`, "", "earn-ach"));
         if (cup.award.unlockId || (cup.award.extraUnlocks || []).length) uiCue("sparkle"); // a prize was revealed
       }
     }
@@ -6397,7 +7464,10 @@ window.__zoomies.debugFinish = () => {
   player.finished = true;
   player.finishTime = raceTime;
   splitPlayers.forEach((k, i) => {
-    if (i > 0 && !k.finished) { k.finished = true; k.finishTime = raceTime + 0.5 * i; }
+    if (i > 0 && !k.finished) {
+      k.finished = true;
+      k.finishTime = raceTime + 0.5 * i;
+    }
   });
   showResults();
   return true;
@@ -6460,7 +7530,9 @@ function tickFinishClock(dt) {
   }
 }
 window.__zoomies.finishClock = () => _finishClock; // debug hook
-window.__zoomies.debugFinishClock = (s) => { if (_finishClock !== null) _finishClock = s; }; // headless checks fast-forward the settle
+window.__zoomies.debugFinishClock = (s) => {
+  if (_finishClock !== null) _finishClock = s;
+}; // headless checks fast-forward the settle
 // Projected finish gap for a kart still racing: remaining distance at its own
 // average pace so far (falls back to a mid-pack estimate off the line), against
 // the first real finisher. Never negative — it hasn't finished yet.
@@ -6501,7 +7573,8 @@ function renderResults() {
     const medal = k.place === 1 ? "🥇" : k.place === 2 ? "🥈" : k.place === 3 ? "🥉" : ordinal(k.place);
     if (versus) {
       const seat = splitPlayers.indexOf(k);
-      const name = seat < 0 ? k.name : `P${seat + 1} · ${seat === 0 ? catSpec(garageConfig).name : seatLook(seat + 1).cat.name}`;
+      const name =
+        seat < 0 ? k.name : `P${seat + 1} · ${seat === 0 ? catSpec(garageConfig).name : seatLook(seat + 1).cat.name}`;
       list.appendChild(resultRow(medal, name, time, seat === best, seat >= 0));
     } else {
       list.appendChild(resultRow(medal, k.name, time, k === player));
@@ -6554,13 +7627,15 @@ function formatClock(sec) {
 const TT_KEY = "zoomies-timetrial-v3";
 const TT_KEY_V2 = "zoomies-timetrial-v2";
 const TT_TOP = 10;
-const _validTT = (v) => Array.isArray(v) ? v.filter((e) => e && Number.isFinite(e.time) && e.time > 0) : [];
+const _validTT = (v) => (Array.isArray(v) ? v.filter((e) => e && Number.isFinite(e.time) && e.time > 0) : []);
 function loadTimeTrialBoards() {
   let boards = null;
   try {
     const v = JSON.parse(localStorage.getItem(TT_KEY));
     if (v && typeof v === "object" && !Array.isArray(v)) boards = v;
-  } catch { /* fall through to a fresh store */ }
+  } catch {
+    /* fall through to a fresh store */
+  }
   if (boards) return boards;
   boards = {};
   try {
@@ -6570,7 +7645,9 @@ function loadTimeTrialBoards() {
       localStorage.setItem(TT_KEY, JSON.stringify(boards));
       localStorage.removeItem(TT_KEY_V2); // migrated (only once the new store is written)
     }
-  } catch { /* nothing to migrate, or storage unavailable */ }
+  } catch {
+    /* nothing to migrate, or storage unavailable */
+  }
   return boards;
 }
 function loadTimeTrial() {
@@ -6611,7 +7688,9 @@ function loadGhostStore() {
   try {
     const g = JSON.parse(localStorage.getItem(TT_GHOST_KEY));
     if (g && typeof g === "object" && !Array.isArray(g)) return g;
-  } catch { /* fall through */ }
+  } catch {
+    /* fall through */
+  }
   const store = {};
   try {
     const old = JSON.parse(localStorage.getItem(TT_GHOST_KEY_V2));
@@ -6620,7 +7699,9 @@ function loadGhostStore() {
       localStorage.setItem(TT_GHOST_KEY, JSON.stringify(store));
       localStorage.removeItem(TT_GHOST_KEY_V2);
     }
-  } catch { /* nothing to migrate, or storage unavailable */ }
+  } catch {
+    /* nothing to migrate, or storage unavailable */
+  }
   return store;
 }
 function loadGhostData() {
@@ -6657,14 +7738,37 @@ function setupGhost() {
   const samples = loadGhostData();
   if (!samples) return;
   const look = playerLook();
-  const gk = new Kart({ color: look.color, catColor: look.catColor, catType:look.catType, catPattern: look.catPattern, catAccessory: look.catAccessory, catAccessoryColor: look.catAccessoryColor, kartStyle: look.kartStyle, kartNumber: look.kartNumber, kartLivery:look.kartLivery, name: "Ghost", isPlayer: false, skill: 1 });
+  const gk = new Kart({
+    color: look.color,
+    catColor: look.catColor,
+    catType: look.catType,
+    catPattern: look.catPattern,
+    catAccessory: look.catAccessory,
+    catAccessoryColor: look.catAccessoryColor,
+    kartStyle: look.kartStyle,
+    kartNumber: look.kartNumber,
+    kartLivery: look.kartLivery,
+    name: "Ghost",
+    isPlayer: false,
+    skill: 1,
+  });
   const group = gk.group;
   // One flat, translucent cyan material over the whole kart reads cleanly as a
   // ghost (unlit so it renders consistently regardless of time-of-day).
-  const ghostMat = new THREE.MeshBasicMaterial({ color: 0x8fe8ff, transparent: true, opacity: 0.32, depthWrite: false, fog: true });
+  const ghostMat = new THREE.MeshBasicMaterial({
+    color: 0x8fe8ff,
+    transparent: true,
+    opacity: 0.32,
+    depthWrite: false,
+    fog: true,
+  });
   if (gk.groundShadow) gk.groundShadow.visible = false; // a cyan shadow disc would look wrong
   group.traverse((o) => {
-    if (o.isMesh && o !== gk.shadowQuad) { o.material = ghostMat; o.castShadow = false; o.renderOrder = 3; }
+    if (o.isMesh && o !== gk.shadowQuad) {
+      o.material = ghostMat;
+      o.castShadow = false;
+      o.renderOrder = 3;
+    }
   });
   group.visible = false; // shown once the timed lap starts
   scene.add(group);
@@ -6676,15 +7780,20 @@ function setupGhost() {
 // the lap starts and after the ghost's own lap has ended.
 function updateGhost(elapsed) {
   if (!ttGhost || !_ghostGroup) return;
-  const s = ttGhost.samples, n = ttGhost.n;
+  const s = ttGhost.samples,
+    n = ttGhost.n;
   const lastT = s[(n - 1) * 5];
-  if (elapsed <= 0 || elapsed > lastT + 0.4) { _ghostGroup.visible = false; return; }
+  if (elapsed <= 0 || elapsed > lastT + 0.4) {
+    _ghostGroup.visible = false;
+    return;
+  }
   let i = ttGhost.cursor;
   if (s[i * 5] > elapsed) i = 0; // lap reset — rewind the cursor
   while (i < n - 1 && s[(i + 1) * 5] <= elapsed) i++;
   ttGhost.cursor = i;
   const j = Math.min(i + 1, n - 1);
-  const t0 = s[i * 5], t1 = s[j * 5];
+  const t0 = s[i * 5],
+    t1 = s[j * 5];
   const f = t1 > t0 ? (elapsed - t0) / (t1 - t0) : 0;
   const x = s[i * 5 + 1] + (s[j * 5 + 1] - s[i * 5 + 1]) * f;
   const y = s[i * 5 + 2] + (s[j * 5 + 2] - s[i * 5 + 2]) * f;
@@ -6710,7 +7819,9 @@ function renderTimeTrialResults() {
     const isYou = _ttResult && e === _ttResult.entry;
     const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
     // The date anchors older bests ("when was that?"); your fresh run says so.
-    const label = isYou ? "This run" : new Date(e.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const label = isYou
+      ? "This run"
+      : new Date(e.date).toLocaleDateString(undefined, { month: "short", day: "numeric" });
     list.appendChild(resultRow(medal, label, formatLap(e.time), isYou));
   });
 }
@@ -6755,7 +7866,8 @@ let prevPlayerSpin = 0;
 // measured from rAF ticks — see _measureVsync for how missed frames and
 // bursts are kept out of it. Clamped to 40–240Hz either way.
 const _uncapParam = new URLSearchParams(location.search).has("uncap");
-const VSYNC_MAX_MS = 25.5, VSYNC_MIN_MS = 4.1; // 40Hz … 240Hz
+const VSYNC_MAX_MS = 25.5,
+  VSYNC_MIN_MS = 4.1; // 40Hz … 240Hz
 const _shellHz = (() => {
   try {
     const bridge = window.zoomiesDesktop;
@@ -6764,7 +7876,9 @@ const _shellHz = (() => {
     // Under a compositor the shell's ticks can't be trusted at all: when the
     // OS won't say, assume the common 60 rather than measure.
     return hz >= 24 && hz <= 480 ? hz : 60;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 })();
 let _vsyncEma = _shellHz ? 1000 / _shellHz : 16.7; // display interval (ms)
 let _lastRaf = 0;
@@ -6783,14 +7897,32 @@ const _renderBudgetMs = () => Math.max(_tickMs(), 1000 / _targetFps());
 // has been touched for 30s — the same tick-aware gate, so on a 120Hz phone
 // the drawn frames land on an even beat (a plain 32ms gate alternated 3- and
 // 4-tick gaps there: constant background judder, "the menus flicker").
-const MENU_FPS = 30, MENU_FPS_SAVER = 20, IDLE_FPS = 10, IDLE_AFTER_MS = 30000;
+const MENU_FPS = 30,
+  MENU_FPS_SAVER = 20,
+  IDLE_FPS = 10,
+  IDLE_AFTER_MS = 30000;
 let _lastInputAt = 0; // performance.now() of the last key / pointer / pad input
 const _isIdle = () => performance.now() - _lastInputAt > IDLE_AFTER_MS;
 const _menuFps = () => (_isIdle() ? IDLE_FPS : saverOn ? MENU_FPS_SAVER : MENU_FPS);
-window.__zoomies.vsync = () => ({ ema: +_vsyncEma.toFixed(2), tick: +_tickMs().toFixed(2), shellHz: _shellHz, target: +_targetFps().toFixed(1), gate: +_gateMs(_targetFps()).toFixed(2), menuFps: _menuFps(), idle: _isIdle(), saver: saverOn, cap: fpsCap, state }); // debug hook
-const _noteInput = () => { _lastInputAt = performance.now(); };
+window.__zoomies.vsync = () => ({
+  ema: +_vsyncEma.toFixed(2),
+  tick: +_tickMs().toFixed(2),
+  shellHz: _shellHz,
+  target: +_targetFps().toFixed(1),
+  gate: +_gateMs(_targetFps()).toFixed(2),
+  menuFps: _menuFps(),
+  idle: _isIdle(),
+  saver: saverOn,
+  cap: fpsCap,
+  state,
+}); // debug hook
+const _noteInput = () => {
+  _lastInputAt = performance.now();
+};
 window.__zoomies.noteInput = _noteInput; // debug hook (the pacing probe wakes / ages the idle throttle)
-window.__zoomies.setIdleAt = (t) => { _lastInputAt = t; }; // debug hook
+window.__zoomies.setIdleAt = (t) => {
+  _lastInputAt = t;
+}; // debug hook
 for (const ev of ["keydown", "pointerdown", "pointermove", "wheel", "touchstart"]) {
   window.addEventListener(ev, _noteInput, { passive: true, capture: true });
 }
@@ -6821,7 +7953,10 @@ let _pauseDrawn = false;
 // A resize (window drag, F11 / the shell's fullscreen toggle) clears the
 // canvas — redraw the frozen frame once instead of leaving the pause card
 // over black.
-window.addEventListener("resize", () => { _pauseDrawn = false; _resultsDrawn = false; });
+window.addEventListener("resize", () => {
+  _pauseDrawn = false;
+  _resultsDrawn = false;
+});
 let _resultsDrawn = false;
 let _lastMenuAt = 0; // rAF timestamp of the last drawn menu frame
 let _lastMiniDraw = 0;
@@ -6841,7 +7976,8 @@ function _tickShadow(now) {
   for (let i = 0; i < karts.length && !moved; i++) {
     const p = karts[i]?.position;
     if (!p) continue;
-    const dx = p.x - (_shadowPos[i * 2] ?? 1e9), dz = p.z - (_shadowPos[i * 2 + 1] ?? 1e9);
+    const dx = p.x - (_shadowPos[i * 2] ?? 1e9),
+      dz = p.z - (_shadowPos[i * 2 + 1] ?? 1e9);
     if (dx * dx + dz * dz > texel * texel) moved = true;
   }
   if (!moved) return;
@@ -6849,7 +7985,10 @@ function _tickShadow(now) {
   _shadowChildren = scene.children.length;
   for (let i = 0; i < karts.length; i++) {
     const p = karts[i]?.position;
-    if (p) { _shadowPos[i * 2] = p.x; _shadowPos[i * 2 + 1] = p.z; }
+    if (p) {
+      _shadowPos[i * 2] = p.x;
+      _shadowPos[i * 2 + 1] = p.z;
+    }
   }
   sun.shadow.needsUpdate = true;
 }
@@ -6878,18 +8017,23 @@ function _tickShadow(now) {
 // a 120-tick window has sat outside the band for three windows running —
 // the 45th percentile ignores a minority of bursts AND a minority of missed
 // frames, and in the 50/50 alternating case lands on the fast side.
-let _vsWin = [], _vsOffWins = 0;
+let _vsWin = [],
+  _vsOffWins = 0;
 function _measureVsync(tick) {
   if (_shellHz) return; // the OS said what the display does; ticks here can't be trusted
   if (tick <= 3 || tick > 60) return; // pauses, hitches, backgrounding
-  const lo = Math.max(_vsyncEma * 0.75, VSYNC_MIN_MS * 0.95), hi = Math.min(_vsyncEma * 1.35, VSYNC_MAX_MS * 1.05);
+  const lo = Math.max(_vsyncEma * 0.75, VSYNC_MIN_MS * 0.95),
+    hi = Math.min(_vsyncEma * 1.35, VSYNC_MAX_MS * 1.05);
   if (tick > lo && tick < hi) _vsyncEma += (tick - _vsyncEma) * 0.05;
   _vsWin.push(tick);
   if (_vsWin.length < 120) return;
   _vsWin.sort((a, b) => a - b);
   const p45 = _vsWin[Math.floor(_vsWin.length * 0.45)];
   _vsWin.length = 0;
-  if (p45 > lo && p45 < hi) { _vsOffWins = 0; return; }
+  if (p45 > lo && p45 < hi) {
+    _vsOffWins = 0;
+    return;
+  }
   if (++_vsOffWins >= 3) {
     _vsyncEma = Math.min(VSYNC_MAX_MS, Math.max(VSYNC_MIN_MS, p45));
     _vsOffWins = 0;
@@ -6948,7 +8092,7 @@ function loopBody(now) {
   // "pause before the menu" decomposes into its actual phases.
   if (_boot.frames < 2 && ++_boot.frames === 2) {
     console.log(
-      `[zoomies] boot timeline: scripts ${Math.round(_boot.eval)}ms · world +${Math.round(_boot.world - _boot.eval)}ms · renderer +${Math.round(_boot.renderer - _boot.world)}ms · first frame ${Math.round(rawMs)}ms · menu at ${Math.round(now)}ms`
+      `[zoomies] boot timeline: scripts ${Math.round(_boot.eval)}ms · world +${Math.round(_boot.world - _boot.eval)}ms · renderer +${Math.round(_boot.renderer - _boot.world)}ms · first frame ${Math.round(rawMs)}ms · menu at ${Math.round(now)}ms`,
     );
   }
   updateTiltCounter(dt); // opt-in on-screen tilt diagnostics
@@ -6972,11 +8116,14 @@ function loopBody(now) {
     const _t = performance.now();
     // Both humans wake the world around them in Versus (critters amble,
     // pigeon flocks go live/scatter for whichever player gets close).
-    world.update(now / 1000, dt,
-      splitActive && player2 ? splitPlayers.map((k) => k.position) : player ? player.position : null);
+    world.update(
+      now / 1000,
+      dt,
+      splitActive && player2 ? splitPlayers.map((k) => k.position) : player ? player.position : null,
+    );
     if (gpuParticles) {
-      const at=player?.position||camera.position;
-      gpuParticles.setEnvironment(biomeNameAt(at.x,at.z,at.y));
+      const at = player?.position || camera.position;
+      gpuParticles.setEnvironment(biomeNameAt(at.x, at.z, at.y));
       gpuParticles.update(dt, camera.position);
     }
     _seg.world = performance.now() - _t;
@@ -6986,11 +8133,17 @@ function loopBody(now) {
     // Paused = a frozen scene, so draw it ONCE (the canvas keeps showing that frame)
     // then idle — re-rendering an unchanging image 60×/s behind the pause menu (or a
     // backgrounded app) is pure wasted GPU/battery. Ambient sim is skipped above too.
-    if (!_pauseDrawn) { renderFrame(); _pauseDrawn = true; }
+    if (!_pauseDrawn) {
+      renderFrame();
+      _pauseDrawn = true;
+    }
     return;
   }
   if (resultsUp) {
-    if (!_resultsDrawn) { renderFrame(); _resultsDrawn = true; }
+    if (!_resultsDrawn) {
+      renderFrame();
+      _resultsDrawn = true;
+    }
     return;
   }
 
@@ -7005,8 +8158,8 @@ function loopBody(now) {
     // Alloc-free scratch list (same pattern as the headlight candidates).
     _leafKarts.length = 0;
     for (const k of karts) _leafKarts.push(k);
-    _leafViews.length=0;
-    if(splitActive)for(const c of _sCams)_leafViews.push(c.camera);
+    _leafViews.length = 0;
+    if (splitActive) for (const c of _sCams) _leafViews.push(c.camera);
     world.groundLeaves.update(_leafKarts, camera.position, dt, _leafViews); // kick up leaves in the karts' wake
   }
   updateRearThreat(); // HUD warning when a kart can hairball you from behind
@@ -7027,8 +8180,12 @@ function loopBody(now) {
     for (let i = 0; i < _hlPool.length; i++) {
       const slot = _hlPool[i];
       const k = _hlCands[i];
-      if (!k) { slot.light.intensity = 0; continue; } // fewer karts than beams
-      const fx = Math.sin(k.heading), fz = Math.cos(k.heading);
+      if (!k) {
+        slot.light.intensity = 0;
+        continue;
+      } // fewer karts than beams
+      const fx = Math.sin(k.heading),
+        fz = Math.cos(k.heading);
       const p = k.position;
       slot.light.position.set(p.x + fx * 2.9, p.y + 0.7, p.z + fz * 2.9); // at the headlights
       slot.target.position.set(p.x + fx * 18, p.y - 3.5, p.z + fz * 18); // forward + down
@@ -7046,7 +8203,7 @@ function loopBody(now) {
   }
 
   // One shared kart snapshot for the prop + string-light updates (alloc-free).
-  const fieldNow = (props || world.stringLights) ? fieldSnapshot() : null;
+  const fieldNow = props || world.stringLights ? fieldSnapshot() : null;
 
   // Step the knockable props and let the karts shove the ones they touch.
   if (props) props.update(dt, fieldNow);
@@ -7175,25 +8332,22 @@ function loopBody(now) {
 
     // Audio: keep the listener on the player, drive the engine pitch with speed,
     // and screech the tires while drifting.
-    audio.setListener(
-      player.position.x,
-      player.position.z,
-      Math.sin(player.heading),
-      Math.cos(player.heading)
-    );
+    audio.setListener(player.position.x, player.position.z, Math.sin(player.heading), Math.cos(player.heading));
     // Engine pitch follows the FASTER human in Versus (one shared engine bed;
     // idling it on a stopped P1 while P2 flies read as "P2 has no sound").
-    const _engK = splitActive && splitPlayers.length
-      ? Math.max(...splitPlayers.map((k) => Math.abs(k.speed) / k.maxSpeed))
-      : Math.abs(player.speed) / player.maxSpeed;
+    const _engK =
+      splitActive && splitPlayers.length
+        ? Math.max(...splitPlayers.map((k) => Math.abs(k.speed) / k.maxSpeed))
+        : Math.abs(player.speed) / player.maxSpeed;
     audio.setEngine(Math.min(1, _engK), splitActive ? splitPlayers.some((k) => k.boosting) : player.boosting);
     // Tires screech while drifting (full) and chatter through hard turns at speed
     // (lighter), so cornering has grip feedback even without a drift — from
     // EITHER human's kart.
     const _sp = Math.abs(player.speed);
-    const _drift = splitActive && splitPlayers.length
-      ? splitPlayers.some((k) => k.drifting && Math.abs(k.speed) > 8)
-      : player.drifting && _sp > 8;
+    const _drift =
+      splitActive && splitPlayers.length
+        ? splitPlayers.some((k) => k.drifting && Math.abs(k.speed) > 8)
+        : player.drifting && _sp > 8;
     const _hardTurn = !player.drifting && Math.abs(player.steerInput) > 0.62 && _sp > 24;
     audio.setSkid(_drift || _hardTurn, _drift ? 1 : 0.45);
 
@@ -7222,7 +8376,13 @@ function loopBody(now) {
     // with speed (the uniform is read by buildGrass's position node).
     {
       const _guk = world.grass && world.grass.userData.uKart;
-      if (_guk) _guk.value.set(player.position.x, player.position.y, player.position.z, 0.25 + 0.85 * Math.min(1, _sp / player.maxSpeed));
+      if (_guk)
+        _guk.value.set(
+          player.position.x,
+          player.position.y,
+          player.position.z,
+          0.25 + 0.85 * Math.min(1, _sp / player.maxSpeed),
+        );
     }
     // (Chromatic aberration is live again — wired into the post graph via
     // _caScene and eased from updateCamera alongside the speed vignette. Radial
@@ -7291,7 +8451,10 @@ function loopBody(now) {
         k.lifePulse = false;
         effects.tootBurst(k, 1, false);
         audio.boost(sfxPos(k));
-        if (k === player) { hud.showToast("😻 Saved by a life!"); if (_raceStats) _raceStats.heartSaves++; }
+        if (k === player) {
+          hud.showToast("😻 Saved by a life!");
+          if (_raceStats) _raceStats.heartSaves++;
+        }
       }
       if (k.spinTimer > 0) effects.skid(k);
       // Drift sparks + skid marks for the rest of the field too (the player is
@@ -7303,7 +8466,8 @@ function loopBody(now) {
       }
       // Surface reactions include every local player and nearby AI. Biome
       // lookup uses road height; no extra nearest-road query per particle.
-      if(k.isPlayer || k.position.distanceToSquared(camera.position)<55*55) emitSurfaceDebris(k,dt,k.isPlayer?1:.4);
+      if (k.isPlayer || k.position.distanceToSquared(camera.position) < 55 * 55)
+        emitSurfaceDebris(k, dt, k.isPlayer ? 1 : 0.4);
       // "Bonk" the moment a kart is freshly spun out (player handled by triggerHit).
       if (k.spinTimer > 0 && (k._prevSpin || 0) <= 0 && k !== player) {
         audio.hit(sfxPos(k));
@@ -7327,11 +8491,16 @@ function loopBody(now) {
     // Versus samples the midpoint between the two humans: the field is one
     // shared sky, and the midpoint keeps it from whipsawing when the players
     // split across a biome seam.
-    let _wx = player.position.x, _wz = player.position.z;
+    let _wx = player.position.x,
+      _wz = player.position.z;
     if (splitActive && splitPlayers.length) {
       _wx = _wz = 0;
-      for (const k of splitPlayers) { _wx += k.position.x; _wz += k.position.z; }
-      _wx /= splitPlayers.length; _wz /= splitPlayers.length;
+      for (const k of splitPlayers) {
+        _wx += k.position.x;
+        _wz += k.position.z;
+      }
+      _wx /= splitPlayers.length;
+      _wz /= splitPlayers.length;
     }
     const where = biomeWeatherAt(_wx, _wz);
     weather.setWeather(where);
@@ -7402,7 +8571,13 @@ function loopBody(now) {
       if (ttRecord && elapsed - _lastGhostSample >= 0.06) {
         _lastGhostSample = elapsed;
         const gp = player.group.position;
-        ttRecord.push(+elapsed.toFixed(3), +gp.x.toFixed(2), +gp.y.toFixed(2), +gp.z.toFixed(2), +player.heading.toFixed(3));
+        ttRecord.push(
+          +elapsed.toFixed(3),
+          +gp.x.toFixed(2),
+          +gp.y.toFixed(2),
+          +gp.z.toFixed(2),
+          +player.heading.toFixed(3),
+        );
       }
       updateGhost(elapsed);
     }
@@ -7425,7 +8600,14 @@ function loopBody(now) {
     _hudOpts.speedKmh = Math.abs(player.speed) * 3.0;
     _hudOpts.time = timeTrial && ttLapStart >= 0 ? raceTime - ttLapStart : raceTime;
     hud.update(_hudOpts);
-    hud.setPowerups(player.shieldTimer, player.triShots, player.catnipTimer, player.yarnShots, player.milkBottles, player.lives);
+    hud.setPowerups(
+      player.shieldTimer,
+      player.triShots,
+      player.catnipTimer,
+      player.yarnShots,
+      player.milkBottles,
+      player.lives,
+    );
     // Incoming-yarn ping: only lights inside the ~1s reaction window — early
     // enough to defend on a read, late enough that pre-arming a shield costs.
     const _yEta = items.yarnEta(player);
@@ -7479,11 +8661,17 @@ function loopBody(now) {
       if (finCount > 0 && finCount < splitPlayers.length) {
         if (_splitGrace === null) {
           _splitGrace = SPLIT_FINISH_GRACE;
-          const out = splitPlayers.map((k, i) => (k.finished ? null : `P${i + 1}`)).filter(Boolean).join("+");
+          const out = splitPlayers
+            .map((k, i) => (k.finished ? null : `P${i + 1}`))
+            .filter(Boolean)
+            .join("+");
           hud.showToast(`⏱ ${out}: ${SPLIT_FINISH_GRACE}s to finish!`);
         }
         _splitGrace -= dt;
-        if (_splitGrace <= 10 && !_splitGrace10) { _splitGrace10 = true; hud.showToast("⏱ 10 seconds!"); }
+        if (_splitGrace <= 10 && !_splitGrace10) {
+          _splitGrace10 = true;
+          hud.showToast("⏱ 10 seconds!");
+        }
       }
     } else {
       updateCamera(dt);
@@ -7495,8 +8683,7 @@ function loopBody(now) {
     let humansFinished;
     if (splitActive && player2) {
       const finCount = splitPlayers.filter((k) => k.finished).length;
-      humansFinished = finCount === splitPlayers.length ||
-        (finCount > 0 && _splitGrace !== null && _splitGrace <= 0);
+      humansFinished = finCount === splitPlayers.length || (finCount > 0 && _splitGrace !== null && _splitGrace <= 0);
     } else {
       humansFinished = player.finished;
     }
@@ -7561,30 +8748,41 @@ rendererReady
         for (const m of ["createRenderPipeline", "createComputePipeline", "createShaderModule"]) {
           const orig = dev[m]?.bind(dev);
           if (!orig) continue;
-          dev[m] = (...a) => { _gpuCreates++; return orig(...a); };
+          dev[m] = (...a) => {
+            _gpuCreates++;
+            return orig(...a);
+          };
         }
       }
-    } catch { /* diagnostics only */ }
+    } catch {
+      /* diagnostics only */
+    }
     // Small matte ambient grains. Falling petals/leaves have their own shapes.
     const night = TIME_OF_DAY === "night";
     initGpuParticles(scene, renderer, {
       count: 240, // lower compute/overdraw budget; these are subtle atmosphere
       tint: night ? 0xbcd0ff : TIME_OF_DAY === "sunset" ? 0xffd9a0 : 0xfff0c8,
       // Light comes from the world illumination, including at night.
-      opacity: night ? .25 : .4,
-      size: .14,
-    }).then((p) => { gpuParticles = p; if (p) p.setVisible(quality !== "low" && !saverOn); }); // Low and Battery saver hide the motes (and skip their compute)
+      opacity: night ? 0.25 : 0.4,
+      size: 0.14,
+    }).then((p) => {
+      gpuParticles = p;
+      if (p) p.setVisible(quality !== "low" && !saverOn);
+    }); // Low and Battery saver hide the motes (and skip their compute)
   })
   .catch((err) => console.error("[zoomies] renderer init failed:", err))
   .finally(() => {
     _boot.renderer = performance.now();
     // Draw the whole world for the first frames (see warmAllStep); when the
     // pass retires, dismiss the native splash and queue the kart-family warm.
-    beginWarmAll(3, () => { // two unculled draws: full detail, then distant geometry
+    beginWarmAll(3, () => {
+      // two unculled draws: full detail, then distant geometry
       // Only now dismiss the splash (and apply the rest of the native chrome):
       // the warm frames' compile stall must happen BEHIND the splash, not under
       // a frozen first frame. No-op on the web.
-      getPlatform().then((p) => p.ready()).catch(() => {});
+      getPlatform()
+        .then((p) => p.ready())
+        .catch(() => {});
       _noteInput(); // the menu appearing is where the 30s idle clock starts, not module load
       // A beat later (menu idle), warm the kart/cat material family too — the
       // garage's first open otherwise compiles it on-screen (~0.8s pause).
@@ -7603,11 +8801,12 @@ rendererReady
   if (crash) {
     console.warn("[zoomies] recovered from a crash:", crash);
     const onWebGLNow = new URLSearchParams(location.search).has("webgl");
-    const msg = crash.type && crash.type.indexOf("webgpu") === 0
-      ? onWebGLNow
-        ? "Recovered from a graphics glitch — switched to Compatibility mode for stability."
-        : "Recovered from a graphics glitch."
-      : "Recovered after an unexpected restart.";
+    const msg =
+      crash.type && crash.type.indexOf("webgpu") === 0
+        ? onWebGLNow
+          ? "Recovered from a graphics glitch — switched to Compatibility mode for stability."
+          : "Recovered from a graphics glitch."
+        : "Recovered after an unexpected restart.";
     showRecoveryNote(msg);
   }
 }
@@ -7662,6 +8861,5 @@ if (_isStandalonePWA) {
   // Wait for the audio-policy verdict (bounded — the web resolves instantly,
   // native is one bridge round-trip) before the first play attempt, so a
   // muted-by-policy session never starts-then-aborts the track.
-  Promise.race([_audioPolicyReady, new Promise((r) => setTimeout(r, 1500))])
-    .then(() => audio.playMusic("bg"));
+  Promise.race([_audioPolicyReady, new Promise((r) => setTimeout(r, 1500))]).then(() => audio.playMusic("bg"));
 }

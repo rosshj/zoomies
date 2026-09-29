@@ -18,53 +18,109 @@ import { ItemManager } from "../src/items.js";
 // needs — enough to unit-test yarn/milk without the full procedural track.
 function straightTrack(LEN = 200, halfWidth = 10) {
   return {
-    length: LEN, halfWidth,
+    length: LEN,
+    halfWidth,
     project(pos) {
       const t = (((pos.x / LEN) % 1) + 1) % 1;
-      return { t, point: new THREE.Vector3(pos.x, 0, 0), tangent: new THREE.Vector3(1, 0, 0), side: new THREE.Vector3(0, 0, 1), lateral: pos.z, groundY: 0 };
+      return {
+        t,
+        point: new THREE.Vector3(pos.x, 0, 0),
+        tangent: new THREE.Vector3(1, 0, 0),
+        side: new THREE.Vector3(0, 0, 1),
+        lateral: pos.z,
+        groundY: 0,
+      };
     },
-    getPointAt(t, out) { out.set(t * LEN, 0, 0); return out; },
-    getTangentAt(t, out) { out.set(1, 0, 0); return out; },
+    getPointAt(t, out) {
+      out.set(t * LEN, 0, 0);
+      return out;
+    },
+    getTangentAt(t, out) {
+      out.set(1, 0, 0);
+      return out;
+    },
   };
 }
 const stubScene = { add() {}, remove() {} };
 function milkKart(x, over = {}) {
-  return { finished: false, spinTimer: 0, y: 0, catnipBoosting: false, shielding: false, heading: 0, position: new THREE.Vector3(x, 0, 0), spun: false, spinOut() { this.spun = true; this.spinTimer = 1.4; }, ...over };
+  return {
+    finished: false,
+    spinTimer: 0,
+    y: 0,
+    catnipBoosting: false,
+    shielding: false,
+    heading: 0,
+    position: new THREE.Vector3(x, 0, 0),
+    spun: false,
+    spinOut() {
+      this.spun = true;
+      this.spinTimer = 1.4;
+    },
+    ...over,
+  };
 }
 
 let failures = 0;
 function check(name, cond) {
-  if (cond) { console.log(`  ok  ${name}`); }
-  else { console.log(`FAIL  ${name}`); failures++; }
+  if (cond) {
+    console.log(`  ok  ${name}`);
+  } else {
+    console.log(`FAIL  ${name}`);
+    failures++;
+  }
 }
 
 // --- Tri-furball fan -------------------------------------------------------
 {
-  check("TRI_FAN is a symmetric 3-way", TRI_FAN.length === 3 && TRI_FAN[1] === 0 && TRI_FAN[0] === -TRI_FAN[2] && TRI_FAN[0] < 0);
+  check(
+    "TRI_FAN is a symmetric 3-way",
+    TRI_FAN.length === 3 && TRI_FAN[1] === 0 && TRI_FAN[0] === -TRI_FAN[2] && TRI_FAN[0] < 0,
+  );
 
   const hm = new HairballManager({ add() {}, remove() {} });
   const owner = { triShots: 3, muzzle: () => ({ pos: new THREE.Vector3(0, 1, 0), dir: new THREE.Vector3(0, 0, 1) }) };
-  hm.spawn(owner); hm.spawn(owner); hm.spawn(owner); // three tri-shots → 3 fans of 3
+  hm.spawn(owner);
+  hm.spawn(owner);
+  hm.spawn(owner); // three tri-shots → 3 fans of 3
   check("three tri-shots spawn 9 balls", hm.balls.length === 9);
   check("tri charge fully consumed", owner.triShots === 0);
   const dirs = hm.balls.slice(0, 3).map((b) => b.vel.clone().setY(0).normalize());
-  check("a fan spreads (outer shots differ, centre straight)", Math.abs(dirs[0].x - dirs[2].x) > 0.1 && Math.abs(dirs[1].x) < 1e-6);
+  check(
+    "a fan spreads (outer shots differ, centre straight)",
+    Math.abs(dirs[0].x - dirs[2].x) > 0.1 && Math.abs(dirs[1].x) < 1e-6,
+  );
   hm.spawn(owner); // 4th: no charge left → a single ball
   check("post-charge shot is a single ball", hm.balls.length === 10);
 }
 
 // --- Floating power-up box lifecycle --------------------------------------
 {
-  const N = 200, LEN = 200;
-  const pts = [], tans = [];
-  for (let i = 0; i < N; i++) { pts.push(new THREE.Vector3(i * (LEN / N), 0, 0)); tans.push(new THREE.Vector3(1, 0, 0)); }
+  const N = 200,
+    LEN = 200;
+  const pts = [],
+    tans = [];
+  for (let i = 0; i < N; i++) {
+    pts.push(new THREE.Vector3(i * (LEN / N), 0, 0));
+    tans.push(new THREE.Vector3(1, 0, 0));
+  }
   const track = {
-    samples: N, length: LEN, halfWidth: 10, _pts: pts, _tans: tans,
-    groundInfo: () => ({ y: 0, dist: 0 }), distanceToCenter: (x, z) => Math.abs(z),
+    samples: N,
+    length: LEN,
+    halfWidth: 10,
+    _pts: pts,
+    _tans: tans,
+    groundInfo: () => ({ y: 0, dist: 0 }),
+    distanceToCenter: (x, z) => Math.abs(z),
   };
   const picks = [];
   const props = await initProps({ add() {}, remove() {} }, track, {
-    seed: "items-check", size: 0.5, heightAt: () => 0, onItem: (k) => { picks.push(k.name); return true; },
+    seed: "items-check",
+    size: 0.5,
+    heightAt: () => 0,
+    onItem: (k) => {
+      picks.push(k.name);
+      return true;
+    },
   });
   check("props built", !!props);
   const before = props.boxTargets().length;
@@ -85,7 +141,10 @@ function check(name, cond) {
 
   // A kart on cooldown (onItem returns false) must NOT consume the box.
   const props2 = await initProps({ add() {}, remove() {} }, track, {
-    seed: "items-check-2", size: 0.5, heightAt: () => 0, onItem: () => false,
+    seed: "items-check-2",
+    size: 0.5,
+    heightAt: () => 0,
+    onItem: () => false,
   });
   const k2 = { name: "P2" };
   for (let x = -6; x < LEN + 6; x += 3) props2.update(0.05, [{ x, z: 0, kart: k2 }]);
@@ -100,8 +159,10 @@ function check(name, cond) {
   const dropper = (x) => milkKart(x, { _proj: { t: x / track.length, lateral: 0 } });
 
   const puddle = im.dropMilk(dropper(56));
-  check("dropMilk lands a puddle 6 m behind the dropper, owned by them",
-    im.puddles.length === 1 && puddle.owner !== null && puddle.grace > 0 && Math.abs(puddle.x - 50) < 1e-6);
+  check(
+    "dropMilk lands a puddle 6 m behind the dropper, owned by them",
+    im.puddles.length === 1 && puddle.owner !== null && puddle.grace > 0 && Math.abs(puddle.x - 50) < 1e-6,
+  );
 
   const p1 = milkKart(50);
   im.update(0.016, [p1], {});
@@ -155,5 +216,8 @@ function check(name, cond) {
   check("a catnip kart blocks the yarn", yarnHit({ catnipBoosting: true }) === false);
 }
 
-if (failures) { console.log(`\n${failures} check(s) FAILED`); process.exit(1); }
+if (failures) {
+  console.log(`\n${failures} check(s) FAILED`);
+  process.exit(1);
+}
 console.log("\nall item-box checks passed");

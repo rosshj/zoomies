@@ -48,5 +48,12 @@ export function sameWorld(a, b) {
 function stable(v) {
   if (v === null || typeof v !== "object") return JSON.stringify(v);
   if (Array.isArray(v)) return "[" + v.map(stable).join(",") + "]";
-  return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + stable(v[k])).join(",") + "}";
+  return (
+    "{" +
+    Object.keys(v)
+      .sort()
+      .map((k) => JSON.stringify(k) + ":" + stable(v[k]))
+      .join(",") +
+    "}"
+  );
 }

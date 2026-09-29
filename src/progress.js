@@ -21,9 +21,18 @@ export const PROFILE_VERSION = 1;
 // which is far more robust than per-race predicates.
 export function defaultStats() {
   return {
-    races: 0, wins: 0, winsHard: 0, winsNight: 0, racesCustom: 0,
-    driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0,
-    boxes: 0, dailies: 0, treatsEarned: 0,
+    races: 0,
+    wins: 0,
+    winsHard: 0,
+    winsNight: 0,
+    racesCustom: 0,
+    driftBoosts: 0,
+    slipSeconds: 0,
+    milkTrips: 0,
+    heartSaves: 0,
+    boxes: 0,
+    dailies: 0,
+    treatsEarned: 0,
   };
 }
 
@@ -48,10 +57,14 @@ export function migrateProfile(raw) {
   const d = defaultProfile();
   p.v = PROFILE_VERSION;
   p.treats = Number.isFinite(p.treats) && p.treats >= 0 ? Math.floor(p.treats) : d.treats;
-  p.unlocked = Array.isArray(p.unlocked) ? [...new Set(p.unlocked.filter((x) => typeof x === "string"))] : [...d.unlocked];
+  p.unlocked = Array.isArray(p.unlocked)
+    ? [...new Set(p.unlocked.filter((x) => typeof x === "string"))]
+    : [...d.unlocked];
   for (const id of STARTER_UNLOCKS) if (!p.unlocked.includes(id)) p.unlocked.push(id);
   p.trophies = p.trophies && typeof p.trophies === "object" ? { ...p.trophies } : {};
-  p.achievements = Array.isArray(p.achievements) ? [...new Set(p.achievements.filter((x) => typeof x === "string"))] : [];
+  p.achievements = Array.isArray(p.achievements)
+    ? [...new Set(p.achievements.filter((x) => typeof x === "string"))]
+    : [];
   // Pending claims must reference earned achievements (drop anything orphaned).
   p.pendingClaims = Array.isArray(p.pendingClaims)
     ? [...new Set(p.pendingClaims.filter((x) => typeof x === "string" && p.achievements.includes(x)))]
@@ -77,26 +90,35 @@ export const STARTER_UNLOCKS = ["cat.0", "cat.1", "cat.2", "kart.0", "kart.1", "
 // difficulty exclusives are unchanged (money can't buy them).
 export const CATALOG = [
   // Cats (indices into CAT_PRESETS). First three are the free starter set.
-  { id: "cat.0", price: 0 }, { id: "cat.1", price: 0 }, { id: "cat.2", price: 0 },
-  { id: "cat.3", price: 100 }, { id: "cat.4", price: 100 }, { id: "cat.5", price: 120 },
-  { id: "cat.6", price: 140 }, { id: "cat.7", price: 180 },
+  { id: "cat.0", price: 0 },
+  { id: "cat.1", price: 0 },
+  { id: "cat.2", price: 0 },
+  { id: "cat.3", price: 100 },
+  { id: "cat.4", price: 100 },
+  { id: "cat.5", price: 120 },
+  { id: "cat.6", price: 140 },
+  { id: "cat.7", price: 180 },
   { id: "cat.8", cup: "sandypaws" }, // Pepper — Sandy Paws Cup exclusive
-  { id: "cat.9", cup: "zoomies" },   // Cocoa — Midnight Zoomies Cup exclusive
-  { id: "cat.10", price: 220 },      // Ziggy — golden bengal (rosettes)
-  { id: "cat.11", price: 400 },      // Moo — the cow cat
-  { id: "cat.12", diff: "medium" },  // Misty — win any cup on Medium or harder
-  { id: "cat.13", diff: "hard" },    // Biscuit — win any cup on Hard (or Expert)
+  { id: "cat.9", cup: "zoomies" }, // Cocoa — Midnight Zoomies Cup exclusive
+  { id: "cat.10", price: 220 }, // Ziggy — golden bengal (rosettes)
+  { id: "cat.11", price: 400 }, // Moo — the cow cat
+  { id: "cat.12", diff: "medium" }, // Misty — win any cup on Medium or harder
+  { id: "cat.13", diff: "hard" }, // Biscuit — win any cup on Hard (or Expert)
   // Added racers keep the original prices/unlocks intact. Every type can also
   // be mixed in the existing Custom Cat creator.
-  ...Array.from({length:26},(_,i)=>({id:`cat.${i+14}`,price:180+Math.floor(i/5)*30})),
+  ...Array.from({ length: 26 }, (_, i) => ({ id: `cat.${i + 14}`, price: 180 + Math.floor(i / 5) * 30 })),
   // Karts.
-  { id: "kart.0", price: 0 }, { id: "kart.1", price: 0 }, { id: "kart.2", price: 0 },
-  { id: "kart.3", price: 100 }, { id: "kart.4", price: 100 }, { id: "kart.5", price: 120 },
+  { id: "kart.0", price: 0 },
+  { id: "kart.1", price: 0 },
+  { id: "kart.2", price: 0 },
+  { id: "kart.3", price: 100 },
+  { id: "kart.4", price: 100 },
+  { id: "kart.5", price: 120 },
   { id: "kart.6", price: 150 },
-  { id: "kart.7", cup: "meadows" },  // Comet — Catnip Meadows Cup exclusive
+  { id: "kart.7", cup: "meadows" }, // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
-  { id: "kart.9", price: 250 },      // Prowler — the caged off-road buggy
-  ...Array.from({length:24},(_,i)=>({id:`kart.${i+10}`,price:260+Math.floor(i/4)*30})),
+  { id: "kart.9", price: 250 }, // Prowler — the caged off-road buggy
+  ...Array.from({ length: 24 }, (_, i) => ({ id: `kart.${i + 10}`, price: 260 + Math.floor(i / 4) * 30 })),
   // (Accessories carry no catalog entries: the whole wardrobe comes with the
   // Custom Cat creator. Old profiles may still hold acc.* ids — harmless.)
   // The custom creators are features you earn — early-mid milestones.
@@ -105,7 +127,9 @@ export const CATALOG = [
 ];
 const _catalogById = new Map(CATALOG.map((c) => [c.id, c]));
 
-export function catalogEntry(id) { return _catalogById.get(id) || null; }
+export function catalogEntry(id) {
+  return _catalogById.get(id) || null;
+}
 export function isUnlocked(profile, id) {
   const e = _catalogById.get(id);
   if (!e) return true; // unknown ids never brick a save (forward compatibility)
@@ -153,7 +177,8 @@ export function racePayout({ place, field, laps, difficulty, daily = false, stat
 }
 
 function ordinalish(n) {
-  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  const s = ["th", "st", "nd", "rd"],
+    v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
@@ -163,20 +188,56 @@ function ordinalish(n) {
 // ---------------------------------------------------------------------------
 
 export const ACHIEVEMENTS = [
-  { id: "first-race", name: "Out of the Cat Door", desc: "Finish your first race", pay: 50, test: (s, p) => s.races >= 1 },
+  {
+    id: "first-race",
+    name: "Out of the Cat Door",
+    desc: "Finish your first race",
+    pay: 50,
+    test: (s, p) => s.races >= 1,
+  },
   { id: "first-win", name: "Top Cat", desc: "Win a race", pay: 100, test: (s) => s.wins >= 1 },
   { id: "hard-win", name: "Apex Predator", desc: "Win against Hard rivals", pay: 150, test: (s) => s.winsHard >= 1 },
   { id: "night-win", name: "Night Prowler", desc: "Win a race at night", pay: 100, test: (s) => s.winsNight >= 1 },
   { id: "veteran", name: "Road Cat", desc: "Finish 25 races", pay: 200, test: (s) => s.races >= 25 },
   { id: "drift-50", name: "Sideways Cat", desc: "Earn 50 drift boosts", pay: 100, test: (s) => s.driftBoosts >= 50 },
-  { id: "slip-120", name: "Draft Dodger", desc: "Slipstream for 2 minutes total", pay: 100, test: (s) => s.slipSeconds >= 120 },
-  { id: "milk-10", name: "Cry Over Spilled Milk", desc: "Trip 10 rivals with milk", pay: 100, test: (s) => s.milkTrips >= 10 },
+  {
+    id: "slip-120",
+    name: "Draft Dodger",
+    desc: "Slipstream for 2 minutes total",
+    pay: 100,
+    test: (s) => s.slipSeconds >= 120,
+  },
+  {
+    id: "milk-10",
+    name: "Cry Over Spilled Milk",
+    desc: "Trip 10 rivals with milk",
+    pay: 100,
+    test: (s) => s.milkTrips >= 10,
+  },
   { id: "lives-5", name: "Lands on Its Feet", desc: "Get saved by 5 hearts", pay: 100, test: (s) => s.heartSaves >= 5 },
   { id: "boxes-50", name: "Box Enthusiast", desc: "Open 50 power-up boxes", pay: 75, test: (s) => s.boxes >= 50 },
   { id: "daily-5", name: "Regular", desc: "Finish 5 daily challenges", pay: 150, test: (s) => s.dailies >= 5 },
-  { id: "custom-race", name: "Trailblazer", desc: "Race a track you generated", pay: 50, test: (s) => s.racesCustom >= 1 },
-  { id: "cup-first", name: "Silverware", desc: "Win any cup", pay: 150, test: (s, p) => Object.keys(p.trophies).length >= 1 },
-  { id: "cup-sweep", name: "Cat-egory Champion", desc: "Win all four cups", pay: 400, test: (s, p) => CUPS.every((c) => p.trophies[c.id]) },
+  {
+    id: "custom-race",
+    name: "Trailblazer",
+    desc: "Race a track you generated",
+    pay: 50,
+    test: (s) => s.racesCustom >= 1,
+  },
+  {
+    id: "cup-first",
+    name: "Silverware",
+    desc: "Win any cup",
+    pay: 150,
+    test: (s, p) => Object.keys(p.trophies).length >= 1,
+  },
+  {
+    id: "cup-sweep",
+    name: "Cat-egory Champion",
+    desc: "Win all four cups",
+    pay: 400,
+    test: (s, p) => CUPS.every((c) => p.trophies[c.id]),
+  },
 ];
 
 // Mark newly earned badges. The treats are NOT paid here — each badge waits in
@@ -188,7 +249,11 @@ export function checkAchievements(profile) {
   for (const a of ACHIEVEMENTS) {
     if (profile.achievements.includes(a.id)) continue;
     let hit = false;
-    try { hit = !!a.test(profile.stats, profile); } catch { hit = false; }
+    try {
+      hit = !!a.test(profile.stats, profile);
+    } catch {
+      hit = false;
+    }
     if (hit) {
       profile.achievements.push(a.id);
       profile.pendingClaims.push(a.id);
@@ -218,46 +283,80 @@ export function claimAchievement(profile, id) {
 // ---------------------------------------------------------------------------
 
 export const CUP_POINTS = [10, 8, 6, 5, 4, 3]; // 7th+ scores 1
-export function cupPoints(place) { return CUP_POINTS[place - 1] ?? 1; }
+export function cupPoints(place) {
+  return CUP_POINTS[place - 1] ?? 1;
+}
 
 // Each cup race is a FULL generated world (mode custom + knobs + biomes + time of
 // day), so the series has genuinely distinct track layouts — previewable on the
 // menu map — and every player races identical cup tracks regardless of their own
 // saved track settings. The cfg shape matches the track creator's.
-const R = (seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay) =>
-  ({ seed, cfg: { mode: "custom", seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay } });
+const R = (seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay) => ({
+  seed,
+  cfg: { mode: "custom", seed, size, curviness, hilliness, hills, twist, biomes, timeOfDay },
+});
 // Every cup owns a THEME — its races stay inside one family of biomes, so the
 // series reads as a place (lush greens, arid dunes, snowy peaks, city nights)
 // and the name tells you where you're going.
 export const CUPS = [
-  { id: "meadows", name: "Catnip Meadows Cup", emoji: "🌿", desc: "Lush and laid-back — rolling greens, cherry blossoms, and a jungle romp",
-    winTreats: 200, unlockId: "kart.7", races: [
+  {
+    id: "meadows",
+    name: "Catnip Meadows Cup",
+    emoji: "🌿",
+    desc: "Lush and laid-back — rolling greens, cherry blossoms, and a jungle romp",
+    winTreats: 200,
+    unlockId: "kart.7",
+    races: [
       R("MDW1", 0.4, 0.35, 0.3, 0.3, 0.3, ["meadow", "blossom"], "midday"),
       R("MDW2", 0.45, 0.45, 0.35, 0.4, 0.35, ["forest", "meadow"], "midday"),
       R("MDW3", 0.5, 0.5, 0.4, 0.45, 0.4, ["jungle", "blossom"], "sunset"),
-    ] },
-  { id: "sandypaws", name: "Sandy Paws Cup", emoji: "🏜️", desc: "Hot laps around the world's biggest litter box — dunes, savanna, red mesa",
-    winTreats: 250, unlockId: "cat.8", races: [
+    ],
+  },
+  {
+    id: "sandypaws",
+    name: "Sandy Paws Cup",
+    emoji: "🏜️",
+    desc: "Hot laps around the world's biggest litter box — dunes, savanna, red mesa",
+    winTreats: 250,
+    unlockId: "cat.8",
+    races: [
       R("SND1", 0.5, 0.5, 0.4, 0.4, 0.45, ["desert", "savanna"], "midday"),
       R("SND2", 0.55, 0.6, 0.45, 0.5, 0.5, ["savanna", "mesa"], "sunset"),
       R("SND3", 0.6, 0.55, 0.5, 0.55, 0.55, ["mesa", "desert"], "midday"),
-    ] },
-  { id: "meowtain", name: "Meowtain Cup", emoji: "🏔️", desc: "Steep climbs and snowy switchbacks, way up where the big cats prowl",
-    winTreats: 300, unlockId: "kart.8", races: [
+    ],
+  },
+  {
+    id: "meowtain",
+    name: "Meowtain Cup",
+    emoji: "🏔️",
+    desc: "Steep climbs and snowy switchbacks, way up where the big cats prowl",
+    winTreats: 300,
+    unlockId: "kart.8",
+    races: [
       R("MTN1", 0.55, 0.6, 0.65, 0.7, 0.55, ["forest", "alpine"], "midday"),
       R("MTN2", 0.6, 0.65, 0.75, 0.8, 0.6, ["alpine", "tundra"], "sunset"),
       R("MTN3", 0.6, 0.7, 0.85, 0.85, 0.65, ["tundra", "alpine"], "night"),
-    ] },
-  { id: "zoomies", name: "Midnight Zoomies Cup", emoji: "⚡", desc: "The 3am championship — four races after dark. No mercy",
-    winTreats: 400, unlockId: "cat.9", races: [
+    ],
+  },
+  {
+    id: "zoomies",
+    name: "Midnight Zoomies Cup",
+    emoji: "⚡",
+    desc: "The 3am championship — four races after dark. No mercy",
+    winTreats: 400,
+    unlockId: "cat.9",
+    races: [
       R("ZOM1", 0.6, 0.6, 0.55, 0.55, 0.55, ["beach", "city"], "sunset"),
       R("ZOM2", 0.65, 0.7, 0.6, 0.65, 0.65, ["autumn", "forest"], "night"),
       R("ZOM3", 0.65, 0.75, 0.7, 0.7, 0.7, ["mesa", "savanna"], "night"),
       R("ZOM4", 0.7, 0.8, 0.65, 0.7, 0.75, ["city", "desert"], "night"),
-    ] },
+    ],
+  },
 ];
 const _cupById = new Map(CUPS.map((c) => [c.id, c]));
-export function cupById(id) { return _cupById.get(id) || null; }
+export function cupById(id) {
+  return _cupById.get(id) || null;
+}
 
 // Standings: points map (name -> pts) sorted descending, ties broken by name so
 // every client renders the same order.
@@ -280,7 +379,8 @@ export function awardCup(profile, cupId, standings, playerName, difficulty) {
   const upgraded = prev === undefined || (DIFF_RANK[difficulty] ?? 0) > (DIFF_RANK[prev] ?? 0);
   if (upgraded) profile.trophies[cupId] = difficulty;
   const firstWin = prev === undefined;
-  let treats = 0, unlockId = null;
+  let treats = 0,
+    unlockId = null;
   if (firstWin) {
     treats = cup.winTreats;
     profile.treats += treats;
@@ -325,7 +425,11 @@ export function dailySeedFor(dateStr) {
   for (let i = 0; i < dateStr.length; i++) h = ((h << 5) + h + dateStr.charCodeAt(i)) >>> 0;
   const AB = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L look-alikes
   let s = "";
-  for (let i = 0; i < 4; i++) { s += AB[h % AB.length]; h = Math.floor(h / AB.length) ^ (h << 7); h = h >>> 0; }
+  for (let i = 0; i < 4; i++) {
+    s += AB[h % AB.length];
+    h = Math.floor(h / AB.length) ^ (h << 7);
+    h = h >>> 0;
+  }
   return s;
 }
 
@@ -341,7 +445,9 @@ export function encodeProfileToken(profile) {
     let bin = "";
     for (const b of bytes) bin += String.fromCharCode(b);
     return "ZP1." + btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-  } catch { return ""; }
+  } catch {
+    return "";
+  }
 }
 
 export function decodeProfileToken(token) {
@@ -354,8 +460,11 @@ export function decodeProfileToken(token) {
     const bin = atob(b64);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const json = typeof TextDecoder !== "undefined" ? new TextDecoder().decode(bytes) : Buffer.from(bytes).toString("utf8");
+    const json =
+      typeof TextDecoder !== "undefined" ? new TextDecoder().decode(bytes) : Buffer.from(bytes).toString("utf8");
     const raw = JSON.parse(json);
     return raw && typeof raw === "object" ? migrateProfile(raw) : null;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }

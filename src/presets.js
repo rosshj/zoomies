@@ -46,7 +46,6 @@ export const CAT_PRESETS = [
   { name: "Quicksilver", type: "mau", fur: 0xc1c6c2, pattern: "spotted", accessory: "cone" },
   { name: "Stripes", type: "toyger", fur: 0xd6924e, pattern: "tiger", accessory: "ski" },
   { name: "Flurry", type: "snowbengal", fur: 0xe8e3d6, pattern: "bengal", accessory: "shells" },
-
 ];
 
 // Stable preset ids: curated body color, chassis, racing number and livery.
@@ -86,9 +85,15 @@ export const KART_PRESETS = [
   { name: "Dune Copper", color: 0xb86346, style: 15, number: 51, livery: 6 },
   { name: "Streamliner", color: 0xabb8c5, style: 16, number: 53, livery: 3 },
   { name: "Stream Azure", color: 0x328db0, style: 16, number: 54, livery: 7 },
-
 ];
 
 // What the creators open with (also the look the Cat-alog uses to advertise them).
-export const DEFAULT_CUSTOM_CAT = { type: "classic", name: "My Cat", fur: 0xf0a830, pattern: "spotted", accessory: "cap", accessoryColor: null };
+export const DEFAULT_CUSTOM_CAT = {
+  type: "classic",
+  name: "My Cat",
+  fur: 0xf0a830,
+  pattern: "spotted",
+  accessory: "cap",
+  accessoryColor: null,
+};
 export const DEFAULT_CUSTOM_KART = { name: "My Kart", color: 0xe53935, style: 0, number: 0, livery: 0 };

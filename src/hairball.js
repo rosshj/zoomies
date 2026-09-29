@@ -53,7 +53,10 @@ export class HairballManager {
     const speed = 70 + charge * 48;
     this.balls.push({
       mesh,
-      vel: dir.clone().multiplyScalar(speed).add(new THREE.Vector3(0, 4 - charge * 1.5, 0)),
+      vel: dir
+        .clone()
+        .multiplyScalar(speed)
+        .add(new THREE.Vector3(0, 4 - charge * 1.5, 0)),
       // A charged shot flies further, but its reach is capped (2.6s) so a full
       // charge can't snipe half a straight away.
       life: Math.min(2.6, 2.2 + charge * 1.1),
@@ -72,7 +75,8 @@ export class HairballManager {
       b.mesh.rotation.y += dt * 7;
 
       let hit = false;
-      if (b.life > 0 && !b.ghost) { // the warm-up ghost ball never collides
+      if (b.life > 0 && !b.ghost) {
+        // the warm-up ghost ball never collides
         for (const k of karts) {
           if (k === b.owner || k.finished) continue;
           if (this._overlaps(b, k)) {

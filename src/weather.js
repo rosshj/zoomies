@@ -60,7 +60,8 @@ export class Weather {
         x = x.add(time.mul(0.8).add(ph).sin().mul(0.7));
         z = z.add(time.mul(0.6).add(ph.mul(1.3)).cos().mul(0.7));
       }
-      const halfW = w / 2, halfD = d / 2;
+      const halfW = w / 2,
+        halfD = d / 2;
       const wx = x.add(halfW).mod(w).add(w).mod(w).sub(halfW); // wrap into [-w/2, w/2)
       const wz = z.add(halfD).mod(d).add(d).mod(d).sub(halfD);
       mat.positionNode = vec3(wx, y, wz).add(this._uCam);
@@ -71,7 +72,10 @@ export class Weather {
       scene.add(mesh);
       return { mesh, mat };
     };
-    this.rainField = mkField(new THREE.PlaneGeometry(0.16, 1.1), streakTexture(), 0xdaeaff, { fall: 95, rainWind: true });
+    this.rainField = mkField(new THREE.PlaneGeometry(0.16, 1.1), streakTexture(), 0xdaeaff, {
+      fall: 95,
+      rainWind: true,
+    });
     this.snowField = mkField(new THREE.PlaneGeometry(0.5, 0.5), dotTexture(), 0xffffff, { fall: 13, rainWind: false });
     this._rainOpacity = 0.85;
     this._snowOpacity = 0.95;
@@ -141,12 +145,15 @@ function dotTexture() {
   // existing instanced field, particle count and GPU motion stay unchanged.
   ctx.beginPath();
   for (let i = 0; i < 12; i++) {
-    const a = i / 12 * Math.PI * 2 - Math.PI / 2;
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
     const r = i % 2 ? 6 : 15;
-    const x = 16 + Math.cos(a) * r, y = 16 + Math.sin(a) * r;
-    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    const x = 16 + Math.cos(a) * r,
+      y = 16 + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
-  ctx.closePath(); ctx.fill();
+  ctx.closePath();
+  ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   return tex;
 }
@@ -162,8 +169,12 @@ function streakTexture() {
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.moveTo(8, 0); ctx.lineTo(10, 44); ctx.lineTo(8, 64); ctx.lineTo(6, 44);
-  ctx.closePath(); ctx.fill();
+  ctx.moveTo(8, 0);
+  ctx.lineTo(10, 44);
+  ctx.lineTo(8, 64);
+  ctx.lineTo(6, 44);
+  ctx.closePath();
+  ctx.fill();
   const tex = new THREE.CanvasTexture(c);
   return tex;
 }

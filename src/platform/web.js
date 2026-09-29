@@ -26,7 +26,8 @@ function makeIosSwitchTick() {
         // Kept out of sight and out of the way — but NOT display:none, which
         // would make the label unclickable.
         wrap.setAttribute("aria-hidden", "true");
-        wrap.style.cssText = "position:fixed;left:-999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none;";
+        wrap.style.cssText =
+          "position:fixed;left:-999px;top:0;width:1px;height:1px;overflow:hidden;pointer-events:none;";
         const input = document.createElement("input");
         input.type = "checkbox";
         input.setAttribute("switch", "");
@@ -49,11 +50,15 @@ export function createWebAdapter() {
   // (the switch tick has a single fixed strength, so count is the only dial).
   const burst = (n, gap = 45) => {
     if (!iosTick) return false;
-    for (let i = 0; i < n; i++) (i === 0 ? iosTick() : setTimeout(iosTick, i * gap));
+    for (let i = 0; i < n; i++) i === 0 ? iosTick() : setTimeout(iosTick, i * gap);
     return true;
   };
   const vibrate = (pattern) => {
-    try { navigator.vibrate?.(pattern); } catch { /* unsupported */ }
+    try {
+      navigator.vibrate?.(pattern);
+    } catch {
+      /* unsupported */
+    }
   };
   // Gamepad rumble: when a pad with an actuator is plugged in, the taptics go
   // to the hands actually holding the game — on desktop (Steam) it's the ONLY
@@ -72,13 +77,17 @@ export function createWebAdapter() {
           // to buzzing the phone the pad is plugged into.
           if (localStorage.getItem("zoomies-rumble") !== "0") {
             a.playEffect(a.type || "dual-rumble", {
-              duration: ms, strongMagnitude: strong, weakMagnitude: weak,
+              duration: ms,
+              strongMagnitude: strong,
+              weakMagnitude: weak,
             });
           }
           return true;
         }
       }
-    } catch { /* unsupported */ }
+    } catch {
+      /* unsupported */
+    }
     return false;
   };
 
@@ -96,9 +105,14 @@ export function createWebAdapter() {
       // Android Chrome's navigator.vibrate, then iOS Safari's switch-toggle
       // trick. Elsewhere: silently nothing — native has real taptics.
       impact(style = "medium") {
-        if (style === "heavy" ? padRumble(110, 1.0, 0.6) :
-            style === "light" ? padRumble(40, 0.25, 0.45) :
-            padRumble(70, 0.6, 0.5)) return;
+        if (
+          style === "heavy"
+            ? padRumble(110, 1.0, 0.6)
+            : style === "light"
+              ? padRumble(40, 0.25, 0.45)
+              : padRumble(70, 0.6, 0.5)
+        )
+          return;
         if (burst(style === "heavy" ? 3 : style === "medium" ? 2 : 1)) return;
         vibrate(style === "heavy" ? 25 : style === "light" ? 6 : 12);
       },
@@ -118,18 +132,30 @@ export function createWebAdapter() {
       // Best-effort; most mobile browsers reject lock() outside fullscreen, which
       // is exactly why the game counter-rotates its own UI. Native gets a real lock.
       async lock(orientation = "landscape") {
-        try { await screen.orientation?.lock?.(orientation); } catch { /* rejected */ }
+        try {
+          await screen.orientation?.lock?.(orientation);
+        } catch {
+          /* rejected */
+        }
       },
       async unlock() {
-        try { screen.orientation?.unlock?.(); } catch { /* unsupported */ }
+        try {
+          screen.orientation?.unlock?.();
+        } catch {
+          /* unsupported */
+        }
       },
     },
 
     audio: {
       // The web has no API for "is other audio playing", so the policy gate
       // never engages here — game music behaves exactly as it always has.
-      async otherAudioPlaying() { return false; },
-      async reactivate() { /* no session concept on the web */ },
+      async otherAudioPlaying() {
+        return false;
+      },
+      async reactivate() {
+        /* no session concept on the web */
+      },
     },
 
     app: {
@@ -144,9 +170,15 @@ export function createWebAdapter() {
     // (Web monetisation, if ever wanted, would be a separate Stripe-backed impl.)
     purchases: {
       available: false,
-      async getOfferings() { return []; },
-      async purchase() { throw new Error("purchases unavailable on web"); },
-      async restore() { return []; },
+      async getOfferings() {
+        return [];
+      },
+      async purchase() {
+        throw new Error("purchases unavailable on web");
+      },
+      async restore() {
+        return [];
+      },
     },
   };
 }

@@ -15,13 +15,30 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = process.env.OUT || "/tmp/mtn";
 const PORT = 8112;
 fs.mkdirSync(OUT, { recursive: true });
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+};
 const server = http.createServer((req, res) => {
   let u = decodeURIComponent(req.url.split("?")[0]);
-  if (u === "/favicon.ico") { res.writeHead(204); res.end(); return; }
+  if (u === "/favicon.ico") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (u === "/") u = "/index.html";
   fs.readFile(path.join(ROOT, u), (err, data) => {
-    if (err) { res.writeHead(404); res.end("404 " + u); return; }
+    if (err) {
+      res.writeHead(404);
+      res.end("404 " + u);
+      return;
+    }
     res.writeHead(200, { "content-type": MIME[path.extname(u)] || "application/octet-stream" });
     res.end(data);
   });
@@ -29,7 +46,13 @@ const server = http.createServer((req, res) => {
 await new Promise((r) => server.listen(PORT, r));
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: [
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--ignore-gpu-blocklist",
+    "--enable-unsafe-swiftshader",
+    "--no-sandbox",
+  ],
 });
 const page = await (await browser.newContext({ viewport: { width: 900, height: 600 } })).newPage();
 page.on("pageerror", (e) => console.error("PAGEERROR:", e.message));
@@ -42,11 +65,15 @@ for (let step = 0; step < 12; step++) {
   await page.waitForTimeout(700);
   const done = await page.evaluate(() => {
     const go = document.getElementById("go-btn");
-    if (go && go.offsetParent) { go.click(); return true; }
+    if (go && go.offsetParent) {
+      go.click();
+      return true;
+    }
     const screen = document.querySelector(".flow-screen.is-active");
     if (!screen) return false;
-    const pick = [...screen.querySelectorAll("button, .card, [role=button]")]
-      .filter((e) => e.offsetParent && !e.classList.contains("flow-back") && !e.hasAttribute("data-back"))[0];
+    const pick = [...screen.querySelectorAll("button, .card, [role=button]")].filter(
+      (e) => e.offsetParent && !e.classList.contains("flow-back") && !e.hasAttribute("data-back"),
+    )[0];
     if (pick) pick.click();
     return false;
   });
@@ -60,10 +87,14 @@ for (let t = 0; t < 90; t++) {
 const info = await page.evaluate(() => {
   const Z = window.__zoomies;
   let peaks = null;
-  Z.scene.traverse((o) => { if (o.userData && o.userData.mountains) peaks = o.userData.mountains; });
+  Z.scene.traverse((o) => {
+    if (o.userData && o.userData.mountains) peaks = o.userData.mountains;
+  });
   if (!peaks) return { peaks: 0 };
   const c = Z.camera;
-  c.position.copy = function () { return this; }; // pin
+  c.position.copy = function () {
+    return this;
+  }; // pin
   c.lookAt = () => {};
   // Sort by distance from the world centre so we can pick a near one and a far
   // one deliberately rather than whatever comes first.
@@ -80,7 +111,11 @@ const info = await page.evaluate(() => {
     cc.updateMatrixWorld(true);
     return { at: [Math.round(p.x), Math.round(p.y), Math.round(p.z)], h: Math.round(p.h), rad: Math.round(p.rad) };
   };
-  return { peaks: peaks.length, nearest: Math.round(Math.hypot(byR[0].x, byR[0].z)), farthest: Math.round(Math.hypot(byR[byR.length - 1].x, byR[byR.length - 1].z)) };
+  return {
+    peaks: peaks.length,
+    nearest: Math.round(Math.hypot(byR[0].x, byR[0].z)),
+    farthest: Math.round(Math.hypot(byR[byR.length - 1].x, byR[byR.length - 1].z)),
+  };
 });
 console.log("range:", JSON.stringify(info));
 

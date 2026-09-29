@@ -60,26 +60,176 @@ const MIN_SIM = Math.min(15, SECONDS * 0.5);
 // nameable places players actually race, so they must always be clean.
 const FEATURED = [
   { name: "Classic", cfg: { mode: "classic" } },
-  { name: "Buttercup Run", cfg: { mode: "custom", seed: "MEOW", size: 0.45, curviness: 0.5, twist: 0.42, hilliness: 0.35, hills: 0.5, biomes: ["meadow", "forest"], timeOfDay: "midday" } },
-  { name: "Whisker Canyon", cfg: { mode: "custom", seed: "DUNE", size: 0.55, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["desert", "mesa"], timeOfDay: "sunset" } },
-  { name: "Neon Alley", cfg: { mode: "custom", seed: "NEON", size: 0.5, curviness: 0.45, twist: 0.55, hilliness: 0.3, hills: 0.4, biomes: ["city"], timeOfDay: "night" } },
-  { name: "Tuna Cove", cfg: { mode: "custom", seed: "TUNA", size: 0.5, curviness: 0.5, twist: 0.45, hilliness: 0.35, hills: 0.45, biomes: ["beach", "jungle"], timeOfDay: "midday" } },
-  { name: "Snowcap Sprint", cfg: { mode: "custom", seed: "PEAK", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.7, hills: 0.65, biomes: ["alpine", "tundra"], timeOfDay: "sunset" } },
-  { name: "Maple Falls", cfg: { mode: "custom", seed: "LEAF", size: 0.5, curviness: 0.55, twist: 0.48, hilliness: 0.5, hills: 0.55, biomes: ["autumn", "forest"], timeOfDay: "sunset" } },
-  { name: "Petal Parade", cfg: { mode: "custom", seed: "POSY", size: 0.45, curviness: 0.5, twist: 0.4, hilliness: 0.3, hills: 0.45, biomes: ["blossom", "meadow"], timeOfDay: "midday" } },
-  { name: "Lavender Loop", sub: "🪻 Countryside · Sunset", cfg: { mode: "custom", seed: "BLOOM", size: 0.5, curviness: 0.5, twist: 0.42, hilliness: 0.3, hills: 0.45, biomes: ["lavender"], timeOfDay: "sunset" } },
-  { name: "Willow Wash", sub: "🌧 Wetlands · Midday", cfg: { mode: "custom", seed: "REED", size: 0.5, curviness: 0.4, twist: 0.4, hilliness: 0.2, hills: 0.3, biomes: ["wetlands"], timeOfDay: "midday" } },
-  { name: "Basalt Blast", sub: "🌋 Badlands · Sunset", cfg: { mode: "custom", seed: "BASALT", size: 0.5, curviness: 0.55, twist: 0.5, hilliness: 0.6, hills: 0.6, biomes: ["volcanic"], timeOfDay: "sunset" } },
+  {
+    name: "Buttercup Run",
+    cfg: {
+      mode: "custom",
+      seed: "MEOW",
+      size: 0.45,
+      curviness: 0.5,
+      twist: 0.42,
+      hilliness: 0.35,
+      hills: 0.5,
+      biomes: ["meadow", "forest"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Whisker Canyon",
+    cfg: {
+      mode: "custom",
+      seed: "DUNE",
+      size: 0.55,
+      curviness: 0.55,
+      twist: 0.5,
+      hilliness: 0.6,
+      hills: 0.6,
+      biomes: ["desert", "mesa"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Neon Alley",
+    cfg: {
+      mode: "custom",
+      seed: "NEON",
+      size: 0.5,
+      curviness: 0.45,
+      twist: 0.55,
+      hilliness: 0.3,
+      hills: 0.4,
+      biomes: ["city"],
+      timeOfDay: "night",
+    },
+  },
+  {
+    name: "Tuna Cove",
+    cfg: {
+      mode: "custom",
+      seed: "TUNA",
+      size: 0.5,
+      curviness: 0.5,
+      twist: 0.45,
+      hilliness: 0.35,
+      hills: 0.45,
+      biomes: ["beach", "jungle"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Snowcap Sprint",
+    cfg: {
+      mode: "custom",
+      seed: "PEAK",
+      size: 0.5,
+      curviness: 0.55,
+      twist: 0.5,
+      hilliness: 0.7,
+      hills: 0.65,
+      biomes: ["alpine", "tundra"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Maple Falls",
+    cfg: {
+      mode: "custom",
+      seed: "LEAF",
+      size: 0.5,
+      curviness: 0.55,
+      twist: 0.48,
+      hilliness: 0.5,
+      hills: 0.55,
+      biomes: ["autumn", "forest"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Petal Parade",
+    cfg: {
+      mode: "custom",
+      seed: "POSY",
+      size: 0.45,
+      curviness: 0.5,
+      twist: 0.4,
+      hilliness: 0.3,
+      hills: 0.45,
+      biomes: ["blossom", "meadow"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Lavender Loop",
+    sub: "🪻 Countryside · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "BLOOM",
+      size: 0.5,
+      curviness: 0.5,
+      twist: 0.42,
+      hilliness: 0.3,
+      hills: 0.45,
+      biomes: ["lavender"],
+      timeOfDay: "sunset",
+    },
+  },
+  {
+    name: "Willow Wash",
+    sub: "🌧 Wetlands · Midday",
+    cfg: {
+      mode: "custom",
+      seed: "REED",
+      size: 0.5,
+      curviness: 0.4,
+      twist: 0.4,
+      hilliness: 0.2,
+      hills: 0.3,
+      biomes: ["wetlands"],
+      timeOfDay: "midday",
+    },
+  },
+  {
+    name: "Basalt Blast",
+    sub: "🌋 Badlands · Sunset",
+    cfg: {
+      mode: "custom",
+      seed: "BASALT",
+      size: 0.5,
+      curviness: 0.55,
+      twist: 0.5,
+      hilliness: 0.6,
+      hills: 0.6,
+      biomes: ["volcanic"],
+      timeOfDay: "sunset",
+    },
+  },
 ];
 
-const BIOMES = ["meadow", "forest", "desert", "mesa", "city", "beach", "jungle", "alpine", "tundra", "autumn", "blossom", "savanna", "lavender", "wetlands", "volcanic"];
+const BIOMES = [
+  "meadow",
+  "forest",
+  "desert",
+  "mesa",
+  "city",
+  "beach",
+  "jungle",
+  "alpine",
+  "tundra",
+  "autumn",
+  "blossom",
+  "savanna",
+  "lavender",
+  "wetlands",
+  "volcanic",
+];
 const TODS = ["midday", "sunset", "night"];
 
 // Deterministic RNG so a sweep is reproducible and a failing seed can be
 // re-run on its own.
 function mulberry(a) {
   return () => {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
@@ -103,7 +253,8 @@ function randomRecipes(n, salt = 1) {
     out.push({
       name: `random ${seed}`,
       cfg: {
-        mode: "custom", seed,
+        mode: "custom",
+        seed,
         size: +(0.3 + r() * 0.6).toFixed(2),
         curviness: +(0.25 + r() * 0.65).toFixed(2),
         twist: +(0.25 + r() * 0.65).toFixed(2),
@@ -137,9 +288,15 @@ function extremeRecipes(n, salt = 7) {
     out.push({
       name: `extreme ${seed}`,
       cfg: {
-        mode: "custom", seed,
-        size: 1, curviness: 1, twist: 1, hilliness: 1, hills: 1,
-        biomes, timeOfDay: TODS[Math.floor(r() * TODS.length)],
+        mode: "custom",
+        seed,
+        size: 1,
+        curviness: 1,
+        twist: 1,
+        hilliness: 1,
+        hills: 1,
+        biomes,
+        timeOfDay: TODS[Math.floor(r() * TODS.length)],
       },
     });
   }
@@ -147,16 +304,30 @@ function extremeRecipes(n, salt = 7) {
 }
 
 const MIME = {
-  ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
-  ".css": "text/css", ".json": "application/json", ".png": "image/png",
-  ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
 };
 const server = http.createServer((req, res) => {
   let p = decodeURIComponent(req.url.split("?")[0]);
-  if (p === "/favicon.ico") { res.writeHead(204); res.end(); return; }
+  if (p === "/favicon.ico") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (p === "/") p = "/index.html";
   fs.readFile(path.join(ROOT, p), (e, d) => {
-    if (e) { res.writeHead(404); res.end("not found"); return; }
+    if (e) {
+      res.writeHead(404);
+      res.end("not found");
+      return;
+    }
     res.writeHead(200, { "content-type": MIME[path.extname(p)] || "application/octet-stream" });
     res.end(d);
   });
@@ -165,7 +336,13 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: [
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--ignore-gpu-blocklist",
+    "--enable-unsafe-swiftshader",
+    "--no-sandbox",
+  ],
 });
 
 // Race one track and return its pathology counts.
@@ -183,15 +360,22 @@ async function auditTrack(entry) {
       // We are auditing the SIMULATION, not the pixels — the cheapest renderer
       // setting makes the software-rendered sim run far closer to real time.
       localStorage.setItem("zoomies-quality-v2", "low");
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, entry.cfg);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => pageErrors.push(e.message.slice(0, 160)));
-  page.on("console", (m) => { if (m.type() === "error") pageErrors.push(m.text().slice(0, 160)); });
+  page.on("console", (m) => {
+    if (m.type() === "error") pageErrors.push(m.text().slice(0, 160));
+  });
 
   const out = { name: entry.name, cfg: entry.cfg, errors: [] };
   try {
-    await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, { waitUntil: "load", timeout: 180000 });
+    await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, {
+      waitUntil: "load",
+      timeout: 180000,
+    });
     await page.waitForSelector("#start-btn", { timeout: 30000 });
 
     // Start a race without walking the menu wizard: the GO button's handler is
@@ -208,11 +392,18 @@ async function auditTrack(entry) {
     // done and the field has been released.
     let rolling = false;
     for (let i = 0; i < 180; i++) {
-      rolling = await page.evaluate(() => {
-        const z = window.__zoomies;
-        return !!(z && z.track && z.track.raceTime > 2 && z.karts &&
-          z.karts.some((k) => !k.isPlayer && Math.abs(k.speed) > 6));
-      }).catch(() => false);
+      rolling = await page
+        .evaluate(() => {
+          const z = window.__zoomies;
+          return !!(
+            z &&
+            z.track &&
+            z.track.raceTime > 2 &&
+            z.karts &&
+            z.karts.some((k) => !k.isPlayer && Math.abs(k.speed) > 6)
+          );
+        })
+        .catch(() => false);
       if (rolling) break;
       await page.waitForTimeout(1000);
     }
@@ -228,11 +419,23 @@ async function auditTrack(entry) {
     // kart as wedged simply because the renderer is slow.
     await page.evaluate(() => {
       const z = window.__zoomies;
-      const A = z.__audit = {
-        samples: 0, grind: 0, wedged: 0, wedgedAt: [], stalled: 0, stalledWho: [],
-        offroad: 0, offroadAt: [], bigAir: 0, maxAir: 0, nan: 0,
-        speedSum: 0, sim: 0, simStart: z.track.raceTime, progress: {},
-      };
+      const A = (z.__audit = {
+        samples: 0,
+        grind: 0,
+        wedged: 0,
+        wedgedAt: [],
+        stalled: 0,
+        stalledWho: [],
+        offroad: 0,
+        offroadAt: [],
+        bigAir: 0,
+        maxAir: 0,
+        nan: 0,
+        speedSum: 0,
+        sim: 0,
+        simStart: z.track.raceTime,
+        progress: {},
+      });
       let last = z.track.raceTime;
       const st = new Map();
       z.__auditT = setInterval(() => {
@@ -270,27 +473,43 @@ async function auditTrack(entry) {
           let crowded = false;
           for (const o of z.karts) {
             if (o === k) continue;
-            if (Math.hypot(o.position.x - k.position.x, o.position.z - k.position.z) < 6.5) { crowded = true; break; }
+            if (Math.hypot(o.position.x - k.position.x, o.position.z - k.position.z) < 6.5) {
+              crowded = true;
+              break;
+            }
           }
           if (k.throttleInput > 0.4 && k.spinTimer <= 0 && !crowded && !k.finished) {
             s.t += dt;
             if (Math.hypot(k.position.x - s.x, k.position.z - s.z) > 5) {
-              s.x = k.position.x; s.z = k.position.z; s.t = 0;
+              s.x = k.position.x;
+              s.z = k.position.z;
+              s.t = 0;
             } else if (s.t > 3) {
               A.wedged++;
-              if (A.wedgedAt.length < 8) A.wedgedAt.push(`${k.position.x.toFixed(0)},${k.position.z.toFixed(0)} @${A.sim.toFixed(0)}s`);
-              s.x = k.position.x; s.z = k.position.z; s.t = 0;
+              if (A.wedgedAt.length < 8)
+                A.wedgedAt.push(`${k.position.x.toFixed(0)},${k.position.z.toFixed(0)} @${A.sim.toFixed(0)}s`);
+              s.x = k.position.x;
+              s.z = k.position.z;
+              s.t = 0;
             }
           } else {
-            s.x = k.position.x; s.z = k.position.z; s.t = 0;
+            s.x = k.position.x;
+            s.z = k.position.z;
+            s.t = 0;
           }
 
           // STALLED — lap progress not advancing at all (can't get round,
           // whatever the reason).
-          if (k.totalProgress > s.prog + 0.002) { s.prog = k.totalProgress; s.ptime = 0; }
-          else if (!k.finished) {
+          if (k.totalProgress > s.prog + 0.002) {
+            s.prog = k.totalProgress;
+            s.ptime = 0;
+          } else if (!k.finished) {
             s.ptime += dt;
-            if (s.ptime > 12) { A.stalled++; A.stalledWho.push(k.name); s.ptime = 0; }
+            if (s.ptime > 12) {
+              A.stalled++;
+              A.stalledWho.push(k.name);
+              s.ptime = 0;
+            }
           }
           st.set(k, s);
         }
@@ -306,7 +525,10 @@ async function auditTrack(entry) {
       await page.waitForTimeout(4000);
       const sim = await page.evaluate(() => window.__zoomies.__audit.sim).catch(() => 0);
       if (sim >= SECONDS) break;
-      if (Date.now() - t0 > WALL_CAP) { timedOut = true; break; }
+      if (Date.now() - t0 > WALL_CAP) {
+        timedOut = true;
+        break;
+      }
     }
     out.wallSeconds = Math.round((Date.now() - t0) / 1000);
 
@@ -324,7 +546,7 @@ async function auditTrack(entry) {
       return A;
     });
     out.stats = a;
-    out.grindPct = +(a.grind / Math.max(1, a.samples) * 100).toFixed(1);
+    out.grindPct = +((a.grind / Math.max(1, a.samples)) * 100).toFixed(1);
     out.meanSpeed = +(a.speedSum / Math.max(1, a.samples)).toFixed(1);
     out.simSeconds = +a.sim.toFixed(0);
     const progressed = Object.values(a.progress);
@@ -345,13 +567,15 @@ async function auditTrack(entry) {
     if (a.wedged > 0) out.errors.push(`${a.wedged} wedge event(s): ${a.wedgedAt.join(" | ")}`);
     if (out.grindPct > 12) out.errors.push(`barrier grind ${out.grindPct}% of race time`);
     if (a.stalled > 0) out.errors.push(`${a.stalled} lap-progress stall(s): ${[...new Set(a.stalledWho)].join(", ")}`);
-    if (a.offroad > 0) out.errors.push(`${a.offroad} off-track sample(s) outside the barriers: ${a.offroadAt.join(" | ")}`);
+    if (a.offroad > 0)
+      out.errors.push(`${a.offroad} off-track sample(s) outside the barriers: ${a.offroadAt.join(" | ")}`);
     if (a.nan > 0) out.errors.push(`${a.nan} non-finite kart state sample(s)`);
     if (a.maxAir > 14) out.errors.push(`absurd hang time (max ${a.maxAir.toFixed(1)}u above the road)`);
     // PACE, not lap count: a drivable track lets the field average a real
     // fraction of top speed (34 u/s). Well under that means they are fighting
     // the geometry the whole way round even if nothing latches as a wedge.
-    if (out.meanSpeed < 12) out.errors.push(`field averaged only ${out.meanSpeed} u/s over ${out.simSeconds}s of racing`);
+    if (out.meanSpeed < 12)
+      out.errors.push(`field averaged only ${out.meanSpeed} u/s over ${out.simSeconds}s of racing`);
     const fatal = pageErrors.filter((e) => !/favicon|Failed to load resource/i.test(e));
     if (fatal.length) out.errors.push(`page errors: ${[...new Set(fatal)].slice(0, 3).join(" | ")}`);
   } catch (e) {
@@ -362,11 +586,19 @@ async function auditTrack(entry) {
 }
 
 const list =
-  WHICH === "random" ? randomRecipes(SEEDS)
-  : WHICH === "extreme" ? extremeRecipes(SEEDS)
-  : WHICH === "all" ? [...FEATURED, ...randomRecipes(SEEDS), ...extremeRecipes(SEEDS)]
-  : WHICH === "featured" ? FEATURED
-  : FEATURED.filter((f) => WHICH.split(",").map((s) => s.trim().toLowerCase()).includes(f.name.toLowerCase()));
+  WHICH === "random"
+    ? randomRecipes(SEEDS)
+    : WHICH === "extreme"
+      ? extremeRecipes(SEEDS)
+      : WHICH === "all"
+        ? [...FEATURED, ...randomRecipes(SEEDS), ...extremeRecipes(SEEDS)]
+        : WHICH === "featured"
+          ? FEATURED
+          : FEATURED.filter((f) =>
+              WHICH.split(",")
+                .map((s) => s.trim().toLowerCase())
+                .includes(f.name.toLowerCase()),
+            );
 
 if (!list.length) {
   console.error(`no tracks matched TRACKS="${WHICH}"`);
@@ -380,29 +612,47 @@ for (const entry of list) {
   const r = await auditTrack(entry);
   results.push(r);
   process.stderr.write(
-    r.inconclusive ? `INCONCLUSIVE\n      ${r.inconclusive}\n`
-    : r.errors.length ? `FAIL (${r.errors.length})\n      ${r.errors.join("\n      ")}\n`
-    : `ok${r.partial ? " (short sample)" : ""} (${r.simSeconds}s raced in ${r.wallSeconds}s, mean ${r.meanSpeed} u/s, grind ${r.grindPct}%)\n`
+    r.inconclusive
+      ? `INCONCLUSIVE\n      ${r.inconclusive}\n`
+      : r.errors.length
+        ? `FAIL (${r.errors.length})\n      ${r.errors.join("\n      ")}\n`
+        : `ok${r.partial ? " (short sample)" : ""} (${r.simSeconds}s raced in ${r.wallSeconds}s, mean ${r.meanSpeed} u/s, grind ${r.grindPct}%)\n`,
   );
 }
 
 const inconclusive = results.filter((r) => r.inconclusive);
 const failed = results.filter((r) => !r.inconclusive && r.errors.length);
-console.log(JSON.stringify({
-  seconds: SECONDS,
-  tracks: results.map((r) => ({
-    name: r.name, seed: r.cfg.seed || null,
-    outcome: r.inconclusive ? "inconclusive" : r.errors.length ? "fail" : r.partial ? "pass (short sample)" : "pass",
-    grindPct: r.grindPct ?? null,
-    meanSpeed: r.meanSpeed ?? null, simSeconds: r.simSeconds ?? null,
-    wallSeconds: r.wallSeconds ?? null, minProgress: r.minProgress ?? null,
-    wedged: r.stats?.wedged ?? null,
-    maxAir: r.stats ? +r.stats.maxAir.toFixed(1) : null, errors: r.errors,
-  })),
-  passed: results.length - failed.length - inconclusive.length,
-  failed: failed.length,
-  inconclusive: inconclusive.length,
-}, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      seconds: SECONDS,
+      tracks: results.map((r) => ({
+        name: r.name,
+        seed: r.cfg.seed || null,
+        outcome: r.inconclusive
+          ? "inconclusive"
+          : r.errors.length
+            ? "fail"
+            : r.partial
+              ? "pass (short sample)"
+              : "pass",
+        grindPct: r.grindPct ?? null,
+        meanSpeed: r.meanSpeed ?? null,
+        simSeconds: r.simSeconds ?? null,
+        wallSeconds: r.wallSeconds ?? null,
+        minProgress: r.minProgress ?? null,
+        wedged: r.stats?.wedged ?? null,
+        maxAir: r.stats ? +r.stats.maxAir.toFixed(1) : null,
+        errors: r.errors,
+      })),
+      passed: results.length - failed.length - inconclusive.length,
+      failed: failed.length,
+      inconclusive: inconclusive.length,
+    },
+    null,
+    2,
+  ),
+);
 
 await browser.close();
 server.close();

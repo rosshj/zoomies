@@ -1,4 +1,4 @@
-import { setWindClock } from './wind.js';
+import { setWindClock } from "./wind.js";
 // Asset viewer (viewer.html) — a dev tool for inspecting the game's procedural
 // assets one at a time. It imports the SAME modules the game runs (models,
 // scenery, props), so every mesh here is byte-for-byte what ships in a race —
@@ -32,9 +32,18 @@ import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
 // bodies, the knockable props, and everything scenery.js exposes.
 // ---------------------------------------------------------------------------
 const CAT_FUR = {
-  tabby: 0xf0a830, spotted: 0xc8966a, solid: 0x8c9298, tuxedo: 0x2a2a2a,
-  snowshoe: 0xf3dcb6, mitted: 0x9aa2a8, point: 0xe8e2d6, calico: 0xfbfbfb, tortie: 0x6b4a2f,
-  bengal: 0xd9a34a, cow: 0xf6f3ea, smoke: 0x565e6e,
+  tabby: 0xf0a830,
+  spotted: 0xc8966a,
+  solid: 0x8c9298,
+  tuxedo: 0x2a2a2a,
+  snowshoe: 0xf3dcb6,
+  mitted: 0x9aa2a8,
+  point: 0xe8e2d6,
+  calico: 0xfbfbfb,
+  tortie: 0x6b4a2f,
+  bengal: 0xd9a34a,
+  cow: 0xf6f3ea,
+  smoke: 0x565e6e,
 };
 // (name, model style, showcase colour)
 const KART_STYLES = [
@@ -43,7 +52,7 @@ const KART_STYLES = [
   ["Buggy", 2, 0x43a047],
   ["Finned", 3, 0xfdd835],
   ["Cage", 4, 0x3949ab],
-  ...BODY_STYLES.slice(5).map((s,i)=>[s.name,i+5,KART_PRESETS[10+i*2].color]),
+  ...BODY_STYLES.slice(5).map((s, i) => [s.name, i + 5, KART_PRESETS[10 + i * 2].color]),
 ];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -79,7 +88,11 @@ let rideKartIdx = 0;
 function buildCatAsset(fur, opts) {
   if (poseMode !== "drive") return animatedCat(fur, { ...opts, pose: poseMode });
   const preset = KART_PRESETS[rideKartIdx] || KART_PRESETS[0];
-  const { group: kart, wheels, flag } = createKartModel(preset.color, { style: preset.style, number: preset.number, livery:preset.livery });
+  const {
+    group: kart,
+    wheels,
+    flag,
+  } = createKartModel(preset.color, { style: preset.style, number: preset.number, livery: preset.livery });
   const cat = createCat(fur, { ...opts, pose: "kart" });
   cat.scale.setScalar(0.62);
   cat.position.set(0, 0.85, -0.35);
@@ -92,7 +105,7 @@ function buildCatAsset(fur, opts) {
     animate: (t) => {
       const dt = Math.max(0, Math.min(0.05, t - last));
       last = t;
-      if (dt > 0) updateCatRig(rig, dt, Math.sin(t*.9)*.45, 0, false, false, true, false, 18);
+      if (dt > 0) updateCatRig(rig, dt, Math.sin(t * 0.9) * 0.45, 0, false, false, true, false, 18);
       for (let j = 0; j < wheels.length; j++) {
         const w = wheels[j];
         w.rotation.order = "YXZ";
@@ -101,14 +114,20 @@ function buildCatAsset(fur, opts) {
       }
       if (flag) flag.rotation.y = Math.sin(t * 6) * 0.26; // pennant flap
     },
-    duration: Math.PI * 2 / 0.9,
+    duration: (Math.PI * 2) / 0.9,
   };
 }
 
 const entries = [];
-for(const c of CAT_PRESETS)entries.push({group:"Racers",kind:"cat",name:c.name,build:()=>buildCatAsset(c.fur,{...c})});
+for (const c of CAT_PRESETS)
+  entries.push({ group: "Racers", kind: "cat", name: c.name, build: () => buildCatAsset(c.fur, { ...c }) });
 for (const p of CAT_PATTERNS)
-  entries.push({ group: "Cats", kind: "cat", name: `Cat — ${p==="mittedPoint"?"Mitted points":cap(p)}`, build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }) });
+  entries.push({
+    group: "Cats",
+    kind: "cat",
+    name: `Cat — ${p === "mittedPoint" ? "Mitted points" : cap(p)}`,
+    build: () => buildCatAsset(CAT_FUR[p] ?? 0xf0a830, { pattern: p }),
+  });
 for (const a of CAT_ACCESSORIES) {
   if (a === "none") continue;
   entries.push({
@@ -133,16 +152,19 @@ function animatedKart(color, opts) {
       }
       if (flag) flag.rotation.y = Math.sin(t * 6) * 0.26; // pennant flap
     },
-    duration: Math.PI * 2 / 0.9, // one full steering sweep
+    duration: (Math.PI * 2) / 0.9, // one full steering sweep
   };
 }
 KART_STYLES.forEach(([n, style, color]) =>
-  entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(color, { style, number: style + 1 }) })
+  entries.push({ group: "Karts", name: `Kart — ${n}`, build: () => animatedKart(color, { style, number: style + 1 }) }),
 );
-KART_PRESETS.forEach(k=>entries.push({group:"Garage karts",name:k.name,build:()=>animatedKart(k.color,k)}));
+KART_PRESETS.forEach((k) =>
+  entries.push({ group: "Garage karts", name: k.name, build: () => animatedKart(k.color, k) }),
+);
 entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh });
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
-for (const [kind, spec] of Object.entries(ROAD_PROPS)) entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
+for (const [kind, spec] of Object.entries(ROAD_PROPS))
+  entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
 entries.push(...assetCatalog());
 
 // ---------------------------------------------------------------------------
@@ -177,7 +199,7 @@ scene.add(fill);
 
 const ground = new THREE.Mesh(
   new THREE.CircleGeometry(1, 64).rotateX(-Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: 0x27334f, roughness: 1 })
+  new THREE.MeshStandardMaterial({ color: 0x27334f, roughness: 1 }),
 );
 ground.position.y = -0.01; // just below the asset's base so coplanar bottoms don't z-fight
 scene.add(ground);
@@ -196,7 +218,8 @@ bgInput?.addEventListener("input", () => setBackground(bgInput.value));
 if (params.get("bg")) setBackground("#" + params.get("bg").replace(/^#/, ""));
 
 function resize() {
-  const w = main.clientWidth, h = main.clientHeight;
+  const w = main.clientWidth,
+    h = main.clientHeight;
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -224,8 +247,10 @@ canvas.addEventListener("pointerdown", (e) => {
 canvas.addEventListener("pointermove", (e) => {
   const p = pointers.get(e.pointerId);
   if (!p) return;
-  const dx = e.clientX - p.x, dy = e.clientY - p.y;
-  p.x = e.clientX; p.y = e.clientY;
+  const dx = e.clientX - p.x,
+    dy = e.clientY - p.y;
+  p.x = e.clientX;
+  p.y = e.clientY;
   if (pointers.size === 1) {
     orbit.theta -= dx * 0.006;
     orbit.phi = Math.max(0.12, Math.min(Math.PI - 0.12, orbit.phi - dy * 0.005));
@@ -236,13 +261,20 @@ canvas.addEventListener("pointermove", (e) => {
     pinchDist = d;
   }
 });
-const endPointer = (e) => { pointers.delete(e.pointerId); pinchDist = 0; };
+const endPointer = (e) => {
+  pointers.delete(e.pointerId);
+  pinchDist = 0;
+};
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
-canvas.addEventListener("wheel", (e) => {
-  e.preventDefault();
-  orbit.radius = clampR(orbit.radius * (1 + e.deltaY * 0.0012));
-}, { passive: false });
+canvas.addEventListener(
+  "wheel",
+  (e) => {
+    e.preventDefault();
+    orbit.radius = clampR(orbit.radius * (1 + e.deltaY * 0.0012));
+  },
+  { passive: false },
+);
 const clampR = (r) => Math.max(orbit.minR, Math.min(orbit.maxR, r));
 
 // --- "Game look": the exact cel-shading conversion the game applies at boot
@@ -312,8 +344,12 @@ animPlayBtn.addEventListener("click", () => {
 animScrub.addEventListener("input", () => {
   animT = parseFloat(animScrub.value) || 0;
 });
-animScrub.addEventListener("pointerdown", () => { scrubbing = true; });
-window.addEventListener("pointerup", () => { scrubbing = false; });
+animScrub.addEventListener("pointerdown", () => {
+  scrubbing = true;
+});
+window.addEventListener("pointerup", () => {
+  scrubbing = false;
+});
 
 let currentEntry = null;
 function show(entry) {
@@ -327,9 +363,10 @@ function show(entry) {
   }
   currentEntry = entry;
   syncPoseBar();
-  const label = entry.kind === "cat" && poseMode === "drive"
-    ? `${entry.name} · riding ${KART_PRESETS[rideKartIdx]?.name}`
-    : entry.name;
+  const label =
+    entry.kind === "cat" && poseMode === "drive"
+      ? `${entry.name} · riding ${KART_PRESETS[rideKartIdx]?.name}`
+      : entry.name;
   present(label, res);
 }
 
@@ -347,12 +384,14 @@ function syncPoseBar() {
 poseBar?.querySelectorAll(".pose-btn").forEach((b) =>
   b.addEventListener("click", () => {
     poseMode = b.dataset.pose;
-    if (currentEntry?.kind === "cat") show(currentEntry); else syncPoseBar();
-  })
+    if (currentEntry?.kind === "cat") show(currentEntry);
+    else syncPoseBar();
+  }),
 );
 const stepRideKart = (d) => {
   rideKartIdx = (rideKartIdx + d + KART_PRESETS.length) % KART_PRESETS.length;
-  if (poseMode === "drive" && currentEntry?.kind === "cat") show(currentEntry); else syncPoseBar();
+  if (poseMode === "drive" && currentEntry?.kind === "cat") show(currentEntry);
+  else syncPoseBar();
 };
 document.getElementById("pose-kart-prev")?.addEventListener("click", () => stepRideKart(-1));
 document.getElementById("pose-kart-next")?.addEventListener("click", () => stepRideKart(1));
@@ -369,7 +408,7 @@ function present(name, res) {
     current = null;
   }
   const obj = res.isObject3D ? res : res.object;
-  curAnim = res.isObject3D ? null : res.animate ?? null;
+  curAnim = res.isObject3D ? null : (res.animate ?? null);
   animDur = (!res.isObject3D && res.duration) || Math.PI * 2;
   animT = 0;
   animPlaying = true;
@@ -395,7 +434,8 @@ function present(name, res) {
   current = obj;
   if (gameLook) applyLook();
 
-  let meshes = 0, tris = 0;
+  let meshes = 0,
+    tris = 0;
   obj.traverse((o) => {
     if (!o.isMesh) return;
     meshes++;
@@ -473,7 +513,7 @@ renderer.setAnimationLoop((now) => {
   camera.position.set(
     orbit.target.x + orbit.radius * sp * Math.sin(orbit.theta),
     orbit.target.y + orbit.radius * Math.cos(orbit.phi),
-    orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta)
+    orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta),
   );
   camera.lookAt(orbit.target);
   setWindClock(animPlaying ? now / 1000 : animT);
@@ -484,13 +524,28 @@ renderer.setAnimationLoop((now) => {
 // stage through this: show an arbitrary garage preset, recolour the backdrop,
 // switch on the game's cel shading, and freeze the animation at a chosen pose.
 window.__viewer = {
-  orbit, camera, scene, backend: renderer.backend?.isWebGPUBackend ? "webgpu" : "webgl",
-  setBackground, setGameLook,
+  orbit,
+  camera,
+  scene,
+  backend: renderer.backend?.isWebGPUBackend ? "webgpu" : "webgl",
+  setBackground,
+  setGameLook,
   // {kind:"cat", fur, pattern, accessory?} | {kind:"kart", color, style, number}
   showPreset(spec) {
     if (spec.kind === "cat") present(spec.name || "Cat", animatedCat(spec.fur, { ...spec }));
-    else present(spec.name || "Kart", animatedKart(spec.color, { style: spec.style, number: spec.number, livery:spec.livery }));
+    else
+      present(
+        spec.name || "Kart",
+        animatedKart(spec.color, { style: spec.style, number: spec.number, livery: spec.livery }),
+      );
   },
-  freeze(t = 0) { animPlaying = false; animT = t; curAnim?.(t); refreshAnimPlayBtn(); },
+  freeze(t = 0) {
+    animPlaying = false;
+    animT = t;
+    curAnim?.(t);
+    refreshAnimPlayBtn();
+  },
 };
-console.log(`[zoomies] asset viewer: ${entries.length} assets · ${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"}`);
+console.log(
+  `[zoomies] asset viewer: ${entries.length} assets · ${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"}`,
+);

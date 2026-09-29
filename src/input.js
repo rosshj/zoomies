@@ -67,8 +67,14 @@ export class Input {
         // Drop anything the keyboard was holding, so a mid-race re-scope
         // can't leave a phantom key pressed forever.
         this._keys = {};
-        if (this._keyboardSteering) { this._steerTarget = 0; this._keyboardSteering = false; }
-        if (this._keyboardThrottle) { this.throttle = 0; this._keyboardThrottle = false; }
+        if (this._keyboardSteering) {
+          this._steerTarget = 0;
+          this._keyboardSteering = false;
+        }
+        if (this._keyboardThrottle) {
+          this.throttle = 0;
+          this._keyboardThrottle = false;
+        }
       }
     }
     if (pads !== undefined) {
@@ -113,8 +119,7 @@ export class Input {
     this._neutralRoll = null; // next motion events re-capture neutral
     this._neutralSamples = 0;
     this._calNeutral = 0; // re-anchored once the new neutral settles
-    const angle =
-      (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
+    const angle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
     this._sign = angle === 270 || angle === -90 ? 1 : -1;
   }
 
@@ -206,12 +211,9 @@ export class Input {
       v = Math.max(-1, Math.min(1, v));
       this.throttle = v;
       thumb.style.top = `${50 - v * 42}%`;
-      if (v > 0.05) thumb.style.background =
-        "radial-gradient(circle at 35% 30%, #fff, #4caf50)";
-      else if (v < -0.05) thumb.style.background =
-        "radial-gradient(circle at 35% 30%, #fff, #f44336)";
-      else thumb.style.background =
-        "radial-gradient(circle at 35% 30%, #fff, #ffb300)";
+      if (v > 0.05) thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #4caf50)";
+      else if (v < -0.05) thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #f44336)";
+      else thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #ffb300)";
     };
 
     const springBack = () => {
@@ -229,7 +231,7 @@ export class Input {
 
     const start = (x, y) => {
       active = true;
-      if (raf) cancelAnimationFrame(raf), (raf = null);
+      if (raf) (cancelAnimationFrame(raf), (raf = null));
       setFromPointer(x, y);
     };
     const move = (x, y) => active && setFromPointer(x, y);
@@ -406,8 +408,14 @@ export class Input {
     }
     if (!pad) {
       // Unplugged mid-drive: release everything the pad was holding.
-      if (this._padSteering) { this._steerTarget = 0; this._padSteering = false; }
-      if (this._padThrottle) { this.throttle = 0; this._padThrottle = false; }
+      if (this._padSteering) {
+        this._steerTarget = 0;
+        this._padSteering = false;
+      }
+      if (this._padThrottle) {
+        this.throttle = 0;
+        this._padThrottle = false;
+      }
       this._padPrev.length = 0;
       return;
     }
@@ -448,24 +456,33 @@ export class Input {
     const down = (i) => !!pad.buttons[i]?.pressed && !prev[i];
     const up = (i) => !pad.buttons[i]?.pressed && !!prev[i];
 
-    if (down(0)) { // A / Cross: hop + drift-sustain
+    if (down(0)) {
+      // A / Cross: hop + drift-sustain
       this._releaseOthers("jump");
       this._jumpQueued = true;
       this.jumpHeld = true;
     }
     if (up(0)) this.jumpHeld = false;
 
-    if (down(2)) { // X / Square: charge…
+    if (down(2)) {
+      // X / Square: charge…
       this._releaseOthers("shoot");
       this.shootHeld = true;
     }
-    if (up(2) && this.shootHeld) { // …fire on release (unless cancelled)
+    if (up(2) && this.shootHeld) {
+      // …fire on release (unless cancelled)
       this.shootHeld = false;
       this._shootRelease = true;
     }
 
-    if (down(1)) { this._releaseOthers(null); this._boostQueued = true; } // B / Circle
-    if (down(3)) { this._releaseOthers(null); this._milkQueued = true; } // Y / Triangle
+    if (down(1)) {
+      this._releaseOthers(null);
+      this._boostQueued = true;
+    } // B / Circle
+    if (down(3)) {
+      this._releaseOthers(null);
+      this._milkQueued = true;
+    } // Y / Triangle
 
     const shieldNow = !!pad.buttons[4]?.pressed || !!pad.buttons[5]?.pressed;
     const shieldWas = !!prev[4] || !!prev[5];
@@ -489,7 +506,7 @@ export class Input {
     // ±1), so a tap is a nudge and a hold is full lock — closer to a stick's
     // feel, and the drift's inward commitment no longer snaps to max on the
     // first frame. A direction flip restarts the ramp. Pads are untouched.
-    const kbDir = (k.ArrowLeft || k.KeyA) ? 1 : (k.ArrowRight || k.KeyD) ? -1 : 0;
+    const kbDir = k.ArrowLeft || k.KeyA ? 1 : k.ArrowRight || k.KeyD ? -1 : 0;
     if (kbDir !== 0) {
       if (kbDir !== this._kbDir) this._kbRamp = 0;
       this._kbDir = kbDir;
@@ -507,9 +524,16 @@ export class Input {
     // branch, throttle latched at ±1 forever after the first tap (the desktop
     // "keeps going after you let go" bug). Guarded by a flag so it only zeroes the
     // frame the key comes up — never fighting the touch slider's own throttle.
-    if (k.ArrowUp || k.KeyW) { this.throttle = 1; this._keyboardThrottle = true; }
-    else if (k.ArrowDown || k.KeyS) { this.throttle = -1; this._keyboardThrottle = true; }
-    else if (this._keyboardThrottle) { this.throttle = 0; this._keyboardThrottle = false; }
+    if (k.ArrowUp || k.KeyW) {
+      this.throttle = 1;
+      this._keyboardThrottle = true;
+    } else if (k.ArrowDown || k.KeyS) {
+      this.throttle = -1;
+      this._keyboardThrottle = true;
+    } else if (this._keyboardThrottle) {
+      this.throttle = 0;
+      this._keyboardThrottle = false;
+    }
 
     // Smooth steering toward target (snappy, so it doesn't feel laggy/stiff).
     const rate = Math.min(1, dt * 16);

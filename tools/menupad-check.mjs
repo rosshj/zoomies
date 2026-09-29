@@ -14,17 +14,31 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8107;
 
 const MIME = {
-  ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript",
-  ".css": "text/css", ".json": "application/json", ".png": "image/png",
-  ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon",
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
 };
 
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent(req.url.split("?")[0]);
-  if (urlPath === "/favicon.ico") { res.writeHead(204); res.end(); return; }
+  if (urlPath === "/favicon.ico") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (urlPath === "/") urlPath = "/index.html";
   fs.readFile(path.join(ROOT, urlPath), (err, data) => {
-    if (err) { res.writeHead(404); res.end("not found: " + urlPath); return; }
+    if (err) {
+      res.writeHead(404);
+      res.end("not found: " + urlPath);
+      return;
+    }
     res.writeHead(200, { "content-type": MIME[path.extname(urlPath)] || "application/octet-stream" });
     res.end(data);
   });
@@ -34,18 +48,29 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: [
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--ignore-gpu-blocklist",
+    "--enable-unsafe-swiftshader",
+    "--no-sandbox",
+  ],
 });
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 const page = await ctx.newPage();
-page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+page.on("console", (m) => {
+  if (m.type() === "error") errors.push(m.text());
+});
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 
 await ctx.addInitScript(() => {
   window.__pad = {
-    id: "Fake Pad (STANDARD GAMEPAD)", index: 0, connected: true,
-    mapping: "standard", timestamp: 0,
+    id: "Fake Pad (STANDARD GAMEPAD)",
+    index: 0,
+    connected: true,
+    mapping: "standard",
+    timestamp: 0,
     axes: [0, 0, 0, 0],
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
   };
@@ -56,12 +81,20 @@ await ctx.addInitScript(() => {
   navigator.getGamepads = () => (window.__padVisible ? [window.__pad] : []);
   // Fake Electron preload bridge: the quit buttons must reveal themselves.
   window.__quitCalls = 0;
-  window.zoomiesDesktop = { quit: () => { window.__quitCalls++; } };
+  window.zoomiesDesktop = {
+    quit: () => {
+      window.__quitCalls++;
+    },
+  };
   // Frame counter: presses must span real frames — under SwiftShader the
   // menu's first frames take SECONDS while shaders software-compile.
   window.__raf = 0;
   const o = window.requestAnimationFrame.bind(window);
-  window.requestAnimationFrame = (cb) => o((t) => { window.__raf++; return cb(t); });
+  window.requestAnimationFrame = (cb) =>
+    o((t) => {
+      window.__raf++;
+      return cb(t);
+    });
 });
 
 await page.goto(`http://127.0.0.1:${PORT}/index.html?webgl=1&nosw=1&nowd=1`, { waitUntil: "load", timeout: 150000 });
@@ -89,7 +122,9 @@ async function press(button) {
     window.__pad.buttons[b].pressed = true;
   }, button);
   await frames(2);
-  await page.evaluate((b) => { window.__pad.buttons[b].pressed = false; }, button);
+  await page.evaluate((b) => {
+    window.__pad.buttons[b].pressed = false;
+  }, button);
   await frames(2);
 }
 async function check(name, fn, arg) {
@@ -106,34 +141,41 @@ async function check(name, fn, arg) {
 }
 
 // Desktop bridge → quit buttons revealed and wired.
-await check("quit buttons revealed for desktop shell", () =>
-  !document.getElementById("quit-btn-title").classList.contains("hidden") &&
-  !document.getElementById("quit-btn-pause").classList.contains("hidden"));
+await check(
+  "quit buttons revealed for desktop shell",
+  () =>
+    !document.getElementById("quit-btn-title").classList.contains("hidden") &&
+    !document.getElementById("quit-btn-pause").classList.contains("hidden"),
+);
 await page.evaluate(() => document.getElementById("quit-btn-title").click());
 await check("quit button calls the bridge", () => window.__quitCalls === 1);
 
 // Before the pad's first input the API hides it — no ring anywhere.
-await check("no ring before the pad is touched", () =>
-  !document.querySelector(".pad-focus"));
+await check("no ring before the pad is touched", () => !document.querySelector(".pad-focus"));
 
 // The pad's FIRST press exposes it. That press must only reveal the ring on
 // the title's primary action — never activate an invisible focus.
 await press(0);
-await check("first pad touch seats the ring on Let's Go! (and only seats it)", () =>
-  document.getElementById("start-btn").classList.contains("pad-focus") &&
-  document.getElementById("flow-title").classList.contains("is-active"));
+await check(
+  "first pad touch seats the ring on Let's Go! (and only seats it)",
+  () =>
+    document.getElementById("start-btn").classList.contains("pad-focus") &&
+    document.getElementById("flow-title").classList.contains("is-active"),
+);
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 
 // Now A presses it: the mode screen slides in…
 await press(0);
 await check("A advances to the mode screen", () =>
-  document.getElementById("flow-mode").classList.contains("is-active"));
+  document.getElementById("flow-mode").classList.contains("is-active"),
+);
 
 // …and the ring is ALREADY on Single race (first non-back button), not the
 // back arrow.
 await frames(2);
 await check("mode screen auto-seats on Single race", () =>
-  document.getElementById("mode-gp").classList.contains("pad-focus"));
+  document.getElementById("mode-gp").classList.contains("pad-focus"),
+);
 
 // Walk down: the ring must MOVE (spatial nav, not stuck).
 const before = await page.evaluate(() => document.querySelector("#flow-mode .pad-focus")?.id ?? "");
@@ -165,8 +207,7 @@ await check("menu container never scrolls sideways", () => {
 // B backs out to the mode screen, then the title.
 await press(1);
 await press(1);
-await check("B backs out to the title", () =>
-  document.getElementById("flow-title").classList.contains("is-active"));
+await check("B backs out to the title", () => document.getElementById("flow-title").classList.contains("is-active"));
 
 // Sheets: open settings — focus auto-seats INSIDE the sheet (on its first
 // real control, not the ✕), and B closes it.
@@ -181,16 +222,20 @@ await check("focus auto-seats in the open sheet", () => {
 // leaving it — the volume handler runs off the synthesised input event.
 await press(15);
 await check("d-pad reaches the music slider", () =>
-  document.getElementById("set-music-vol").classList.contains("pad-focus"));
+  document.getElementById("set-music-vol").classList.contains("pad-focus"),
+);
 const volBefore = await page.evaluate(() => +document.getElementById("set-music-vol").value);
 await press(15);
-await check("right nudges the ringed slider by 5", (before) => {
-  const v = +document.getElementById("set-music-vol").value;
-  return document.getElementById("set-music-vol").classList.contains("pad-focus") && v === Math.min(100, before + 5);
-}, volBefore);
+await check(
+  "right nudges the ringed slider by 5",
+  (before) => {
+    const v = +document.getElementById("set-music-vol").value;
+    return document.getElementById("set-music-vol").classList.contains("pad-focus") && v === Math.min(100, before + 5);
+  },
+  volBefore,
+);
 await press(1);
-await check("B closes the sheet", () =>
-  document.getElementById("settings").classList.contains("hidden"));
+await check("B closes the sheet", () => document.getElementById("settings").classList.contains("hidden"));
 
 // Keyboard spatial nav rides the same ring: ArrowDown from the title's
 // Let's Go! moves to the extras row, Enter presses the ringed button.
@@ -202,7 +247,9 @@ await check("arrow keys move the ring off Let's Go!", () => {
   const f = document.querySelector("#flow-title .pad-focus");
   return !!f && f.id !== "start-btn";
 });
-await page.evaluate(() => { document.querySelector(".pad-focus")?.blur(); });
+await page.evaluate(() => {
+  document.querySelector(".pad-focus")?.blur();
+});
 
 // Cat-alog: the buyable prize tiles are <button>s the ring can walk onto.
 await page.evaluate(() => document.getElementById("open-catalog").click());
@@ -232,7 +279,9 @@ await frames(2);
 // --- Race surfaces: pause from the countdown, Settings over pause, results.
 // One race is worth the SwiftShader warm-up: the pause/results ordering bugs
 // only exist with a race behind the sheets.
-await page.evaluate(() => { document.getElementById("mode-gp").click(); });
+await page.evaluate(() => {
+  document.getElementById("mode-gp").click();
+});
 await frames(4);
 await page.evaluate(() => document.querySelector("#track-grid .track-tap").click()); // Classic is current → no reload
 await frames(6);
@@ -240,48 +289,75 @@ await page.evaluate(() => document.querySelector("#cat-grid .racer-tap").click()
 await frames(4);
 await page.evaluate(() => document.querySelector("#kart-grid .racer-tap").click());
 await frames(6);
-await check("kart pick lands on the start line", () => document.getElementById("flow-startline").classList.contains("is-active"));
+await check("kart pick lands on the start line", () =>
+  document.getElementById("flow-startline").classList.contains("is-active"),
+);
 await page.evaluate(() => document.getElementById("go-btn").click());
 // The veil drops once frames settle (or at its 9s cap after the build).
-await page.waitForFunction(() => document.getElementById("race-veil").classList.contains("hidden") && window.__zoomies.state() === 1, null, { timeout: 240000 })
+await page
+  .waitForFunction(
+    () => document.getElementById("race-veil").classList.contains("hidden") && window.__zoomies.state() === 1,
+    null,
+    { timeout: 240000 },
+  )
   .catch(() => errors.push("race veil never dropped during the countdown"));
 // Start during the countdown pauses (state 4 = PAUSED, from COUNTDOWN).
 await press(9);
-await check("Start pauses during the countdown", () =>
-  window.__zoomies.state() === 4 && !document.getElementById("pause-overlay").classList.contains("hidden"));
+await check(
+  "Start pauses during the countdown",
+  () => window.__zoomies.state() === 4 && !document.getElementById("pause-overlay").classList.contains("hidden"),
+);
 // Settings from the pause card, then B: the sheet closes and the race STAYS
 // paused (it used to resume behind the still-open sheet).
 await page.evaluate(() => document.getElementById("open-settings-pause").click());
 await frames(2);
 await press(1);
-await check("B in Settings-from-pause closes the sheet and keeps the pause", () =>
-  document.getElementById("settings").classList.contains("hidden") &&
-  window.__zoomies.state() === 4 &&
-  !document.getElementById("pause-overlay").classList.contains("hidden"));
+await check(
+  "B in Settings-from-pause closes the sheet and keeps the pause",
+  () =>
+    document.getElementById("settings").classList.contains("hidden") &&
+    window.__zoomies.state() === 4 &&
+    !document.getElementById("pause-overlay").classList.contains("hidden"),
+);
 await press(1);
-await check("B on the pause card resumes the countdown", () =>
-  window.__zoomies.state() === 1 && document.getElementById("pause-overlay").classList.contains("hidden"));
+await check(
+  "B on the pause card resumes the countdown",
+  () => window.__zoomies.state() === 1 && document.getElementById("pause-overlay").classList.contains("hidden"),
+);
 // Finish → results (after the victory-lap delay) → B walks out through the
 // claim interstitial: first press claims every badge, the next continues.
-await page.evaluate(() => { window.__zoomies.debugFinish(); });
-await page.waitForFunction(() => !document.getElementById("results").classList.contains("hidden"), null, { timeout: 120000 })
+await page.evaluate(() => {
+  window.__zoomies.debugFinish();
+});
+await page
+  .waitForFunction(() => !document.getElementById("results").classList.contains("hidden"), null, { timeout: 120000 })
   .catch(() => errors.push("results never appeared"));
 await frames(2);
 await press(1);
-await check("B on results leaves through the claim screen", () =>
-  !document.getElementById("claim-screen").classList.contains("hidden") &&
-  document.querySelectorAll("#claim-screen .claim-card").length > 0);
+await check(
+  "B on results leaves through the claim screen",
+  () =>
+    !document.getElementById("claim-screen").classList.contains("hidden") &&
+    document.querySelectorAll("#claim-screen .claim-card").length > 0,
+);
 await check("claim copy says Press A with a pad", () =>
-  /Press Ⓐ/.test(document.querySelector("#claim-screen .claim-cta")?.textContent || ""));
+  /Press Ⓐ/.test(document.querySelector("#claim-screen .claim-cta")?.textContent || ""),
+);
 await press(1);
-await check("B on the claim screen collects every badge", () =>
-  document.querySelectorAll("#claim-screen .claim-card:not(.claimed)").length === 0 &&
-  !document.getElementById("claim-continue").classList.contains("hidden"));
+await check(
+  "B on the claim screen collects every badge",
+  () =>
+    document.querySelectorAll("#claim-screen .claim-card:not(.claimed)").length === 0 &&
+    !document.getElementById("claim-continue").classList.contains("hidden"),
+);
 await press(1);
-await check("B again continues to the menu", () =>
-  document.getElementById("claim-screen").classList.contains("hidden") &&
-  !document.getElementById("menu").classList.contains("hidden") &&
-  window.__zoomies.state() === 0);
+await check(
+  "B again continues to the menu",
+  () =>
+    document.getElementById("claim-screen").classList.contains("hidden") &&
+    !document.getElementById("menu").classList.contains("hidden") &&
+    window.__zoomies.state() === 0,
+);
 
 console.log(JSON.stringify({ errors }, null, 2));
 await browser.close();

@@ -13,35 +13,91 @@ import { USE_WEBGPU, IS_IOS } from "./gpu.js";
 export const MOODS = [
   {
     // Midday: warm direct light, cool sky fill and restrained ground bounce.
-    name: "Midday", tod: "midday", weather: "none",
-    sunDir: [0.5, 0.54, 0.62], sunColor: 0xfff1da, sunI: 2.25,
-    skyTop: 0x357fd6, skyHorizon: 0xe7f1f6, skyWarm: 0xffe3ad,
-    hemiSky: 0xcfe6ff, hemiGround: 0x626854, hemiI: 1.02,
-    bg: 0xcde7f7, fog: 0xd8ecf2, fogNear: 560, fogFar: 1850, exposure: 1.08,
-    sunCore: [2.3, 2.05, 1.5], sunSize: 40, sunVisible: true, rays: true, rayWeight: 1.05, starI: 0,
-    cloud: 0xffffff, sat: 1.16, contrast: 1.02,
+    name: "Midday",
+    tod: "midday",
+    weather: "none",
+    sunDir: [0.5, 0.54, 0.62],
+    sunColor: 0xfff1da,
+    sunI: 2.25,
+    skyTop: 0x357fd6,
+    skyHorizon: 0xe7f1f6,
+    skyWarm: 0xffe3ad,
+    hemiSky: 0xcfe6ff,
+    hemiGround: 0x626854,
+    hemiI: 1.02,
+    bg: 0xcde7f7,
+    fog: 0xd8ecf2,
+    fogNear: 560,
+    fogFar: 1850,
+    exposure: 1.08,
+    sunCore: [2.3, 2.05, 1.5],
+    sunSize: 40,
+    sunVisible: true,
+    rays: true,
+    rayWeight: 1.05,
+    starI: 0,
+    cloud: 0xffffff,
+    sat: 1.16,
+    contrast: 1.02,
   },
   {
     // Sunset: warm direct light against cool sky fill, retaining long shadows.
-    name: "Sunset", tod: "sunset", weather: "none",
-    sunDir: [0.62, 0.15, 0.42], sunColor: 0xffb066, sunI: 2.05,
-    skyTop: 0x273a6e, skyHorizon: 0xffb277, skyWarm: 0xffd49a,
-    hemiSky: 0x9baed6, hemiGround: 0x554a40, hemiI: 0.96,
-    bg: 0xf2c79a, fog: 0xf3c193, fogNear: 480, fogFar: 1700, exposure: 1.13,
-    sunCore: [2.6, 1.7, 0.9], sunSize: 52, sunVisible: true, rays: true, rayWeight: 1.4, starI: 0.15,
-    cloud: 0xffd6ad, sat: 1.18, contrast: 1.03,
+    name: "Sunset",
+    tod: "sunset",
+    weather: "none",
+    sunDir: [0.62, 0.15, 0.42],
+    sunColor: 0xffb066,
+    sunI: 2.05,
+    skyTop: 0x273a6e,
+    skyHorizon: 0xffb277,
+    skyWarm: 0xffd49a,
+    hemiSky: 0x9baed6,
+    hemiGround: 0x554a40,
+    hemiI: 0.96,
+    bg: 0xf2c79a,
+    fog: 0xf3c193,
+    fogNear: 480,
+    fogFar: 1700,
+    exposure: 1.13,
+    sunCore: [2.6, 1.7, 0.9],
+    sunSize: 52,
+    sunVisible: true,
+    rays: true,
+    rayWeight: 1.4,
+    starI: 0.15,
+    cloud: 0xffd6ad,
+    sat: 1.18,
+    contrast: 1.03,
   },
   {
     // Night: a cool moon, dark blue sky and stars. Kept "well lit" by moonlight +
     // (in scenery) warm street lamps and kart headlights, not pitch black. Snow is
     // darkened at the albedo level (in buildTerrain) so it doesn't read self-lit.
-    name: "Night", tod: "night", weather: "none",
-    sunDir: [-0.34, 0.64, 0.42], sunColor: 0xaab8e6, sunI: 1.08,
-    skyTop: 0x060a1a, skyHorizon: 0x17263f, skyWarm: 0x17263f,
-    hemiSky: 0x465778, hemiGround: 0x171d29, hemiI: 0.62,
-    bg: 0x0a1226, fog: 0x0c1830, fogNear: 420, fogFar: 1500, exposure: 1.16,
-    sunCore: [1.25, 1.35, 1.65], sunSize: 28, sunVisible: true, rays: false, starI: 1,
-    cloud: 0x2a3551, sat: 1.14, contrast: 1.04,
+    name: "Night",
+    tod: "night",
+    weather: "none",
+    sunDir: [-0.34, 0.64, 0.42],
+    sunColor: 0xaab8e6,
+    sunI: 1.08,
+    skyTop: 0x060a1a,
+    skyHorizon: 0x17263f,
+    skyWarm: 0x17263f,
+    hemiSky: 0x465778,
+    hemiGround: 0x171d29,
+    hemiI: 0.62,
+    bg: 0x0a1226,
+    fog: 0x0c1830,
+    fogNear: 420,
+    fogFar: 1500,
+    exposure: 1.16,
+    sunCore: [1.25, 1.35, 1.65],
+    sunSize: 28,
+    sunVisible: true,
+    rays: false,
+    starI: 1,
+    cloud: 0x2a3551,
+    sat: 1.14,
+    contrast: 1.04,
   },
 ];
 
@@ -164,7 +220,9 @@ export function createScene() {
     if (!SHADOW_BY_TIER[tier]) tier = localStorage.getItem("zoomies-quality") === "low" ? "low" : "medium";
     const want = SHADOW_BY_TIER[tier];
     shadowSz = Math.min(shadowSz, want);
-  } catch { /* keep default */ }
+  } catch {
+    /* keep default */
+  }
   sun.shadow.mapSize.set(shadowSz, shadowSz);
   // Initial bounds are placeholders — fitSunShadow overwrites them on frame one.
   const s = 85;
@@ -210,7 +268,9 @@ export function createScene() {
     const r = 520 + Math.random() * 440;
     // High band: big maps climb past 250u mid-map now, and a cloud UNDER the
     // road reads as a rendering bug rather than sky.
-    const cx = Math.cos(a) * r, cy = 310 + Math.random() * 120, cz = Math.sin(a) * r;
+    const cx = Math.cos(a) * r,
+      cy = 310 + Math.random() * 120,
+      cz = Math.sin(a) * r;
     const s = 1.6 + Math.random() * 1.2; // bigger since they're farther
     const geo = cloudClusterGeo();
     geo.rotateY(Math.random() * Math.PI * 2); // plumes drift every which way
@@ -288,7 +348,7 @@ function buildSky(scene) {
   geo.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
   const mesh = new THREE.Mesh(
     geo,
-    new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false })
+    new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide, fog: false, depthWrite: false }),
   );
   mesh.renderOrder = -1;
   scene.add(mesh);
@@ -329,7 +389,10 @@ function buildSun(scene) {
   // Sun halo. The old outer glow was 1500u at ~1900u distance = a ~43° wash across
   // the sky that read as a big "orb"/light smear to the horizon. Tightened to a
   // believable halo: a wide-but-soft outer + a feathered inner around the core.
-  for (const [size, opacity] of [[560, 0.4], [260, 0.6]]) {
+  for (const [size, opacity] of [
+    [560, 0.4],
+    [260, 0.6],
+  ]) {
     const sp = new THREE.Sprite(
       new THREE.SpriteMaterial({
         map: glowTex,
@@ -340,7 +403,7 @@ function buildSun(scene) {
         depthWrite: false,
         depthTest: true,
         fog: false,
-      })
+      }),
     );
     sp.scale.setScalar(size);
     sp.renderOrder = 2;

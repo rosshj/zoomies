@@ -51,24 +51,27 @@ self.addEventListener("install", (event) => {
     caches.open(CACHE).then(async (cache) => {
       // Cache each shell item individually (so one failure can't abort the install),
       // and de-redirect first so the cached page is never a redirected response.
-      await Promise.all(SHELL.map(async (u) => {
-        try {
-          const res = await fetch(u, { cache: "reload" });
-          if (res && res.ok) await cache.put(u, await deredirect(res));
-        } catch {
-          /* offline at install / item missing — best-effort */
-        }
-      }));
+      await Promise.all(
+        SHELL.map(async (u) => {
+          try {
+            const res = await fetch(u, { cache: "reload" });
+            if (res && res.ok) await cache.put(u, await deredirect(res));
+          } catch {
+            /* offline at install / item missing — best-effort */
+          }
+        }),
+      );
       await self.skipWaiting();
-    })
+    }),
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys()
+    caches
+      .keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
@@ -114,13 +117,20 @@ async function rangeResponse(req) {
   if (!full) {
     try {
       const res = await fetch(bare);
-      if (res && res.ok) { cache.put(bare, res.clone()); full = res; }
+      if (res && res.ok) {
+        cache.put(bare, res.clone());
+        full = res;
+      }
     } catch {
       /* offline and not cached */
     }
   }
   if (!full) {
-    try { return await fetch(req); } catch { return Response.error(); }
+    try {
+      return await fetch(req);
+    } catch {
+      return Response.error();
+    }
   }
   const buf = await full.arrayBuffer();
   const m = /bytes=(\d+)-(\d*)/.exec(req.headers.get("range") || "");

@@ -75,7 +75,13 @@ const downloadPage = join(dist, "download", "index.html");
 if (existsSync(downloadPage)) {
   try {
     const desktopVersion = JSON.parse(readFileSync(join(root, "desktop", "package.json"), "utf8")).version;
-    writeFileSync(downloadPage, readFileSync(downloadPage, "utf8").replace('data-version="dev">dev<', `data-version="${desktopVersion}">v${desktopVersion}<`));
+    writeFileSync(
+      downloadPage,
+      readFileSync(downloadPage, "utf8").replace(
+        'data-version="dev">dev<',
+        `data-version="${desktopVersion}">v${desktopVersion}<`,
+      ),
+    );
   } catch (err) {
     console.warn(`[build-web] download page version stamp skipped: ${err.message}`);
   }
@@ -107,7 +113,7 @@ const rev = gitRev();
 const indexPath = join(dist, "index.html");
 const html = readFileSync(indexPath, "utf8").replace(
   '<meta name="zoomies-build" content="dev" />',
-  `<meta name="zoomies-build" content="${stamp}" />` + (rev ? `\n  <meta name="zoomies-rev" content="${rev}" />` : "")
+  `<meta name="zoomies-build" content="${stamp}" />` + (rev ? `\n  <meta name="zoomies-rev" content="${rev}" />` : ""),
 );
 writeFileSync(indexPath, html);
 

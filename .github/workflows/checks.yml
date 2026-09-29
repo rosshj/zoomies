@@ -20,6 +20,8 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: code formatting (prettier)
+        run: npm run format:check
       - name: world-config codec (cup reload token)
         run: npm run check:worldcfg
       - name: progression economy (treats/unlocks/cups)

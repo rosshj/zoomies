@@ -98,7 +98,9 @@ function sync(final) {
     // that's the point: quit must not race the last write.
     if (final) ipcRenderer.sendSync("zoomies:save-flush", payload);
     else ipcRenderer.send("zoomies:save", payload);
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 if (onGamePage) {
   sync(false); // seeds the file on a first launch; a no-op when it matches
@@ -114,7 +116,13 @@ const listeners = { blur: new Set(), focus: new Set() };
 for (const kind of ["blur", "focus"]) {
   ipcRenderer.on(`zoomies:${kind}`, () => {
     window.dispatchEvent(new Event(`zoomies:${kind}`));
-    for (const cb of listeners[kind]) { try { cb(); } catch (err) { console.warn(`[bridge] on${kind} listener failed:`, err); } }
+    for (const cb of listeners[kind]) {
+      try {
+        cb();
+      } catch (err) {
+        console.warn(`[bridge] on${kind} listener failed:`, err);
+      }
+    }
   });
 }
 const subscribe = (kind) => (cb) => {
@@ -124,15 +132,31 @@ const subscribe = (kind) => (cb) => {
 };
 
 let deck = false;
-try { deck = !!ipcRenderer.sendSync("zoomies:deck"); } catch { /* default: not a Deck */ }
+try {
+  deck = !!ipcRenderer.sendSync("zoomies:deck");
+} catch {
+  /* default: not a Deck */
+}
 
 contextBridge.exposeInMainWorld("zoomiesDesktop", {
   quit: () => ipcRenderer.send("zoomies:quit"),
   deck,
   // The display's refresh rate from the OS (0 = unknown). The game's own
   // tick-based estimate is unreliable under gamescope — see main.cjs.
-  refreshHz: () => { try { return Number(ipcRenderer.sendSync("zoomies:refresh-hz")) || 0; } catch { return 0; } },
-  isFullscreen: () => { try { return !!ipcRenderer.sendSync("zoomies:is-fullscreen"); } catch { return false; } },
+  refreshHz: () => {
+    try {
+      return Number(ipcRenderer.sendSync("zoomies:refresh-hz")) || 0;
+    } catch {
+      return 0;
+    }
+  },
+  isFullscreen: () => {
+    try {
+      return !!ipcRenderer.sendSync("zoomies:is-fullscreen");
+    } catch {
+      return false;
+    }
+  },
   setFullscreen: (on) => ipcRenderer.send("zoomies:set-fullscreen", !!on),
   onBlur: subscribe("blur"),
   onFocus: subscribe("focus"),

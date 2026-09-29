@@ -3,18 +3,37 @@
 import { encodeWorld, decodeWorld, sameWorld, worldSig } from "../src/worldcfg.js";
 
 let failures = 0;
-const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
+const check = (name, cond) => {
+  console.log((cond ? "  ok  " : "FAIL  ") + name);
+  if (!cond) failures++;
+};
 
 const classic = { cfg: { mode: "classic" }, laps: 3, seed: "ABCD" };
 const custom = {
-  cfg: { mode: "custom", seed: "XY12", size: 0.6, curviness: 0.8, hilliness: 0.3, hills: 4, twist: 0.2, biomes: ["desert", "forest"], width: 1.1, features: { arch: true, tunnel: false }, timeOfDay: "day" },
-  laps: 5, seed: "XY12",
+  cfg: {
+    mode: "custom",
+    seed: "XY12",
+    size: 0.6,
+    curviness: 0.8,
+    hilliness: 0.3,
+    hills: 4,
+    twist: 0.2,
+    biomes: ["desert", "forest"],
+    width: 1.1,
+    features: { arch: true, tunnel: false },
+    timeOfDay: "day",
+  },
+  laps: 5,
+  seed: "XY12",
 };
 
 // --- Round-trip ---
 check("classic world round-trips", sameWorld(decodeWorld(encodeWorld(classic)), classic));
 check("custom world round-trips (all knobs + biomes + features)", sameWorld(decodeWorld(encodeWorld(custom)), custom));
-check("decoded custom equals original by deep value", JSON.stringify(decodeWorld(encodeWorld(custom))) === JSON.stringify(custom));
+check(
+  "decoded custom equals original by deep value",
+  JSON.stringify(decodeWorld(encodeWorld(custom))) === JSON.stringify(custom),
+);
 
 // --- URL-safe token (no +, /, = so it survives a query string) ---
 const tok = encodeWorld(custom);
@@ -37,5 +56,8 @@ check("different curviness → not same", !sameWorld(custom, { ...custom, cfg: {
 // --- worldSig is stable across encode→decode (so an adopt-reload converges, no loop) ---
 check("signature stable through a round-trip", worldSig(decodeWorld(encodeWorld(custom))) === worldSig(custom));
 
-if (failures) { console.log(`\n${failures} worldcfg check(s) FAILED`); process.exit(1); }
+if (failures) {
+  console.log(`\n${failures} worldcfg check(s) FAILED`);
+  process.exit(1);
+}
 console.log("\nall worldcfg checks passed");

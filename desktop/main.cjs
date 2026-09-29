@@ -35,22 +35,32 @@ function installLog() {
     const dir = path.join(app.getPath("userData"), "logs");
     fs.mkdirSync(dir, { recursive: true });
     _logPath = path.join(dir, "main.log");
-    try { _logSize = fs.statSync(_logPath).size; } catch { _logSize = 0; }
+    try {
+      _logSize = fs.statSync(_logPath).size;
+    } catch {
+      _logSize = 0;
+    }
     rollLog();
   } catch {
     _logPath = null; // read-only userData? the terminal still gets everything
   }
-  const wrap = (level, orig) => (...args) => {
-    orig(...args);
-    if (!_logPath) return;
-    const text = args.map((a) => (a instanceof Error ? a.stack || a.message : typeof a === "string" ? a : safeJson(a))).join(" ");
-    const line = `${new Date().toISOString()} ${level} ${text}\n`;
-    try {
-      fs.appendFileSync(_logPath, line);
-      _logSize += Buffer.byteLength(line);
-      if (_logSize > LOG_CAP) rollLog();
-    } catch { /* never let logging take the shell down */ }
-  };
+  const wrap =
+    (level, orig) =>
+    (...args) => {
+      orig(...args);
+      if (!_logPath) return;
+      const text = args
+        .map((a) => (a instanceof Error ? a.stack || a.message : typeof a === "string" ? a : safeJson(a)))
+        .join(" ");
+      const line = `${new Date().toISOString()} ${level} ${text}\n`;
+      try {
+        fs.appendFileSync(_logPath, line);
+        _logSize += Buffer.byteLength(line);
+        if (_logSize > LOG_CAP) rollLog();
+      } catch {
+        /* never let logging take the shell down */
+      }
+    };
   console.log = wrap("info", console.log.bind(console));
   console.warn = wrap("warn", console.warn.bind(console));
   console.error = wrap("error", console.error.bind(console));
@@ -64,10 +74,16 @@ function rollLog() {
     if (nl >= 0) tail = tail.subarray(nl + 1);
     fs.writeFileSync(_logPath, tail);
     _logSize = tail.length;
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }
 function safeJson(v) {
-  try { return JSON.stringify(v); } catch { return String(v); }
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
 }
 installLog();
 
@@ -77,9 +93,7 @@ installLog();
 // live on the next launch with no build step. dist/ + build-web.mjs remain
 // the packaging path only. (A stale dist/ once shipped an old build to a
 // tester through `start:fast` — this removes that class of error.)
-const DIST = app.isPackaged
-  ? path.join(process.resourcesPath, "dist")
-  : path.join(__dirname, "..");
+const DIST = app.isPackaged ? path.join(process.resourcesPath, "dist") : path.join(__dirname, "..");
 
 // Steam Deck: Gaming Mode launches set SteamDeck=1 in the environment.
 // Two accommodations, both scoped to that env so nothing else changes:
@@ -104,19 +118,26 @@ const DECK_REASON = (() => {
   const env = process.env;
   if (env.SteamDeck) return "env:SteamDeck";
   if (env.SteamGamepadUI) return "env:SteamGamepadUI";
-  if (/gamescope/i.test(env.XDG_CURRENT_DESKTOP || "") || /gamescope/i.test(env.XDG_SESSION_DESKTOP || "")) return "env:gamescope";
+  if (/gamescope/i.test(env.XDG_CURRENT_DESKTOP || "") || /gamescope/i.test(env.XDG_SESSION_DESKTOP || ""))
+    return "env:gamescope";
   try {
     const rel = fs.readFileSync("/etc/os-release", "utf8");
     if (/^ID=["']?steamos/m.test(rel) || /^ID_LIKE=.*steamos/m.test(rel)) return "os-release";
-  } catch { /* not there */ }
+  } catch {
+    /* not there */
+  }
   if (fs.existsSync("/etc/steamos-release")) return "steamos-release";
   if (process.platform === "linux") {
     try {
       if (fs.readFileSync("/proc/sys/kernel/unprivileged_userns_clone", "utf8").trim() === "0") return "no-userns";
-    } catch { /* knob absent on most kernels */ }
+    } catch {
+      /* knob absent on most kernels */
+    }
     try {
       if (fs.readFileSync("/proc/sys/user/max_user_namespaces", "utf8").trim() === "0") return "no-userns";
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return "";
 })();
@@ -248,7 +269,11 @@ function writeSave(payload) {
 // --- Window state: remember size + fullscreen across launches ---------------
 const winStatePath = () => path.join(app.getPath("userData"), "window-state.json");
 function readJson(p) {
-  try { return JSON.parse(fs.readFileSync(p, "utf8")); } catch { return null; }
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
 }
 
 // Dev launches print the working tree's branch + commit, so "am I running
@@ -266,7 +291,11 @@ function gitHead() {
       gitDir = path.resolve(root, m[1].trim());
     }
     let commonDir = gitDir;
-    try { commonDir = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim()); } catch { /* not a worktree */ }
+    try {
+      commonDir = path.resolve(gitDir, fs.readFileSync(path.join(gitDir, "commondir"), "utf8").trim());
+    } catch {
+      /* not a worktree */
+    }
     const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
     const m = head.match(/^ref: (.+)$/);
     if (!m) return head.slice(0, 8); // detached HEAD: the sha itself
@@ -332,7 +361,11 @@ function createWindow() {
   // electron-builder). dist/ ships the same 512px icon the PWA uses.
   const icon = path.join(DIST, "icon-512.png");
   if (process.platform === "darwin" && fs.existsSync(icon)) {
-    try { app.dock?.setIcon(icon); } catch { /* dev nicety only */ }
+    try {
+      app.dock?.setIcon(icon);
+    } catch {
+      /* dev nicety only */
+    }
   }
   win = new BrowserWindow({
     icon: fs.existsSync(icon) ? icon : undefined,
@@ -361,16 +394,27 @@ function createWindow() {
     // getNormalBounds so a fullscreen quit remembers the WINDOWED size too.
     const b = win.getNormalBounds();
     try {
-      fs.writeFileSync(winStatePath(), JSON.stringify({
-        width: b.width, height: b.height, fullscreen: win.isFullScreen(),
-      }));
-    } catch { /* best-effort */ }
+      fs.writeFileSync(
+        winStatePath(),
+        JSON.stringify({
+          width: b.width,
+          height: b.height,
+          fullscreen: win.isFullScreen(),
+        }),
+      );
+    } catch {
+      /* best-effort */
+    }
   });
-  win.on("closed", () => { win = null; });
+  win.on("closed", () => {
+    win = null;
+  });
 
   // Focus tracking → renderer (pause on focus loss lives in the game; the
   // preload turns these into zoomies:blur / zoomies:focus window events).
-  const tell = (ch) => { if (win && !win.webContents.isDestroyed()) win.webContents.send(ch); };
+  const tell = (ch) => {
+    if (win && !win.webContents.isDestroyed()) win.webContents.send(ch);
+  };
   win.on("blur", () => tell("zoomies:blur"));
   win.on("focus", () => tell("zoomies:focus"));
 
@@ -405,7 +449,12 @@ function createWindow() {
   win.webContents.on("did-finish-load", () => {
     clearTimeout(healthyTimer);
     if (win.webContents.getURL().startsWith("app://")) {
-      healthyTimer = setTimeout(() => { rendererDeaths = 0; }, 5 * 60 * 1000);
+      healthyTimer = setTimeout(
+        () => {
+          rendererDeaths = 0;
+        },
+        5 * 60 * 1000,
+      );
     }
   });
   win.on("unresponsive", () => console.error("[shell] renderer unresponsive (hung > 30s of no input handling)"));
@@ -414,7 +463,9 @@ function createWindow() {
   const url = gameUrl();
   // Printed to the npm-start terminal so "which build/backend am I actually
   // running?" is answerable at a glance (a stale build once burned a tester).
-  console.log(`[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}${DECK_REASON ? ":" + DECK_REASON : ""}, deckFlags=${HAS_DECK_ARGV ? (process.env.ZOOMIES_LAUNCHER ? "launcher:" + process.env.ZOOMIES_LAUNCHER : process.env.ZOOMIES_REEXEC ? "reexec" : "argv") : "none"}, webgpu=${WEBGPU_MODE || "off"}, electron=${process.versions.electron})`);
+  console.log(
+    `[shell] loading ${url} (packaged=${app.isPackaged}, deck=${ON_DECK}${DECK_REASON ? ":" + DECK_REASON : ""}, deckFlags=${HAS_DECK_ARGV ? (process.env.ZOOMIES_LAUNCHER ? "launcher:" + process.env.ZOOMIES_LAUNCHER : process.env.ZOOMIES_REEXEC ? "reexec" : "argv") : "none"}, webgpu=${WEBGPU_MODE || "off"}, electron=${process.versions.electron})`,
+  );
   if (!app.isPackaged) console.log(`[shell] source ${gitHead()}`);
   win.loadURL(url);
 
@@ -446,7 +497,9 @@ if (!REEXEC_PARENT && !app.requestSingleInstanceLock()) {
 // the GPU process itself, and the render-process-gone handler above covers
 // the renderer, so there is nothing more to do here than leave a trace.
 app.on("child-process-gone", (_e, details) => {
-  console.error(`[shell] child process gone: ${details.type} ${details.name || ""} ${details.reason} (exit ${details.exitCode})`);
+  console.error(
+    `[shell] child process gone: ${details.type} ${details.name || ""} ${details.reason} (exit ${details.exitCode})`,
+  );
 });
 
 app.whenReady().then(() => {
@@ -460,14 +513,23 @@ app.whenReady().then(() => {
   const logGpu = (tag) => {
     try {
       const g = app.getGPUFeatureStatus();
-      console.log(`[shell] gpu@${tag}: compositing=${g.gpu_compositing}, rasterization=${g.rasterization}, webgl=${g.webgl}, webgl2=${g.webgl2}, opengl=${g.opengl}, vulkan=${g.vulkan}, webgpu=${g.webgpu}`);
+      console.log(
+        `[shell] gpu@${tag}: compositing=${g.gpu_compositing}, rasterization=${g.rasterization}, webgl=${g.webgl}, webgl2=${g.webgl2}, opengl=${g.opengl}, vulkan=${g.vulkan}, webgpu=${g.webgpu}`,
+      );
     } catch (err) {
       console.log(`[shell] gpu status unavailable: ${err.message}`);
     }
-    app.getGPUInfo("basic").then((info) => {
-      const devs = (info?.gpuDevice || []).map((d) => `${d.active ? "*" : ""}${(d.vendorId || 0).toString(16)}:${(d.deviceId || 0).toString(16)}`);
-      console.log(`[shell] gpu devices: ${devs.join(" ") || "none"}`);
-    }).catch(() => { /* best effort */ });
+    app
+      .getGPUInfo("basic")
+      .then((info) => {
+        const devs = (info?.gpuDevice || []).map(
+          (d) => `${d.active ? "*" : ""}${(d.vendorId || 0).toString(16)}:${(d.deviceId || 0).toString(16)}`,
+        );
+        console.log(`[shell] gpu devices: ${devs.join(" ") || "none"}`);
+      })
+      .catch(() => {
+        /* best effort */
+      });
   };
   setTimeout(() => logGpu("5s"), 5000);
   setTimeout(() => logGpu("30s"), 30000);
@@ -493,11 +555,18 @@ app.whenReady().then(() => {
 
   initSteam();
   ipcMain.on("zoomies:quit", () => app.quit());
-  ipcMain.on("zoomies:load-save", (e) => { e.returnValue = readJson(savePath()); });
+  ipcMain.on("zoomies:load-save", (e) => {
+    e.returnValue = readJson(savePath());
+  });
   ipcMain.on("zoomies:save", (_e, payload) => writeSave(payload));
-  ipcMain.on("zoomies:save-flush", (e, payload) => { writeSave(payload); e.returnValue = true; });
+  ipcMain.on("zoomies:save-flush", (e, payload) => {
+    writeSave(payload);
+    e.returnValue = true;
+  });
   // Bridge queries (sync so game code can read them like plain properties).
-  ipcMain.on("zoomies:deck", (e) => { e.returnValue = ON_DECK; });
+  ipcMain.on("zoomies:deck", (e) => {
+    e.returnValue = ON_DECK;
+  });
   // The display's real refresh rate, for the game's frame cap. Chromium's
   // animation ticks under gamescope are NOT vsync-locked (they arrive in
   // bursts), so the game's tick-based estimate read a 60Hz Deck as ~178Hz and

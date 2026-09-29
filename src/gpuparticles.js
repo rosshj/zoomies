@@ -11,7 +11,19 @@
 import * as THREE from "three";
 import { debrisLight, environmentProfile } from "./environment-particles.js";
 import { uWindDir, uWindAir } from "./wind.js";
-import { instancedArray, instanceIndex, Fn, deltaTime, hash, vec3, float, uniform, uv, color, smoothstep } from "three/tsl";
+import {
+  instancedArray,
+  instanceIndex,
+  Fn,
+  deltaTime,
+  hash,
+  vec3,
+  float,
+  uniform,
+  uv,
+  color,
+  smoothstep,
+} from "three/tsl";
 
 export async function initGpuParticles(scene, renderer, opts = {}) {
   try {
@@ -59,14 +71,31 @@ async function build(scene, renderer, opts) {
     // Swirl: lateral nudge from a slow sine of height — turns straight fall into a
     // lazy weave. Cheap (no time uniform; the changing y drives the phase).
     const sway = pos.y.mul(0.7).sin().mul(0.25);
-    pos.x.addAssign(vel.x.add(sway).add(uWindDir.x.mul(uWindAir).mul(.25)).mul(deltaTime));
+    pos.x.addAssign(vel.x.add(sway).add(uWindDir.x.mul(uWindAir).mul(0.25)).mul(deltaTime));
     pos.y.addAssign(vel.y.mul(deltaTime));
-    pos.z.addAssign(vel.z.sub(sway).add(uWindDir.y.mul(uWindAir).mul(.25)).mul(deltaTime));
-    const relX = pos.x.sub(uCam.x).add(BOX).add(BOX * 2000.0).mod(BOX * 2.0).sub(BOX);
-    const relZ = pos.z.sub(uCam.z).add(BOX).add(BOX * 2000.0).mod(BOX * 2.0).sub(BOX);
+    pos.z.addAssign(vel.z.sub(sway).add(uWindDir.y.mul(uWindAir).mul(0.25)).mul(deltaTime));
+    const relX = pos.x
+      .sub(uCam.x)
+      .add(BOX)
+      .add(BOX * 2000.0)
+      .mod(BOX * 2.0)
+      .sub(BOX);
+    const relZ = pos.z
+      .sub(uCam.z)
+      .add(BOX)
+      .add(BOX * 2000.0)
+      .mod(BOX * 2.0)
+      .sub(BOX);
     pos.x.assign(uCam.x.add(relX));
     pos.z.assign(uCam.z.add(relZ));
-    pos.y.assign(pos.y.sub(uCam.y).add(HEIGHT * 2000.5).mod(HEIGHT).sub(HEIGHT*.5).add(uCam.y));
+    pos.y.assign(
+      pos.y
+        .sub(uCam.y)
+        .add(HEIGHT * 2000.5)
+        .mod(HEIGHT)
+        .sub(HEIGHT * 0.5)
+        .add(uCam.y),
+    );
   })().compute(COUNT);
 
   // Render: instanced billboarded sprites reading the position buffer per-instance.
@@ -81,9 +110,9 @@ async function build(scene, renderer, opts) {
   mat.scaleNode = float(opts.size ?? 0.14);
   // A soft round grain with no square root, glow or near-camera diamonds.
   // Fade before vertical wrap so the reset remains hidden on elevated tracks.
-  const d = uv().sub(.5);
-  const heightFade=smoothstep(HEIGHT*.35,HEIGHT*.5,positions.toAttribute().y.sub(uCam.y).abs()).oneMinus();
-  mat.opacityNode = smoothstep(.025,.24,d.dot(d)).oneMinus().mul(uOpacity).mul(heightFade);
+  const d = uv().sub(0.5);
+  const heightFade = smoothstep(HEIGHT * 0.35, HEIGHT * 0.5, positions.toAttribute().y.sub(uCam.y).abs()).oneMinus();
+  mat.opacityNode = smoothstep(0.025, 0.24, d.dot(d)).oneMinus().mul(uOpacity).mul(heightFade);
 
   const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), mat, COUNT);
   mesh.frustumCulled = false;
@@ -93,18 +122,27 @@ async function build(scene, renderer, opts) {
 
   console.log(`[zoomies] GPU particles: ${COUNT} compute motes`);
 
-  let visible = true, biome = null;
-  const pale=new THREE.Color(0xe0d8c4);
+  let visible = true,
+    biome = null;
+  const pale = new THREE.Color(0xe0d8c4);
   return {
     mesh,
     setEnvironment(name) {
-      if(name===biome)return;biome=name;
-      uTint.value.set(environmentProfile(name).colors[0]).lerp(pale,name==='volcanic'?.15:.65);
+      if (name === biome) return;
+      biome = name;
+      uTint.value.set(environmentProfile(name).colors[0]).lerp(pale, name === "volcanic" ? 0.15 : 0.65);
     },
-    setTint(hex) { uTint.value.set(hex); },
-    setOpacity(v) { uOpacity.value = v; },
+    setTint(hex) {
+      uTint.value.set(hex);
+    },
+    setOpacity(v) {
+      uOpacity.value = v;
+    },
     // Low quality hides the motes AND skips the per-frame GPU compute step.
-    setVisible(v) { visible = v; mesh.visible = v; },
+    setVisible(v) {
+      visible = v;
+      mesh.visible = v;
+    },
     update(dt, camPos) {
       if (!visible) return;
       if (camPos) uCam.value.copy(camPos);

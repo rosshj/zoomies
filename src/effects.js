@@ -1,7 +1,13 @@
 import * as THREE from "three";
 import { attribute, texture, color, vec2, uv, float } from "three/tsl";
 
-import { environmentAtlas, environmentProfile, ENVIRONMENT_LIMITS, emissionCount, debrisLight } from "./environment-particles.js";
+import {
+  environmentAtlas,
+  environmentProfile,
+  ENVIRONMENT_LIMITS,
+  emissionCount,
+  debrisLight,
+} from "./environment-particles.js";
 import { uWindDir } from "./wind.js";
 
 // Cel particle effects (procedural sprites): rainbow toot clouds, boost trail,
@@ -107,7 +113,10 @@ export class EffectsManager {
       a.setUsage(THREE.DynamicDrawUsage);
       return a;
     };
-    const aPos = mk(3), aColor = mk(3), aScale = mk(environment ? 4 : 1), aOpacity = mk(1);
+    const aPos = mk(3),
+      aColor = mk(3),
+      aScale = mk(environment ? 4 : 1),
+      aOpacity = mk(1);
     geo.setAttribute("aPos", aPos);
     geo.setAttribute("aColor", aColor);
     geo.setAttribute("aScale", aScale);
@@ -119,14 +128,21 @@ export class EffectsManager {
       fog: environment,
     });
     mat.positionNode = attribute("aPos"); // sprite centre (world space)
-    mat.scaleNode = environment ? attribute("aScale","vec4").xy : attribute("aScale");
+    mat.scaleNode = environment ? attribute("aScale", "vec4").xy : attribute("aScale");
     mat.colorNode = environment ? attribute("aColor").mul(debrisLight) : attribute("aColor");
-    const tile = attribute("aScale","vec4").z;
-    const atlasUV = environment ? vec2(uv().x.add(tile.mod(4)).div(4), uv().y.add(float(1).sub(tile.div(4).floor())).div(2)) : uv();
+    const tile = attribute("aScale", "vec4").z;
+    const atlasUV = environment
+      ? vec2(
+          uv().x.add(tile.mod(4)).div(4),
+          uv()
+            .y.add(float(1).sub(tile.div(4).floor()))
+            .div(2),
+        )
+      : uv();
     const sample = texture(tex, atlasUV);
-    if(environment)mat.colorNode=attribute("aColor").mul(debrisLight).mul(sample.rgb);
+    if (environment) mat.colorNode = attribute("aColor").mul(debrisLight).mul(sample.rgb);
     mat.opacityNode = sample.a.mul(attribute("aOpacity"));
-    if(environment) mat.rotationNode = attribute("aScale","vec4").w;
+    if (environment) mat.rotationNode = attribute("aScale", "vec4").w;
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
     mesh.frustumCulled = false;
     mesh.renderOrder = 4;
@@ -141,23 +157,45 @@ export class EffectsManager {
     if (this.parts.length >= this.maxParts || (env && this.environmentCount >= ENVIRONMENT_LIMITS.wake)) {
       // Environmental work never evicts a boost/drift particle. Gameplay effects
       // reclaim environmental slots first when the shared 280-slot pool is full.
-      let idx = -1, best = Infinity;
-      for (let i=0;i<this.parts.length;i++) if(this.parts[i].env && this.parts[i].life<best){best=this.parts[i].life;idx=i;}
-      if(idx<0){if(env)return;for(let i=0;i<this.parts.length;i++)if(this.parts[i].life<best){best=this.parts[i].life;idx=i;}}
-      p=this.parts[idx];if(p.env)this.environmentCount--;
+      let idx = -1,
+        best = Infinity;
+      for (let i = 0; i < this.parts.length; i++)
+        if (this.parts[i].env && this.parts[i].life < best) {
+          best = this.parts[i].life;
+          idx = i;
+        }
+      if (idx < 0) {
+        if (env) return;
+        for (let i = 0; i < this.parts.length; i++)
+          if (this.parts[i].life < best) {
+            best = this.parts[i].life;
+            idx = i;
+          }
+      }
+      p = this.parts[idx];
+      if (p.env) this.environmentCount--;
     } else {
-      p=this._pool.pop() || {pos:new THREE.Vector3(),v:new THREE.Vector3()};
+      p = this._pool.pop() || { pos: new THREE.Vector3(), v: new THREE.Vector3() };
       this.parts.push(p);
     }
-    p.env=env;if(env)this.environmentCount++;
-    p.tile=opts.tile??7;p.angle=opts.angle??0;p.spin=opts.spin??0;p.aspect=opts.aspect??1;
-    p.floor=opts.floor??-Infinity;p.initialOpacity=opts.opacity??.9;p.maxLife=opts.life;
+    p.env = env;
+    if (env) this.environmentCount++;
+    p.tile = opts.tile ?? 7;
+    p.angle = opts.angle ?? 0;
+    p.spin = opts.spin ?? 0;
+    p.aspect = opts.aspect ?? 1;
+    p.floor = opts.floor ?? -Infinity;
+    p.initialOpacity = opts.opacity ?? 0.9;
+    p.maxLife = opts.life;
     p.pos.copy(pos);
-    p.r = color.r; p.g = color.g; p.b = color.b;
+    p.r = color.r;
+    p.g = color.g;
+    p.b = color.b;
     p.opacity = opts.opacity ?? 0.9;
     p.scale = opts.size ?? 1;
     p.spark = !!opts.spark;
-    if (opts.v) p.v.copy(opts.v); else p.v.set(0, 0, 0);
+    if (opts.v) p.v.copy(opts.v);
+    else p.v.set(0, 0, 0);
     p.life = opts.life;
     p.grow = opts.grow ?? 0;
     p.damp = opts.damp ?? 2;
@@ -176,7 +214,7 @@ export class EffectsManager {
     // Stay above zero through the warm-up lifetime despite the 1.5/s fade.
     this._spawn(pos, _col, { spark: false, life: 0.12, opacity: 0.2, size: 0.5, v: _vel });
     this._spawn(pos, _col, { spark: true, life: 0.12, opacity: 0.2, size: 0.5, v: _vel });
-    this._spawn(pos,_col,{env:true,tile:7,life:.12,opacity:.2,size:.5});
+    this._spawn(pos, _col, { env: true, tile: 7, life: 0.12, opacity: 0.2, size: 0.5 });
     if (this.skidFill === 0) {
       this.skidFill = 1;
       this.skidHead = 1;
@@ -308,11 +346,13 @@ export class EffectsManager {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       const sp = 14 + Math.random() * 13;
-      _vel.set(
-        Math.sin(phi) * Math.cos(theta),
-        Math.abs(Math.cos(phi)) * 0.7 + 0.5, // bias the spray upward
-        Math.sin(phi) * Math.sin(theta)
-      ).multiplyScalar(sp);
+      _vel
+        .set(
+          Math.sin(phi) * Math.cos(theta),
+          Math.abs(Math.cos(phi)) * 0.7 + 0.5, // bias the spray upward
+          Math.sin(phi) * Math.sin(theta),
+        )
+        .multiplyScalar(sp);
       this._spawn(origin, _col, {
         additive: true,
         spark: true,
@@ -381,8 +421,10 @@ export class EffectsManager {
   // (spark particles stretch along their velocity) so they read as wind whipping by.
   slipstreamWind(kart, strength) {
     if (Math.random() > 0.4 + strength * 0.5) return;
-    const fwx = Math.sin(kart.heading), fwz = Math.cos(kart.heading);
-    const rx = Math.cos(kart.heading), rz = -Math.sin(kart.heading); // kart's right
+    const fwx = Math.sin(kart.heading),
+      fwz = Math.cos(kart.heading);
+    const rx = Math.cos(kart.heading),
+      rz = -Math.sin(kart.heading); // kart's right
     const sp = 26 + Math.abs(kart.speed) * 0.6;
     const n = strength > 0.6 ? 2 : 1;
     for (let i = 0; i < n; i++) {
@@ -395,8 +437,13 @@ export class EffectsManager {
       _vel.set(-fwx * sp, (Math.random() - 0.5) * 2, -fwz * sp);
       _col.setHex(0xdff1ff);
       this._spawn(_pos, _col, {
-        additive: true, spark: true, size: 0.5 + strength * 0.45,
-        life: 0.18, v: _vel, opacity: 0.22 + strength * 0.4, damp: 0.5,
+        additive: true,
+        spark: true,
+        size: 0.5 + strength * 0.45,
+        life: 0.18,
+        v: _vel,
+        opacity: 0.22 + strength * 0.4,
+        damp: 0.5,
       });
     }
   }
@@ -412,8 +459,10 @@ export class EffectsManager {
     // bright dots floating over the kart read as clutter, not wind): one low,
     // dim speck at a time, kept wide of the kart so it skims the frame edges.
     if (Math.random() > 0.22 + strength * 0.42) return;
-    const fwx = Math.sin(kart.heading), fwz = Math.cos(kart.heading);
-    const rx = Math.cos(kart.heading), rz = -Math.sin(kart.heading); // kart's right
+    const fwx = Math.sin(kart.heading),
+      fwz = Math.cos(kart.heading);
+    const rx = Math.cos(kart.heading),
+      rz = -Math.sin(kart.heading); // kart's right
     const sp = 30 + Math.abs(kart.speed) * 0.9;
     // Wide of the racing line so streaks frame the view instead of crossing it.
     const side = (Math.random() < 0.5 ? -1 : 1) * (3.4 + Math.random() * 2.2);
@@ -425,8 +474,13 @@ export class EffectsManager {
     _vel.set(-fwx * sp, (Math.random() - 0.5) * 1.5, -fwz * sp);
     _col.setHex(0xf2f8ff);
     this._spawn(_pos, _col, {
-      additive: true, spark: true, size: 0.28 + strength * 0.18,
-      life: 0.18, v: _vel, opacity: 0.06 + strength * 0.15, damp: 0.3,
+      additive: true,
+      spark: true,
+      size: 0.28 + strength * 0.18,
+      life: 0.18,
+      v: _vel,
+      opacity: 0.06 + strength * 0.15,
+      damp: 0.3,
     });
   }
 
@@ -443,43 +497,85 @@ export class EffectsManager {
   }
 
   _rate(kart, channel, rate, dt) {
-    let state=this._emission.get(kart);
-    if(!state){state={};this._emission.set(kart,state);}
-    return emissionCount(state,channel,rate*this.environmentScale,dt);
+    let state = this._emission.get(kart);
+    if (!state) {
+      state = {};
+      this._emission.set(kart, state);
+    }
+    return emissionCount(state, channel, rate * this.environmentScale, dt);
   }
 
   // Material dust is normally blended and follows daylight/fog, never bloom.
-  dust(kart, color, amount = 1, dt = 1/60, biome = 'meadow') {
-    const n=this._rate(kart,'dust',Math.max(0,amount)*16,dt);
-    _right.set(Math.cos(kart.heading),0,-Math.sin(kart.heading));
-    _fwd.set(Math.sin(kart.heading),0,Math.cos(kart.heading));
-    for(let i=0;i<n;i++){
-      const side=Math.random()<.5?-1:1;
-      _pos.copy(kart.position).addScaledVector(_fwd,-1.8).addScaledVector(_right,side*1.25);
-      _pos.y=(kart.groundY??kart.position.y)+.18;
-      _vel.copy(_right).multiplyScalar(side*(.6+Math.random())).addScaledVector(_fwd,-.7);_vel.y=.35+Math.random()*.5;
-      _col.copy(color||_DUST_FALLBACK).multiplyScalar(.85+Math.random()*.1);
-      this._spawn(_pos,_col,{env:true,tile:7,size:.65+Math.random()*.35,aspect:.65,life:.65+Math.random()*.2,grow:1.4,
-        opacity:.16+Math.min(1,amount)*.15,v:_vel,damp:1.6,gravity:.65,floor:_pos.y-.1,angle:Math.random()*6.28,spin:.15});
+  dust(kart, color, amount = 1, dt = 1 / 60, biome = "meadow") {
+    const n = this._rate(kart, "dust", Math.max(0, amount) * 16, dt);
+    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    for (let i = 0; i < n; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      _pos
+        .copy(kart.position)
+        .addScaledVector(_fwd, -1.8)
+        .addScaledVector(_right, side * 1.25);
+      _pos.y = (kart.groundY ?? kart.position.y) + 0.18;
+      _vel
+        .copy(_right)
+        .multiplyScalar(side * (0.6 + Math.random()))
+        .addScaledVector(_fwd, -0.7);
+      _vel.y = 0.35 + Math.random() * 0.5;
+      _col.copy(color || _DUST_FALLBACK).multiplyScalar(0.85 + Math.random() * 0.1);
+      this._spawn(_pos, _col, {
+        env: true,
+        tile: 7,
+        size: 0.65 + Math.random() * 0.35,
+        aspect: 0.65,
+        life: 0.65 + Math.random() * 0.2,
+        grow: 1.4,
+        opacity: 0.16 + Math.min(1, amount) * 0.15,
+        v: _vel,
+        damp: 1.6,
+        gravity: 0.65,
+        floor: _pos.y - 0.1,
+        angle: Math.random() * 6.28,
+        spin: 0.15,
+      });
     }
   }
 
   // A few recognisable pieces, with material-specific lift/drag. All use one
   // atlas field; botanical pieces flutter while grains/clumps fall quickly.
-  wakeDebris(kart, color, strength = 1, dt = 1/60, biome = 'meadow') {
-    const spec=environmentProfile(biome),n=this._rate(kart,'wake',Math.max(0,strength)*10,dt);
-    _fwd.set(Math.sin(kart.heading),0,Math.cos(kart.heading));
-    _right.set(Math.cos(kart.heading),0,-Math.sin(kart.heading));
-    for(let i=0;i<n;i++){
-      const side=Math.random()<.5?-1:1,light=spec.tile<3||spec.tile===5;
-      _pos.copy(kart.position).addScaledVector(_fwd,-2).addScaledVector(_right,side*(1.1+Math.random()*.4));
-      _pos.y=(kart.groundY??kart.position.y)+.15;
-      _vel.copy(_fwd).multiplyScalar(-1-Math.random()*2).addScaledVector(_right,side*(.4+Math.random()));
-      _vel.y=(.7+Math.random())*spec.lift*2;
-      _col.set(spec.colors[(Math.random()*spec.colors.length)|0]);
-      this._spawn(_pos,_col,{env:true,tile:spec.tile,size:spec.size*(.8+Math.random()*.6),aspect:light?.8:1,
-        life:light?1.0+Math.random()*.4:.4+Math.random()*.25,opacity:.8,v:_vel,damp:light?1.1:2.2,
-        gravity:light?2.5:7,floor:_pos.y-.1,angle:Math.random()*6.28,spin:(Math.random()-.5)*(light?5:2)});
+  wakeDebris(kart, color, strength = 1, dt = 1 / 60, biome = "meadow") {
+    const spec = environmentProfile(biome),
+      n = this._rate(kart, "wake", Math.max(0, strength) * 10, dt);
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    _right.set(Math.cos(kart.heading), 0, -Math.sin(kart.heading));
+    for (let i = 0; i < n; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1,
+        light = spec.tile < 3 || spec.tile === 5;
+      _pos
+        .copy(kart.position)
+        .addScaledVector(_fwd, -2)
+        .addScaledVector(_right, side * (1.1 + Math.random() * 0.4));
+      _pos.y = (kart.groundY ?? kart.position.y) + 0.15;
+      _vel
+        .copy(_fwd)
+        .multiplyScalar(-1 - Math.random() * 2)
+        .addScaledVector(_right, side * (0.4 + Math.random()));
+      _vel.y = (0.7 + Math.random()) * spec.lift * 2;
+      _col.set(spec.colors[(Math.random() * spec.colors.length) | 0]);
+      this._spawn(_pos, _col, {
+        env: true,
+        tile: spec.tile,
+        size: spec.size * (0.8 + Math.random() * 0.6),
+        aspect: light ? 0.8 : 1,
+        life: light ? 1.0 + Math.random() * 0.4 : 0.4 + Math.random() * 0.25,
+        opacity: 0.8,
+        v: _vel,
+        damp: light ? 1.1 : 2.2,
+        gravity: light ? 2.5 : 7,
+        floor: _pos.y - 0.1,
+        angle: Math.random() * 6.28,
+        spin: (Math.random() - 0.5) * (light ? 5 : 2),
+      });
     }
   }
 
@@ -487,14 +583,25 @@ export class EffectsManager {
   // chips backward that arc down under hard gravity. Small, low and short-lived
   // (deliberately unlike the wind streaks), it makes the tarmac itself read as
   // being WORKED at full speed.
-  tireGrit(kart, dt = 1/60) {
-    const n=this._rate(kart,'grit',3,dt);
-    _fwd.set(Math.sin(kart.heading),0,Math.cos(kart.heading));
-    for(let i=0;i<n;i++){
-      _pos.copy(kart.position).addScaledVector(_fwd,-1.6);_pos.y=(kart.groundY??kart.position.y)+.12;
-      _vel.copy(_fwd).multiplyScalar(-3);_vel.y=.7;
+  tireGrit(kart, dt = 1 / 60) {
+    const n = this._rate(kart, "grit", 3, dt);
+    _fwd.set(Math.sin(kart.heading), 0, Math.cos(kart.heading));
+    for (let i = 0; i < n; i++) {
+      _pos.copy(kart.position).addScaledVector(_fwd, -1.6);
+      _pos.y = (kart.groundY ?? kart.position.y) + 0.12;
+      _vel.copy(_fwd).multiplyScalar(-3);
+      _vel.y = 0.7;
       _col.setHex(0x858077);
-      this._spawn(_pos,_col,{env:true,tile:3,size:.08,life:.3,opacity:.65,v:_vel,gravity:8,floor:_pos.y-.08});
+      this._spawn(_pos, _col, {
+        env: true,
+        tile: 3,
+        size: 0.08,
+        life: 0.3,
+        opacity: 0.65,
+        v: _vel,
+        gravity: 8,
+        floor: _pos.y - 0.08,
+      });
     }
   }
 
@@ -535,9 +642,11 @@ export class EffectsManager {
         continue;
       }
       // Perpendicular to travel (in XZ) gives the two edge points of the new end.
-      const dx = b.x - a.x, dz = b.z - a.z;
+      const dx = b.x - a.x,
+        dz = b.z - a.z;
       const inv = HALF / Math.hypot(dx, dz);
-      const px = dz * inv, pz = -dx * inv;
+      const px = dz * inv,
+        pz = -dx * inv;
       // Near edge = the previous quad's far edge (continuous), or seed it at `a`.
       if (!st.e[i]) {
         st.e[i] = st.s[i];
@@ -563,8 +672,12 @@ export class EffectsManager {
     const P = this.skidPos;
     const pB = q * 18;
     // tri1: aL,aR,bR  tri2: aL,bR,bL — written via the module scratch list.
-    _skidVerts[0] = aL; _skidVerts[1] = aR; _skidVerts[2] = bR;
-    _skidVerts[3] = aL; _skidVerts[4] = bR; _skidVerts[5] = bL;
+    _skidVerts[0] = aL;
+    _skidVerts[1] = aR;
+    _skidVerts[2] = bR;
+    _skidVerts[3] = aL;
+    _skidVerts[4] = bR;
+    _skidVerts[5] = bL;
     for (let k = 0; k < 6; k++) {
       P[pB + k * 3] = _skidVerts[k].x;
       P[pB + k * 3 + 1] = _skidVerts[k].y;
@@ -587,32 +700,40 @@ export class EffectsManager {
       p.pos.addScaledVector(p.v, dt);
       p.v.multiplyScalar(1 - Math.min(1, p.damp * dt));
       if (p.grow) p.scale += p.grow * dt;
-      if(p.env){
-        p.angle+=p.spin*dt;
-        p.v.x+=uWindDir.value.x*.3*dt;p.v.z+=uWindDir.value.y*.3*dt;
-        if(p.pos.y<p.floor){p.pos.y=p.floor;p.v.y=0;p.v.multiplyScalar(Math.exp(-7*dt));p.life=Math.min(p.life,.25);}
-        p.opacity=p.initialOpacity*Math.min(1,p.life/.3);
-      }else p.opacity = Math.max(0, p.opacity - dt * 1.5);
+      if (p.env) {
+        p.angle += p.spin * dt;
+        p.v.x += uWindDir.value.x * 0.3 * dt;
+        p.v.z += uWindDir.value.y * 0.3 * dt;
+        if (p.pos.y < p.floor) {
+          p.pos.y = p.floor;
+          p.v.y = 0;
+          p.v.multiplyScalar(Math.exp(-7 * dt));
+          p.life = Math.min(p.life, 0.25);
+        }
+        p.opacity = p.initialOpacity * Math.min(1, p.life / 0.3);
+      } else p.opacity = Math.max(0, p.opacity - dt * 1.5);
       if (p.life <= 0 || p.opacity <= 0) {
         // Swap-remove (order doesn't matter — the fields repack every frame);
         // splice() shifted the whole tail per death, O(n²) when a burst fades.
         this.parts[i] = this.parts[this.parts.length - 1];
         this.parts.pop();
-        if(p.env)this.environmentCount--;
+        if (p.env) this.environmentCount--;
         this._pool.push(p);
       }
     }
     // Pack live particles into the two glow fields and the material atlas.
-    let ns = 0, np = 0, ne = 0;
+    let ns = 0,
+      np = 0,
+      ne = 0;
     for (const p of this.parts) {
       const f = p.env ? this.environmentField : p.spark ? this.sparkField : this.smokeField;
       const idx = p.env ? ne++ : p.spark ? np++ : ns++;
       f.aPos.setXYZ(idx, p.pos.x, p.pos.y, p.pos.z);
       f.aColor.setXYZ(idx, p.r, p.g, p.b);
-      if(p.env){
-        const flutter=p.tile<3||p.tile===5 ? .45+.55*Math.abs(Math.cos(p.angle*1.7)) : 1;
-        f.aScale.setXYZW(idx,p.scale*flutter,p.scale*p.aspect,p.tile,p.angle);
-      }else f.aScale.setX(idx, p.scale);
+      if (p.env) {
+        const flutter = p.tile < 3 || p.tile === 5 ? 0.45 + 0.55 * Math.abs(Math.cos(p.angle * 1.7)) : 1;
+        f.aScale.setXYZW(idx, p.scale * flutter, p.scale * p.aspect, p.tile, p.angle);
+      } else f.aScale.setX(idx, p.scale);
       f.aOpacity.setX(idx, p.opacity);
     }
     this._flush(this.smokeField, ns);

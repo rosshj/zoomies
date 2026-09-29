@@ -9,7 +9,17 @@
 // One shared clock drives GPU foliage and the small CPU prop/event budget.
 // The world (or asset viewer) advances it once per frame; no per-tree updates.
 import * as THREE from "three";
-import { uniform, vec2, vec3, vec4, attribute, positionLocal, positionGeometry, modelWorldMatrix, modelWorldMatrixInverse } from "three/tsl";
+import {
+  uniform,
+  vec2,
+  vec3,
+  vec4,
+  attribute,
+  positionLocal,
+  positionGeometry,
+  modelWorldMatrix,
+  modelWorldMatrixInverse,
+} from "three/tsl";
 
 export const uWindDir = uniform(new THREE.Vector2(0.82, 0.57)); // unit XZ, points DOWNWIND
 export const uWindStr = uniform(1); // force felt by things that BEND
@@ -24,7 +34,9 @@ export const uWindSpeed = uniform(0.9); // how fast gust fronts travel
 export const uKartPos = uniform(new THREE.Vector4(1e6, 0, 1e6, 0));
 
 export const uWindClock = uniform(0);
-export function setWindClock(seconds) { uWindClock.value = seconds; }
+export function setWindClock(seconds) {
+  uWindClock.value = seconds;
+}
 const _phase = uWindClock.mul(uWindSpeed);
 
 // Signed gust strength at a world XZ, -1..1. Two travelling waves — a long slow
@@ -52,10 +64,7 @@ export function windLean(px, pz, amp, maxStr = null) {
   const { gust, along } = gustAt(px, pz);
   const lean = gust.mul(0.42).add(0.58).mul(str).mul(amp);
   const cross = along.mul(0.043).add(_phase.mul(1.6)).cos().mul(0.2).mul(str).mul(amp);
-  return vec2(
-    uWindDir.x.mul(lean).sub(uWindDir.y.mul(cross)),
-    uWindDir.y.mul(lean).add(uWindDir.x.mul(cross))
-  );
+  return vec2(uWindDir.x.mul(lean).sub(uWindDir.y.mul(cross)), uWindDir.y.mul(lean).add(uWindDir.x.mul(cross)));
 }
 
 // World-space drift for something AIRBORNE, hovering around a home point.
@@ -81,7 +90,7 @@ export function windGustDrift(px, pz, amp, jitter, lift = 0) {
   return vec3(
     uWindDir.x.mul(g).sub(uWindDir.y.mul(cross)).mul(amp),
     g.abs().mul(lift),
-    uWindDir.y.mul(g).add(uWindDir.x.mul(cross)).mul(amp)
+    uWindDir.y.mul(g).add(uWindDir.x.mul(cross)).mul(amp),
   );
 }
 
@@ -109,7 +118,15 @@ export function windBendNode(amp, maxStr = null) {
   const tall = w.mul(root.z).max(0.001); // the object's height in WORLD units
   const reach = bend.y.mul(tall).mul(bend.z); // world units at amp = 1
   const lean = windLean(root.x, root.y, amp, maxStr); // aWindRoot is (x, z, scale)
-  const flutter = _phase.mul(3.1).sub(root.x.mul(.071)).sub(root.y.mul(.049)).add(positionGeometry.x.mul(1.7)).sin().mul(.012).mul(reach).mul(uWindStr.min(1.45));
+  const flutter = _phase
+    .mul(3.1)
+    .sub(root.x.mul(0.071))
+    .sub(root.y.mul(0.049))
+    .add(positionGeometry.x.mul(1.7))
+    .sin()
+    .mul(0.012)
+    .mul(reach)
+    .mul(uWindStr.min(1.45));
   const ox = lean.x.mul(reach).add(uWindDir.y.mul(flutter));
   const oz = lean.y.mul(reach).sub(uWindDir.x.mul(flutter));
   const oy = ox.mul(ox).add(oz.mul(oz)).mul(-0.5).div(tall);
@@ -149,38 +166,49 @@ export function windBendLooseNode(amp) {
 // Bake extent, attachment weight and shape response once at construction.
 // Upright crowns bend by height; drooping palms bend by distance from the
 // crown. The attachment stays pinned while the outer foliage can move.
-export function bakeBendWeights(geo, shape = 'round') {
+export function bakeBendWeights(geo, shape = "round") {
   const pos = geo.attributes.position;
-  let extent = .001;
-  for (let i=0;i<pos.count;i++) extent=Math.max(extent,shape==='palm'?Math.hypot(pos.getX(i),pos.getZ(i)):pos.getY(i));
-  const response={pine:.6,round:1,blossom:1.1,acacia:.8,palm:1.35}[shape] ?? 1;
-  const values=new Float32Array(pos.count*3);
-  for(let i=0;i<pos.count;i++) {
+  let extent = 0.001;
+  for (let i = 0; i < pos.count; i++)
+    extent = Math.max(extent, shape === "palm" ? Math.hypot(pos.getX(i), pos.getZ(i)) : pos.getY(i));
+  const response = { pine: 0.6, round: 1, blossom: 1.1, acacia: 0.8, palm: 1.35 }[shape] ?? 1;
+  const values = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) {
     // Palm fronds droop BELOW their root: height-only weights pinned their tips.
-    const radial=Math.hypot(pos.getX(i),pos.getZ(i));
-    const distance=shape==='palm'?(radial<.11?0:radial):Math.max(0,pos.getY(i));
-    values.set([extent,(distance/extent)**2,response],i*3);
+    const radial = Math.hypot(pos.getX(i), pos.getZ(i));
+    const distance = shape === "palm" ? (radial < 0.11 ? 0 : radial) : Math.max(0, pos.getY(i));
+    values.set([extent, (distance / extent) ** 2, response], i * 3);
   }
-  geo.setAttribute('aBend',new THREE.BufferAttribute(values,3));
+  geo.setAttribute("aBend", new THREE.BufferAttribute(values, 3));
   return geo;
 }
 
 // CPU equivalent of the same travelling gust; used only by capped nearby props.
-export function windStrengthAt(x,z) {
-  const d=uWindDir.value,phase=uWindClock.value*uWindSpeed.value;
-  const along=x*d.x+z*d.y,across=x*d.y-z*d.x;
-  const gust=Math.sin(along*.017+across*.006-phase)*.62+Math.sin(along*.071+across*.028-phase*2.4)*.38;
-  return (.58+.42*gust)*Math.min(1.45,uWindStr.value);
+export function windStrengthAt(x, z) {
+  const d = uWindDir.value,
+    phase = uWindClock.value * uWindSpeed.value;
+  const along = x * d.x + z * d.y,
+    across = x * d.y - z * d.x;
+  const gust =
+    Math.sin(along * 0.017 + across * 0.006 - phase) * 0.62 +
+    Math.sin(along * 0.071 + across * 0.028 - phase * 2.4) * 0.38;
+  return (0.58 + 0.42 * gust) * Math.min(1.45, uWindStr.value);
 }
 
 // Cloth has explicit attachment weights, so poles, rails and seams stay pinned.
 export function windFlexNode(amp) {
-  const root=modelWorldMatrix.mul(vec4(0,0,0,1)).xyz;
-  const lean=windLean(root.x,root.z,amp,1.45);
-  const local=modelWorldMatrixInverse.mul(vec4(lean.x,0,lean.y,0)).xyz;
-  const weight=attribute('aFlex');
-  const ripple=_phase.mul(3.1).sub(root.x.mul(.071)).sub(root.z.mul(.049)).add(positionGeometry.x.mul(2)).sin().mul(amp*.22);
-  return positionLocal.add(local.add(vec3(0,ripple,0)).mul(weight));
+  const root = modelWorldMatrix.mul(vec4(0, 0, 0, 1)).xyz;
+  const lean = windLean(root.x, root.z, amp, 1.45);
+  const local = modelWorldMatrixInverse.mul(vec4(lean.x, 0, lean.y, 0)).xyz;
+  const weight = attribute("aFlex");
+  const ripple = _phase
+    .mul(3.1)
+    .sub(root.x.mul(0.071))
+    .sub(root.z.mul(0.049))
+    .add(positionGeometry.x.mul(2))
+    .sin()
+    .mul(amp * 0.22);
+  return positionLocal.add(local.add(vec3(0, ripple, 0)).mul(weight));
 }
 
 // The force in uWindStr is two things multiplied: the track's own prevailing

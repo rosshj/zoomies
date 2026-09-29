@@ -7,23 +7,52 @@ import { Kart } from "../src/kart.js";
 import { makeRng } from "../src/rng.js";
 
 let failures = 0;
-const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
+const check = (name, cond) => {
+  console.log((cond ? "  ok  " : "FAIL  ") + name);
+  if (!cond) failures++;
+};
 
 // Minimal flat straight track along +x (z = lateral) with the methods kart
 // physics queries. Determinism doesn't need real geometry — same inputs on the
 // same track give the same output whatever its shape.
 function simTrack(length = 400, halfWidth = 10) {
   return {
-    length, halfWidth, totalLaps: 3, raceTime: 0,
+    length,
+    halfWidth,
+    totalLaps: 3,
+    raceTime: 0,
     project(pos) {
       const t = (((pos.x / length) % 1) + 1) % 1;
-      return { t, point: new THREE.Vector3(pos.x, 0, 0), tangent: new THREE.Vector3(1, 0, 0), side: new THREE.Vector3(0, 0, 1), lateral: pos.z, groundY: 0 };
+      return {
+        t,
+        point: new THREE.Vector3(pos.x, 0, 0),
+        tangent: new THREE.Vector3(1, 0, 0),
+        side: new THREE.Vector3(0, 0, 1),
+        lateral: pos.z,
+        groundY: 0,
+      };
     },
-    getPointAt(t, out) { out.set(t * length, 0, 0); return out; },
-    getTangentAt(t, out) { out.set(1, 0, 0); return out; },
+    getPointAt(t, out) {
+      out.set(t * length, 0, 0);
+      return out;
+    },
+    getTangentAt(t, out) {
+      out.set(1, 0, 0);
+      return out;
+    },
   };
 }
-const baseCfg = { name: "P", color: 0x888888, catColor: 0x888888, catPattern: 0, catAccessory: 0, catAccessoryColor: 0, kartStyle: 0, kartNumber: 1, headless: true };
+const baseCfg = {
+  name: "P",
+  color: 0x888888,
+  catColor: 0x888888,
+  catPattern: 0,
+  catAccessory: 0,
+  catAccessoryColor: 0,
+  kartStyle: 0,
+  kartNumber: 1,
+  headless: true,
+};
 
 // Step a player kart through a fixed script (steer/throttle/drift/jump + a
 // seeded spin-out) and return its full per-frame state trajectory.
@@ -36,7 +65,8 @@ function runPlayer(seed) {
   const dt = 1 / 60;
   let raceTime = 0;
   for (let i = 0; i < 600; i++) {
-    raceTime += dt; track.raceTime = raceTime;
+    raceTime += dt;
+    track.raceTime = raceTime;
     k.steerInput = Math.sin(i * 0.05) * 0.8;
     k.throttleInput = 1;
     k.driftHeld = i > 100 && i < 220;
@@ -66,11 +96,15 @@ check("a different seed diverges the trajectory", JSON.stringify(a) !== JSON.str
 function aiTraits(seed) {
   const rng = makeRng(seed + "|sim");
   const mk = () => new Kart({ ...baseCfg, isPlayer: false, rng });
-  const a1 = mk(), a2 = mk();
+  const a1 = mk(),
+    a2 = mk();
   return [a1.laneBias, a1.shieldSkill, a2.laneBias, a2.shieldSkill];
 }
 check("AI traits reproduce for a seed", JSON.stringify(aiTraits("GRID")) === JSON.stringify(aiTraits("GRID")));
 check("AI traits differ across seeds", JSON.stringify(aiTraits("GRID")) !== JSON.stringify(aiTraits("GRID2")));
 
-if (failures) { console.log(`\n${failures} sim check(s) FAILED`); process.exit(1); }
+if (failures) {
+  console.log(`\n${failures} sim check(s) FAILED`);
+  process.exit(1);
+}
 console.log("\nall sim checks passed");
