@@ -39,11 +39,13 @@ const smooth = (x) => {
   x = Math.max(0, Math.min(1, x));
   return x * x * (3 - 2 * x);
 };
+const SANDY = new Set(["beach", "desert", "mesa"]),
+  SNOWY = new Set(["alpine", "tundra"]); // hoisted: looseSurface runs per kart per frame
 export function looseSurface(biome, x, z, lateral, halfWidth, row, sliding = false) {
   const f = Math.max(0, Math.min(1, (lateral + halfWidth) / (2 * halfWidth)));
   const edge = smooth((Math.abs(lateral) - halfWidth * 0.62) / (halfWidth * 0.32));
-  const sandy = ["beach", "desert", "mesa"].includes(biome),
-    snowy = ["alpine", "tundra"].includes(biome);
+  const sandy = SANDY.has(biome),
+    snowy = SNOWY.has(biome);
   if (!sandy && !snowy) return Math.min(1, edge * 0.75 + (sliding ? 0.06 : 0.008));
   const wander = 0.03 * Math.sin(row * 0.06) + 0.02 * Math.sin(row * 0.017 + 2.1);
   const lane = Math.min(Math.abs(f - (0.32 + wander)), Math.abs(f - (0.68 + wander)));

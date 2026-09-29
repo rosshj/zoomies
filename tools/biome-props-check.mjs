@@ -161,6 +161,11 @@ for (const kind of Object.keys(ROAD_PROPS))
     assert(pr.asleep, `${kind} didn't settle`);
     check();
     budgets.push({ kind, used, triangles: g.attributes.position.count / 3, hull: b.hull.length });
+    // Spheres never walk their hull: physics uses an 8-point analytic ring.
+    assert(
+      b.profile.sphereRadius || b.hull.length <= 64,
+      `${kind}${used ? " (used)" : ""} hull has ${b.hull.length} points; physics walks every one per substep`,
+    );
   }
 // Shared-wind events only wake nearby lightweight objects and respect the cap.
 const windy = await initProps(new T.Scene(), track, { seed: "WIND", biomeNameAt: () => "beach" });

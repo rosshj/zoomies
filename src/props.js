@@ -530,17 +530,17 @@ function build(scene, track, opts) {
       const mp = pr.mesh.position;
       // Ground height under the prop: only re-sample when it has moved in XZ.
       if (pr._shGy === undefined || mp.x !== pr._shX || mp.z !== pr._shZ) {
-        pr._shGy = physics.height(mp.x, mp.z, pr.roadIndex);
+        pr._shGy = physics.height(mp.x, mp.z, pr.roadIndex, physics.normal);
         pr._shX = mp.x;
         pr._shZ = mp.z;
+        pr._shN = (pr._shN || new THREE.Vector3()).copy(physics.normal);
       }
       const gy = pr._shGy;
       const h = Math.max(0, mp.y - pr.rest - gy); // clearance under the prop
       // Footprint from the prop's size, shrinking with height (perspective cue).
       const s = (pr.rest * 3.1) / (1 + h * 0.16);
       _shDummy.position.set(mp.x, gy + 0.07, mp.z);
-      physics.height(mp.x, mp.z, pr.roadIndex, physics.normal);
-      _shDummy.quaternion.setFromUnitVectors(up, physics.normal);
+      _shDummy.quaternion.setFromUnitVectors(up, pr._shN);
       _shDummy.scale.setScalar(pr.mesh.visible ? s : 0.0001);
       _shDummy.updateMatrix();
       _shadowMesh.setMatrixAt(i, _shDummy.matrix);
@@ -720,11 +720,17 @@ function build(scene, track, opts) {
             }
           }
         }
-        // Rising and spinning power-ups retain the same full-hull clearance.
-        pr.quat.copy(pr.mesh.quaternion);
-        pr.pos.copy(pr.mesh.position);
-        physics.resolve(pr);
-        pr.mesh.position.copy(pr.pos);
+        // Rising and sinking crates keep the full-hull clearance every frame (the
+        // pose changes fast). A hovering one only spins in place, so its footprint
+        // is rechecked a few times a second rather than every frame — a corner
+        // drifting over the kerb is nudged back within a quarter turn.
+        pr._hoverTick = (pr._hoverTick || 0) + 1;
+        if (pr.mode !== "float" || pr._hoverTick % 12 === 0) {
+          pr.quat.copy(pr.mesh.quaternion);
+          pr.pos.copy(pr.mesh.position);
+          physics.resolve(pr);
+          pr.mesh.position.copy(pr.pos);
+        }
         continue;
       }
       pr.contactImpact = 0;

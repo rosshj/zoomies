@@ -129,7 +129,6 @@ export class EffectsManager {
     });
     mat.positionNode = attribute("aPos"); // sprite centre (world space)
     mat.scaleNode = environment ? attribute("aScale", "vec4").xy : attribute("aScale");
-    mat.colorNode = environment ? attribute("aColor").mul(debrisLight) : attribute("aColor");
     const tile = attribute("aScale", "vec4").z;
     const atlasUV = environment
       ? vec2(
@@ -140,7 +139,7 @@ export class EffectsManager {
         )
       : uv();
     const sample = texture(tex, atlasUV);
-    if (environment) mat.colorNode = attribute("aColor").mul(debrisLight).mul(sample.rgb);
+    mat.colorNode = environment ? attribute("aColor").mul(debrisLight).mul(sample.rgb) : attribute("aColor");
     mat.opacityNode = sample.a.mul(attribute("aOpacity"));
     if (environment) mat.rotationNode = attribute("aScale", "vec4").w;
     const mesh = new THREE.InstancedMesh(geo, mat, cap);
@@ -186,7 +185,6 @@ export class EffectsManager {
     p.aspect = opts.aspect ?? 1;
     p.floor = opts.floor ?? -Infinity;
     p.initialOpacity = opts.opacity ?? 0.9;
-    p.maxLife = opts.life;
     p.pos.copy(pos);
     p.r = color.r;
     p.g = color.g;

@@ -66,6 +66,45 @@ const colors = groundGeo.attributes.color.array.slice();
 bakeWorldShelter(scene);
 assert.deepEqual(groundGeo.attributes.color.array, colors, "No repeated darkening");
 assert(scene.userData.worldShelter.shaded > 0);
+// Receivers sharing one geometry (roadside canopies come from foliageGeoFor's
+// cache) must each get their own copy: the cached buffer stays untouched and no
+// tree carries its neighbours' shelter.
+{
+  const shared = new T.SphereGeometry(2, 8, 6);
+  shared.setAttribute(
+    "color",
+    new T.Float32BufferAttribute(new Float32Array(shared.attributes.position.count * 3).fill(1), 3),
+  );
+  shared.userData.sharedCache = true;
+  const forest = new T.Scene(),
+    trees = [];
+  for (const x of [-3, 3]) {
+    const tree = new T.Group();
+    tree.userData.staticProp = true;
+    const canopy = new T.Mesh(shared, new T.MeshStandardMaterial({ vertexColors: true }));
+    canopy.position.set(x, 4, 0);
+    tree.add(canopy);
+    forest.add(tree);
+    trees.push(canopy);
+  }
+  const slab = new T.Mesh(new T.BoxGeometry(12, 0.4, 12), new T.MeshStandardMaterial());
+  slab.position.y = 8;
+  const cover = new T.Group();
+  cover.userData.staticProp = true;
+  cover.add(slab);
+  forest.add(cover);
+  bakeWorldShelter(forest);
+  assert(
+    shared.attributes.color.array.every((v) => v === 1),
+    "Shared cached geometry is never darkened in place",
+  );
+  assert(trees[0].geometry !== shared && trees[1].geometry !== shared, "Each receiver bakes into its own copy");
+  assert(trees[0].geometry !== trees[1].geometry, "Copies are per mesh");
+  assert(
+    trees.every((m) => m.geometry.attributes.color.array.some((v) => v < 0.999)),
+    "The copies still receive the slab's shelter",
+  );
+}
 // A moving child must not receive a frozen neighbour bake.
 const movingScene = new T.Scene(),
   a = new T.Group();

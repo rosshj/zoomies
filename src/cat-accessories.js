@@ -49,7 +49,11 @@ const lights = shared(new THREE.MeshBasicMaterial({ vertexColors: true }));
 const paintedMaterials = new Map();
 const paintMaterial = (color) => {
   if (!paintedMaterials.has(color)) {
-    if (paintedMaterials.size >= 48) paintedMaterials.delete(paintedMaterials.keys().next().value);
+    if (paintedMaterials.size >= 48) {
+      const oldest = paintedMaterials.keys().next().value;
+      paintedMaterials.get(oldest).dispose(); // the map belongs to accessoryPaint's own pool
+      paintedMaterials.delete(oldest);
+    }
     paintedMaterials.set(
       color,
       shared(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, map: accessoryPaint(color) })),
@@ -60,7 +64,11 @@ const paintMaterial = (color) => {
 const cache = new Map();
 const TAU = Math.PI * 2;
 function cacheGeometry(key, geometry) {
-  if (cache.size >= 96) cache.delete(cache.keys().next().value);
+  if (cache.size >= 96) {
+    const oldest = cache.keys().next().value;
+    cache.get(oldest).dispose(); // a live cat still holding it re-uploads once on its next draw
+    cache.delete(oldest);
+  }
   cache.set(key, geometry);
 }
 

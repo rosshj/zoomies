@@ -100,7 +100,11 @@ export function accessoryPaint(color) {
   tex.anisotropy = 2;
   tex.userData.shared = true;
   tex.userData.accessoryPaint = true;
-  if (textures.size >= 48) textures.delete(textures.keys().next().value);
+  if (textures.size >= 48) {
+    const oldest = textures.keys().next().value;
+    textures.get(oldest).dispose(); // evicted from the shared pool: free the GPU copy
+    textures.delete(oldest);
+  }
   textures.set(color, tex);
   return tex;
 }

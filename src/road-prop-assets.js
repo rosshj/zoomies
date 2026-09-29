@@ -466,36 +466,74 @@ function buildGeometry(kind, used) {
     );
   }
   let hull = [...points.values()];
-  if (ROAD_PROPS[kind].shape === "cylinder") {
-    // A radial convex envelope drops decorative/interior vertices. Generation
-    // does the work; runtime sees only a few twelve-sided rings.
-    const levels = new Map();
-    for (const v of hull) {
+  // Physics transforms and height-samples EVERY hull point of an awake prop each
+  // substep, so a hull is a few rings of extreme points, never the art's vertex
+  // cloud (a fruit basket has 460 unique vertices). Cylinders keep their exact
+  // level profile; other dense shapes (baskets, pumpkins, pots, cones) are all
+  // round enough that a banded radial envelope encloses them conservatively.
+  const spec = ROAD_PROPS[kind];
+  if (spec.shape === "cylinder" || (!spec.sphereRadius && hull.length > HULL_LIMIT))
+    hull = ringHull(radialProfile(hull, spec.shape === "cylinder"));
+  return { geometry, hull, rest: -geometry.boundingBox.min.y };
+}
+// The (height, radius) silhouette of a point cloud as an upper convex profile:
+// exact per vertex level for true cylinders, or over BANDS bands with each band
+// edge carrying the larger neighbouring radius, so the profile always encloses
+// the art. Pruned to its convex hull so dominated levels cost nothing.
+export const HULL_LIMIT = 64;
+const BANDS = 6;
+export function radialProfile(points, exact) {
+  const levels = new Map();
+  if (exact) {
+    for (const v of points) {
       const y = Number(v.y.toFixed(5));
       levels.set(y, Math.max(levels.get(y) || 0, Math.hypot(v.x, v.z)));
     }
-    const envelope = [];
-    for (const point of [...levels].sort((a, b) => a[0] - b[0])) {
-      while (envelope.length > 1) {
-        const a = envelope.at(-2),
-          b = envelope.at(-1);
-        if ((b[0] - a[0]) * (point[1] - b[1]) - (b[1] - a[1]) * (point[0] - b[0]) < -1e-7) break;
-        envelope.pop();
-      }
-      envelope.push(point);
+  } else {
+    let minY = Infinity,
+      maxY = -Infinity;
+    for (const v of points) {
+      minY = Math.min(minY, v.y);
+      maxY = Math.max(maxY, v.y);
     }
-    hull = [];
-    for (const [y, r] of envelope)
-      for (let k = 0; k < 12; k++)
-        hull.push(
-          new THREE.Vector3(
-            (Math.sin((k * Math.PI) / 6) * r) / Math.cos(Math.PI / 12),
-            y,
-            (Math.cos((k * Math.PI) / 6) * r) / Math.cos(Math.PI / 12),
-          ),
-        );
+    const step = (maxY - minY) / BANDS || 1,
+      radius = new Array(BANDS).fill(0);
+    for (const v of points) {
+      const band = Math.min(BANDS - 1, Math.floor((v.y - minY) / step));
+      radius[band] = Math.max(radius[band], Math.hypot(v.x, v.z));
+    }
+    for (let k = 0; k <= BANDS; k++)
+      levels.set(minY + k * step, Math.max(radius[Math.max(0, k - 1)], radius[Math.min(BANDS - 1, k)]));
   }
-  return { geometry, hull, rest: -geometry.boundingBox.min.y };
+  const profile = [];
+  for (const point of [...levels].sort((a, b) => a[0] - b[0])) {
+    while (profile.length > 1) {
+      const a = profile.at(-2),
+        b = profile.at(-1);
+      if ((b[0] - a[0]) * (point[1] - b[1]) - (b[1] - a[1]) * (point[0] - b[0]) < -1e-7) break;
+      profile.pop();
+    }
+    profile.push(point);
+  }
+  return profile;
+}
+// Rings of points around a radial profile, inflated so the polygon's flats still
+// enclose the circle. Twelve sides, or eight when the profile has many levels
+// (a hay bale's rounded edges), so every hull stays within HULL_LIMIT points.
+export function ringHull(profile) {
+  const sides = profile.length * 12 > HULL_LIMIT ? 8 : 12,
+    inflate = 1 / Math.cos(Math.PI / sides),
+    hull = [];
+  for (const [y, r] of profile)
+    for (let k = 0; k < sides; k++)
+      hull.push(
+        new THREE.Vector3(
+          Math.sin((k * 2 * Math.PI) / sides) * r * inflate,
+          y,
+          Math.cos((k * 2 * Math.PI) / sides) * r * inflate,
+        ),
+      );
+  return hull;
 }
 export function makeRoadProp(kind, used = false) {
   const key = kind + (used ? ":used" : "");

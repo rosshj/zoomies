@@ -42,5 +42,4 @@ export function savedKartIndex(config, count) {
   if (config.kartId === "custom" || ((config.v ?? 1) < 3 && config.kart === 10)) return count;
   return Number.isInteger(config.kart) && config.kart >= 0 && config.kart < count + 1 ? config.kart : 0;
 }
-export const savedKartStyle = (config) =>
-  (config.v ?? 1) < 3 && config.customKart?.style === 6 ? 4 : config.customKart?.style;
+export const savedKartStyle = (config) => config.customKart?.style;

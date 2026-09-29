@@ -94,7 +94,19 @@ export function bakeWorldShelter(scene) {
   }
   let vertices = 0,
     shaded = 0;
+  // A receiver only ever darkens its OWN vertex colours. Roadside trees share
+  // one cached canopy geometry per shape (foliageGeoFor), and a building may
+  // reuse one part geometry across several meshes: writing into those in place
+  // compounds every neighbour's shelter into the shared buffer and poisons the
+  // cache for everything built later. Clone before the first write instead.
+  const written = new Set();
   for (const { o, owner } of receivers) {
+    if (o.geometry.userData.sharedCache || written.has(o.geometry)) {
+      const copy = o.geometry.clone();
+      copy.userData = { ...o.geometry.userData, sharedCache: false };
+      o.geometry = copy;
+    }
+    written.add(o.geometry);
     const g = o.geometry,
       p = g.attributes.position,
       n = g.attributes.normal,

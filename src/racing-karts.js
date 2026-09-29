@@ -289,7 +289,14 @@ export function racingPaint(color, livery, number, st) {
   const mat = new THREE.MeshStandardMaterial({ map, roughness: 0.4 });
   mat.userData.shared = true;
   mat.userData.paint = true;
-  if (paints.size >= 64) paints.delete(paints.keys().next().value);
+  if (paints.size >= 64) {
+    // Evicted entries leave the shared pool: free the GPU texture and program.
+    const oldest = paints.keys().next().value,
+      old = paints.get(oldest);
+    paints.delete(oldest);
+    old.map.dispose();
+    old.dispose();
+  }
   paints.set(key, mat);
   return mat;
 }
@@ -332,7 +339,7 @@ export function panelPaintUV(
 
 // All twelve builds use the same seat, steering, wheel and exhaust anchors.
 // Parts are merged by the caller into its usual rigid shell. No new frame loop.
-export function buildRacingShell(st, { add, rbox, paint, accent, stripe, dark, chrome, livery }) {
+export function buildRacingShell(st, { add, rbox, paint, accent, dark, chrome, livery }) {
   const mesh = (g, m, x = 0, y = 0, z = 0) => {
     const o = new THREE.Mesh(g, m);
     o.position.set(x, y, z);

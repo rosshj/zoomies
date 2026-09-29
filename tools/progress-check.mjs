@@ -87,14 +87,20 @@ const check = (name, cond) => {
   // The price ladder: ~2,400 treats for the whole catalog, cheapest tiles at
   // 100-150, each column climbing to a ~400 goal, creators at 250 apiece.
   const priced = CATALOG.filter((c) => typeof c.price === "number" && c.price > 0);
-  const total = priced
-    .filter(
-      (c) =>
-        (!c.id.startsWith("cat.") || Number(c.id.slice(4)) < 14) &&
-        (!c.id.startsWith("kart.") || Number(c.id.slice(5)) < 10),
-    )
-    .reduce((s, c) => s + c.price, 0);
+  const original = (c) =>
+    (!c.id.startsWith("cat.") || Number(c.id.slice(4)) < 14) &&
+    (!c.id.startsWith("kart.") || Number(c.id.slice(5)) < 10);
+  const total = priced.filter(original).reduce((s, c) => s + c.price, 0);
+  const fullTotal = priced.reduce((s, c) => s + c.price, 0);
   check(`original catalog still totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
+  // The whole roster is what players grind through. The added cats and karts are
+  // due to move from treat prices to earned unlocks; until then the full total is
+  // reported so the grind is visible, and every entry must carry exactly one gate.
+  console.log(`      full priced catalog: ${priced.length} items, ${fullTotal} treats`);
+  check(
+    "every catalog entry has exactly one unlock gate (price, cup or difficulty)",
+    CATALOG.every((c) => [typeof c.price === "number", !!c.cup, !!c.diff].filter(Boolean).length === 1),
+  );
   check(
     "cheapest cat and kart are 100-150",
     catalogEntry("cat.3").price <= 150 && catalogEntry("kart.3").price <= 150 && catalogEntry("cat.3").price >= 100,

@@ -763,15 +763,6 @@ export function biomeRoadStyleBlend(x, z, y) {
 }
 
 // Tint for the dust a kart kicks up: the local ground colour, paled and warmed —
-// dust reads lighter than the soil it came from. Snow biomes stay near-white,
-// desert goes sandy, grass a muted khaki. Writes/returns `out` (caller owns it).
-const _DUST_PALE = new THREE.Color(0xe7dcc6);
-export function biomeDustColor(x, z, out = new THREE.Color()) {
-  biomeGround(x, z, out);
-  out.lerp(_DUST_PALE, 0.6);
-  return out;
-}
-
 // Terrain rises as you move away from the road, so the track sits in a shallow
 // valley with hillsides climbing on both sides — that way the scenery and
 // landmarks on those slopes are visible from the road instead of hidden in
@@ -2417,10 +2408,6 @@ function scatter(count, track, flatten, minFlat, range) {
 }
 
 // Ground cover and ambient fall share regional shapes, light and wake budgets.
-export function biomeDebrisColor(x, z, out = new THREE.Color()) {
-  const spec = ENVIRONMENT_PROFILES[biomeAt(x, z).name] || ENVIRONMENT_PROFILES.meadow;
-  return out.set(spec.colors[Math.floor(Math.random() * spec.colors.length)]);
-}
 function buildGroundLeaves(scene, track, heightAt) {
   return buildEnvironmentCover(
     scene,
@@ -2843,6 +2830,7 @@ function foliageGeoFor(shape, distant = false) {
   }
   // Local branch-layer shelter is cached with the prototype, not per tree.
   if (shape !== "palm") g = bakeGeometry(g, { radius: 1.6, strength: 0.2, ground: null });
+  g.userData.sharedCache = true; // per-instance bakes (world shelter) must clone, never write here
   _foliageGeoCache[cacheKey] = g;
   return g;
 }

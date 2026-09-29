@@ -28,12 +28,13 @@ for (let style = 5; style < 17; style++) {
 }
 for (const v of [undefined, 1, 2]) {
   assert.equal(savedKartIndex({ v, kart: 10 }, 34), 34);
-  assert.equal(savedKartStyle({ v, customKart: { style: 6 } }), 4);
+  assert.equal(savedKartStyle({ v, customKart: { style: 4 } }), 4);
   for (let i = 0; i < 10; i++) assert.equal(savedKartIndex({ v, kart: i }, 34), i);
 }
 assert.equal(savedKartIndex({ v: 3, kart: 10 }, 34), 10);
 assert.equal(savedKartIndex({ v: 3, kart: 34, kartId: "custom" }, 40), 40);
 assert.equal(savedKartStyle({ v: 3, customKart: { style: 6 } }), 6);
+assert.equal(savedKartStyle({ customKart: { style: 4 } }), 4); // main never had more than five styles: no remap
 assert.equal(savedKartIndex({ kart: -1 }, 34), 0);
 console.log(
   "34 presets, 17 chassis, eight liveries, unchanged original slots/unlocks and versioned custom migration pass",
