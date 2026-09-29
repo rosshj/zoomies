@@ -1,4 +1,4 @@
-> Gallery images were removed from the repository to keep clones small. They are kept in the `art-refresh-galleries.zip` archive attached to PR #64; each README names the image it refers to.
+> Gallery images were removed from the repository to keep clones small. They are kept in the gallery zip archives attached to PR #64; each README names the image it refers to.
 
 [Latest: all 34 karts repainted, eight racing schemes and reduced render batches](garage-liveries/README.md).
 
