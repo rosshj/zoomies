@@ -36,9 +36,23 @@ try {
   const result = await page.evaluate(async () => {
     const { createCat, createKartModel, CAT_PATTERNS, CAT_ACCESSORIES, updateCatRig } = await import("/src/models.js");
     const { Track } = await import("/src/track.js");
+    const { CAT_PRESETS } = await import("/src/presets.js");
+    const { disposeGroup } = await import("/src/models.js");
+    for (const c of CAT_PRESETS) disposeGroup(createCat(c.fur, c));
+    const warmStart = performance.now();
+    for (let repeat = 0; repeat < 3; repeat++) for (const c of CAT_PRESETS) disposeGroup(createCat(c.fur, c));
+    const warmCatMs = (performance.now() - warmStart) / (CAT_PRESETS.length * 3);
+    const beanie = { accessory: "beanie" };
+    disposeGroup(createCat(0xf0a830, beanie));
+    const beanieStart = performance.now();
+    for (let i = 0; i < 30; i++) disposeGroup(createCat(0xf0a830, beanie));
+    const warmBeanieMs = (performance.now() - beanieStart) / 30;
+    console.log(JSON.stringify({ warmCatMs, warmBeanieMs }));
     const assert = (ok, message) => {
       if (!ok) throw new Error(message);
     };
+    assert(warmCatMs < 4, `Warm cat builds exceed 4 ms: ${warmCatMs}`);
+    assert(warmBeanieMs < 10, `Warm beanie builds exceed 10 ms: ${warmBeanieMs}`);
     const inspect = (root) => {
       let triangles = 0,
         batches = 0;
@@ -162,7 +176,7 @@ try {
           }
         }
     }
-    return { karts, catPoses: cats, accessories: CAT_ACCESSORIES.length, tracks };
+    return { warmCatMs, warmBeanieMs, karts, catPoses: cats, accessories: CAT_ACCESSORIES.length, tracks };
   });
   if (errors.length) throw new Error(errors.join("\n"));
   console.log(JSON.stringify(result, null, 2));

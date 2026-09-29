@@ -15,3 +15,9 @@ Validation: approved-table equality, threshold boundaries, wrong-cup rejection, 
 High retains 24-ray neighbouring shelter on terrain and rigid structures. Medium uses 8 rays on terrain; Low uses 4. Lower tiers retain existing local structure/contact shading. Village builds now key their scalar bake on generator topology and coarse proportions, avoiding whole-geometry hashing and sharing shading between nearby dimensions without changing their meshes. The boot line reports the actual world-build and shelter times.
 
 Local native Chrome CPU build probe, seed SHADE, Medium, cold/warm city: 4,840/4,818 ms before; 945/836 ms after. Shelter alone: 4,088/4,134 → 162/168 ms. These are generation measurements on this Mac, not container or phone timings and not FPS measurements. Five-biome cold/warm probes retained finite colours, ground contacts and LOD data. Tier receiver/ray counts, cache hits, immutable sources, exposed surfaces and moving-part exclusions pass the bake/runtime checks.
+
+## 3. Cache the fitted cat
+
+A bounded 64-entry LRU now retains pristine fitted templates, including paws and ear-slot cuts. Each request clones the scene objects and rebinds all rig references; geometry/materials are shared, while springs, eyelids, propellers and blink timers remain independent. Eviction releases resources owned by the template.
+
+Local browser warm builds across all 40 presets averaged 0.066 ms; beanies averaged 0.053 ms (targets 4 ms / 10 ms). These CPU construction timings exclude rendering. Art geometry/batch checks and 738 accessory variants pass; 82 backend render cases reported no errors. The existing propeller frame-rate and independent helmet-blink tests pass, and a beanie render was inspected.

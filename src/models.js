@@ -1331,7 +1331,69 @@ const ARM_POSES = {
 // single mesh apiece so a cat is ~a dozen draw calls, not ~40; the animated
 // pivots (head / ears / whiskers / arms / tail / glasses) stay separate so the
 // rig still drives them.
+// Cache the completed fit, not just the final merge. A pristine template never
+// enters a scene: each caller receives fresh pivots and independent rig state.
+const fittedCats = new Map();
+function cloneFittedCat(template) {
+  const data = template.userData;
+  let copy;
+  template.userData = {}; // Object3D's JSON userData clone cannot rebind rig references.
+  try {
+    copy = template.clone(true);
+  } finally {
+    template.userData = data;
+  }
+  const sources = [],
+    clones = [],
+    objects = new Map();
+  template.traverse((o) => sources.push(o));
+  copy.traverse((o) => clones.push(o));
+  sources.forEach((o, i) => objects.set(o, clones[i]));
+  const rebind = (value) => {
+    if (value === null || typeof value !== "object") return value;
+    if (value.isObject3D) return objects.get(value);
+    if (value.clone) return value.clone();
+    if (Array.isArray(value)) return value.map(rebind);
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rebind(v)]));
+  };
+  copy.userData = rebind(data);
+  copy.userData.rig.blinkT = 1.5 + Math.random() * 3;
+  return copy;
+}
 export function createCat(furColor = 0xf0a830, opts = {}) {
+  const key = JSON.stringify([
+    furColor,
+    opts.type || "classic",
+    opts.pattern || "auto",
+    opts.accessory || "auto",
+    opts.accessoryColor ?? null,
+    opts.pose || "kart",
+  ]);
+  let entry = fittedCats.get(key);
+  if (!entry) {
+    const template = buildFittedCat(furColor, opts),
+      owned = new Set();
+    template.traverse((o) => {
+      const resources = [o.geometry, ...(Array.isArray(o.material) ? o.material : [o.material])];
+      for (const r of resources)
+        if (r && !r.userData.shared) {
+          r.userData.shared = true;
+          owned.add(r);
+        }
+    });
+    entry = { template, owned };
+    if (fittedCats.size >= 64) {
+      const oldest = fittedCats.keys().next().value;
+      // Live clones can re-upload an evicted resource; retaining its CPU data
+      // keeps them valid while limiting the cache's own GPU residency.
+      for (const resource of fittedCats.get(oldest).owned) resource.dispose();
+      fittedCats.delete(oldest);
+    }
+  } else fittedCats.delete(key);
+  fittedCats.set(key, entry);
+  return cloneFittedCat(entry.template);
+}
+function buildFittedCat(furColor = 0xf0a830, opts = {}) {
   const cat = new THREE.Group();
   const type = catType(opts.type),
     typeKey = type.label;
