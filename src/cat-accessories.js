@@ -105,19 +105,7 @@ export function createExtraAccessory(id, color, helpers) {
     cutAccessoryEarSlots: earSlots,
     neckBandGeo: neck,
   } = helpers;
-  // The legacy tube helper's side winding faces inward. Correct its sides
-  // here so new closed accessories can all use one front-sided material.
-  const tube = (points, r0, r1, segs, radial) => {
-    const g = taperedTube(points, r0, r1, segs, radial),
-      ix = g.index;
-    for (let i = 0; i < ix.count - radial * 6; i += 3) {
-      const b = ix.getX(i + 1);
-      ix.setX(i + 1, ix.getX(i + 2));
-      ix.setX(i + 2, b);
-    }
-    g.computeVertexNormals();
-    return g;
-  };
+  const tube = taperedTube;
   const key = `extra|${id}|${color}|${helpers.fitKey || "classic"}`,
     group = new THREE.Group(),
     parts = [],
@@ -152,6 +140,16 @@ export function createExtraAccessory(id, color, helpers) {
       c,
     );
   const cap = (profile, c = color, fn = null, segments = 24) => add(lathe(profile, segments, fn), c);
+  const paintSurface = (geo, sample) => {
+    const pos = geo.attributes.position,
+      rgb = new Float32Array(pos.count * 3),
+      c = new THREE.Color();
+    for (let i = 0; i < pos.count; i++) {
+      c.setHex(sample(pos.getX(i), pos.getY(i), pos.getZ(i)));
+      c.toArray(rgb, i * 3);
+    }
+    geo.setAttribute("color", new THREE.BufferAttribute(rgb, 3));
+  };
   const shape = (points, depth, c, x = 0, y = 0, z = 0) => {
     const s = new THREE.Shape();
     points.forEach(([a, b], i) => (i ? s.lineTo(a, b) : s.moveTo(a, b)));
@@ -189,18 +187,28 @@ export function createExtraAccessory(id, color, helpers) {
   switch (id) {
     case "propeller": {
       covered = true;
-      // Alternating four cloth panels share one batch, no texture or material per panel.
-      for (let i = 0; i < 4; i++)
-        add(
-          new THREE.SphereGeometry(0.65, 6, 7, (i * TAU) / 4, TAU / 4, 0, Math.PI / 2),
-          [color, 0x4ba8dd, 0xffcf42, 0x73c677][i],
-          0,
-          0.43,
-          0,
-          [1, 0.73, 1],
-        );
-      ring(0.63, 0.045, ivory, 0, 0.45, 0);
-      add(new THREE.CylinderGeometry(0.04, 0.04, 0.18, 8), dark, 0, 1.0, 0);
+      // Rolled hem, cloth dome and spindle are one continuous silhouette.
+      const dome = cap([
+        [0, 0.42],
+        [0.59, 0.42],
+        [0.65, 0.44],
+        [0.65, 0.48],
+        [0.61, 0.5],
+        [0.59, 0.64],
+        [0.48, 0.79],
+        [0.3, 0.89],
+        [0.1, 0.93],
+        [0.04, 0.96],
+        [0.04, 1.09],
+        [0, 1.09],
+      ]);
+      paintSurface(dome.geometry, (x, y, z) =>
+        y > 0.945
+          ? dark
+          : y < 0.5
+            ? ivory
+            : [color, 0x4ba8dd, 0xffcf42, 0x73c677][Math.floor((Math.atan2(x, z) + Math.PI) / (TAU / 4)) % 4],
+      );
       pivot("propeller", 0, 1.1, 0);
       for (let i = 0; i < 3; i++) {
         const a = (i * TAU) / 3,
@@ -356,8 +364,19 @@ export function createExtraAccessory(id, color, helpers) {
       add(new THREE.TubeGeometry(neckline, 24, 0.06, 5, true), color);
       add(new THREE.TubeGeometry(neckline, 24, 0.023, 5, true), dark, 0, -0.045, 0);
       // Single right-side communications headset; no antenna stalks.
-      ball(0.15, dark, 0.81, 0.13, 0.035, [0.45, 1, 1]);
-      ball(0.145, color, 0.865, 0.13, 0.035, [0.4, 1, 1]);
+      const cup = cap([
+        [0, -0.05],
+        [0.11, -0.05],
+        [0.145, -0.035],
+        [0.154, 0],
+        [0.15, 0.035],
+        [0.125, 0.065],
+        [0.08, 0.078],
+        [0, 0.078],
+      ]);
+      paintSurface(cup.geometry, (x, y) => (y < 0.015 ? dark : color));
+      cup.rotation.z = -Math.PI / 2;
+      cup.position.set(0.84, 0.13, 0.035);
       // Exactly one boom, attached to the right earcup, ends by the mouth.
       line(
         [
@@ -664,24 +683,75 @@ export function createExtraAccessory(id, color, helpers) {
       break;
     }
     case "duck": {
-      ball(0.2, color, 0, 0.87, 0.02, [1.2, 0.76, 1.2]);
-      ball(0.135, color, 0, 1.08, 0.15);
-      ball(0.1, 0xff8c36, 0, 1.055, 0.29, [1, 0.36, 0.85]);
-      for (const sx of [-1, 1]) {
-        ball(0.026, dark, sx * 0.092, 1.105, 0.232);
-        ball(0.11, 0xffe997, sx * 0.18, 0.88, 0.015, [0.35, 0.72, 1]);
-      }
-      ball(0.08, color, 0, 0.93, -0.18, [0.65, 0.8, 1.6]);
+      // One molded body rises through the neck into the head. The bill and
+      // tail are sculpted out of that same surface; eyes/wings are pigment.
+      const duck = cap(
+        [
+          [0, 0.72],
+          [0.14, 0.735],
+          [0.22, 0.77],
+          [0.25, 0.83],
+          [0.24, 0.89],
+          [0.2, 0.94],
+          [0.12, 0.98],
+          [0.095, 1.015],
+          [0.115, 1.04],
+          [0.135, 1.055],
+          [0.14, 1.075],
+          [0.14, 1.095],
+          [0.133, 1.12],
+          [0.115, 1.15],
+          [0.075, 1.18],
+          [0, 1.195],
+        ],
+        color,
+        (v, a) => {
+          const y = v.y,
+            front = Math.max(0, Math.cos(a)),
+            back = Math.max(0, -Math.cos(a));
+          v.z += 0.02 + 0.13 * THREE.MathUtils.smoothstep(y, 0.91, 1.055);
+          v.z += 0.13 * front ** 6 * Math.max(0, 1 - Math.abs(y - 1.055) / 0.035);
+          v.z -= 0.15 * back ** 8 * Math.max(0, 1 - Math.abs(y - 0.94) / 0.11);
+        },
+        32,
+      );
+      paintSurface(duck.geometry, (x, y, z) => {
+        if (z > 0.29 && y < 1.09) return 0xff8c36;
+        if (Math.abs(Math.abs(x) - 0.099) < 0.027 && Math.abs(y - 1.12) < 0.028 && z > 0.2) return dark;
+        if (Math.abs(x) > 0.2 && y > 0.78 && y < 0.92) return 0xffe997;
+        return color;
+      });
       break;
     }
     case "frog": {
       covered = true;
       hood();
       for (const sx of [-1, 1]) {
-        ball(0.21, color, sx * 0.33, 0.87, 0.18, [1, 1, 0.8]);
-        ball(0.13, ivory, sx * 0.33, 0.92, 0.31, [1, 1, 0.4]);
-        ball(0.072, dark, sx * 0.33, 0.93, 0.359, [0.8, 1.15, 0.3]);
-        ball(0.024, 0xffffff, sx * 0.33 - 0.02, 0.955, 0.38);
+        // The green socket, ivory eye and dark pupil are concentric zones
+        // on one unbroken forward-facing cup, with no floating overlays.
+        const eye = cap(
+          [
+            [0, -0.1],
+            [0.14, -0.08],
+            [0.2, -0.035],
+            [0.21, 0.02],
+            [0.18, 0.08],
+            [0.14, 0.115],
+            [0.125, 0.135],
+            [0.075, 0.151],
+            [0.067, 0.153],
+            [0.025, 0.163],
+            [0, 0.165],
+          ],
+          color,
+          null,
+          24,
+        );
+        paintSurface(eye.geometry, (x, y, z) =>
+          y < 0.12 ? color : y < 0.152 ? ivory : x < -0.012 && z > 0.008 && Math.hypot(x, z) < 0.04 ? 0xffffff : dark,
+        );
+        eye.rotation.x = Math.PI / 2;
+        eye.position.set(sx * 0.33, 0.89, 0.23);
       }
       break;
     }

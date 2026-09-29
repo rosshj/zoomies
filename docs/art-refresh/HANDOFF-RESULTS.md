@@ -27,3 +27,9 @@ Local browser warm builds across all 40 presets averaged 0.066 ms; beanies avera
 Ear fronts/backs use coat-aware vertex pigments and one shared ear surface. Matte cat pieces and solid kart paint also share materials by surface role. A palette-independent procedural ink atlas preserves fixed gold stars/ivory spots while vertex pigment supplies the custom fabric colour; recolours share materials and retain the existing single texture sample. Ear-slot cutting now interpolates vertex pigment as well as normals/UVs.
 
 The same six-preset field measured 82 → 48 source materials and 18 → 12 mapped textures (the separate ink atlas is shared across recolours). Material transparency pixels, geometry/batch budgets, explicit red/blue wizard pigment preservation and shared-atlas assertions pass. Both accessory backends and 738 variants pass. Wizard front and mushroom side renders were visually inspected. Runtime catalog thumbnails were regenerated; review screenshots remain outside the repository.
+
+## 5. Molded accessories
+
+Rebuilt the duck as one sculpted body/neck/head with an integrated bill and tail, the frog eyes as continuous painted cups, the beanie hem/dome/spindle as one surface, and the right helmet earcup as a single cushion/shell profile. Fixed tapered-tube side winding at its source and removed the accessory workaround; a triangle-normal check covers sides and both caps.
+
+Front, side and top renders of all four were inspected. Full accessory variants and batch/triangle budgets, art integrity, smoke and web build checks pass. Runtime catalog thumbnails were refreshed. No additional runtime animation or material passes were introduced.

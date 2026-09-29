@@ -1081,7 +1081,7 @@ function cutAccessoryEarSlots(mesh, earType = "classic") {
 }
 // taperedTube: sweep a circle of shrinking radius along a curve — one smooth
 // molded piece for horns and the like (TubeGeometry can't taper).
-function taperedTube(pts, r0, r1, segs = 14, radial = 10) {
+export function taperedTube(pts, r0, r1, segs = 14, radial = 10) {
   const curve = new THREE.CatmullRomCurve3(pts);
   const frames = curve.computeFrenetFrames(segs, false);
   const pos = [],
@@ -1105,11 +1105,10 @@ function taperedTube(pts, r0, r1, segs = 14, radial = 10) {
     for (let j = 0; j < radial; j++) {
       const a = i * (radial + 1) + j,
         b2 = a + radial + 1;
-      idx.push(a, b2, a + 1, a + 1, b2, b2 + 1);
+      idx.push(a, a + 1, b2, a + 1, b2 + 1, b2);
     }
   // End caps (fans to the curve's endpoints) so the sweep reads SOLID from
-  // every angle — an open tube shows its hollow mouth. Pair the mesh with a
-  // DoubleSide material so cap winding never matters.
+  // every angle — sides and caps both face outward.
   const c0 = curve.getPoint(0),
     c1 = curve.getPoint(1);
   const bi = pos.length / 3;

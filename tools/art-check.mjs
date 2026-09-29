@@ -51,6 +51,30 @@ try {
     const assert = (ok, message) => {
       if (!ok) throw new Error(message);
     };
+    // A straight molded tube must face outward on every side and both caps.
+    const { taperedTube } = await import("/src/models.js"),
+      T = await import("three");
+    const tube = taperedTube([new T.Vector3(0, 0, 0), new T.Vector3(0, 1, 0), new T.Vector3(0, 2, 0)], 0.2, 0.1, 6, 10);
+    const p = tube.attributes.position,
+      ix = tube.index,
+      a = new T.Vector3(),
+      b = new T.Vector3(),
+      c = new T.Vector3();
+    for (let i = 0; i < ix.count; i += 3) {
+      a.fromBufferAttribute(p, ix.getX(i));
+      b.fromBufferAttribute(p, ix.getX(i + 1));
+      c.fromBufferAttribute(p, ix.getX(i + 2));
+      const center = a
+        .clone()
+        .add(b)
+        .add(c)
+        .multiplyScalar(1 / 3);
+      const n = b.sub(a).cross(c.sub(a));
+      const outward =
+        i < 6 * 10 * 6 ? new T.Vector3(center.x, 0, center.z) : new T.Vector3(0, center.y < 1 ? -1 : 1, 0);
+      assert(n.dot(outward) > 0, "Molded tube triangle faces inward");
+    }
+    tube.dispose();
     assert(warmCatMs < 4, `Warm cat builds exceed 4 ms: ${warmCatMs}`);
     assert(warmBeanieMs < 10, `Warm beanie builds exceed 10 ms: ${warmBeanieMs}`);
     const inspect = (root) => {
