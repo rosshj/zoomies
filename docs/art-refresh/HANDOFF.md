@@ -57,7 +57,7 @@ an existing cat, every `biomeWin` names a real biome, every `cup` names a real c
 and prices still climb for the original ladders. `check:cat-roster` and
 `check:kart-roster` must still pass.
 
-The draft table is below. Ross edits it; treat it as the spec once he says so.
+The table below was approved by Ross on 2026-09-29. Treat it as the spec.
 
 ### 2. Gate the bakes by quality tier
 
@@ -111,7 +111,7 @@ like `check:art` and `check:materials`, so every `check:*` runs where `CLAUDE.md
 `impact()` in `src/props.js` builds a throwaway group per prop impact and allocates a
 fresh world hull each time; pool both.
 
-## Draft unlock table
+## Unlock table (approved)
 
 Gate columns: `cup` and `diff` as in `src/progress.js` today; `stat` is a career
 counter and threshold; `biomeWin` is a race win in that biome. Each new cat also
