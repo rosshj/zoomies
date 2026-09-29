@@ -1,5 +1,5 @@
 // Native renderer gallery and morphology/accessory compatibility probe.
-import { chromium } from "playwright-core";
+import { launchArtBrowser, artBackends } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -23,12 +23,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-    executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  }),
+const browser = await launchArtBrowser(),
   rows = [];
+const backends = await artBackends(browser, server.address().port),
+  captureBackend = backends.at(-1);
 try {
-  for (const backend of ["webgl", "webgpu"]) {
+  for (const backend of backends) {
     const page = await browser.newPage({ viewport: { width: 320, height: 400 } }),
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -70,7 +70,7 @@ try {
       }, c);
       if (result.backend !== backend) throw Error("Renderer fallback");
       rows.push(result);
-      if (backend === "webgpu") {
+      if (backend === captureBackend) {
         await page.screenshot({ path: `${out}/cat-${i}.png` });
         await page.evaluate(async (c) => {
           window.__viewer.showPreset({ kind: "cat", ...c, accessory: "none" });
@@ -149,7 +149,7 @@ try {
                 let paint = false;
                 cat.traverse((o) => {
                   for (const m of Array.isArray(o.material) ? o.material : [o.material])
-                    if (m?.map?.userData.accessoryPaint) paint = true;
+                    if (m?.userData.surfacePaint && m.colorNode && o.geometry.attributes.color) paint = true;
                 });
                 if (!paint) throw Error("Surface decoration lost its painted material");
               }
@@ -173,7 +173,7 @@ try {
   for (const angle of ["", "-bare", "-back", "-drive"]) {
     const cards = await Promise.all(
       rows
-        .filter((r) => r.backend === "webgpu")
+        .filter((r) => r.backend === captureBackend)
         .map(
           async (r, i) =>
             `<div><img src="data:image/png;base64,${(await fs.readFile(`${out}/cat-${i}${angle}.png`)).toString("base64")}"><p>${r.name} · ${r.type}</p></div>`,

@@ -1,6 +1,6 @@
 // Construct every single-biome world plus a mixed world, then advance actual
 // wildlife transforms and validate their habitats. No screenshot/FPS claims.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -20,9 +20,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-});
+const browser = await launchArtBrowser();
 const results = [];
 try {
   for (const name of [...Object.keys(BIOME_DRESSING), "mixed"]) {

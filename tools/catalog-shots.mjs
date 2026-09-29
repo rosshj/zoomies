@@ -5,7 +5,7 @@
 //
 // Run: node tools/catalog-shots.mjs   (needs the pre-installed Chromium)
 // Re-run whenever a preset or the cat/kart models change.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import { CAT_PRESETS, KART_PRESETS } from "../src/presets.js";
 import http from "node:http";
 import fs from "node:fs";
@@ -146,16 +146,7 @@ for (const [id, hex, zoom] of ACC_SHOTS)
   });
 
 fs.mkdirSync(OUT, { recursive: true });
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: [
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--ignore-gpu-blocklist",
-    "--enable-unsafe-swiftshader",
-    "--no-sandbox",
-  ],
-});
+const browser = await launchArtBrowser();
 const page = await (await browser.newContext({ viewport: { width: SIZE, height: SIZE } })).newPage();
 const errors = [];
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));

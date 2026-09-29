@@ -1,7 +1,7 @@
 // Regression probe: sample the RENDERED terrain triangles and mountain faces
 // over the actual road mesh, not the terrain height function used to build it.
 import "./terrain-clearance-unit.mjs";
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -20,9 +20,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-});
+const browser = await launchArtBrowser();
 const recipes = JSON.parse(
   await fs.readFile(new URL("./fixtures/terrain-clearance-tracks.json", import.meta.url), "utf8"),
 );

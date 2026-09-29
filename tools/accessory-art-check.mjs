@@ -1,7 +1,7 @@
 // Native accessory fitting/render audit. PW_CHROME selects Chrome; OUT saves
 // front/side/back/driving sheets. MODELS optionally serves a baseline models.js
 // for visual/budget comparisons (it skips new behavioral assertions).
-import { chromium } from "playwright-core";
+import { launchArtBrowser, artBackends } from "./art-browser.mjs";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -26,12 +26,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-    executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  }),
+const browser = await launchArtBrowser(),
   rows = [];
+const backends = await artBackends(browser, server.address().port),
+  captureBackend = backends.at(-1);
 try {
-  for (const backend of ["webgl", "webgpu"]) {
+  for (const backend of backends) {
     const page = await browser.newPage({ viewport: { width: 360, height: 440 } }),
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
@@ -77,7 +77,7 @@ try {
       );
       if (result.backend !== backend) throw Error("Backend fallback");
       rows.push(result);
-      if (backend === "webgpu") {
+      if (backend === captureBackend) {
         await page.screenshot({ path: path.join(out, accessory + ".png") });
         for (const [name, theta, phi] of [
           ["front", 0, 1.4],
@@ -136,8 +136,8 @@ try {
         },
         { accessory, type: process.env.CAT_TYPE || "classic" },
       );
-      if (backend === "webgpu") await page.screenshot({ path: path.join(out, accessory + "-drive.png") });
-      if (backend === "webgpu") {
+      if (backend === captureBackend) await page.screenshot({ path: path.join(out, accessory + "-drive.png") });
+      if (backend === captureBackend) {
         await page.evaluate(async () => {
           const { updateCatRig } = await import("/src/models.js"),
             v = window.__viewer,
@@ -258,7 +258,7 @@ try {
   for (const angle of ["", "-front", "-side", "-back", "-top", "-under", "-drive", "-motion"]) {
     const cards = await Promise.all(
       rows
-        .filter((r) => r.backend === "webgpu")
+        .filter((r) => r.backend === captureBackend)
         .map(
           async (r) =>
             `<div><img src="data:image/png;base64,${(await fs.readFile(path.join(out, r.accessory + angle + ".png"))).toString("base64")}"><p>${r.accessory}</p></div>`,

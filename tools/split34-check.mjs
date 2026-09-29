@@ -6,7 +6,7 @@
 // N-seat HUD (panels, chips, spectator corner / shared map), the lean perf
 // posture (DPR cap), and that the visible quadrants actually show different
 // views. The 2P flow (grace clock, finish, results) is split-check.mjs's job.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -46,16 +46,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(PORT, r));
 
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: [
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--ignore-gpu-blocklist",
-    "--enable-unsafe-swiftshader",
-    "--no-sandbox",
-  ],
-});
+const browser = await launchArtBrowser();
 const errors = [];
 const check = (name, ok, dbg) => {
   if (ok) console.log("ok:", name);

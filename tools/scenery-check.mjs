@@ -2,7 +2,7 @@
 // batching budgets against the first art pass (78520a0). OUT saves review shots.
 // Use ART_ROOT=/path/to/baseline and BASELINE=1 to render an earlier checkout.
 import { HABITAT_ASSETS } from "../src/habitat-assets.js";
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -104,10 +104,7 @@ const shots = new Set([
   "Sky train",
 ]);
 try {
-  browser = await chromium.launch({
-    executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--no-sandbox"],
-  });
+  browser = await launchArtBrowser();
   const page = await browser.newPage({ viewport: { width: 800, height: 660 } });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));

@@ -1,7 +1,7 @@
 // Fixed-seed landscape views and resource census. ART_ROOT compares a checkout;
 // BASELINE=1 allows the old per-lake materials while recording their counts.
 // Software WebGL2 resource counts are reproducible; they are NOT hardware FPS.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -34,10 +34,7 @@ const server = http.createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
 let browser;
 try {
-  browser = await chromium.launch({
-    executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-    args: process.env.NATIVE ? [] : ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
-  });
+  browser = await launchArtBrowser();
   const page = await browser.newPage({ viewport: { width: 1100, height: 700 } });
   const errors = [];
   page.on("pageerror", (e) => {

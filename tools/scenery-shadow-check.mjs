@@ -1,4 +1,4 @@
-import { chromium } from "playwright-core";
+import { launchArtBrowser, artBackends } from "./art-browser.mjs";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -23,11 +23,10 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-});
+const browser = await launchArtBrowser();
+const backends = await artBackends(browser, server.address().port);
 try {
-  for (const backend of (process.env.BACKENDS || "webgl,webgpu").split(",")) {
+  for (const backend of backends) {
     const page = await browser.newPage(),
       errors = [];
     page.on("pageerror", (e) => errors.push(e.message));

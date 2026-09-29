@@ -37,7 +37,7 @@
 //   TRACKS=random SEEDS=6 node tools/track-audit.mjs
 //   TRACKS=extreme SEEDS=5 node tools/track-audit.mjs   # every knob maxed
 //   TRACKS=all SECONDS=45 node tools/track-audit.mjs
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -334,16 +334,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(PORT, r));
 
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: [
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--ignore-gpu-blocklist",
-    "--enable-unsafe-swiftshader",
-    "--no-sandbox",
-  ],
-});
+const browser = await launchArtBrowser();
 
 // Race one track and return its pathology counts.
 async function auditTrack(entry) {

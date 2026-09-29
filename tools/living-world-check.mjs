@@ -1,6 +1,6 @@
 // Exercise real wildlife/event controllers over continuous time, then render
 // representative moving assets with game materials and a pinned viewer camera.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -21,9 +21,7 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-    executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-  }),
+const browser = await launchArtBrowser(),
   results = [];
 try {
   for (const biome of process.env.BIOMES?.split(",") || [

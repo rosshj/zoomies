@@ -1,6 +1,6 @@
 // Actual procedural tunnels, rendered through the game's cel material conversion.
 // Compare another checkout with ART_ROOT + BASELINE=1; counts are not FPS claims.
-import { chromium } from "playwright-core";
+import { launchArtBrowser, artBackends } from "./art-browser.mjs";
 import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
@@ -27,12 +27,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-});
+const browser = await launchArtBrowser();
 const results = [];
+const backends = await artBackends(browser, server.address().port);
 try {
-  for (const backend of (process.env.BACKENDS || "webgl,webgpu").split(",")) {
+  for (const backend of backends) {
     for (const biome of ["alpine", "tundra", "desert", "mesa", "volcanic"]) {
       const page = await browser.newPage({ viewport: { width: 1100, height: 700 } }),
         errors = [];

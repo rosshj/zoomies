@@ -1,5 +1,5 @@
 // Live creator migration, picker, save/reload and race appearance checks.
-import { chromium } from "playwright-core";
+import { launchArtBrowser, artBackends } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -29,12 +29,12 @@ const server = http.createServer(async (req, res) => {
   }
 });
 await new Promise((r) => server.listen(0, "127.0.0.1", r));
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-});
+const browser = await launchArtBrowser();
 try {
   const p = await browser.newPage({ viewport: { width: 1100, height: 700 } }),
     errors = [];
+  p.setDefaultNavigationTimeout(180000);
+  p.setDefaultTimeout(60000);
   p.on("pageerror", (e) => errors.push(e.message));
   await p.addInitScript(() => {
     if (!localStorage.getItem("zoomies-profile-v1")) {
@@ -72,8 +72,11 @@ try {
       );
     }
   });
-  const url = `http://127.0.0.1:${server.address().port}/?webgpu=1&nosw=1&nowd=1`;
+  const backend = (await artBackends(browser, server.address().port)).at(-1);
+  const url = `http://127.0.0.1:${server.address().port}/?${backend}=1&nosw=1&nowd=1`;
+  let loads = 0;
   const load = async () => {
+    console.log(`[creator] load ${++loads}: ${backend}`);
     await p.goto(url);
     await p.waitForFunction(() => window.__zoomies?.track, null, { timeout: 180000 });
   };
@@ -184,7 +187,9 @@ try {
   if (errors.length) throw Error(errors.join("\n"));
   console.log(JSON.stringify({ result, racers, presetType, errors }));
 } finally {
-  await browser.close();
+  await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 5000))]);
   server.closeAllConnections();
   server.close();
 }
+
+process.exit(0);

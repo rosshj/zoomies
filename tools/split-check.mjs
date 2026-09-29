@@ -5,7 +5,7 @@
 // two human karts in a six-kart field, both accelerating independently, the
 // per-half chips updating, and the two-humans finish gate reaching a Versus
 // results screen with no economy payout.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import { CAT_PRESETS, KART_PRESETS } from "../src/presets.js";
 import { catType } from "../src/cat-types.js";
 import http from "node:http";
@@ -47,18 +47,7 @@ const server = http.createServer((req, res) => {
 });
 await new Promise((r) => server.listen(PORT, r));
 
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: process.env.NATIVE
-    ? []
-    : [
-        "--use-gl=angle",
-        "--use-angle=swiftshader",
-        "--ignore-gpu-blocklist",
-        "--enable-unsafe-swiftshader",
-        "--no-sandbox",
-      ],
-});
+const browser = await launchArtBrowser();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 const page = await ctx.newPage();

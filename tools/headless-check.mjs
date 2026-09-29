@@ -3,7 +3,7 @@
 // npm-vendored copies in node_modules, loads the game with &webgl=1 (headless
 // WebGPU renders black, so we use the WebGL2 fallback), pumps a few seconds of
 // frames, then reports FPS / backend / draw-calls and any console errors.
-import { chromium } from "playwright-core";
+import { launchArtBrowser } from "./art-browser.mjs";
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -49,16 +49,7 @@ const server = http.createServer((req, res) => {
 
 await new Promise((r) => server.listen(PORT, r));
 
-const browser = await chromium.launch({
-  executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: [
-    "--use-gl=angle",
-    "--use-angle=swiftshader",
-    "--ignore-gpu-blocklist",
-    "--enable-unsafe-swiftshader",
-    "--no-sandbox",
-  ],
-});
+const browser = await launchArtBrowser();
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
 const errors = [];
 const page = await ctx.newPage();

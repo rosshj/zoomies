@@ -39,3 +39,9 @@ Front, side and top renders of all four were inspected. Full accessory variants 
 Alpine and tundra town palettes now include compact two-house village clusters alongside chalets. The clusters reuse snow-roofed village architecture and the existing static batching, with a nine-unit footprint for spacing, road clearance and habitat checks. Seed 4242 has five clusters, four near its tundra start straight. Six-point weather sprites intentionally represent snow crystals; they are unrelated to kart boost sparks.
 
 All 16 single/mixed biome audits pass. The scenery audit now correctly selects scenery sidebar groups rather than treating named cats/accessories as scenery with obsolete budgets; dedicated character checks retain that coverage. All 122 scenery assets pass, including a bounded four-batch village cluster. A pinned seed-4242 race render and village asset render were inspected. Smoke and web build pass.
+
+## 7. Portable browser checks
+
+All browser `check:*` scripts and catalog capture share executable discovery and renderer flags. Linux defaults to SwiftShader/WebGL; desktop runs probe WebGPU availability, and explicit backend requests remain strict. Fallback runs still capture galleries and exercise behavior. Creator navigation allows time for software shader compilation. The paint assertion now checks the shared atlas node and vertex pigment, and the kart save check expects the already-approved removal of the style-6 remap.
+
+Software WebGL validation includes 41 accessory renders/369 variants, 40 cat renders/3,321 combinations, 34 kart renders/816 variants, material/art budgets, shadow pixels, environmental particle shader/pool checks and all 24 road-prop renders. The native launcher also passed both backends for the four re-molded accessories. Creator save/reload/race checks and software smoke pass. The Linux CI workflow publishes logs and review screenshots as artifacts, not source files; `BROWSER-CHECKS.md` documents the controls.
