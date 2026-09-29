@@ -147,6 +147,40 @@ try {
       window.__zoomies.karts.find((k) => k.isPlayer).group.children.find((c) => c.userData.catType)?.userData.catType,
   );
   if (presetType !== "Maine Coon") throw Error("Version 2 preset index mistaken for legacy custom");
+  // A fresh creator may preview a prize, but cannot use it until its cat is earned.
+  await p.evaluate(() => {
+    localStorage.setItem("zoomies-profile-v1", JSON.stringify({ unlocked: ["custom.cat"], treats: 0 }));
+    const save = JSON.parse(localStorage.getItem("zoomies-garage-v1"));
+    save.cat = 0;
+    save.catId = null;
+    save.customCat.accessory = "none";
+    localStorage.setItem("zoomies-garage-v1", JSON.stringify(save));
+  });
+  await load();
+  await editor();
+  await p.evaluate(() => {
+    for (let i = 0; i < 45 && !document.querySelector("#cat-acc-name").textContent.includes("Unlock Timber"); i++)
+      document.querySelector("#cat-acc-next").click();
+    if (
+      !document.querySelector("#cat-acc-name").textContent.includes("Unlock Timber") ||
+      !document.querySelector("#cat-edit-use").disabled
+    )
+      throw Error("Wardrobe must name its cat and prevent using a locked accessory");
+    const profile = JSON.parse(localStorage.getItem("zoomies-profile-v1"));
+    profile.unlocked.push("cat.14");
+    localStorage.setItem("zoomies-profile-v1", JSON.stringify(profile));
+  });
+  await load();
+  await editor();
+  await p.evaluate(() => {
+    for (let i = 0; i < 45 && !document.querySelector("#cat-acc-name").textContent.includes("Dragon"); i++)
+      document.querySelector("#cat-acc-next").click();
+    if (
+      document.querySelector("#cat-edit-use").disabled ||
+      document.querySelector("#cat-acc-name").textContent.includes("🔒")
+    )
+      throw Error("Owned cat did not unlock its wardrobe item");
+  });
   if (errors.length) throw Error(errors.join("\n"));
   console.log(JSON.stringify({ result, racers, presetType, errors }));
 } finally {

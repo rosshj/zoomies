@@ -68,6 +68,7 @@ import {
   isUnlocked,
   buyUnlock,
   catalogEntry,
+  awardEarnedUnlocks,
   CATALOG,
   racePayout,
   checkAchievements,
@@ -140,8 +141,8 @@ const GARAGE_KEY = "zoomies-garage-v1";
 const _clampInt = (v, lo, hi, dflt) => (Number.isInteger(v) && v >= lo && v <= hi ? v : dflt);
 const _clampColor = (v, dflt) => (Number.isInteger(v) && v >= 0 && v <= 0xffffff ? v : dflt);
 const _clampName = (v, dflt) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 14) : dflt);
-// Every accessory is wearable in the creator — the wardrobe is part of what
-// the Custom Cat creator purchase buys, not a second layer of unlocks.
+// The original wardrobe comes with the creator; earned accessories follow their cats.
+// Saved designs retain valid colours and accessory ids.
 function sanitizeCustomCat(c) {
   c = c && typeof c === "object" ? c : {};
   return {
@@ -289,6 +290,7 @@ function loadProfile() {
   return migrateProfile(raw);
 }
 function saveProfile() {
+  awardEarnedUnlocks(profile);
   try {
     localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
   } catch {
@@ -296,6 +298,11 @@ function saveProfile() {
   }
 }
 const profile = loadProfile();
+// A saved custom design cannot bypass the new wardrobe gates on reload.
+if (!isUnlocked(profile, `acc.${garageConfig.customCat.accessory}`)) {
+  garageConfig.customCat.accessory = "none";
+  garageConfig.customCat.accessoryColor = null;
+}
 // Grandfather: never confiscate. Whatever the player already had selected when
 // progression shipped stays theirs — auto-unlock the saved garage picks.
 {
@@ -719,6 +726,9 @@ initProps(scene, track, {
   size: trackConfig.mode === "custom" ? (trackConfig.size ?? 0.5) : 0.5,
   biomeNameAt,
   onImpact: (kind, pos, strength) => audio.propImpact(kind, pos, strength),
+  onKnock: (kart) => {
+    if (kart === player && _raceStats) _raceStats.propsKnocked++;
+  },
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {
@@ -4282,7 +4292,15 @@ function syncCreators() {
   const patName = document.getElementById("cat-pat-name");
   if (patName) patName.textContent = c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern);
   const accName = document.getElementById("cat-acc-name");
-  if (accName) accName.textContent = ACCESSORY_LABELS[c.accessory] || _cap(c.accessory);
+  if (accName) {
+    const entry = catalogEntry(`acc.${c.accessory}`);
+    const locked = !isUnlocked(profile, `acc.${c.accessory}`);
+    accName.textContent =
+      (ACCESSORY_LABELS[c.accessory] || _cap(c.accessory)) +
+      (locked ? ` · 🔒 Unlock ${CAT_PRESETS[Number(entry.cat.slice(4))].name}` : "");
+  }
+  const useCat = document.getElementById("cat-edit-use");
+  if (useCat) useCat.disabled = !isUnlocked(profile, `acc.${c.accessory}`);
   const ni = document.getElementById("cat-custom-name");
   if (ni && ni.value !== c.name) ni.value = c.name;
   _markSelectedSwatch("cat-color-grid", c.fur);
@@ -4591,7 +4609,7 @@ document
   .getElementById("cat-custom-name")
   ?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
 document.getElementById("cat-randomize")?.addEventListener("click", () => {
-  const accessory = _pick(CAT_ACCESSORIES);
+  const accessory = _pick(CAT_ACCESSORIES.filter((a) => isUnlocked(profile, `acc.${a}`)));
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
     type: _pick(CAT_TYPE_IDS),
@@ -4904,7 +4922,7 @@ for (const [which, id] of [
   });
 }
 document.getElementById("cat-edit-use")?.addEventListener("click", () => {
-  if (!isUnlocked(profile, "custom.cat")) {
+  if (!isUnlocked(profile, "custom.cat") || !isUnlocked(profile, `acc.${_garageDraft.customCat.accessory}`)) {
     uiCue("error");
     refreshEditorLocks();
     return;
@@ -6103,9 +6121,29 @@ function prizeHow(id) {
   const e = catalogEntry(id);
   if (!e) return "";
   if (typeof e.price === "number" && e.price > 0) return `🐟 ${e.price}`;
+  if (e.cups) return `🏆 win all four cups${e.diff ? ` on ${_cap(e.diff)}+` : ""}`;
+  if (e.biomeWin) return `🏁 win a race starting in ${_cap(e.biomeWin)}`;
+  if (e.stat) {
+    const labels = {
+      races: "races finished",
+      wins: "race wins",
+      winsHard: "Hard+ wins",
+      winsNight: "night wins",
+      treatsEarned: "treats earned",
+      driftBoosts: "drift boosts",
+      heartSaves: "heart saves",
+      propsKnocked: "props knocked",
+      slipSeconds: "seconds slipstreaming",
+      dailies: "daily challenges",
+      racesCustom: "custom races",
+      boxes: "power-up boxes",
+      versusRaces: "Versus races",
+    };
+    return `${Math.min(e.min, Math.floor(profile.stats[e.stat] || 0))}/${e.min} ${labels[e.stat]}`;
+  }
   if (e.cup) {
     const c = cupById(e.cup);
-    return `🏆 win the ${c ? c.name : e.cup}`;
+    return `🏆 win the ${c ? c.name : e.cup}${e.diff ? ` on ${_cap(e.diff)}+` : ""}`;
   }
   if (e.diff) return e.diff === "hard" ? "🎖 win any cup on Hard" : "🎖 win any cup on Medium+";
   return "free";
@@ -6464,7 +6502,7 @@ let _racePrepPending = false;
 // both from the local START click and from a network-triggered synchronized start.
 function prepareRace() {
   _raceParked = false; // starting fresh; nothing parked to resume
-  _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0, boxes: 0 };
+  _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0, boxes: 0, propsKnocked: 0 };
   _racePaid = false;
   document.getElementById("results-earnings")?.classList.add("hidden");
   document.getElementById("results-next-btn")?.classList.add("hidden");
@@ -7313,16 +7351,28 @@ function fieldSnapshot() {
 // counters into the career stats, pays treats, scores the cup, and fires any
 // newly earned achievements. Returns everything the earnings panel renders.
 function settleRaceRewards() {
-  // Versus is a couch match, not an economy run: no treats, no stats — the
-  // podium is the prize (and P2 farming P1's profile would be too easy).
-  if (splitActive) return null;
+  // Couch races award the dedicated participation unlock, once per finished match.
+  if (splitActive) {
+    if (!_racePaid && splitPlayers.some((k) => k.finished && !k.dnf)) {
+      _racePaid = true;
+      profile.stats.versusRaces++;
+      awardEarnedUnlocks(profile);
+      saveProfile();
+    }
+    return null;
+  }
   if (_racePaid || timeTrial || !player || !player.finished || !_raceStats) return null;
   _racePaid = true;
   updatePlacement();
   const s = profile.stats;
   s.races++;
   const won = player.place === 1;
-  if (won) s.wins++;
+  if (won) {
+    s.wins++;
+    const start = track.getPointAt(0);
+    const biome = biomeNameAt(start.x, start.z, start.y);
+    s.winsByBiome[biome] = (s.winsByBiome[biome] || 0) + 1;
+  }
   if (won && (DIFFICULTY === "hard" || DIFFICULTY === "expert")) s.winsHard++;
   if (won && TIME_OF_DAY === "night") s.winsNight++;
   if (trackConfig.mode === "custom") s.racesCustom++;
@@ -7331,6 +7381,7 @@ function settleRaceRewards() {
   s.milkTrips += _raceStats.milkTrips;
   s.heartSaves += _raceStats.heartSaves;
   s.boxes += _raceStats.boxes;
+  s.propsKnocked += _raceStats.propsKnocked;
   const daily = _dailyActive && profile.dailyPaid !== todayStr();
   if (daily) {
     profile.dailyPaid = todayStr();
@@ -7370,9 +7421,10 @@ function settleRaceRewards() {
     }
   }
   const fresh = checkAchievements(profile);
+  const earned = awardEarnedUnlocks(profile);
   saveProfile();
   refreshTreatsChip();
-  return { payout, fresh, cup };
+  return { payout, fresh, cup, earned };
 }
 function clearCupRun() {
   try {
@@ -7393,7 +7445,8 @@ function renderRaceEarnings(settled) {
   } // re-renders keep the panel from the first settle
   box.innerHTML = "";
   box.classList.remove("hidden");
-  const { payout, fresh, cup } = settled;
+  const { payout, fresh, cup, earned = [] } = settled;
+  for (const id of earned) box.appendChild(earnRow(`🎁 Unlocked: ${unlockName(id)}`, "NEW", "earn-ach"));
   for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
   box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));
   // Badges are teased here but CLAIMED on the interstitial between results and

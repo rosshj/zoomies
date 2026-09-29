@@ -622,6 +622,7 @@ function build(scene, track, opts) {
             pr.quat.copy(pr.mesh.quaternion); // continue from its current spun pose
             pr.pos.copy(pr.mesh.position); // keep the actual bobbed pickup pose
             pr.mode = "ground";
+            opts.onKnock?.(mk.kart);
             pr.spent = true; // a used box never floats again
             pr.asleep = false;
             pr.settle = false;
@@ -646,6 +647,7 @@ function build(scene, track, opts) {
         const sm = 11 + Math.random() * 10; // tumble end-over-end about the across axis
         pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
         pr.hit = 0.4;
+        opts.onKnock?.(mk.kart);
         impact(pr, mk.speed, true);
       }
     }

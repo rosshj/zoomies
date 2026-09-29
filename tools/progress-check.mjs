@@ -4,6 +4,7 @@
 // and the backup-token round trip. Run: `npm run check:progress`.
 import {
   PROFILE_VERSION,
+  awardEarnedUnlocks,
   defaultProfile,
   migrateProfile,
   CATALOG,
@@ -25,6 +26,14 @@ import {
   decodeProfileToken,
 } from "../src/progress.js";
 
+import { CAT_PRESETS } from "../src/presets.js";
+import { readFileSync } from "node:fs";
+const biomeSource = readFileSync(new URL("../src/scenery.js", import.meta.url), "utf8");
+const knownBiomes = [
+  ...biomeSource
+    .slice(biomeSource.indexOf("const BIOMES = ["), biomeSource.indexOf("const CLASSIC_BIOMES"))
+    .matchAll(/name: "([a-z]+)"/g),
+].map((m) => m[1]);
 let failures = 0;
 const check = (name, cond) => {
   console.log((cond ? "  ok  " : "FAIL  ") + name);
@@ -91,15 +100,33 @@ const check = (name, cond) => {
     (!c.id.startsWith("cat.") || Number(c.id.slice(4)) < 14) &&
     (!c.id.startsWith("kart.") || Number(c.id.slice(5)) < 10);
   const total = priced.filter(original).reduce((s, c) => s + c.price, 0);
-  const fullTotal = priced.reduce((s, c) => s + c.price, 0);
   check(`original catalog still totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
-  // The whole roster is what players grind through. The added cats and karts are
-  // due to move from treat prices to earned unlocks; until then the full total is
-  // reported so the grind is visible, and every entry must carry exactly one gate.
-  console.log(`      full priced catalog: ${priced.length} items, ${fullTotal} treats`);
   check(
-    "every catalog entry has exactly one unlock gate (price, cup or difficulty)",
-    CATALOG.every((c) => [typeof c.price === "number", !!c.cup, !!c.diff].filter(Boolean).length === 1),
+    "added cats and karts carry no price",
+    CATALOG.filter((c) => !original(c)).every((c) => c.price === undefined),
+  );
+  check(
+    "one gate family per entry (cup difficulty is a modifier)",
+    CATALOG.every(
+      (c) =>
+        [
+          typeof c.price === "number",
+          !!c.cat,
+          !!c.stat,
+          !!c.biomeWin,
+          !!c.cups,
+          !!c.cup,
+          !!c.diff && !c.cup && !c.cups,
+        ].filter(Boolean).length === 1,
+    ),
+  );
+  check(
+    "every accessory names its actual cat",
+    CATALOG.filter((c) => c.cat).every((c) => CAT_PRESETS[Number(c.cat.slice(4))]?.accessory === c.id.slice(4)),
+  );
+  check(
+    "every biome gate exists",
+    CATALOG.filter((c) => c.biomeWin).every((c) => knownBiomes.includes(c.biomeWin)),
   );
   check(
     "cheapest cat and kart are 100-150",
@@ -125,13 +152,72 @@ const check = (name, cond) => {
   const cupExclusives = CATALOG.filter((c) => c.cup);
   check(
     "every cup exclusive maps to a real cup",
-    cupExclusives.length === 4 && cupExclusives.every((c) => cupById(c.cup)),
+    cupExclusives.every((c) => cupById(c.cup)),
   );
-  check("no accessory entries — the creator's wardrobe is ungated", !CATALOG.some((c) => c.id.startsWith("acc.")));
+  check(
+    "26 new accessories gated; original wardrobe unchanged",
+    CATALOG.filter((c) => c.cat).length === 26 &&
+      CAT_PRESETS.slice(0, 14).every((c) => !catalogEntry(`acc.${c.accessory}`)),
+  );
   check(
     "difficulty prizes exist for medium and hard",
     CATALOG.some((c) => c.diff === "medium") && CATALOG.some((c) => c.diff === "hard"),
   );
+}
+
+// Exercise each approved gate at the boundary, including combined cup/difficulty.
+for (const e of CATALOG.filter((e) => e.stat || e.biomeWin || e.cups || (e.cup && e.diff))) {
+  const p = defaultProfile();
+  if (e.stat) p.stats[e.stat] = e.min - 1;
+  if (e.cup) p.trophies[e.cup] = "easy";
+  if (e.cups) for (const c of CUPS.slice(0, -1)) p.trophies[c.id] = "expert";
+  awardEarnedUnlocks(p);
+  check(`${e.id} stays locked below its threshold`, !isUnlocked(p, e.id));
+  if (e.stat) p.stats[e.stat]++;
+  if (e.biomeWin) p.stats.winsByBiome[e.biomeWin] = 1;
+  if (e.cup) p.trophies[e.cup] = e.diff;
+  if (e.cups) for (const c of CUPS) p.trophies[c.id] = e.diff || "easy";
+  awardEarnedUnlocks(p);
+  check(`${e.id} unlocks at the threshold and only once`, isUnlocked(p, e.id) && !awardEarnedUnlocks(p).includes(e.id));
+}
+{
+  const p = migrateProfile({ unlocked: ["cat.14", "kart.33"], stats: { winsByBiome: { forest: 2, beach: -1 } } });
+  check(
+    "playtest purchases and paired wardrobe survive migration",
+    isUnlocked(p, "cat.14") && isUnlocked(p, "acc.dragon") && isUnlocked(p, "kart.33"),
+  );
+  check("biome counters migrate safely", p.stats.winsByBiome.forest === 2 && !p.stats.winsByBiome.beach);
+  const q = defaultProfile();
+  q.trophies.zoomies = "expert";
+  q.trophies.meadows = "easy";
+  awardEarnedUnlocks(q);
+  check("hard win in another cup cannot satisfy a combined gate", !isUnlocked(q, "cat.23"));
+  for (const c of CUPS) q.trophies[c.id] = "medium";
+  awardEarnedUnlocks(q);
+  check("cup sweep at medium unlocks Orbit but not Azure", isUnlocked(q, "cat.27") && !isUnlocked(q, "kart.33"));
+}
+
+// Keep the implemented roster in lockstep with Ross's approved table.
+for (const line of readFileSync(new URL("../docs/art-refresh/HANDOFF.md", import.meta.url), "utf8").split("\n")) {
+  if (!/^\| (cat|kart)\./.test(line)) continue;
+  const [id, name, accessory, gate] = line
+    .split("|")
+    .slice(1, 5)
+    .map((s) => s.trim());
+  const expected = { id };
+  if (gate.startsWith("stat")) {
+    const [, stat, min] = gate.split(" ");
+    Object.assign(expected, { stat, min: Number(min) });
+  } else if (gate.startsWith("biomeWin")) expected.biomeWin = gate.split(" ")[1];
+  else if (gate.startsWith("cup")) {
+    expected.cup = gate.split(/[ ,]+/)[1];
+    if (gate.includes("diff")) expected.diff = gate.split(" ").at(-1);
+  } else {
+    expected.cups = true;
+    if (gate.includes("hard")) expected.diff = "hard";
+  }
+  check(`${name} matches approved table`, JSON.stringify(catalogEntry(id)) === JSON.stringify(expected));
+  if (accessory) check(`${accessory} follows ${name}`, catalogEntry(`acc.${accessory}`)?.cat === id);
 }
 
 // --- Payout ---

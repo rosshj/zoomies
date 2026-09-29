@@ -33,6 +33,9 @@ export function defaultStats() {
     boxes: 0,
     dailies: 0,
     treatsEarned: 0,
+    propsKnocked: 0,
+    versusRaces: 0,
+    winsByBiome: {},
   };
 }
 
@@ -72,6 +75,10 @@ export function migrateProfile(raw) {
   const s = p.stats && typeof p.stats === "object" ? p.stats : {};
   p.stats = { ...defaultStats() };
   for (const k of Object.keys(p.stats)) if (Number.isFinite(s[k]) && s[k] >= 0) p.stats[k] = s[k];
+  p.stats.winsByBiome = Object.fromEntries(
+    Object.entries(s.winsByBiome || {}).filter(([, n]) => Number.isFinite(n) && n >= 0),
+  );
+  awardEarnedUnlocks(p);
   p.dailyPaid = typeof p.dailyPaid === "string" ? p.dailyPaid : "";
   return p;
 }
@@ -104,9 +111,33 @@ export const CATALOG = [
   { id: "cat.11", price: 400 }, // Moo — the cow cat
   { id: "cat.12", diff: "medium" }, // Misty — win any cup on Medium or harder
   { id: "cat.13", diff: "hard" }, // Biscuit — win any cup on Hard (or Expert)
-  // Added racers keep the original prices/unlocks intact. Every type can also
-  // be mixed in the existing Custom Cat creator.
-  ...Array.from({ length: 26 }, (_, i) => ({ id: `cat.${i + 14}`, price: 180 + Math.floor(i / 5) * 30 })),
+  // Earned roster: approved in docs/art-refresh/HANDOFF.md.
+  { id: "cat.14", biomeWin: "volcanic" },
+  { id: "cat.15", biomeWin: "tundra" },
+  { id: "cat.16", stat: "winsNight", min: 3 },
+  { id: "cat.17", cup: "zoomies", diff: "hard" },
+  { id: "cat.18", biomeWin: "autumn" },
+  { id: "cat.19", stat: "treatsEarned", min: 2000 },
+  { id: "cat.20", biomeWin: "forest" },
+  { id: "cat.21", biomeWin: "wetlands" },
+  { id: "cat.22", biomeWin: "lavender" },
+  { id: "cat.23", cup: "meadows", diff: "hard" },
+  { id: "cat.24", biomeWin: "beach" },
+  { id: "cat.25", cup: "sandypaws", diff: "hard" },
+  { id: "cat.26", stat: "driftBoosts", min: 100 },
+  { id: "cat.27", cups: true },
+  { id: "cat.28", biomeWin: "blossom" },
+  { id: "cat.29", stat: "races", min: 50 },
+  { id: "cat.30", biomeWin: "desert" },
+  { id: "cat.31", stat: "heartSaves", min: 10 },
+  { id: "cat.32", biomeWin: "jungle" },
+  { id: "cat.33", stat: "propsKnocked", min: 100 },
+  { id: "cat.34", stat: "slipSeconds", min: 200 },
+  { id: "cat.35", stat: "winsNight", min: 10 },
+  { id: "cat.36", biomeWin: "savanna" },
+  { id: "cat.37", biomeWin: "city" },
+  { id: "cat.38", cup: "meowtain", diff: "hard" },
+  { id: "cat.39", biomeWin: "alpine" },
   // Karts.
   { id: "kart.0", price: 0 },
   { id: "kart.1", price: 0 },
@@ -118,9 +149,57 @@ export const CATALOG = [
   { id: "kart.7", cup: "meadows" }, // Comet — Catnip Meadows Cup exclusive
   { id: "kart.8", cup: "meowtain" }, // Nova — Meowtain Cup exclusive
   { id: "kart.9", price: 250 }, // Prowler — the caged off-road buggy
-  ...Array.from({ length: 24 }, (_, i) => ({ id: `kart.${i + 10}`, price: 260 + Math.floor(i / 4) * 30 })),
-  // (Accessories carry no catalog entries: the whole wardrobe comes with the
-  // Custom Cat creator. Old profiles may still hold acc.* ids — harmless.)
+  { id: "kart.10", stat: "races", min: 5 },
+  { id: "kart.11", stat: "wins", min: 5 },
+  { id: "kart.12", stat: "driftBoosts", min: 25 },
+  { id: "kart.13", stat: "driftBoosts", min: 150 },
+  { id: "kart.14", stat: "wins", min: 3 },
+  { id: "kart.15", stat: "winsHard", min: 3 },
+  { id: "kart.16", stat: "races", min: 25 },
+  { id: "kart.17", stat: "races", min: 100 },
+  { id: "kart.18", stat: "dailies", min: 3 },
+  { id: "kart.19", stat: "dailies", min: 15 },
+  { id: "kart.20", stat: "racesCustom", min: 1 },
+  { id: "kart.21", stat: "racesCustom", min: 20 },
+  { id: "kart.22", cup: "meadows" },
+  { id: "kart.23", cup: "meadows", diff: "expert" },
+  { id: "kart.24", cup: "sandypaws" },
+  { id: "kart.25", cup: "sandypaws", diff: "expert" },
+  { id: "kart.26", cup: "meowtain" },
+  { id: "kart.27", cup: "meowtain", diff: "expert" },
+  { id: "kart.28", cup: "zoomies" },
+  { id: "kart.29", cup: "zoomies", diff: "expert" },
+  { id: "kart.30", stat: "boxes", min: 100 },
+  { id: "kart.31", stat: "propsKnocked", min: 250 },
+  { id: "kart.32", stat: "versusRaces", min: 1 },
+  { id: "kart.33", cups: true, diff: "hard" },
+  // Original accessories remain free with the creator; new ones follow their cat.
+  { id: "acc.dragon", cat: "cat.14" },
+  { id: "acc.viking", cat: "cat.15" },
+  { id: "acc.detective", cat: "cat.16" },
+  { id: "acc.crown", cat: "cat.17" },
+  { id: "acc.scarf", cat: "cat.18" },
+  { id: "acc.tophat", cat: "cat.19" },
+  { id: "acc.mushroom", cat: "cat.20" },
+  { id: "acc.rain", cat: "cat.21" },
+  { id: "acc.straw", cat: "cat.22" },
+  { id: "acc.unicorn", cat: "cat.23" },
+  { id: "acc.lei", cat: "cat.24" },
+  { id: "acc.pirate", cat: "cat.25" },
+  { id: "acc.catEye", cat: "cat.26" },
+  { id: "acc.space", cat: "cat.27" },
+  { id: "acc.bee", cat: "cat.28" },
+  { id: "acc.mustache", cat: "cat.29" },
+  { id: "acc.sombrero", cat: "cat.30" },
+  { id: "acc.duck", cat: "cat.31" },
+  { id: "acc.frog", cat: "cat.32" },
+  { id: "acc.bandana", cat: "cat.33" },
+  { id: "acc.propeller", cat: "cat.34" },
+  { id: "acc.shark", cat: "cat.35" },
+  { id: "acc.charm", cat: "cat.36" },
+  { id: "acc.cone", cat: "cat.37" },
+  { id: "acc.ski", cat: "cat.38" },
+  { id: "acc.shells", cat: "cat.39" },
   // The custom creators are features you earn — early-mid milestones.
   { id: "custom.cat", price: 250 },
   { id: "custom.kart", price: 250 },
@@ -133,8 +212,37 @@ export function catalogEntry(id) {
 export function isUnlocked(profile, id) {
   const e = _catalogById.get(id);
   if (!e) return true; // unknown ids never brick a save (forward compatibility)
-  return profile.unlocked.includes(id);
+  return e.cat ? isUnlocked(profile, e.cat) : profile.unlocked.includes(id);
 }
+// Resolve career gates together, including harder cup wins and previously bought cats.
+export function awardEarnedUnlocks(profile) {
+  const fresh = [];
+  const won = (cup, diff) =>
+    Object.hasOwn(profile.trophies, cup) &&
+    (DIFF_RANK[profile.trophies[cup]] ?? -1) >= (diff ? (DIFF_RANK[diff] ?? 99) : 0);
+  for (const e of CATALOG) {
+    if (profile.unlocked.includes(e.id) || typeof e.price === "number") continue;
+    const hit = e.cat
+      ? isUnlocked(profile, e.cat)
+      : e.stat
+        ? (profile.stats[e.stat] || 0) >= e.min
+        : e.biomeWin
+          ? (profile.stats.winsByBiome?.[e.biomeWin] || 0) > 0
+          : e.cups
+            ? CUPS.every((c) => won(c.id, e.diff))
+            : e.cup
+              ? won(e.cup, e.diff)
+              : e.diff
+                ? CUPS.some((c) => won(c.id, e.diff))
+                : false;
+    if (hit) {
+      profile.unlocked.push(e.id);
+      fresh.push(e.id);
+    }
+  }
+  return fresh;
+}
+
 // Spend treats on a purchasable entry. Returns true and mutates the profile on
 // success; false (no mutation) if locked-by-cup, unknown, already owned, or broke.
 export function buyUnlock(profile, id) {
@@ -390,28 +498,7 @@ export function awardCup(profile, cupId, standings, playerName, difficulty) {
       unlockId = cup.unlockId;
     }
   }
-  // A cup can have MORE catalog exclusives beyond its headline unlockId (e.g.
-  // its accessory prize) — they ride along on the first win, reported via
-  // extraUnlocks so the results screen lists every prize.
-  const extraUnlocks = [];
-  if (firstWin) {
-    for (const e of CATALOG) {
-      if (e.cup === cupId && e.id !== cup.unlockId && !profile.unlocked.includes(e.id)) {
-        profile.unlocked.push(e.id);
-        extraUnlocks.push(e.id);
-      }
-    }
-  }
-  // Difficulty-gated prizes: catalog entries with `diff` unlock for winning ANY
-  // cup at that difficulty or harder. Checked on every win (not just the first),
-  // so re-winning an old cup on a harder setting still pays out the prize.
-  for (const e of CATALOG) {
-    if (!e.diff || profile.unlocked.includes(e.id)) continue;
-    if ((DIFF_RANK[difficulty] ?? 0) >= (DIFF_RANK[e.diff] ?? 99)) {
-      profile.unlocked.push(e.id);
-      extraUnlocks.push(e.id);
-    }
-  }
+  const extraUnlocks = awardEarnedUnlocks(profile);
   return { firstWin, upgraded, treats, unlockId, extraUnlocks, difficulty };
 }
 

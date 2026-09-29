@@ -17,8 +17,8 @@ for (const [i, k] of KART_PRESETS.entries()) {
   if (i >= 10) {
     const p = defaultProfile();
     p.treats = 1000;
-    assert.ok(buyUnlock(p, `kart.${i}`));
-    assert.ok(p.unlocked.includes(`kart.${i}`));
+    assert.ok(!buyUnlock(p, `kart.${i}`));
+    assert.equal(catalogEntry(`kart.${i}`).price, undefined);
   }
 }
 for (let style = 5; style < 17; style++) {
