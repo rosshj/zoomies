@@ -4289,34 +4289,37 @@ function buildRoadside(scene, track, heightAt, motion) {
     // the LOW corner (sunk in, never hovering), and genuinely steep ground —
     // canyon walls, river banks, cliff edges — gets no structure at all
     // (that's what left houses floating off ledges).
-    const radius = dist > halfW + 8 ? 4.8 : 1.3;
+    const biome = biomeAt(x, z);
+    const kind = pick(dressingFor(biome.name)[category]);
+    const radius = kind === "village" ? 9 : dist > halfW + 8 ? 4.8 : 1.3;
+    if (kind === "village" && track.distanceToCenter(x, z) < halfW + radius + 2) return;
+    if (!habitatFits(biomeNameAt, x, z, (name) => allowsDressing(name, kind), Math.max(8, radius))) return;
     const cx = Math.floor(x / 10),
       cz = Math.floor(z / 10);
-    for (let ix = cx - 1; ix <= cx + 1; ix++)
-      for (let iz = cz - 1; iz <= cz + 1; iz++) {
+    for (let ix = cx - 2; ix <= cx + 2; ix++)
+      for (let iz = cz - 2; iz <= cz + 2; iz++) {
         for (const other of occupied.get(ix + ":" + iz) || []) {
           if ((x - other.x) ** 2 + (z - other.z) ** 2 < (radius + other.r) ** 2) return;
         }
       }
     const y0 = heightAt(x, z);
-    const y1 = heightAt(x + 4, z),
-      y2 = heightAt(x - 4, z);
-    const y3 = heightAt(x, z + 4),
-      y4 = heightAt(x, z - 4);
+    const footprint = kind === "village" ? radius : 4;
+    const y1 = heightAt(x + footprint, z),
+      y2 = heightAt(x - footprint, z);
+    const y3 = heightAt(x, z + footprint),
+      y4 = heightAt(x, z - footprint);
     const lo = Math.min(y0, y1, y2, y3, y4);
     const hi = Math.max(y0, y1, y2, y3, y4);
     if (hi - lo > 4.2) return; // too steep to build on
     const key = cx + ":" + cz;
     if (!occupied.has(key)) occupied.set(key, []);
     occupied.get(key).push({ x, z, r: radius });
-    const biome = biomeAt(x, z);
-    const kind = pick(dressingFor(biome.name)[category]);
-    if (!habitatFits(biomeNameAt, x, z, (name) => allowsDressing(name, kind), 8)) return;
     const prop = makeDressing(kind, biome, 0.65);
     // Only structure footprints: trees already have their own contact batch,
     // while moving wildlife must never leave a baked patch behind.
     const contactKinds = [
       "farmhouse",
+      "village",
       "barn",
       "silo",
       "tower",
@@ -5263,6 +5266,7 @@ function makeDressing(kind, biome, density = 0.5) {
     farmhouse: () => makeBuilding(0.2, biome),
     cabin: () => makeHabitatBuilding("cabin", biome),
     chalet: () => makeHabitatBuilding("chalet", biome),
+    village: () => makeSnowVillage(biome),
     hut: () => makeHabitatBuilding("hut", biome),
     stiltHut: () => makeHabitatBuilding("stiltHut", biome),
     adobe: () => makeHabitatBuilding("adobe", biome),
@@ -5282,6 +5286,19 @@ function makeDressing(kind, biome, density = 0.5) {
   };
   if (!makers[kind]) throw new Error(`Unknown dressing asset: ${kind}`);
   return makers[kind]();
+}
+
+// A pair of compact snow-roofed village houses, placed as a single clear
+// footprint. Existing static material/cell batching absorbs the whole cluster.
+function makeSnowVillage(biome) {
+  const village = new THREE.Group();
+  for (const side of [-1, 1]) {
+    const house = makeBuilding(0.65, biome);
+    house.scale.setScalar(0.64);
+    house.position.set(side * 3.7, 0, side < 0 ? 0 : -1.2);
+    village.add(house);
+  }
+  return village;
 }
 
 // One painted rigid mesh per habitat building; thatch is a continuous molded
@@ -7170,6 +7187,7 @@ export function assetCatalog() {
 
   add("Town & farm", "House", () => makeHouse());
   add("Town & farm", "Building — village", () => makeBuilding(0.4, biome("meadow")));
+  add("Town & farm", "Snow village", () => makeSnowVillage(biome("alpine")));
   add("Town & farm", "Building — snowy", () => makeBuilding(0.4, biome("alpine")));
   add("Town & farm", "Church", () => makeChurch());
   add("Town & farm", "Barn", () => makeBarn());

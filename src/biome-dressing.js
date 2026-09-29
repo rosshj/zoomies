@@ -44,7 +44,7 @@ export const BIOME_DRESSING = {
   ),
   alpine: profile(
     ["tree", "goat", "hare", "rock", "cairn"],
-    ["chalet"],
+    ["village", "village", "chalet"],
     ["rock", "tree", "sign"],
     ["castle"],
     "raven",
@@ -120,7 +120,7 @@ export const BIOME_DRESSING = {
   ),
   tundra: profile(
     ["tree", "goat", "hare", "rock", "cairn"],
-    ["chalet"],
+    ["village", "village", "chalet"],
     ["rock", "tree", "sign"],
     ["rockSpire"],
     "raven",

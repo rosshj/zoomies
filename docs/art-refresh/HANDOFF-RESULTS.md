@@ -33,3 +33,9 @@ The same six-preset field measured 82 → 48 source materials and 18 → 12 mapp
 Rebuilt the duck as one sculpted body/neck/head with an integrated bill and tail, the frog eyes as continuous painted cups, the beanie hem/dome/spindle as one surface, and the right helmet earcup as a single cushion/shell profile. Fixed tapered-tube side winding at its source and removed the accessory workaround; a triangle-normal check covers sides and both caps.
 
 Front, side and top renders of all four were inspected. Full accessory variants and batch/triangle budgets, art integrity, smoke and web build checks pass. Runtime catalog thumbnails were refreshed. No additional runtime animation or material passes were introduced.
+
+## 6. Snow-biome villages
+
+Alpine and tundra town palettes now include compact two-house village clusters alongside chalets. The clusters reuse snow-roofed village architecture and the existing static batching, with a nine-unit footprint for spacing, road clearance and habitat checks. Seed 4242 has five clusters, four near its tundra start straight. Six-point weather sprites intentionally represent snow crystals; they are unrelated to kart boost sparks.
+
+All 16 single/mixed biome audits pass. The scenery audit now correctly selects scenery sidebar groups rather than treating named cats/accessories as scenery with obsolete budgets; dedicated character checks retain that coverage. All 122 scenery assets pass, including a bounded four-batch village cluster. A pinned seed-4242 race render and village asset render were inspected. Smoke and web build pass.

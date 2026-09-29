@@ -141,6 +141,7 @@ function dotTexture() {
   g.addColorStop(0.6, "rgba(255,255,255,0.9)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
+  // Intentional six-fold snow crystals (not the removed kart boost stars).
   // A soft six-point snow crystal, painted into the same 32px sprite. The
   // existing instanced field, particle count and GPU motion stay unchanged.
   ctx.beginPath();

@@ -58,6 +58,8 @@ try {
         if (p.kind === "pigeonLoft" ? !dressingFor(n).pigeons : !allowsDressing(n, p.kind))
           errors.push(`${p.kind} in ${n}`);
       }
+      if (["alpine", "tundra"].includes(name) && !kinds.village) errors.push("Missing snow village clusters");
+      if (!["alpine", "tundra", "mixed"].includes(name) && kinds.village) errors.push("Snow village outside habitat");
       // Advance the existing animation code, not a second test-only orbit model.
       const pos = new THREE.Vector3();
       const loft = scene.userData.biomePlacements.find((p) => p.kind === "pigeonLoft");

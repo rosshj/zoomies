@@ -44,6 +44,7 @@ const extra = {
   "Tree — forest": 42,
 };
 const shots = new Set([
+  "Snow village",
   "Sailboat",
   ...Object.values(HABITAT_ASSETS).map((s) => s.name),
   "hut",
@@ -115,11 +116,21 @@ try {
   });
   await page.goto(`http://127.0.0.1:${server.address().port}/viewer.html?webgl=1&plain=1`);
   await page.waitForFunction(() => window.__viewer);
-  const names = await page.evaluate(() =>
-    [...document.querySelectorAll("#list button")]
-      .map((b) => b.textContent)
-      .filter((n) => !n.startsWith("Cat") && !n.startsWith("Kart")),
-  );
+  const names = await page.evaluate(() => {
+    // Character/accessory budgets belong to check:art/check:accessories. The
+    // sidebar no longer prefixes every racer or accessory with "Cat".
+    const names = [];
+    let group = "";
+    for (const node of document.querySelector("#list").children) {
+      if (node.tagName === "H3") group = node.textContent;
+      else if (
+        node.tagName === "BUTTON" &&
+        !["Racers", "Cats", "Cat accessories", "Karts", "Garage karts"].includes(group)
+      )
+        names.push(node.textContent);
+    }
+    return names;
+  });
   const rows = [];
   for (const name of names) {
     const row = await page.evaluate(async (name) => {
@@ -168,6 +179,7 @@ try {
       errors.push(`${name}: mountain budget exceeded`);
     const newBudgets = {
       Sailboat: [160, 2],
+      "Snow village": [800, 4],
       hut: [220, 1],
       stiltHut: [316, 1],
       cabin: [108, 1],
