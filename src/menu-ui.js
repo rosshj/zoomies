@@ -1,6 +1,20 @@
+import { installMenuIcons } from "./menu-icons.js";
 // Shared DOM behavior for menu surfaces. Game state stays in main.js.
 export function initMenuUI() {
   installTextEntry();
+  installMenuIcons();
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) document.documentElement.classList.add("keyboard-navigation");
+    },
+    true,
+  );
+  document.addEventListener(
+    "pointerdown",
+    () => document.documentElement.classList.remove("keyboard-navigation"),
+    true,
+  );
   // Apply stays outside Track Maker's long scroll area.
   const trackActions = document.querySelector("#track-panel .track-actions");
   document.getElementById("track-panel").append(trackActions);

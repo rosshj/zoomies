@@ -245,6 +245,10 @@ try {
       await p.evaluate(() => document.getElementById("settings").contains(document.activeElement)),
       "Tab escaped settings",
     );
+    assert.ok(
+      await p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle !== "none"),
+      `Keyboard focus became invisible: ${await p.evaluate(() => document.activeElement.id)}`,
+    );
   }
   await click("#settings-back");
   // Portrait menus stay upright; entering and resuming a race returns to landscape.

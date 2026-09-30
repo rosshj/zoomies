@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 const out = new URL("../docs/menu-refresh/review/", import.meta.url);
 await fs.mkdir(new URL("screenshots/", out), { recursive: true });
 const browser = await launchArtBrowser();
-const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+let page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.setDefaultTimeout(60000);
 page.setDefaultNavigationTimeout(180000);
 const errors = [];
@@ -49,6 +49,20 @@ async function capture(name) {
       return null;
     });
     if (headerIssue) errors.push(`${device}/${name}: ${headerIssue}`);
+    if (name.startsWith("home")) {
+      const gridOK = await page.evaluate(() => {
+        const grid = document.querySelector(".title-extras");
+        return document.getElementById("open-settings").getBoundingClientRect().width < grid.clientWidth * 0.6;
+      });
+      if (!gridOK) errors.push(`${device}/${name}: Settings breaks the utility grid`);
+    }
+    const emoji = await page.evaluate(() => {
+      const root =
+        [...document.querySelectorAll(".overlay:not(.hidden)")].at(-1) ||
+        document.querySelector(".flow-screen.is-active");
+      return root.innerText.match(/\p{Extended_Pictographic}/gu);
+    });
+    if (emoji) errors.push(`${device}/${name}: remaining emoji ${emoji.join(" ")}`);
     await page.screenshot({ path: new URL(`screenshots/${device}-${name}.jpg`, out).pathname, quality: 75 });
     measurements.push(
       await page.evaluate(
@@ -165,6 +179,14 @@ try {
   await page.evaluate(() => window.__zoomies.debugFinish());
   await page.locator("#results:not(.hidden)").waitFor();
   await capture("results");
+  // The actual web shell has Get the app instead of Quit. Verify that layout,
+  // not just the simulated desktop bridge used for the Versus coverage above.
+  await page.close();
+  page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1", { timeout: 180000 });
+  await page.waitForFunction(() => window.__zoomies?.track);
+  await capture("home-web");
   await fs.writeFile(new URL("measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
   const files = (await fs.readdir(new URL("screenshots/", out))).filter((f) => f.endsWith(".jpg"));
   const cards = files
@@ -175,7 +197,7 @@ try {
     .join("");
   await fs.writeFile(
     new URL("gallery.html", out),
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Menu refresh review</title><style>body{background:#181321;color:#fff6e5;font:16px system-ui;margin:28px}h1{color:#ffc24b}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}figure{margin:0;background:#2a2039;padding:12px;border-radius:16px}img{width:100%;height:270px;object-fit:contain}figcaption{padding:10px;font-size:12px}input{padding:12px;margin-bottom:20px;width:280px}</style><h1>Menu refresh · Review</h1><p>Chromium viewport captures with a simulated desktop bridge and unlocked creators. Results use synthetic completion. Physical-device testing remains separate.</p><input aria-label="Filter screenshots" placeholder="Filter: portrait, setup, pause…" oninput="document.querySelectorAll('figure').forEach(f=>f.hidden=!f.textContent.includes(this.value))"><div class="grid">${cards}</div></html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Menu refresh review</title><style>body{background:#181321;color:#fff6e5;font:16px system-ui;margin:28px}h1{color:#ffc24b}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}figure{margin:0;background:#2a2039;padding:12px;border-radius:16px}img{width:100%;height:270px;object-fit:contain}figcaption{padding:10px;font-size:12px}input{padding:12px;margin-bottom:20px;width:280px}</style><h1>Menu refresh · Review</h1><p>Chromium viewport captures with a simulated desktop bridge and unlocked creators, plus the actual web Home screen. Results use synthetic completion. Physical-device testing remains separate.</p><input aria-label="Filter screenshots" placeholder="Filter: portrait, setup, pause…" oninput="document.querySelectorAll('figure').forEach(f=>f.hidden=!f.textContent.includes(this.value))"><div class="grid">${cards}</div></html>`,
   );
   if (errors.length) throw Error(errors.join("\n"));
 } finally {

@@ -2472,12 +2472,6 @@ button.secondary.small,
   width: 100%;
   margin-top: clamp(2px, 1vh, 8px);
 }
-/* With Install hidden there are three visible buttons — Settings spans the
-   final row. When Install shows (4 visible) the grid is a clean 2×2. */
-#install-btn.hidden ~ #open-settings { grid-column: 1 / -1; }
-/* Desktop shell: the revealed Quit makes it four visible again — back to a
-   clean 2×2 (Electron's Chromium always has :has). */
-#install-btn.hidden ~ #open-settings:has(~ #quit-btn-title:not(.hidden)) { grid-column: auto; }
 .extra-btn {
   position: relative;
   font-size: clamp(12px, 2.4vh, 14px);

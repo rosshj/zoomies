@@ -319,30 +319,29 @@
             <ellipse cx="0.6" cy="0.55" rx="0.02" ry="0.06" fill="#111111"/>
             <polygon points="0.47,0.62 0.53,0.62 0.5,0.67" fill="#ff6f9b"/>
           </svg><span>ZOOMIES GP</span></h1>
-        <p class="title-tag">🏁 Cat Kart Racing 🏁</p>
+        <p class="title-tag">Cat kart racing</p>
         <!-- Shown only when a race is parked in the background (opened the menu
              mid-race); jumps back into it instead of losing your progress. -->
-        <button id="resume-race-btn" class="btn-cream title-resume hidden">▶ Resume race</button>
+        <button id="resume-race-btn" class="btn-cream title-resume hidden" data-menu-icon="play">Resume race</button>
         <!-- The one way forward. A mid-cup or daily boot relabels it and jumps
              straight to race setup. -->
-        <button id="start-btn" class="btn-gold title-play">▶&nbsp;&nbsp;Race</button>
-        <p class="title-description">Little paws. Big races.</p>
-        <button id="open-garage" class="btn-cream title-garage">Garage <span>Find your racing style</span></button>
+        <button id="start-btn" class="btn-gold title-play" data-menu-icon="race">Race</button>
+        <p class="title-description">Little paws.<br> Big races.</p>
+        <button id="open-garage" class="btn-cream title-garage" data-menu-icon="garage"><span class="home-label">Garage<small>Make it yours</small></span></button>
         <div class="title-extras">
-          <button id="open-catalog" class="btn-cream extra-btn">Collection<span id="catalog-tile-alert" class="tile-alert hidden">!</span></button>
-          <button id="howto-btn" class="btn-cream extra-btn">❓ How to Play</button>
+          <button id="open-catalog" class="btn-cream extra-btn" data-menu-icon="collection">Collection<span id="catalog-tile-alert" class="tile-alert hidden">!</span></button>
+          <button id="howto-btn" class="btn-cream extra-btn" data-menu-icon="help">How to play</button>
           <!-- Shown only when not already installed (JS); does the native install
                prompt where supported, or opens the iOS instructions overlay.
-               Sits BEFORE Settings so Settings stays the last child: with an odd
-               number of visible buttons it spans the final row (CSS). -->
-          <button id="install-btn" class="btn-cream extra-btn hidden">📲 Install</button>
+               Home keeps these utilities in a consistent grid. -->
+          <button id="install-btn" class="btn-cream extra-btn hidden" data-menu-icon="download">Install</button>
           <!-- Web desktop only (revealed by JS): the /download page with the
                Steam Deck / desktop builds. Hidden in the Electron shell (you
                already have the app) and in the native mobile apps. -->
-          <button id="download-btn" class="btn-cream extra-btn hidden">⬇️ Get the App</button>
-          <button id="open-settings" class="btn-cream extra-btn">⚙️ Settings</button>
+          <button id="download-btn" class="btn-cream extra-btn hidden" data-menu-icon="download">Get the app</button>
+          <button id="open-settings" class="btn-cream extra-btn" data-menu-icon="settings">Settings</button>
           <!-- Desktop (Electron) only — see #quit-btn-pause. -->
-          <button id="quit-btn-title" class="btn-cream extra-btn hidden">⏻ Quit</button>
+          <button id="quit-btn-title" class="btn-cream extra-btn hidden" data-menu-icon="quit">Quit</button>
         </div>
         <!-- Which build is this? Stamped by tools/build-web.mjs (date + git
              revision); "dev" when serving the working tree. Settles "am I
@@ -773,7 +772,7 @@
     <div class="sheet-inner install-main">
 
       <!-- Native install (Chromium): shown when the browser offers it. -->
-      <button id="install-help-go" class="hidden">📲 Install</button>
+      <button id="install-help-go" class="hidden">Install</button>
       <ol class="install-steps">
         <li>
           Tap the <strong>Share</strong> button

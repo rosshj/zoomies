@@ -26,7 +26,7 @@ Keyboard focus stays within the active surface and returns to the previous contr
 
 ## Verification
 
-The visual sweep captured 27 surfaces at 1280×800, 1440×900, 1280×720, 844×390, 390×844, and 667×375: **162 captures**, no page errors, and no measured visible controls smaller than 44×44 CSS pixels. See [measurements](review/measurements.json). Representative portrait, compact landscape, editor, setup, pause, and results captures were inspected visually.
+The visual sweep captured 28 surfaces at 1280×800, 1440×900, 1280×720, 844×390, 390×844, and 667×375: **168 captures**, no page errors, and no measured visible controls smaller than 44×44 CSS pixels. See [measurements](review/measurements.json). Representative portrait, compact landscape, editor, setup, pause, and results captures were inspected visually.
 
 Automated checks cover:
 
@@ -51,3 +51,12 @@ For the gallery, serve the repository at port 8080 and run `node tools/menu-audi
 The notched-iPhone screenshot exposed a double safe-area inset on floating header actions. Actions now belong to the active header's flex layout, so Back, title, balance, and Settings share one row. The visual pass standardizes the system sans-serif type scale, dark header and toolbar surfaces, compact utility buttons, card borders, and selected states. The gallery now simulates 59px top and 34px bottom portrait safe-area insets and asserts that header actions neither overlap titles nor escape the header.
 
 Pause keeps the driving orientation. Motion sampling is disabled outside countdown/racing; resume recalibrates the current grip, and calibration clears stale steering output. `node tools/tilt-menu-check.mjs` covers motion isolation, fresh neutral, preserved steering sensitivity, and calibration reset. These checks do not reproduce physical iPhone motion sensors; driving feel still needs device verification.
+
+
+## Filled-menu and Home revision
+
+Home now separates a compact brand lockup, a large two-line headline, the primary Race action, a secondary Garage card, and a quiet utility grid. The web shell is captured separately to verify the Get the app layout as well as the desktop Quit layout.
+
+Menu emoji are replaced with original filled SVG pictograms from `src/menu-icons.js`, including dynamically rendered rewards, currency, mode cards, and settings. The module preserves existing DOM event handlers and text inputs while decorating changing labels. Menu surfaces and selected segments use solid fills rather than stacked borders and shadows; focus outlines remain available for keyboard/controller navigation.
+
+The visual audit additionally rejects visible menu emoji. The refreshed gallery includes 168 captures. Interaction and controller navigation regressions were rerun after this revision.
