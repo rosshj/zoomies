@@ -4922,8 +4922,10 @@ function batchBuildings(scene) {
     if (!b) buckets.set(key, (b = { bodies: [], solids: [] }));
     return b;
   };
+  const worldPosition = new THREE.Vector3();
   for (const g of groups) {
-    const b = bucketOf(g.position.x, g.position.z);
+    g.getWorldPosition(worldPosition); // village members are parented inside a cluster
+    const b = bucketOf(worldPosition.x, worldPosition.z);
     for (const child of g.children) {
       if (!child.isMesh) continue;
       const geo = child.geometry.clone();

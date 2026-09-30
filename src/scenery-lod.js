@@ -12,8 +12,16 @@ export function simplifyScenery(source, cell) {
     n = source.attributes.normal;
   for (let i = 0; i < p.count; i++) {
     // Preserve hard face directions; don't average a roof into its underside.
-    const normal = n ? [Math.round(n.getX(i) * 2), Math.round(n.getY(i) * 2), Math.round(n.getZ(i) * 2)].join(",") : "";
-    const positionKey = `${Math.round(p.getX(i) / cell)},${Math.round(p.getY(i) / cell)},${Math.round(p.getZ(i) / cell)}`;
+    // Exact integer keys avoid a string and temporary normal array per vertex.
+    // 17 bits per axis stay inside Number's exact 53-bit integer range. Keep
+    // the string fallback for unusually large geometry rather than aliasing it.
+    const qx = Math.round(p.getX(i) / cell),
+      qy = Math.round(p.getY(i) / cell),
+      qz = Math.round(p.getZ(i) / cell);
+    const positionKey =
+      Math.max(Math.abs(qx), Math.abs(qy), Math.abs(qz)) < 65536
+        ? ((qx + 65536) * 131072 + (qy + 65536)) * 131072 + (qz + 65536)
+        : `${qx},${qy},${qz}`;
     let point = positions.get(positionKey);
     if (!point) {
       point = { id: positions.size, x: 0, y: 0, z: 0, count: 0 };
@@ -24,7 +32,13 @@ export function simplifyScenery(source, cell) {
     point.z += p.getZ(i);
     point.count++;
     positionIds[i] = point.id;
-    const key = positionKey + ":" + normal;
+    const nx = n ? Math.round(n.getX(i) * 2) : 0,
+      ny = n ? Math.round(n.getY(i) * 2) : 0,
+      nz = n ? Math.round(n.getZ(i) * 2) : 0;
+    const key =
+      Math.max(Math.abs(nx), Math.abs(ny), Math.abs(nz)) <= 2
+        ? point.id * 125 + (nx + 2) * 25 + (ny + 2) * 5 + nz + 2
+        : `${point.id}:${nx},${ny},${nz}`;
     let entry = groups.get(key);
     if (!entry) {
       entry = { id: groups.size, point, count: 0, values: attrs.map(([, a]) => new Array(a.itemSize).fill(0)) };
@@ -32,9 +46,11 @@ export function simplifyScenery(source, cell) {
     }
     remap[i] = entry.id;
     entry.count++;
-    attrs.forEach(([, a], j) => {
-      for (let k = 0; k < a.itemSize; k++) entry.values[j][k] += a.getComponent(i, k);
-    });
+    for (let j = 0; j < attrs.length; j++) {
+      const a = attrs[j][1],
+        values = entry.values[j];
+      for (let k = 0; k < a.itemSize; k++) values[k] += a.getComponent(i, k);
+    }
   }
   const indices = [],
     count = source.index?.count || p.count;
@@ -56,7 +72,9 @@ export function simplifyScenery(source, cell) {
     for (const e of groups.values())
       for (let k = 0; k < a.itemSize; k++)
         data[e.id * a.itemSize + k] =
-          name === "position" ? e.point[["x", "y", "z"][k]] / e.point.count : e.values[j][k] / e.count;
+          name === "position"
+            ? (k === 0 ? e.point.x : k === 1 ? e.point.y : e.point.z) / e.point.count
+            : e.values[j][k] / e.count;
     result.setAttribute(name, new THREE.Float32BufferAttribute(data, a.itemSize));
   });
   for (const [name, a] of Object.entries(source.attributes))

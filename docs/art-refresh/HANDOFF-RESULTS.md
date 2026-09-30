@@ -55,3 +55,9 @@ The actual swept-hit tests assert mesh/material/buffer/vector identity, then run
 ## Remaining device validation
 
 All eight implementation steps are complete. Ross's phone checks remain: a corner with five or more piled-up props, city track load time, and a long session of garage browsing. This work does not claim measured mobile frame-rate gains. Review galleries are PR links/CI artifacts; no gallery PNGs were added to the source tree. PR #64 remains unmerged.
+
+## Linux follow-up
+
+The first Ubuntu/SwiftShader workflow passed all six render/creator/world jobs. Its city build measured 2.31 s cold / 1.66 s warm (a second run measured 2.49 / 1.80 s), so the 1.5 s target was not met on that runner despite being met locally. Profiling found additional generation-only overhead in LOD keys and shelter queries. Exact integer LOD keys now avoid per-vertex strings/temporary arrays; conservative empty-neighbourhood rejection and precomputed hemisphere directions avoid unnecessary shelter work. Comparison probes produced bitwise-identical indices/attributes across 12 indexed/non-indexed LOD cases, including large-coordinate fallback, and identical shelter colours at all three tiers. No detail, ray count or runtime lighting was reduced.
+
+The follow-up local city probe measured 656 / 583 ms cold/warm. Bake/runtime, all-biome, scenery, terrain-clearance, seed-4242, smoke and web-build checks pass. Village members also now select static batching cells using their world position, retaining correct chunk culling after nesting them in a cluster. Final Linux timings and galleries are reported in the PR description; hardware-dependent generation numbers must not be presented as mobile FPS gains.

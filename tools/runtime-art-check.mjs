@@ -49,6 +49,9 @@ groundGeo.setAttribute(
 const ground = new T.Mesh(groundGeo);
 ground.userData.terrainTile = true;
 scene.add(ground);
+const emptyNeighbourhood = new T.Mesh(groundGeo.clone().translate(300, 0, 300));
+emptyNeighbourhood.userData.terrainTile = true;
+scene.add(emptyNeighbourhood);
 const roof = new T.Mesh(new T.BoxGeometry(10, 0.4, 10), new T.MeshStandardMaterial());
 roof.position.y = 3;
 const root = new T.Group();
@@ -62,6 +65,15 @@ bakeWorldShelter(scene);
 assert.equal(rand(), expected);
 assert(groundGeo.attributes.color.getX(220) < 0.9, "Neighbouring roof shelters ground");
 assert(groundGeo.attributes.color.getX(0) > 0.999, "Distant ground stays bright");
+assert(
+  emptyNeighbourhood.geometry.attributes.color.array.every((v) => v === 1),
+  "Empty shelter cells remain fully exposed",
+);
+assert.equal(
+  scene.userData.worldShelter.vertices,
+  groundGeo.attributes.position.count * 2,
+  "Skipped cells remain in receiver statistics",
+);
 const colors = groundGeo.attributes.color.array.slice();
 bakeWorldShelter(scene);
 assert.deepEqual(groundGeo.attributes.color.array, colors, "No repeated darkening");

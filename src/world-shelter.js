@@ -90,6 +90,20 @@ export function bakeWorldShelter(scene, { detail = 1.7 } = {}) {
     bitangent = new THREE.Vector3(),
     nm = new THREE.Matrix3();
   const radius = 24;
+  // Empty neighbourhoods cannot shelter a vertex. Populate conservative XZ
+  // cells once, so bare terrain avoids hemisphere rays without losing cover.
+  const occupied = new Set(),
+    cell = 32;
+  const cellKey = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  for (const o of occluders)
+    for (let x = Math.floor((o.box.min.x - radius) / cell); x <= Math.floor((o.box.max.x + radius) / cell); x++)
+      for (let z = Math.floor((o.box.min.z - radius) / cell); z <= Math.floor((o.box.max.z + radius) / cell); z++)
+        occupied.add(`${x},${z}`);
+  const directions = Array.from({ length: rays }, (_, j) => {
+    const r = Math.sqrt((j + 0.5) / rays),
+      a = j * 2.399963229728653;
+    return [Math.sqrt(1 - r * r), r * Math.cos(a), r * Math.sin(a)];
+  });
   function nearest(node, owner, best) {
     if (node.box.distanceToPoint(ray.origin) > best || !ray.intersectsBox(node.box)) return best;
     if (!node.items) return nearest(node.right, owner, nearest(node.left, owner, best));
@@ -128,6 +142,8 @@ export function bakeWorldShelter(scene, { detail = 1.7 } = {}) {
       // Only sky-facing directions contribute: neighbouring walls don't paint
       // a directional sun shadow permanently onto the sunny side of a facade.
       ray.origin.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).addScaledVector(normal, 0.06);
+      vertices++;
+      if (!occupied.has(cellKey(ray.origin.x, ray.origin.z))) continue;
       tangent
         .set(Math.abs(normal.y) < 0.9 ? 0 : 1, Math.abs(normal.y) < 0.9 ? 1 : 0, 0)
         .cross(normal)
@@ -136,13 +152,8 @@ export function bakeWorldShelter(scene, { detail = 1.7 } = {}) {
       let sum = 0,
         weight = 0;
       for (let j = 0; j < rays; j++) {
-        const r = Math.sqrt((j + 0.5) / rays),
-          a = j * 2.399963229728653;
-        ray.direction
-          .copy(normal)
-          .multiplyScalar(Math.sqrt(1 - r * r))
-          .addScaledVector(tangent, r * Math.cos(a))
-          .addScaledVector(bitangent, r * Math.sin(a));
+        const d = directions[j];
+        ray.direction.copy(normal).multiplyScalar(d[0]).addScaledVector(tangent, d[1]).addScaledVector(bitangent, d[2]);
         if (ray.direction.y <= 0.05) continue;
         const w = ray.direction.y;
         sum += w * Math.pow(1 - nearest(bvh, owner, radius) / radius, 2);
@@ -153,7 +164,6 @@ export function bakeWorldShelter(scene, { detail = 1.7 } = {}) {
         c.setXYZ(i, c.getX(i) * (1 - cover), c.getY(i) * (1 - cover * 0.95), c.getZ(i) * (1 - cover * 0.86));
         shaded++;
       }
-      vertices++;
     }
     c.needsUpdate = true;
   }
