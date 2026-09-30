@@ -4406,15 +4406,17 @@ function syncGarageUI() {
   syncCreators();
   refreshEditorLocks();
 }
-// The start line's Racer tile: current cat + kart by name, with their real
-// catalog renders as thumbnails, so the choice reads without opening the
-// garage (a colour dot can't tell two same-coloured cats apart).
+// Setup preview cards share the catalog renders and open each picker directly.
 function refreshRacerSummary() {
   const el = document.getElementById("racer-summary");
   if (!el) return;
   const cat = catSpec(garageConfig);
   const kart = kartSpec(garageConfig);
   el.textContent = `${cat.name} · ${kart.name}`;
+  document.getElementById("setup-cat-name").textContent = cat.name;
+  document.getElementById("setup-kart-name").textContent = kart.name;
+  document.getElementById("startline-edit").setAttribute("aria-label", `Change cat: ${cat.name}`);
+  document.getElementById("startline-kart").setAttribute("aria-label", `Change kart: ${kart.name}`);
   const ct = document.getElementById("racer-thumb-cat");
   if (ct)
     ct.src =

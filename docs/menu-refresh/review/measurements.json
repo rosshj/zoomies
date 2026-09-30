@@ -3,6 +3,218 @@
   "measurements": [
     {
       "device": "deck",
+      "name": "setup",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "setup",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "setup",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "setup",
+      "stage": {
+        "width": 390,
+        "height": 844,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "setup",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 235,
+          "scroll": 241
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "setup",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "narrow-portrait",
+      "name": "setup",
+      "stage": {
+        "width": 320,
+        "height": 568,
+        "rotated": false
+      },
+      "controls": 18,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 256,
+          "scroll": 413
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "versus-4p",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 24,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 592,
+          "scroll": 737
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "versus-4p",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 24,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 692,
+          "scroll": 737
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "versus-4p",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 24,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 210,
+          "scroll": 512
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "versus-4p",
+      "stage": {
+        "width": 390,
+        "height": 844,
+        "rotated": false
+      },
+      "controls": 24,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 346,
+          "scroll": 710
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "versus-4p",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 24,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 195,
+          "scroll": 512
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "versus-4p",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 24,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 512,
+          "scroll": 737
+        }
+      ]
+    },
+    {
+      "device": "deck",
       "name": "home",
       "stage": {
         "width": 1280,
@@ -1568,104 +1780,6 @@
     },
     {
       "device": "deck",
-      "name": "setup",
-      "stage": {
-        "width": 1280,
-        "height": 800,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": []
-    },
-    {
-      "device": "macbook",
-      "name": "setup",
-      "stage": {
-        "width": 1440,
-        "height": 900,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": []
-    },
-    {
-      "device": "iphone-landscape",
-      "name": "setup",
-      "stage": {
-        "width": 844,
-        "height": 390,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": []
-    },
-    {
-      "device": "iphone-portrait",
-      "name": "setup",
-      "stage": {
-        "width": 390,
-        "height": 844,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": []
-    },
-    {
-      "device": "small-phone",
-      "name": "setup",
-      "stage": {
-        "width": 667,
-        "height": 375,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 235,
-          "scroll": 243
-        }
-      ]
-    },
-    {
-      "device": "laptop-720",
-      "name": "setup",
-      "stage": {
-        "width": 1280,
-        "height": 720,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": []
-    },
-    {
-      "device": "narrow-portrait",
-      "name": "setup",
-      "stage": {
-        "width": 320,
-        "height": 568,
-        "rotated": false
-      },
-      "controls": 18,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 214,
-          "scroll": 323
-        }
-      ]
-    },
-    {
-      "device": "deck",
       "name": "mode",
       "stage": {
         "width": 1280,
@@ -2007,113 +2121,6 @@
       "controls": 30,
       "smallControls": [],
       "scroll": []
-    },
-    {
-      "device": "deck",
-      "name": "versus-4p",
-      "stage": {
-        "width": 1280,
-        "height": 800,
-        "rotated": false
-      },
-      "controls": 24,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 592,
-          "scroll": 618
-        }
-      ]
-    },
-    {
-      "device": "macbook",
-      "name": "versus-4p",
-      "stage": {
-        "width": 1440,
-        "height": 900,
-        "rotated": false
-      },
-      "controls": 24,
-      "smallControls": [],
-      "scroll": []
-    },
-    {
-      "device": "iphone-landscape",
-      "name": "versus-4p",
-      "stage": {
-        "width": 844,
-        "height": 390,
-        "rotated": false
-      },
-      "controls": 24,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 210,
-          "scroll": 506
-        }
-      ]
-    },
-    {
-      "device": "iphone-portrait",
-      "name": "versus-4p",
-      "stage": {
-        "width": 390,
-        "height": 844,
-        "rotated": false
-      },
-      "controls": 24,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 256,
-          "scroll": 618
-        }
-      ]
-    },
-    {
-      "device": "small-phone",
-      "name": "versus-4p",
-      "stage": {
-        "width": 667,
-        "height": 375,
-        "rotated": false
-      },
-      "controls": 24,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 195,
-          "scroll": 506
-        }
-      ]
-    },
-    {
-      "device": "laptop-720",
-      "name": "versus-4p",
-      "stage": {
-        "width": 1280,
-        "height": 720,
-        "rotated": false
-      },
-      "controls": 24,
-      "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 512,
-          "scroll": 618
-        }
-      ]
     },
     {
       "device": "deck",

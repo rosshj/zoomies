@@ -661,16 +661,19 @@
             <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
             <button id="setup-track" class="setup-choice"><span class="setup-icon">↝</span><span><small id="setup-track-kind">TRACK</small><strong id="setup-track-name">Classic Circuit</strong></span><b>Change ›</b></button>
           </div>
-          <div class="sticker-deep start-racer">
-            <span class="seat-thumbs">
-              <img class="seat-thumb" id="racer-thumb-cat" alt="" />
-              <img class="seat-thumb" id="racer-thumb-kart" alt="" />
-            </span>
-            <span class="start-racer-text">
-              <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
-              <span id="racer-summary">Marmalade · Ember</span>
-            </span>
-            <div class="setup-racer-actions"><button id="startline-edit" class="btn-cream small-pill" aria-label="Change cat">Cat</button><button id="startline-kart" class="btn-cream small-pill" aria-label="Change kart">Kart</button></div>
+          <div class="start-racer setup-racer-preview">
+            <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
+            <span id="racer-summary" class="racer-summary-accessible">Marmalade · Ember</span>
+            <div class="setup-racer-actions">
+              <button id="startline-edit" class="racer-preview-choice" aria-label="Change cat">
+                <img id="racer-thumb-cat" alt="" />
+                <span><small>Cat</small><strong id="setup-cat-name">Marmalade</strong><b aria-hidden="true">›</b></span>
+              </button>
+              <button id="startline-kart" class="racer-preview-choice" aria-label="Change kart">
+                <img id="racer-thumb-kart" alt="" />
+                <span><small>Kart</small><strong id="setup-kart-name">Ember</strong><b aria-hidden="true">›</b></span>
+              </button>
+            </div>
           </div>
           <!-- Versus only (revealed in split mode): how many humans share the
                screen (2 rows / quadrants), then one compact row per extra seat

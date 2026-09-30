@@ -18,6 +18,7 @@ const sizes = [
   ["laptop-720", 1280, 720],
 ];
 const measurements = [];
+const setupOnly = process.argv.includes("--setup-only");
 async function click(sel) {
   await page.locator(sel).click();
   await page.waitForTimeout(600);
@@ -62,8 +63,14 @@ async function capture(name) {
         const issues = [];
         if (name === "setup") {
           const map = document.getElementById("menu-map-btn").getBoundingClientRect();
-          if (map.width < 200 || map.height < (innerHeight > innerWidth ? 160 : 100))
+          if (map.width < 200 || map.height < (innerHeight > innerWidth ? 130 : 100))
             issues.push("Map panel is too small or hidden");
+          for (const id of ["racer-thumb-cat", "racer-thumb-kart"]) {
+            const img = document.getElementById(id);
+            const bounds = img.getBoundingClientRect();
+            if (!img.complete || !img.naturalWidth || bounds.width < 60 || bounds.height < 60)
+              issues.push("Racer preview missing or too small: " + id);
+          }
           const go = document.getElementById("go-btn").getBoundingClientRect();
           if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
         }
@@ -136,82 +143,94 @@ try {
   });
   await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1");
   await page.waitForFunction(() => window.__zoomies?.track);
-  await capture("home");
-  await click("#open-settings");
-  for (const category of ["audio", "controls", "display", "save"]) {
-    await click(`[data-category="${category}"]`);
-    await capture("settings-" + category);
+  if (setupOnly) {
+    await click("#start-btn");
+    await capture("setup");
+    await click("#setup-mode");
+    await click("#mode-split");
+    await click("#split-count-4");
+    await capture("versus-4p");
+    const previous = JSON.parse(await fs.readFile(new URL("measurements.json", out), "utf8"));
+    measurements.push(...previous.measurements.filter((m) => !["setup", "versus-4p"].includes(m.name)));
+    errors.push(...previous.errors.filter((e) => !/\/(setup|versus-4p):/.test(e)));
+  } else {
+    await capture("home");
+    await click("#open-settings");
+    for (const category of ["audio", "controls", "display", "save"]) {
+      await click(`[data-category="${category}"]`);
+      await capture("settings-" + category);
+    }
+    await click("#settings-back");
+    await click("#howto-btn");
+    await capture("help");
+    await click("#howto-back");
+    await click("#open-catalog");
+    for (const category of ["prizes", "karts", "creators", "ach"]) {
+      await click("#catalog-tab-" + category);
+      await capture("collection-" + category);
+    }
+    await click("#catalog-back");
+    await click("#open-garage");
+    await capture("garage");
+    await click("#garage-cat");
+    await capture("cats-owned");
+    await click('[data-inventory="cat"][data-filter="all"]');
+    await capture("cats-all");
+    await click("#cat-custom-open");
+    await capture("cat-studio");
+    await click("#cat-name-pick");
+    await capture("name-picker");
+    await click("#cat-name-close");
+    await click("#cat-edit-use");
+    await click("#garage-kart");
+    await capture("karts");
+    await click("#kart-custom-open");
+    await capture("kart-shop");
+    await click("#kart-edit-use");
+    await click("#garage-done");
+    await click("#start-btn");
+    await capture("setup");
+    await click("#setup-mode");
+    await capture("mode");
+    await click("#mode-cup");
+    await capture("cups");
+    await click("#flow-cup [data-back]");
+    await click("#setup-mode");
+    await click("#mode-gp");
+    await click("#setup-track");
+    await capture("tracks");
+    await click(".track-maker-card");
+    await capture("track-maker");
+    await click("#track-back");
+    await click("#flow-track [data-back]");
+    await click("#setup-mode");
+    await click("#mode-split");
+    await click("#split-count-4");
+    await capture("versus-4p");
+    await click("#setup-mode");
+    await click("#mode-gp");
+    await click("#go-btn");
+    await page.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
+    await page.keyboard.press("p");
+    await capture("pause");
+    await click("#pause-restart");
+    await capture("confirmation");
+    await click("#confirm-cancel");
+    await click("#menu-btn");
+    await capture("home-paused");
+    await click("#resume-race-btn");
+    await page.evaluate(() => window.__zoomies.debugFinish());
+    await page.locator("#results:not(.hidden)").waitFor();
+    await capture("results");
+    // The actual web shell has Get the app instead of Quit. Verify that layout,
+    // not just the simulated desktop bridge used for the Versus coverage above.
+    await page.close();
+    page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1", { timeout: 180000 });
+    await page.waitForFunction(() => window.__zoomies?.track);
+    await capture("home-web");
   }
-  await click("#settings-back");
-  await click("#howto-btn");
-  await capture("help");
-  await click("#howto-back");
-  await click("#open-catalog");
-  for (const category of ["prizes", "karts", "creators", "ach"]) {
-    await click("#catalog-tab-" + category);
-    await capture("collection-" + category);
-  }
-  await click("#catalog-back");
-  await click("#open-garage");
-  await capture("garage");
-  await click("#garage-cat");
-  await capture("cats-owned");
-  await click('[data-inventory="cat"][data-filter="all"]');
-  await capture("cats-all");
-  await click("#cat-custom-open");
-  await capture("cat-studio");
-  await click("#cat-name-pick");
-  await capture("name-picker");
-  await click("#cat-name-close");
-  await click("#cat-edit-use");
-  await click("#garage-kart");
-  await capture("karts");
-  await click("#kart-custom-open");
-  await capture("kart-shop");
-  await click("#kart-edit-use");
-  await click("#garage-done");
-  await click("#start-btn");
-  await capture("setup");
-  await click("#setup-mode");
-  await capture("mode");
-  await click("#mode-cup");
-  await capture("cups");
-  await click("#flow-cup [data-back]");
-  await click("#setup-mode");
-  await click("#mode-gp");
-  await click("#setup-track");
-  await capture("tracks");
-  await click(".track-maker-card");
-  await capture("track-maker");
-  await click("#track-back");
-  await click("#flow-track [data-back]");
-  await click("#setup-mode");
-  await click("#mode-split");
-  await click("#split-count-4");
-  await capture("versus-4p");
-  await click("#setup-mode");
-  await click("#mode-gp");
-  await click("#go-btn");
-  await page.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
-  await page.keyboard.press("p");
-  await capture("pause");
-  await click("#pause-restart");
-  await capture("confirmation");
-  await click("#confirm-cancel");
-  await click("#menu-btn");
-  await capture("home-paused");
-  await click("#resume-race-btn");
-  await page.evaluate(() => window.__zoomies.debugFinish());
-  await page.locator("#results:not(.hidden)").waitFor();
-  await capture("results");
-  // The actual web shell has Get the app instead of Quit. Verify that layout,
-  // not just the simulated desktop bridge used for the Versus coverage above.
-  await page.close();
-  page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1", { timeout: 180000 });
-  await page.waitForFunction(() => window.__zoomies?.track);
-  await capture("home-web");
   await fs.writeFile(new URL("measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
   const files = (await fs.readdir(new URL("screenshots/", out))).filter((f) => f.endsWith(".jpg"));
   const cards = files

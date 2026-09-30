@@ -69,3 +69,12 @@ Race setup gives the track map a full panel beside controls in landscape and abo
 Settings option groups use explicit grid columns. In portrait, labels sit above full-width groups so Graphics and Frame rate choices stay inside the card. Audio retains its label, toggle, and slider layout. Narrow 320px screens stack setup option labels and reduce Settings card padding while retaining 44px targets.
 
 The visual sweep now adds 320×568 setup and Display captures to the six-device gallery (170 total). Regression assertions check map visibility, the pinned Start action, and segmented controls staying within their containers and viewport.
+
+
+## Racer previews on setup
+
+The setup map yields space to two visual picker cards for the selected cat and kart. Each uses the existing catalog artwork, a compact name caption, and a direct picker action. Portrait keeps the images above the race options; short landscape switches to compact horizontal cards. Images use contain sizing to preserve the full silhouette. The map remains visible, and Start stays pinned on narrow screens.
+
+Setup audit checks now require both preview images to load and remain at least 60×60 CSS pixels, alongside map and control bounds checks. The menu interaction regression covers changing either selection and returning to setup.
+
+For setup-only visual iterations, `node tools/menu-audit.mjs --setup-only` refreshes setup and Versus captures and retains the other validated gallery measurements.
