@@ -115,22 +115,23 @@ fresh world hull each time; pool both.
 
 Gate columns: `cup` and `diff` as in `src/progress.js` today; `stat` is a career
 counter and threshold; `biomeWin` is a race win in that biome. Each new cat also
-unlocks its accessory.
+unlocks its accessory, except the seven marked (free): viking, crown, scarf, tophat,
+pirate, bandana and charm were already in the free wardrobe on main and stay free.
 
 | Id | Name | Accessory | Gate |
 | --- | --- | --- | --- |
 | cat.14 | Timber | dragon | biomeWin volcanic |
-| cat.15 | Fjord | viking | biomeWin tundra |
+| cat.15 | Fjord | viking (free) | biomeWin tundra |
 | cat.16 | Marple | detective | stat winsNight 3 |
-| cat.17 | Duchess | crown | cup zoomies, diff hard |
-| cat.18 | Russet | scarf | biomeWin autumn |
-| cat.19 | Winston | tophat | stat treatsEarned 2000 |
+| cat.17 | Duchess | crown (free) | cup zoomies, diff hard |
+| cat.18 | Russet | scarf (free) | biomeWin autumn |
+| cat.19 | Winston | tophat (free) | stat treatsEarned 2000 |
 | cat.20 | Pudding | mushroom | biomeWin forest |
 | cat.21 | Pebble | rain | biomeWin wetlands |
 | cat.22 | Crumpet | straw | biomeWin lavender |
 | cat.23 | Marshmallow | unicorn | cup meadows, diff hard |
 | cat.24 | Chai | lei | biomeWin beach |
-| cat.25 | Skipper | pirate | cup sandypaws, diff hard |
+| cat.25 | Skipper | pirate (free) | cup sandypaws, diff hard |
 | cat.26 | Opal | catEye | stat driftBoosts 100 |
 | cat.27 | Orbit | space | all four cups won (existing cup-sweep test) |
 | cat.28 | Fizz | bee | biomeWin blossom |
@@ -138,10 +139,10 @@ unlocks its accessory.
 | cat.30 | Saffron | sombrero | biomeWin desert |
 | cat.31 | Dumpling | duck | stat heartSaves 10 |
 | cat.32 | Clover | frog | biomeWin jungle |
-| cat.33 | Rumpus | bandana | stat propsKnocked 100 |
+| cat.33 | Rumpus | bandana (free) | stat propsKnocked 100 |
 | cat.34 | Yoshi | propeller | stat slipSeconds 200 |
 | cat.35 | Inky | shark | stat winsNight 10 |
-| cat.36 | Dapple | charm | biomeWin savanna |
+| cat.36 | Dapple | charm (free) | biomeWin savanna |
 | cat.37 | Quicksilver | cone | biomeWin city |
 | cat.38 | Stripes | ski | cup meowtain, diff hard |
 | cat.39 | Flurry | shells | biomeWin alpine |

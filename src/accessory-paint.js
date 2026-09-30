@@ -11,7 +11,10 @@ export function accessoryPaint() {
   const c = document.createElement("canvas");
   c.width = 512;
   c.height = 256;
-  const ctx = c.getContext("2d"),
+  // The atlas is read back once with getImageData to rewrite alpha as an ink
+  // mask; a read-frequently context keeps that on the CPU instead of a GPU
+  // readback that stalled the first painted accessory by ~1 s on slow paths.
+  const ctx = c.getContext("2d", { willReadFrequently: true }),
     base = new THREE.Color(color),
     hex = "#" + base.getHexString();
   ctx.fillStyle = "#fff";

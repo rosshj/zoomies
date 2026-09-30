@@ -155,9 +155,11 @@ const check = (name, cond) => {
     cupExclusives.every((c) => cupById(c.cup)),
   );
   check(
-    "26 new accessories gated; original wardrobe unchanged",
-    CATALOG.filter((c) => c.cat).length === 26 &&
-      CAT_PRESETS.slice(0, 14).every((c) => !catalogEntry(`acc.${c.accessory}`)),
+    "19 new accessories gated; original wardrobe unchanged",
+    CATALOG.filter((c) => c.cat).length === 19 &&
+      CAT_PRESETS.slice(0, 14).every((c) => !catalogEntry(`acc.${c.accessory}`)) &&
+      // These seven were already free on main; their cats are earned, the hats are not gated.
+      ["viking", "crown", "scarf", "tophat", "pirate", "bandana", "charm"].every((a) => !catalogEntry(`acc.${a}`)),
   );
   check(
     "difficulty prizes exist for medium and hard",
@@ -217,7 +219,13 @@ for (const line of readFileSync(new URL("../docs/art-refresh/HANDOFF.md", import
     if (gate.includes("hard")) expected.diff = "hard";
   }
   check(`${name} matches approved table`, JSON.stringify(catalogEntry(id)) === JSON.stringify(expected));
-  if (accessory) check(`${accessory} follows ${name}`, catalogEntry(`acc.${accessory}`)?.cat === id);
+  if (accessory.endsWith("(free)")) {
+    const acc = accessory.split(" ")[0];
+    check(
+      `${acc} stays free (pre-dates the roster)`,
+      !catalogEntry(`acc.${acc}`) && isUnlocked(defaultProfile(), `acc.${acc}`),
+    );
+  } else if (accessory) check(`${accessory} follows ${name}`, catalogEntry(`acc.${accessory}`)?.cat === id);
 }
 
 // --- Payout ---
