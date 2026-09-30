@@ -16,6 +16,7 @@
 export class MenuPad {
   constructor() {
     this._prev = []; // last frame's button states (edge detection)
+    this._memory = new WeakMap(); // restore the control that opened a picker
     this._focus = null; // currently ringed element
     this._scopeEl = null; // container the focus lives in
     this._repeatAt = 0; // performance.now() gate for held-direction repeat
@@ -214,7 +215,7 @@ export class MenuPad {
   }
 
   _valid(el) {
-    if (!el.isConnected || el.disabled || el.classList.contains("hidden")) return false;
+    if (!el.isConnected || el.disabled || el.classList.contains("hidden") || el.closest("[inert]")) return false;
     if (this._scopeEl && !this._scopeEl.contains(el)) {
       const chrome = this._chrome(this._scopeEl);
       if (!chrome || !chrome.contains(el)) return false;
@@ -228,8 +229,8 @@ export class MenuPad {
   _candidates(scope) {
     const out = [];
     const collect = (root) => {
-      for (const el of root.querySelectorAll("button, input[type=range]")) {
-        if (el.disabled || el.classList.contains("hidden")) continue;
+      for (const el of root.querySelectorAll("button, input, textarea")) {
+        if (el.disabled || el.classList.contains("hidden") || el.closest("[inert]")) continue;
         const r = el.getBoundingClientRect();
         if (r.width < 4 || r.height < 4) continue; // display:none/collapsed
         out.push({ el, r });
@@ -256,8 +257,13 @@ export class MenuPad {
       el.hasAttribute("data-back") ||
       /(^|-)(back|close)($|-)/.test(el.id) ||
       el.closest("#menu-chrome");
+    const remembered = this._memory.get(scope);
     const pick =
+      cands.find((c) => scope.id === "menu-confirm" && c.el.id === "confirm-cancel") ||
+      cands.find((c) => c.el.id === "resume-race-btn" && c.el.classList.contains("btn-gold")) ||
+      cands.find((c) => c.el === remembered) ||
       cands.find((c) => c.el.classList.contains("btn-gold")) ||
+      cands.find((c) => c.el.classList.contains("is-current")) ||
       cands.find((c) => !isChrome(c.el) && c.el.tagName === "BUTTON") ||
       cands.find((c) => !isChrome(c.el)) ||
       cands[0];
@@ -291,15 +297,15 @@ export class MenuPad {
         const dx = x - cx,
           dy = y - cy;
         // Must lie in the pressed direction; score = distance along it plus a
-        // doubled off-axis penalty, so "down" prefers the button below over a
-        // nearer one diagonally sideways.
+        // doubled off-axis penalty. Measure the cross-axis to the candidate
+        // edge, so wide text fields are reachable from narrow controls above.
         let fwd, side;
         if (dir === "up") {
           fwd = -dy;
-          side = Math.abs(dx);
+          side = el.matches("textarea,input:not([type=range])") ? Math.max(0, r.left - cx, cx - r.right) : Math.abs(dx);
         } else if (dir === "down") {
           fwd = dy;
-          side = Math.abs(dx);
+          side = el.matches("textarea,input:not([type=range])") ? Math.max(0, r.left - cx, cx - r.right) : Math.abs(dx);
         } else if (dir === "left") {
           fwd = -dx;
           side = Math.abs(dy);
@@ -331,10 +337,15 @@ export class MenuPad {
 
   _setFocus(el) {
     if (el === this._focus) return;
+    if (this._focus) {
+      const owner = this._focus.closest(".flow-screen,.overlay");
+      if (owner) this._memory.set(owner, this._focus);
+    }
     this._focus?.classList.remove("pad-focus");
     this._focus = el;
     if (el) {
       el.classList.add("pad-focus");
+      el.focus({ preventScroll: true });
       this._scrollTo(el);
     } else {
       this._scopeEl = null;
@@ -369,6 +380,12 @@ export class MenuPad {
 
   _activate(el) {
     if (el.type === "range") return; // sliders are driven by left/right, A is a no-op
+    if (el.matches("input,textarea")) {
+      if (!el.hasAttribute("data-no-virtual"))
+        window.dispatchEvent(new CustomEvent("zoomies:text-entry", { detail: { input: el } }));
+      else el.focus({ preventScroll: true });
+      return;
+    }
     el.click();
     // The click usually changes the screen; the ring re-seats on next input.
     if (!this._valid(el)) this._setFocus(null);

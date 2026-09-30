@@ -1,10 +1,12 @@
 // Visual audit against a local server: python3 -m http.server 8080
 import { launchArtBrowser } from "./art-browser.mjs";
 import fs from "node:fs/promises";
-const out = new URL("../docs/menu-refresh/", import.meta.url);
+const out = new URL("../docs/menu-refresh/review/", import.meta.url);
+await fs.mkdir(new URL("screenshots/", out), { recursive: true });
 const browser = await launchArtBrowser();
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.setDefaultTimeout(60000);
+page.setDefaultNavigationTimeout(180000);
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 const sizes = [
@@ -23,7 +25,7 @@ async function click(sel) {
 async function capture(name) {
   for (const [device, width, height] of sizes) {
     await page.setViewportSize({ width, height });
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(550);
     await page.screenshot({ path: new URL(`screenshots/${device}-${name}.jpg`, out).pathname, quality: 75 });
     measurements.push(
       await page.evaluate(
@@ -47,7 +49,7 @@ async function capture(name) {
             smallControls: controls
               .filter((e) => e.offsetWidth < 44 || e.offsetHeight < 44)
               .map((e) => ({ id: e.id, text: e.textContent.trim().slice(0, 45), w: e.offsetWidth, h: e.offsetHeight })),
-            scroll: [...root.querySelectorAll("*")]
+            scroll: [root, ...root.querySelectorAll("*")]
               .filter((e) => e.scrollHeight > e.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(e).overflowY))
               .map((e) => ({ id: e.id, class: e.className, client: e.clientHeight, scroll: e.scrollHeight })),
           };
@@ -60,82 +62,96 @@ async function capture(name) {
   console.log("captured", name);
 }
 try {
-  if (process.env.DESKTOP)
-    await page.addInitScript(() => {
-      window.zoomiesDesktop = { quit() {} };
-      localStorage.setItem(
-        "zoomies-profile-v1",
-        JSON.stringify({ unlocked: ["custom.cat", "custom.kart"], treats: 1000 }),
-      );
-    });
+  await page.addInitScript(() => {
+    window.zoomiesDesktop = { quit() {} };
+    localStorage.setItem(
+      "zoomies-profile-v1",
+      JSON.stringify({ unlocked: ["custom.cat", "custom.kart"], treats: 1000 }),
+    );
+  });
   await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1");
   await page.waitForFunction(() => window.__zoomies?.track);
-  await page.waitForTimeout(2000);
-  await capture(process.env.DESKTOP ? "desktop-title" : "title");
-  if (process.env.DESKTOP) {
-    await click("#start-btn");
-    await capture("desktop-mode");
-    await click("#mode-split");
-    await click("#track-grid .is-current");
-    await page.getByText("Custom Cat", { exact: true }).click();
-    await capture("cat-studio");
-    await click("#cat-name-pick");
-    await capture("name-picker");
-    await click("#cat-name-close");
-    await click("#cat-edit-use");
-    await page.getByText("Custom Kart", { exact: true }).click();
-    await capture("kart-shop");
-    await click("#kart-edit-use");
-    await click("#split-count-4");
-    await capture("versus-4p");
-    await click("#p2-edit");
-    await capture("seat-picker");
-    await page.keyboard.press("Escape");
-    await fs.writeFile(new URL("desktop-measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
-  } else {
-    for (const [button, name, close] of [
-      ["#open-settings", "settings", "#settings-back"],
-      ["#howto-btn", "help", "#howto-back"],
-      ["#open-catalog", "catalog", "#catalog-back"],
-    ]) {
-      await click(button);
-      await capture(name);
-      await click(close);
-    }
-    await click("#start-btn");
-    await capture("mode");
-    await click("#mode-cup");
-    await capture("cups");
-    await click("#flow-cup [data-back]");
-    await click("#mode-gp");
-    await capture("tracks");
-    await click(".track-maker-card");
-    await capture("track-maker");
-    await click("#track-back");
-    await click("#track-grid .is-current");
-    await capture("cats");
-    await click("#cat-grid button:first-child");
-    await capture("karts");
-    await click("#kart-grid button:first-child");
-    await capture("startline");
-    await click("#go-btn");
-    await page.waitForFunction(() => window.__zoomies.state() === 2, {}, { timeout: 180000 });
-    await page.keyboard.press("p");
-    await capture("pause");
-    await click("#open-settings-pause");
-    await capture("pause-settings");
-    await click("#settings-back");
-    await click("#menu-btn");
-    await capture("parked-title");
-    await click("#resume-race-btn");
-    await click("#resume-btn");
-    await page.evaluate(() => window.__zoomies.debugFinish());
-    await page.waitForSelector("#results:not(.hidden)", { timeout: 60000 });
-    await capture("results");
-    await click("#results-menu-btn");
-    if (await page.locator("#claim-screen").isVisible()) await capture("claims");
-    await fs.writeFile(new URL("measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
+  await capture("home");
+  await click("#open-settings");
+  for (const category of ["audio", "controls", "display", "save"]) {
+    await click(`[data-category="${category}"]`);
+    await capture("settings-" + category);
   }
+  await click("#settings-back");
+  await click("#howto-btn");
+  await capture("help");
+  await click("#howto-back");
+  await click("#open-catalog");
+  for (const category of ["prizes", "karts", "creators", "ach"]) {
+    await click("#catalog-tab-" + category);
+    await capture("collection-" + category);
+  }
+  await click("#catalog-back");
+  await click("#open-garage");
+  await capture("garage");
+  await click("#garage-cat");
+  await capture("cats-owned");
+  await click('[data-inventory="cat"][data-filter="all"]');
+  await capture("cats-all");
+  await click("#cat-custom-open");
+  await capture("cat-studio");
+  await click("#cat-name-pick");
+  await capture("name-picker");
+  await click("#cat-name-close");
+  await click("#cat-edit-use");
+  await click("#garage-kart");
+  await capture("karts");
+  await click("#kart-custom-open");
+  await capture("kart-shop");
+  await click("#kart-edit-use");
+  await click("#garage-done");
+  await click("#start-btn");
+  await capture("setup");
+  await click("#setup-mode");
+  await capture("mode");
+  await click("#mode-cup");
+  await capture("cups");
+  await click("#flow-cup [data-back]");
+  await click("#setup-mode");
+  await click("#mode-gp");
+  await click("#setup-track");
+  await capture("tracks");
+  await click(".track-maker-card");
+  await capture("track-maker");
+  await click("#track-back");
+  await click("#flow-track [data-back]");
+  await click("#setup-mode");
+  await click("#mode-split");
+  await click("#split-count-4");
+  await capture("versus-4p");
+  await click("#setup-mode");
+  await click("#mode-gp");
+  await click("#go-btn");
+  await page.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
+  await page.keyboard.press("p");
+  await capture("pause");
+  await click("#pause-restart");
+  await capture("confirmation");
+  await click("#confirm-cancel");
+  await click("#menu-btn");
+  await capture("home-paused");
+  await click("#resume-race-btn");
+  await page.evaluate(() => window.__zoomies.debugFinish());
+  await page.locator("#results:not(.hidden)").waitFor();
+  await capture("results");
+  await fs.writeFile(new URL("measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
+  const files = (await fs.readdir(new URL("screenshots/", out))).filter((f) => f.endsWith(".jpg"));
+  const cards = files
+    .map(
+      (f) =>
+        `<figure><a href="screenshots/${f}"><img loading="lazy" src="screenshots/${f}" alt="${f}"></a><figcaption>${f.slice(0, -4)}</figcaption></figure>`,
+    )
+    .join("");
+  await fs.writeFile(
+    new URL("gallery.html", out),
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Menu refresh review</title><style>body{background:#181321;color:#fff6e5;font:16px system-ui;margin:28px}h1{color:#ffc24b}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}figure{margin:0;background:#2a2039;padding:12px;border-radius:16px}img{width:100%;height:270px;object-fit:contain}figcaption{padding:10px;font-size:12px}input{padding:12px;margin-bottom:20px;width:280px}</style><h1>Menu refresh · Review</h1><p>Chromium viewport captures with a simulated desktop bridge and unlocked creators. Results use synthetic completion. Physical-device testing remains separate.</p><input aria-label="Filter screenshots" placeholder="Filter: portrait, setup, pause…" oninput="document.querySelectorAll('figure').forEach(f=>f.hidden=!f.textContent.includes(this.value))"><div class="grid">${cards}</div></html>`,
+  );
+  if (errors.length) throw Error(errors.join("\n"));
 } finally {
   await browser.close();
 }

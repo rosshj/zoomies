@@ -115,6 +115,7 @@ await page.click("body", { position: { x: 5, y: 5 } }).catch(() => {}); // unloc
 // TT=1 starts a time trial (exercises the lap-timer / PB-delta HUD path) instead
 // of a normal race — via the seeded "tt" game mode, so the same START button works.
 await page.click("#start-btn", { force: true });
+await page.click("#go-btn");
 
 // Wait for the on-screen readout to populate with a real FPS/draw-call number.
 // SwiftShader software-compiles every node material on the first frames, so the

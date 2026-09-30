@@ -63,11 +63,17 @@ await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { t
 await page.waitForTimeout(8000); // let all module + asset fetches populate the cache
 
 const cacheInfo = await page.evaluate(async () => {
-  const c = await caches.open("zoomies-v2");
+  const names = (await caches.keys()).filter((name) => name.startsWith("zoomies-"));
+  if (names.length !== 1) return { count: 0, shellRedirected: null, menusCached: false };
+  const c = await caches.open(names[0]);
   const keys = await c.keys();
   // No cached navigation/shell response may be a redirect (Safari rejects those).
   const shell = (await c.match("./index.html")) || (await c.match("./"));
-  return { count: keys.length, shellRedirected: shell ? shell.redirected : null };
+  return {
+    count: keys.length,
+    shellRedirected: shell ? shell.redirected : null,
+    menusCached: !!(await c.match("./menu-refresh.css")) && !!(await c.match("./src/menu-ui.js")),
+  };
 });
 
 // 3) Go OFFLINE and reload from a cold page — everything must come from cache.
@@ -95,6 +101,9 @@ try {
     null,
     { timeout: 20000 },
   );
+  await page2.waitForFunction(
+    () => typeof window.__zoomies?.state === "function" && document.querySelector(".settings-nav"),
+  );
   booted = true;
 } catch {
   /* leave booted=false */
@@ -102,16 +111,24 @@ try {
 const worldLog = logs.some((l) => /world seed/i.test(l));
 const loadErrors = errors.filter((e) => /Failed to load|Importing|module|MIME|404|net::/i.test(e));
 
+const pass =
+  !gotoErr &&
+  booted &&
+  worldLog &&
+  loadErrors.length === 0 &&
+  cacheInfo.shellRedirected === false &&
+  cacheInfo.menusCached;
 console.log(
   JSON.stringify(
     {
       cachedCount: cacheInfo.count,
+      menusCached: cacheInfo.menusCached,
       shellRedirected: cacheInfo.shellRedirected, // must be false — Safari rejects redirected nav responses
       offlineGoto: gotoErr ? "FAILED: " + gotoErr : "ok",
       startBtnVisible: booted,
       worldBuilt: worldLog,
       loadErrors,
-      pass: !gotoErr && booted && worldLog && loadErrors.length === 0 && cacheInfo.shellRedirected === false,
+      pass,
     },
     null,
     2,
@@ -120,4 +137,4 @@ console.log(
 
 await browser.close();
 server.close();
-process.exit(0);
+process.exit(pass ? 0 : 1);

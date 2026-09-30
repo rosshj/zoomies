@@ -23,6 +23,7 @@
   <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
 
   <link rel="stylesheet" href="./styles.css" />
+  <link rel="stylesheet" href="./menu-refresh.css" />
   <!-- Import map: every dependency is vendored LOCALLY — three under
        vendor/three/ (removes the unpkg dependency AND the external
        greggman.github.io debug import the non-min build pulls in).
@@ -275,18 +276,20 @@
        frozen race shows through the glassy card. -->
   <div id="pause-overlay" class="overlay hidden">
     <div class="menu-card pause-card">
-      <h1>⏸ Paused</h1>
-      <button id="resume-btn">▶ RESUME</button>
+      <div class="flow-eyebrow">Take a breather</div><h1>Paused</h1><p id="pause-context" class="pause-context"></p>
+      <button id="resume-btn" class="btn-gold">Resume race</button>
+      <button id="pause-restart" class="btn-cream">Restart race</button>
       <div class="pause-row">
         <button id="open-settings-pause" class="secondary small">⚙ Settings</button>
         <!-- Touch only: the tilt-steering readout under the minimap. Hidden in
              the desktop shell (there's no tilt to read). -->
-        <button id="indicator-btn" class="secondary small">Tilt bar: Off</button>
+        <button id="pause-controls" class="secondary small">Controls</button>
       </div>
       <!-- Dev/inspection tool, revealed by the Advanced settings toggle: fly the
            camera freely around the frozen race world. -->
       <button id="trackview-btn" class="secondary small hidden">🎥 TRACK VIEWER</button>
-      <button id="menu-btn" class="secondary pause-exit">🏠 MAIN MENU</button>
+      <button id="menu-btn" class="secondary pause-exit">Home</button>
+      <p id="pause-home-note" class="pause-home-note">Your race stays paused.</p>
       <!-- Desktop (Electron) only — revealed by JS when the shell's quit
            bridge exists. A windowed web game can just close the tab; a
            fullscreen Steam build needs an exit that isn't Alt+F4. -->
@@ -295,10 +298,8 @@
   </div>
 
   <!-- ===== Menu flow ===== -->
-  <!-- One straight road to the grid: Title → Mode → (Track | Cup | Friends) →
-       Racer → Start line → GO. One question per screen, Back always top-left,
-       screens slide horizontally (forward = in from the right). The live 3D
-       world (menu cinematic / racer showroom) renders behind everything. -->
+  <!-- Home → Race Setup → GO. Focused pickers return to their caller.
+       Garage keeps independent cat/kart changes together with a live preview. -->
   <div id="menu" data-step="title">
 
     <!-- Title: the hero. One primary action; extras live off the race path. -->
@@ -323,10 +324,12 @@
              mid-race); jumps back into it instead of losing your progress. -->
         <button id="resume-race-btn" class="btn-cream title-resume hidden">▶ Resume race</button>
         <!-- The one way forward. A mid-cup or daily boot relabels it and jumps
-             straight to the start line; otherwise it opens the mode picker. -->
-        <button id="start-btn" class="btn-gold title-play">▶&nbsp;&nbsp;Let's Go!</button>
+             straight to race setup. -->
+        <button id="start-btn" class="btn-gold title-play">▶&nbsp;&nbsp;Race</button>
+        <p class="title-description">Little paws. Big races.</p>
+        <button id="open-garage" class="btn-cream title-garage">Garage <span>Find your racing style</span></button>
         <div class="title-extras">
-          <button id="open-catalog" class="btn-cream extra-btn">📖 Cat&#8209;alog<span id="catalog-tile-alert" class="tile-alert hidden">!</span></button>
+          <button id="open-catalog" class="btn-cream extra-btn">Collection<span id="catalog-tile-alert" class="tile-alert hidden">!</span></button>
           <button id="howto-btn" class="btn-cream extra-btn">❓ How to Play</button>
           <!-- Shown only when not already installed (JS); does the native install
                prompt where supported, or opens the iOS instructions overlay.
@@ -353,7 +356,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 1 of 5</div>
+          <div class="flow-eyebrow">Your next race</div>
           <h2 class="flow-h">How do you want to race?</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -398,7 +401,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 2 of 5</div>
+          <div class="flow-eyebrow">Race setup</div>
           <h2 class="flow-h">Pick a track</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -413,7 +416,7 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 2 of 5</div>
+          <div class="flow-eyebrow">Race setup</div>
           <h2 class="flow-h">Pick a cup</h2>
         </div>
         <div class="flow-head-right"></div>
@@ -427,15 +430,40 @@
          half; the controls dock right. (Was the garage overlay.) -->
     <!-- Pick your cat: a portrait grid (real catalog renders). Locked cats buy
          in place; the Custom Cat card drills into the studio. -->
+    <section id="flow-garage" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text"><div class="flow-eyebrow" id="garage-eyebrow">Make it yours</div><h2 class="flow-h">Garage</h2></div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body racer-body garage-body">
+        <div class="racer-showroom" aria-hidden="true"></div>
+        <div class="garage-side">
+          <div class="garage-intro"><h3>Your kind of fast.</h3><p>Pick a companion. Find their ride.</p></div>
+          <button id="garage-cat" class="garage-choice btn-cream"><img id="garage-cat-thumb" alt=""><span><small>CAT</small><strong id="garage-cat-name"></strong></span><b>›</b></button>
+          <button id="garage-kart" class="garage-choice btn-cream"><img id="garage-kart-thumb" alt=""><span><small>KART</small><strong id="garage-kart-name"></strong></span><b>›</b></button>
+          <p class="garage-save-note">Your choices save automatically.</p>
+          <button id="garage-done" class="btn-gold">Done</button>
+        </div>
+      </div>
+    </section>
+
     <section id="flow-cat" class="flow-screen">
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow" id="cat-eyebrow">Step 3 of 5</div>
+          <div class="flow-eyebrow" id="cat-eyebrow">Garage</div>
           <h2 class="flow-h">Pick your cat</h2>
         </div>
         <div class="flow-head-right"></div>
       </header>
+      <div class="picker-toolbar">
+        <div class="seg-toggle" aria-label="Show cats">
+          <button class="seg-btn is-active" data-inventory="cat" data-filter="owned" aria-pressed="true">Owned</button>
+          <button class="seg-btn" data-inventory="cat" data-filter="all" aria-pressed="false">All</button>
+        </div>
+        <button id="cat-custom-open" class="btn-cream small-pill">✦ Create your own</button>
+      </div>
       <div class="flow-body">
         <div id="cat-grid" class="racer-grid"></div>
       </div>
@@ -446,11 +474,18 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow" id="kart-eyebrow">Step 4 of 5</div>
+          <div class="flow-eyebrow" id="kart-eyebrow">Garage</div>
           <h2 class="flow-h">Pick your kart</h2>
         </div>
         <div class="flow-head-right"></div>
       </header>
+      <div class="picker-toolbar">
+        <div class="seg-toggle" aria-label="Show karts">
+          <button class="seg-btn is-active" data-inventory="kart" data-filter="owned" aria-pressed="true">Owned</button>
+          <button class="seg-btn" data-inventory="kart" data-filter="all" aria-pressed="false">All</button>
+        </div>
+        <button id="kart-custom-open" class="btn-cream small-pill">✦ Create your own</button>
+      </div>
       <div class="flow-body">
         <div id="kart-grid" class="racer-grid"></div>
       </div>
@@ -604,8 +639,8 @@
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
         <div class="flow-head-text">
-          <div class="flow-eyebrow">Step 5 of 5 · Ready to race</div>
-          <h2 class="flow-h">Start line</h2>
+          <div class="flow-eyebrow">Ready when you are</div>
+          <h2 class="flow-h">Race setup</h2>
         </div>
         <div class="flow-head-right"></div>
       </header>
@@ -613,16 +648,20 @@
         <!-- The hero is the 3D starting grid rendered behind the menu (your kart
              in pole + the actual rivals, framed by the gantry) — so the map
              demotes to a small corner chip and the panel docks right. -->
-        <button id="menu-map-btn" class="map-chip map-frame-btn" title="Edit track">
+        <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
           <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
           <span id="menu-map-label" class="map-label">Classic circuit</span>
-          <span class="map-edit-hint">Edit ›</span>
+          <span class="map-edit-hint">Choose track ›</span>
         </button>
         <div class="start-side">
           <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
                720p window); GO itself stays pinned below the scroll region so
                the primary action can never be pushed off-screen. -->
           <div class="start-scroll">
+          <div class="setup-pickers">
+            <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
+            <button id="setup-track" class="setup-choice"><span class="setup-icon">↝</span><span><small id="setup-track-kind">TRACK</small><strong id="setup-track-name">Classic Circuit</strong></span><b>Change ›</b></button>
+          </div>
           <div class="sticker-deep start-racer">
             <span class="seat-thumbs">
               <img class="seat-thumb" id="racer-thumb-cat" alt="" />
@@ -632,7 +671,7 @@
               <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
               <span id="racer-summary">Marmalade · Ember</span>
             </span>
-            <button id="startline-edit" class="btn-cream small-pill" aria-label="Edit your racer">Edit</button>
+            <div class="setup-racer-actions"><button id="startline-edit" class="btn-cream small-pill" aria-label="Change cat">Cat</button><button id="startline-kart" class="btn-cream small-pill" aria-label="Change kart">Kart</button></div>
           </div>
           <!-- Versus only (revealed in split mode): how many humans share the
                screen (2 rows / quadrants), then one compact row per extra seat
@@ -732,9 +771,7 @@
     </header>
     <div class="flow-body">
     <div class="sheet-inner install-main">
-      <p id="install-gate-note" class="install-gate-note hidden">
-        Zoomies&nbsp;GP runs as an app — add it to your Home Screen to play.
-      </p>
+
       <!-- Native install (Chromium): shown when the browser offers it. -->
       <button id="install-help-go" class="hidden">📲 Install</button>
       <ol class="install-steps">
@@ -811,28 +848,18 @@
        gold), floating over the victory-lap camera + fireworks. -->
   <div id="results" class="overlay hidden">
     <div class="menu-card results-main">
-      <h1 id="results-title">🏁 Finish!</h1>
-      <ol id="results-list"></ol>
+      <div class="flow-eyebrow">Across the finish line</div><h1 id="results-title">Finish!</h1>
+      <div class="results-scroll"><ol id="results-list"></ol>
       <!-- Versus: no economy, said plainly (the earnings ledger stays hidden). -->
       <p id="results-note" class="results-note hidden"></p>
       <!-- Treats earned + achievement banners + cup standings (progression). -->
       <div id="results-earnings" class="hidden"></div>
-      <button id="results-next-btn" class="hidden">▶ Next Race</button>
-      <button id="restart-btn">🔁 RACE AGAIN</button>
-      <button id="results-menu-btn" class="secondary small">🏠 Main Menu</button>
-    </div>
-  </div>
-
-  <!-- ===== Badge claim interstitial ===== -->
-  <!-- Shown between the results screen and the main menu whenever badges are
-       waiting: every badge must be tapped (sparkles!) before Continue appears.
-       It's the reward moment, not a chore — big cards, big pops. -->
-  <div id="claim-screen" class="overlay hidden">
-    <div class="menu-card claim-main">
-      <h1>🏅 New badges!</h1>
-      <p class="claim-sub" id="claim-sub">Tap each badge to collect its treats 🐟</p>
-      <div id="claim-list"></div>
-      <button id="claim-continue" class="hidden">🏠 Continue</button>
+      </div>
+      <div class="results-actions">
+        <button id="results-next-btn" class="btn-gold hidden">Next race</button>
+        <button id="restart-btn" class="btn-gold">Race again</button>
+        <div class="results-secondary"><button id="results-setup-btn" class="btn-cream">Race setup</button><button id="results-menu-btn" class="btn-cream">Home</button></div>
+      </div>
     </div>
   </div>
 
@@ -955,7 +982,7 @@
       </div>
       <div class="flow-head-text">
         <div class="flow-eyebrow">Prizes · badges · trophies</div>
-        <h2 class="flow-h">📖 Cat-alog</h2>
+        <h2 class="flow-h">Collection</h2>
       </div>
       <div class="flow-head-right">
         <button id="catalog-back" class="flow-back flow-close" aria-label="Close">✕</button>
@@ -964,8 +991,10 @@
     <div class="flow-body">
     <div class="sheet-inner catalog-main">
       <div class="seg-toggle catalog-tabs">
-        <button id="catalog-tab-prizes" class="seg-btn is-active">🎁 Prizes</button>
-        <button id="catalog-tab-ach" class="seg-btn">🏅 Badges</button>
+        <button id="catalog-tab-prizes" class="seg-btn is-active">Cats</button>
+        <button id="catalog-tab-karts" class="seg-btn">Karts</button>
+        <button id="catalog-tab-creators" class="seg-btn">Creators</button>
+        <button id="catalog-tab-ach" class="seg-btn">Awards</button>
       </div>
       <!-- Prizes: EVERYTHING you can win — cats, karts, creators — with how to
            get each one. The main page (kids love knowing what they can win). -->
@@ -1022,7 +1051,7 @@
               <button id="set-quality-high" class="seg-btn">High</button>
             </div>
           </div>
-          <p class="setting-note" id="quality-note"><b>Low</b> — older phones (simplest effects, bare verges). <b>Balanced</b> — most phones: the full living world (grass, motes) without the priciest effects. <b>Medium</b> — newer phones (full effects, 60fps, stays cool). <b>High</b> — big GPUs: real-time shadows, longer draw distance and a denser, livelier world, still 60fps. (Extra density lands on the next launch.)</p>
+          <p class="setting-note" id="quality-note"><b>Low</b> saves power. <b>Balanced</b> is recommended for most phones. <b>Medium</b> adds richer effects. <b>High</b> adds the most detail and uses more power. Some detail changes apply on the next launch.</p>
           <div class="setting-row" id="fps-cap-row">
             <span class="setting-label">Frame rate</span>
             <div id="set-fps-cap-seg" class="seg-toggle">
@@ -1033,17 +1062,17 @@
               <button class="seg-btn" data-cap="30">30</button>
             </div>
           </div>
-          <p class="setting-note" id="fps-cap-note"><b>Auto</b> follows the display (60 on 100Hz+ screens). A lower cap runs cooler and longer on battery — the game picks the nearest even divisor of your screen's refresh so pacing stays smooth.</p>
+          <p class="setting-note" id="fps-cap-note"><b>Auto</b> matches your display. Lower limits save battery. The game uses a compatible frame rate for smooth motion.</p>
           <div class="setting-row" id="saver-row">
             <span class="setting-label">Battery saver</span>
             <button id="set-saver-toggle" class="secondary small toggle off">Off</button>
           </div>
-          <p class="setting-note" id="saver-note">Caps the frame rate (45 on Steam Deck, 30 elsewhere, unless you set one above), renders menus at 20fps, lowers the resolution ceiling, freezes the sun shadow map, skips the sun rays and ambient motes and pauses when the window loses focus. On by default on Steam Deck.</p>
+          <p class="setting-note" id="saver-note">Runs cooler and uses less battery by reducing frame rate and visual effects. Enabled by default on Steam Deck.</p>
           <div class="setting-row" id="splitfx-row">
             <span class="setting-label">Versus effects (2P only)</span>
             <button id="set-splitfx-toggle" class="secondary small toggle off">Off</button>
           </div>
-          <p class="setting-note" id="splitfx-note">Full glow, sun rays &amp; colour grade in 2-player split screen (3–4 players always run lean). Heavier: both halves run the whole effect stack — watch the FPS counter and see if your machine holds up.</p>
+          <p class="setting-note" id="splitfx-note">Richer effects in two-player races. Turn off for smoother play on slower devices. Three- and four-player races always use simpler effects.</p>
           <!-- Web/mobile only: the desktop shell pins WebGL2, so there's nothing
                to switch (JS hides the row there). -->
           <div class="setting-row" id="compat-row">
@@ -1054,14 +1083,15 @@
         </section>
         <section class="settings-card">
           <h2 class="settings-section">🎮 Controls</h2>
+          <div class="setting-row" id="tilt-indicator-row"><span class="setting-label">Steering indicator</span><button id="indicator-btn" class="secondary small">Off</button></div>
           <div class="setting-row">
             <span class="setting-label">Controller rumble</span>
             <button id="set-rumble-toggle" class="secondary small toggle">On</button>
           </div>
           <!-- The full button maps hide behind a disclosure: four dense
                paragraphs made the sheet a wall of text for everyone. -->
-          <button id="controls-toggle" class="adv-toggle" aria-expanded="false">Show controls ▸</button>
-          <div id="controls-notes" class="hidden">
+          <button id="controls-toggle" class="adv-toggle" aria-expanded="true">Hide controls ▾</button>
+          <div id="controls-notes">
             <p class="setting-note"><b>Controller</b> — stick/d-pad steer (and browse the menus) · RT gas · LT brake · A hop &amp; drift · X shoot (hold to charge) · B boost · Y milk · LB/RB shield · Start pause.</p>
             <p class="setting-note"><b>Keyboard</b> — A/D or ◀▶ steer · W/S or ▲▼ gas/brake · Space hop &amp; drift · F shoot · B boost · M milk · Shift shield · P or Esc pause.</p>
             <p class="setting-note" id="touch-controls-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks.</p>
@@ -1115,6 +1145,13 @@
     </div>
   </div>
 
+  <div id="menu-confirm" class="overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="menu-card confirm-card">
+      <h1 id="confirm-title"></h1><p id="confirm-message"></p>
+      <button id="confirm-cancel" class="btn-gold">Keep racing</button>
+      <button id="confirm-accept" class="btn-cream">Continue</button>
+    </div>
+  </div>
   </div><!-- /#stage -->
 
   <!-- Register the offline service worker (skipped with ?nosw=1 for tests). It

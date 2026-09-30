@@ -42,6 +42,7 @@ const INCLUDE = [
   "viewer.html", // dev asset viewer (/viewer.html) — shares src/ + vendor/ below
   "download", // static /download/ page (desktop builds live on the zoomies-releases repo)
   "styles.css",
+  "menu-refresh.css",
   "sw.js",
   "manifest.json",
   "apple-touch-icon.png",

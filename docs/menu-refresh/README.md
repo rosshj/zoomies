@@ -1,5 +1,7 @@
 # Menu refresh audit
 
+This report records the original baseline. The redesign and its verification are documented in [Implementation](implementation.md); browse the [refreshed menus](review/gallery.html) alongside the [baseline gallery](gallery.html).
+
 Baseline: `c06ce70` (merged art refresh), branch `menu-refresh`. Audit performed September 29, 2026. No gameplay or menu implementation changes in this pass.
 
 ## Recommendation
@@ -25,7 +27,7 @@ Captured CSS viewports:
 
 Browse the [screenshot gallery](gallery.html). The 138 screenshots and measured element sizes are in this directory. The JSON records scrollable descendants, not the root overlay itself; an empty scroll list does not prove that results fit without scrolling. Browser resizing does not reproduce iOS browser bars, safe-area values, software keyboard, touch scrolling, Steam overlay, real gamepad hardware, or Electron behavior. These require device follow-up. The source review also covers daily and cup transitions, installation help, purchases, backup/restore, advanced settings, and Track Viewer; these are not all end-to-end device-tested. Native portrait menus are a design recommendation, not current behavior.
 
-Reproduce with `python3 -m http.server 8080`, then `node tools/menu-audit.mjs`; use `DESKTOP=1 node tools/menu-audit.mjs` for the simulated desktop/editor pass. This writes screenshots and JSON measurements using the repository's existing browser launcher. Each run uses an isolated browser profile.
+The baseline capture tool is preserved in commit `b1176e1`. The current `tools/menu-audit.mjs` captures the redesigned menus into `review/` and leaves this baseline unchanged. Run a local server on port 8080, then `node tools/menu-audit.mjs`. Each run uses an isolated browser profile.
 
 ## Current information architecture
 
