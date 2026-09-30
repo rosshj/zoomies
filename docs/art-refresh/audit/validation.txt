@@ -1,0 +1,129 @@
+art:
+
+> zoomies@0.1.0 check:art
+> node tools/art-check.mjs
+
+{
+  "karts": [
+    {
+      "style": 0,
+      "triangles": 10804,
+      "batches": 22
+    },
+    {
+      "style": 1,
+      "triangles": 10096,
+      "batches": 24
+    },
+    {
+      "style": 2,
+      "triangles": 10284,
+      "batches": 22
+    },
+    {
+      "style": 3,
+      "triangles": 10276,
+      "batches": 22
+    },
+    {
+      "style": 4,
+      "triangles": 12468,
+      "batches": 22
+    }
+  ],
+  "catPoses": 36,
+  "accessories": 22,
+  "tracks": [
+    {
+      "seed": "classic",
+      "triangles": 89154,
+      "batches": 136
+    },
+    {
+      "seed": "ART-CITY",
+      "triangles": 63844,
+      "batches": 54
+    },
+    {
+      "seed": "ART-HILLS",
+      "triangles": 95932,
+      "batches": 152
+    }
+  ]
+}
+
+
+scenery:
+
+> zoomies@0.1.0 check:scenery
+> node tools/scenery-check.mjs
+
+{
+  "assets": 82,
+  "errors": [],
+  "totalTriangles": 194975
+}
+
+
+split:
+
+> zoomies@0.1.0 check:split
+> node tools/split-check.mjs
+
+ok: split race is active
+ok: split cams share the game camera's layer mask
+ok: six karts, two humans
+ok: split HUD is up
+ok: P2 wears the startline pick (Snow · Clover)
+ok: both humans accelerate independently
+ok: per-half chips are live
+ok: the two halves show different views
+ok: P1's (driving) view is the TOP half
+ok: warped-ahead P2 is ranked 1st
+ok: P2 finished naturally and the grace clock armed
+ok: grace expiry ends the race with P2 the winner
+ok: idle P1 scored DNF
+ok: both human rows tinted, the winner alone gold
+ok: no treats paid for a couch match
+{
+  "errors": []
+}
+
+
+effects-after:
+
+> zoomies@0.1.0 check:effects-art
+> node tools/effects-art-check.mjs
+
+{
+  "result": {
+    "cap": 280,
+    "fields": 2,
+    "smokeTexture": [
+      64,
+      64
+    ],
+    "sparkTexture": [
+      64,
+      64
+    ],
+    "roadTriangles": 20000,
+    "roadMap": 128,
+    "roadBump": false,
+    "simulation": {
+      "submissions": 6187,
+      "invisible": 0,
+      "peak": 42,
+      "fadedSlots": 0
+    }
+  },
+  "errors": []
+}
+
+
+build:
+
+> zoomies@0.1.0 build:web
+> node tools/build-web.mjs
+
+[build-web] assembled 12/12 entries → dist/ (target web, build 2026-09-24T06:19:53Z)

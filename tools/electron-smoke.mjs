@@ -24,8 +24,11 @@ const DESKTOP = path.join(ROOT, "desktop");
 const errors = [];
 const swArgs = [
   // Same software-GL stack as the browser checks — Xvfb has no GPU.
-  "--use-gl=angle", "--use-angle=swiftshader",
-  "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox",
+  "--use-gl=angle",
+  "--use-angle=swiftshader",
+  "--ignore-gpu-blocklist",
+  "--enable-unsafe-swiftshader",
+  "--no-sandbox",
 ];
 const app = await _electron.launch({
   executablePath: process.env.EXE || path.join(DESKTOP, "node_modules", ".bin", "electron"),
@@ -34,21 +37,26 @@ const app = await _electron.launch({
 });
 
 const page = await app.firstWindow();
-page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+page.on("console", (m) => {
+  if (m.type() === "error") errors.push(m.text());
+});
 page.on("pageerror", (e) => errors.push("PAGEERROR: " + e.message));
 
 // The title screen appearing proves the whole serving chain: app:// scheme,
 // import-map module loads, vendored three.js, and the boot sequence.
-await page.waitForSelector("#start-btn", { timeout: 120000 })
+await page
+  .waitForSelector("#start-btn", { timeout: 120000 })
   .catch(() => errors.push("title screen (#start-btn) never appeared"));
 
-const diag = await page.evaluate(() => ({
-  url: location.href,
-  build: document.querySelector('meta[name="zoomies-build"]')?.content,
-  title: document.title,
-  quitBtnRevealed: !document.getElementById("quit-btn-title")?.classList.contains("hidden"),
-  bridge: typeof window.zoomiesDesktop?.quit === "function",
-})).catch((e) => ({ evalErr: String(e) }));
+const diag = await page
+  .evaluate(() => ({
+    url: location.href,
+    build: document.querySelector('meta[name="zoomies-build"]')?.content,
+    title: document.title,
+    quitBtnRevealed: !document.getElementById("quit-btn-title")?.classList.contains("hidden"),
+    bridge: typeof window.zoomiesDesktop?.quit === "function",
+  }))
+  .catch((e) => ({ evalErr: String(e) }));
 
 if (!String(diag.url).startsWith("app://game/")) errors.push("not served over app://: " + diag.url);
 if (!diag.bridge) errors.push("preload bridge missing (zoomiesDesktop.quit)");
@@ -70,7 +78,9 @@ if (userData) {
     try {
       const s = JSON.parse(fs.readFileSync(saveFile, "utf8"));
       if (typeof s.stamp !== "number" || typeof s.data !== "object") errors.push("save file shape wrong");
-    } catch { errors.push("save file is not valid JSON"); }
+    } catch {
+      errors.push("save file is not valid JSON");
+    }
   }
 } else errors.push("could not resolve userData path");
 

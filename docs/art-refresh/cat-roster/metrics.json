@@ -1,0 +1,562 @@
+[
+  {
+    "name": "Marmalade",
+    "type": "Classic",
+    "triangles": 8614,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Smokey",
+    "type": "Classic",
+    "triangles": 8072,
+    "draws": 16,
+    "backend": "webgl"
+  },
+  {
+    "name": "Shadow",
+    "type": "Classic",
+    "triangles": 8108,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Snow",
+    "type": "Classic",
+    "triangles": 9331,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Whiskey",
+    "type": "Classic",
+    "triangles": 8753,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Nelson",
+    "type": "Classic",
+    "triangles": 8457,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Pickle",
+    "type": "Classic",
+    "triangles": 8696,
+    "draws": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Patches",
+    "type": "Classic",
+    "triangles": 7996,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Pepper",
+    "type": "Classic",
+    "triangles": 8372,
+    "draws": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Cocoa",
+    "type": "Classic",
+    "triangles": 8156,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Ziggy",
+    "type": "Classic",
+    "triangles": 8992,
+    "draws": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Moo",
+    "type": "Classic",
+    "triangles": 7872,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Misty",
+    "type": "Classic",
+    "triangles": 8161,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Biscuit",
+    "type": "Classic",
+    "triangles": 8399,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Timber",
+    "type": "Maine Coon",
+    "triangles": 8908,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Fjord",
+    "type": "Norwegian Forest",
+    "triangles": 8896,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Marple",
+    "type": "Persian",
+    "triangles": 8180,
+    "draws": 16,
+    "backend": "webgl"
+  },
+  {
+    "name": "Duchess",
+    "type": "Turkish Angora",
+    "triangles": 7820,
+    "draws": 17,
+    "backend": "webgl"
+  },
+  {
+    "name": "Russet",
+    "type": "Somali",
+    "triangles": 7704,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Winston",
+    "type": "British Shorthair",
+    "triangles": 8715,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Pudding",
+    "type": "Exotic Shorthair",
+    "triangles": 8216,
+    "draws": 18,
+    "backend": "webgl"
+  },
+  {
+    "name": "Pebble",
+    "type": "Chartreux",
+    "triangles": 8120,
+    "draws": 16,
+    "backend": "webgl"
+  },
+  {
+    "name": "Crumpet",
+    "type": "Selkirk Rex",
+    "triangles": 8466,
+    "draws": 16,
+    "backend": "webgl"
+  },
+  {
+    "name": "Marshmallow",
+    "type": "Ragdoll",
+    "triangles": 9032,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Chai",
+    "type": "Birman",
+    "triangles": 9952,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Skipper",
+    "type": "Turkish Van",
+    "triangles": 9015,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Opal",
+    "type": "Khao Manee",
+    "triangles": 8268,
+    "draws": 17,
+    "backend": "webgl"
+  },
+  {
+    "name": "Orbit",
+    "type": "Sphynx",
+    "triangles": 9532,
+    "draws": 18,
+    "backend": "webgl"
+  },
+  {
+    "name": "Fizz",
+    "type": "Devon Rex",
+    "triangles": 8464,
+    "draws": 18,
+    "backend": "webgl"
+  },
+  {
+    "name": "Noodle",
+    "type": "Cornish Rex",
+    "triangles": 7852,
+    "draws": 16,
+    "backend": "webgl"
+  },
+  {
+    "name": "Saffron",
+    "type": "Abyssinian",
+    "triangles": 10045,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Dumpling",
+    "type": "Scottish Fold",
+    "triangles": 8344,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Clover",
+    "type": "American Curl",
+    "triangles": 9374,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Rumpus",
+    "type": "Manx",
+    "triangles": 7852,
+    "draws": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Yoshi",
+    "type": "Japanese Bobtail",
+    "triangles": 8819,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Inky",
+    "type": "Bombay",
+    "triangles": 7588,
+    "draws": 16,
+    "backend": "webgl"
+  },
+  {
+    "name": "Dapple",
+    "type": "Ocicat",
+    "triangles": 8108,
+    "draws": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Quicksilver",
+    "type": "Egyptian Mau",
+    "triangles": 7780,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Stripes",
+    "type": "Toyger",
+    "triangles": 8180,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Flurry",
+    "type": "Snow Bengal",
+    "triangles": 9752,
+    "draws": 19,
+    "backend": "webgl"
+  },
+  {
+    "name": "Marmalade",
+    "type": "Classic",
+    "triangles": 8614,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Smokey",
+    "type": "Classic",
+    "triangles": 8072,
+    "draws": 16,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Shadow",
+    "type": "Classic",
+    "triangles": 8108,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Snow",
+    "type": "Classic",
+    "triangles": 9331,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Whiskey",
+    "type": "Classic",
+    "triangles": 8753,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Nelson",
+    "type": "Classic",
+    "triangles": 8457,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Pickle",
+    "type": "Classic",
+    "triangles": 8696,
+    "draws": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Patches",
+    "type": "Classic",
+    "triangles": 7996,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Pepper",
+    "type": "Classic",
+    "triangles": 8372,
+    "draws": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Cocoa",
+    "type": "Classic",
+    "triangles": 8156,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Ziggy",
+    "type": "Classic",
+    "triangles": 8992,
+    "draws": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Moo",
+    "type": "Classic",
+    "triangles": 7872,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Misty",
+    "type": "Classic",
+    "triangles": 8161,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Biscuit",
+    "type": "Classic",
+    "triangles": 8399,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Timber",
+    "type": "Maine Coon",
+    "triangles": 8908,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Fjord",
+    "type": "Norwegian Forest",
+    "triangles": 8896,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Marple",
+    "type": "Persian",
+    "triangles": 8180,
+    "draws": 16,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Duchess",
+    "type": "Turkish Angora",
+    "triangles": 7820,
+    "draws": 17,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Russet",
+    "type": "Somali",
+    "triangles": 7704,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Winston",
+    "type": "British Shorthair",
+    "triangles": 8715,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Pudding",
+    "type": "Exotic Shorthair",
+    "triangles": 8216,
+    "draws": 18,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Pebble",
+    "type": "Chartreux",
+    "triangles": 8120,
+    "draws": 16,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Crumpet",
+    "type": "Selkirk Rex",
+    "triangles": 8466,
+    "draws": 16,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Marshmallow",
+    "type": "Ragdoll",
+    "triangles": 9032,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Chai",
+    "type": "Birman",
+    "triangles": 9952,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Skipper",
+    "type": "Turkish Van",
+    "triangles": 9015,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Opal",
+    "type": "Khao Manee",
+    "triangles": 8268,
+    "draws": 17,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Orbit",
+    "type": "Sphynx",
+    "triangles": 9532,
+    "draws": 18,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Fizz",
+    "type": "Devon Rex",
+    "triangles": 8464,
+    "draws": 18,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Noodle",
+    "type": "Cornish Rex",
+    "triangles": 7852,
+    "draws": 16,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Saffron",
+    "type": "Abyssinian",
+    "triangles": 10045,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Dumpling",
+    "type": "Scottish Fold",
+    "triangles": 8344,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Clover",
+    "type": "American Curl",
+    "triangles": 9374,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Rumpus",
+    "type": "Manx",
+    "triangles": 7852,
+    "draws": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Yoshi",
+    "type": "Japanese Bobtail",
+    "triangles": 8819,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Inky",
+    "type": "Bombay",
+    "triangles": 7588,
+    "draws": 16,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Dapple",
+    "type": "Ocicat",
+    "triangles": 8108,
+    "draws": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Quicksilver",
+    "type": "Egyptian Mau",
+    "triangles": 7780,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Stripes",
+    "type": "Toyger",
+    "triangles": 8180,
+    "draws": 19,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Flurry",
+    "type": "Snow Bengal",
+    "triangles": 9752,
+    "draws": 19,
+    "backend": "webgpu"
+  }
+]

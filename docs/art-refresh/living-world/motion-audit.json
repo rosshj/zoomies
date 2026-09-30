@@ -1,0 +1,128 @@
+[
+  {
+    "biome": "meadow",
+    "animals": 24,
+    "behaviours": [
+      "startled",
+      "graze",
+      "amble",
+      "watch"
+    ],
+    "details": {},
+    "boats": 0,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  },
+  {
+    "biome": "forest",
+    "animals": 24,
+    "behaviours": [
+      "startled",
+      "graze",
+      "watch",
+      "amble"
+    ],
+    "details": {
+      "cabin": 2
+    },
+    "boats": 0,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  },
+  {
+    "biome": "beach",
+    "animals": 24,
+    "behaviours": [
+      "graze",
+      "watch",
+      "takeoff",
+      "amble"
+    ],
+    "details": {
+      "parasol": 2
+    },
+    "boats": 2,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  },
+  {
+    "biome": "desert",
+    "animals": 24,
+    "behaviours": [
+      "startled",
+      "graze",
+      "amble",
+      "watch"
+    ],
+    "details": {
+      "adobe": 2
+    },
+    "boats": 0,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  },
+  {
+    "biome": "city",
+    "animals": 0,
+    "behaviours": [],
+    "details": {
+      "store": 2,
+      "stall": 2
+    },
+    "boats": 0,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  },
+  {
+    "biome": "wetlands",
+    "animals": 24,
+    "behaviours": [
+      "startled",
+      "watch",
+      "graze",
+      "amble"
+    ],
+    "details": {},
+    "boats": 2,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  },
+  {
+    "biome": "volcanic",
+    "animals": 24,
+    "behaviours": [
+      "startled",
+      "graze",
+      "amble",
+      "watch"
+    ],
+    "details": {},
+    "boats": 0,
+    "vents": 2,
+    "steamFrames": 333,
+    "errors": []
+  },
+  {
+    "biome": "tundra",
+    "animals": 15,
+    "behaviours": [
+      "startled",
+      "graze",
+      "watch",
+      "amble"
+    ],
+    "details": {
+      "chalet": 2
+    },
+    "boats": 0,
+    "vents": 0,
+    "steamFrames": 0,
+    "errors": []
+  }
+]

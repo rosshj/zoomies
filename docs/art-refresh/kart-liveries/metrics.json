@@ -1,0 +1,662 @@
+[
+  {
+    "name": "Ember",
+    "color": 15022389,
+    "style": 0,
+    "number": 5,
+    "triangles": 10804,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Lagoon",
+    "color": 2001125,
+    "style": 1,
+    "number": 7,
+    "triangles": 10096,
+    "batches": 24,
+    "backend": "webgl"
+  },
+  {
+    "name": "Clover",
+    "color": 4431943,
+    "style": 2,
+    "number": 3,
+    "triangles": 10284,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Tangerine",
+    "color": 16485376,
+    "style": 0,
+    "number": 9,
+    "triangles": 10804,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Grape",
+    "color": 9315498,
+    "style": 1,
+    "number": 4,
+    "triangles": 10096,
+    "batches": 24,
+    "backend": "webgl"
+  },
+  {
+    "name": "Sunbeam",
+    "color": 16635957,
+    "style": 2,
+    "number": 1,
+    "triangles": 10284,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Teal",
+    "color": 35195,
+    "style": 0,
+    "number": 8,
+    "triangles": 10804,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Comet",
+    "color": 2541274,
+    "style": 3,
+    "number": 2,
+    "triangles": 10276,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Nova",
+    "color": 15483002,
+    "style": 3,
+    "number": 6,
+    "triangles": 10276,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Prowler",
+    "color": 3754411,
+    "style": 4,
+    "number": 12,
+    "triangles": 12468,
+    "batches": 22,
+    "backend": "webgl"
+  },
+  {
+    "name": "Club Racer",
+    "color": 14175550,
+    "style": 5,
+    "number": 20,
+    "livery": 0,
+    "triangles": 6348,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Club Cobalt",
+    "color": 3176644,
+    "style": 5,
+    "number": 21,
+    "livery": 1,
+    "triangles": 6348,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Sprint",
+    "color": 2129273,
+    "style": 6,
+    "number": 23,
+    "livery": 1,
+    "triangles": 6208,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Sprint Citrus",
+    "color": 15907131,
+    "style": 6,
+    "number": 24,
+    "livery": 2,
+    "triangles": 6208,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Shifter",
+    "color": 3430305,
+    "style": 7,
+    "number": 26,
+    "livery": 2,
+    "triangles": 6300,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Shifter Frost",
+    "color": 15133157,
+    "style": 7,
+    "number": 27,
+    "livery": 0,
+    "triangles": 6300,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Endurance",
+    "color": 11416905,
+    "style": 8,
+    "number": 29,
+    "livery": 0,
+    "triangles": 6296,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Endurance Gold",
+    "color": 15250500,
+    "style": 8,
+    "number": 30,
+    "livery": 1,
+    "triangles": 6296,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Rental Pro",
+    "color": 5269371,
+    "style": 9,
+    "number": 32,
+    "livery": 1,
+    "triangles": 6392,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Rental Orange",
+    "color": 15302710,
+    "style": 9,
+    "number": 33,
+    "livery": 2,
+    "triangles": 6392,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Vintage Racer",
+    "color": 2648912,
+    "style": 10,
+    "number": 35,
+    "livery": 2,
+    "triangles": 6552,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Vintage Ivory",
+    "color": 15195332,
+    "style": 10,
+    "number": 36,
+    "livery": 0,
+    "triangles": 6552,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Dirt Oval",
+    "color": 15122232,
+    "style": 11,
+    "number": 38,
+    "livery": 0,
+    "triangles": 6248,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Oval Scarlet",
+    "color": 12271421,
+    "style": 11,
+    "number": 39,
+    "livery": 1,
+    "triangles": 6248,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Flat Tracker",
+    "color": 12543279,
+    "style": 12,
+    "number": 41,
+    "livery": 1,
+    "triangles": 6936,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Tracker Slate",
+    "color": 5401468,
+    "style": 12,
+    "number": 42,
+    "livery": 2,
+    "triangles": 6936,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Rallycross",
+    "color": 4879713,
+    "style": 13,
+    "number": 44,
+    "livery": 2,
+    "triangles": 8508,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Rally Arctic",
+    "color": 15132895,
+    "style": 13,
+    "number": 45,
+    "livery": 0,
+    "triangles": 8508,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Crosskart",
+    "color": 3559029,
+    "style": 14,
+    "number": 47,
+    "livery": 0,
+    "triangles": 8240,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Crosskart Lime",
+    "color": 10599736,
+    "style": 14,
+    "number": 48,
+    "livery": 1,
+    "triangles": 8240,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Dune Racer",
+    "color": 12885353,
+    "style": 15,
+    "number": 50,
+    "livery": 1,
+    "triangles": 7744,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Dune Copper",
+    "color": 12084038,
+    "style": 15,
+    "number": 51,
+    "livery": 2,
+    "triangles": 7744,
+    "batches": 20,
+    "backend": "webgl"
+  },
+  {
+    "name": "Streamliner",
+    "color": 11253957,
+    "style": 16,
+    "number": 53,
+    "livery": 2,
+    "triangles": 6356,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Stream Azure",
+    "color": 3313072,
+    "style": 16,
+    "number": 54,
+    "livery": 0,
+    "triangles": 6356,
+    "batches": 21,
+    "backend": "webgl"
+  },
+  {
+    "name": "Ember",
+    "color": 15022389,
+    "style": 0,
+    "number": 5,
+    "triangles": 10804,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Lagoon",
+    "color": 2001125,
+    "style": 1,
+    "number": 7,
+    "triangles": 10096,
+    "batches": 24,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Clover",
+    "color": 4431943,
+    "style": 2,
+    "number": 3,
+    "triangles": 10284,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Tangerine",
+    "color": 16485376,
+    "style": 0,
+    "number": 9,
+    "triangles": 10804,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Grape",
+    "color": 9315498,
+    "style": 1,
+    "number": 4,
+    "triangles": 10096,
+    "batches": 24,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Sunbeam",
+    "color": 16635957,
+    "style": 2,
+    "number": 1,
+    "triangles": 10284,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Teal",
+    "color": 35195,
+    "style": 0,
+    "number": 8,
+    "triangles": 10804,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Comet",
+    "color": 2541274,
+    "style": 3,
+    "number": 2,
+    "triangles": 10276,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Nova",
+    "color": 15483002,
+    "style": 3,
+    "number": 6,
+    "triangles": 10276,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Prowler",
+    "color": 3754411,
+    "style": 4,
+    "number": 12,
+    "triangles": 12468,
+    "batches": 22,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Club Racer",
+    "color": 14175550,
+    "style": 5,
+    "number": 20,
+    "livery": 0,
+    "triangles": 6348,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Club Cobalt",
+    "color": 3176644,
+    "style": 5,
+    "number": 21,
+    "livery": 1,
+    "triangles": 6348,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Sprint",
+    "color": 2129273,
+    "style": 6,
+    "number": 23,
+    "livery": 1,
+    "triangles": 6208,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Sprint Citrus",
+    "color": 15907131,
+    "style": 6,
+    "number": 24,
+    "livery": 2,
+    "triangles": 6208,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Shifter",
+    "color": 3430305,
+    "style": 7,
+    "number": 26,
+    "livery": 2,
+    "triangles": 6300,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Shifter Frost",
+    "color": 15133157,
+    "style": 7,
+    "number": 27,
+    "livery": 0,
+    "triangles": 6300,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Endurance",
+    "color": 11416905,
+    "style": 8,
+    "number": 29,
+    "livery": 0,
+    "triangles": 6296,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Endurance Gold",
+    "color": 15250500,
+    "style": 8,
+    "number": 30,
+    "livery": 1,
+    "triangles": 6296,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Rental Pro",
+    "color": 5269371,
+    "style": 9,
+    "number": 32,
+    "livery": 1,
+    "triangles": 6392,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Rental Orange",
+    "color": 15302710,
+    "style": 9,
+    "number": 33,
+    "livery": 2,
+    "triangles": 6392,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Vintage Racer",
+    "color": 2648912,
+    "style": 10,
+    "number": 35,
+    "livery": 2,
+    "triangles": 6552,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Vintage Ivory",
+    "color": 15195332,
+    "style": 10,
+    "number": 36,
+    "livery": 0,
+    "triangles": 6552,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Dirt Oval",
+    "color": 15122232,
+    "style": 11,
+    "number": 38,
+    "livery": 0,
+    "triangles": 6248,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Oval Scarlet",
+    "color": 12271421,
+    "style": 11,
+    "number": 39,
+    "livery": 1,
+    "triangles": 6248,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Flat Tracker",
+    "color": 12543279,
+    "style": 12,
+    "number": 41,
+    "livery": 1,
+    "triangles": 6936,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Tracker Slate",
+    "color": 5401468,
+    "style": 12,
+    "number": 42,
+    "livery": 2,
+    "triangles": 6936,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Rallycross",
+    "color": 4879713,
+    "style": 13,
+    "number": 44,
+    "livery": 2,
+    "triangles": 8508,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Rally Arctic",
+    "color": 15132895,
+    "style": 13,
+    "number": 45,
+    "livery": 0,
+    "triangles": 8508,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Crosskart",
+    "color": 3559029,
+    "style": 14,
+    "number": 47,
+    "livery": 0,
+    "triangles": 8240,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Crosskart Lime",
+    "color": 10599736,
+    "style": 14,
+    "number": 48,
+    "livery": 1,
+    "triangles": 8240,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Dune Racer",
+    "color": 12885353,
+    "style": 15,
+    "number": 50,
+    "livery": 1,
+    "triangles": 7744,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Dune Copper",
+    "color": 12084038,
+    "style": 15,
+    "number": 51,
+    "livery": 2,
+    "triangles": 7744,
+    "batches": 20,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Streamliner",
+    "color": 11253957,
+    "style": 16,
+    "number": 53,
+    "livery": 2,
+    "triangles": 6356,
+    "batches": 21,
+    "backend": "webgpu"
+  },
+  {
+    "name": "Stream Azure",
+    "color": 3313072,
+    "style": 16,
+    "number": 54,
+    "livery": 0,
+    "triangles": 6356,
+    "batches": 21,
+    "backend": "webgpu"
+  }
+]

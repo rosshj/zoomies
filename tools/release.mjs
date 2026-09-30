@@ -35,7 +35,10 @@ if (tag.replace(/^v/, "") !== String(desktopPkg.version).replace(/^v/, "")) {
   process.exit(1);
 }
 const token = process.env.GITHUB_TOKEN;
-if (!token) { console.error("GITHUB_TOKEN is required (repo scope on zoomies-releases)"); process.exit(1); }
+if (!token) {
+  console.error("GITHUB_TOKEN is required (repo scope on zoomies-releases)");
+  process.exit(1);
+}
 const platIdx = process.argv.indexOf("--platforms");
 const platforms = (platIdx > 0 ? process.argv[platIdx + 1] : "linux").split(",");
 
@@ -49,7 +52,12 @@ const PLATFORMS = {
   // every update extract to a NEW sibling folder while the Steam shortcut
   // kept launching the old one (a Deck ran v0.1.6 for two "updates"). So the
   // build is packaged as a directory and tarred here under the fixed name.
-  linux: { flags: "--linux dir --x64", asset: "zoomies-gp-linux-x64.tar.gz", dir: "linux-unpacked", folder: "zoomies-gp" },
+  linux: {
+    flags: "--linux dir --x64",
+    asset: "zoomies-gp-linux-x64.tar.gz",
+    dir: "linux-unpacked",
+    folder: "zoomies-gp",
+  },
   mac: { flags: "--mac zip", asset: "zoomies-gp-macos.zip", ext: ".zip" },
   win: { flags: "--win zip --x64", asset: "zoomies-gp-windows-x64.zip", ext: ".zip" },
 };
@@ -64,7 +72,8 @@ const gh = async (url, opts = {}) => {
       ...(opts.headers || {}),
     },
   });
-  if (!res.ok && res.status !== 404) throw new Error(`${opts.method || "GET"} ${url} → ${res.status}: ${await res.text()}`);
+  if (!res.ok && res.status !== 404)
+    throw new Error(`${opts.method || "GET"} ${url} → ${res.status}: ${await res.text()}`);
   if (res.status === 404) return null;
   // DELETE (replacing an asset on a re-run) answers 204 with an empty body —
   // parsing that as JSON threw "Unexpected end of JSON input" mid-release.
@@ -80,7 +89,10 @@ const staging = join(outDir, "release-assets");
 mkdirSync(staging, { recursive: true });
 for (const p of platforms) {
   const cfg = PLATFORMS[p];
-  if (!cfg) { console.error(`unknown platform: ${p}`); process.exit(1); }
+  if (!cfg) {
+    console.error(`unknown platform: ${p}`);
+    process.exit(1);
+  }
   console.log(`\n[release] packaging ${p}…`);
   sh(`npx electron-builder --config electron-builder.json ${cfg.flags}`, join(ROOT, "desktop"));
   if (cfg.dir) {
@@ -88,7 +100,10 @@ for (const p of platforms) {
     // tar, not a zip, keeps the executable bits (field-verified on a Deck).
     const src = join(outDir, cfg.dir);
     const named = join(outDir, cfg.folder);
-    if (!existsSync(src)) { console.error(`no ${cfg.dir} produced for ${p}`); process.exit(1); }
+    if (!existsSync(src)) {
+      console.error(`no ${cfg.dir} produced for ${p}`);
+      process.exit(1);
+    }
     rmSync(named, { recursive: true, force: true });
     renameSync(src, named);
     sh(`tar -czf "${join(staging, cfg.asset)}" -C "${outDir}" "${cfg.folder}"`);
@@ -98,10 +113,11 @@ for (const p of platforms) {
   // electron-builder names archives by product/version; grab the newest one
   // of this platform's type and restage it under the stable asset name.
   const zips = readdirSync(outDir).filter((f) => f.endsWith(cfg.ext));
-  if (!zips.length) { console.error(`no ${cfg.ext} produced for ${p}`); process.exit(1); }
-  const newest = zips
-    .map((f) => ({ f, t: statSync(join(outDir, f)).mtimeMs }))
-    .sort((a, b) => b.t - a.t)[0].f;
+  if (!zips.length) {
+    console.error(`no ${cfg.ext} produced for ${p}`);
+    process.exit(1);
+  }
+  const newest = zips.map((f) => ({ f, t: statSync(join(outDir, f)).mtimeMs })).sort((a, b) => b.t - a.t)[0].f;
   copyFileSync(join(outDir, newest), join(staging, cfg.asset));
   console.log(`[release] ${newest} → ${cfg.asset}`);
 }

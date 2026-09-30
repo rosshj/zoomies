@@ -1,0 +1,63 @@
+{
+  "karts": [
+    {
+      "style": 0,
+      "triangles": 10804,
+      "batches": 22
+    },
+    {
+      "style": 1,
+      "triangles": 10096,
+      "batches": 24
+    },
+    {
+      "style": 2,
+      "triangles": 10284,
+      "batches": 22
+    },
+    {
+      "style": 3,
+      "triangles": 10276,
+      "batches": 22
+    },
+    {
+      "style": 4,
+      "triangles": 12468,
+      "batches": 22
+    }
+  ],
+  "catPoses": 51,
+  "accessories": 41,
+  "tracks": [
+    {
+      "seed": "classic",
+      "triangles": 87590,
+      "batches": 136
+    },
+    {
+      "seed": "ART-lavender",
+      "triangles": 97602,
+      "batches": 57
+    },
+    {
+      "seed": "ART-wetlands",
+      "triangles": 94086,
+      "batches": 159
+    },
+    {
+      "seed": "ART-volcanic",
+      "triangles": 62578,
+      "batches": 54
+    },
+    {
+      "seed": "ART-CITY",
+      "triangles": 62578,
+      "batches": 54
+    },
+    {
+      "seed": "ART-HILLS",
+      "triangles": 93932,
+      "batches": 152
+    }
+  ]
+}

@@ -18,11 +18,13 @@ const _aiSide = new THREE.Vector3();
 // as a real directional cast shadow — long at sunset, short at midday — for ~1
 // draw call and zero shadow-map cost. (Real sun shadows on the karts were the
 // frame-rate killer when the field bunched up; this gives the look back cheaply.)
-let _sunAz = 0;        // world azimuth the shadow's long axis lies along
-let _sunStretch = 1;   // length multiplier (≈1 round at midday, longer at sunset)
-let _sunAlpha = 0.42;  // base opacity (a touch darker when the sun is low)
+let _sunAz = 0; // world azimuth the shadow's long axis lies along
+let _sunStretch = 1; // length multiplier (≈1 round at midday, longer at sunset)
+let _sunAlpha = 0.42; // base opacity (a touch darker when the sun is low)
 export function setSunShadow(sunDir) {
-  const x = sunDir[0], y = Math.max(0.06, sunDir[1]), z = sunDir[2];
+  const x = sunDir[0],
+    y = Math.max(0.06, sunDir[1]),
+    z = sunDir[2];
   _sunAz = Math.atan2(x, z);
   _sunStretch = Math.min(3.0, Math.max(1, 0.6 / y));
   _sunAlpha = 0.7 + (1 - Math.min(1, y)) * 0.12;
@@ -94,7 +96,7 @@ export const SLIPSTREAM_MULT = 4.5;
 // past 1.0 (the base recharge still caps there), and the overcharge bleeds back to
 // full at BOOST_OVERCHARGE_DECAY once you leave the wake — a "use it while you're
 // tucked" bonus, never a stockpile. Kept modest so it's a nudge, not a knockout.
-export const BOOST_OVERCHARGE = 1.2;        // max meter (120%)
+export const BOOST_OVERCHARGE = 1.2; // max meter (120%)
 export const BOOST_OVERCHARGE_DECAY = 0.08; // per second, bleeds 1.2 → 1.0 in ~2.5s out of the draft (held longer so the overcharge is usable)
 
 // A drift must be held at least this long (seconds) to earn a mini-turbo. Below
@@ -125,10 +127,10 @@ export function shadowTexture() {
   c.width = c.height = 64;
   const ctx = c.getContext("2d");
   const g = ctx.createRadialGradient(32, 32, 2, 32, 32, 32);
-  // Darker + a broader solid core so the shadow reads from the chase cam (the
-  // old soft 0.5 core faded out within the kart's own footprint and vanished).
-  g.addColorStop(0, "rgba(0,0,0,0.82)");
-  g.addColorStop(0.55, "rgba(0,0,0,0.6)");
+  // A firm contact core with a lighter penumbra, baked into the same 64px
+  // mask. Same three gradient stops and runtime sampling cost.
+  g.addColorStop(0, "rgba(0,0,0,0.86)");
+  g.addColorStop(0.55, "rgba(0,0,0,0.36)");
   g.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, 64, 64);
@@ -145,7 +147,22 @@ function angleDelta(a, b) {
 }
 
 export class Kart {
-  constructor({ color, catColor, catPattern, catAccessory, catAccessoryColor, kartStyle, kartNumber, name, isPlayer, skill = 1, rng = Math.random, headless = false }) {
+  constructor({
+    color,
+    catColor,
+    catType,
+    catPattern,
+    catAccessory,
+    catAccessoryColor,
+    kartStyle,
+    kartNumber,
+    kartLivery,
+    name,
+    isPlayer,
+    skill = 1,
+    rng = Math.random,
+    headless = false,
+  }) {
     this.name = name;
     this.isPlayer = isPlayer;
     this.color = color; // body colour, also used for the minimap dot
@@ -257,14 +274,26 @@ export class Kart {
       // the world axis, so the kart only tilts to the grade when facing ±Z — on a
       // looping track it mostly wouldn't pitch at all.
       this.group.rotation.order = "YXZ";
-      const { group: kart, wheels, brakeMat, flames, flag } = createKartModel(color, { style: kartStyle, number: kartNumber });
+      const {
+        group: kart,
+        wheels,
+        brakeMat,
+        flames,
+        flag,
+      } = createKartModel(color, { style: kartStyle, number: kartNumber, livery: kartLivery });
       this.wheels = wheels;
       for (const w of wheels) w.rotation.order = "YXZ"; // set once (was re-set every frame)
       this.brakeMat = brakeMat; // tail lights; brightened when braking (see update)
       this.flames = flames; // boost exhaust flames; shown/flickered while boosting
       this.flag = flag; // roadster pennant pivot (flapped in update); null elsewhere
       this.group.add(kart);
-      const cat = createCat(catColor, { pattern: catPattern, accessory: catAccessory, accessoryColor: catAccessoryColor, pose: "kart" });
+      const cat = createCat(catColor, {
+        type: catType,
+        pattern: catPattern,
+        accessory: catAccessory,
+        accessoryColor: catAccessoryColor,
+        pose: "kart",
+      });
       cat.scale.setScalar(0.62);
       cat.position.set(0, 0.85, -0.35);
       this.group.add(cat);
@@ -288,7 +317,7 @@ export class Kart {
           transparent: true,
           depthWrite: false,
           toneMapped: false,
-        })
+        }),
       );
       this.shadowQuad.rotation.x = -Math.PI / 2;
       // Push the shadow toward the anti-sun side (holder +Z faces the sun) so it
@@ -579,9 +608,7 @@ export class Kart {
     // Clamp: boosting allows exceeding the normal top speed; afterwards the
     // extra speed bleeds off gradually rather than snapping down. Descents
     // raise the ceiling (up to +25%) so a long downhill genuinely runs away.
-    let upper = boosting
-      ? this.boostSpeed
-      : this.maxSpeed * (1 + Math.max(0, Math.sin(this.slopePitch)) * 0.25);
+    let upper = boosting ? this.boostSpeed : this.maxSpeed * (1 + Math.max(0, Math.sin(this.slopePitch)) * 0.25);
     // Sustained-drift ramp: committing to a long slide earns a LITTLE pace on
     // top (accrued below, only while genuinely cornering — see the drift
     // steering block), capped at +5%. It rides the ceiling so it fades with
@@ -817,7 +844,17 @@ export class Kart {
     // lifts while tooting).
     // Blink only on the post-race victory lap (the racing rig already gives a
     // moving cat plenty of life); never mid-race.
-    updateCatRig(this.catRig, this._dt, this._lat, this._lon, this.tootTimer > 0, this.finished, this.finished, this.gloatTimer > 0);
+    updateCatRig(
+      this.catRig,
+      this._dt,
+      this._lat,
+      this._lon,
+      this.tootTimer > 0,
+      this.finished,
+      this.finished,
+      this.gloatTimer > 0,
+      this.speed,
+    );
 
     // Projected sun shadow: keep it flat on the ground (cancel the hop), aim its
     // long axis along the sun azimuth (independent of which way the kart faces),
@@ -839,9 +876,12 @@ export class Kart {
     const sp = this._shieldS;
     const target = this.shielding ? 1 : 0;
     sp.v += (target - sp.a) * 320 * sdt; // stiff spring → quick, bouncy response
-    sp.v *= Math.max(0, 1 - 11 * sdt);   // light damping → a touch of overshoot
+    sp.v *= Math.max(0, 1 - 11 * sdt); // light damping → a touch of overshoot
     sp.a += sp.v * sdt;
-    if (sp.a < 0) { sp.a = 0; sp.v = 0; } // clamp the pop-out floor
+    if (sp.a < 0) {
+      sp.a = 0;
+      sp.v = 0;
+    } // clamp the pop-out floor
     const showing = this.shielding || sp.a > 0.01;
     this.shieldMesh.visible = showing;
     if (showing) {
@@ -906,14 +946,17 @@ export class Kart {
     // catch-up boost. We only chase crates genuinely ahead. Since catnip hides in
     // an ordinary crate, this just reads as the AI going for boxes.
     if (catnipTargets && catnipTargets.length && !this.catnipBoosting && this.spinTimer <= 0) {
-      const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
+      const fwx = Math.sin(this.heading),
+        fwz = Math.cos(this.heading);
       const behind = Math.max(0, (this.place || 1) - 3); // 0 for top-3, up to 3 for last
       // Easier modes chase boxes less; a driver's own aggression scales it too.
       const catnipMul = (this.diff ? this.diff.catnip : 1) * (this.aggro || 1);
-      const range = (24 + behind * 18) * catnipMul;       // trailing karts reach much further
-      let best = null, bestD = range;
+      const range = (24 + behind * 18) * catnipMul; // trailing karts reach much further
+      let best = null,
+        bestD = range;
       for (const cn of catnipTargets) {
-        const dx = cn.x - this.position.x, dz = cn.z - this.position.z;
+        const dx = cn.x - this.position.x,
+          dz = cn.z - this.position.z;
         const d = Math.hypot(dx, dz);
         if (d < 3 || d > bestD) continue;
         if ((dx * fwx + dz * fwz) / d < 0.25) continue; // must be roughly ahead, not behind
@@ -924,12 +967,13 @@ export class Kart {
         // own forward corridor to count.
         if (cn.y !== undefined && Math.abs(cn.y - this.position.y) > 6) continue;
         if (Math.abs(dx * fwz - dz * fwx) > track.halfWidth + 4 + d * 0.22) continue;
-        bestD = d; best = cn;
+        bestD = d;
+        best = cn;
       }
       if (best) {
         // Commit harder the closer it is AND the further back we are (more willing
         // to leave the racing line for it when there's ground to make up).
-        const pull = Math.min(0.92, (range - bestD) / range * 0.7 + 0.2 + behind * 0.08);
+        const pull = Math.min(0.92, ((range - bestD) / range) * 0.7 + 0.2 + behind * 0.08);
         target.x += (best.x - target.x) * pull;
         target.z += (best.z - target.z) * pull;
       }
@@ -942,16 +986,20 @@ export class Kart {
     // Skipped on sharp corners (never sacrifice the bend) and dialled down on
     // easier difficulties (reuse the same aggression knob catnip-chasing uses).
     if (rivals && this.boostMeter < 0.85 && speed > 12 && this.spinTimer <= 0 && sharp < 0.55) {
-      const fwx = Math.sin(this.heading), fwz = Math.cos(this.heading);
-      let bestT = null, bestAhead = 16;
+      const fwx = Math.sin(this.heading),
+        fwz = Math.cos(this.heading);
+      let bestT = null,
+        bestAhead = 16;
       for (const t of rivals) {
         if (t === this || t.finished || Math.abs(t.speed) < 8) continue;
-        const dx = t.position.x - this.position.x, dz = t.position.z - this.position.z;
+        const dx = t.position.x - this.position.x,
+          dz = t.position.z - this.position.z;
         const ahead = dx * fwx + dz * fwz; // + = rival is in front of me
         if (ahead < 3 || ahead > bestAhead) continue;
         if (Math.sin(t.heading) * fwx + Math.cos(t.heading) * fwz < 0.5) continue; // same way
         if (Math.abs(dx * fwz - dz * fwx) > track.halfWidth) continue; // roughly on our corridor
-        bestAhead = ahead; bestT = t;
+        bestAhead = ahead;
+        bestT = t;
       }
       if (bestT) {
         // Aim for the sweet spot just behind the rival, in its wake.
@@ -970,10 +1018,7 @@ export class Kart {
 
     // Carry good corner speed: brake for sharp bends but keep a healthy floor so
     // they stay competitive instead of crawling round every turn.
-    this.throttleInput = Math.max(
-      sharp > 0.6 ? 0.34 : 0.55,
-      1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45)
-    );
+    this.throttleInput = Math.max(sharp > 0.6 ? 0.34 : 0.55, 1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45));
     // Grade compensation: a max-grade climb drags ~0.35 of full accel, which
     // eats the sharp-corner throttle floor almost exactly — the kart stalls,
     // trips stuck-recovery, reverses back down the ramp and loops forever

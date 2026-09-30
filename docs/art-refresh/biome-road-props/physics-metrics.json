@@ -1,0 +1,339 @@
+[
+  {
+    "results": [
+      {
+        "biome": "meadow",
+        "types": [
+          "fruitBasket",
+          "hayBale",
+          "pumpkin"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "forest",
+        "types": [
+          "campRoll",
+          "log",
+          "pinecone"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "alpine",
+        "types": [
+          "campRoll",
+          "log",
+          "pinecone",
+          "supplyCase"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "autumn",
+        "types": [
+          "fruitBasket",
+          "leafBundle",
+          "pumpkin"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "beach",
+        "types": [
+          "beachBall",
+          "coconut",
+          "sandBucket"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "desert",
+        "types": [
+          "clayPot",
+          "tumbleweed",
+          "wagonWheel"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "mesa",
+        "types": [
+          "clayPot",
+          "tumbleweed",
+          "wagonWheel"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "tundra",
+        "types": [
+          "iceChunk",
+          "snowball",
+          "supplyCase"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "city",
+        "types": [
+          "cardboardBox",
+          "tire",
+          "trafficCone"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "jungle",
+        "types": [
+          "bambooBundle",
+          "log",
+          "tropicalFruit"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "wetlands",
+        "types": [
+          "bambooBundle",
+          "fishingFloat",
+          "log"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "volcanic",
+        "types": [
+          "canister",
+          "pumice"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "savanna",
+        "types": [
+          "campRoll",
+          "clayPot",
+          "tumbleweed"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "blossom",
+        "types": [
+          "clayPot",
+          "fruitBasket",
+          "leafBundle"
+        ],
+        "crates": 25,
+        "count": 64
+      },
+      {
+        "biome": "lavender",
+        "types": [
+          "fruitBasket",
+          "hayBale",
+          "leafBundle"
+        ],
+        "crates": 25,
+        "count": 64
+      }
+    ],
+    "budgets": [
+      {
+        "kind": "hayBale",
+        "used": false,
+        "triangles": 808,
+        "hull": 72
+      },
+      {
+        "kind": "pumpkin",
+        "used": false,
+        "triangles": 680,
+        "hull": 360
+      },
+      {
+        "kind": "fruitBasket",
+        "used": false,
+        "triangles": 864,
+        "hull": 459
+      },
+      {
+        "kind": "fruitBasket",
+        "used": true,
+        "triangles": 464,
+        "hull": 249
+      },
+      {
+        "kind": "beachBall",
+        "used": false,
+        "triangles": 252,
+        "hull": 135
+      },
+      {
+        "kind": "coconut",
+        "used": false,
+        "triangles": 320,
+        "hull": 168
+      },
+      {
+        "kind": "sandBucket",
+        "used": false,
+        "triangles": 272,
+        "hull": 161
+      },
+      {
+        "kind": "log",
+        "used": false,
+        "triangles": 756,
+        "hull": 84
+      },
+      {
+        "kind": "pinecone",
+        "used": false,
+        "triangles": 312,
+        "hull": 210
+      },
+      {
+        "kind": "campRoll",
+        "used": false,
+        "triangles": 616,
+        "hull": 72
+      },
+      {
+        "kind": "leafBundle",
+        "used": false,
+        "triangles": 104,
+        "hull": 78
+      },
+      {
+        "kind": "tumbleweed",
+        "used": false,
+        "triangles": 420,
+        "hull": 224
+      },
+      {
+        "kind": "clayPot",
+        "used": false,
+        "triangles": 412,
+        "hull": 214
+      },
+      {
+        "kind": "wagonWheel",
+        "used": false,
+        "triangles": 304,
+        "hull": 60
+      },
+      {
+        "kind": "snowball",
+        "used": false,
+        "triangles": 80,
+        "hull": 42
+      },
+      {
+        "kind": "iceChunk",
+        "used": false,
+        "triangles": 36,
+        "hull": 20
+      },
+      {
+        "kind": "supplyCase",
+        "used": false,
+        "triangles": 60,
+        "hull": 40
+      },
+      {
+        "kind": "trafficCone",
+        "used": false,
+        "triangles": 92,
+        "hull": 56
+      },
+      {
+        "kind": "trafficCone",
+        "used": true,
+        "triangles": 72,
+        "hull": 45
+      },
+      {
+        "kind": "cardboardBox",
+        "used": false,
+        "triangles": 48,
+        "hull": 32
+      },
+      {
+        "kind": "cardboardBox",
+        "used": true,
+        "triangles": 48,
+        "hull": 32
+      },
+      {
+        "kind": "tire",
+        "used": false,
+        "triangles": 336,
+        "hull": 48
+      },
+      {
+        "kind": "tropicalFruit",
+        "used": false,
+        "triangles": 320,
+        "hull": 168
+      },
+      {
+        "kind": "bambooBundle",
+        "used": false,
+        "triangles": 576,
+        "hull": 48
+      },
+      {
+        "kind": "fishingFloat",
+        "used": false,
+        "triangles": 168,
+        "hull": 94
+      },
+      {
+        "kind": "pumice",
+        "used": false,
+        "triangles": 80,
+        "hull": 42
+      },
+      {
+        "kind": "canister",
+        "used": false,
+        "triangles": 296,
+        "hull": 84
+      }
+    ],
+    "checkedVertices": 332664,
+    "sounds": 196,
+    "bursts": 14,
+    "maxDebris": 36
+  },
+  {
+    "stress": [
+      {
+        "forcedActive": 8,
+        "medianMs": 0.41104100000029575,
+        "p99Ms": 0.6914580000002388
+      },
+      {
+        "forcedActive": 64,
+        "medianMs": 2.072457999999642,
+        "p99Ms": 3.0364159999999174
+      }
+    ],
+    "note": "Node solver-only, assorted props relaunched every second; excludes renderer"
+  }
+]

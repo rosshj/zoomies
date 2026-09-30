@@ -1,0 +1,179 @@
+// Broad neighbouring shelter, baked once after world placement. Analytic canopy
+// ellipsoids and structure bounds approximate sky visibility, not sun shadows.
+// Existing RGB buffers carry the result; no ray queries survive into gameplay.
+import * as THREE from "three";
+
+function tree(items) {
+  const box = new THREE.Box3();
+  for (const x of items) box.union(x.box);
+  if (items.length <= 8) return { box, items };
+  const size = box.getSize(new THREE.Vector3()),
+    axis = size.x > size.z ? "x" : "z";
+  items.sort((a, b) => a.center[axis] - b.center[axis]);
+  const middle = items.length >> 1;
+  return { box, left: tree(items.slice(0, middle)), right: tree(items.slice(middle)) };
+}
+function ellipsoidDistance(ray, o) {
+  const x = (ray.origin.x - o.center.x) / o.size.x,
+    y = (ray.origin.y - o.center.y) / o.size.y,
+    z = (ray.origin.z - o.center.z) / o.size.z;
+  const dx = ray.direction.x / o.size.x,
+    dy = ray.direction.y / o.size.y,
+    dz = ray.direction.z / o.size.z;
+  const a = dx * dx + dy * dy + dz * dz,
+    b = x * dx + y * dy + z * dz,
+    c = x * x + y * y + z * z - 1,
+    d = b * b - a * c;
+  if (d < 0) return Infinity;
+  const near = (-b - Math.sqrt(d)) / a,
+    far = (-b + Math.sqrt(d)) / a;
+  return far < 0 ? Infinity : Math.max(0, near);
+}
+export function bakeWorldShelter(scene, { detail = 1.7 } = {}) {
+  const rays = detail > 1 ? 24 : detail < 1 ? 4 : 8;
+  const fullReceivers = detail > 1;
+  if (scene.userData.worldShelter) return;
+  const start = performance.now(),
+    occluders = [],
+    receivers = [],
+    seen = new Set(),
+    matrix = new THREE.Matrix4(),
+    instance = new THREE.Matrix4();
+  scene.updateMatrixWorld(true);
+  const add = (box, owner, canopy = false) => {
+    const size = box.getSize(new THREE.Vector3()).multiplyScalar(0.5);
+    if (Math.min(size.x, size.y, size.z) < 0.05) return;
+    occluders.push({ box, owner, canopy, center: box.getCenter(new THREE.Vector3()), size });
+  };
+  for (const root of scene.children) {
+    if (root.userData.canopyShape && root.isInstancedMesh) {
+      const g = root.geometry;
+      g.computeBoundingBox();
+      for (let i = 0; i < root.count; i++) {
+        root.getMatrixAt(i, instance);
+        matrix.multiplyMatrices(root.matrixWorld, instance);
+        add(g.boundingBox.clone().applyMatrix4(matrix), root, true);
+      }
+    }
+    if (root.userData.isBuilding || root.userData.staticProp) {
+      // The whole footprint is appropriate for broad overhead cover; local
+      // roofs/doorways already have the detailed self-occlusion bake.
+      add(new THREE.Box3().setFromObject(root), root);
+      root.traverse((o) => {
+        let moving = false;
+        for (let a = o; a && a !== root.parent; a = a.parent)
+          if (a.userData.keepLive || a.userData.animated || a.userData.wander) moving = true;
+        // Medium/Low retain the existing local building/prop bake. Neighbour
+        // shelter spends its rays on terrain; High also shades rigid structures.
+        if (
+          fullReceivers &&
+          !moving &&
+          o.isMesh &&
+          !o.isInstancedMesh &&
+          !o.material?.transparent &&
+          o.geometry.attributes.color
+        )
+          receivers.push({ o, owner: root });
+      });
+    }
+    if (root.userData.terrainTile && !seen.has(root.geometry.attributes.color)) {
+      receivers.push({ o: root, owner: root });
+      seen.add(root.geometry.attributes.color);
+    }
+  }
+  if (!occluders.length) return;
+  const bvh = tree(occluders),
+    ray = new THREE.Ray(),
+    hit = new THREE.Vector3(),
+    normal = new THREE.Vector3(),
+    tangent = new THREE.Vector3(),
+    bitangent = new THREE.Vector3(),
+    nm = new THREE.Matrix3();
+  const radius = 24;
+  // Empty neighbourhoods cannot shelter a vertex. Populate conservative XZ
+  // cells once, so bare terrain avoids hemisphere rays without losing cover.
+  const occupied = new Set(),
+    cell = 32;
+  const cellKey = (x, z) => `${Math.floor(x / cell)},${Math.floor(z / cell)}`;
+  for (const o of occluders)
+    for (let x = Math.floor((o.box.min.x - radius) / cell); x <= Math.floor((o.box.max.x + radius) / cell); x++)
+      for (let z = Math.floor((o.box.min.z - radius) / cell); z <= Math.floor((o.box.max.z + radius) / cell); z++)
+        occupied.add(`${x},${z}`);
+  const directions = Array.from({ length: rays }, (_, j) => {
+    const r = Math.sqrt((j + 0.5) / rays),
+      a = j * 2.399963229728653;
+    return [Math.sqrt(1 - r * r), r * Math.cos(a), r * Math.sin(a)];
+  });
+  function nearest(node, owner, best) {
+    if (node.box.distanceToPoint(ray.origin) > best || !ray.intersectsBox(node.box)) return best;
+    if (!node.items) return nearest(node.right, owner, nearest(node.left, owner, best));
+    for (const o of node.items) {
+      if (o.owner === owner) continue;
+      let d = Infinity;
+      if (o.canopy) d = ellipsoidDistance(ray, o);
+      else if (o.box.containsPoint(ray.origin)) d = 0;
+      else if (ray.intersectBox(o.box, hit)) d = hit.distanceTo(ray.origin);
+      if (d < best) best = d;
+    }
+    return best;
+  }
+  let vertices = 0,
+    shaded = 0;
+  // A receiver only ever darkens its OWN vertex colours. Roadside trees share
+  // one cached canopy geometry per shape (foliageGeoFor), and a building may
+  // reuse one part geometry across several meshes: writing into those in place
+  // compounds every neighbour's shelter into the shared buffer and poisons the
+  // cache for everything built later. Clone before the first write instead.
+  const written = new Set();
+  for (const { o, owner } of receivers) {
+    if (o.geometry.userData.sharedCache || written.has(o.geometry)) {
+      const copy = o.geometry.clone();
+      copy.userData = { ...o.geometry.userData, sharedCache: false };
+      o.geometry = copy;
+    }
+    written.add(o.geometry);
+    const g = o.geometry,
+      p = g.attributes.position,
+      n = g.attributes.normal,
+      c = g.attributes.color;
+    nm.getNormalMatrix(o.matrixWorld);
+    for (let i = 0; i < p.count; i++) {
+      normal.fromBufferAttribute(n, i).applyNormalMatrix(nm);
+      // Only sky-facing directions contribute: neighbouring walls don't paint
+      // a directional sun shadow permanently onto the sunny side of a facade.
+      ray.origin.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld).addScaledVector(normal, 0.06);
+      vertices++;
+      if (!occupied.has(cellKey(ray.origin.x, ray.origin.z))) continue;
+      tangent
+        .set(Math.abs(normal.y) < 0.9 ? 0 : 1, Math.abs(normal.y) < 0.9 ? 1 : 0, 0)
+        .cross(normal)
+        .normalize();
+      bitangent.crossVectors(normal, tangent);
+      let sum = 0,
+        weight = 0;
+      for (let j = 0; j < rays; j++) {
+        const d = directions[j];
+        ray.direction.copy(normal).multiplyScalar(d[0]).addScaledVector(tangent, d[1]).addScaledVector(bitangent, d[2]);
+        if (ray.direction.y <= 0.05) continue;
+        const w = ray.direction.y;
+        sum += w * Math.pow(1 - nearest(bvh, owner, radius) / radius, 2);
+        weight += w;
+      }
+      const cover = weight ? (sum / weight) * 0.16 : 0;
+      if (cover > 0.001) {
+        c.setXYZ(i, c.getX(i) * (1 - cover), c.getY(i) * (1 - cover * 0.95), c.getZ(i) * (1 - cover * 0.86));
+        shaded++;
+      }
+    }
+    c.needsUpdate = true;
+  }
+  scene.userData.worldShelter = {
+    detail,
+    rays,
+    receivers: receivers.length,
+    occluders: occluders.length,
+    vertices,
+    shaded,
+    ms: performance.now() - start,
+  };
+}

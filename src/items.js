@@ -186,8 +186,11 @@ export class ItemManager {
       if (y.target && !y.passed) {
         // Karts carry a cached `_proj`; project on demand when one is missing
         // (cheap — yarns are few).
-        const tl = y.target._proj ? y.target._proj.lateral
-          : (y.target.position ? track.project(y.target.position).lateral : 0);
+        const tl = y.target._proj
+          ? y.target._proj.lateral
+          : y.target.position
+            ? track.project(y.target.position).lateral
+            : 0;
         const want = Math.max(-track.halfWidth + 2, Math.min(track.halfWidth - 2, tl));
         const d = want - y.lat;
         y.lat += Math.max(-YARN_HOME_RATE * dt, Math.min(YARN_HOME_RATE * dt, d));

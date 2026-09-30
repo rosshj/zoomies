@@ -1,0 +1,1154 @@
+{
+  "biome": {
+    "name": "tundra",
+    "weather": "snow"
+  },
+  "scene": {
+    "triangles": 660830,
+    "mountainTriangles": 36792,
+    "batches": 998,
+    "invalid": 0,
+    "missingColors": 0,
+    "waterMeshes": 5,
+    "waterMaterials": 1
+  },
+  "views": [
+    {
+      "name": "track-a",
+      "render": {
+        "calls": 1712,
+        "frameCalls": 15,
+        "drawCalls": 384,
+        "triangles": 328703,
+        "points": 66,
+        "lines": 12,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1883,
+        "attributesSize": 24318312,
+        "geometries": 548,
+        "indexAttributes": 379,
+        "indexAttributesSize": 2065572,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 507,
+        "programsSize": 1798378,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 51,
+        "texturesSize": 61080708,
+        "uniformBuffers": 1570,
+        "uniformBuffersSize": 804384,
+        "total": 90072754
+      }
+    },
+    {
+      "name": "track-b",
+      "render": {
+        "calls": 3347,
+        "frameCalls": 15,
+        "drawCalls": 224,
+        "triangles": 258674,
+        "points": 66,
+        "lines": 102,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1883,
+        "attributesSize": 24318312,
+        "geometries": 548,
+        "indexAttributes": 379,
+        "indexAttributesSize": 2065572,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 507,
+        "programsSize": 1798378,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 51,
+        "texturesSize": 61080708,
+        "uniformBuffers": 1570,
+        "uniformBuffersSize": 804384,
+        "total": 90072754
+      }
+    },
+    {
+      "name": "track-c",
+      "render": {
+        "calls": 4967,
+        "frameCalls": 15,
+        "drawCalls": 462,
+        "triangles": 368604,
+        "points": 66,
+        "lines": 12,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1883,
+        "attributesSize": 24318312,
+        "geometries": 548,
+        "indexAttributes": 379,
+        "indexAttributesSize": 2065572,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 507,
+        "programsSize": 1798378,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 51,
+        "texturesSize": 61080708,
+        "uniformBuffers": 1570,
+        "uniformBuffersSize": 804384,
+        "total": 90072754
+      }
+    },
+    {
+      "name": "mountain",
+      "render": {
+        "calls": 6602,
+        "frameCalls": 15,
+        "drawCalls": 223,
+        "triangles": 263634,
+        "points": 66,
+        "lines": 12,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1883,
+        "attributesSize": 24318312,
+        "geometries": 548,
+        "indexAttributes": 379,
+        "indexAttributesSize": 2065572,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 507,
+        "programsSize": 1798378,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 51,
+        "texturesSize": 61080708,
+        "uniformBuffers": 1570,
+        "uniformBuffersSize": 804384,
+        "total": 90072754
+      }
+    }
+  ],
+  "dressing": {
+    "placements": [
+      {
+        "kind": "tree",
+        "biome": "savanna",
+        "x": -0.11620610862914442,
+        "z": -451.55237673599595
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 10.079125044845819,
+        "z": -459.3582205928959
+      },
+      {
+        "kind": "rock",
+        "biome": "tundra",
+        "x": 9.630628155293365,
+        "z": -452.00593080119626
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 19.64719169550129,
+        "z": -456.849579010037
+      },
+      {
+        "kind": "tree",
+        "biome": "tundra",
+        "x": 28.383346804381578,
+        "z": -450.3293565821007
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 38.07824756565296,
+        "z": -453.51937591088745
+      },
+      {
+        "kind": "sign",
+        "biome": "tundra",
+        "x": 45.97248505363538,
+        "z": -446.0802149801164
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 56.55107294964365,
+        "z": -452.39376676810207
+      },
+      {
+        "kind": "tree",
+        "biome": "tundra",
+        "x": 63.65948812139791,
+        "z": -443.20969317882407
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 82.86881939985828,
+        "z": -445.22610585798725
+      },
+      {
+        "kind": "rock",
+        "biome": "tundra",
+        "x": 89.03151126488925,
+        "z": -434.71262492085754
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 116.80042435795774,
+        "z": -431.51152906827474
+      },
+      {
+        "kind": "goat",
+        "biome": "tundra",
+        "x": 204.39473404942876,
+        "z": -396.8794709153187
+      },
+      {
+        "kind": "rock",
+        "biome": "tundra",
+        "x": 212.56899309398048,
+        "z": -390.87042218676237
+      },
+      {
+        "kind": "sign",
+        "biome": "city",
+        "x": 223.52476127102318,
+        "z": -370.9198029511614
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 160.35921465119335,
+        "z": -308.848207536944
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 136.70054286836393,
+        "z": -291.0981332756088
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 226.13268090293545,
+        "z": -358.1951836102655
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 248.35346084731992,
+        "z": -374.8664700534828
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 270.92549820895414,
+        "z": -391.80128968648603
+      },
+      {
+        "kind": "sign",
+        "biome": "city",
+        "x": 221.1148691359987,
+        "z": -354.43053729748425
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 146.65083735431685,
+        "z": -301.15620877665054
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 233.85104203140645,
+        "z": -348.0560448817553
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 245.64692242592437,
+        "z": -354.400351747398
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 255.55653095560533,
+        "z": -359.7301444655325
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 267.7002956412548,
+        "z": -366.2615577295836
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 282.6344665778636,
+        "z": -374.293765588341
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 146.06803980979157,
+        "z": -314.05414921021264
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 130.898943246211,
+        "z": -311.1900176917588
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 237.6906433742328,
+        "z": -331.35374154729084
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 253.14729786993058,
+        "z": -334.2721679100886
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 280.7137583436436,
+        "z": -339.477090165283
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 125.09149178526783,
+        "z": -335.00521192318564
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 238.44676397075443,
+        "z": -312.64698539603455
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 251.58990597315443,
+        "z": -310.0546282828398
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 262.7180527538909,
+        "z": -307.85970940739514
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 274.9058250313241,
+        "z": -305.4557896938569
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 294.97090500580794,
+        "z": -301.49814754183757
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 160.8751548661291,
+        "z": -332.1157101490431
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 130.97837901542403,
+        "z": -345.9513419511618
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 232.95573807452834,
+        "z": -298.75825333385035
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 249.5577554648009,
+        "z": -291.07517068536583
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 286.6285748067918,
+        "z": -273.9195345866809
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 147.5513732739617,
+        "z": -338.09235256367054
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 228.79460893664216,
+        "z": -287.4970617488421
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 240.37882106578783,
+        "z": -280.2828416755761
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 264.17583453086485,
+        "z": -265.46293935424313
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 276.9595446323444,
+        "z": -257.5017161828483
+      },
+      {
+        "kind": "lamp",
+        "biome": "city",
+        "x": 222.09507364039462,
+        "z": -291.66928524379523
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 223.35265724213127,
+        "z": -279.010041137306
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 234.72720695396538,
+        "z": -271.02273486092633
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 270.07528730202387,
+        "z": -246.20100994215636
+      },
+      {
+        "kind": "bench",
+        "biome": "city",
+        "x": 217.76474974562143,
+        "z": -282.93391766423935
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 139.31417207298472,
+        "z": -328.42487153470773
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 247.96379163252368,
+        "z": -250.72372074483553
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 130.45102087353723,
+        "z": -321.5910331438294
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 261.3257708146622,
+        "z": -234.17825515439807
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 110.9390523717676,
+        "z": -316.31718833589815
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 232.3575717383415,
+        "z": -248.50211957171788
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 245.6924464060947,
+        "z": -241.05428173550425
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 144.10990765854228,
+        "z": -281.5251097914276
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 114.69933150029881,
+        "z": -292.7323971484886
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 99.78013212847253,
+        "z": -298.4175545421317
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 140.6882642895467,
+        "z": -264.057609259839
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 111.50307951310548,
+        "z": -267.7428574637148
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 92.83131114084567,
+        "z": -270.1005639981823
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 152.5363074238425,
+        "z": -245.41645362593985
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 123.53041372529052,
+        "z": -239.750964579288
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 113.65284139373149,
+        "z": -237.8216574380034
+      },
+      {
+        "kind": "chalet",
+        "biome": "tundra",
+        "x": 93.61642868907356,
+        "z": -233.90810532021078
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 155.86331353698563,
+        "z": -231.31418404173107
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 260.85965867470856,
+        "z": -276.75099906420667
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 162.16546429896172,
+        "z": -220.71814636875823
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 125.83702319454008,
+        "z": -198.58216213531932
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 168.6718739994958,
+        "z": -211.80769165952694
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 158.83336579678922,
+        "z": -204.4847663783618
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 136.9410285329768,
+        "z": -188.19002466448464
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 125.65790716741813,
+        "z": -179.79185565390497
+      },
+      {
+        "kind": "stall",
+        "biome": "city",
+        "x": 174.13006085370586,
+        "z": -215.87028872002665
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 234.68746503051676,
+        "z": -260.94392558360204
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 175.35330627172863,
+        "z": -204.1092298460517
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 152.9953716166746,
+        "z": -185.27421645395404
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 142.20013076797846,
+        "z": -176.1799727729909
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 130.98209185806158,
+        "z": -166.72955097145862
+      },
+      {
+        "kind": "sign",
+        "biome": "city",
+        "x": 180.11579459064794,
+        "z": -208.12129682140076
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 250.62668473297714,
+        "z": -267.52184435002886
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 179.90488858454137,
+        "z": -195.59988002095017
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 162.5356016975653,
+        "z": -179.80556464532197
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 150.70706799955497,
+        "z": -169.0495910193865
+      },
+      {
+        "kind": "hydrant",
+        "biome": "city",
+        "x": 186.2351713548376,
+        "z": -201.35616023795396
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 177.7329799661643,
+        "z": -181.00098995223826
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 170.57250878592882,
+        "z": -174.20273306860213
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 155.602771475337,
+        "z": -159.99024381246787
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 145.8703337058223,
+        "z": -150.7501239382632
+      },
+      {
+        "kind": "planter",
+        "biome": "city",
+        "x": 191.39787197980155,
+        "z": -193.97463985006516
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 193.51326523443248,
+        "z": -184.02406595843942
+      },
+      {
+        "kind": "planter",
+        "biome": "city",
+        "x": 228.67108634033585,
+        "z": -217.97702185616558
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 181.17985469272335,
+        "z": -160.591780871063
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 158.6438346514917,
+        "z": -138.93049796142986
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 239.02927537843183,
+        "z": -216.1957724072291
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 192.1747434824404,
+        "z": -160.20476540408254
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 175.99633408405626,
+        "z": -145.03222007465433
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 257.816028274242,
+        "z": -221.76491909168737
+      },
+      {
+        "kind": "planter",
+        "biome": "city",
+        "x": 240.69448915734347,
+        "z": -205.70788147050644
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 168.15844176261845,
+        "z": -128.67583538646193
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 260.69561862541076,
+        "z": -211.72450956499955
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 292.90134667333524,
+        "z": -240.62795254879023
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 194.8791518996237,
+        "z": -143.64974207618422
+      },
+      {
+        "kind": "store",
+        "biome": "city",
+        "x": 286.34466707066673,
+        "z": -220.61637696277324
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 186.3620705404025,
+        "z": -129.35898396721512
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 174.1900971892352,
+        "z": -119.97130957363964
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 283.51407242401234,
+        "z": -204.28778425742414
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 294.2670907953791,
+        "z": -212.58108496604308
+      },
+      {
+        "kind": "tower",
+        "biome": "city",
+        "x": 190.58215390918832,
+        "z": -120.21884155357421
+      },
+      {
+        "kind": "cow",
+        "biome": "meadow",
+        "x": 307.0272167135882,
+        "z": 75.55249016274057
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 239.82533859474592,
+        "z": 80.89490051699228
+      },
+      {
+        "kind": "silo",
+        "biome": "meadow",
+        "x": 244.46779859025978,
+        "z": 93.02097623231373
+      },
+      {
+        "kind": "barn",
+        "biome": "meadow",
+        "x": 241.45931692829484,
+        "z": 105.97731132010293
+      },
+      {
+        "kind": "fence",
+        "biome": "meadow",
+        "x": 332.3693879893283,
+        "z": 129.2764291028905
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 339.2077964161673,
+        "z": 158.5319056944101
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 279.5066477073426,
+        "z": 191.34261063487577
+      },
+      {
+        "kind": "hay",
+        "biome": "meadow",
+        "x": 341.26965956474777,
+        "z": 169.07062541513565
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 286.5965732646064,
+        "z": 198.89817885390272
+      },
+      {
+        "kind": "tree",
+        "biome": "meadow",
+        "x": 361.6645863289786,
+        "z": 189.16645314593643
+      },
+      {
+        "kind": "fence",
+        "biome": "autumn",
+        "x": -89.86091180362743,
+        "z": 339.5224289365764
+      },
+      {
+        "kind": "cow",
+        "biome": "autumn",
+        "x": -99.98660197538197,
+        "z": 347.6411961255811
+      },
+      {
+        "kind": "barn",
+        "biome": "autumn",
+        "x": -34.82729223577486,
+        "z": 379.16664799955146
+      },
+      {
+        "kind": "barn",
+        "biome": "autumn",
+        "x": -93.79608978726736,
+        "z": 374.7932391843907
+      },
+      {
+        "kind": "tree",
+        "biome": "autumn",
+        "x": -57.904192902992676,
+        "z": 441.69686079058715
+      },
+      {
+        "kind": "hay",
+        "biome": "autumn",
+        "x": -120.81814622300097,
+        "z": 459.2527140997673
+      },
+      {
+        "kind": "rock",
+        "biome": "mesa",
+        "x": -299.97615136320263,
+        "z": 101.68527884233971
+      },
+      {
+        "kind": "rock",
+        "biome": "mesa",
+        "x": -224.55623707982812,
+        "z": 30.272538364552165
+      },
+      {
+        "kind": "cactus",
+        "biome": "mesa",
+        "x": -319.96840034528935,
+        "z": 11.122767783612598
+      },
+      {
+        "kind": "bush",
+        "biome": "blossom",
+        "x": -258.1652989169097,
+        "z": -35.88648556389446
+      },
+      {
+        "kind": "planter",
+        "biome": "blossom",
+        "x": -324.5464157973221,
+        "z": -21.18780108367415
+      },
+      {
+        "kind": "bush",
+        "biome": "blossom",
+        "x": -267.5301463316442,
+        "z": -38.08938557550344
+      },
+      {
+        "kind": "deer",
+        "biome": "blossom",
+        "x": -327.3723701800374,
+        "z": -57.54703809374875
+      },
+      {
+        "kind": "tree",
+        "biome": "blossom",
+        "x": -252.06480331108452,
+        "z": -56.506641885970296
+      },
+      {
+        "kind": "deer",
+        "biome": "blossom",
+        "x": -250.83421841994243,
+        "z": -71.2449861938947
+      },
+      {
+        "kind": "bush",
+        "biome": "blossom",
+        "x": -309.62426728426516,
+        "z": -106.00570005925071
+      },
+      {
+        "kind": "tree",
+        "biome": "blossom",
+        "x": -303.9647872337128,
+        "z": -131.8393861547547
+      },
+      {
+        "kind": "planter",
+        "biome": "blossom",
+        "x": -235.1935968343876,
+        "z": -100.93214516152614
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -128.41745449409677,
+        "z": -427.0806185113451
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -96.24640263549186,
+        "z": -351.4029020191628
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -102.84205403068421,
+        "z": -427.5880428628306
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -88.06577834400746,
+        "z": -430.4054137825926
+      },
+      {
+        "kind": "vulture",
+        "biome": "savanna",
+        "x": -60.34855565868867,
+        "z": -365.684866622974
+      },
+      {
+        "kind": "vulture",
+        "biome": "savanna",
+        "x": -50.57648755071796,
+        "z": -372.07906904194215
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -75.60356922462634,
+        "z": -443.38901350159375
+      },
+      {
+        "kind": "rock",
+        "biome": "savanna",
+        "x": -20.53338106211932,
+        "z": -383.33163845932796
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -56.03343272759831,
+        "z": -436.8803461470486
+      },
+      {
+        "kind": "rock",
+        "biome": "savanna",
+        "x": -56.70867100259689,
+        "z": -455.20330316925333
+      },
+      {
+        "kind": "tree",
+        "biome": "savanna",
+        "x": -9.130796751513394,
+        "z": -388.02953249010574
+      },
+      {
+        "kind": "tree",
+        "biome": "savanna",
+        "x": -40.92065192596625,
+        "z": -450.9747569908445
+      },
+      {
+        "kind": "goat",
+        "biome": "savanna",
+        "x": -4.399745763661427,
+        "z": -464.76275125419806
+      },
+      {
+        "kind": "lighthouse",
+        "biome": "beach",
+        "x": 395.0461091986229,
+        "z": -131.6446026261371
+      },
+      {
+        "kind": "windmill",
+        "biome": "meadow",
+        "x": 419.06020035642564,
+        "z": 201.25476287267395
+      },
+      {
+        "kind": "rockSpire",
+        "biome": "mesa",
+        "x": -386.6064761058758,
+        "z": 136.64842650152272
+      },
+      {
+        "kind": "giantTree",
+        "biome": "jungle",
+        "x": -323.26271762697604,
+        "z": -401.398667629149
+      },
+      {
+        "kind": "pigeonLoft",
+        "biome": "city",
+        "x": 203.31409850437265,
+        "z": -260.66025084195843
+      }
+    ],
+    "birds": [
+      {
+        "x": -274.9981845828532,
+        "z": 173.09610657166277,
+        "radius": 61.13992043398321,
+        "species": "vulture"
+      },
+      {
+        "x": -397.9507745803866,
+        "z": 169.98441302750783,
+        "radius": 56.78371364111081,
+        "species": "vulture"
+      },
+      {
+        "x": -300.03575051112904,
+        "z": 176.96269370492513,
+        "radius": 65.21329779969528,
+        "species": "vulture"
+      },
+      {
+        "x": 148.25933351316343,
+        "z": -419.8853375375131,
+        "radius": 62.517887936905026,
+        "species": "raven"
+      },
+      {
+        "x": 330.55470825895975,
+        "z": 302.7652262913521,
+        "radius": 61.937509685289115,
+        "species": "raven"
+      },
+      {
+        "x": -137.81136810689287,
+        "z": -406.37469734913157,
+        "radius": 51.749333411920816,
+        "species": "vulture"
+      }
+    ],
+    "invalid": [],
+    "wrongBirds": []
+  },
+  "errors": []
+}

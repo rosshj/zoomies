@@ -36,12 +36,7 @@ function encodePNG(width, height, rgba) {
     rgba.copy(raw, y * (stride + 1) + 1, y * stride, y * stride + stride);
   }
   const idat = zlib.deflateSync(raw, { level: 9 });
-  return Buffer.concat([
-    sig,
-    chunk("IHDR", ihdr),
-    chunk("IDAT", idat),
-    chunk("IEND", Buffer.alloc(0)),
-  ]);
+  return Buffer.concat([sig, chunk("IHDR", ihdr), chunk("IDAT", idat), chunk("IEND", Buffer.alloc(0))]);
 }
 
 // ---- drawing helpers (normalized 0..1 coords) ----
@@ -72,7 +67,9 @@ function sampleCat(nx, ny) {
   const inR = [0.68, 0.4, 0.65, 0.18, 0.57, 0.33];
 
   let c = null;
-  const put = (cr, cg, cb) => { c = [cr, cg, cb]; };
+  const put = (cr, cg, cb) => {
+    c = [cr, cg, cb];
+  };
 
   // ears (behind head)
   if (inTri(nx, ny, earL) || inTri(nx, ny, earR)) put(0xf4, 0xa9, 0x3a);
@@ -83,11 +80,9 @@ function sampleCat(nx, ny) {
   // chin/muzzle highlight
   if (inEllipse(nx, ny, 0.5, 0.66, 0.16, 0.1)) put(0xff, 0xe7, 0xc7);
   // eyes
-  if (inEllipse(nx, ny, 0.4, 0.55, 0.055, 0.08) || inEllipse(nx, ny, 0.6, 0.55, 0.055, 0.08))
-    put(0x9c, 0xcc, 0x65);
+  if (inEllipse(nx, ny, 0.4, 0.55, 0.055, 0.08) || inEllipse(nx, ny, 0.6, 0.55, 0.055, 0.08)) put(0x9c, 0xcc, 0x65);
   // pupils
-  if (inEllipse(nx, ny, 0.4, 0.55, 0.02, 0.06) || inEllipse(nx, ny, 0.6, 0.55, 0.02, 0.06))
-    put(0x11, 0x11, 0x11);
+  if (inEllipse(nx, ny, 0.4, 0.55, 0.02, 0.06) || inEllipse(nx, ny, 0.6, 0.55, 0.02, 0.06)) put(0x11, 0x11, 0x11);
   // nose
   if (inTri(nx, ny, [0.47, 0.62, 0.53, 0.62, 0.5, 0.67])) put(0xff, 0x6f, 0x9b);
 
@@ -147,19 +142,27 @@ function renderSplash(size, badgeFrac = 0.3) {
     const bg = [mix(0x14, 0x0a, ny), mix(0x1b, 0x0f, ny), mix(0x2c, 0x1a, ny)];
     for (let x = 0; x < size; x++) {
       const i = (y * size + x) * 4;
-      let r = bg[0], g = bg[1], bl = bg[2];
+      let r = bg[0],
+        g = bg[1],
+        bl = bg[2];
       if (x >= b0 && x < b1 && y >= b0 && y < b1) {
-        let ar = 0, ag = 0, ab = 0;
+        let ar = 0,
+          ag = 0,
+          ab = 0;
         for (let sy = 0; sy < SS; sy++) {
           for (let sx = 0; sx < SS; sx++) {
             const bx = (x + (sx + 0.5) / SS - b0) / (b1 - b0);
             const by = (y + (sy + 0.5) / SS - b0) / (b1 - b0);
             const c = sampleCat(bx, by) || bg;
-            ar += c[0]; ag += c[1]; ab += c[2];
+            ar += c[0];
+            ag += c[1];
+            ab += c[2];
           }
         }
         const n = SS * SS;
-        r = ar / n; g = ag / n; bl = ab / n;
+        r = ar / n;
+        g = ag / n;
+        bl = ab / n;
       }
       rgba[i] = Math.round(r);
       rgba[i + 1] = Math.round(g);

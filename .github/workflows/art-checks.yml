@@ -1,0 +1,47 @@
+name: procedural art
+on:
+  push:
+    branches: [codex/procedural-art-refresh]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: art-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [accessories, cat-roster-art, kart-roster-art, cat-roster-ui, kart-roster-ui, world]
+    env:
+      SOFTWARE: "1"
+      OUT: ${{ github.workspace }}/art-output
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright-core install --with-deps chromium
+      - name: Run actual software-rendered checks
+        shell: bash
+        run: |
+          mkdir -p "$OUT"
+          if [[ '${{ matrix.suite }}' == 'world' ]]; then
+            node tools/baked-world-check.mjs | tee "$OUT/build.log"
+            node tools/snow-village-check.mjs | tee "$OUT/village.log"
+            npm run check:art | tee "$OUT/art.log"
+            npm run check:materials | tee "$OUT/materials.log"
+          else
+            npm run 'check:${{ matrix.suite }}' | tee "$OUT/check.log"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: art-${{ matrix.suite }}
+          path: art-output/
+          retention-days: 30

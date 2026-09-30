@@ -1,0 +1,1376 @@
+{
+  "biome": {
+    "name": "wetlands",
+    "weather": "rain"
+  },
+  "scene": {
+    "triangles": 842952,
+    "mountainTriangles": 32760,
+    "batches": 1232,
+    "invalid": 0,
+    "missingColors": 0,
+    "waterMeshes": 6,
+    "waterMaterials": 1
+  },
+  "views": [
+    {
+      "name": "track-a",
+      "render": {
+        "calls": 1697,
+        "frameCalls": 15,
+        "drawCalls": 304,
+        "triangles": 338056,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1972,
+        "attributesSize": 25786232,
+        "geometries": 542,
+        "indexAttributes": 316,
+        "indexAttributesSize": 2177760,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 571,
+        "programsSize": 1780616,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60493761,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 868912,
+        "total": 91112681
+      }
+    },
+    {
+      "name": "track-b",
+      "render": {
+        "calls": 3317,
+        "frameCalls": 15,
+        "drawCalls": 113,
+        "triangles": 201828,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1972,
+        "attributesSize": 25786232,
+        "geometries": 542,
+        "indexAttributes": 316,
+        "indexAttributesSize": 2177760,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 571,
+        "programsSize": 1780616,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60493761,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 868912,
+        "total": 91112681
+      }
+    },
+    {
+      "name": "track-c",
+      "render": {
+        "calls": 4952,
+        "frameCalls": 15,
+        "drawCalls": 205,
+        "triangles": 310198,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1972,
+        "attributesSize": 25786232,
+        "geometries": 542,
+        "indexAttributes": 316,
+        "indexAttributesSize": 2177760,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 571,
+        "programsSize": 1780616,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60493761,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 868912,
+        "total": 91112681
+      }
+    },
+    {
+      "name": "mountain",
+      "render": {
+        "calls": 6557,
+        "frameCalls": 15,
+        "drawCalls": 235,
+        "triangles": 357642,
+        "points": 0,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1972,
+        "attributesSize": 25786232,
+        "geometries": 542,
+        "indexAttributes": 316,
+        "indexAttributesSize": 2177760,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 571,
+        "programsSize": 1780616,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 38,
+        "texturesSize": 60493761,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 868912,
+        "total": 91112681
+      }
+    }
+  ],
+  "dressing": {
+    "placements": [
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 394.4174663042931,
+        "z": -130.39091851400096
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 402.69085582061535,
+        "z": -121.29883185902375
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 402.1484627624508,
+        "z": -111.267519555329
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 405.2706404536802,
+        "z": -101.69989377804221
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 403.8348267128398,
+        "z": -91.8853113774289
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 405.8340954287966,
+        "z": -73.05016097188332
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 400.2700060624557,
+        "z": -63.12270130220139
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 409.0809399947676,
+        "z": -54.47167685780723
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 401.55181078972925,
+        "z": -53.72493809811904
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 407.6115180169043,
+        "z": -44.693626588359095
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 411.4241264419631,
+        "z": -35.28494736636118
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 402.9045620062989,
+        "z": -34.49112037718825
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": 410.87919162955654,
+        "z": -25.3320743727127
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 410.55160901278185,
+        "z": -5.5421842420088385
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 417.6540420980581,
+        "z": 34.098938159757864
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 411.30796277648034,
+        "z": 75.43318043028573
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 343.4687234962238,
+        "z": 85.62333209996966
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 413.87826298628755,
+        "z": 96.9009070446954
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 417.9407734520887,
+        "z": 108.66086349803194
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 343.57280902834054,
+        "z": 102.39643966394777
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 409.03257768146705,
+        "z": 151.74124960987893
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 390.4095356939236,
+        "z": 156.26275223264733
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 329.5146382202618,
+        "z": 151.58759926109312
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 312.68508706283103,
+        "z": 161.9737461893766
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 362.51983018122945,
+        "z": 211.57320300490807
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 300.6057964351595,
+        "z": 184.24663724316412
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 355.8467032469312,
+        "z": 231.54721544319688
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 346.0744720108798,
+        "z": 237.22494591204367
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 284.7281381499449,
+        "z": 215.26445543425692
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 342.2635326757734,
+        "z": 260.133531135967
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 330.8289268944838,
+        "z": 264.25856369883934
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 321.8078757187008,
+        "z": 270.04995165014026
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 312.01919927086345,
+        "z": 288.81634147655564
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 246.98193883654778,
+        "z": 250.91334740088877
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 295.6809205892521,
+        "z": 316.7926371232258
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 287.6369637370039,
+        "z": 323.5599473902864
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 226.50583213131702,
+        "z": 280.2898231531112
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 268.9588379799133,
+        "z": 333.81425541795915
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 215.78679437443483,
+        "z": 280.2663922960587
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 262.6256296785087,
+        "z": 343.0891973723399
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 253.12820614164372,
+        "z": 348.0531408946146
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 244.54468598736858,
+        "z": 353.9455802678644
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 192.24984284565107,
+        "z": 291.7621381342363
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 188.64855012639515,
+        "z": 302.9091536372538
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 208.4355988832415,
+        "z": 372.56451334011945
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 201.5736619559102,
+        "z": 381.7413819919819
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 152.52193296773248,
+        "z": 330.9552957402844
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 141.46516912078792,
+        "z": 330.8808856808978
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 118.13981102713626,
+        "z": 354.17325043010953
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 155.82305615266398,
+        "z": 409.0089464667595
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 101.4683590845053,
+        "z": 348.05054425616527
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 115.93476131919518,
+        "z": 428.53612831299523
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 81.35455028135814,
+        "z": 365.24144432967404
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 101.4066002486801,
+        "z": 430.9771911332331
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 90.77650810970071,
+        "z": 439.1284487642355
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 68.26301954303187,
+        "z": 363.182715732314
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 78.55945464763309,
+        "z": 445.89871458313814
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 51.527528867418795,
+        "z": 440.1244305818964
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 43.86797906865851,
+        "z": 369.66530730184434
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 27.859338896548223,
+        "z": 429.9119906323748
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 41.57252141994627,
+        "z": 358.44373047584156
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 14.386608545430029,
+        "z": 429.7991414155917
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 28.185880974268656,
+        "z": 352.61573664976237
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -3.132607826088101,
+        "z": 414.3201474504364
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 18.586580367781846,
+        "z": 351.50569953278216
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -17.40019136165837,
+        "z": 420.46291990196045
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -30.736943036390905,
+        "z": 406.62240621955897
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -41.71111228579892,
+        "z": 320.88228496698383
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -107.99732829432725,
+        "z": 371.55057100834046
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -173.98726223114318,
+        "z": 360.6802062324952
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -182.12155772924518,
+        "z": 355.45017632084193
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -181.98845551722323,
+        "z": 275.19259734158544
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -191.48730314957578,
+        "z": 358.0552903897333
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -329.966418151805,
+        "z": 300.3338089162626
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -349.01841460967034,
+        "z": 310.55063289007614
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -359.1895704635962,
+        "z": 313.93636421122295
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -355.5194000854544,
+        "z": 320.8469101706286
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -369.01541952205247,
+        "z": 318.18219616614516
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -377.4053075077934,
+        "z": 324.90750352978614
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -373.4899889358581,
+        "z": 331.2410905860719
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -387.04801836319194,
+        "z": 329.4644832187875
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -383.08515233151496,
+        "z": 335.4408798972116
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -395.7566944051122,
+        "z": 335.29579103189167
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -403.86873214646226,
+        "z": 342.344734755319
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -372.3054197816641,
+        "z": 397.78229832406106
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -418.9762875168942,
+        "z": 357.8084277276402
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -432.0803841428156,
+        "z": 360.0853623797854
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -444.5676489625853,
+        "z": 365.43186346294124
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -388.0517845970636,
+        "z": 415.34392551910383
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -441.64354892758485,
+        "z": 383.09299111540633
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -464.2144198317435,
+        "z": 402.365485669596
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -476.6986341827193,
+        "z": 455.4132571719838
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -464.15224612340035,
+        "z": 467.0198862043548
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -400.60776743461906,
+        "z": 464.37316131887786
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -459.38585516118985,
+        "z": 493.6909755490568
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -391.0035285612153,
+        "z": 466.19068429321544
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -378.046937083564,
+        "z": 460.3894451326969
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -354.88589185012046,
+        "z": 525.2508668923015
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -328.1977892148788,
+        "z": 523.1260519929895
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -313.4796863428997,
+        "z": 519.20626703436
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -308.3722098916213,
+        "z": 502.28958665812263
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -296.0712731220975,
+        "z": 497.3240893682423
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -290.8584556118196,
+        "z": 486.5485171427098
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -340.61610141454406,
+        "z": 439.05456221249165
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -272.54709805740964,
+        "z": 458.7723094963927
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -253.17946809986077,
+        "z": 444.00988018694215
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -327.1422848502053,
+        "z": 409.37576727508906
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -261.3056222622163,
+        "z": 202.42005611636176
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -329.0839544912133,
+        "z": 224.37436818373038
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -259.90029177942785,
+        "z": 179.75781527116206
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -335.8976848873832,
+        "z": 208.23491997939658
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -294.4785146572844,
+        "z": 135.97864901915915
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -352.6077907167608,
+        "z": 172.60506199496805
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -353.0122616830286,
+        "z": 162.6393250600641
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -318.02296043455357,
+        "z": 80.76743565829032
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -334.5462857097625,
+        "z": 69.62911419300913
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -335.6441055256091,
+        "z": 56.97148432387707
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -401.0007335145413,
+        "z": 104.71523075705244
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -350.6524187270993,
+        "z": 54.92592019688112
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -414.1884508383675,
+        "z": 80.5780341392744
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -365.5340515625002,
+        "z": 23.896301377952746
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -432.8066665683529,
+        "z": 63.672421704838996
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -441.98614970083,
+        "z": 29.57023554651021
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -438.803852214307,
+        "z": 11.978525608780673
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -363.5926209336109,
+        "z": 11.021881391692652
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -432.321880723791,
+        "z": -18.361860048601084
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -423.8049935762103,
+        "z": -28.78220624043932
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -361.093839455032,
+        "z": -2.867514330198631
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -425.2098805044898,
+        "z": -43.45561740173456
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -404.99652641425973,
+        "z": -45.75462802186081
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -321.24238041376606,
+        "z": -30.572818492313967
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -309.0659077387035,
+        "z": -65.74785459351526
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -305.1463340632913,
+        "z": -82.41950662250969
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -366.5566287522656,
+        "z": -114.59108567080423
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -301.338430723124,
+        "z": -138.4416887208783
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -381.31218063744006,
+        "z": -122.61160298740815
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -323.6763624553148,
+        "z": -165.61852785199758
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -329.74187889408313,
+        "z": -163.88930391101113
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -378.95609621993736,
+        "z": -149.85877515127717
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -331.312352506918,
+        "z": -173.19579326468573
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -381.2868227250163,
+        "z": -159.36157553189648
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -382.75325332736236,
+        "z": -169.58110772066436
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -384.292403429368,
+        "z": -180.1035365490026
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -388.4556245103396,
+        "z": -201.86438914397306
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -390.082236020489,
+        "z": -211.69928028863166
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -383.42316744934647,
+        "z": -212.27758168501396
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -389.717887258564,
+        "z": -221.99650585415108
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -391.6003662207938,
+        "z": -232.2512372615159
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -390.3265815114557,
+        "z": -242.8573367316944
+      },
+      {
+        "kind": "stiltHut",
+        "biome": "wetlands",
+        "x": -392.4040136038816,
+        "z": -253.67412897664306
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -385.09849456064796,
+        "z": -253.3966031926325
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -402.8963984742223,
+        "z": -265.88486029625733
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -401.1951771251171,
+        "z": -277.9790076310947
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -324.7621606144476,
+        "z": -272.5788616704296
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -321.29542947418594,
+        "z": -286.5367986207104
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -388.47855080878367,
+        "z": -313.0758705001415
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -363.7523761860067,
+        "z": -353.89784133113847
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -352.73023586510004,
+        "z": -360.430322758536
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -296.6230155823955,
+        "z": -321.16585102705784
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -351.8262707758217,
+        "z": -376.80282363178526
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -285.1763547646807,
+        "z": -327.0467707172789
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -316.288589821792,
+        "z": -392.05401803890106
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -273.45781505267485,
+        "z": -335.42251632902685
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -310.31305598720434,
+        "z": -405.1395465107853
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": -296.43306180711687,
+        "z": -402.6526662703205
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -287.94138833114357,
+        "z": -410.6241095278657
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -250.63167240502042,
+        "z": -342.8554318857035
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": -267.52507573144544,
+        "z": -419.95046558881575
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -243.22842769888513,
+        "z": -417.66128179941956
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": -232.3670627415334,
+        "z": -417.4539450445981
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -213.84285447313928,
+        "z": -354.6810041032381
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": -222.38119080978197,
+        "z": -421.0137739214254
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 71.87755769599467,
+        "z": -435.9681463155713
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 73.55252613147576,
+        "z": -361.9096819142022
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 82.20809583691194,
+        "z": -436.4371428935351
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 102.28012167348416,
+        "z": -432.1595910061504
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 113.42356571976849,
+        "z": -436.60775171335627
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 121.89281729230463,
+        "z": -425.6623332661196
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 127.13288935313253,
+        "z": -356.90606907479577
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 163.1418564678806,
+        "z": -423.21528678473095
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 150.95295453343522,
+        "z": -341.93186759005596
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 170.8832043113078,
+        "z": -412.5446518733763
+      },
+      {
+        "kind": "rock",
+        "biome": "wetlands",
+        "x": 181.7485058752032,
+        "z": -413.0093802974934
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 220.60132783988826,
+        "z": -399.45411701259195
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 238.75175200690384,
+        "z": -389.0307056313998
+      },
+      {
+        "kind": "reed",
+        "biome": "wetlands",
+        "x": 262.1152618729442,
+        "z": -387.3338437113354
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 269.3596797179443,
+        "z": -377.4769940765573
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 296.8986801475428,
+        "z": -361.05785160327673
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 323.96735641018097,
+        "z": -341.1128757527394
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 333.48659963890486,
+        "z": -318.89391184913615
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 372.797304419596,
+        "z": -253.98933323106348
+      },
+      {
+        "kind": "tree",
+        "biome": "wetlands",
+        "x": 392.6092274590449,
+        "z": -226.67494538615648
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 404.6740554849767,
+        "z": -154.12178268994543
+      },
+      {
+        "kind": "duck",
+        "biome": "wetlands",
+        "x": 408.7084247130578,
+        "z": -135.24745538281732
+      },
+      {
+        "kind": "giantTree",
+        "biome": "wetlands",
+        "x": 426.87757022999904,
+        "z": 226.98141098834077
+      },
+      {
+        "kind": "giantTree",
+        "biome": "wetlands",
+        "x": -198.24023447999537,
+        "z": 416.96412835255376
+      },
+      {
+        "kind": "giantTree",
+        "biome": "wetlands",
+        "x": -385.78325677366075,
+        "z": 218.01156991122792
+      }
+    ],
+    "birds": [
+      {
+        "x": -294.17593709437034,
+        "z": 440.4362231505279,
+        "radius": 67.17885052412748,
+        "species": "heron"
+      },
+      {
+        "x": -377.2555838257507,
+        "z": 378.34495373370737,
+        "radius": 70.18852322222665,
+        "species": "heron"
+      },
+      {
+        "x": -365.59794309394084,
+        "z": 531.6315873924324,
+        "radius": 75.91408266779035,
+        "species": "heron"
+      },
+      {
+        "x": -379.3432165882776,
+        "z": 522.1381152438795,
+        "radius": 63.703052905388176,
+        "species": "heron"
+      },
+      {
+        "x": -263.68889145888875,
+        "z": -21.390036675222206,
+        "radius": 75.77757854107767,
+        "species": "heron"
+      },
+      {
+        "x": -284.9409389146006,
+        "z": -145.68836672804952,
+        "radius": 51.079560570418835,
+        "species": "heron"
+      }
+    ],
+    "invalid": [],
+    "wrongBirds": []
+  },
+  "errors": []
+}

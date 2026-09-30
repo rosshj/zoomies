@@ -37,14 +37,30 @@ export async function createNativeAdapter(name) {
       // the bridge actually exposes (false = pod not installed → that capability
       // silently no-ops; fix with `npm install && npx cap sync ios`).
       console.log(
-        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics} audioSession=${!!AudioSession} app=${!!App}`
+        `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics} audioSession=${!!AudioSession} app=${!!App}`,
       );
-      try { await ScreenOrientation?.lock({ orientation: "landscape" }); } catch { /* n/a */ }
-      try { await StatusBar?.hide(); } catch { /* n/a */ }
+      try {
+        await ScreenOrientation?.lock({ orientation: "landscape" });
+      } catch {
+        /* n/a */
+      }
+      try {
+        await StatusBar?.hide();
+      } catch {
+        /* n/a */
+      }
       // Ambient + mixWithOthers: game audio coexists with the player's own
       // music/podcast and respects the hardware silent switch.
-      try { await AudioSession?.configure(); } catch { /* n/a */ }
-      try { await SplashScreen?.hide(); } catch { /* n/a */ }
+      try {
+        await AudioSession?.configure();
+      } catch {
+        /* n/a */
+      }
+      try {
+        await SplashScreen?.hide();
+      } catch {
+        /* n/a */
+      }
     },
 
     haptics: {
@@ -55,7 +71,11 @@ export async function createNativeAdapter(name) {
       // enough to trip the crash guard ("returnResult@user-script" rejection →
       // "Recovered after an unexpected restart"). Always .catch() them.
       impact(style = "medium") {
-        try { Haptics?.impact({ style: style.toUpperCase() })?.catch?.(() => {}); } catch { /* n/a */ }
+        try {
+          Haptics?.impact({ style: style.toUpperCase() })?.catch?.(() => {});
+        } catch {
+          /* n/a */
+        }
       },
       // A single subtle tick. selectionStart() alone only ARMS the generator on
       // iOS — selectionChanged() is what actually fires the tap — so run the
@@ -66,20 +86,34 @@ export async function createNativeAdapter(name) {
           p?.then?.(() => Haptics?.selectionChanged())
             ?.then?.(() => Haptics?.selectionEnd())
             ?.catch?.(() => {});
-        } catch { /* n/a */ }
+        } catch {
+          /* n/a */
+        }
       },
       // Apple's "success" notification pattern (double tap) — race finish etc.
       success() {
-        try { Haptics?.notification({ type: "SUCCESS" })?.catch?.(() => {}); } catch { /* n/a */ }
+        try {
+          Haptics?.notification({ type: "SUCCESS" })?.catch?.(() => {});
+        } catch {
+          /* n/a */
+        }
       },
     },
 
     orientation: {
       async lock(orientation = "landscape") {
-        try { await ScreenOrientation?.lock({ orientation }); } catch { /* n/a */ }
+        try {
+          await ScreenOrientation?.lock({ orientation });
+        } catch {
+          /* n/a */
+        }
       },
       async unlock() {
-        try { await ScreenOrientation?.unlock(); } catch { /* n/a */ }
+        try {
+          await ScreenOrientation?.unlock();
+        } catch {
+          /* n/a */
+        }
       },
     },
 
@@ -94,11 +128,17 @@ export async function createNativeAdapter(name) {
           await AudioSession?.configure();
           const r = await AudioSession?.isOtherAudioPlaying();
           return !!r?.playing;
-        } catch { return false; }
+        } catch {
+          return false;
+        }
       },
       // Re-establish the (deactivated) session after returning to the app.
       async reactivate() {
-        try { await AudioSession?.configure(); } catch { /* n/a */ }
+        try {
+          await AudioSession?.configure();
+        } catch {
+          /* n/a */
+        }
       },
     },
 
@@ -115,7 +155,13 @@ export async function createNativeAdapter(name) {
           // configure() left the game silent until an app-switcher round trip
           // generated a later retry). Spread reactivation attempts out.
           if (active) {
-            const re = () => { try { AudioSession?.configure()?.catch?.(() => {}); } catch { /* n/a */ } };
+            const re = () => {
+              try {
+                AudioSession?.configure()?.catch?.(() => {});
+              } catch {
+                /* n/a */
+              }
+            };
             re();
             setTimeout(re, 600);
             setTimeout(re, 2000);
@@ -123,11 +169,23 @@ export async function createNativeAdapter(name) {
           cb(active);
         };
         // addListener also returns a promise (see haptics note).
-        try { App?.addListener("appStateChange", (s) => fire(!!s?.isActive))?.catch?.(() => {}); } catch { /* n/a */ }
+        try {
+          App?.addListener("appStateChange", (s) => fire(!!s?.isActive))?.catch?.(() => {});
+        } catch {
+          /* n/a */
+        }
         // Locking the phone can resign-active WITHOUT a full appStateChange —
         // pause/resume cover that path. All handlers are idempotent.
-        try { App?.addListener("pause", () => fire(false))?.catch?.(() => {}); } catch { /* n/a */ }
-        try { App?.addListener("resume", () => fire(true))?.catch?.(() => {}); } catch { /* n/a */ }
+        try {
+          App?.addListener("pause", () => fire(false))?.catch?.(() => {});
+        } catch {
+          /* n/a */
+        }
+        try {
+          App?.addListener("resume", () => fire(true))?.catch?.(() => {});
+        } catch {
+          /* n/a */
+        }
       },
     },
 
@@ -138,9 +196,15 @@ export async function createNativeAdapter(name) {
     // dormant rather than calling an unconfigured API.
     purchases: {
       available: false,
-      async getOfferings() { return []; },
-      async purchase() { throw new Error("purchases not configured yet (RevenueCat pending)"); },
-      async restore() { return []; },
+      async getOfferings() {
+        return [];
+      },
+      async purchase() {
+        throw new Error("purchases not configured yet (RevenueCat pending)");
+      },
+      async restore() {
+        return [];
+      },
     },
   };
 }

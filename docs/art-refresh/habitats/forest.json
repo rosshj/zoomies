@@ -1,0 +1,1094 @@
+{
+  "biome": {
+    "name": "forest",
+    "weather": "rain"
+  },
+  "scene": {
+    "triangles": 802154,
+    "mountainTriangles": 31752,
+    "batches": 1082,
+    "invalid": 0,
+    "missingColors": 0,
+    "waterMeshes": 6,
+    "waterMaterials": 1
+  },
+  "views": [
+    {
+      "name": "track-a",
+      "render": {
+        "calls": 1682,
+        "frameCalls": 15,
+        "drawCalls": 377,
+        "triangles": 375324,
+        "points": 170,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1956,
+        "attributesSize": 21148604,
+        "geometries": 554,
+        "indexAttributes": 358,
+        "indexAttributesSize": 2166480,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 601,
+        "programsSize": 1984714,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60527886,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 1187328,
+        "total": 87020412
+      }
+    },
+    {
+      "name": "track-b",
+      "render": {
+        "calls": 3317,
+        "frameCalls": 15,
+        "drawCalls": 191,
+        "triangles": 293418,
+        "points": 170,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1956,
+        "attributesSize": 21148604,
+        "geometries": 554,
+        "indexAttributes": 358,
+        "indexAttributesSize": 2166480,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 601,
+        "programsSize": 1984714,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60527886,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 1187328,
+        "total": 87020412
+      }
+    },
+    {
+      "name": "track-c",
+      "render": {
+        "calls": 4937,
+        "frameCalls": 15,
+        "drawCalls": 178,
+        "triangles": 294036,
+        "points": 170,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1956,
+        "attributesSize": 21148604,
+        "geometries": 554,
+        "indexAttributes": 358,
+        "indexAttributesSize": 2166480,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 601,
+        "programsSize": 1984714,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60527886,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 1187328,
+        "total": 87020412
+      }
+    },
+    {
+      "name": "mountain",
+      "render": {
+        "calls": 6542,
+        "frameCalls": 15,
+        "drawCalls": 247,
+        "triangles": 332426,
+        "points": 170,
+        "lines": 0,
+        "timestamp": 0
+      },
+      "memory": {
+        "attributes": 1956,
+        "attributesSize": 21148604,
+        "geometries": 554,
+        "indexAttributes": 358,
+        "indexAttributesSize": 2166480,
+        "indirectStorageAttributes": 0,
+        "indirectStorageAttributesSize": 0,
+        "programs": 601,
+        "programsSize": 1984714,
+        "readbackBuffers": 0,
+        "readbackBuffersSize": 0,
+        "renderTargets": 14,
+        "storageAttributes": 1,
+        "storageAttributesSize": 5400,
+        "textures": 40,
+        "texturesSize": 60527886,
+        "uniformBuffers": 1817,
+        "uniformBuffersSize": 1187328,
+        "total": 87020412
+      }
+    }
+  ],
+  "dressing": {
+    "placements": [
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 428.73437691804025,
+        "z": 113.84743467788928
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 421.09540406694623,
+        "z": 124.09689735368883
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 427.5033049636999,
+        "z": 135.63148134871813
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 419.918960830072,
+        "z": 134.7388514970307
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 415.29416222721284,
+        "z": 156.1978727486622
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 414.0525317373324,
+        "z": 167.6145748909238
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 410.286492227463,
+        "z": 178.72789701328512
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 405.7887379194061,
+        "z": 189.75464589054818
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 403.7792946930197,
+        "z": 202.1598515326761
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 398.77793693248447,
+        "z": 212.95216881382328
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 393.07736134517,
+        "z": 209.02666853789543
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 385.06918207250055,
+        "z": 231.57410208062012
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 360.6701467920448,
+        "z": 256.40579526806073
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 355.5807942310349,
+        "z": 250.07587253837545
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": 340.6595311201835,
+        "z": 268.40983333411873
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 336.48963360790935,
+        "z": 282.7221293315683
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 288.5980761531646,
+        "z": 218.8277645208927
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 321.53809061291395,
+        "z": 277.4781351425608
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 287.1470038809727,
+        "z": 236.52469548600644
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 319.1189981205221,
+        "z": 293.13277702287814
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 277.97611395868734,
+        "z": 241.00795816488417
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 312.0006750225026,
+        "z": 299.86669635566057
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 260.7277660750707,
+        "z": 246.94010610868412
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 237.14289272892051,
+        "z": 245.14269447225925
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 221.13820952880468,
+        "z": 264.42509614866543
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 259.98125419774385,
+        "z": 324.31540826397594
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 213.3657680160901,
+        "z": 272.9882079355476
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 196.21259251491102,
+        "z": 286.47164248408023
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 180.68585432931042,
+        "z": 284.86901227157284
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 154.49605114117895,
+        "z": 321.2039698389136
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 148.66227266875916,
+        "z": 329.6558947940866
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 199.16965167336167,
+        "z": 374.165283816702
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 188.38229229424354,
+        "z": 393.1759156390887
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 123.6186015282518,
+        "z": 342.1708442229832
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 180.45693979871476,
+        "z": 402.01612869697834
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 155.68239660242804,
+        "z": 421.9096774216357
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 96.92665332991908,
+        "z": 366.44075757426015
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 87.15324664199703,
+        "z": 379.3991138111852
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 125.973743105207,
+        "z": 440.6285934922736
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 104.68302228606021,
+        "z": 455.38441841850903
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 93.25148394590612,
+        "z": 459.82297039967085
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 59.49170614770727,
+        "z": 388.1167946288372
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 38.67061157160856,
+        "z": 398.82013831549006
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 44.53567857477118,
+        "z": 467.57148340164747
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 31.765249761425697,
+        "z": 465.9198410889518
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 19.061889603644328,
+        "z": 461.86149355031023
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -5.704464802873266,
+        "z": 461.9039609355544
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -17.339987062242905,
+        "z": 460.20571999814285
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -4.108071026108652,
+        "z": 385.1366379441731
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -48.014042332227575,
+        "z": 447.2102210580612
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -39.87239821847839,
+        "z": 366.33041302382753
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -90.2839991904399,
+        "z": 429.41612145895306
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -57.16892783215592,
+        "z": 357.95427843315906
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -74.18876359699578,
+        "z": 345.38170695800727
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -85.1528429226905,
+        "z": 345.8199143655269
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -151.3065065677138,
+        "z": 305.8409215201072
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -204.72682837186068,
+        "z": 374.3392593832231
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -220.76105039215614,
+        "z": 366.1480438627703
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -233.86424817489524,
+        "z": 289.96842835689745
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -241.32398178773906,
+        "z": 283.90757945289204
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -269.1954208221367,
+        "z": 346.9159432856936
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -259.05889879095815,
+        "z": 284.5849395558986
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -281.9561974139597,
+        "z": 351.6605675160927
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -288.69286814392547,
+        "z": 341.141011518845
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -335.6070775641046,
+        "z": 328.5502413100265
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -304.2911111278179,
+        "z": 262.96824198476065
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -366.0340433328105,
+        "z": 274.61098155209083
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -317.78075346666293,
+        "z": 232.56553725430874
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -306.848725639564,
+        "z": 220.87903003909375
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -400.96630917294834,
+        "z": -196.78290136273583
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -457.2267098593951,
+        "z": -144.10805890799742
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -418.621525931193,
+        "z": -210.77260087255635
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -465.5482009362245,
+        "z": -252.05966934050554
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -492.12860192640966,
+        "z": -249.14079750884287
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -514.660514308005,
+        "z": -252.49044631290977
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -525.813760974985,
+        "z": -254.39713393273553
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -572.4358274461806,
+        "z": -255.49074509818908
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -565.4918262084932,
+        "z": -184.48940635080896
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -643.2130411600309,
+        "z": -228.40200145864443
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -653.2532301349111,
+        "z": -216.952285699944
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -586.7926434011628,
+        "z": -179.88971715395422
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -655.1637794570131,
+        "z": -201.86912185023994
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -654.1417757633343,
+        "z": -144.70481181335006
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -628.1916524325784,
+        "z": -92.77942237123509
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -570.4918645226668,
+        "z": -50.570632898104805
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -521.0821930036175,
+        "z": -108.39199176364005
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -331.0380811653147,
+        "z": -199.10897183111513
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -266.00492232520156,
+        "z": -156.78718489510592
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -256.85906825224475,
+        "z": -176.36653831786424
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -250.9355802830881,
+        "z": -184.7286291135626
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -235.84521513396558,
+        "z": -185.94896656542295
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -225.88577278530852,
+        "z": -203.9854545878203
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -284.5012492486797,
+        "z": -257.8269721262089
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -211.63235970032352,
+        "z": -219.86265216535966
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -205.54234377656593,
+        "z": -229.8407543708198
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -202.45979192030134,
+        "z": -241.37704669070828
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -189.9138502645391,
+        "z": -271.8794086180346
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -231.1487205780662,
+        "z": -321.3133673427678
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -227.43692618974893,
+        "z": -331.8579769816859
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -215.58073572453256,
+        "z": -350.02782494051934
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -211.40242759492367,
+        "z": -360.00798838978113
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": -210.68618666682312,
+        "z": -372.4415566156469
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -204.53040600537975,
+        "z": -367.96365996029766
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": -204.37750577538847,
+        "z": -380.59407150842105
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -198.73612032550585,
+        "z": -376.3103818087751
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": -152.6115526739879,
+        "z": -353.67092605526676
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -193.21461542865222,
+        "z": -384.3923351653632
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -152.1206677428054,
+        "z": -366.2206031887398
+      },
+      {
+        "kind": "cabin",
+        "biome": "forest",
+        "x": -139.69769122854944,
+        "z": -370.7294597162243
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -163.74725639332274,
+        "z": -423.8560471674566
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -149.76436284574427,
+        "z": -442.8174749852906
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -103.26218421127078,
+        "z": -402.79845159765335
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -142.14103979028076,
+        "z": -452.8780980370501
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": -85.95751370644066,
+        "z": -418.6015641252318
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -113.43032291839899,
+        "z": -471.74025762814983
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": -63.02297886292281,
+        "z": -421.96980547517313
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": -43.047861378857206,
+        "z": -427.66809633442983
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": -26.79497518866309,
+        "z": -423.9352670970776
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": -8.551582494315724,
+        "z": -427.83061958081163
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 7.926804248870886,
+        "z": -494.17414161368436
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 28.628216823745987,
+        "z": -485.6159800795563
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 66.45080893018552,
+        "z": -404.1181793346876
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 363.98524373969013,
+        "z": -290.1701248766111
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 322.8757285889555,
+        "z": -233.79426333304383
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 392.32707787391973,
+        "z": -255.35463894935933
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 409.3276630969962,
+        "z": -251.49766256468325
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 343.86866960619767,
+        "z": -200.15771084229584
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 417.5527195459806,
+        "z": -228.9852793770924
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 411.39821117686665,
+        "z": -201.99844465565576
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 354.7285256990101,
+        "z": -144.78750857200964
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 433.67488697548157,
+        "z": -149.0491927751512
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 424.79186345691784,
+        "z": -126.33749375666737
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 351.47806964600585,
+        "z": -119.99910948588743
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 424.8877743516344,
+        "z": -104.45142612237231
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 416.53483798117395,
+        "z": -75.95338893547498
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 358.9759137644536,
+        "z": -69.78728408875763
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 425.9111772817276,
+        "z": -65.74383634515101
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 423.0441703092398,
+        "z": -55.78259838280757
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 424.03344691166086,
+        "z": -36.538256092534844
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 352.1767477514714,
+        "z": -18.359571762923288
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 348.67431177657005,
+        "z": 15.807668093632913
+      },
+      {
+        "kind": "log",
+        "biome": "forest",
+        "x": 426.03192367240047,
+        "z": 25.9200274791816
+      },
+      {
+        "kind": "rock",
+        "biome": "forest",
+        "x": 360.1391595457296,
+        "z": 44.227426511061154
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 358.4704746796534,
+        "z": 54.034005256074124
+      },
+      {
+        "kind": "tree",
+        "biome": "forest",
+        "x": 357.12916176921226,
+        "z": 75.27225792201983
+      },
+      {
+        "kind": "bush",
+        "biome": "forest",
+        "x": 437.90288112922997,
+        "z": 63.96848545529775
+      },
+      {
+        "kind": "deer",
+        "biome": "forest",
+        "x": 434.2280934950596,
+        "z": 97.70257783402266
+      },
+      {
+        "kind": "giantTree",
+        "biome": "forest",
+        "x": 244.12425399402838,
+        "z": 394.9339377942409
+      },
+      {
+        "kind": "giantTree",
+        "biome": "forest",
+        "x": -444.7128634182176,
+        "z": 216.1744637572056
+      },
+      {
+        "kind": "giantTree",
+        "biome": "forest",
+        "x": -712.3006757736904,
+        "z": -169.0719794239953
+      }
+    ],
+    "birds": [
+      {
+        "x": 312.86695589340195,
+        "z": -289.89579239349143,
+        "radius": 49.3368543763645,
+        "species": "raven"
+      },
+      {
+        "x": -121.69090051686086,
+        "z": 458.617195206003,
+        "radius": 55.04610524373129,
+        "species": "raven"
+      },
+      {
+        "x": -304.85895560050847,
+        "z": 266.8559495252198,
+        "radius": 56.45211664587259,
+        "species": "raven"
+      },
+      {
+        "x": -675.5401042880106,
+        "z": -139.13052788594248,
+        "radius": 54.31552430707961,
+        "species": "raven"
+      },
+      {
+        "x": 225.52514256038197,
+        "z": 284.1434810894415,
+        "radius": 62.004918955266476,
+        "species": "raven"
+      },
+      {
+        "x": 41.200359129646884,
+        "z": 475.91983153255745,
+        "radius": 55.00569193251431,
+        "species": "raven"
+      }
+    ],
+    "invalid": [],
+    "wrongBirds": []
+  },
+  "errors": []
+}

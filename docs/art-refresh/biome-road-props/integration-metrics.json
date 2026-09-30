@@ -1,0 +1,265 @@
+[
+  {
+    "backend": "webgl",
+    "worlds": [
+      {
+        "biome": "meadow",
+        "placed": {
+          "crate": 25,
+          "hayBale": 12,
+          "pumpkin": 12,
+          "fruitBasket": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "forest",
+        "placed": {
+          "crate": 25,
+          "log": 12,
+          "pinecone": 12,
+          "campRoll": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "alpine",
+        "placed": {
+          "crate": 25,
+          "log": 10,
+          "pinecone": 10,
+          "campRoll": 10,
+          "supplyCase": 9
+        },
+        "count": 64
+      },
+      {
+        "biome": "autumn",
+        "placed": {
+          "crate": 25,
+          "pumpkin": 12,
+          "fruitBasket": 12,
+          "leafBundle": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "beach",
+        "placed": {
+          "crate": 25,
+          "beachBall": 13,
+          "coconut": 13,
+          "sandBucket": 13
+        },
+        "count": 64
+      },
+      {
+        "biome": "desert",
+        "placed": {
+          "crate": 25,
+          "tumbleweed": 13,
+          "clayPot": 13,
+          "wagonWheel": 13
+        },
+        "count": 64
+      },
+      {
+        "biome": "mesa",
+        "placed": {
+          "crate": 25,
+          "clayPot": 13,
+          "wagonWheel": 13,
+          "tumbleweed": 13
+        },
+        "count": 64
+      },
+      {
+        "biome": "tundra",
+        "placed": {
+          "crate": 25,
+          "snowball": 13,
+          "iceChunk": 13,
+          "supplyCase": 13
+        },
+        "count": 64
+      },
+      {
+        "biome": "city",
+        "placed": {
+          "crate": 25,
+          "trafficCone": 12,
+          "cardboardBox": 12,
+          "tire": 11,
+          "barrel": 4
+        },
+        "count": 64
+      },
+      {
+        "biome": "jungle",
+        "placed": {
+          "crate": 25,
+          "tropicalFruit": 12,
+          "bambooBundle": 12,
+          "log": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "wetlands",
+        "placed": {
+          "crate": 25,
+          "fishingFloat": 12,
+          "bambooBundle": 12,
+          "log": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "volcanic",
+        "placed": {
+          "crate": 25,
+          "pumice": 18,
+          "canister": 17,
+          "barrel": 4
+        },
+        "count": 64
+      },
+      {
+        "biome": "savanna",
+        "placed": {
+          "crate": 25,
+          "tumbleweed": 13,
+          "clayPot": 13,
+          "campRoll": 13
+        },
+        "count": 64
+      },
+      {
+        "biome": "blossom",
+        "placed": {
+          "crate": 25,
+          "fruitBasket": 12,
+          "leafBundle": 12,
+          "clayPot": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "lavender",
+        "placed": {
+          "crate": 25,
+          "hayBale": 12,
+          "fruitBasket": 12,
+          "leafBundle": 12
+        },
+        "count": 64
+      },
+      {
+        "biome": "mixed",
+        "placed": {
+          "crate": 28,
+          "clayPot": 3,
+          "fruitBasket": 4,
+          "leafBundle": 3,
+          "hayBale": 1,
+          "tumbleweed": 1,
+          "wagonWheel": 2,
+          "snowball": 1,
+          "iceChunk": 1,
+          "log": 5,
+          "pinecone": 5,
+          "campRoll": 4,
+          "supplyCase": 4,
+          "pumpkin": 1
+        },
+        "count": 64
+      }
+    ],
+    "programsBefore": 24,
+    "programsAfter": 24,
+    "debris": 18,
+    "audio": [
+      {
+        "kind": "wood",
+        "peak": 0.18279701471328735,
+        "rms": 0.019187077552008467,
+        "signature": 0.041949085124964286
+      },
+      {
+        "kind": "coconut",
+        "peak": 0.20983004570007324,
+        "rms": 0.018394693671728565,
+        "signature": 22.961673739198392
+      },
+      {
+        "kind": "rubber",
+        "peak": 0.17792172729969025,
+        "rms": 0.02406229618203018,
+        "signature": -0.36344346616305695
+      },
+      {
+        "kind": "hay",
+        "peak": 0.17378342151641846,
+        "rms": 0.01916067642600456,
+        "signature": -1.1073543576835547
+      },
+      {
+        "kind": "rustle",
+        "peak": 0.26030677556991577,
+        "rms": 0.024656241805650632,
+        "signature": 0.14653006692431148
+      },
+      {
+        "kind": "fruit",
+        "peak": 0.17685887217521667,
+        "rms": 0.017510258516205808,
+        "signature": -0.03332402205345469
+      },
+      {
+        "kind": "plastic",
+        "peak": 0.19956380128860474,
+        "rms": 0.019213010471437513,
+        "signature": 0.39086058274277846
+      },
+      {
+        "kind": "pot",
+        "peak": 0.20562463998794556,
+        "rms": 0.022211527885943237,
+        "signature": 0.05813203997101848
+      },
+      {
+        "kind": "snow",
+        "peak": 0.22518743574619293,
+        "rms": 0.020506290654195163,
+        "signature": 0.11967093396817673
+      },
+      {
+        "kind": "ice",
+        "peak": 0.20259030163288116,
+        "rms": 0.02004608259261081,
+        "signature": 0.0393365363960649
+      },
+      {
+        "kind": "stone",
+        "peak": 0.1791016310453415,
+        "rms": 0.018325894502618296,
+        "signature": -0.013466739596213667
+      },
+      {
+        "kind": "metal",
+        "peak": 0.18550024926662445,
+        "rms": 0.021889929562892388,
+        "signature": 0.06482468887735958
+      }
+    ],
+    "errors": []
+  },
+  {
+    "backend": "webgpu",
+    "worlds": [],
+    "programsBefore": 26,
+    "programsAfter": 26,
+    "debris": 18,
+    "errors": []
+  }
+]

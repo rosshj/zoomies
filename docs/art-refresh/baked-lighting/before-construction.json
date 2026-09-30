@@ -1,0 +1,87 @@
+[
+  {
+    "biome": "meadow",
+    "runs": [
+      {
+        "buildMs": 570.3000000119209,
+        "triangles": 650801,
+        "invalid": 0,
+        "bake": null
+      },
+      {
+        "buildMs": 526.6999999880791,
+        "triangles": 651268,
+        "invalid": 0,
+        "bake": null
+      }
+    ]
+  },
+  {
+    "biome": "forest",
+    "runs": [
+      {
+        "buildMs": 447.90000000596046,
+        "triangles": 678448,
+        "invalid": 0,
+        "bake": null
+      },
+      {
+        "buildMs": 396.59999999403954,
+        "triangles": 678448,
+        "invalid": 0,
+        "bake": null
+      }
+    ]
+  },
+  {
+    "biome": "city",
+    "runs": [
+      {
+        "buildMs": 524.5,
+        "triangles": 496012,
+        "invalid": 0,
+        "bake": null
+      },
+      {
+        "buildMs": 461.30000001192093,
+        "triangles": 496160,
+        "invalid": 0,
+        "bake": null
+      }
+    ]
+  },
+  {
+    "biome": "beach",
+    "runs": [
+      {
+        "buildMs": 515.5999999940395,
+        "triangles": 385844,
+        "invalid": 0,
+        "bake": null
+      },
+      {
+        "buildMs": 474.40000000596046,
+        "triangles": 385844,
+        "invalid": 0,
+        "bake": null
+      }
+    ]
+  },
+  {
+    "biome": "volcanic",
+    "runs": [
+      {
+        "buildMs": 322.69999998807907,
+        "triangles": 369338,
+        "invalid": 0,
+        "bake": null
+      },
+      {
+        "buildMs": 278.59999999403954,
+        "triangles": 369338,
+        "invalid": 0,
+        "bake": null
+      }
+    ]
+  }
+]

@@ -55,7 +55,10 @@ export class MenuPad {
     // act on it (an invisible ring "activated" the title button this way).
     if (this._prev.length === 0) {
       const scope = this._scope();
-      if (scope) { this._scopeEl = scope; this._seatDefault(scope); }
+      if (scope) {
+        this._scopeEl = scope;
+        this._seatDefault(scope);
+      }
       this._commit(pad);
       return;
     }
@@ -107,7 +110,8 @@ export class MenuPad {
     // Direction: d-pad, or the left stick past a firm threshold. Held input
     // repeats slowly (350ms first step, 160ms after) so lists are scrollable
     // without skipping.
-    const ax = pad.axes?.[0] ?? 0, ay = pad.axes?.[1] ?? 0;
+    const ax = pad.axes?.[0] ?? 0,
+      ay = pad.axes?.[1] ?? 0;
     let dir = null;
     if (pad.buttons[12]?.pressed || ay < -0.55) dir = "up";
     else if (pad.buttons[13]?.pressed || ay > 0.55) dir = "down";
@@ -243,10 +247,15 @@ export class MenuPad {
   // the first track card, Marmalade, Ember, RESUME…).
   _seatDefault(scope) {
     const cands = this._candidates(scope);
-    if (!cands.length) { this._setFocus(null); return; }
+    if (!cands.length) {
+      this._setFocus(null);
+      return;
+    }
     const isChrome = (el) =>
-      el.classList.contains("flow-back") || el.hasAttribute("data-back") ||
-      /(^|-)(back|close)($|-)/.test(el.id) || el.closest("#menu-chrome");
+      el.classList.contains("flow-back") ||
+      el.hasAttribute("data-back") ||
+      /(^|-)(back|close)($|-)/.test(el.id) ||
+      el.closest("#menu-chrome");
     const pick =
       cands.find((c) => c.el.classList.contains("btn-gold")) ||
       cands.find((c) => !isChrome(c.el) && c.el.tagName === "BUTTON") ||
@@ -265,32 +274,45 @@ export class MenuPad {
     }
     const cands = this._candidates(scope);
     if (!cands.length) return;
-    const cur = this._focus && this._valid(this._focus)
-      ? this._focus.getBoundingClientRect()
-      : null;
+    const cur = this._focus && this._valid(this._focus) ? this._focus.getBoundingClientRect() : null;
 
     let next = null;
     if (!cur || !dir) {
       this._seatDefault(scope);
       return;
     } else {
-      const cx = cur.left + cur.width / 2, cy = cur.top + cur.height / 2;
+      const cx = cur.left + cur.width / 2,
+        cy = cur.top + cur.height / 2;
       let best = Infinity;
       for (const { el, r } of cands) {
         if (el === this._focus) continue;
-        const x = r.left + r.width / 2, y = r.top + r.height / 2;
-        const dx = x - cx, dy = y - cy;
+        const x = r.left + r.width / 2,
+          y = r.top + r.height / 2;
+        const dx = x - cx,
+          dy = y - cy;
         // Must lie in the pressed direction; score = distance along it plus a
         // doubled off-axis penalty, so "down" prefers the button below over a
         // nearer one diagonally sideways.
         let fwd, side;
-        if (dir === "up") { fwd = -dy; side = Math.abs(dx); }
-        else if (dir === "down") { fwd = dy; side = Math.abs(dx); }
-        else if (dir === "left") { fwd = -dx; side = Math.abs(dy); }
-        else { fwd = dx; side = Math.abs(dy); }
+        if (dir === "up") {
+          fwd = -dy;
+          side = Math.abs(dx);
+        } else if (dir === "down") {
+          fwd = dy;
+          side = Math.abs(dx);
+        } else if (dir === "left") {
+          fwd = -dx;
+          side = Math.abs(dy);
+        } else {
+          fwd = dx;
+          side = Math.abs(dy);
+        }
         if (fwd < 4) continue;
         const score = fwd + side * 2;
-        if (score < best) { best = score; next = el; }
+        if (score < best) {
+          best = score;
+          next = el;
+        }
       }
     }
     if (next) this._setFocus(next);
@@ -329,7 +351,10 @@ export class MenuPad {
     // Repair any stray sideways drag first (nothing in the menus may ever
     // scroll #menu itself — screens move by transform, bodies scroll in y).
     const menu = document.getElementById("menu");
-    if (menu) { menu.scrollLeft = 0; menu.scrollTop = 0; }
+    if (menu) {
+      menu.scrollLeft = 0;
+      menu.scrollTop = 0;
+    }
     for (let p = el.parentElement; p; p = p.parentElement) {
       const s = getComputedStyle(p);
       if (/(auto|scroll)/.test(s.overflowY)) {

@@ -3,39 +3,91 @@
 // race payouts, achievements, cup standings/trophies/exclusives, the daily seed,
 // and the backup-token round trip. Run: `npm run check:progress`.
 import {
-  PROFILE_VERSION, defaultProfile, migrateProfile,
-  CATALOG, STARTER_UNLOCKS, isUnlocked, buyUnlock, catalogEntry,
-  racePayout, ACHIEVEMENTS, checkAchievements, claimAchievement,
-  CUPS, cupPoints, cupStandings, awardCup, cupById,
-  dailySeedFor, encodeProfileToken, decodeProfileToken,
+  PROFILE_VERSION,
+  awardEarnedUnlocks,
+  defaultProfile,
+  migrateProfile,
+  CATALOG,
+  STARTER_UNLOCKS,
+  isUnlocked,
+  buyUnlock,
+  catalogEntry,
+  racePayout,
+  ACHIEVEMENTS,
+  checkAchievements,
+  claimAchievement,
+  CUPS,
+  cupPoints,
+  cupStandings,
+  awardCup,
+  cupById,
+  dailySeedFor,
+  encodeProfileToken,
+  decodeProfileToken,
 } from "../src/progress.js";
 
+import { CAT_PRESETS } from "../src/presets.js";
+import { readFileSync } from "node:fs";
+const biomeSource = readFileSync(new URL("../src/scenery.js", import.meta.url), "utf8");
+const knownBiomes = [
+  ...biomeSource
+    .slice(biomeSource.indexOf("const BIOMES = ["), biomeSource.indexOf("const CLASSIC_BIOMES"))
+    .matchAll(/name: "([a-z]+)"/g),
+].map((m) => m[1]);
 let failures = 0;
-const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name); if (!cond) failures++; };
+const check = (name, cond) => {
+  console.log((cond ? "  ok  " : "FAIL  ") + name);
+  if (!cond) failures++;
+};
 
 // --- Profile & migration ---
 {
   const p = defaultProfile();
-  check("fresh profile has the starter set unlocked", STARTER_UNLOCKS.every((id) => p.unlocked.includes(id)));
+  check(
+    "fresh profile has the starter set unlocked",
+    STARTER_UNLOCKS.every((id) => p.unlocked.includes(id)),
+  );
   check("fresh profile starts broke", p.treats === 0 && p.achievements.length === 0);
 
-  const junk = migrateProfile({ treats: -50, unlocked: "nope", stats: { races: 7, bogus: 9 }, achievements: [3, "first-race"] });
-  check("migration heals junk (treats floor, starter restored, stats kept)",
-    junk.treats === 0 && STARTER_UNLOCKS.every((id) => junk.unlocked.includes(id)) && junk.stats.races === 7 && junk.achievements.length === 1);
+  const junk = migrateProfile({
+    treats: -50,
+    unlocked: "nope",
+    stats: { races: 7, bogus: 9 },
+    achievements: [3, "first-race"],
+  });
+  check(
+    "migration heals junk (treats floor, starter restored, stats kept)",
+    junk.treats === 0 &&
+      STARTER_UNLOCKS.every((id) => junk.unlocked.includes(id)) &&
+      junk.stats.races === 7 &&
+      junk.achievements.length === 1,
+  );
   check("migration coerces the version", junk.v === PROFILE_VERSION);
 
   const claims = migrateProfile({ achievements: ["first-race"], pendingClaims: ["first-race", "never-earned", 7] });
-  check("migration keeps valid pending claims, drops orphans", claims.pendingClaims.length === 1 && claims.pendingClaims[0] === "first-race");
+  check(
+    "migration keeps valid pending claims, drops orphans",
+    claims.pendingClaims.length === 1 && claims.pendingClaims[0] === "first-race",
+  );
 
   const future = migrateProfile({ treats: 10, unlocked: [...STARTER_UNLOCKS, "hat.99"], futureField: { a: 1 } });
-  check("unknown unlock ids + future fields survive a round trip", future.unlocked.includes("hat.99") && future.futureField && future.futureField.a === 1);
-  check("unknown ids read as unlocked (never brick a save)", isUnlocked(future, "hat.99") && isUnlocked(future, "totally.new"));
+  check(
+    "unknown unlock ids + future fields survive a round trip",
+    future.unlocked.includes("hat.99") && future.futureField && future.futureField.a === 1,
+  );
+  check(
+    "unknown ids read as unlocked (never brick a save)",
+    isUnlocked(future, "hat.99") && isUnlocked(future, "totally.new"),
+  );
 }
 
 // --- Catalog + buying ---
 {
   const p = defaultProfile();
-  check("catalog has cats, karts, and the custom creators", catalogEntry("cat.9") && catalogEntry("kart.8") && catalogEntry("custom.cat"));
+  check(
+    "catalog has cats, karts, and the custom creators",
+    catalogEntry("cat.9") && catalogEntry("kart.8") && catalogEntry("custom.cat"),
+  );
   check("locked preset reads locked", !isUnlocked(p, "cat.5"));
   check("can't buy while broke", !buyUnlock(p, "cat.3") && !p.unlocked.includes("cat.3"));
   p.treats = 200;
@@ -44,38 +96,177 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   // The price ladder: ~2,400 treats for the whole catalog, cheapest tiles at
   // 100-150, each column climbing to a ~400 goal, creators at 250 apiece.
   const priced = CATALOG.filter((c) => typeof c.price === "number" && c.price > 0);
-  const total = priced.reduce((s, c) => s + c.price, 0);
-  check(`catalog totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
-  check("cheapest cat and kart are 100-150", catalogEntry("cat.3").price <= 150 && catalogEntry("kart.3").price <= 150 && catalogEntry("cat.3").price >= 100);
-  check("top of the cat ladder is ~400", Math.max(...priced.filter((c) => c.id.startsWith("cat.")).map((c) => c.price)) === 400);
-  check("custom creators cost 250 each", catalogEntry("custom.cat").price === 250 && catalogEntry("custom.kart").price === 250);
-  const ladder = (prefix) => priced.filter((c) => c.id.startsWith(prefix)).map((c) => c.price);
+  const original = (c) =>
+    (!c.id.startsWith("cat.") || Number(c.id.slice(4)) < 14) &&
+    (!c.id.startsWith("kart.") || Number(c.id.slice(5)) < 10);
+  const total = priced.filter(original).reduce((s, c) => s + c.price, 0);
+  check(`original catalog still totals ~2,400 treats (${total})`, total >= 2300 && total <= 2600);
+  check(
+    "added cats and karts carry no price",
+    CATALOG.filter((c) => !original(c)).every((c) => c.price === undefined),
+  );
+  check(
+    "one gate family per entry (cup difficulty is a modifier)",
+    CATALOG.every(
+      (c) =>
+        [
+          typeof c.price === "number",
+          !!c.cat,
+          !!c.stat,
+          !!c.biomeWin,
+          !!c.cups,
+          !!c.cup,
+          !!c.diff && !c.cup && !c.cups,
+        ].filter(Boolean).length === 1,
+    ),
+  );
+  check(
+    "every accessory names its actual cat",
+    CATALOG.filter((c) => c.cat).every((c) => CAT_PRESETS[Number(c.cat.slice(4))]?.accessory === c.id.slice(4)),
+  );
+  check(
+    "every biome gate exists",
+    CATALOG.filter((c) => c.biomeWin).every((c) => knownBiomes.includes(c.biomeWin)),
+  );
+  check(
+    "cheapest cat and kart are 100-150",
+    catalogEntry("cat.3").price <= 150 && catalogEntry("kart.3").price <= 150 && catalogEntry("cat.3").price >= 100,
+  );
+  check(
+    "top of the cat ladder is ~400",
+    Math.max(...priced.filter((c) => c.id.startsWith("cat.")).map((c) => c.price)) === 400,
+  );
+  check(
+    "custom creators cost 250 each",
+    catalogEntry("custom.cat").price === 250 && catalogEntry("custom.kart").price === 250,
+  );
+  const ladder = (prefix) =>
+    priced
+      .filter((c) => c.id.startsWith(prefix) && (!c.id.startsWith("cat.") || Number(c.id.slice(4)) < 14))
+      .map((c) => c.price);
   const climbs = (a) => a.every((v, i) => i === 0 || v >= a[i - 1]);
-  check("cat and kart prices climb monotonically", climbs(ladder("cat.")) && climbs(ladder("kart.")));
+  check("original cat and kart prices climb monotonically", climbs(ladder("cat.")) && climbs(ladder("kart.")));
   p.treats = 9999;
   check("cup exclusives can't be bought", !buyUnlock(p, "cat.9") && !isUnlocked(p, "cat.9"));
   check("difficulty prizes can't be bought", !buyUnlock(p, "cat.13") && !isUnlocked(p, "cat.13"));
   const cupExclusives = CATALOG.filter((c) => c.cup);
-  check("every cup exclusive maps to a real cup", cupExclusives.length === 4 && cupExclusives.every((c) => cupById(c.cup)));
-  check("no accessory entries — the creator's wardrobe is ungated", !CATALOG.some((c) => c.id.startsWith("acc.")));
-  check("difficulty prizes exist for medium and hard", CATALOG.some((c) => c.diff === "medium") && CATALOG.some((c) => c.diff === "hard"));
+  check(
+    "every cup exclusive maps to a real cup",
+    cupExclusives.every((c) => cupById(c.cup)),
+  );
+  check(
+    "19 new accessories gated; original wardrobe unchanged",
+    CATALOG.filter((c) => c.cat).length === 19 &&
+      CAT_PRESETS.slice(0, 14).every((c) => !catalogEntry(`acc.${c.accessory}`)) &&
+      // These seven were already free on main; their cats are earned, the hats are not gated.
+      ["viking", "crown", "scarf", "tophat", "pirate", "bandana", "charm"].every((a) => !catalogEntry(`acc.${a}`)),
+  );
+  check(
+    "difficulty prizes exist for medium and hard",
+    CATALOG.some((c) => c.diff === "medium") && CATALOG.some((c) => c.diff === "hard"),
+  );
+}
+
+// Exercise each approved gate at the boundary, including combined cup/difficulty.
+for (const e of CATALOG.filter((e) => e.stat || e.biomeWin || e.cups || (e.cup && e.diff))) {
+  const p = defaultProfile();
+  if (e.stat) p.stats[e.stat] = e.min - 1;
+  if (e.cup) p.trophies[e.cup] = "easy";
+  if (e.cups) for (const c of CUPS.slice(0, -1)) p.trophies[c.id] = "expert";
+  awardEarnedUnlocks(p);
+  check(`${e.id} stays locked below its threshold`, !isUnlocked(p, e.id));
+  if (e.stat) p.stats[e.stat]++;
+  if (e.biomeWin) p.stats.winsByBiome[e.biomeWin] = 1;
+  if (e.cup) p.trophies[e.cup] = e.diff;
+  if (e.cups) for (const c of CUPS) p.trophies[c.id] = e.diff || "easy";
+  awardEarnedUnlocks(p);
+  check(`${e.id} unlocks at the threshold and only once`, isUnlocked(p, e.id) && !awardEarnedUnlocks(p).includes(e.id));
+}
+{
+  const p = migrateProfile({ unlocked: ["cat.14", "kart.33"], stats: { winsByBiome: { forest: 2, beach: -1 } } });
+  check(
+    "playtest purchases and paired wardrobe survive migration",
+    isUnlocked(p, "cat.14") && isUnlocked(p, "acc.dragon") && isUnlocked(p, "kart.33"),
+  );
+  check("biome counters migrate safely", p.stats.winsByBiome.forest === 2 && !p.stats.winsByBiome.beach);
+  const q = defaultProfile();
+  q.trophies.zoomies = "expert";
+  q.trophies.meadows = "easy";
+  awardEarnedUnlocks(q);
+  check("hard win in another cup cannot satisfy a combined gate", !isUnlocked(q, "cat.23"));
+  for (const c of CUPS) q.trophies[c.id] = "medium";
+  awardEarnedUnlocks(q);
+  check("cup sweep at medium unlocks Orbit but not Azure", isUnlocked(q, "cat.27") && !isUnlocked(q, "kart.33"));
+}
+
+// Keep the implemented roster in lockstep with Ross's approved table.
+for (const line of readFileSync(new URL("../docs/art-refresh/HANDOFF.md", import.meta.url), "utf8").split("\n")) {
+  if (!/^\| (cat|kart)\./.test(line)) continue;
+  const [id, name, accessory, gate] = line
+    .split("|")
+    .slice(1, 5)
+    .map((s) => s.trim());
+  const expected = { id };
+  if (gate.startsWith("stat")) {
+    const [, stat, min] = gate.split(" ");
+    Object.assign(expected, { stat, min: Number(min) });
+  } else if (gate.startsWith("biomeWin")) expected.biomeWin = gate.split(" ")[1];
+  else if (gate.startsWith("cup")) {
+    expected.cup = gate.split(/[ ,]+/)[1];
+    if (gate.includes("diff")) expected.diff = gate.split(" ").at(-1);
+  } else {
+    expected.cups = true;
+    if (gate.includes("hard")) expected.diff = "hard";
+  }
+  check(`${name} matches approved table`, JSON.stringify(catalogEntry(id)) === JSON.stringify(expected));
+  if (accessory.endsWith("(free)")) {
+    const acc = accessory.split(" ")[0];
+    check(
+      `${acc} stays free (pre-dates the roster)`,
+      !catalogEntry(`acc.${acc}`) && isUnlocked(defaultProfile(), `acc.${acc}`),
+    );
+  } else if (accessory) check(`${accessory} follows ${name}`, catalogEntry(`acc.${accessory}`)?.cat === id);
 }
 
 // --- Payout ---
 {
-  const win = racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: { driftBoosts: 5, slipSeconds: 8, milkTrips: 2, heartSaves: 1 } });
-  check("hard win pays the placement base + winner bonus", win.lines[0].amt === 50 && win.lines[1].label === "Winner bonus");
-  check("moments itemize (drift, slip, milk, lives)", win.lines.length === 6 && win.total === 50 + 20 + 10 + 8 + 10 + 3);
+  const win = racePayout({
+    place: 1,
+    field: 6,
+    laps: 3,
+    difficulty: "hard",
+    stats: { driftBoosts: 5, slipSeconds: 8, milkTrips: 2, heartSaves: 1 },
+  });
+  check(
+    "hard win pays the placement base + winner bonus",
+    win.lines[0].amt === 50 && win.lines[1].label === "Winner bonus",
+  );
+  check(
+    "moments itemize (drift, slip, milk, lives)",
+    win.lines.length === 6 && win.total === 50 + 20 + 10 + 8 + 10 + 3,
+  );
   const last = racePayout({ place: 6, field: 6, laps: 3, difficulty: "hard", stats: {} });
   check("last place still pays something", last.total === 15);
   const easy = racePayout({ place: 1, field: 6, laps: 3, difficulty: "easy", stats: {} });
   check("easy pays less than hard", easy.total < win.total && easy.lines[0].amt === 30);
-  const capped = racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: { driftBoosts: 999, slipSeconds: 999, milkTrips: 99, heartSaves: 99 } });
+  const capped = racePayout({
+    place: 1,
+    field: 6,
+    laps: 3,
+    difficulty: "hard",
+    stats: { driftBoosts: 999, slipSeconds: 999, milkTrips: 99, heartSaves: 99 },
+  });
   check("moment caps hold (no farming)", capped.total === 50 + 20 + 20 + 15 + 25 + 9);
   const daily = racePayout({ place: 3, field: 6, laps: 3, difficulty: "medium", daily: true, stats: {} });
-  check("daily bonus rides the payout", daily.lines.some((l) => l.label === "Daily challenge" && l.amt === 100));
+  check(
+    "daily bonus rides the payout",
+    daily.lines.some((l) => l.label === "Daily challenge" && l.amt === 100),
+  );
   const expert = racePayout({ place: 1, field: 6, laps: 3, difficulty: "expert", stats: {} });
-  check("expert pays more than hard", expert.total > racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: {} }).total);
+  check(
+    "expert pays more than hard",
+    expert.total > racePayout({ place: 1, field: 6, laps: 3, difficulty: "hard", stats: {} }).total,
+  );
 }
 
 // --- Achievements ---
@@ -83,83 +274,174 @@ const check = (name, cond) => { console.log((cond ? "  ok  " : "FAIL  ") + name)
   const p = defaultProfile();
   p.stats.races = 1;
   let fresh = checkAchievements(p);
-  check("first race earns Out of the Cat Door (pending, unpaid)",
-    fresh.length === 1 && fresh[0].id === "first-race" && p.treats === 0 && p.pendingClaims.includes("first-race"));
+  check(
+    "first race earns Out of the Cat Door (pending, unpaid)",
+    fresh.length === 1 && fresh[0].id === "first-race" && p.treats === 0 && p.pendingClaims.includes("first-race"),
+  );
   const claimed = claimAchievement(p, "first-race");
-  check("claiming the badge pays its treats", claimed && claimed.pay === 50 && p.treats === 50 && p.pendingClaims.length === 0);
+  check(
+    "claiming the badge pays its treats",
+    claimed && claimed.pay === 50 && p.treats === 50 && p.pendingClaims.length === 0,
+  );
   check("a badge can't be claimed twice", claimAchievement(p, "first-race") === null && p.treats === 50);
   fresh = checkAchievements(p);
   check("achievements fire only once", fresh.length === 0 && p.treats === 50);
-  p.stats.wins = 1; p.stats.winsHard = 1; p.stats.winsNight = 1;
+  p.stats.wins = 1;
+  p.stats.winsHard = 1;
+  p.stats.winsNight = 1;
   fresh = checkAchievements(p);
   check("stacked thresholds all fire in one pass", fresh.length === 3);
   const q = defaultProfile();
   for (const c of CUPS) q.trophies[c.id] = "easy";
   const sweep = checkAchievements(q);
-  check("cup-sweep needs all four cups", sweep.some((a) => a.id === "cup-sweep"));
+  check(
+    "cup-sweep needs all four cups",
+    sweep.some((a) => a.id === "cup-sweep"),
+  );
   check("all achievement ids unique", new Set(ACHIEVEMENTS.map((a) => a.id)).size === ACHIEVEMENTS.length);
 }
 
 // --- Cups ---
 {
-  check("four cups, unique ids, 3-4 generated races each",
-    CUPS.length === 4 && new Set(CUPS.map((c) => c.id)).size === 4 && CUPS.every((c) => c.races.length >= 3 && c.races.length <= 4));
-  check("every cup race is a full generated world (custom cfg + seed + biomes + time)",
-    CUPS.every((c) => c.races.every((r) => r.seed && r.cfg && r.cfg.mode === "custom" && r.cfg.seed === r.seed && Array.isArray(r.cfg.biomes) && r.cfg.biomes.length >= 1 && r.cfg.timeOfDay)));
-  check("cup race seeds unique across all cups",
-    (() => { const all = CUPS.flatMap((c) => c.races.map((r) => r.seed)); return new Set(all).size === all.length; })());
+  check(
+    "four cups, unique ids, 3-4 generated races each",
+    CUPS.length === 4 &&
+      new Set(CUPS.map((c) => c.id)).size === 4 &&
+      CUPS.every((c) => c.races.length >= 3 && c.races.length <= 4),
+  );
+  check(
+    "every cup race is a full generated world (custom cfg + seed + biomes + time)",
+    CUPS.every((c) =>
+      c.races.every(
+        (r) =>
+          r.seed &&
+          r.cfg &&
+          r.cfg.mode === "custom" &&
+          r.cfg.seed === r.seed &&
+          Array.isArray(r.cfg.biomes) &&
+          r.cfg.biomes.length >= 1 &&
+          r.cfg.timeOfDay,
+      ),
+    ),
+  );
+  check(
+    "cup race seeds unique across all cups",
+    (() => {
+      const all = CUPS.flatMap((c) => c.races.map((r) => r.seed));
+      return new Set(all).size === all.length;
+    })(),
+  );
   // Must match the BIOMES roster in src/scenery.js (which imports THREE, so it
   // can't be imported here) — catches a typo'd biome name in a cup recipe.
-  const KNOWN_BIOMES = ["meadow", "forest", "alpine", "autumn", "desert", "mesa", "blossom", "jungle", "savanna", "tundra", "city", "beach"];
-  check("every cup race biome is a real biome name",
-    CUPS.every((c) => c.races.every((r) => r.cfg.biomes.every((b) => KNOWN_BIOMES.includes(b)))));
-  const THEMES = { meadows: ["meadow", "blossom", "forest", "jungle"], sandypaws: ["desert", "savanna", "mesa"], meowtain: ["forest", "alpine", "tundra"] };
-  check("themed cups stay inside their biome family",
-    Object.entries(THEMES).every(([id, fam]) => CUPS.find((c) => c.id === id).races.every((r) => r.cfg.biomes.every((b) => fam.includes(b)))));
-  check("the midnight finale races mostly after dark",
-    CUPS.find((c) => c.id === "zoomies").races.filter((r) => r.cfg.timeOfDay === "night").length >= 3);
+  const KNOWN_BIOMES = [
+    "meadow",
+    "forest",
+    "alpine",
+    "autumn",
+    "desert",
+    "mesa",
+    "blossom",
+    "jungle",
+    "savanna",
+    "tundra",
+    "city",
+    "beach",
+  ];
+  check(
+    "every cup race biome is a real biome name",
+    CUPS.every((c) => c.races.every((r) => r.cfg.biomes.every((b) => KNOWN_BIOMES.includes(b)))),
+  );
+  const THEMES = {
+    meadows: ["meadow", "blossom", "forest", "jungle"],
+    sandypaws: ["desert", "savanna", "mesa"],
+    meowtain: ["forest", "alpine", "tundra"],
+  };
+  check(
+    "themed cups stay inside their biome family",
+    Object.entries(THEMES).every(([id, fam]) =>
+      CUPS.find((c) => c.id === id).races.every((r) => r.cfg.biomes.every((b) => fam.includes(b))),
+    ),
+  );
+  check(
+    "the midnight finale races mostly after dark",
+    CUPS.find((c) => c.id === "zoomies").races.filter((r) => r.cfg.timeOfDay === "night").length >= 3,
+  );
   check("points ladder: 1st 10 … 6th 3, 7th+ 1", cupPoints(1) === 10 && cupPoints(6) === 3 && cupPoints(9) === 1);
   const standings = cupStandings({ You: 24, Mittens: 24, Whiskers: 8 });
-  check("standings sort by points, name-tiebreak stable", standings[0].name === "Mittens" && standings[1].name === "You" && standings[2].name === "Whiskers");
+  check(
+    "standings sort by points, name-tiebreak stable",
+    standings[0].name === "Mittens" && standings[1].name === "You" && standings[2].name === "Whiskers",
+  );
 
   const p = defaultProfile();
   const won = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "medium");
-  check("first cup win pays treats + trophy + exclusive", won && won.firstWin && p.treats === 200 && p.trophies.meadows === "medium" && p.unlocked.includes("kart.7"));
-  check("medium win grants the Medium+ prize but not the Hard one",
-    won.extraUnlocks.includes("cat.12") && p.unlocked.includes("cat.12") && !p.unlocked.includes("cat.13"));
+  check(
+    "first cup win pays treats + trophy + exclusive",
+    won && won.firstWin && p.treats === 200 && p.trophies.meadows === "medium" && p.unlocked.includes("kart.7"),
+  );
+  check(
+    "medium win grants the Medium+ prize but not the Hard one",
+    won.extraUnlocks.includes("cat.12") && p.unlocked.includes("cat.12") && !p.unlocked.includes("cat.13"),
+  );
   const again = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard");
-  check("re-win upgrades the trophy but doesn't re-pay", again && !again.firstWin && again.upgraded && p.trophies.meadows === "hard" && p.treats === 200);
-  check("a hard re-win still unlocks the Hard prize (once)",
-    again.extraUnlocks.includes("cat.13") && p.unlocked.includes("cat.13") &&
-    (awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard").extraUnlocks.length === 0));
+  check(
+    "re-win upgrades the trophy but doesn't re-pay",
+    again && !again.firstWin && again.upgraded && p.trophies.meadows === "hard" && p.treats === 200,
+  );
+  check(
+    "a hard re-win still unlocks the Hard prize (once)",
+    again.extraUnlocks.includes("cat.13") &&
+      p.unlocked.includes("cat.13") &&
+      awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "hard").extraUnlocks.length === 0,
+  );
   const down = awardCup(p, "meadows", cupStandings({ You: 28, Mittens: 20 }), "You", "easy");
   check("easier re-win never downgrades the trophy", down && !down.upgraded && p.trophies.meadows === "hard");
   const lost = awardCup(p, "sandypaws", cupStandings({ Mittens: 30, You: 20 }), "You", "hard");
   check("losing the cup awards nothing", lost === null && !p.trophies.sandypaws);
   const x = defaultProfile();
   const xp = awardCup(x, "meowtain", cupStandings({ You: 28, Mittens: 20 }), "You", "expert");
-  check("an Expert cup win grants both the Medium+ and Hard prizes and out-ranks a Hard trophy",
-    xp && xp.extraUnlocks.includes("cat.12") && xp.extraUnlocks.includes("cat.13") && x.trophies.meowtain === "expert" &&
-    !awardCup(x, "meowtain", cupStandings({ You: 28, Mittens: 20 }), "You", "hard").upgraded);
+  check(
+    "an Expert cup win grants both the Medium+ and Hard prizes and out-ranks a Hard trophy",
+    xp &&
+      xp.extraUnlocks.includes("cat.12") &&
+      xp.extraUnlocks.includes("cat.13") &&
+      x.trophies.meowtain === "expert" &&
+      !awardCup(x, "meowtain", cupStandings({ You: 28, Mittens: 20 }), "You", "hard").upgraded,
+  );
 }
 
 // --- Daily seed ---
 {
-  const a = dailySeedFor("2026-07-17"), b = dailySeedFor("2026-07-17"), c = dailySeedFor("2026-07-18");
+  const a = dailySeedFor("2026-07-17"),
+    b = dailySeedFor("2026-07-17"),
+    c = dailySeedFor("2026-07-18");
   check("daily seed is deterministic per day and differs across days", a === b && a !== c && /^[A-Z2-9]{4}$/.test(a));
 }
 
 // --- Backup token ---
 {
   const p = defaultProfile();
-  p.treats = 1234; p.stats.races = 9; p.trophies.tuna = "hard"; p.unlocked.push("cat.5");
+  p.treats = 1234;
+  p.stats.races = 9;
+  p.trophies.tuna = "hard";
+  p.unlocked.push("cat.5");
   p.customName = "Mr. Wiggles 🐱"; // unicode survives
   const tok = encodeProfileToken(p);
   check("token has the ZP1 envelope", /^ZP1\.[A-Za-z0-9_-]+$/.test(tok));
   const back = decodeProfileToken(tok);
-  check("round trip restores treats/stats/trophies/unlocks/unicode",
-    back && back.treats === 1234 && back.stats.races === 9 && back.trophies.tuna === "hard" && back.unlocked.includes("cat.5") && back.customName === "Mr. Wiggles 🐱");
-  check("garbage tokens are rejected", decodeProfileToken("ZP1.!!!") === null && decodeProfileToken("hello") === null && decodeProfileToken(null) === null);
+  check(
+    "round trip restores treats/stats/trophies/unlocks/unicode",
+    back &&
+      back.treats === 1234 &&
+      back.stats.races === 9 &&
+      back.trophies.tuna === "hard" &&
+      back.unlocked.includes("cat.5") &&
+      back.customName === "Mr. Wiggles 🐱",
+  );
+  check(
+    "garbage tokens are rejected",
+    decodeProfileToken("ZP1.!!!") === null && decodeProfileToken("hello") === null && decodeProfileToken(null) === null,
+  );
 }
 
 console.log(failures ? `\n${failures} progress check(s) FAILED` : "\nall progress checks passed");

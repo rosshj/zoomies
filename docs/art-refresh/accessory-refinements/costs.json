@@ -1,0 +1,76 @@
+{
+  "baseline": "a5030cff757c17bcc43a26a21f34eb572099dbf5",
+  "model": "Classic spotted, sitting; includes hidden ear geometry",
+  "accessories": [
+    {
+      "id": "crown",
+      "beforeTriangles": 7820,
+      "triangles": 7820,
+      "beforeBatches": 20,
+      "batches": 20
+    },
+    {
+      "id": "aviator",
+      "beforeTriangles": 9040,
+      "triangles": 8992,
+      "beforeBatches": 21,
+      "batches": 21
+    },
+    {
+      "id": "wizard",
+      "beforeTriangles": 8161,
+      "triangles": 8161,
+      "beforeBatches": 20,
+      "batches": 20
+    },
+    {
+      "id": "catEye",
+      "beforeTriangles": 8148,
+      "triangles": 8268,
+      "beforeBatches": 19,
+      "batches": 19
+    },
+    {
+      "id": "space",
+      "beforeTriangles": 10172,
+      "triangles": 9532,
+      "beforeBatches": 21,
+      "batches": 21
+    },
+    {
+      "id": "shark",
+      "beforeTriangles": 7816,
+      "triangles": 7588,
+      "beforeBatches": 19,
+      "batches": 19
+    },
+    {
+      "id": "unicorn",
+      "beforeTriangles": 8432,
+      "triangles": 8432,
+      "beforeBatches": 20,
+      "batches": 20
+    },
+    {
+      "id": "rain",
+      "beforeTriangles": 8664,
+      "triangles": 8120,
+      "beforeBatches": 19,
+      "batches": 19
+    },
+    {
+      "id": "bee",
+      "beforeTriangles": 8704,
+      "triangles": 8464,
+      "beforeBatches": 20,
+      "batches": 19
+    },
+    {
+      "id": "detective",
+      "beforeTriangles": 9010,
+      "triangles": 8180,
+      "beforeBatches": 19,
+      "batches": 19
+    }
+  ]
+}

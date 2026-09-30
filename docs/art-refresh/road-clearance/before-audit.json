@@ -1,0 +1,525 @@
+[
+  {
+    "name": "Classic",
+    "cfg": {
+      "mode": "classic"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.5457235911546405,
+    "examples": [],
+    "buildMs": 298.5,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 0
+  },
+  {
+    "name": "Buttercup Run",
+    "cfg": {
+      "mode": "custom",
+      "seed": "MEOW",
+      "size": 0.45,
+      "curviness": 0.5,
+      "twist": 0.42,
+      "hilliness": 0.35,
+      "hills": 0.5,
+      "biomes": [
+        "meadow",
+        "forest"
+      ],
+      "timeOfDay": "midday"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6610690897731502,
+    "examples": [],
+    "buildMs": 396.5,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Whisker Canyon",
+    "cfg": {
+      "mode": "custom",
+      "seed": "DUNE",
+      "size": 0.55,
+      "curviness": 0.55,
+      "twist": 0.5,
+      "hilliness": 0.6,
+      "hills": 0.6,
+      "biomes": [
+        "desert",
+        "mesa"
+      ],
+      "timeOfDay": "sunset"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6434175774087691,
+    "examples": [],
+    "buildMs": 250.09999999403954,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Neon Alley",
+    "cfg": {
+      "mode": "custom",
+      "seed": "NEON",
+      "size": 0.5,
+      "curviness": 0.45,
+      "twist": 0.55,
+      "hilliness": 0.3,
+      "hills": 0.4,
+      "biomes": [
+        "city"
+      ],
+      "timeOfDay": "night"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6577870322240749,
+    "examples": [],
+    "buildMs": 342.90000000596046,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Tuna Cove",
+    "cfg": {
+      "mode": "custom",
+      "seed": "TUNA",
+      "size": 0.5,
+      "curviness": 0.5,
+      "twist": 0.45,
+      "hilliness": 0.35,
+      "hills": 0.45,
+      "biomes": [
+        "beach",
+        "jungle"
+      ],
+      "timeOfDay": "midday"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6563350272721262,
+    "examples": [],
+    "buildMs": 392.09999999403954,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Snowcap Sprint",
+    "cfg": {
+      "mode": "custom",
+      "seed": "PEAK",
+      "size": 0.5,
+      "curviness": 0.55,
+      "twist": 0.5,
+      "hilliness": 0.7,
+      "hills": 0.65,
+      "biomes": [
+        "alpine",
+        "tundra"
+      ],
+      "timeOfDay": "sunset"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 31,
+    "maxTerrainOverlap": -0.6423944852251395,
+    "examples": [
+      {
+        "kind": "mountain",
+        "x": -103.99163055419922,
+        "y": 51.29072570800781,
+        "z": -106.75717163085938
+      },
+      {
+        "kind": "mountain",
+        "x": -103.63798522949219,
+        "y": 51.46851348876953,
+        "z": -109.34823608398438
+      },
+      {
+        "kind": "mountain",
+        "x": -103.2031021118164,
+        "y": 51.67405319213867,
+        "z": -111.85228729248047
+      },
+      {
+        "kind": "mountain",
+        "x": -102.7116928100586,
+        "y": 51.906776428222656,
+        "z": -114.24810028076172
+      },
+      {
+        "kind": "mountain",
+        "x": -102.18968200683594,
+        "y": 52.165924072265625,
+        "z": -116.51422119140625
+      },
+      {
+        "kind": "mountain",
+        "x": -99.27284240722656,
+        "y": 52.165924072265625,
+        "z": -115.81275177001953
+      }
+    ],
+    "buildMs": 271.80000001192093,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Maple Falls",
+    "cfg": {
+      "mode": "custom",
+      "seed": "LEAF",
+      "size": 0.5,
+      "curviness": 0.55,
+      "twist": 0.48,
+      "hilliness": 0.5,
+      "hills": 0.55,
+      "biomes": [
+        "autumn",
+        "forest"
+      ],
+      "timeOfDay": "sunset"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 86,
+    "maxTerrainOverlap": -0.6398962971762465,
+    "examples": [
+      {
+        "kind": "mountain",
+        "x": -171.28103637695312,
+        "y": 47.280277252197266,
+        "z": -485.5904846191406
+      },
+      {
+        "kind": "mountain",
+        "x": -175.04383850097656,
+        "y": 47.27898025512695,
+        "z": -488.1632080078125
+      },
+      {
+        "kind": "mountain",
+        "x": -172.1475067138672,
+        "y": 47.27898025512695,
+        "z": -488.945068359375
+      },
+      {
+        "kind": "mountain",
+        "x": -178.84507751464844,
+        "y": 47.27782440185547,
+        "z": -490.59521484375
+      },
+      {
+        "kind": "mountain",
+        "x": -175.96603393554688,
+        "y": 47.27782440185547,
+        "z": -491.4384765625
+      },
+      {
+        "kind": "mountain",
+        "x": -173.08700561523438,
+        "y": 47.27782440185547,
+        "z": -492.2817687988281
+      }
+    ],
+    "buildMs": 407.59999999403954,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Petal Parade",
+    "cfg": {
+      "mode": "custom",
+      "seed": "POSY",
+      "size": 0.45,
+      "curviness": 0.5,
+      "twist": 0.4,
+      "hilliness": 0.3,
+      "hills": 0.45,
+      "biomes": [
+        "blossom",
+        "meadow"
+      ],
+      "timeOfDay": "midday"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6369184208671683,
+    "examples": [],
+    "buildMs": 356.5,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Lavender Loop",
+    "cfg": {
+      "mode": "custom",
+      "seed": "BLOOM",
+      "size": 0.5,
+      "curviness": 0.5,
+      "twist": 0.42,
+      "hilliness": 0.3,
+      "hills": 0.45,
+      "biomes": [
+        "lavender"
+      ],
+      "timeOfDay": "sunset"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6600347242473887,
+    "examples": [],
+    "buildMs": 413.7999999821186,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Willow Wash",
+    "cfg": {
+      "mode": "custom",
+      "seed": "REED",
+      "size": 0.5,
+      "curviness": 0.4,
+      "twist": 0.4,
+      "hilliness": 0.2,
+      "hills": 0.3,
+      "biomes": [
+        "wetlands"
+      ],
+      "timeOfDay": "midday"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 29,
+    "maxTerrainOverlap": -0.6836899644352812,
+    "examples": [
+      {
+        "kind": "mountain",
+        "x": -436.72052001953125,
+        "y": 12.865492820739746,
+        "z": 498.9447326660156
+      },
+      {
+        "kind": "mountain",
+        "x": -431.49066162109375,
+        "y": 12.950501441955566,
+        "z": 500.6722106933594
+      },
+      {
+        "kind": "mountain",
+        "x": -433.7135009765625,
+        "y": 12.950501441955566,
+        "z": 502.6869201660156
+      },
+      {
+        "kind": "mountain",
+        "x": -428.2767028808594,
+        "y": 13.040088653564453,
+        "z": 503.7789001464844
+      },
+      {
+        "kind": "mountain",
+        "x": -430.2092590332031,
+        "y": 13.040088653564453,
+        "z": 506.0735168457031
+      },
+      {
+        "kind": "mountain",
+        "x": -424.7485046386719,
+        "y": 13.1340913772583,
+        "z": 506.3569030761719
+      }
+    ],
+    "buildMs": 423.5,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "Basalt Blast",
+    "cfg": {
+      "mode": "custom",
+      "seed": "BASALT",
+      "size": 0.5,
+      "curviness": 0.55,
+      "twist": 0.5,
+      "hilliness": 0.6,
+      "hills": 0.6,
+      "biomes": [
+        "volcanic"
+      ],
+      "timeOfDay": "sunset"
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6461603570993617,
+    "examples": [],
+    "buildMs": 248.30000001192093,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "RIDGE",
+    "cfg": {
+      "mode": "custom",
+      "seed": "RIDGE",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 287,
+    "maxTerrainOverlap": -0.2866704571637797,
+    "examples": [
+      {
+        "kind": "mountain",
+        "x": -319.1708984375,
+        "y": 275.4381103515625,
+        "z": 876.500732421875
+      },
+      {
+        "kind": "mountain",
+        "x": -320.3837890625,
+        "y": 275.4381103515625,
+        "z": 879.24462890625
+      },
+      {
+        "kind": "mountain",
+        "x": -311.4673767089844,
+        "y": 275.5281066894531,
+        "z": 873.0277099609375
+      },
+      {
+        "kind": "mountain",
+        "x": -312.3793640136719,
+        "y": 275.5281066894531,
+        "z": 875.8857421875
+      },
+      {
+        "kind": "mountain",
+        "x": -313.2913513183594,
+        "y": 275.5281066894531,
+        "z": 878.7437133789062
+      },
+      {
+        "kind": "mountain",
+        "x": -314.20330810546875,
+        "y": 275.5281066894531,
+        "z": 881.6017456054688
+      }
+    ],
+    "buildMs": 441.40000000596046,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 2
+  },
+  {
+    "name": "CLIFF",
+    "cfg": {
+      "mode": "custom",
+      "seed": "CLIFF",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.5748817118864622,
+    "examples": [],
+    "buildMs": 334.5,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 2
+  },
+  {
+    "name": "FOLD",
+    "cfg": {
+      "mode": "custom",
+      "seed": "FOLD",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.4718237922951687,
+    "examples": [],
+    "buildMs": 271.40000000596046,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 1
+  },
+  {
+    "name": "SUMMIT",
+    "cfg": {
+      "mode": "custom",
+      "seed": "SUMMIT",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    },
+    "samples": 31011,
+    "terrainHits": 0,
+    "mountainHits": 0,
+    "maxTerrainOverlap": -0.6526906200657265,
+    "examples": [],
+    "buildMs": 365.59999999403954,
+    "relocatedPeaks": 0,
+    "peaks": 0,
+    "crossovers": 3
+  }
+]

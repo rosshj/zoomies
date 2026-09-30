@@ -11,13 +11,30 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = 8107;
-const MIME = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml" };
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".svg": "image/svg+xml",
+};
 const server = http.createServer((req, res) => {
   let u = decodeURIComponent(req.url.split("?")[0]);
-  if (u === "/favicon.ico") { res.writeHead(204); res.end(); return; }
+  if (u === "/favicon.ico") {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
   if (u === "/") u = "/index.html";
   fs.readFile(path.join(ROOT, u), (err, data) => {
-    if (err) { res.writeHead(404); res.end("404 " + u); return; }
+    if (err) {
+      res.writeHead(404);
+      res.end("404 " + u);
+      return;
+    }
     res.writeHead(200, { "content-type": MIME[path.extname(u)] || "application/octet-stream" });
     res.end(data);
   });
@@ -26,10 +43,20 @@ await new Promise((r) => server.listen(PORT, r));
 
 const browser = await chromium.launch({
   executablePath: process.env.PW_CHROME || "/opt/pw-browsers/chromium-1194/chrome-linux/chrome",
-  args: ["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist", "--enable-unsafe-swiftshader", "--no-sandbox"],
+  args: [
+    "--use-gl=angle",
+    "--use-angle=swiftshader",
+    "--ignore-gpu-blocklist",
+    "--enable-unsafe-swiftshader",
+    "--no-sandbox",
+  ],
 });
 const ctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
-await ctx.addInitScript(() => { try { localStorage.setItem("zoomies-fps", "1"); } catch {} });
+await ctx.addInitScript(() => {
+  try {
+    localStorage.setItem("zoomies-fps", "1");
+  } catch {}
+});
 const page = await ctx.newPage();
 page.on("pageerror", (e) => console.error("PAGEERROR:", e.message));
 // nowd stays OFF here: the watchdog is part of what we're watching.
@@ -67,8 +94,11 @@ for (let step = 0; step < 12; step++) {
   const atGo = await page.evaluate(() => {
     if (document.getElementById("go-btn")?.offsetParent) return true;
     const screen = document.querySelector(".flow-screen.is-active");
-    const pick = screen && [...screen.querySelectorAll("button, .card, [role=button]")]
-      .filter((e) => e.offsetParent && !e.classList.contains("flow-back") && !e.hasAttribute("data-back"))[0];
+    const pick =
+      screen &&
+      [...screen.querySelectorAll("button, .card, [role=button]")].filter(
+        (e) => e.offsetParent && !e.classList.contains("flow-back") && !e.hasAttribute("data-back"),
+      )[0];
     if (pick) pick.click();
     return false;
   });
@@ -90,7 +120,10 @@ for (let t = 0; t < 40; t++) {
     menu: document.getElementById("menu")?.className,
   }));
   if (t % 8 === 0) console.log("  post-GO", t, JSON.stringify(st));
-  if (st.uk < 1e5) { console.log("  racing at t=" + t); break; }
+  if (st.uk < 1e5) {
+    console.log("  racing at t=" + t);
+    break;
+  }
   await page.waitForTimeout(1000);
 }
 await sample("veil + countdown", 14);

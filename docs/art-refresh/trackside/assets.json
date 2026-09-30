@@ -1,0 +1,635 @@
+{
+  "rows": [
+    {
+      "name": "Cap",
+      "triangles": 7968,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Headphones",
+      "triangles": 7700,
+      "batches": 16,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Beanie",
+      "triangles": 8024,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Flower",
+      "triangles": 7860,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Fedora",
+      "triangles": 7412,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Sunglasses",
+      "triangles": 9288,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Bandana",
+      "triangles": 7535,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Collar",
+      "triangles": 7516,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Bow tie",
+      "triangles": 7800,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Party Hat",
+      "triangles": 7720,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Crown",
+      "triangles": 7464,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Pirate Hat",
+      "triangles": 8036,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Top Hat",
+      "triangles": 7796,
+      "batches": 19,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Cowboy Hat",
+      "triangles": 7900,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Aviator Cap",
+      "triangles": 8608,
+      "batches": 18,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Racing Helmet",
+      "triangles": 8400,
+      "batches": 19,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Chef Hat",
+      "triangles": 7828,
+      "batches": 16,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Wizard Hat",
+      "triangles": 7524,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Viking Helmet",
+      "triangles": 8540,
+      "batches": 18,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Scarf",
+      "triangles": 7296,
+      "batches": 17,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Fish Charm",
+      "triangles": 7680,
+      "batches": 19,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Crate",
+      "triangles": 24,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Barrel",
+      "triangles": 240,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Racing banner",
+      "triangles": 232,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Timber footbridge",
+      "triangles": 1632,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — meadow",
+      "triangles": 104,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — forest",
+      "triangles": 108,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — autumn",
+      "triangles": 104,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — blossom",
+      "triangles": 344,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — savanna",
+      "triangles": 192,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — beach",
+      "triangles": 78,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — jungle",
+      "triangles": 78,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — desert",
+      "triangles": 104,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — wetlands",
+      "triangles": 192,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tree — lavender",
+      "triangles": 104,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Grass tuft",
+      "triangles": 28,
+      "batches": 7,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Wildflowers",
+      "triangles": 84,
+      "batches": 14,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Reeds",
+      "triangles": 28,
+      "batches": 7,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Mountain — alpine",
+      "triangles": 504,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Mountain — meadow",
+      "triangles": 504,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Mountain — desert",
+      "triangles": 504,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Mountain — volcanic",
+      "triangles": 504,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Mountain — wetlands",
+      "triangles": 504,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Mountain — lavender",
+      "triangles": 504,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Bush",
+      "triangles": 40,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Cactus",
+      "triangles": 224,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Rock",
+      "triangles": 80,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Basalt columns",
+      "triangles": 72,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Cow",
+      "triangles": 964,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Sheep",
+      "triangles": 704,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Deer",
+      "triangles": 964,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Goat",
+      "triangles": 324,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Crab",
+      "triangles": 544,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Gull",
+      "triangles": 362,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Pigeon",
+      "triangles": 386,
+      "batches": 6,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Duck",
+      "triangles": 248,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Sky bird",
+      "triangles": 102,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "House",
+      "triangles": 72,
+      "batches": 4,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Building — village",
+      "triangles": 162,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Building — snowy",
+      "triangles": 210,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Church",
+      "triangles": 172,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Barn",
+      "triangles": 78,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Windmill",
+      "triangles": 108,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Silo",
+      "triangles": 228,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Water tower",
+      "triangles": 168,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Hay bale",
+      "triangles": 48,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Fence",
+      "triangles": 88,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Flag",
+      "triangles": 26,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Tower",
+      "triangles": 168,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "City store",
+      "triangles": 120,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Market stall",
+      "triangles": 760,
+      "batches": 14,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Planter",
+      "triangles": 172,
+      "batches": 4,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Bench",
+      "triangles": 96,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Hydrant",
+      "triangles": 192,
+      "batches": 4,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Sign",
+      "triangles": 61,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Lamp",
+      "triangles": 136,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Street lamp",
+      "triangles": 184,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Traffic light",
+      "triangles": 496,
+      "batches": 6,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "String lights",
+      "triangles": 1296,
+      "batches": 13,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Billboard",
+      "triangles": 44,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Parasol",
+      "triangles": 44,
+      "batches": 2,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Cloud",
+      "triangles": 480,
+      "batches": 1,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Hot-air balloon",
+      "triangles": 572,
+      "batches": 5,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Sky train",
+      "triangles": 624,
+      "batches": 8,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Wind turbine",
+      "triangles": 68,
+      "batches": 5,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Lighthouse",
+      "triangles": 460,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Castle",
+      "triangles": 2576,
+      "batches": 13,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Ferris wheel",
+      "triangles": 2736,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Giant cat statue",
+      "triangles": 1992,
+      "batches": 3,
+      "invalid": 0,
+      "missingColors": 0
+    },
+    {
+      "name": "Big windmill",
+      "triangles": 242,
+      "batches": 4,
+      "invalid": 0,
+      "missingColors": 0
+    }
+  ],
+  "errors": []
+}

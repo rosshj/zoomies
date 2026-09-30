@@ -1,0 +1,242 @@
+[
+  {
+    "name": "Classic",
+    "cfg": {
+      "mode": "classic"
+    }
+  },
+  {
+    "name": "Buttercup Run",
+    "cfg": {
+      "mode": "custom",
+      "seed": "MEOW",
+      "size": 0.45,
+      "curviness": 0.5,
+      "twist": 0.42,
+      "hilliness": 0.35,
+      "hills": 0.5,
+      "biomes": [
+        "meadow",
+        "forest"
+      ],
+      "timeOfDay": "midday"
+    }
+  },
+  {
+    "name": "Whisker Canyon",
+    "cfg": {
+      "mode": "custom",
+      "seed": "DUNE",
+      "size": 0.55,
+      "curviness": 0.55,
+      "twist": 0.5,
+      "hilliness": 0.6,
+      "hills": 0.6,
+      "biomes": [
+        "desert",
+        "mesa"
+      ],
+      "timeOfDay": "sunset"
+    }
+  },
+  {
+    "name": "Neon Alley",
+    "cfg": {
+      "mode": "custom",
+      "seed": "NEON",
+      "size": 0.5,
+      "curviness": 0.45,
+      "twist": 0.55,
+      "hilliness": 0.3,
+      "hills": 0.4,
+      "biomes": [
+        "city"
+      ],
+      "timeOfDay": "night"
+    }
+  },
+  {
+    "name": "Tuna Cove",
+    "cfg": {
+      "mode": "custom",
+      "seed": "TUNA",
+      "size": 0.5,
+      "curviness": 0.5,
+      "twist": 0.45,
+      "hilliness": 0.35,
+      "hills": 0.45,
+      "biomes": [
+        "beach",
+        "jungle"
+      ],
+      "timeOfDay": "midday"
+    }
+  },
+  {
+    "name": "Snowcap Sprint",
+    "cfg": {
+      "mode": "custom",
+      "seed": "PEAK",
+      "size": 0.5,
+      "curviness": 0.55,
+      "twist": 0.5,
+      "hilliness": 0.7,
+      "hills": 0.65,
+      "biomes": [
+        "alpine",
+        "tundra"
+      ],
+      "timeOfDay": "sunset"
+    }
+  },
+  {
+    "name": "Maple Falls",
+    "cfg": {
+      "mode": "custom",
+      "seed": "LEAF",
+      "size": 0.5,
+      "curviness": 0.55,
+      "twist": 0.48,
+      "hilliness": 0.5,
+      "hills": 0.55,
+      "biomes": [
+        "autumn",
+        "forest"
+      ],
+      "timeOfDay": "sunset"
+    }
+  },
+  {
+    "name": "Petal Parade",
+    "cfg": {
+      "mode": "custom",
+      "seed": "POSY",
+      "size": 0.45,
+      "curviness": 0.5,
+      "twist": 0.4,
+      "hilliness": 0.3,
+      "hills": 0.45,
+      "biomes": [
+        "blossom",
+        "meadow"
+      ],
+      "timeOfDay": "midday"
+    }
+  },
+  {
+    "name": "Lavender Loop",
+    "cfg": {
+      "mode": "custom",
+      "seed": "BLOOM",
+      "size": 0.5,
+      "curviness": 0.5,
+      "twist": 0.42,
+      "hilliness": 0.3,
+      "hills": 0.45,
+      "biomes": [
+        "lavender"
+      ],
+      "timeOfDay": "sunset"
+    }
+  },
+  {
+    "name": "Willow Wash",
+    "cfg": {
+      "mode": "custom",
+      "seed": "REED",
+      "size": 0.5,
+      "curviness": 0.4,
+      "twist": 0.4,
+      "hilliness": 0.2,
+      "hills": 0.3,
+      "biomes": [
+        "wetlands"
+      ],
+      "timeOfDay": "midday"
+    }
+  },
+  {
+    "name": "Basalt Blast",
+    "cfg": {
+      "mode": "custom",
+      "seed": "BASALT",
+      "size": 0.5,
+      "curviness": 0.55,
+      "twist": 0.5,
+      "hilliness": 0.6,
+      "hills": 0.6,
+      "biomes": [
+        "volcanic"
+      ],
+      "timeOfDay": "sunset"
+    }
+  },
+  {
+    "name": "RIDGE",
+    "cfg": {
+      "mode": "custom",
+      "seed": "RIDGE",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    }
+  },
+  {
+    "name": "CLIFF",
+    "cfg": {
+      "mode": "custom",
+      "seed": "CLIFF",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    }
+  },
+  {
+    "name": "FOLD",
+    "cfg": {
+      "mode": "custom",
+      "seed": "FOLD",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    }
+  },
+  {
+    "name": "SUMMIT",
+    "cfg": {
+      "mode": "custom",
+      "seed": "SUMMIT",
+      "size": 1,
+      "curviness": 1,
+      "twist": 1,
+      "hilliness": 1,
+      "hills": 1,
+      "biomes": [
+        "alpine",
+        "mesa",
+        "volcanic"
+      ]
+    }
+  }
+]

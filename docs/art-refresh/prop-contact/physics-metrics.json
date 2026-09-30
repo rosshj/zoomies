@@ -1,0 +1,29 @@
+[
+  {
+    "poses": 973,
+    "checkedArtVertices": 64788,
+    "sideLandings": 21,
+    "worstSingleStepMs": 1.5468329999999924,
+    "checks": "slopes, curves, lap seam, stacked strands, high-speed fence impacts, 30/60/120 Hz, stable sleep, full art bounds"
+  },
+  {
+    "workloads": [
+      {
+        "forcedActive": 1,
+        "medianMs": 0.005791999999928521,
+        "p99Ms": 0.011999999999943611
+      },
+      {
+        "forcedActive": 8,
+        "medianMs": 0.11054200000000947,
+        "p99Ms": 0.16475000000002638
+      },
+      {
+        "forcedActive": 64,
+        "medianMs": 0.9116669999998521,
+        "p99Ms": 1.2562910000001466
+      }
+    ],
+    "note": "Node solver-only stress timing, excludes rendering; all bodies relaunched every second"
+  }
+]

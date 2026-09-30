@@ -1,0 +1,37 @@
+[
+  {
+    "biomes": 15,
+    "emitted": [
+      {
+        "hz": 30,
+        "emitted": 73
+      },
+      {
+        "hz": 60,
+        "emitted": 73
+      },
+      {
+        "hz": 120,
+        "emitted": 73
+      }
+    ],
+    "reservoirBins": [
+      170,
+      180,
+      186,
+      188,
+      212,
+      192,
+      207,
+      180,
+      190,
+      195
+    ],
+    "limits": {
+      "ground": 1900,
+      "falling": 320,
+      "wake": 80
+    },
+    "checks": "frame-rate independence, resume cap, grounded/speed/sliding wake, surface cover, deterministic full-lap sampling"
+  }
+]

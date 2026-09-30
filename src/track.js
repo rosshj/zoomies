@@ -1,7 +1,27 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { attribute, color as tslColor, float, mix, smoothstep, time, positionWorld, normalView, positionViewDirection } from "three/tsl";
-import { biomeBarrierStyle, biomeNameAt, biomeRoadStyle, biomeRoadStyleBlend, setBiomeLayout, setHeightSampler, planBiomeWedges, chunkByCell, fitInstanceBounds } from "./scenery.js";
+import {
+  attribute,
+  color as tslColor,
+  float,
+  mix,
+  smoothstep,
+  time,
+  positionWorld,
+  normalView,
+  positionViewDirection,
+} from "three/tsl";
+import {
+  biomeBarrierStyle,
+  biomeNameAt,
+  biomeRoadStyle,
+  biomeRoadStyleBlend,
+  setBiomeLayout,
+  setHeightSampler,
+  planBiomeWedges,
+  chunkByCell,
+  fitInstanceBounds,
+} from "./scenery.js";
 import { planFeatures } from "./features.js";
 import { rand, makeRng } from "./rng.js";
 
@@ -30,13 +50,19 @@ const _nearGrids = new WeakMap();
 function nearCandidates(pts, x, z) {
   let g = _nearGrids.get(pts);
   if (!g) {
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    let minX = Infinity,
+      maxX = -Infinity,
+      minZ = Infinity,
+      maxZ = -Infinity;
     for (const p of pts) {
-      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-      if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.z < minZ) minZ = p.z;
+      if (p.z > maxZ) maxZ = p.z;
     }
     const PAD = 1400; // the terrain sheet / mountain ring reach ~1000-1300u past the loop
-    const x0 = minX - PAD, z0 = minZ - PAD;
+    const x0 = minX - PAD,
+      z0 = minZ - PAD;
     const nx = Math.ceil((maxX + PAD - x0) / NEAR_CELL);
     const nz = Math.ceil((maxZ + PAD - z0) / NEAR_CELL);
     g = { x0, z0, nx, nz, cells: new Array(nx * nz).fill(null) };
@@ -55,7 +81,8 @@ function nearCandidates(pts, x, z) {
     const d = new Float64Array(N);
     let dmin = Infinity;
     for (let i = 0; i < N; i++) {
-      const dx = pts[i].x - ccx, dz = pts[i].z - ccz;
+      const dx = pts[i].x - ccx,
+        dz = pts[i].z - ccz;
       d[i] = Math.sqrt(dx * dx + dz * dz);
       if (d[i] < dmin) dmin = d[i];
     }
@@ -76,11 +103,29 @@ const clamp01 = (v) => Math.max(0, Math.min(1, v ?? 0.5));
 // The original hand-authored circuit, kept as the "classic" preset. Triples are
 // [x, z, y] (y is elevation), mapped to Vector3(x, y, z) at build time.
 const CLASSIC_POINTS = [
-  [0, -430, 0], [120, -400, 4], [210, -330, 14], [180, -250, 22], [250, -160, 30],
-  [310, -40, 38], [270, 80, 32], [320, 200, 22], [280, 330, 12], [180, 420, 5],
-  [80, 400, 6], [55, 300, 12], [-45, 300, 14], [-70, 400, 8], [-170, 430, 4],
-  [-280, 350, 28], [-310, 200, 58], [-250, 90, 78], [-300, -40, 84], [-250, -160, 58],
-  [-280, -290, 28], [-180, -370, 8], [-70, -400, 3],
+  [0, -430, 0],
+  [120, -400, 4],
+  [210, -330, 14],
+  [180, -250, 22],
+  [250, -160, 30],
+  [310, -40, 38],
+  [270, 80, 32],
+  [320, 200, 22],
+  [280, 330, 12],
+  [180, 420, 5],
+  [80, 400, 6],
+  [55, 300, 12],
+  [-45, 300, 14],
+  [-70, 400, 8],
+  [-170, 430, 4],
+  [-280, 350, 28],
+  [-310, 200, 58],
+  [-250, 90, 78],
+  [-300, -40, 84],
+  [-250, -160, 58],
+  [-280, -290, 28],
+  [-180, -370, 8],
+  [-70, -400, 3],
 ];
 
 // Procedurally generate a closed loop of control points from a few knobs. Built
@@ -115,7 +160,10 @@ function _loopOK(pts, minR, xover = null) {
   // crossing is fatal UNLESS this is a crossover map and the two strands pass
   // with (near) full deck clearance — then exactly ONE such crossing is legal.
   const xseg = (a, b, c, d) => {
-    const rX = b.x - a.x, rZ = b.z - a.z, sX = d.x - c.x, sZ = d.z - c.z;
+    const rX = b.x - a.x,
+      rZ = b.z - a.z,
+      sX = d.x - c.x,
+      sZ = d.z - c.z;
     const den = rX * sZ - rZ * sX;
     if (Math.abs(den) < 1e-9) return null;
     const t = ((c.x - a.x) * sZ - (c.z - a.z) * sX) / den;
@@ -152,11 +200,14 @@ function _loopOK(pts, minR, xover = null) {
   // but any pin-conflict corner case that slips through must NOT ship a
   // 40-degree wall — reject and let the next attempt re-roll.
   for (let i = 0; i < F; i++) {
-    const a = Q[i], b = Q[(i + 1) % F];
+    const a = Q[i],
+      b = Q[(i + 1) % F];
     if (Math.abs(b.y - a.y) > Math.hypot(b.x - a.x, b.z - a.z) * 0.44) return false;
   }
   for (let i = 0; i < F; i++) {
-    const p0 = Q[(i - 2 + F) % F], p1 = Q[i], p2 = Q[(i + 2) % F];
+    const p0 = Q[(i - 2 + F) % F],
+      p1 = Q[i],
+      p2 = Q[(i + 2) % F];
     const a = Math.hypot(p0.x - p1.x, p0.z - p1.z);
     const b = Math.hypot(p1.x - p2.x, p1.z - p2.z);
     const c = Math.hypot(p0.x - p2.x, p0.z - p2.z);
@@ -204,8 +255,12 @@ function _loopOK(pts, minR, xover = null) {
           const xr = 260;
           let nearX = false;
           for (const xg of xings) {
-            const ex = Q[i].x - xg.x, ez = Q[i].z - xg.z;
-            if (ex * ex + ez * ez < xr * xr) { nearX = true; break; }
+            const ex = Q[i].x - xg.x,
+              ez = Q[i].z - xg.z;
+            if (ex * ex + ez * ez < xr * xr) {
+              nearX = true;
+              break;
+            }
           }
           if (nearX) continue;
         }
@@ -225,8 +280,19 @@ function _loopOK(pts, minR, xover = null) {
 // angle — city blocks read tight and busy, deserts open into long fast sweeps —
 // so crossing a biome border changes how the road DRIVES, not just how it looks.
 const BIOME_RHYTHM = {
-  city: 1.0, forest: 0.8, autumn: 0.65, blossom: 0.6, alpine: 0.6,
-  meadow: 0.5, tundra: 0.45, beach: 0.35, savanna: 0.3, desert: 0.18,
+  city: 1.0,
+  forest: 0.8,
+  autumn: 0.65,
+  blossom: 0.6,
+  alpine: 0.6,
+  lavender: 0.48,
+  wetlands: 0.28,
+  volcanic: 0.7,
+  meadow: 0.5,
+  tundra: 0.45,
+  beach: 0.35,
+  savanna: 0.3,
+  desert: 0.18,
 };
 // The summit: a per-seed mountain in the ELEVATION PROFILE — a big Gaussian
 // peak the road genuinely climbs over and dives off. Pure height change, so it
@@ -263,7 +329,8 @@ function planSummitPeak(cfg) {
 // per loop. Shared by the plan's analytic battery and the styling pass — the
 // two MUST sample the same curve or the plan's guarantees are void.
 function xoShape(loops, t) {
-  let x = Math.cos(t), z = Math.sin(t);
+  let x = Math.cos(t),
+    z = Math.sin(t);
   for (const L of loops) {
     const d = Math.atan2(Math.sin(t - L.t0), Math.cos(t - L.t0));
     const B = L.A * Math.exp(-(d * d) / (L.sig * L.sig));
@@ -319,8 +386,9 @@ function planCrossover(cfg) {
   const zeros = [];
   let prev = g(0);
   for (let i = 1; i <= 1440; i++) {
-    const rel = (i / 1440) * TAU, v = g(rel);
-    if (prev < 0 !== v < 0) zeros.push(rel - (TAU / 1440) * v / (v - prev));
+    const rel = (i / 1440) * TAU,
+      v = g(rel);
+    if (prev < 0 !== v < 0) zeros.push(rel - ((TAU / 1440) * v) / (v - prev));
     prev = v;
   }
   if (zeros.length !== 2 * m) return null; // malformed petal count: no crossing
@@ -342,7 +410,10 @@ function planCrossover(cfg) {
     let ok = true;
     for (const z of zeros) {
       const d = Math.abs(Math.atan2(Math.sin(phi + z), Math.cos(phi + z)));
-      if (d < marg) { ok = false; break; }
+      if (d < marg) {
+        ok = false;
+        break;
+      }
     }
     if (ok) break;
   }
@@ -381,7 +452,10 @@ function planCrossover(cfg) {
         const w = (1.9 + r() * 0.5) / sig;
         const A = 0.45 + r() * 0.15;
         const out = flavor === "mix" ? (j % 2 === 0) === mixLead : flavor === "out";
-        if (Math.abs(Math.atan2(Math.sin(t0), Math.cos(t0))) < sig + 0.5) { loops.length = 0; break; }
+        if (Math.abs(Math.atan2(Math.sin(t0), Math.cos(t0))) < sig + 0.5) {
+          loops.length = 0;
+          break;
+        }
         loops.push({ t0, sig, w, A, s: out ? -1 : 1, ph: out ? t0 : t0 + Math.PI });
       }
       if (!loops.length) continue;
@@ -404,17 +478,27 @@ function planCrossover(cfg) {
       for (let i = 0; i < D && !bad; i += 2) {
         for (let j = i + skip; j < D; j += 2) {
           if (D - (j - i) < skip) continue;
-          const a = P[i], bq = P[(i + 2) % D], c2 = P[j], d = P[(j + 2) % D];
-          const rX = bq[0] - a[0], rZ = bq[1] - a[1], sX = d[0] - c2[0], sZ = d[1] - c2[1];
+          const a = P[i],
+            bq = P[(i + 2) % D],
+            c2 = P[j],
+            d = P[(j + 2) % D];
+          const rX = bq[0] - a[0],
+            rZ = bq[1] - a[1],
+            sX = d[0] - c2[0],
+            sZ = d[1] - c2[1];
           const den = rX * sZ - rZ * sX;
           if (Math.abs(den) < 1e-12) continue;
           const t2 = ((c2[0] - a[0]) * sZ - (c2[1] - a[1]) * sX) / den;
           const u = ((c2[0] - a[0]) * rZ - (c2[1] - a[1]) * rX) / den;
           if (t2 <= 0 || t2 >= 1 || u <= 0 || u >= 1) continue;
-          const hx = a[0] + rX * t2, hz = a[1] + rZ * t2;
+          const hx = a[0] + rX * t2,
+            hz = a[1] + rZ * t2;
           if (hits.some((q) => Math.hypot(q.x - hx, q.z - hz) * scale < 30)) continue;
           hits.push({ x: hx, z: hz, tA: ((i + 2 * t2) / D) * TAU, tB: ((j + 2 * u) / D) * TAU });
-          if (hits.length > maxX) { bad = true; break; }
+          if (hits.length > maxX) {
+            bad = true;
+            break;
+          }
         }
       }
       if (bad || !hits.length) continue;
@@ -429,10 +513,17 @@ function planCrossover(cfg) {
       if (outwardSeed) {
         let protrudes = 0;
         for (const h of hits) {
-          let tA = h.tA, tB = h.tB;
-          if (tB - tA > Math.PI) { const sw = tA; tA = tB; tB = sw + TAU; }
-          const iA = Math.round((tA / TAU) * D), iB = Math.round((tB / TAU) * D);
-          let apex = 0, shoulder = 0;
+          let tA = h.tA,
+            tB = h.tB;
+          if (tB - tA > Math.PI) {
+            const sw = tA;
+            tA = tB;
+            tB = sw + TAU;
+          }
+          const iA = Math.round((tA / TAU) * D),
+            iB = Math.round((tB / TAU) * D);
+          let apex = 0,
+            shoulder = 0;
           for (let i = iA; i <= iB; i++) {
             const q = P[((i % D) + D) % D];
             apex = Math.max(apex, Math.hypot(q[0], q[1]));
@@ -455,7 +546,9 @@ function planCrossover(cfg) {
       const envW = new Float32Array(EW).fill(1);
       let minRad = Infinity;
       for (let i = 0; i < D; i++) {
-        const p0 = P[(i - 3 + D) % D], p1 = P[i], p2 = P[(i + 3) % D];
+        const p0 = P[(i - 3 + D) % D],
+          p1 = P[i],
+          p2 = P[(i + 3) % D];
         const A = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]);
         const B = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
         const C = Math.hypot(p0[0] - p2[0], p0[1] - p2[1]);
@@ -477,7 +570,8 @@ function planCrossover(cfg) {
       });
       passages.sort((x, y) => x.a - y.a);
       const nP = passages.length;
-      let minGap = TAU, minStart = Infinity;
+      let minGap = TAU,
+        minStart = Infinity;
       for (let i = 0; i < nP; i++) {
         minGap = Math.min(minGap, (passages[(i + 1) % nP].a - passages[i].a + TAU) % TAU);
         minStart = Math.min(minStart, Math.abs(Math.atan2(Math.sin(passages[i].a), Math.cos(passages[i].a))));
@@ -501,7 +595,10 @@ function planCrossover(cfg) {
       for (let i = 0; i < nP; i++) {
         const q = passages[(i + 1) % nP];
         const gap = (q.a - passages[i].a + TAU) % TAU;
-        if (q.up !== passages[i].up && gap < 0.3) { rampOK = false; break; }
+        if (q.up !== passages[i].up && gap < 0.3) {
+          rampOK = false;
+          break;
+        }
       }
       if (!rampOK) continue;
       // clusters share one pin level (arc-close passages can't afford
@@ -524,7 +621,8 @@ function planCrossover(cfg) {
       for (let hi = 0; hi < hits.length; hi++) {
         const pa = passages.filter((q) => q.pair === hi);
         if (pa[0].cluster !== pa[1].cluster) {
-          const from = pa[1].cluster, to = pa[0].cluster;
+          const from = pa[1].cluster,
+            to = pa[0].cluster;
           for (const ps of passages) if (ps.cluster === from) ps.cluster = to;
         }
       }
@@ -547,7 +645,6 @@ function planCrossover(cfg) {
     }
   }
   return limaPlan;
-
 }
 
 function generateLoopPoints(cfg, rng = rand, wedges = null) {
@@ -635,10 +732,15 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   };
   // High-frequency harmonics (the packed-in wiggle) take the rhythm envelope;
   // the low ones (the loop's overall lobes) stay global so the silhouette holds.
-  const rLo = rH.slice(0, 3), rHi = rH.slice(3);
-  const tLo = tH.slice(0, 2), tHi = tH.slice(2);
+  const rLo = rH.slice(0, 3),
+    rHi = rH.slice(3);
+  const tLo = tH.slice(0, 2),
+    tHi = tH.slice(2);
 
-  const sm01 = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+  const sm01 = (t) => {
+    t = Math.max(0, Math.min(1, t));
+    return t * t * (3 - 2 * t);
+  };
   const wrapA = (d) => Math.atan2(Math.sin(d), Math.cos(d));
   const hillsAt = (a) => Math.max(0, hillAmp * (0.5 + 0.5 * harmSum(eH, a, ePhase)));
   // Crossover height plan: each crossing's two passages pin to a COMMON level
@@ -666,19 +768,24 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
         pass.push({ a: plan.phi + plan.ups[ci], pin, up: true, win: 0.55 });
       }
     }
-    const w = plan.kind === "gen"
-      ? { zoneScale: 2.4, zoneCap: 0.9, plateauFrac: 0.45 }
-      : { zoneScale: 2.4, zoneCap: 1.35, plateauFrac: 0.44 };
+    const w =
+      plan.kind === "gen"
+        ? { zoneScale: 2.4, zoneCap: 0.9, plateauFrac: 0.45 }
+        : { zoneScale: 2.4, zoneCap: 1.35, plateauFrac: 0.44 };
     return { pass, w };
   };
   const _xoCache = new Map();
   const xoPassFor = (plan) => {
     let e = _xoCache.get(plan);
-    if (!e) { e = buildXoPass(plan); _xoCache.set(plan, e); }
+    if (!e) {
+      e = buildXoPass(plan);
+      _xoCache.set(plan, e);
+    }
     return e;
   };
 
-  let best = null, bestXo = null;
+  let best = null,
+    bestXo = null;
   // Attempt budget: the first 30 tries carry the biome-rhythm envelope at
   // stepping-down strength; after that the schedule matches the old
   // generator's (40 clean full-strength tries, then damped last resorts) so
@@ -695,7 +802,8 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
     const tangAmp = (curviness * 0.18 + detail * 0.2) * damp;
     const rPhase = rH.map(() => rng() * TAU);
     const tPhase = tH.map(() => rng() * TAU);
-    const rPhaseHi = rPhase.slice(3), tPhaseHi = tPhase.slice(2);
+    const rPhaseHi = rPhase.slice(3),
+      tPhaseHi = tPhase.slice(2);
 
     const pts = [];
     for (let i = 0; i < N; i++) {
@@ -716,7 +824,8 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
         // sharpen a corner past the floor or graze strands into an extra
         // crossing.
         let [px, pz] = xoShape(xo.loops, a);
-        px *= baseR; pz *= baseR;
+        px *= baseR;
+        pz *= baseR;
         let dmin = Infinity;
         for (const ps of xoPass) dmin = Math.min(dmin, Math.abs(wrapA(a - ps.a)));
         const envP = sm01((dmin - 0.42) / 0.35);
@@ -727,8 +836,11 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
         // fades where the base curve dives toward the centre — waist bays
         // pass close to each other there and grazing them mints crossings.
         const envC = sm01((Math.hypot(px, pz) / baseR - 0.3) / 0.22);
-        const wob = 1 + Math.min(radVar, 0.4) * 0.35 * ew * envP * envC * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
-        const cR = Math.cos(xo.rot), sR = Math.sin(xo.rot);
+        const wob =
+          1 +
+          Math.min(radVar, 0.4) * 0.35 * ew * envP * envC * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi));
+        const cR = Math.cos(xo.rot),
+          sR = Math.sin(xo.rot);
         x = (px * cR - pz * sR) * wob;
         z = (px * sR + pz * cR) * wob;
       } else {
@@ -745,7 +857,8 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
           const mag = Math.max(0.35, Math.abs(lim));
           const rvX = Math.min(radVar, 0.45); // same styling cap as gen maps
           r = baseR * (lim + rvX * 0.5 * envX * mag * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
-          tg = baseR * Math.min(tangAmp, 0.24) * 0.5 * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
+          tg =
+            baseR * Math.min(tangAmp, 0.24) * 0.5 * envX * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
         } else {
           r = baseR * (1 + radVar * (harmSum(rLo, a, rPhase) + env * harmSum(rHi, a, rPhaseHi)));
           tg = baseR * tangAmp * (harmSum(tLo, a, tPhase) + env * harmSum(tHi, a, tPhaseHi));
@@ -804,26 +917,33 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
       // down toward the hill" and "pull up toward the pin", leaving a cliff.
       const UB = new Float64Array(N).fill(Infinity);
       const LB = new Float64Array(N).fill(-Infinity);
-      for (let i = 0; i < N; i++) if (pinned[i]) { UB[i] = LB[i] = pts[i].y; }
+      for (let i = 0; i < N; i++)
+        if (pinned[i]) {
+          UB[i] = LB[i] = pts[i].y;
+        }
       const limAt = (i) => {
-        const p = pts[i], q = pts[(i + 1) % N];
+        const p = pts[i],
+          q = pts[(i + 1) % N];
         return Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
       };
       for (let lap = 0; lap < 3; lap++) {
         for (let i = 0; i < N; i++) {
-          const j = (i + 1) % N, L = limAt(i);
+          const j = (i + 1) % N,
+            L = limAt(i);
           if (UB[i] + L < UB[j]) UB[j] = UB[i] + L;
           if (LB[i] - L > LB[j]) LB[j] = LB[i] - L;
         }
         for (let i = N - 1; i >= 0; i--) {
-          const j = (i + 1) % N, L = limAt(i);
+          const j = (i + 1) % N,
+            L = limAt(i);
           if (UB[j] + L < UB[i]) UB[i] = UB[j] + L;
           if (LB[j] - L > LB[i]) LB[i] = LB[j] - L;
         }
       }
       for (let i = 0; i < N; i++) {
         if (pinned[i]) continue;
-        if (LB[i] > UB[i]) pts[i].y = (LB[i] + UB[i]) / 2; // conflicting pins: split the difference
+        if (LB[i] > UB[i])
+          pts[i].y = (LB[i] + UB[i]) / 2; // conflicting pins: split the difference
         else pts[i].y = Math.max(LB[i], Math.min(UB[i], pts[i].y));
       }
     }
@@ -841,11 +961,13 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
         let changed = false;
         for (let i = 0; i < N; i++) {
           const j = (i + 1) % N;
-          const p = pts[i], q = pts[j];
+          const p = pts[i],
+            q = pts[j];
           const lim = Math.hypot(q.x - p.x, q.z - p.z) * TAN_MAX;
           const dy = q.y - p.y;
           if (Math.abs(dy) <= lim) continue;
-          const pa = pinned && pinned[i], pb = pinned && pinned[j];
+          const pa = pinned && pinned[i],
+            pb = pinned && pinned[j];
           if (pa && pb) continue; // adjacent plateau points share a level anyway
           changed = true;
           if (pa) q.y = p.y + Math.sign(dy) * lim;
@@ -881,7 +1003,6 @@ function generateLoopPoints(cfg, rng = rand, wedges = null) {
   return best;
 }
 
-
 // Centreline control points a given track config WILL produce, for the menu map
 // preview — without building the world or touching the shared RNG stream. Custom
 // tracks reproduce the exact shape via an isolated stream seeded from the same
@@ -890,7 +1011,11 @@ export function previewLoopPoints(config) {
   if (!config || config.mode !== "custom") {
     return CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
   }
-  return generateLoopPoints(config, makeRng(config.seed || "preview"), planBiomeWedges(config.biomes, String(config.seed || "preview")));
+  return generateLoopPoints(
+    config,
+    makeRng(config.seed || "preview"),
+    planBiomeWedges(config.biomes, String(config.seed || "preview")),
+  );
 }
 
 // Cheap flat "wet sheen" shader for the forest puddles: a dark glossy patch with
@@ -974,11 +1099,19 @@ function puddleBlob(cx, cz, baseR, stretchZ) {
   const pos = [cx, 0, cz];
   const edge = [0];
   const nrm = [0, 1, 0]; // flat puddle faces straight up — needed for the Fresnel sky tint (normalView)
-  const ph0 = Math.random() * 6.28, ph1 = Math.random() * 6.28, ph2 = Math.random() * 6.28, ph3 = Math.random() * 6.28;
+  const ph0 = Math.random() * 6.28,
+    ph1 = Math.random() * 6.28,
+    ph2 = Math.random() * 6.28,
+    ph3 = Math.random() * 6.28;
   for (let i = 0; i < segs; i++) {
     const a = (i / segs) * Math.PI * 2;
     // Several harmonics (incl. a low one) for a clearly irregular, organic outline.
-    const wob = 1 + 0.28 * Math.sin(a + ph0) + 0.4 * Math.sin(a * 2 + ph1) + 0.24 * Math.sin(a * 3 + ph2) + 0.15 * Math.sin(a * 5 + ph3);
+    const wob =
+      1 +
+      0.28 * Math.sin(a + ph0) +
+      0.4 * Math.sin(a * 2 + ph1) +
+      0.24 * Math.sin(a * 3 + ph2) +
+      0.15 * Math.sin(a * 5 + ph3);
     const r = baseR * Math.max(0.4, wob);
     const wx = cx + Math.cos(a) * r;
     const wz = cz + Math.sin(a) * r * stretchZ;
@@ -996,19 +1129,32 @@ function puddleBlob(cx, cz, baseR, stretchZ) {
   return g;
 }
 
-// Fine grayscale noise used as the road's bump map (asphalt grain).
-function noiseTexture() {
+// Painted aggregate: one colour lookup replaces noisy bump-normal work. All
+// detail is baked into a tiny repeating canvas; no new road geometry or passes.
+function asphaltTexture() {
   const c = document.createElement("canvas");
-  c.width = c.height = 64;
+  c.width = c.height = 128;
   const ctx = c.getContext("2d");
-  const img = ctx.createImageData(64, 64);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = 140 + Math.random() * 115;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  return new THREE.CanvasTexture(c);
+  for (let y = 0; y < 64; y++)
+    for (let x = 0; x < 64; x++) {
+      const n = Math.random(); // same 4096 draws as the former bump texture
+      const patch = Math.sin((x * Math.PI) / 16) * Math.cos((y * Math.PI) / 32);
+      const v = Math.round(239 + patch * 4 + (n - 0.5) * 10);
+      ctx.fillStyle = `rgb(${v},${v},${v})`;
+      ctx.fillRect(x * 2, y * 2, 2, 2);
+      // Sparse cut-stone flecks, restrained enough to minify without sparkling.
+      if (n < 0.14 || n > 0.94) {
+        const chip = n < 0.14 ? v - 17 : Math.min(255, v + 12);
+        ctx.fillStyle = `rgb(${chip},${chip},${chip})`;
+        ctx.fillRect(x * 2, y * 2, n < 0.07 ? 2 : 1, 1);
+      }
+    }
+  const texture = new THREE.CanvasTexture(c);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(6, 6);
+  texture.anisotropy = 8;
+  return texture;
 }
 
 // A closed race track built from a smooth 3D Catmull-Rom loop. The curve now
@@ -1026,7 +1172,8 @@ export class Track {
     // the classic hand-authored serpentine circuit.
     // Custom tracks plan their biome wedges FIRST (isolated stream), so the
     // generator's per-biome rhythm and scenery's wedge layout agree exactly.
-    const wedges = config && config.mode === "custom" ? planBiomeWedges(config.biomes, String(config.seed || "w")) : null;
+    const wedges =
+      config && config.mode === "custom" ? planBiomeWedges(config.biomes, String(config.seed || "w")) : null;
     const pts =
       config && config.mode === "custom"
         ? generateLoopPoints(config, rand, wedges)
@@ -1065,7 +1212,7 @@ export class Track {
         for (let i = 0; i < S; i++) {
           out[i] = sum / (2 * W + 1);
           sum -= ys[(((i - W) % S) + S) % S];
-          sum += ys[((i + W + 1) % S)];
+          sum += ys[(i + W + 1) % S];
         }
         ys = out;
       }
@@ -1091,21 +1238,28 @@ export class Track {
     this.crossovers = [];
     this._coarseGround = this._coarse;
     if (pts._xover) {
-      const P = this._pts, S = this.samples;
+      const P = this._pts,
+        S = this.samples;
       const skip = Math.ceil((170 / this.length) * S); // ignore arc-adjacent pairs
       for (let i = 0; i < S && this.crossovers.length < pts._xover.m; i += 2) {
-        const a = P[i], b = P[(i + 2) % S];
+        const a = P[i],
+          b = P[(i + 2) % S];
         for (let j = i + skip; j < S; j += 2) {
           if (S - (j - i) < skip) continue;
           // one crossing per neighbourhood: skip pairs near an already-found one
-          const c = P[j], d = P[(j + 2) % S];
-          const rX = b.x - a.x, rZ = b.z - a.z, sX = d.x - c.x, sZ = d.z - c.z;
+          const c = P[j],
+            d = P[(j + 2) % S];
+          const rX = b.x - a.x,
+            rZ = b.z - a.z,
+            sX = d.x - c.x,
+            sZ = d.z - c.z;
           const den = rX * sZ - rZ * sX;
           if (Math.abs(den) < 1e-9) continue;
           const t = ((c.x - a.x) * sZ - (c.z - a.z) * sX) / den;
           const u = ((c.x - a.x) * rZ - (c.z - a.z) * rX) / den;
           if (t < 0 || t > 1 || u < 0 || u > 1) continue;
-          const hx = a.x + rX * t, hz = a.z + rZ * t;
+          const hx = a.x + rX * t,
+            hz = a.z + rZ * t;
           if (this.crossovers.some((xg) => Math.hypot(xg.x - hx, xg.z - hz) < 60)) continue;
           const y1 = a.y + (b.y - a.y) * t;
           const y2 = c.y + (d.y - c.y) * u;
@@ -1120,7 +1274,10 @@ export class Track {
           let clearOfDecks = true;
           for (const xg of this.crossovers) {
             const d = Math.abs(si - xg.iUp);
-            if (Math.min(d, S - d) * (this.length / S) <= 92) { clearOfDecks = false; break; }
+            if (Math.min(d, S - d) * (this.length / S) <= 92) {
+              clearOfDecks = false;
+              break;
+            }
           }
           if (clearOfDecks) ground.push(this._coarse[ci]);
         }
@@ -1173,7 +1330,7 @@ export class Track {
     const uvs = [];
     const colors = [];
     const indices = [];
-    const base = new THREE.Color(0x53535b); // asphalt
+    const base = new THREE.Color(0x585860); // asphalt, balanced against painted grain
     const c = new THREE.Color();
 
     const hash = (a, b) => {
@@ -1243,8 +1400,7 @@ export class Track {
         const loose = kSnow + kSand;
         if (loose > 0.02) {
           const edgeDrift = smooth01((0.12 - Math.min(f, 1 - f)) / 0.12);
-          const cover =
-            loose * (0.18 + 0.42 * clump) * (1 - 0.92 * smooth01(wear * 1.25)) + loose * 0.3 * edgeDrift;
+          const cover = loose * (0.18 + 0.42 * clump) * (1 - 0.92 * smooth01(wear * 1.25)) + loose * 0.3 * edgeDrift;
           _covA.copy(SNOW_COVER).multiplyScalar(kSnow / loose);
           _covB.copy(SAND_COVER).multiplyScalar(kSand / loose);
           _covA.add(_covB);
@@ -1276,23 +1432,22 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
 
-    const bump = noiseTexture();
-    bump.wrapS = bump.wrapT = THREE.RepeatWrapping;
-    bump.repeat.set(6, 6);
-    bump.anisotropy = 8;
+    // Exact rendered ribbon used by the generation-time terrain clearance pass.
+    this.roadSurface = { geometry: geo, rowWidth: vpr };
+
+    const asphalt = asphaltTexture();
     const road = new THREE.Mesh(
       geo,
       new THREE.MeshStandardMaterial({
         vertexColors: true,
         roughness: 0.95,
-        bumpMap: bump,
-        bumpScale: 0.25,
+        map: asphalt,
         // DoubleSide: the strip's triangle winding follows the loop's direction,
         // and custom-generated tracks can run CLOCKWISE — with the default
         // FrontSide the whole road was back-face culled from above on those
         // seeds (invisible road; the terrain beneath read as the "road").
         side: THREE.DoubleSide,
-      })
+      }),
     );
     road.receiveShadow = true;
     this.group.add(road);
@@ -1377,7 +1532,9 @@ export class Track {
     pmat.colorNode = mix(wetDark, skyRefl, sky).add(glint.mul(0.16));
     pmat.metalnessNode = float(0); // no env/SSR to catch — the reflection is baked in colour
     pmat.roughnessNode = float(0.06); // glossy so the sun glint stays tight
-    pmat.opacityNode = float(0.74).add(fres.mul(0.22)).mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
+    pmat.opacityNode = float(0.74)
+      .add(fres.mul(0.22))
+      .mul(float(1).sub(smoothstep(0.4, 1.0, edge)));
     pmat.uniforms = { uTime: { value: 0 } }; // dummy: keeps the existing uTime write a no-op
     const mesh = new THREE.Mesh(mergeGeometries(geoms), pmat);
     mesh.renderOrder = 1;
@@ -1411,8 +1568,12 @@ export class Track {
         const p = this._pts[idx];
         const side = this._sideAt(idx);
         positions.push(
-          p.x + side.x * halfW, p.y + 0.06, p.z + side.z * halfW,
-          p.x - side.x * halfW, p.y + 0.06, p.z - side.z * halfW
+          p.x + side.x * halfW,
+          p.y + 0.06,
+          p.z + side.z * halfW,
+          p.x - side.x * halfW,
+          p.y + 0.06,
+          p.z - side.z * halfW,
         );
         const v = r / (nRings - 1);
         uvs.push(0, v, 1, v);
@@ -1493,11 +1654,7 @@ export class Track {
       // Two verts per end: back edge then front edge, left then right.
       for (const sw of [-w, w]) {
         for (const td of [-hd, hd]) {
-          positions.push(
-            p.x + side.x * sw + tan.x * td,
-            y,
-            p.z + side.z * sw + tan.z * td
-          );
+          positions.push(p.x + side.x * sw + tan.x * td, y, p.z + side.z * sw + tan.z * td);
         }
       }
       indices.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
@@ -1518,7 +1675,7 @@ export class Track {
         opacity: 0.22,
         depthWrite: false,
         side: THREE.DoubleSide, // winding follows loop direction (see the road note)
-      })
+      }),
     );
     mesh.renderOrder = 1;
     this.group.add(mesh);
@@ -1540,30 +1697,40 @@ export class Track {
       const t = this._tans[((k % div) + div) % div];
       return Math.atan2(t.x, t.z);
     };
-    for (let i = 0; i <= div; i++) {
-      const idx = i % div;
-      const p = this._pts[idx];
-      const side = this._sideAt(idx);
-      // Local curvature: how much the heading turns over a short look-ahead. On
-      // bends the verge becomes a red/white rumble kerb; straights stay sandy —
-      // or, in the CITY, concrete sidewalk slabs (alternating tone = paving joints).
-      let d = tanAng(idx + 10) - tanAng(idx);
+    // Duplicate the ends of each painted section: shared vertex colours blended
+    // red into white across every band, making the kerbs look airbrushed. Each
+    // section now has a solid colour and a raised, bevelled outer shoulder.
+    // One mesh/material still covers BOTH verges around the entire circuit.
+    for (let i = 0; i < div; i++) {
+      const p = this._pts[i];
+      let d = tanAng(i + 10) - tanAng(i);
       while (d > Math.PI) d -= Math.PI * 2;
       while (d < -Math.PI) d += Math.PI * 2;
       const urban = biomeRoadStyle(p.x, p.z).kind === "urban";
-      if (Math.abs(d) > 0.055) c.copy(Math.floor(i / 2) % 2 === 0 ? red : white);
-      else if (urban) c.copy(Math.floor(i / 3) % 2 === 0 ? concrete : concreteSeam);
+      const bend = Math.abs(d) > 0.055;
+      // World-space band length remains readable on long and short circuits.
+      if (bend) c.copy(Math.floor((i * this.length) / div / 4.5) % 2 === 0 ? red : white);
+      else if (urban) c.copy(Math.floor((i * this.length) / div / 6) % 2 === 0 ? concrete : concreteSeam);
       else c.copy(sand);
-      const lOut = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth + trim);
-      const lIn = new THREE.Vector3().copy(p).addScaledVector(side, this.halfWidth);
-      const rIn = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth);
-      const rOut = new THREE.Vector3().copy(p).addScaledVector(side, -this.halfWidth - trim);
-      positions.push(lOut.x, lOut.y, lOut.z, lIn.x, lIn.y, lIn.z, rIn.x, rIn.y, rIn.z, rOut.x, rOut.y, rOut.z);
-      for (let v = 0; v < 4; v++) colors.push(c.r, c.g, c.b);
-      if (i < div) {
-        const a = i * 4;
-        indices.push(a, a + 1, a + 4, a + 1, a + 5, a + 4);
-        indices.push(a + 2, a + 3, a + 6, a + 3, a + 7, a + 6);
+      for (const sign of [-1, 1]) {
+        const base = positions.length / 3;
+        for (const k of [i, (i + 1) % div]) {
+          const center = this._pts[k],
+            side = this._sideAt(k);
+          for (const [offset, height, shade] of [
+            [0, 0, 0.78],
+            [0.48, 0.12, 1],
+            [trim, 0, 0.86],
+          ]) {
+            const distance = sign * (this.halfWidth + offset);
+            positions.push(center.x + side.x * distance, center.y + height, center.z + side.z * distance);
+            colors.push(c.r * shade, c.g * shade, c.b * shade);
+          }
+        }
+        for (let j = 0; j < 2; j++) {
+          const v = base + j;
+          indices.push(v, v + 1, v + 3, v + 1, v + 4, v + 3);
+        }
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -1572,7 +1739,10 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
     // DoubleSide for the same reason as the road: winding follows loop direction.
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
+    );
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }
@@ -1681,9 +1851,17 @@ export class Track {
           const base = rp.length / 3;
           const rc0 = new THREE.Color(style.rail);
           const cap = new THREE.Color(style.cap);
-          const RAILS = [[0.78, 0.11], [1.36, 0.11]]; // [height, half-thickness]
+          const RAILS = [
+            [0.78, 0.11],
+            [1.36, 0.11],
+          ]; // [height, half-thickness]
           for (const [ry, rt] of RAILS) {
-            for (const [ds, dy] of [[-0.09, -rt], [0.24, -rt], [0.24, rt], [-0.09, rt]]) {
+            for (const [ds, dy] of [
+              [-0.09, -rt],
+              [0.24, -rt],
+              [0.24, rt],
+              [-0.09, rt],
+            ]) {
               const d = off + 0.42 + ds;
               rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
               // top face catches the light cap so the rail line stays legible
@@ -1731,7 +1909,12 @@ export class Track {
           const capc = new THREE.Color(style.cap);
           const railc = new THREE.Color(style.rail);
           for (const ry of [style.h * 0.97, style.h * 0.97]) {
-            for (const [ds, dy] of [[-0.1, -0.07], [0.28, -0.07], [0.28, 0.07], [-0.1, 0.07]]) {
+            for (const [ds, dy] of [
+              [-0.1, -0.07],
+              [0.28, -0.07],
+              [0.28, 0.07],
+              [-0.1, 0.07],
+            ]) {
               const d = off + 0.42 + ds;
               rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
               const cc = dy > 0 ? capc : railc;
@@ -1765,11 +1948,14 @@ export class Track {
               const j1 = wob(idx * 7 + k, 6);
               const j2 = wob(idx * 7 + k, 7);
               slats.push({
-                x: wx, y: wy, z: wz,
+                x: wx,
+                y: wy,
+                z: wz,
                 yaw: Math.atan2(sx, sz) + (j2 - 0.5) * style.lean * 2,
                 lean: (j1 - 0.5) * style.lean,
                 h: style.h * (0.82 + j2 * 0.36),
-                slat: style.slat, cap: style.cap,
+                slat: style.slat,
+                cap: style.cap,
               });
             }
           }
@@ -1858,9 +2044,8 @@ export class Track {
   }
 
   _buildCenterLine() {
-    // The centre line only appears in the built-up town stretches and the alpine
-    // (snowy) pass. A per-sample 0/1 visibility field is box-blurred so the line
-    // fades in and out over distance instead of stopping abruptly.
+    // The centre line appears in built-up town stretches outside forest/snow.
+    // Blur zone visibility so paint fades gently at the edges of settlements.
     const div = this.samples;
     const ZONES = 6; // matches the town/farm zoning in scenery.buildRoadside
     let vis = new Float32Array(div);
@@ -1882,29 +2067,48 @@ export class Track {
       vis = out;
     }
 
-    const hw = 0.24; // half-width of the line
-    // Dash the line instead of painting it solid: a repeating on/off beat along
-    // the samples. Dashes strobe past at speed — a strong, cheap optic-flow cue
-    // right where the player looks — where the old continuous stripe just slid.
-    // Baked into the same per-vertex alpha as the zone fade, so dash ends stay
-    // soft (painted, not clinical) and it's still one mesh / one draw.
-    const DASH = 8; // samples per on+off cycle…
-    const DASH_ON = 5; // …of which this many are painted
-    const positions = [];
-    const alphas = [];
-    const indices = [];
-    for (let i = 0; i <= div; i++) {
-      const idx = i % div;
-      const p = this._pts[idx];
-      const side = this._sideAt(idx);
-      const a = new THREE.Vector3().copy(p).addScaledVector(side, -hw);
-      const b = new THREE.Vector3().copy(p).addScaledVector(side, hw);
-      positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-      const dash = idx % DASH < DASH_ON ? 1 : 0;
-      alphas.push(vis[idx] * dash, vis[idx] * dash);
-      if (i < div) {
-        const k = i * 2;
-        indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    const hw = 0.19;
+    // Clip geometry at physical dash boundaries: crisp paint ends with no
+    // transparent triangles spanning the gaps. Fit whole cycles around the loop.
+    const step = this.length / div;
+    const period = this.length / Math.max(1, Math.floor(this.length / Math.max(14, step * 8)));
+    const on = period * 0.6;
+    const positions = [],
+      alphas = [],
+      indices = [];
+    let lastEnd = -1,
+      lastRing = -1;
+    const ring = (i, f) => {
+      f = Math.max(0, Math.min(1, f)); // distance arithmetic can overshoot by an ulp
+      const next = (i + 1) % div;
+      const p = this._pts[i].clone().lerp(this._pts[next], f);
+      const side = this._sideAt(i).clone().lerp(this._sideAt(next), f).normalize();
+      const k = positions.length / 3;
+      positions.push(
+        p.x - side.x * hw,
+        p.y + 0.05,
+        p.z - side.z * hw,
+        p.x + side.x * hw,
+        p.y + 0.05,
+        p.z + side.z * hw,
+      );
+      const alpha = vis[i] + (vis[next] - vis[i]) * f;
+      alphas.push(alpha, alpha);
+      return k;
+    };
+    for (let i = 0; i < div; i++) {
+      if (vis[i] + vis[(i + 1) % div] === 0) continue;
+      const start = i * step,
+        end = (i + 1) * step;
+      for (let cycle = Math.floor(start / period); cycle * period < end; cycle++) {
+        const lo = Math.max(start, cycle * period),
+          hi = Math.min(end, cycle * period + on);
+        if (hi - lo < 1e-7) continue;
+        const a = Math.abs(lo - lastEnd) < 1e-7 ? lastRing : ring(i, (lo - start) / step);
+        const b = ring(i, (hi - start) / step);
+        indices.push(a, a + 1, b, a + 1, b + 1, b);
+        lastEnd = hi;
+        lastRing = b;
       }
     }
     const geo = new THREE.BufferGeometry();
@@ -1923,7 +2127,7 @@ export class Track {
       depthWrite: false,
       side: THREE.DoubleSide,
     });
-    mat.colorNode = tslColor(0xf4cf3a);
+    mat.colorNode = tslColor(0xe9ca79);
     mat.opacityNode = attribute("aAlpha");
     const mesh = new THREE.Mesh(geo, mat);
     mesh.renderOrder = 1;
@@ -1940,7 +2144,9 @@ export class Track {
     // are true SQUARES (~0.8u) in world space — depth/rows fixes the cell size,
     // cols derives from the road width so the pattern stays square on any track.
     {
-      const depth = 3.2, rows = 4, px = 32;
+      const depth = 3.2,
+        rows = 4,
+        px = 32;
       const cellSize = depth / rows;
       const cols = Math.max(2, Math.round(this.width / cellSize));
       const c = document.createElement("canvas");
@@ -1957,7 +2163,7 @@ export class Track {
       tex.magFilter = THREE.NearestFilter; // keep the squares razor-crisp
       const line = new THREE.Mesh(
         new THREE.PlaneGeometry(cols * cellSize, depth),
-        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 })
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }),
       );
       line.position.set(p.x, p.y + 0.06, p.z);
       line.rotation.x = -Math.PI / 2;
@@ -1972,7 +2178,8 @@ export class Track {
     const up = new THREE.Vector3(0, 1, 0);
     const W = this.halfWidth + 3; // pole offset from centre (matches street banners)
     const pt = (s, y) => new THREE.Vector3().copy(p).addScaledVector(side, s).addScaledVector(up, y);
-    const topY = 9.4, botY = 6.7; // banner band clears the karts below
+    const topY = 9.4,
+      botY = 6.7; // banner band clears the karts below
     const poleMat = new THREE.MeshStandardMaterial({ color: 0x3c4047, roughness: 0.5, metalness: 0.45 });
     const barMat = new THREE.MeshStandardMaterial({ color: 0x2d3036, roughness: 0.45, metalness: 0.55 });
     const capMat = new THREE.MeshStandardMaterial({ color: 0xffd54f, roughness: 0.5, metalness: 0.3 });
@@ -2002,7 +2209,8 @@ export class Track {
     {
       const bw = W * 2 - 1.4;
       const bh = topY - botY;
-      const cw = 1536, ch = Math.round(cw * (bh / bw)); // canvas matches the cloth's aspect
+      const cw = 1536,
+        ch = Math.round(cw * (bh / bw)); // canvas matches the cloth's aspect
       const c = document.createElement("canvas");
       c.width = cw;
       c.height = ch;
@@ -2084,7 +2292,7 @@ export class Track {
       geo.computeVertexNormals();
       const banner = new THREE.Mesh(
         geo,
-        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide })
+        new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, side: THREE.DoubleSide }),
       );
       // Front face toward -tangent: karts ALWAYS approach the line from the grid
       // side (the lap loops back around), so that's the side the text must read on.
@@ -2101,7 +2309,7 @@ export class Track {
     {
       const panel = new THREE.Mesh(
         new THREE.BoxGeometry(2.6, 0.95, 0.42),
-        new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.6 })
+        new THREE.MeshStandardMaterial({ color: 0x22262e, roughness: 0.6 }),
       );
       panel.position.copy(pt(0, 6.1));
       panel.rotation.y = yaw;
@@ -2120,7 +2328,7 @@ export class Track {
         // read as off, instead of three permanently-coloured dots.
         const lamp = new THREE.Mesh(
           new THREE.SphereGeometry(0.3, 12, 10),
-          new THREE.MeshStandardMaterial({ color: 0x23262b, emissive: col, emissiveIntensity: 0, roughness: 0.4 })
+          new THREE.MeshStandardMaterial({ color: 0x23262b, emissive: col, emissiveIntensity: 0, roughness: 0.4 }),
         );
         lamp.position.copy(pt(s, 6.1));
         lamp.userData.lensCol = col;
@@ -2146,7 +2354,7 @@ export class Track {
       this.group.add(rim);
       const mouth = new THREE.Mesh(
         new THREE.CylinderGeometry(0.34, 0.34, 0.06, 10),
-        new THREE.MeshStandardMaterial({ color: 0x14100c, roughness: 1 })
+        new THREE.MeshStandardMaterial({ color: 0x14100c, roughness: 1 }),
       );
       mouth.position.copy(pt(s, 1.56));
       this.group.add(mouth);
@@ -2333,16 +2541,22 @@ export class Track {
     const pts = this._pts;
     const N = pts.length;
     if (!(lastIndex >= 0) || !Number.isFinite(lastIndex)) return this.project(pos);
-    const x = pos.x, z = pos.z, py = pos.y;
+    const x = pos.x,
+      z = pos.z,
+      py = pos.y;
     const dAt = (i) => {
       const p = pts[i];
-      const dx = p.x - x, dz = p.z - z, dy = p.y - py;
+      const dx = p.x - x,
+        dz = p.z - z,
+        dy = p.y - py;
       return dx * dx + dz * dz + dy * dy * 4;
     };
     let best = ((Math.round(lastIndex) % N) + N) % N;
     let bestD = dAt(best);
     for (let dir = -1; dir <= 1; dir += 2) {
-      let i = best, d = bestD, steps = 0;
+      let i = best,
+        d = bestD,
+        steps = 0;
       for (;;) {
         const j = (i + dir + N) % N;
         const dj = dAt(j);
@@ -2350,7 +2564,10 @@ export class Track {
         i = j;
         d = dj;
       }
-      if (d < bestD) { bestD = d; best = i; }
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
     }
     const far = this.halfWidth * 4;
     if (bestD > far * far) return this.project(pos);
@@ -2376,7 +2593,8 @@ export class Track {
     const pts = this._coarseGround;
     const n = pts.length;
     const win = Math.max(6, Math.ceil(((170 / this.length) * this.samples) / 2)); // arc window, in coarse indices
-    let d2 = Infinity, y2 = r.y;
+    let d2 = Infinity,
+      y2 = r.y;
     // Only a strand within 70u of the winner's distance can blend (gap < 70
     // below), and the cell candidate list is widened by exactly that — so the
     // scan over it finds the same second strand as the full one whenever the
@@ -2387,9 +2605,13 @@ export class Track {
       const i = cand ? cand[k] : k;
       const ad = Math.abs(i - r.i);
       if (Math.min(ad, n - ad) <= win) continue; // same strand as the winner
-      const dx = pts[i].x - x, dz = pts[i].z - z;
+      const dx = pts[i].x - x,
+        dz = pts[i].z - z;
       const d = dx * dx + dz * dz;
-      if (d < d2) { d2 = d; y2 = pts[i].y; }
+      if (d < d2) {
+        d2 = d;
+        y2 = pts[i].y;
+      }
     }
     if (d2 < Infinity) {
       const gap = Math.sqrt(d2) - r.dist;

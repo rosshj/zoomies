@@ -1,0 +1,18 @@
+# Third-party and generated
+node_modules/
+vendor/
+dist/
+package-lock.json
+desktop/package-lock.json
+# Native projects and binary assets
+ios/
+android/
+assets/
+resources/
+docs/
+# Generated fixtures and data
+tools/fixtures/*.json
+assets/catalog/
+# HTML and CSS were already hand-formatted; keep the formatter to scripts
+*.html
+*.css

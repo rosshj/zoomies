@@ -1,0 +1,139 @@
+// Shared procedural art and budgets for loose surface material. No image assets,
+// rigid bodies or per-particle lights; both scenery and kart wakes use this atlas.
+import * as THREE from "three";
+import { uniform } from "three/tsl";
+export const debrisLight = uniform(new THREE.Color(1, 1, 1));
+const profile = (tile, colors, density, size, lift, fall = 0) => ({ tile, colors, density, size, lift, fall });
+export const ENVIRONMENT_PROFILES = {
+  blossom: profile(0, [0xffbdd5, 0xffdce7, 0xf5a4c5], 0.72, 0.31, 0.85, 0.85),
+  lavender: profile(0, [0xc4a4e0, 0xd8bce9, 0xb9a0d1], 0.35, 0.21, 0.7, 0.35),
+  forest: profile(1, [0x6d803d, 0x85714d, 0x49743a], 0.56, 0.38, 0.55, 0.15),
+  autumn: profile(1, [0xcc7937, 0xb74d29, 0xd9a94b], 0.8, 0.44, 0.65, 0.65),
+  jungle: profile(1, [0x42744a, 0x68834d, 0x898352], 0.5, 0.48, 0.5, 0.2),
+  wetlands: profile(1, [0x708853, 0x9b935d, 0x527248], 0.4, 0.35, 0.4, 0.12),
+  meadow: profile(2, [0x8ca563, 0xc7bb80, 0x9db96f], 0.24, 0.24, 0.3),
+  savanna: profile(2, [0xc4a669, 0xb9934f, 0xd8c389], 0.35, 0.29, 0.4, 0.08),
+  beach: profile(3, [0xdcc99e, 0xeaddbd, 0xbeb090], 0.13, 0.09, 0.13),
+  desert: profile(3, [0xc2a171, 0xd8be8c, 0xb79765], 0.16, 0.09, 0.13),
+  mesa: profile(3, [0xb58462, 0xc89c72, 0xdaaf85], 0.13, 0.1, 0.15),
+  alpine: profile(4, [0xdce6ee, 0xc5d8e4, 0xf2f4ef], 0.26, 0.18, 0.25),
+  tundra: profile(4, [0xd5e3ed, 0xbdd2df, 0xecf0ed], 0.35, 0.2, 0.28),
+  city: profile(5, [0xc9c3ad, 0xe1dccb, 0xa3aaa8], 0.09, 0.26, 0.35),
+  volcanic: profile(6, [0x756d69, 0x565253, 0x9a8780], 0.19, 0.12, 0.2, 0.12),
+};
+export const environmentProfile = (name) => ENVIRONMENT_PROFILES[name] || ENVIRONMENT_PROFILES.meadow;
+export const ENVIRONMENT_LIMITS = { ground: 1900, falling: 320, wake: 80 };
+
+// A deterministic time accumulator, independent of render frequency. Per-kart
+// callers own a small record; a long background pause cannot spawn a backlog.
+export function emissionCount(state, key, rate, dt) {
+  const value = (state[key] || 0) + Math.max(0, rate) * Math.min(0.1, Math.max(0, dt));
+  const n = Math.floor(value + 1e-9);
+  state[key] = Math.max(0, value - n);
+  return n;
+}
+
+// Mirror the visible road's clumped loose-cover/wear formula at the kart's
+// existing track projection. No nearest-road search or collision work per puff.
+const smooth = (x) => {
+  x = Math.max(0, Math.min(1, x));
+  return x * x * (3 - 2 * x);
+};
+const SANDY = new Set(["beach", "desert", "mesa"]),
+  SNOWY = new Set(["alpine", "tundra"]); // hoisted: looseSurface runs per kart per frame
+export function looseSurface(biome, x, z, lateral, halfWidth, row, sliding = false) {
+  const f = Math.max(0, Math.min(1, (lateral + halfWidth) / (2 * halfWidth)));
+  const edge = smooth((Math.abs(lateral) - halfWidth * 0.62) / (halfWidth * 0.32));
+  const sandy = SANDY.has(biome),
+    snowy = SNOWY.has(biome);
+  if (!sandy && !snowy) return Math.min(1, edge * 0.75 + (sliding ? 0.06 : 0.008));
+  const wander = 0.03 * Math.sin(row * 0.06) + 0.02 * Math.sin(row * 0.017 + 2.1);
+  const lane = Math.min(Math.abs(f - (0.32 + wander)), Math.abs(f - (0.68 + wander)));
+  const wear = (1 - smooth(lane / 0.17)) * (0.82 + 0.18 * Math.sin(row * 0.11 + f * 3));
+  const clump =
+    0.5 + 0.5 * Math.sin(x * 0.16 + Math.sin(z * 0.13) * 2.2) * Math.cos(z * 0.11 + Math.sin(x * 0.09) * 1.8);
+  return Math.min(
+    1,
+    (0.18 + 0.42 * clump) * (1 - 0.92 * smooth(wear * 1.25)) + 0.3 * smooth((0.12 - Math.min(f, 1 - f)) / 0.12),
+  );
+}
+
+let atlas;
+export function environmentAtlas() {
+  if (atlas) return atlas;
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 128;
+  const c = canvas.getContext("2d");
+  for (let tile = 0; tile < 8; tile++) {
+    c.save();
+    c.translate((tile % 4) * 64, Math.floor(tile / 4) * 64);
+    c.fillStyle = "#ffffff";
+    c.strokeStyle = "#b6b6b6";
+    c.lineWidth = 1.4;
+    c.beginPath();
+    if (tile === 0) {
+      // Rounded, notched petal with an asymmetric cupped shoulder.
+      c.moveTo(31, 55);
+      c.bezierCurveTo(8, 40, 8, 12, 24, 10);
+      c.quadraticCurveTo(30, 9, 33, 16);
+      c.quadraticCurveTo(38, 7, 44, 12);
+      c.bezierCurveTo(59, 23, 47, 45, 31, 55);
+    } else if (tile === 1) {
+      c.moveTo(31, 5);
+      c.quadraticCurveTo(56, 24, 43, 41);
+      c.lineTo(35, 46);
+      c.lineTo(30, 59);
+      c.lineTo(27, 46);
+      c.quadraticCurveTo(5, 32, 31, 5);
+    } else if (tile === 2) {
+      c.moveTo(19, 56);
+      c.quadraticCurveTo(25, 21, 42, 8);
+      c.lineTo(32, 38);
+      c.lineTo(38, 50);
+      c.lineTo(28, 43);
+      c.closePath();
+    } else if (tile === 3 || tile === 6) {
+      c.moveTo(24, 18);
+      c.lineTo(39, 15);
+      c.lineTo(48, 32);
+      c.lineTo(34, 47);
+      c.lineTo(18, 38);
+      c.closePath();
+    } else if (tile === 4) {
+      c.moveTo(18, 17);
+      c.quadraticCurveTo(26, 9, 37, 17);
+      c.quadraticCurveTo(55, 14, 51, 33);
+      c.quadraticCurveTo(53, 48, 34, 48);
+      c.quadraticCurveTo(17, 57, 13, 39);
+      c.quadraticCurveTo(5, 26, 18, 17);
+    } else if (tile === 5) {
+      c.moveTo(13, 14);
+      c.lineTo(47, 10);
+      c.lineTo(53, 44);
+      c.lineTo(41, 52);
+      c.lineTo(17, 48);
+      c.closePath();
+    } else {
+      // Soft, slightly irregular dust. Texture noise is baked once.
+      const grad = c.createRadialGradient(30, 30, 3, 32, 32, 27);
+      grad.addColorStop(0, "rgba(255,255,255,.65)");
+      grad.addColorStop(0.55, "rgba(255,255,255,.32)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      c.fillStyle = grad;
+      c.ellipse(32, 32, 27, 24, 0.2, 0, Math.PI * 2);
+    }
+    c.fill();
+    if (tile < 3 || tile === 5) {
+      c.beginPath();
+      c.moveTo(30, 49);
+      c.quadraticCurveTo(34, 33, 31, 20);
+      c.stroke();
+    }
+    c.restore();
+  }
+  atlas = new THREE.CanvasTexture(canvas);
+  atlas.colorSpace = THREE.SRGBColorSpace;
+  atlas.userData.shared = true;
+  return atlas;
+}

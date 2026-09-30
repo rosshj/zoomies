@@ -31,7 +31,11 @@ class AudioEngine {
     // this, the first continuous SFX (the engine loop at race start) activated
     // a non-mixable session that killed the player's podcast AND then lost the
     // session fight, silencing everything. No-op where unsupported.
-    try { if (navigator.audioSession) navigator.audioSession.type = "ambient"; } catch { /* unsupported */ }
+    try {
+      if (navigator.audioSession) navigator.audioSession.type = "ambient";
+    } catch {
+      /* unsupported */
+    }
     this.ctx = null;
     this.master = null; // everything routes here
     this.sfxGain = null; // one-shot + engine SFX bus
@@ -117,7 +121,7 @@ class AudioEngine {
           sfxOn: this.sfxOn,
           musicVol: this.musicVol,
           sfxVol: this.sfxVol,
-        })
+        }),
       );
     } catch {
       /* ignore */
@@ -159,7 +163,9 @@ class AudioEngine {
         if (this.ctx && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
       };
       this.ctx.addEventListener?.("statechange", kick);
-      document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) kick();
+      });
     }
     if (!this._bgSuspended && this.ctx.state !== "running") this.ctx.resume().catch(() => {});
     // Also restart the music element if a background trip paused it and the
@@ -229,7 +235,11 @@ class AudioEngine {
         }
         if (cur && this._musicAudible) {
           // Same-position seek drops anything buffered while dead.
-          try { cur.el.currentTime = Math.max(0, cur.el.currentTime); } catch { /* n/a */ }
+          try {
+            cur.el.currentTime = Math.max(0, cur.el.currentTime);
+          } catch {
+            /* n/a */
+          }
           if (cur.el.paused) cur.el.play().catch(() => {});
         }
       };
@@ -245,13 +255,19 @@ class AudioEngine {
       // that cycle automatically when the clock isn't advancing.
       if (this.ctx) {
         const t0 = this.ctx.currentTime;
-        this._reviveTimers.push(setTimeout(() => {
-          if (this._bgSuspended || !this.ctx) return;
-          if (this.ctx.state === "running" && this.ctx.currentTime === t0) {
-            console.warn("[zoomies] audio: context running but clock stalled — cycling suspend/resume");
-            this.ctx.suspend().then(() => this.ctx.resume()).then(revive).catch(() => {});
-          }
-        }, 800));
+        this._reviveTimers.push(
+          setTimeout(() => {
+            if (this._bgSuspended || !this.ctx) return;
+            if (this.ctx.state === "running" && this.ctx.currentTime === t0) {
+              console.warn("[zoomies] audio: context running but clock stalled — cycling suspend/resume");
+              this.ctx
+                .suspend()
+                .then(() => this.ctx.resume())
+                .then(revive)
+                .catch(() => {});
+            }
+          }, 800),
+        );
       }
     }
   }
@@ -503,6 +519,60 @@ class AudioEngine {
     o.stop(now + 0.18);
   }
 
+  // Short material-specific prop contacts. Distance rejection and a shared
+  // voice-rate limit happen before allocating Web Audio nodes.
+  propImpact(kind, pos, strength = 0.5) {
+    if (!this.ctx || !this.sfxOn || this.ctx.state !== "running" || !this._spatial(pos)) return;
+    const now = this.ctx.currentTime;
+    if (now - (this._lastPropImpact ?? -1) < 0.065) return;
+    this._lastPropImpact = now;
+    const sounds = {
+      wood: [190, 0.12, 900],
+      coconut: [440, 0.11, 1700],
+      rubber: [125, 0.19, 450],
+      hay: [85, 0.12, 300],
+      rustle: [105, 0.18, 2200],
+      fruit: [180, 0.1, 650],
+      plastic: [330, 0.12, 1400],
+      pot: [710, 0.16, 3200],
+      snow: [95, 0.13, 1300],
+      ice: [950, 0.13, 2800],
+      stone: [145, 0.11, 750],
+      metal: [620, 0.23, 2400],
+    };
+    const [pitch, duration, filter] = sounds[kind] || sounds.wood;
+    const tone = this._osc(kind === "metal" ? "triangle" : "sine", pitch);
+    tone.frequency.exponentialRampToValueAtTime(pitch * (kind === "rubber" ? 0.38 : 0.72), now + duration);
+    const gain = this._route(tone, pos, 0.08 + Math.min(1, strength) * 0.16);
+    if (!gain) {
+      tone.disconnect();
+      return;
+    }
+    gain.gain.setValueAtTime(gain._peak, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    const noise = this._noiseSource(),
+      band = this.ctx.createBiquadFilter(),
+      mix = this.ctx.createGain();
+    band.type = "bandpass";
+    band.frequency.value = filter;
+    band.Q.value = 0.8;
+    mix.gain.value = kind === "rustle" || kind === "snow" || kind === "hay" ? 0.8 : 0.22;
+    noise.connect(band);
+    band.connect(mix);
+    mix.connect(gain);
+    tone.start(now);
+    tone.stop(now + duration + 0.02);
+    noise.start(now);
+    noise.stop(now + duration);
+    tone.onended = () => {
+      tone.disconnect();
+      noise.disconnect();
+      band.disconnect();
+      mix.disconnect();
+      gain.disconnect();
+    };
+  }
+
   // Wall scrape: a brief metallic noise hiss.
   scrape(pos = null) {
     if (!this.ctx) return;
@@ -703,7 +773,10 @@ class AudioEngine {
     // the whole session once created — five nodes ticking at idle, on the grid,
     // in the menus. Tear it down 2s after the last skid ends (the gain has long
     // eased to silence by then) and rebuild lazily on the next drift.
-    if (on && this._skidKill) { clearTimeout(this._skidKill); this._skidKill = null; }
+    if (on && this._skidKill) {
+      clearTimeout(this._skidKill);
+      this._skidKill = null;
+    }
     if (on && !this._skid) {
       const t = this.ctx.currentTime;
       const src = this._noiseSource();
@@ -756,7 +829,9 @@ class AudioEngine {
       s.src.stop(t);
       s.lfo.stop(t);
       s.g.disconnect();
-    } catch { /* already stopped (context closed on the way out) */ }
+    } catch {
+      /* already stopped (context closed on the way out) */
+    }
   }
 
   // A one-shot tire screech voice: friction hiss + a wobbling resonant squeal,
@@ -827,10 +902,16 @@ class AudioEngine {
         const wasPlaying = !el.paused;
         const t = el.currentTime;
         el.src = URL.createObjectURL(b);
-        try { el.currentTime = t; } catch { /* start of track */ }
+        try {
+          el.currentTime = t;
+        } catch {
+          /* start of track */
+        }
         if (wasPlaying) el.play().catch(() => {});
       })
-      .catch(() => { /* streaming source keeps working */ });
+      .catch(() => {
+        /* streaming source keeps working */
+      });
     // NO crossOrigin: these files are same-origin on every target (https on the
     // web, capacitor://localhost in the app). Requesting CORS mode against the
     // app's custom scheme made the load fail outright — killing music (while
@@ -866,7 +947,10 @@ class AudioEngine {
       // Already selected — but a first-gesture play() can be rejected, leaving it
       // paused. Make sure it's actually rolling (cheap to call when already playing).
       const cur = this._tracks[name];
-      if (!cur) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
+      if (!cur) {
+        this._mlog(`track "${name}" unavailable (failed to load)`);
+        return;
+      }
       if (!this._musicAudible) this._mlog(`gated (musicOn=${this.musicOn}, allowed=${this.musicAllowed})`);
       else if (cur.el.paused) this._playEl(cur.el, name);
       return;
@@ -879,7 +963,10 @@ class AudioEngine {
     }
     this._curTrack = name;
     const track = this._tracks[name];
-    if (!track) { this._mlog(`track "${name}" unavailable (failed to load)`); return; }
+    if (!track) {
+      this._mlog(`track "${name}" unavailable (failed to load)`);
+      return;
+    }
     // Route the element through a per-track fade gain into the music bus once
     // (the fade gain does the fade-in; the music bus handles volume/mute).
     if (!track.source && this.ctx.createMediaElementSource) {

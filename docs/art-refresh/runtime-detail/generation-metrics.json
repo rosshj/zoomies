@@ -1,0 +1,297 @@
+[
+  {
+    "biome": "meadow",
+    "runs": [
+      {
+        "buildMs": 2320.699999988079,
+        "triangles": 651377,
+        "invalid": 0,
+        "bake": {
+          "builds": 17,
+          "hits": 57,
+          "vertices": 33003,
+          "ms": 1163.1000000834465
+        },
+        "ground": {
+          "footprints": 192,
+          "shaded": 315
+        },
+        "context": {
+          "occluders": 143,
+          "vertices": 118660,
+          "shaded": 7839,
+          "ms": 600.6999999880791
+        },
+        "lod": {
+          "batches": 39,
+          "nearTriangles": 10237,
+          "farTriangles": 6500,
+          "farBatches": 0
+        }
+      },
+      {
+        "buildMs": 1434.0999999940395,
+        "triangles": 652100,
+        "invalid": 0,
+        "bake": {
+          "builds": 7,
+          "hits": 61,
+          "vertices": 32656,
+          "ms": 335.00000017881393
+        },
+        "ground": {
+          "footprints": 190,
+          "shaded": 309
+        },
+        "context": {
+          "occluders": 139,
+          "vertices": 118533,
+          "shaded": 7827,
+          "ms": 583.7999999821186
+        },
+        "lod": {
+          "batches": 37,
+          "nearTriangles": 9988,
+          "farTriangles": 6369,
+          "farBatches": 0
+        }
+      }
+    ]
+  },
+  {
+    "biome": "forest",
+    "runs": [
+      {
+        "buildMs": 2606.600000023842,
+        "triangles": 678592,
+        "invalid": 0,
+        "bake": {
+          "builds": 42,
+          "hits": 12,
+          "vertices": 23334,
+          "ms": 1054.5000000298023
+        },
+        "ground": {
+          "footprints": 146,
+          "shaded": 190
+        },
+        "context": {
+          "occluders": 2634,
+          "vertices": 109853,
+          "shaded": 30613,
+          "ms": 1101
+        },
+        "lod": {
+          "batches": 89,
+          "nearTriangles": 221904,
+          "farTriangles": 112145,
+          "farBatches": 0
+        }
+      },
+      {
+        "buildMs": 1509.800000011921,
+        "triangles": 678592,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 52,
+          "vertices": 23124,
+          "ms": 4.099999964237213
+        },
+        "ground": {
+          "footprints": 146,
+          "shaded": 190
+        },
+        "context": {
+          "occluders": 2634,
+          "vertices": 109853,
+          "shaded": 30613,
+          "ms": 1105
+        },
+        "lod": {
+          "batches": 89,
+          "nearTriangles": 221904,
+          "farTriangles": 112145,
+          "farBatches": 0
+        }
+      }
+    ]
+  },
+  {
+    "biome": "city",
+    "runs": [
+      {
+        "buildMs": 4291.300000011921,
+        "triangles": 496012,
+        "invalid": 0,
+        "bake": {
+          "builds": 3,
+          "hits": 56,
+          "vertices": 284826,
+          "ms": 45.600000113248825
+        },
+        "ground": {
+          "footprints": 693,
+          "shaded": 1905
+        },
+        "context": {
+          "occluders": 748,
+          "vertices": 377179,
+          "shaded": 155583,
+          "ms": 3572.0999999940395
+        },
+        "lod": {
+          "batches": 242,
+          "nearTriangles": 100710,
+          "farTriangles": 45837,
+          "farBatches": 0
+        }
+      },
+      {
+        "buildMs": 4340.299999982119,
+        "triangles": 496160,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 60,
+          "vertices": 285786,
+          "ms": 24.700000137090683
+        },
+        "ground": {
+          "footprints": 696,
+          "shaded": 1918
+        },
+        "context": {
+          "occluders": 751,
+          "vertices": 377887,
+          "shaded": 156077,
+          "ms": 3697.0999999940395
+        },
+        "lod": {
+          "batches": 242,
+          "nearTriangles": 100738,
+          "farTriangles": 45869,
+          "farBatches": 0
+        }
+      }
+    ]
+  },
+  {
+    "biome": "beach",
+    "runs": [
+      {
+        "buildMs": 1247.7000000178814,
+        "triangles": 385924,
+        "invalid": 0,
+        "bake": {
+          "builds": 43,
+          "hits": 13,
+          "vertices": 22500,
+          "ms": 324.299999833107
+        },
+        "ground": {
+          "footprints": 149,
+          "shaded": 197
+        },
+        "context": {
+          "occluders": 100,
+          "vertices": 108805,
+          "shaded": 6395,
+          "ms": 402.5
+        },
+        "lod": {
+          "batches": 48,
+          "nearTriangles": 8022,
+          "farTriangles": 4524,
+          "farBatches": 0
+        }
+      },
+      {
+        "buildMs": 891.0999999940395,
+        "triangles": 385924,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 56,
+          "vertices": 22500,
+          "ms": 4.599999904632568
+        },
+        "ground": {
+          "footprints": 149,
+          "shaded": 197
+        },
+        "context": {
+          "occluders": 100,
+          "vertices": 108805,
+          "shaded": 6395,
+          "ms": 403.90000000596046
+        },
+        "lod": {
+          "batches": 48,
+          "nearTriangles": 8022,
+          "farTriangles": 4524,
+          "farBatches": 0
+        }
+      }
+    ]
+  },
+  {
+    "biome": "volcanic",
+    "runs": [
+      {
+        "buildMs": 986.1999999880791,
+        "triangles": 369690,
+        "invalid": 0,
+        "bake": {
+          "builds": 46,
+          "hits": 35,
+          "vertices": 25512,
+          "ms": 269.4999998509884
+        },
+        "ground": {
+          "footprints": 172,
+          "shaded": 226
+        },
+        "context": {
+          "occluders": 90,
+          "vertices": 112753,
+          "shaded": 4413,
+          "ms": 380
+        },
+        "lod": {
+          "batches": 18,
+          "nearTriangles": 6584,
+          "farTriangles": 5222,
+          "farBatches": 0
+        }
+      },
+      {
+        "buildMs": 663.8000000119209,
+        "triangles": 369690,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 81,
+          "vertices": 25512,
+          "ms": 3.499999910593033
+        },
+        "ground": {
+          "footprints": 172,
+          "shaded": 226
+        },
+        "context": {
+          "occluders": 90,
+          "vertices": 112753,
+          "shaded": 4413,
+          "ms": 371.59999999403954
+        },
+        "lod": {
+          "batches": 18,
+          "nearTriangles": 6584,
+          "farTriangles": 5222,
+          "farBatches": 0
+        }
+      }
+    ]
+  }
+]

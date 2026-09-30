@@ -1,0 +1,24 @@
+{
+  "result": {
+    "cap": 280,
+    "fields": 2,
+    "smokeTexture": [
+      64,
+      64
+    ],
+    "sparkTexture": [
+      64,
+      64
+    ],
+    "roadTriangles": 20000,
+    "roadMap": 128,
+    "roadBump": false,
+    "simulation": {
+      "submissions": 6187,
+      "invisible": 0,
+      "peak": 42,
+      "fadedSlots": 0
+    }
+  },
+  "errors": []
+}

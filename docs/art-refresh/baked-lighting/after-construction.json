@@ -1,0 +1,177 @@
+[
+  {
+    "biome": "meadow",
+    "runs": [
+      {
+        "buildMs": 911.2999999821186,
+        "triangles": 651377,
+        "invalid": 0,
+        "bake": {
+          "builds": 17,
+          "hits": 57,
+          "vertices": 33003,
+          "ms": 368.50000005960464
+        },
+        "ground": {
+          "footprints": 192,
+          "shaded": 315
+        }
+      },
+      {
+        "buildMs": 629.3000000119209,
+        "triangles": 652100,
+        "invalid": 0,
+        "bake": {
+          "builds": 7,
+          "hits": 61,
+          "vertices": 32656,
+          "ms": 113.00000002980232
+        },
+        "ground": {
+          "footprints": 190,
+          "shaded": 309
+        }
+      }
+    ]
+  },
+  {
+    "biome": "forest",
+    "runs": [
+      {
+        "buildMs": 755.7999999821186,
+        "triangles": 678592,
+        "invalid": 0,
+        "bake": {
+          "builds": 41,
+          "hits": 12,
+          "vertices": 23241,
+          "ms": 327.90000000596046
+        },
+        "ground": {
+          "footprints": 146,
+          "shaded": 190
+        }
+      },
+      {
+        "buildMs": 395.69999998807907,
+        "triangles": 678592,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 52,
+          "vertices": 23124,
+          "ms": 4.6000001430511475
+        },
+        "ground": {
+          "footprints": 146,
+          "shaded": 190
+        }
+      }
+    ]
+  },
+  {
+    "biome": "city",
+    "runs": [
+      {
+        "buildMs": 559.1000000238419,
+        "triangles": 496012,
+        "invalid": 0,
+        "bake": {
+          "builds": 3,
+          "hits": 56,
+          "vertices": 284826,
+          "ms": 34.70000022649765
+        },
+        "ground": {
+          "footprints": 693,
+          "shaded": 1905
+        }
+      },
+      {
+        "buildMs": 484.80000001192093,
+        "triangles": 496160,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 60,
+          "vertices": 285786,
+          "ms": 25.599999994039536
+        },
+        "ground": {
+          "footprints": 696,
+          "shaded": 1918
+        }
+      }
+    ]
+  },
+  {
+    "biome": "beach",
+    "runs": [
+      {
+        "buildMs": 605,
+        "triangles": 385924,
+        "invalid": 0,
+        "bake": {
+          "builds": 43,
+          "hits": 13,
+          "vertices": 22500,
+          "ms": 102.6999998986721
+        },
+        "ground": {
+          "footprints": 149,
+          "shaded": 197
+        }
+      },
+      {
+        "buildMs": 470.40000000596046,
+        "triangles": 385924,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 56,
+          "vertices": 22500,
+          "ms": 3.6999999582767487
+        },
+        "ground": {
+          "footprints": 149,
+          "shaded": 197
+        }
+      }
+    ]
+  },
+  {
+    "biome": "volcanic",
+    "runs": [
+      {
+        "buildMs": 403.5,
+        "triangles": 369690,
+        "invalid": 0,
+        "bake": {
+          "builds": 46,
+          "hits": 35,
+          "vertices": 25512,
+          "ms": 93.10000005364418
+        },
+        "ground": {
+          "footprints": 172,
+          "shaded": 226
+        }
+      },
+      {
+        "buildMs": 274.69999998807907,
+        "triangles": 369690,
+        "invalid": 0,
+        "bake": {
+          "builds": 0,
+          "hits": 81,
+          "vertices": 25512,
+          "ms": 4.099999964237213
+        },
+        "ground": {
+          "footprints": 172,
+          "shaded": 226
+        }
+      }
+    ]
+  }
+]

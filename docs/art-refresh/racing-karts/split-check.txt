@@ -1,0 +1,20 @@
+ok: split race is active
+ok: split cams share the game camera's layer mask
+ok: six karts, two humans
+ok: split HUD is up
+ok: P2 wears the selected preset and morphology
+ok: P2 retains kart chassis and livery
+ok: scenery LOD considers both player cameras
+ok: both humans accelerate independently
+ok: per-half chips are live
+ok: the two halves show different views
+ok: P1's layer renders in the TOP half only
+ok: warped-ahead P2 is ranked 1st
+ok: P2 finished naturally and the grace clock armed
+ok: grace expiry ends the race with P2 the winner
+ok: idle P1 scored DNF
+ok: both human rows tinted, the winner alone gold
+ok: no treats paid for a couch match
+{
+  "errors": []
+}

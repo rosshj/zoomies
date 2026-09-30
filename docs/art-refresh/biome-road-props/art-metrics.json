@@ -1,0 +1,386 @@
+[
+  {
+    "name": "Round hay bale",
+    "triangles": 808,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "hayBale"
+  },
+  {
+    "name": "Pumpkin",
+    "triangles": 680,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "pumpkin"
+  },
+  {
+    "name": "Apple basket",
+    "triangles": 864,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "fruitBasket"
+  },
+  {
+    "name": "Beach ball",
+    "triangles": 252,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "beachBall"
+  },
+  {
+    "name": "Coconut",
+    "triangles": 320,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "coconut"
+  },
+  {
+    "name": "Sand bucket",
+    "triangles": 272,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "sandBucket"
+  },
+  {
+    "name": "Short fallen log",
+    "triangles": 756,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "log"
+  },
+  {
+    "name": "Pinecone",
+    "triangles": 312,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "pinecone"
+  },
+  {
+    "name": "Camping bedroll",
+    "triangles": 616,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "campRoll"
+  },
+  {
+    "name": "Leaf bundle",
+    "triangles": 104,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "leafBundle"
+  },
+  {
+    "name": "Tumbleweed",
+    "triangles": 420,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "tumbleweed"
+  },
+  {
+    "name": "Clay pot",
+    "triangles": 412,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "clayPot"
+  },
+  {
+    "name": "Wagon wheel",
+    "triangles": 304,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "wagonWheel"
+  },
+  {
+    "name": "Snowball",
+    "triangles": 80,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "snowball"
+  },
+  {
+    "name": "Ice chunk",
+    "triangles": 36,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "iceChunk"
+  },
+  {
+    "name": "Supply case",
+    "triangles": 60,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "supplyCase"
+  },
+  {
+    "name": "Traffic cone",
+    "triangles": 92,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "trafficCone"
+  },
+  {
+    "name": "Cardboard carton",
+    "triangles": 48,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "cardboardBox"
+  },
+  {
+    "name": "Loose tire",
+    "triangles": 336,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "tire"
+  },
+  {
+    "name": "Fallen mangoes",
+    "triangles": 320,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "tropicalFruit"
+  },
+  {
+    "name": "Bamboo bundle",
+    "triangles": 576,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "bambooBundle"
+  },
+  {
+    "name": "Fishing float",
+    "triangles": 168,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "fishingFloat"
+  },
+  {
+    "name": "Pumice rock",
+    "triangles": 80,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "pumice"
+  },
+  {
+    "name": "Metal canister",
+    "triangles": 296,
+    "draws": 1,
+    "backend": "webgl",
+    "requestedBackend": "webgl",
+    "kind": "canister"
+  },
+  {
+    "name": "Round hay bale",
+    "triangles": 808,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "hayBale"
+  },
+  {
+    "name": "Pumpkin",
+    "triangles": 680,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "pumpkin"
+  },
+  {
+    "name": "Apple basket",
+    "triangles": 864,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "fruitBasket"
+  },
+  {
+    "name": "Beach ball",
+    "triangles": 252,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "beachBall"
+  },
+  {
+    "name": "Coconut",
+    "triangles": 320,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "coconut"
+  },
+  {
+    "name": "Sand bucket",
+    "triangles": 272,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "sandBucket"
+  },
+  {
+    "name": "Short fallen log",
+    "triangles": 756,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "log"
+  },
+  {
+    "name": "Pinecone",
+    "triangles": 312,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "pinecone"
+  },
+  {
+    "name": "Camping bedroll",
+    "triangles": 616,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "campRoll"
+  },
+  {
+    "name": "Leaf bundle",
+    "triangles": 104,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "leafBundle"
+  },
+  {
+    "name": "Tumbleweed",
+    "triangles": 420,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "tumbleweed"
+  },
+  {
+    "name": "Clay pot",
+    "triangles": 412,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "clayPot"
+  },
+  {
+    "name": "Wagon wheel",
+    "triangles": 304,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "wagonWheel"
+  },
+  {
+    "name": "Snowball",
+    "triangles": 80,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "snowball"
+  },
+  {
+    "name": "Ice chunk",
+    "triangles": 36,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "iceChunk"
+  },
+  {
+    "name": "Supply case",
+    "triangles": 60,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "supplyCase"
+  },
+  {
+    "name": "Traffic cone",
+    "triangles": 92,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "trafficCone"
+  },
+  {
+    "name": "Cardboard carton",
+    "triangles": 48,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "cardboardBox"
+  },
+  {
+    "name": "Loose tire",
+    "triangles": 336,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "tire"
+  },
+  {
+    "name": "Fallen mangoes",
+    "triangles": 320,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "tropicalFruit"
+  },
+  {
+    "name": "Bamboo bundle",
+    "triangles": 576,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "bambooBundle"
+  },
+  {
+    "name": "Fishing float",
+    "triangles": 168,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "fishingFloat"
+  },
+  {
+    "name": "Pumice rock",
+    "triangles": 80,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "pumice"
+  },
+  {
+    "name": "Metal canister",
+    "triangles": 296,
+    "draws": 1,
+    "backend": "webgpu",
+    "requestedBackend": "webgpu",
+    "kind": "canister"
+  }
+]

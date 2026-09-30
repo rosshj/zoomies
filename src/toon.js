@@ -4,12 +4,12 @@
 // the very same conversion so what it previews is exactly what ships.
 import * as THREE from "three";
 import { color as tslColor, float, smoothstep, normalView, positionViewDirection, uniform } from "three/tsl";
-import { windBendNode, windBendLooseNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
+import { windBendNode, windBendLooseNode, windFlexNode } from "./wind.js"; // userData.sway/swayLoose → the shared wind field
 
 function makeToonGradient() {
-  // 4 soft bands with a lifted floor and a gentle highlight rolloff — a softer,
-  // matte "toy" cel rather than a hard 3-step terminator.
-  const steps = new Uint8Array([145, 195, 228, 255]);
+  // Four deliberate value bands: deeper form shadows keep cream fur and bright
+  // paint legible, with a lifted floor so night scenes retain their toy warmth.
+  const steps = new Uint8Array([105, 170, 220, 255]);
   const tex = new THREE.DataTexture(steps, steps.length, 1, THREE.RedFormat);
   tex.minFilter = THREE.NearestFilter;
   tex.magFilter = THREE.NearestFilter;
@@ -36,7 +36,7 @@ export function toToon(m) {
   // hold — converting one silently strips its vertex/colour animation. (Node
   // materials still pass the isMeshStandardMaterial check above: they copy that
   // flag from the defaults they're initialised with.)
-  if (m.isNodeMaterial) return m;
+  if (m.isNodeMaterial && !m.userData.surfacePaint) return m;
   if (_toonCache.has(m)) return _toonCache.get(m);
   const params = {
     color: m.color ? m.color.clone() : new THREE.Color(0xffffff),
@@ -46,6 +46,9 @@ export function toToon(m) {
     transparent: m.transparent,
     opacity: m.opacity,
     side: m.side,
+    // Road decals deliberately avoid writing depth: their transparent gaps
+    // must not occlude later puddles/skids. Preserve that through cel conversion.
+    depthWrite: m.depthWrite,
     emissive: m.emissive ? m.emissive.clone() : new THREE.Color(0x000000),
     emissiveMap: m.emissiveMap || null,
     emissiveIntensity: m.emissiveIntensity,
@@ -61,8 +64,9 @@ export function toToon(m) {
   // hang a positionNode, so a swaying material converted the plain way would go
   // silently rigid (exactly how the grass lost its sway once before).
   const matte = !params.emissive || params.emissive.getHex() === 0;
-  if ((ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose) && matte) {
+  if ((ud.surfacePaint || ud.backlight || ud.rim || ud.paint || ud.sway || ud.swayLoose || ud.windFlex) && matte) {
     const t = new THREE.MeshToonNodeMaterial(params);
+    if (ud.surfacePaint) t.colorNode = m.colorNode;
     let term = null;
     if (ud.backlight) {
       // glows warm where you look toward the sun through the foliage.
@@ -96,7 +100,8 @@ export function toToon(m) {
     // mesh carries the aBend / aWindRoot attributes windBendNode reads.
     // userData.swayMaxStr (optional) caps the wind force this material feels
     // — see windLean; the canopies use it so storm seeds can't fling them.
-    if (ud.sway) t.positionNode = windBendNode(ud.sway, ud.swayMaxStr ?? null);
+    if (ud.windFlex) t.positionNode = windFlexNode(ud.windFlex);
+    else if (ud.sway) t.positionNode = windBendNode(ud.sway, ud.swayMaxStr ?? null);
     // …and the same for a bush or hedge placed as its own object (see wind.js).
     else if (ud.swayLoose) t.positionNode = windBendLooseNode(ud.swayLoose);
     // A toon made from a shared source is itself shared across karts (the cache

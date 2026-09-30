@@ -17,13 +17,16 @@ const PREFER_WEBGL = "zoomies-prefer-webgl";
 
 function record(type, detail) {
   try {
-    localStorage.setItem(LOG_KEY, JSON.stringify({
-      type,
-      detail: String(detail == null ? "" : detail).slice(0, 600),
-      backend: type.startsWith("webgpu") ? "WebGPU" : undefined,
-      when: Date.now(),
-      ua: navigator.userAgent.slice(0, 120),
-    }));
+    localStorage.setItem(
+      LOG_KEY,
+      JSON.stringify({
+        type,
+        detail: String(detail == null ? "" : detail).slice(0, 600),
+        backend: type.startsWith("webgpu") ? "WebGPU" : undefined,
+        when: Date.now(),
+        ua: navigator.userAgent.slice(0, 120),
+      }),
+    );
   } catch {
     /* storage full / unavailable — nothing more we can do */
   }
@@ -73,12 +76,14 @@ export function watchGpu(renderer) {
     const onWebGPU = !!(renderer && renderer.backend && renderer.backend.isWebGPUBackend);
     const device = renderer && renderer.backend && renderer.backend.device;
     if (onWebGPU && device && device.lost && typeof device.lost.then === "function") {
-      device.lost.then((info) => {
-        // `reason === "destroyed"` is a normal teardown, not a crash — ignore it.
-        if (info && info.reason === "destroyed") return;
-        record("webgpu-devicelost", (info && info.message) || "WebGPU device lost");
-        fallbackToWebGL();
-      }).catch(() => {});
+      device.lost
+        .then((info) => {
+          // `reason === "destroyed"` is a normal teardown, not a crash — ignore it.
+          if (info && info.reason === "destroyed") return;
+          record("webgpu-devicelost", (info && info.message) || "WebGPU device lost");
+          fallbackToWebGL();
+        })
+        .catch(() => {});
     }
   } catch {
     /* never let the guard itself throw */
@@ -99,7 +104,11 @@ function fallbackToWebGL() {
   // Tag the reload so the boot-cause log (main.js) can attribute it — an
   // untagged reload in a device log points at something external (e.g. iOS
   // killing the web process), not us.
-  try { sessionStorage.setItem("zoomies-reload-cause", "gpu-crash-fallback"); } catch { /* ignore */ }
+  try {
+    sessionStorage.setItem("zoomies-reload-cause", "gpu-crash-fallback");
+  } catch {
+    /* ignore */
+  }
   try {
     const u = new URL(location.href);
     u.searchParams.set("webgl", "1");

@@ -13,15 +13,15 @@
 const _params = new URLSearchParams(location.search);
 let _preferWebGL = false;
 try {
-  if (_params.has("webgpu")) localStorage.removeItem("zoomies-prefer-webgl"); // explicit retry
+  if (_params.has("webgpu"))
+    localStorage.removeItem("zoomies-prefer-webgl"); // explicit retry
   else _preferWebGL = localStorage.getItem("zoomies-prefer-webgl") === "1";
 } catch {
   /* storage unavailable — just use the URL/default */
 }
 
 const _isIOS =
-  /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 // Shared: iOS gets conservative GPU-memory choices elsewhere (its WebGPU device
 // loss under memory pressure is this game's one hard-crash mode).
 export const IS_IOS = _isIOS;

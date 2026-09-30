@@ -1,4 +1,8 @@
+import { buildTunnelLighting } from "./tunnel-lighting.js";
+import { dressingFor, habitatFits } from "./biome-dressing.js";
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { paintSurface, paintSolid } from "./scenery-art.js";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 
 // ---- Track set pieces -------------------------------------------------------
@@ -49,24 +53,51 @@ const smooth01 = (t) => {
 // clearR: candidate arcs must keep OTHER passes of the loop this far away
 // (only kinds whose WATER carve can't locally yield need it).
 const KIND_SPECS = [
-  { kind: "causeway", biomes: ["beach"], halfFrac: 0.026, flatW: 3.2, curvW: 150, clearR: 68 },
+  { kind: "causeway", biomes: ["beach", "wetlands"], halfFrac: 0.026, flatW: 3.2, curvW: 150, clearR: 68 },
   // Tunnels run LONG now (a proper underground stretch, ~3.5% of the lap each
   // way) and fall back to shorter arcs when a seed can't place the long one —
   // better a classic tunnel than none.
   // clearR: the tube shell reaches halfWidth+2.6 out and 15 up — taller than a
   // crossover deck's clearance — so no other pass of the lap may come near the
   // arc at all, or the arch pokes up through the road running above it.
-  { kind: "tunnel", biomes: ["alpine", "desert", "tundra", "mesa"], halfFrac: 0.042, fallbacks: [0.032, 0.024], flatW: 1.4, curvW: 240, clearR: 30 },
+  {
+    kind: "tunnel",
+    biomes: ["alpine", "desert", "tundra", "mesa", "volcanic"],
+    halfFrac: 0.042,
+    fallbacks: [0.032, 0.024],
+    flatW: 1.4,
+    curvW: 240,
+    clearR: 30,
+  },
   { kind: "dam", biomes: ["alpine", "forest"], halfFrac: 0.024, flatW: 3.2, curvW: 170, clearR: 72 },
   { kind: "overpass", biomes: ["city"], halfFrac: 0.038, flatW: 2.6, curvW: 120 },
-  { kind: "canyon", biomes: ["desert", "alpine", "tundra", "mesa"], halfFrac: 0.052, flatW: 0.6, curvW: 40 },
-  { kind: "shelf", biomes: ["alpine", "desert", "savanna", "mesa"], halfFrac: 0.042, flatW: 0.8, curvW: 70 },
+  {
+    kind: "canyon",
+    biomes: ["desert", "alpine", "tundra", "mesa", "volcanic"],
+    halfFrac: 0.052,
+    flatW: 0.6,
+    curvW: 40,
+  },
+  {
+    kind: "shelf",
+    biomes: ["alpine", "desert", "savanna", "mesa", "volcanic"],
+    halfFrac: 0.042,
+    flatW: 0.8,
+    curvW: 70,
+  },
   { kind: "giant", biomes: ["forest", "jungle"], halfFrac: 0.045, flatW: 0.3, curvW: 20 },
-  { kind: "bridge", biomes: ["meadow", "autumn", "blossom", "savanna", "tundra", "beach", "forest", "jungle"], halfFrac: 0.032, flatW: 3.0, curvW: 150, clearR: 0 },
+  {
+    kind: "bridge",
+    biomes: ["meadow", "autumn", "blossom", "savanna", "tundra", "beach", "forest", "jungle", "lavender", "wetlands"],
+    halfFrac: 0.032,
+    flatW: 3.0,
+    curvW: 150,
+    clearR: 0,
+  },
   // Treatments (dressing only — no terrain change beyond what's above).
-  { kind: "arches", biomes: ["desert", "mesa"], halfFrac: 0.028, flatW: 0.5, curvW: 60 },
+  { kind: "arches", biomes: ["desert", "mesa", "volcanic"], halfFrac: 0.028, flatW: 0.5, curvW: 60 },
   { kind: "windfarm", biomes: ["savanna", "tundra", "meadow"], halfFrac: 0.038, flatW: 0.4, curvW: 30 },
-  { kind: "flowers", biomes: ["meadow", "blossom"], halfFrac: 0.04, flatW: 0.4, curvW: 20 },
+  { kind: "flowers", biomes: ["meadow", "blossom", "lavender"], halfFrac: 0.04, flatW: 0.4, curvW: 20 },
   { kind: "billboards", biomes: ["city"], halfFrac: 0.024, flatW: 0.8, curvW: 60 },
   { kind: "rail", biomes: ["city"], halfFrac: 0.01, flatW: 1.0, curvW: 120 },
 ];
@@ -87,12 +118,15 @@ function spineDist(spine, x, z) {
   _sd.u = -1;
   const n = spine.length;
   for (let i = 0; i < n - 1; i++) {
-    const a = spine[i], b = spine[i + 1];
-    const dx = b.x - a.x, dz = b.z - a.z;
+    const a = spine[i],
+      b = spine[i + 1];
+    const dx = b.x - a.x,
+      dz = b.z - a.z;
     const len2 = dx * dx + dz * dz || 1;
     let t = ((x - a.x) * dx + (z - a.z) * dz) / len2;
     t = t < 0 ? 0 : t > 1 ? 1 : t;
-    const px = x - (a.x + dx * t), pz = z - (a.z + dz * t);
+    const px = x - (a.x + dx * t),
+      pz = z - (a.z + dz * t);
     const d = px * px + pz * pz;
     if (d < _sd.d) {
       _sd.d = d;
@@ -183,7 +217,8 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
     // A spec may list fallback lengths: try the full-length arc first, then
     // progressively shorter ones, so a long set piece degrades to a shorter
     // one on cramped seeds instead of vanishing.
-    let run = null, half = 0;
+    let run = null,
+      half = 0;
     for (const frac of [spec.halfFrac, ...(spec.fallbacks || [])]) {
       half = Math.round(frac * N);
       // Score every viable arc, then take the best that passes the (rarely
@@ -192,13 +227,16 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       const cands = [];
       for (let c = 0; c < N; c += 5) {
         if (overlapsTaken(c, half)) continue;
-        let hits = 0, total = 0;
+        let hits = 0,
+          total = 0;
         for (let i = c - half; i <= c + half; i += 4) {
           total++;
           if (spec.biomes.includes(biomeNames[((i % N) + N) % N])) hits++;
         }
         if (hits < total * 0.86) continue;
-        let mn = Infinity, mx = -Infinity, curv = 0;
+        let mn = Infinity,
+          mx = -Infinity,
+          curv = 0;
         for (let i = c - half; i <= c + half; i += 2) {
           const idx = ((i % N) + N) % N;
           const y = pts[idx].y;
@@ -232,6 +270,7 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       if (run) break;
     }
     if (!run) continue;
+    run.biome = biomeNames[run.c];
 
     if (spec.kind === "canyon") {
       run.mag = 23 + rng() * 9;
@@ -253,7 +292,11 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       const cs = sideAt(track, run.c);
       run.inSign = cs.x * cp.x + cs.z * cp.z >= 0 ? -1 : 1;
       run.reservoir = makeParallelWater(track, run, -run.inSign, {
-        waterR: 20, level: run.minY - 2.4, floorDrop: 6, shore: 2, blend: 10,
+        waterR: 20,
+        level: run.minY - 2.4,
+        floorDrop: 6,
+        shore: 2,
+        blend: 10,
       });
       if (!run.reservoir) continue; // no room for the reservoir -> no dam
     } else if (spec.kind === "causeway") {
@@ -263,7 +306,8 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
         spine: run.spine.map((s, i) => {
           const j = Math.min(run.spine.length - 1, i + 1);
           const k = Math.max(0, i - 1);
-          let dx = run.spine[j].x - run.spine[k].x, dz = run.spine[j].z - run.spine[k].z;
+          let dx = run.spine[j].x - run.spine[k].x,
+            dz = run.spine[j].z - run.spine[k].z;
           const l = Math.hypot(dx, dz) || 1;
           return { x: s.x, z: s.z, sx: dz / l, sz: -dx / l };
         }),
@@ -273,8 +317,11 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
         shoreR: track.halfWidth + 23,
         blendR: track.halfWidth + 36,
       };
+    } else if (spec.kind === "arches") {
+      run.volcanic = biomeNames[run.c] === "volcanic";
     } else if (spec.kind === "flowers") {
       run.flowerHue = rng(); // poppy / lavender / sunflower per seed
+      if (biomeNames[run.c] === "lavender") run.flowerHue = 0.5;
     } else if (spec.kind === "rail") {
       run.rail = makeRailLine(track, run, rng);
       if (!run.rail) continue;
@@ -284,7 +331,8 @@ export function planFeatures(track, biomeNames, rng, allowed = null) {
       feats.river = river;
       // Visual variant per seed: the plain girder deck, a suspension span with
       // towers + catenary cables, a covered wooden bridge, or stone arches.
-      run.bridgeVariant = ["girder", "suspension", "covered", "arch"][Math.floor(rng() * 4)];
+      const variants = dressingFor(run.biome).bridges;
+      run.bridgeVariant = variants[Math.floor(rng() * variants.length)];
     }
     taken.push({ c: run.c, half });
     feats.runs.push(run);
@@ -313,7 +361,8 @@ function makeRiver(track, run, rng) {
     const arm = [];
     for (let k = 1; k <= 30; k++) {
       const t = sign * k * STEP;
-      const sway = amp * smooth01(Math.abs(t) / 80) * (Math.sin(t * 0.011 + ph0) * 0.7 + Math.sin(t * 0.023 + ph1) * 0.3);
+      const sway =
+        amp * smooth01(Math.abs(t) / 80) * (Math.sin(t * 0.011 + ph0) * 0.7 + Math.sin(t * 0.023 + ph1) * 0.3);
       const x = p.x + side.x * t + tan.x * sway;
       const z = p.z + side.z * t + tan.z * sway;
       if (otherRoadDist(run.others, x, z) < track.halfWidth + blend + 6) break;
@@ -331,7 +380,8 @@ function makeRiver(track, run, rng) {
   const spine = raw.map((q, i) => {
     const q0 = raw[Math.max(0, i - 1)];
     const q1 = raw[Math.min(raw.length - 1, i + 1)];
-    let dx = q1.x - q0.x, dz = q1.z - q0.z;
+    let dx = q1.x - q0.x,
+      dz = q1.z - q0.z;
     const l = Math.hypot(dx, dz) || 1;
     return { x: q.x, z: q.z, sx: dz / l, sz: -dx / l };
   });
@@ -451,18 +501,30 @@ export function featureWaterEntries(feats, baseHeight) {
   const upSpine = lowFirst ? river.spine.slice(split) : river.spine.slice(0, split + 1);
   const loSpine = lowFirst ? river.spine.slice(0, split + 1) : river.spine.slice(split);
   const mk = (spine, level) => ({
-    ribbon: true, river: true, spine, level, floor: level - 3.4,
-    waterR: river.waterR, shoreR: river.shoreR, blendR: river.blendR,
+    ribbon: true,
+    river: true,
+    spine,
+    level,
+    floor: level - 3.4,
+    waterR: river.waterR,
+    shoreR: river.shoreR,
+    blendR: river.blendR,
   });
   out.push(mk(upSpine, river.level));
   out.push(mk(loSpine, splitLow));
   const sp = river.spine[split];
   const nb = river.spine[split + (lowFirst ? 1 : -1)]; // toward the upper reach
-  let fx = sp.x - nb.x, fz = sp.z - nb.z; // flow direction (upper -> lower)
+  let fx = sp.x - nb.x,
+    fz = sp.z - nb.z; // flow direction (upper -> lower)
   const fl = Math.hypot(fx, fz) || 1;
   feats.waterfall = {
-    x: sp.x, z: sp.z, top: river.level, bot: splitLow,
-    dirx: fx / fl, dirz: fz / fl, width: river.waterR * 1.8,
+    x: sp.x,
+    z: sp.z,
+    top: river.level,
+    bot: splitLow,
+    dirx: fx / fl,
+    dirz: fz / fl,
+    width: river.waterR * 1.8,
   };
   return out;
 }
@@ -475,7 +537,10 @@ export function featureWaterEntries(feats, baseHeight) {
 function runNear(run, x, z, pad) {
   let bb = run._bb;
   if (!bb) {
-    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    let x0 = Infinity,
+      x1 = -Infinity,
+      z0 = Infinity,
+      z1 = -Infinity;
     for (const p of run.spine) {
       if (p.x < x0) x0 = p.x;
       if (p.x > x1) x1 = p.x;
@@ -590,7 +655,12 @@ export function featureHeightMod(feats, x, z, h) {
       const ramp = run.kind === "dam" ? 15 : 26;
       if (dropSide) {
         const depth = run.kind === "dam" ? run.depth : run.drop;
-        const across = s.d < inner ? 0 : s.d < inner + ramp ? smooth01((s.d - inner) / ramp) : 1 - smooth01((s.d - (inner + 74)) / (reach - (inner + 74)));
+        const across =
+          s.d < inner
+            ? 0
+            : s.d < inner + ramp
+              ? smooth01((s.d - inner) / ramp)
+              : 1 - smooth01((s.d - (inner + 74)) / (reach - (inner + 74)));
         const t = Math.max(0, across) * endW * gate;
         if (t > 0) {
           const sunk = s.y - depth;
@@ -617,18 +687,29 @@ export function featureKeepClear(feats, x, z) {
   if (!feats) return false;
   for (const run of feats.runs) {
     const R =
-      run.kind === "overpass" ? 42
-      : run.kind === "canyon" ? 88
-      : run.kind === "giant" ? 66
-      : run.kind === "tunnel" ? 70
-      : run.kind === "shelf" ? 85
-      : run.kind === "dam" ? 80
-      : run.kind === "causeway" ? 62
-      : run.kind === "arches" ? 40
-      : run.kind === "flowers" ? 70
-      : run.kind === "bridge" ? 34
-      : run.kind === "crossover" ? 44
-      : 0;
+      run.kind === "overpass"
+        ? 42
+        : run.kind === "canyon"
+          ? 88
+          : run.kind === "giant"
+            ? 66
+            : run.kind === "tunnel"
+              ? 70
+              : run.kind === "shelf"
+                ? 85
+                : run.kind === "dam"
+                  ? 80
+                  : run.kind === "causeway"
+                    ? 62
+                    : run.kind === "arches"
+                      ? 40
+                      : run.kind === "flowers"
+                        ? 70
+                        : run.kind === "bridge"
+                          ? 34
+                          : run.kind === "crossover"
+                            ? 44
+                            : 0;
     if (R && runNear(run, x, z, R)) {
       const s = spineDist(run.spine, x, z);
       if (s.u >= 0 && s.d < R) return true;
@@ -638,7 +719,8 @@ export function featureKeepClear(feats, x, z) {
       const L = run.rail;
       const t = (x - L.x) * L.dx + (z - L.z) * L.dz;
       if (t > L.len0 && t < L.len1) {
-        const px = L.x + L.dx * t, pz = L.z + L.dz * t;
+        const px = L.x + L.dx * t,
+          pz = L.z + L.dz * t;
         if (Math.hypot(x - px, z - pz) < 20) return true;
       }
     }
@@ -741,7 +823,10 @@ export function tunnelCamGuide(feats, track, x, z, y) {
       const dx = x - p.x;
       const dz = z - p.z;
       const d2 = dx * dx + dz * dz;
-      if (d2 < bestD2) { bestD2 = d2; best = i; }
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
     }
     if (best < 0) continue;
     // 0 a FADE outside either portal -> 1 from the portal ring inward.
@@ -800,7 +885,10 @@ export function featureCameraClamp(feats, track, pos) {
       const dx = pos.x - p.x;
       const dz = pos.z - p.z;
       const d2 = dx * dx + dz * dz;
-      if (d2 < bestD2) { bestD2 = d2; best = i; }
+      if (d2 < bestD2) {
+        bestD2 = d2;
+        best = i;
+      }
     }
     if (best < 0) continue;
     const p = track._pts[((best % N) + N) % N];
@@ -841,9 +929,19 @@ export function featureCameraClamp(feats, track, pos) {
 
 // ---- Map glyphs + track names ----------------------------------------------
 const KIND_GLYPHS = {
-  bridge: "🌉", canyon: "⛰️", tunnel: "🚇", giant: "🌲", overpass: "🛣️",
-  shelf: "🧗", dam: "💧", causeway: "🌊", arches: "🪨", windfarm: "🌀",
-  flowers: "🌼", billboards: "🌆", rail: "🚂",
+  bridge: "🌉",
+  canyon: "⛰️",
+  tunnel: "🚇",
+  giant: "🌲",
+  overpass: "🛣️",
+  shelf: "🧗",
+  dam: "💧",
+  causeway: "🌊",
+  arches: "🪨",
+  windfarm: "🌀",
+  flowers: "🌼",
+  billboards: "🌆",
+  rail: "🚂",
 };
 export function featureGlyphs(feats) {
   if (!feats) return [];
@@ -858,11 +956,33 @@ export function featureGlyphs(feats) {
 }
 
 // A friendly generated name led by the map's headline feature.
-const TITLE_PRIORITY = ["tunnel", "dam", "causeway", "canyon", "bridge", "shelf", "overpass", "giant", "windfarm", "flowers", "arches", "billboards"];
+const TITLE_PRIORITY = [
+  "tunnel",
+  "dam",
+  "causeway",
+  "canyon",
+  "bridge",
+  "shelf",
+  "overpass",
+  "giant",
+  "windfarm",
+  "flowers",
+  "arches",
+  "billboards",
+];
 const TITLE_WORDS = {
-  tunnel: "Tunnel", dam: "Dam", causeway: "Causeway", canyon: "Canyon",
-  bridge: "Riverbend", shelf: "Ledge", overpass: "Skyway", giant: "Grove",
-  windfarm: "Windmill", flowers: "Bloom", arches: "Pillars", billboards: "Neon",
+  tunnel: "Tunnel",
+  dam: "Dam",
+  causeway: "Causeway",
+  canyon: "Canyon",
+  bridge: "Riverbend",
+  shelf: "Ledge",
+  overpass: "Skyway",
+  giant: "Grove",
+  windfarm: "Windmill",
+  flowers: "Bloom",
+  arches: "Pillars",
+  billboards: "Neon",
 };
 const TITLE_SUFFIX = ["GP", "Circuit", "Sprint", "Run", "Loop", "Raceway"];
 export function trackTitle(feats, seedStr) {
@@ -907,6 +1027,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
   const cTop = new THREE.Color(0xb5b0a6);
   const cUnder = new THREE.Color(0x7e7a72);
   const pierBoxes = [];
+  const deckGeometries = [];
 
   // Deck (skirts + underside) for a run; `depths` lets the dam sink one skirt
   // to the valley floor.
@@ -924,8 +1045,10 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       const u = (i - run.i0) / span;
       const endW = smooth01(u / 0.12) * smooth01((1 - u) / 0.12);
       const base = 0.35 + 2.0 * endW;
-      const lx = p.x + side.x * skirtTopOff, lz = p.z + side.z * skirtTopOff;
-      const rx = p.x - side.x * skirtTopOff, rz = p.z - side.z * skirtTopOff;
+      const lx = p.x + side.x * skirtTopOff,
+        lz = p.z + side.z * skirtTopOff;
+      const rx = p.x - side.x * skirtTopOff,
+        rz = p.z - side.z * skirtTopOff;
       const dl = leftDepth ? leftDepth(lx, lz, p, endW) : base;
       const dr = rightDepth ? rightDepth(rx, rz, p, endW) : base;
       positions.push(lx, p.y + 0.12, lz, lx, p.y - dl, lz, rx, p.y - dr, rz, rx, p.y + 0.12, rz);
@@ -948,8 +1071,10 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
     geo.setIndex(indices);
     geo.computeVertexNormals();
+    deckGeometries.push(geo);
     const mesh = new THREE.Mesh(geo, concrete);
     mesh.castShadow = true;
+    mesh.userData.staticScenery = true;
     scene.add(mesh);
 
     if (!piers) return;
@@ -978,12 +1103,23 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       const legs = [];
       let lowest = Infinity;
       let ringClear = true;
-      for (const [off, isLeg] of [[legOff, true], [-legOff, true], [beamHalf, false], [-beamHalf, false]]) {
+      for (const [off, isLeg] of [
+        [legOff, true],
+        [-legOff, true],
+        [beamHalf, false],
+        [-beamHalf, false],
+      ]) {
         const x = p.x + side.x * off;
         const z = p.z + side.z * off;
-        if (otherRoadDist(run.others, x, z) < track.halfWidth + 2) { ringClear = false; break; }
+        if (otherRoadDist(run.others, x, z) < track.halfWidth + 2) {
+          ringClear = false;
+          break;
+        }
         const r = track.project(_pv3.set(x, deckBottom, z));
-        if (deckBottom > r.groundY - 1.4) { ringClear = false; break; }
+        if (deckBottom > r.groundY - 1.4) {
+          ringClear = false;
+          break;
+        }
         if (isLeg) {
           const gy = heightAt(x, z);
           legs.push({ x, z, gy });
@@ -1037,17 +1173,45 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       return { p: track._pts[idx], side: sideAt(track, idx) };
     };
     const railW = track.halfWidth + 1.0;
-    const positions = [], colors = [], indices = [];
+    const positions = [],
+      colors = [],
+      indices = [];
     // An axis-yawed box as 8 verts / 12 tris straight into the batch arrays.
     const pushBox = (cx, cy, cz, sx, sy, sz, yaw, col) => {
-      const c = Math.cos(yaw), sn = Math.sin(yaw);
+      const c = Math.cos(yaw),
+        sn = Math.sin(yaw);
       const base = positions.length / 3;
-      for (const [ux, uy, uz] of [[-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1],[-1,1,-1],[1,1,-1],[1,1,1],[-1,1,1]]) {
-        const lx = ux * sx / 2, lz = uz * sz / 2;
-        positions.push(cx + lx * c + lz * sn, cy + uy * sy / 2, cz - lx * sn + lz * c);
-        colors.push(col.r, col.g, col.b);
+      for (const [ux, uy, uz] of [
+        [-1, -1, -1],
+        [1, -1, -1],
+        [1, -1, 1],
+        [-1, -1, 1],
+        [-1, 1, -1],
+        [1, 1, -1],
+        [1, 1, 1],
+        [-1, 1, 1],
+      ]) {
+        const lx = (ux * sx) / 2,
+          lz = (uz * sz) / 2;
+        positions.push(cx + lx * c + lz * sn, cy + (uy * sy) / 2, cz - lx * sn + lz * c);
+        const shade = uy > 0 ? 1 : 0.58;
+        const face = uz > 0 ? 0.92 : 0.8;
+        colors.push(col.r * shade * face, col.g * shade * face, col.b * shade * face);
       }
-      for (const [a, b2, c2] of [[0,2,1],[0,3,2],[4,5,6],[4,6,7],[0,1,5],[0,5,4],[1,2,6],[1,6,5],[2,3,7],[2,7,6],[3,0,4],[3,4,7]]) {
+      for (const [a, b2, c2] of [
+        [0, 2, 1],
+        [0, 3, 2],
+        [4, 5, 6],
+        [4, 6, 7],
+        [0, 1, 5],
+        [0, 5, 4],
+        [1, 2, 6],
+        [1, 6, 5],
+        [2, 3, 7],
+        [2, 7, 6],
+        [3, 0, 4],
+        [3, 4, 7],
+      ]) {
         indices.push(base + a, base + b2, base + c2);
       }
     };
@@ -1060,6 +1224,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       geo.computeVertexNormals();
       const mesh = new THREE.Mesh(geo, concrete);
       mesh.castShadow = true;
+      mesh.userData.staticScenery = true;
       scene.add(mesh);
     };
 
@@ -1076,7 +1241,8 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       const towerClear = (i) => {
         const { p, side } = at(i);
         for (const sgn of [1, -1]) {
-          if (otherRoadDist(run.others, p.x + side.x * sgn * railW, p.z + side.z * sgn * railW) < track.halfWidth + 4) return false;
+          if (otherRoadDist(run.others, p.x + side.x * sgn * railW, p.z + side.z * sgn * railW) < track.halfWidth + 4)
+            return false;
         }
         return true;
       };
@@ -1088,7 +1254,8 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         const { p, side } = at(ti);
         const yaw = Math.atan2(side.x, side.z);
         for (const sgn of [1, -1]) {
-          const lx = p.x + side.x * sgn * railW, lz = p.z + side.z * sgn * railW;
+          const lx = p.x + side.x * sgn * railW,
+            lz = p.z + side.z * sgn * railW;
           // Legs run to the real ground (river bank, gorge floor), not a fixed
           // stub below deck level — stubs read as the whole tower floating
           // when the deck flies high.
@@ -1110,10 +1277,19 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         for (let i = run.i0; i <= run.i1; i += 2) {
           const { p, side } = at(i);
           let y;
-          if (i <= tA) { const t = (i - run.i0) / (tA - run.i0 || 1); y = at(run.i0).p.y + 1.4 + (towerTopY(tA) - at(run.i0).p.y - 1.4) * t * t; }
-          else if (i >= tB) { const t = (run.i1 - i) / (run.i1 - tB || 1); y = at(run.i1).p.y + 1.4 + (towerTopY(tB) - at(run.i1).p.y - 1.4) * t * t; }
-          else { const t = (i - tA) / (tB - tA || 1); const sag = TOWER_H * 0.72; y = towerTopY(tA) + (towerTopY(tB) - towerTopY(tA)) * t - sag * 4 * t * (1 - t); }
-          const x = p.x + side.x * sgn * railW, z = p.z + side.z * sgn * railW;
+          if (i <= tA) {
+            const t = (i - run.i0) / (tA - run.i0 || 1);
+            y = at(run.i0).p.y + 1.4 + (towerTopY(tA) - at(run.i0).p.y - 1.4) * t * t;
+          } else if (i >= tB) {
+            const t = (run.i1 - i) / (run.i1 - tB || 1);
+            y = at(run.i1).p.y + 1.4 + (towerTopY(tB) - at(run.i1).p.y - 1.4) * t * t;
+          } else {
+            const t = (i - tA) / (tB - tA || 1);
+            const sag = TOWER_H * 0.72;
+            y = towerTopY(tA) + (towerTopY(tB) - towerTopY(tA)) * t - sag * 4 * t * (1 - t);
+          }
+          const x = p.x + side.x * sgn * railW,
+            z = p.z + side.z * sgn * railW;
           if (prev) segs.push(prev.x, prev.y, prev.z, x, y, z);
           // hangers on the main span
           if (i > tA + 2 && i < tB - 2 && i % 4 === 0) segs.push(x, y, z, x, p.y + 0.9, z);
@@ -1146,7 +1322,8 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       const cRoof = new THREE.Color(0x8c4030);
       const cTrim = new THREE.Color(0xc9b08a);
       const e = Math.max(2, Math.round(span * 0.08));
-      const i0 = run.i0 + e, i1 = run.i1 - e;
+      const i0 = run.i0 + e,
+        i1 = run.i1 - e;
       const postStep = Math.max(4, Math.round(10 / spacing));
       for (let i = i0; i <= i1; i += postStep) {
         const { p, side } = at(i);
@@ -1159,12 +1336,24 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       // gap), not one fixed-length beam per post — centred beams swung their
       // free ends into the lane on any curvature the veto still admits.
       for (let i = i0; i + postStep <= i1; i += postStep) {
-        const a = at(i), b = at(i + postStep);
+        const a = at(i),
+          b = at(i + postStep);
         for (const sgn of [1, -1]) {
-          const ax = a.p.x + a.side.x * sgn * railW, az = a.p.z + a.side.z * sgn * railW;
-          const bx = b.p.x + b.side.x * sgn * railW, bz = b.p.z + b.side.z * sgn * railW;
+          const ax = a.p.x + a.side.x * sgn * railW,
+            az = a.p.z + a.side.z * sgn * railW;
+          const bx = b.p.x + b.side.x * sgn * railW,
+            bz = b.p.z + b.side.z * sgn * railW;
           const yaw = Math.atan2(bx - ax, bz - az);
-          pushBox((ax + bx) / 2, (a.p.y + b.p.y) / 2 + 1.35, (az + bz) / 2, 0.35, 0.35, Math.hypot(bx - ax, bz - az) + 0.4, yaw, cTrim);
+          pushBox(
+            (ax + bx) / 2,
+            (a.p.y + b.p.y) / 2 + 1.35,
+            (az + bz) / 2,
+            0.35,
+            0.35,
+            Math.hypot(bx - ax, bz - az) + 0.4,
+            yaw,
+            cTrim,
+          );
         }
       }
       // Gabled roof ribbon: eaveL -> ridge -> eaveR, swept along the span.
@@ -1178,7 +1367,8 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         positions.push(p.x - side.x * ex, p.y + 7.8, p.z - side.z * ex);
         for (let k = 0; k < 3; k++) colors.push(cRoof.r, cRoof.g, cRoof.b);
         if (i + 2 <= i1) {
-          const a = base + rows * 3, b2 = a + 3;
+          const a = base + rows * 3,
+            b2 = a + 3;
           indices.push(a, b2, a + 1, a + 1, b2, b2 + 1);
           indices.push(a + 1, b2 + 1, a + 2, a + 2, b2 + 1, b2 + 2);
         }
@@ -1187,7 +1377,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       emitBatch();
     } else if (v === "arch") {
       // Stone viaduct arches under the deck: one instanced half-torus per bay.
-      const water = (feats.river && feats.river.level != null) ? feats.river.level : run.minY - 5.5;
+      const water = feats.river && feats.river.level != null ? feats.river.level : run.minY - 5.5;
       const step = Math.max(6, Math.round(26 / spacing));
       const arcs = [];
       for (let i = run.i0 + step; i <= run.i1 - step; i += step) {
@@ -1212,6 +1402,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         });
         mesh.instanceMatrix.needsUpdate = true;
         mesh.castShadow = true;
+        mesh.userData.staticScenery = true;
         scene.add(mesh);
       }
       emitBatch();
@@ -1233,12 +1424,14 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
         piers: false,
         leftDepth: (x, z, p, endW) => {
           if (wallSide <= 0) return 0.35 + 2.0 * endW;
-          const gx = x + (x - p.x) * 2.1, gz = z + (z - p.z) * 2.1; // ~32u out on this side
+          const gx = x + (x - p.x) * 2.1,
+            gz = z + (z - p.z) * 2.1; // ~32u out on this side
           return Math.max(0.35 + 2.0 * endW, (p.y - heightAt(gx, gz)) * endW + 0.4);
         },
         rightDepth: (x, z, p, endW) => {
           if (wallSide >= 0) return 0.35 + 2.0 * endW;
-          const gx = x + (x - p.x) * 2.1, gz = z + (z - p.z) * 2.1;
+          const gx = x + (x - p.x) * 2.1,
+            gz = z + (z - p.z) * 2.1;
           return Math.max(0.35 + 2.0 * endW, (p.y - heightAt(gx, gz)) * endW + 0.4);
         },
       });
@@ -1269,21 +1462,37 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     } else if (run.kind === "tunnel") {
       buildTunnel(scene, track, run, rng, anims, opts.groundColorAt);
     } else if (run.kind === "flowers") {
-      buildFlowers(scene, track, run, heightAt, rng);
+      buildFlowers(scene, track, run, heightAt, rng, opts.biomeNameAt);
     } else if (run.kind === "windfarm") {
-      buildWindFarm(scene, track, run, heightAt, rng, anims);
+      buildWindFarm(scene, track, run, heightAt, rng, anims, opts.biomeNameAt);
     } else if (run.kind === "arches") {
-      buildArches(scene, track, run, rng);
+      buildArches(scene, track, run, rng, opts.biomeNameAt);
     } else if (run.kind === "billboards") {
-      buildBillboards(scene, track, run, heightAt, rng, lit, litLevel);
+      buildBillboards(scene, track, run, heightAt, rng, lit, litLevel, opts.biomeNameAt);
     } else if (run.kind === "rail") {
       buildRail(scene, track, run, heightAt, rng, anims);
     }
   }
 
   if (pierBoxes.length) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0xa8a49b, roughness: 1 });
-    const mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), mat, pierBoxes.length);
+    const mat = new THREE.MeshStandardMaterial({ color: 0xa8a49b, vertexColors: true, roughness: 1 });
+    const pierGeo = new THREE.BoxGeometry(1, 1, 1, 1, 2, 1),
+      p = pierGeo.attributes.position;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i),
+        w = y < -0.25 ? 1.22 : y > 0.25 ? 1.08 : 0.9;
+      p.setXYZ(i, p.getX(i) * w, y, p.getZ(i) * w);
+    }
+    pierGeo.computeVertexNormals();
+    paintSurface(pierGeo, { low: 0.58 });
+    // Contact at the deck joint and foot, baked into the shared pier prototype.
+    const pc = pierGeo.attributes.color;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i),
+        s = 1 - 0.27 * Math.max(0, y * 2) ** 2 - 0.08 * Math.max(0, -y * 2) ** 2;
+      pc.setXYZ(i, pc.getX(i) * s, pc.getY(i) * s, pc.getZ(i) * (s + 0.015));
+    }
+    const mesh = new THREE.InstancedMesh(pierGeo, mat, pierBoxes.length);
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const pv = new THREE.Vector3();
@@ -1297,7 +1506,32 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
     });
     mesh.instanceMatrix.needsUpdate = true;
     mesh.castShadow = true;
+    mesh.userData.staticScenery = true;
     scene.add(mesh);
+  }
+
+  // Actual support locations only; skipped piers do not leave phantom marks.
+  for (const geo of deckGeometries) {
+    const p = geo.attributes.position,
+      c = geo.attributes.color;
+    for (let i = 0; i < p.count; i++) {
+      if (i % 4 === 0 || i % 4 === 3) continue; // sunlit upper edge stays bright
+      let cover = 0;
+      for (const b of pierBoxes) {
+        const dx = p.getX(i) - b.x,
+          dz = p.getZ(i) - b.z,
+          cs = Math.cos(b.yaw),
+          sn = Math.sin(b.yaw);
+        const outside = Math.hypot(
+          Math.max(0, Math.abs(cs * dx - sn * dz) - b.sx / 2),
+          Math.max(0, Math.abs(sn * dx + cs * dz) - b.sz / 2),
+        );
+        const dy = Math.abs(p.getY(i) - (b.y + b.sy / 2));
+        cover = Math.max(cover, Math.max(0, 1 - outside / 5) * Math.max(0, 1 - dy / 3));
+      }
+      const s = 1 - 0.24 * cover;
+      c.setXYZ(i, c.getX(i) * s, c.getY(i) * s, c.getZ(i) * (1 - 0.21 * cover));
+    }
   }
 
   if (rimChunks.length) {
@@ -1314,19 +1548,21 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
       sv.set(2.2 + rng() * 2.4, sy, 2.2 + rng() * 2.4);
       m.compose(pv, q, sv);
       mesh.setMatrixAt(i, m);
-      if (c.warm) col.setHSL(0.055, 0.52, 0.33 + rng() * 0.1);
+      if (opts.biomeNameAt) col.set(dressingFor(opts.biomeNameAt(c.x, c.z)).stone).multiplyScalar(0.85 + rng() * 0.3);
+      else if (c.warm) col.setHSL(0.055, 0.52, 0.33 + rng() * 0.1);
       else col.setHSL(0.09, 0.1, 0.4 + rng() * 0.14);
       mesh.setColorAt(i, col);
     });
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.castShadow = true;
+    mesh.userData.staticScenery = true;
     mesh.layers.set(1);
     scene.add(mesh);
   }
 
   if (feats.waterfall) buildWaterfall(scene, feats.waterfall, anims);
-  buildAmbience(scene, track, feats, heightAt, rng, anims, opts.lakes || []);
+  buildAmbience(scene, track, feats, heightAt, rng, anims, opts.lakes || [], opts.biomeNameAt);
 
   return {
     update(time) {
@@ -1338,7 +1574,7 @@ export function buildFeatureStructures(scene, track, heightAt, rng = Math.random
 // ---- Tunnel ------------------------------------------------------------------
 // An arched tube swept along the run (castShadow=true is what darkens the road
 // inside — the tube occludes the sun), stone portal rings at both ends, and
-// warm ceiling lamps so the interior reads as a place, not a void.
+// biome-specific mounted lamps with generation-time surface spill.
 function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   const N = track.samples;
   // The tube spans the middle of the run; the ridge fades past its ends so the
@@ -1367,8 +1603,13 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     for (let k = 0; k <= ARC; k++) {
       const [sx, sy] = profile[k];
       positions.push(p.x + side.x * sx, p.y + 0.2 + sy, p.z + side.z * sx);
-      const c = sy > APEX * 0.55 ? cLo : cIn; // darker toward the crown
-      colors.push(c.r, c.g, c.b);
+      // Broad entrance daylight fades with actual distance into the tunnel.
+      // The open mouths stay readable; recesses transition smoothly to shelter.
+      const roofBlend = smooth01(sy / APEX),
+        c = cIn.clone().lerp(cLo, roofBlend);
+      const depth = (Math.min(i - t0, t1 - i) * track.length) / N;
+      const shade = 0.88 + 0.24 * Math.exp(-depth / 14);
+      colors.push(c.r * shade, c.g * shade, c.b * (shade + 0.015 * roofBlend));
     }
     if (i < t1) {
       const a = row * (ARC + 1);
@@ -1382,23 +1623,43 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
   geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
   geo.setIndex(indices);
   geo.computeVertexNormals();
-  const tube = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }));
-  tube.castShadow = true; // occludes the sun -> naturally dark interior
+  const tube = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.DoubleSide }),
+  );
+  tube.castShadow = true;
+  tube.userData.staticScenery = true; // occludes the sun -> naturally dark interior
   tube.receiveShadow = false;
   scene.add(tube);
 
   // Portal rings: a stone arch face at each end.
-  const portalMat = new THREE.MeshStandardMaterial({ color: 0x8d857a, roughness: 1 });
+  const portalMat = new THREE.MeshStandardMaterial({
+    color: dressingFor(run.biome || "desert").stone,
+    vertexColors: true,
+    roughness: 1,
+  });
   for (const end of [t0, t1]) {
     const idx = ((end % N) + N) % N;
     const p = track._pts[idx];
     const side = sideAt(track, idx);
     const yaw = Math.atan2(track._tans[idx].x, track._tans[idx].z);
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(halfW + 1.2, 2.2, 8, 20, Math.PI), portalMat);
+    const archGeo = new THREE.TorusGeometry(halfW + 1.2, 2.2, 6, 20, Math.PI);
+    paintSurface(archGeo, { low: 0.58 });
+    const ap = archGeo.attributes.position,
+      ac = archGeo.attributes.color;
+    for (let v = 0; v < ap.count; v++) {
+      const angle = Math.atan2(ap.getY(v), ap.getX(v));
+      const seam = Math.pow(Math.abs(Math.cos(angle * 10)), 12);
+      const recess = ap.getZ(v) < 0 ? 0.75 : 1;
+      const shade = (1 - 0.22 * seam) * recess;
+      ac.setXYZ(v, ac.getX(v) * shade, ac.getY(v) * shade, ac.getZ(v) * shade);
+    }
+    const ring = new THREE.Mesh(archGeo, portalMat);
     ring.position.set(p.x, p.y + 0.4, p.z);
     ring.rotation.y = yaw;
     ring.scale.y = (APEX + 1.5) / (halfW + 1.2);
     ring.castShadow = true;
+    ring.userData.staticScenery = true;
     scene.add(ring);
   }
 
@@ -1453,6 +1714,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
     // never renders for anyone and backface culling halves the fill cost.
     const shell = new THREE.Mesh(sg, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 }));
     shell.castShadow = true;
+    shell.userData.staticScenery = true;
     shell.receiveShadow = true;
     scene.add(shell);
 
@@ -1470,8 +1732,12 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
       const sx = Math.cos(a) * wa.W + wa.skew * Math.sin(a);
       const sy = Math.sin(a) * wa.A;
       rocks.push({
-        x: p.x + side.x * sx, y: p.y - 1.2 + sy, z: p.z + side.z * sx,
-        s: 2.4 + rng() * 2.8, yaw: rng() * TAU, tilt: (rng() - 0.5) * 0.7,
+        x: p.x + side.x * sx,
+        y: p.y - 1.2 + sy,
+        z: p.z + side.z * sx,
+        s: 2.4 + rng() * 2.8,
+        yaw: rng() * TAU,
+        tilt: (rng() - 0.5) * 0.7,
       });
     }
     if (rocks.length) {
@@ -1484,7 +1750,7 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
       rocks.forEach((rk, ri) => {
         q.setFromEuler(new THREE.Euler(rk.tilt, rk.yaw, rk.tilt * 0.6));
         pv.set(rk.x, rk.y, rk.z);
-        sv.set(rk.s / 2, rk.s / 2 * (0.7 + rng() * 0.3), rk.s / 2);
+        sv.set(rk.s / 2, (rk.s / 2) * (0.7 + rng() * 0.3), rk.s / 2);
         m.compose(pv, q, sv);
         rockMesh.setMatrixAt(ri, m);
         rc.setHSL(0.08, 0.14, 0.34 + rng() * 0.1); // weathered grey-brown stone
@@ -1493,89 +1759,12 @@ function buildTunnel(scene, track, run, rng, anims, groundColorAt = null) {
       rockMesh.instanceMatrix.needsUpdate = true;
       if (rockMesh.instanceColor) rockMesh.instanceColor.needsUpdate = true;
       rockMesh.castShadow = true;
+      rockMesh.userData.staticScenery = true;
       scene.add(rockMesh);
     }
   }
 
-  // Festive string lights draped across the tunnel ceiling: sagging spans of
-  // multicolour bulbs that glow in the dark interior.
-  {
-    const FESTIVE = [0xff5b4d, 0xffd24d, 0x54d98b, 0x4da3ff, 0xff8ee0, 0xfff4d6];
-    const bulbGeo = new THREE.SphereGeometry(0.16, 6, 5);
-    const spanStep = Math.max(6, Math.round(17 / (track.length / N)));
-    const spans = [];
-    for (let i = t0 + spanStep; i <= t1 - 3; i += spanStep) spans.push(i);
-    const PER = 11;
-    // ONE draw call for every bulb: bake them all into a single vertex-coloured
-    // merged mesh on an unlit material. (This replaced one InstancedMesh PER
-    // colour — six draws — which existed because instanceColor can't tint
-    // emissive. But a bulb is pure emission: unlit vertex colour × 2.2 feeds
-    // the tone mapper the exact HDR values the emissive material did, and the
-    // lit component on a 0.16u sphere in a dark tunnel was invisible.)
-    const bulbGeos = [];
-    const wirePts = [];
-    const bc = new THREE.Color();
-    let bi = 0;
-    for (const i of spans) {
-      const idx = ((i % N) + N) % N;
-      const p = track._pts[idx];
-      const side = sideAt(track, idx);
-      const aW = halfW * 0.8;
-      const aY = APEX * 0.6;
-      for (let k = 0; k < PER; k++) {
-        const f = k / (PER - 1); // 0..1 across the span
-        const sx = -aW + f * 2 * aW;
-        // Anchored on the walls, sagging in the middle.
-        const y = p.y + aY - Math.sin(Math.PI * f) * 1.8;
-        const x = p.x + side.x * sx;
-        const z = p.z + side.z * sx;
-        bc.set(FESTIVE[(bi + k) % FESTIVE.length]).multiplyScalar(2.2);
-        const g = bulbGeo.clone().translate(x, y, z);
-        const cAttr = new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 3), 3);
-        for (let v = 0; v < cAttr.count; v++) cAttr.setXYZ(v, bc.r, bc.g, bc.b);
-        g.setAttribute("color", cAttr);
-        bulbGeos.push(g);
-        bi++;
-        wirePts.push(x, y + 0.14, z);
-      }
-    }
-    if (bulbGeos.length) {
-      const merged = mergeGeometries(bulbGeos, false);
-      scene.add(new THREE.Mesh(merged, new THREE.MeshBasicMaterial({ vertexColors: true })));
-    }
-    // A thin dark wire through each span's bulbs.
-    const wg = new THREE.BufferGeometry();
-    wg.setAttribute("position", new THREE.Float32BufferAttribute(wirePts, 3));
-    const wIdx = [];
-    for (let s = 0; s < spans.length; s++) {
-      for (let k = 0; k < PER - 1; k++) wIdx.push(s * PER + k, s * PER + k + 1);
-    }
-    wg.setIndex(wIdx);
-    const wire = new THREE.LineSegments(wg, new THREE.LineBasicMaterial({ color: 0x1c1a17 }));
-    scene.add(wire);
-  }
-
-  // Ceiling lamps: warm glow discs down the crown.
-  const lampCount = Math.max(3, Math.floor((t1 - t0) / 14));
-  const glowGeo = new THREE.PlaneGeometry(2.6, 2.6);
-  const glowTex = lampGlowCanvas();
-  const glowMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, depthWrite: false, color: 0xffd98a });
-  const lamps = new THREE.InstancedMesh(glowGeo, glowMat, lampCount);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
-  const pv = new THREE.Vector3();
-  const sv = new THREE.Vector3(1, 1, 1);
-  for (let k = 0; k < lampCount; k++) {
-    const i = t0 + Math.round(((k + 0.5) / lampCount) * (t1 - t0));
-    const idx = ((i % N) + N) % N;
-    const p = track._pts[idx];
-    pv.set(p.x, p.y + APEX - 1.1, p.z);
-    m.compose(pv, q, sv);
-    lamps.setMatrixAt(k, m);
-  }
-  lamps.instanceMatrix.needsUpdate = true;
-  lamps.renderOrder = 2;
-  scene.add(lamps);
+  buildTunnelLighting(scene, track, run, t0, t1, profile, geo);
   void anims;
 }
 
@@ -1613,7 +1802,13 @@ function buildWaterfall(scene, wf, anims) {
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide });
+  const mat = new THREE.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
   const face = new THREE.Mesh(new THREE.PlaneGeometry(wf.width, drop + 1.6), mat);
   const yaw = Math.atan2(wf.dirx, wf.dirz);
   face.position.set(wf.x - wf.dirx * 1.2, (wf.top + wf.bot) / 2 - 0.2, wf.z - wf.dirz * 1.2);
@@ -1646,7 +1841,7 @@ function buildWaterfall(scene, wf, anims) {
 }
 
 // ---- Treatments --------------------------------------------------------------
-function buildFlowers(scene, track, run, heightAt, rng) {
+function buildFlowers(scene, track, run, heightAt, rng, nameAt) {
   // A carpet of flower heads on stems through the run. One stem mesh + one
   // instanced head mesh, tinted per-instance from the seed's palette.
   const PALETTES = [
@@ -1681,6 +1876,7 @@ function buildFlowers(scene, track, run, heightAt, rng) {
     const x = p.x + side.x * dir * dist + (rng() - 0.5) * 6;
     const z = p.z + side.z * dir * dist + (rng() - 0.5) * 6;
     if (track.distanceToCenter(x, z) < track.halfWidth + 3) continue;
+    if (nameAt && !habitatFits(nameAt, x, z, (n) => ["meadow", "blossom", "lavender"].includes(n), 1)) continue;
     const y = heightAt(x, z);
     const sc = 1.0 + rng() * 0.9;
     q.setFromAxisAngle(_up, rng() * TAU);
@@ -1735,7 +1931,7 @@ export function makeWindTurbine(H = 22) {
   return { group: g, rotor };
 }
 
-function buildWindFarm(scene, track, run, heightAt, rng, anims) {
+function buildWindFarm(scene, track, run, heightAt, rng, anims, nameAt) {
   const N = track.samples;
   const count = 4 + Math.floor(rng() * 3);
   for (let k = 0; k < count; k++) {
@@ -1748,6 +1944,7 @@ function buildWindFarm(scene, track, run, heightAt, rng, anims) {
     const x = p.x + side.x * dir * off;
     const z = p.z + side.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 30) continue;
+    if (nameAt && !habitatFits(nameAt, x, z, (n) => ["meadow", "savanna", "tundra"].includes(n), 8)) continue;
     const y = heightAt(x, z);
     const { group: g, rotor } = makeWindTurbine(20 + rng() * 5);
     g.position.set(x, y, z);
@@ -1761,7 +1958,7 @@ function buildWindFarm(scene, track, run, heightAt, rng, anims) {
   }
 }
 
-function buildArches(scene, track, run, rng) {
+function buildArches(scene, track, run, rng, nameAt) {
   // Desert rock pillars (hoodoos) lining the road: standalone tapering
   // columns of varying heights, most wearing a wider caprock on top.
   const N = track.samples;
@@ -1780,6 +1977,7 @@ function buildArches(scene, track, run, rng) {
       const off = track.halfWidth + 5 + rng() * 7;
       const px = p.x + side.x * sgn * off;
       const pz = p.z + side.z * sgn * off;
+      if (nameAt && !habitatFits(nameAt, px, pz, (n) => ["desert", "mesa", "volcanic"].includes(n), 6)) continue;
       const tiers = 4 + Math.floor(rng() * 4); // 4..7 — varied heights
       const base = 5.6 + rng() * 1.4;
       // Continuous tapering column (chunks overlap vertically and the base
@@ -1789,9 +1987,14 @@ function buildArches(scene, track, run, rng) {
         const cap = s === tiers - 1 && rng() < 0.75;
         const w = base * (1 - 0.4 * t) * (cap ? 1.5 : 1);
         chunks.push({
-          x: px + (rng() - 0.5) * 0.6, y: p.y + 1.2 + s * 2.6, z: pz + (rng() - 0.5) * 0.6,
-          sx: w, sy: cap ? 3.4 : 4.6, sz: w * (0.82 + rng() * 0.12),
-          yaw: yaw + rng() * 0.6, flat: true,
+          x: px + (rng() - 0.5) * 0.6,
+          y: p.y + 1.2 + s * 2.6,
+          z: pz + (rng() - 0.5) * 0.6,
+          sx: w,
+          sy: cap ? 3.4 : 4.6,
+          sz: w * (0.82 + rng() * 0.12),
+          yaw: yaw + rng() * 0.6,
+          flat: true,
         });
       }
     }
@@ -1811,7 +2014,7 @@ function buildArches(scene, track, run, rng) {
     sv.set(csp.sx / 2, csp.sy / 2, csp.sz / 2);
     m.compose(pv, q, sv);
     mesh.setMatrixAt(i, m);
-    col.setHSL(0.05, 0.48, 0.35 + rng() * 0.09);
+    col.setHSL(run.volcanic ? 0.73 : 0.05, run.volcanic ? 0.12 : 0.48, (run.volcanic ? 0.23 : 0.35) + rng() * 0.09);
     mesh.setColorAt(i, col);
   });
   mesh.instanceMatrix.needsUpdate = true;
@@ -1829,31 +2032,49 @@ export const BILLBOARD_SIGNS = [
   ["PAWS ⚡ POWER", "#facc15", "#141005"],
 ];
 let _billboardPoleMat = null;
+const _billboardLooks = new Map();
 export function makeBillboard([text, fg, bg] = BILLBOARD_SIGNS[0], lit = false, litLevel = 1) {
-  if (!_billboardPoleMat) _billboardPoleMat = new THREE.MeshStandardMaterial({ color: 0x30343c, roughness: 0.6, metalness: 0.4 });
-  const c = document.createElement("canvas");
-  c.width = 256;
-  c.height = 128;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, 256, 128);
-  ctx.strokeStyle = fg;
-  ctx.lineWidth = 6;
-  ctx.strokeRect(6, 6, 244, 116);
-  ctx.fillStyle = fg;
-  ctx.font = "bold 34px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, 128, 64);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const panelMat = new THREE.MeshStandardMaterial({
-    map: tex,
-    emissiveMap: tex,
-    emissive: 0xffffff,
-    emissiveIntensity: lit ? 1.6 * litLevel + 0.4 : 0.12,
-    roughness: 0.6,
-  });
+  if (!_billboardPoleMat)
+    _billboardPoleMat = new THREE.MeshStandardMaterial({ color: 0x30343c, roughness: 0.6, metalness: 0.4 });
+  const key = JSON.stringify([text, fg, bg, lit ? litLevel : 0]);
+  let panelMat = _billboardLooks.get(key);
+  if (!panelMat) {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 128;
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, 256, 128);
+    ctx.strokeStyle = fg;
+    ctx.lineWidth = 6;
+    ctx.strokeRect(6, 6, 244, 116);
+    // Inset frame, shaded lower edge and painted corner fasteners: no extra meshes.
+    ctx.fillStyle = "rgba(0,0,0,.28)";
+    ctx.fillRect(12, 106, 232, 9);
+    ctx.fillStyle = fg;
+    for (const x of [14, 242])
+      for (const y of [14, 114]) {
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    ctx.fillStyle = fg;
+    ctx.font = "bold 34px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 128, 64);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    panelMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: 0xffffff,
+      emissiveIntensity: lit ? 1.6 * litLevel + 0.4 : 0.12,
+      roughness: 0.6,
+    });
+    panelMat.userData.shared = true;
+    _billboardLooks.set(key, panelMat);
+  }
   const g = new THREE.Group();
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.42, 8.6, 8), _billboardPoleMat);
   pole.position.y = 4.3;
@@ -1866,7 +2087,7 @@ export function makeBillboard([text, fg, bg] = BILLBOARD_SIGNS[0], lit = false, 
   return g;
 }
 
-function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
+function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel, nameAt) {
   const N = track.samples;
   const count = 3 + Math.floor(rng() * 2);
   for (let k = 0; k < count; k++) {
@@ -1880,6 +2101,7 @@ function buildBillboards(scene, track, run, heightAt, rng, lit, litLevel) {
     const z = p.z + side.z * dir * off;
     if (track.distanceToCenter(x, z) < track.halfWidth + 6) continue;
     const y = heightAt(x, z);
+    if (nameAt && !habitatFits(nameAt, x, z, (n) => n === "city", 5)) continue;
     const g = makeBillboard(BILLBOARD_SIGNS[Math.floor(rng() * BILLBOARD_SIGNS.length)], lit, litLevel);
     g.position.set(x, y, z);
     g.rotation.y = Math.atan2(p.x - x, p.z - z);
@@ -1894,13 +2116,20 @@ export function makeTrain(cars = 4) {
   const train = new THREE.Group();
   const bodyMat = new THREE.MeshStandardMaterial({ color: 0xc94f3d, roughness: 0.6 });
   const carMat = new THREE.MeshStandardMaterial({ color: 0x4f7dc9, roughness: 0.6 });
-  const winMat = new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x9fc6e8, emissiveIntensity: 0.5, roughness: 0.3 });
+  const winMat = new THREE.MeshStandardMaterial({
+    color: 0xcfe8ff,
+    emissive: 0x9fc6e8,
+    emissiveIntensity: 0.5,
+    roughness: 0.3,
+  });
   for (let cIdx = 0; cIdx < cars; cIdx++) {
     const car = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.1, 7.2), cIdx === 0 ? bodyMat : carMat);
+    const body = new THREE.Mesh(new RoundedBoxGeometry(2.2, 2.1, 7.2, 1, 0.3), cIdx === 0 ? bodyMat : carMat);
     body.castShadow = true;
     car.add(body);
-    const win = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.7, 5.6), winMat);
+    const panes = [];
+    for (let w = 0; w < 4; w++) panes.push(new THREE.BoxGeometry(2.23, 0.7, 1.1).translate(0, 0, -2.1 + w * 1.4));
+    const win = new THREE.Mesh(mergeGeometries(panes), winMat);
     win.position.y = 0.45;
     car.add(win);
     car.position.z = -cIdx * 8.2;
@@ -1919,20 +2148,29 @@ function buildRail(scene, track, run, heightAt, rng, anims) {
   // from 0-9u below the beam, which parks the train at kart-head height over
   // that road).
   const nearOtherRoad = (x, z) => track.distanceToCenter(x, z) < track.halfWidth + 8;
-  let lo = L.len0, hi = L.len1;
+  let lo = L.len0,
+    hi = L.len1;
   const OWN = track.halfWidth + 12; // the beam's own road crossing corridor
   for (let t = -20; t >= L.len0; t -= 20) {
-    const x = L.x + L.dx * t, z = L.z + L.dz * t;
-    if (heightAt(x, z) > L.y - 3 || (-t > OWN && nearOtherRoad(x, z))) { lo = t + 20; break; }
+    const x = L.x + L.dx * t,
+      z = L.z + L.dz * t;
+    if (heightAt(x, z) > L.y - 3 || (-t > OWN && nearOtherRoad(x, z))) {
+      lo = t + 20;
+      break;
+    }
   }
   for (let t = 20; t <= L.len1; t += 20) {
-    const x = L.x + L.dx * t, z = L.z + L.dz * t;
-    if (heightAt(x, z) > L.y - 3 || (t > OWN && nearOtherRoad(x, z))) { hi = t - 20; break; }
+    const x = L.x + L.dx * t,
+      z = L.z + L.dz * t;
+    if (heightAt(x, z) > L.y - 3 || (t > OWN && nearOtherRoad(x, z))) {
+      hi = t - 20;
+      break;
+    }
   }
   if (hi - lo < 90) return;
   const len = hi - lo;
-  const cx = L.x + L.dx * (lo + hi) / 2;
-  const cz = L.z + L.dz * (lo + hi) / 2;
+  const cx = L.x + (L.dx * (lo + hi)) / 2;
+  const cz = L.z + (L.dz * (lo + hi)) / 2;
   const yaw = Math.atan2(L.dx, L.dz);
   const beam = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.4, len), beamMat);
   beam.position.set(cx, L.y, cz);
@@ -1994,17 +2232,20 @@ export function makeDuck() {
   if (!_duckMats) {
     _duckMats = {
       body: new THREE.MeshStandardMaterial({ color: 0xf5efdd, roughness: 0.9 }),
-      head: new THREE.MeshStandardMaterial({ color: 0x3e7d3a, roughness: 0.8 }),
+      head: new THREE.MeshStandardMaterial({ color: 0x3e7d3a, roughness: 0.8, vertexColors: true }),
       beak: new THREE.MeshStandardMaterial({ color: 0xf2a63c, roughness: 0.8 }),
     };
   }
   const g = new THREE.Group();
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 6).scale(1, 0.7, 1.3), _duckMats.body);
   g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), _duckMats.head);
+  const face = [paintSurface(new THREE.SphereGeometry(0.3, 8, 6))];
+  for (const side of [-1, 1])
+    face.push(paintSolid(new THREE.SphereGeometry(0.035, 5, 3).translate(side * 0.265, 0.07, 0.11), 0x151923));
+  const head = new THREE.Mesh(mergeGeometries(face), _duckMats.head);
   head.position.set(0, 0.55, 0.55);
   g.add(head);
-  const beak = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.35, 5).rotateX(Math.PI / 2), _duckMats.beak);
+  const beak = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 4).scale(1, 0.35, 1.35), _duckMats.beak);
   beak.position.set(0, 0.5, 0.9);
   g.add(beak);
   return g;
@@ -2020,20 +2261,22 @@ export function makeGoat() {
     };
   }
   const parts = [];
-  parts.push(new THREE.BoxGeometry(0.9, 0.8, 1.5).translate(0, 1.05, 0));
-  parts.push(new THREE.BoxGeometry(0.5, 0.55, 0.6).translate(0, 1.6, 0.85));
+  parts.push(new RoundedBoxGeometry(0.9, 0.8, 1.5, 1, 0.22).translate(0, 1.05, 0));
+  parts.push(new RoundedBoxGeometry(0.5, 0.55, 0.6, 1, 0.16).translate(0, 1.6, 0.85));
   for (const s of [0.28, -0.28]) {
     parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, 0.5));
     parts.push(new THREE.BoxGeometry(0.22, 0.9, 0.22).translate(s, 0.45, -0.5));
   }
-  const goat = new THREE.Mesh(mergeGeometries(parts), _goatMats.body);
+  const goat = new THREE.Mesh(mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g))), _goatMats.body);
   goat.castShadow = true;
   const horns = new THREE.Mesh(
     mergeGeometries([
       new THREE.ConeGeometry(0.07, 0.5, 5).translate(-0.16, 2.05, 0.75),
       new THREE.ConeGeometry(0.07, 0.5, 5).translate(0.16, 2.05, 0.75),
+      new THREE.SphereGeometry(0.045, 5, 3).translate(-0.24, 1.69, 1.0),
+      new THREE.SphereGeometry(0.045, 5, 3).translate(0.24, 1.69, 1.0),
     ]),
-    _goatMats.horn
+    _goatMats.horn,
   );
   const g = new THREE.Group();
   g.add(goat);
@@ -2041,7 +2284,8 @@ export function makeGoat() {
   return g;
 }
 
-function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
+function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes, nameAt) {
+  const fits = (x, z, kind, radius = 0) => nameAt && habitatFits(nameAt, x, z, (n) => dressingFor(n)[kind], radius);
   // Ducks: on the river (or the first big lake) — drift in lazy circles.
   const water = lakes.find((l) => l.river) || lakes.find((l) => l.ribbon) || lakes[0];
   if (water) {
@@ -2059,14 +2303,20 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
       }
     }
     for (const sp of spots) {
+      if (!fits(sp.x, sp.z, "ducks", 5)) continue;
       const g = makeDuck();
+      g.userData.habitatAnimal = "ducks";
       scene.add(g);
       const r = 1.5 + rng() * 3;
       const sp2 = 0.14 + rng() * 0.12;
       const ph = rng() * TAU;
       anims.push((time) => {
         const a = time * sp2 + ph;
-        g.position.set(sp.x + Math.cos(a) * r, water.level + 0.28 + Math.sin(time * 1.7 + ph) * 0.05, sp.z + Math.sin(a) * r);
+        g.position.set(
+          sp.x + Math.cos(a) * r,
+          water.level + 0.28 + Math.sin(time * 1.7 + ph) * 0.05,
+          sp.z + Math.sin(a) * r,
+        );
         g.rotation.y = a + Math.PI / 2;
       });
     }
@@ -2087,7 +2337,9 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
       const z = p.z + side.z * sgn * off;
       if (track.distanceToCenter(x, z) < track.halfWidth + 12) continue;
       const y = heightAt(x, z);
+      if (!fits(x, z, "goats", 3)) continue;
       const g = makeGoat();
+      g.userData.habitatAnimal = "goats";
       g.position.set(x, y, z);
       g.rotation.y = Math.atan2(p.x - x, p.z - z); // watching the race
       scene.add(g);
@@ -2098,7 +2350,13 @@ function buildAmbience(scene, track, feats, heightAt, rng, anims, lakes) {
   const giant = feats.runs.find((r) => r.kind === "giant");
   if (giant) {
     const tex = lampGlowCanvas();
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.16, depthWrite: false, color: 0xdfe9ea });
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex,
+      transparent: true,
+      opacity: 0.16,
+      depthWrite: false,
+      color: 0xdfe9ea,
+    });
     const N = track.samples;
     for (let k = 0; k < 6; k++) {
       const i = giant.i0 + Math.round(((k + 0.5) / 6) * (giant.i1 - giant.i0));
