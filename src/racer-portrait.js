@@ -40,7 +40,7 @@ export function renderRacerPortrait(canvas, cat, kart) {
     scene.add(sun);
     const camera = new THREE.PerspectiveCamera(35, 1.6, 0.1, 100);
     camera.position.set(7.5, 5.2, 9.5);
-    camera.lookAt(0, 1.5, 0);
+    camera.lookAt(0, 1.05, 0);
     camera.zoom = 1.6;
     camera.updateProjectionMatrix();
     try {
