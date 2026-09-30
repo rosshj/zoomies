@@ -58,10 +58,10 @@ async function capture(name) {
       });
       if (!gridOK) errors.push(`${device}/${name}: Settings breaks the utility grid`);
     }
-    if (name === "setup" || name === "settings-display") {
+    if (name.startsWith("setup") || name === "settings-display") {
       const fitIssues = await page.evaluate((name) => {
         const issues = [];
-        if (name === "setup") {
+        if (name.startsWith("setup")) {
           const map = document.getElementById("menu-map-btn").getBoundingClientRect();
           if (map.width < 200 || map.height < (innerHeight > innerWidth ? 110 : 100))
             issues.push("Map panel is too small or hidden");
@@ -73,6 +73,15 @@ async function capture(name) {
           const scroll = document.querySelector(".start-scroll").getBoundingClientRect();
           if (innerWidth >= 375 && prize.height && prize.bottom > scroll.bottom + 1)
             issues.push("Prize summary is clipped");
+          const mode = document.getElementById("setup-mode").getBoundingClientRect();
+          if (mode.bottom > map.top + 1) issues.push("Mode must appear above the map");
+          const row = document.querySelector(".setup-pickers");
+          const rowBounds = row.getBoundingClientRect();
+          const choices = [...row.children].map((el) => el.getBoundingClientRect()).filter((r) => r.width);
+          if (Math.abs(choices[0].left - rowBounds.left) > 1 || Math.abs(choices.at(-1).right - rowBounds.right) > 1)
+            issues.push("Summary choices leave a gap at the edge");
+          if (choices.some((r) => Math.abs(r.width - choices[0].width) > 1))
+            issues.push("Summary choices have unequal widths");
           const go = document.getElementById("go-btn").getBoundingClientRect();
           if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
         }
@@ -89,6 +98,21 @@ async function capture(name) {
         return issues;
       }, name);
       errors.push(...fitIssues.map((issue) => `${device}/${name}: ${issue}`));
+    }
+    if (["mode", "tracks", "cups", "rivals", "length"].includes(name)) {
+      const fitsGutters = await page.evaluate(() => {
+        const root = document.querySelector(".flow-screen.is-active");
+        const body = root.querySelector(".flow-body");
+        const list = body.querySelector(".mode-grid,.track-grid,.cup-grid,.race-detail-inner");
+        const b = body.getBoundingClientRect(),
+          r = list.getBoundingClientRect(),
+          style = getComputedStyle(body);
+        return (
+          Math.abs(r.left - b.left - parseFloat(style.paddingLeft)) < 1 &&
+          Math.abs(b.right - r.right - parseFloat(style.paddingRight)) < 1
+        );
+      });
+      if (!fitsGutters) errors.push(`${device}/${name}: Picker list does not fill shared gutters`);
     }
     const emoji = await page.evaluate(() => {
       const root =
@@ -156,14 +180,37 @@ try {
     await capture("length");
     await click("#flow-length [data-back]");
     await click("#setup-mode");
+    await capture("mode");
+    await click("#mode-cup");
+    await capture("cups");
+    await click("#cup-list button:first-child");
+    await capture("setup-cup");
+    await click("#setup-mode");
+    await click("#mode-tt");
+    await capture("setup-tt");
+    await click("#setup-mode");
+    await click("#mode-gp");
+    await click("#setup-track");
+    await capture("tracks");
+    await click("#flow-track [data-back]");
+    await click("#setup-mode");
     await click("#mode-split");
     await click("#split-count-4");
     await capture("versus-4p");
     const previous = JSON.parse(await fs.readFile(new URL("measurements.json", out), "utf8"));
     measurements.push(
-      ...previous.measurements.filter((m) => !["setup", "versus-4p", "rivals", "length"].includes(m.name)),
+      ...previous.measurements.filter(
+        (m) =>
+          !["setup", "setup-cup", "setup-tt", "mode", "cups", "tracks", "versus-4p", "rivals", "length"].includes(
+            m.name,
+          ),
+      ),
     );
-    errors.push(...previous.errors.filter((e) => !/\/(setup|versus-4p|rivals|length):/.test(e)));
+    errors.push(
+      ...previous.errors.filter(
+        (e) => !/\/(setup|setup-cup|setup-tt|mode|cups|tracks|versus-4p|rivals|length):/.test(e),
+      ),
+    );
   } else {
     await capture("home");
     await click("#open-settings");

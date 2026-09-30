@@ -87,3 +87,10 @@ Race setup presents Mode, Track, Length, and Rivals as compact current-value car
 A single cat-in-kart portrait replaces the two catalog images. `src/racer-portrait.js` renders the actual race models, mounting pose, colours, livery, number, breed, and accessories into a cached canvas whenever the selected appearance changes. It uses a small lazy WebGL renderer and renders only on selection changes; no extra animation loop runs during racing. Stale queued selections are skipped, and temporary model resources are disposed after each snapshot.
 
 The setup visual pass includes both drill-in screens at all six viewport sizes (182 gallery captures total). Interaction checks cover choosing difficulty/laps, Back without changes, and portrait updates when changing the cat; controller checks cover initial selection focus and A/B return paths. Cup/daily and offline checks cover state preservation and the new portrait module.
+
+
+## Picker widths and mode-first setup
+
+Mode now precedes the map in the document order and sits above it on both portrait and landscape layouts. The remaining Track/Cup, Length, and Rivals choices share equal flexible columns; hidden controls no longer reserve an empty slot. Mode, Track, Cup, Rivals, and Length pickers share safe-area-aware outer gutters, with no extra inner padding or arbitrary width cap on the detail lists.
+
+The setup audit now captures Single Race, Cup, and Time Trial layouts, checks equal-width summary choices against both row edges, and verifies that Mode precedes the map. Picker checks ensure each list fills the shared gutters. The gallery includes 194 captures after adding Cup and Time Trial setup at six viewport sizes.

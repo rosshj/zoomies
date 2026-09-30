@@ -663,22 +663,23 @@
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body startline-body">
-        <!-- A large track preview sits beside setup on wide screens and above
-             it in portrait. The Start action stays outside scrolling content. -->
-        <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
-          <span class="map-preview-heading">Track preview</span>
-          <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
-          <span id="menu-map-label" class="map-label">Classic circuit</span>
-          <span class="map-edit-hint">Choose track ›</span>
-        </button>
+        <!-- Mode comes first, followed by the track map and race summary. -->
+        <div class="setup-track-panel">
+          <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
+          <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
+            <span class="map-preview-heading">Track preview</span>
+            <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
+            <span id="menu-map-label" class="map-label">Classic circuit</span>
+            <span class="map-edit-hint">Choose track ›</span>
+          </button>
+        </div>
         <div class="start-side">
           <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
                720p window); GO itself stays pinned below the scroll region so
                the primary action can never be pushed off-screen. -->
           <div class="start-scroll">
           <div class="setup-pickers">
-            <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
-            <button id="setup-track" class="setup-choice"><span class="setup-icon">↝</span><span><small id="setup-track-kind">TRACK</small><strong id="setup-track-name">Classic Circuit</strong></span><b>Change ›</b></button>
+            <div class="setup-track-choice"><button id="setup-track" class="setup-choice"><span class="setup-icon">↝</span><span><small id="setup-track-kind">TRACK</small><strong id="setup-track-name">Classic Circuit</strong></span><b>Change ›</b></button></div>
             <div id="laps-row"><button id="setup-laps" class="setup-choice"><span><small>LENGTH</small><strong id="setup-laps-name">3 laps</strong></span></button></div>
             <div id="diff-row"><button id="setup-rivals" class="setup-choice"><span><small>RIVALS</small><strong id="setup-rivals-name">Medium</strong></span></button></div>
           </div>
