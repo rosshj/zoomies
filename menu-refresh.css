@@ -2108,3 +2108,32 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact #flow-startline #setup-mode {
   min-height: 52px;
 }
+/* One spacing rhythm, with no empty summary row or footer copy. */
+#stage #flow-startline { --setup-gap: 12px; }
+#stage.menu-compact #flow-startline { --setup-gap: 8px; }
+#stage #flow-startline.flow-screen :is(.startline-body, .setup-track-panel, .start-side, .start-scroll, .setup-pickers) {
+  gap: var(--setup-gap);
+}
+#stage #flow-startline .setup-pickers:not(:has(> :not(.hidden))) {
+  display: none;
+}
+#stage #flow-startline .map-chevron {
+  color: #ffc64b;
+  margin-left: 4px;
+}
+#stage.menu-portrait #flow-startline .startline-body {
+  display: flex;
+  flex-direction: column;
+}
+#stage.menu-portrait #flow-startline .setup-track-panel {
+  flex: 1 1 0;
+  min-height: 184px;
+}
+#stage.menu-portrait #flow-startline .start-side {
+  flex: 0 1 auto;
+  height: auto;
+  max-height: calc(100% - 196px);
+}
+#stage.menu-portrait #flow-startline .start-scroll {
+  flex: 0 1 auto;
+}

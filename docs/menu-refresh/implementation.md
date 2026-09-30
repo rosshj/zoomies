@@ -94,3 +94,10 @@ The setup visual pass includes both drill-in screens at all six viewport sizes (
 Mode now precedes the map in the document order and sits above it on both portrait and landscape layouts. The remaining Track/Cup, Length, and Rivals choices share equal flexible columns; hidden controls no longer reserve an empty slot. Mode, Track, Cup, Rivals, and Length pickers share safe-area-aware outer gutters, with no extra inner padding or arbitrary width cap on the detail lists.
 
 The setup audit now captures Single Race, Cup, and Time Trial layouts, checks equal-width summary choices against both row edges, and verifies that Mode precedes the map. Picker checks ensure each list fills the shared gutters. The gallery includes 194 captures after adding Cup and Time Trial setup at six viewport sizes.
+
+
+## One track entry point and consistent setup spacing
+
+The map card is now labelled “Track” with a gold chevron and opens the appropriate track/cup picker. The duplicate Track/Cup summary button and the reward, duration, and descriptive text below the racer are removed. Changing a running cup or daily track still uses the existing confirmation path.
+
+Setup uses a shared 12px card gap (8px in short landscape). Portrait lays out the visible cards at their natural height, with the map taking the remaining space and Start outside the scroll area. Empty summary rows collapse, including Time Trial and an in-progress cup. Interaction checks now use the map as the track entry point.

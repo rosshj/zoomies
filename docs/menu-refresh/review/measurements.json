@@ -9,7 +9,7 @@
         "height": 800,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": []
     },
@@ -21,7 +21,7 @@
         "height": 900,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": []
     },
@@ -33,7 +33,7 @@
         "height": 390,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": []
     },
@@ -45,7 +45,7 @@
         "height": 844,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": []
     },
@@ -57,7 +57,7 @@
         "height": 375,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": []
     },
@@ -69,7 +69,7 @@
         "height": 720,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": []
     },
@@ -81,14 +81,14 @@
         "height": 568,
         "rotated": false
       },
-      "controls": 11,
+      "controls": 10,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
-          "client": 206,
-          "scroll": 385
+          "client": 200,
+          "scroll": 338
         }
       ]
     },
@@ -437,7 +437,7 @@
         "height": 800,
         "rotated": false
       },
-      "controls": 10,
+      "controls": 9,
       "smallControls": [],
       "scroll": []
     },
@@ -449,7 +449,7 @@
         "height": 900,
         "rotated": false
       },
-      "controls": 10,
+      "controls": 9,
       "smallControls": [],
       "scroll": []
     },
@@ -461,16 +461,9 @@
         "height": 390,
         "rotated": false
       },
-      "controls": 10,
+      "controls": 9,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 250,
-          "scroll": 267
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "iphone-portrait",
@@ -480,16 +473,9 @@
         "height": 844,
         "rotated": false
       },
-      "controls": 10,
+      "controls": 9,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 398,
-          "scroll": 432
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "small-phone",
@@ -499,16 +485,9 @@
         "height": 375,
         "rotated": false
       },
-      "controls": 10,
+      "controls": 9,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 235,
-          "scroll": 267
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "laptop-720",
@@ -518,7 +497,7 @@
         "height": 720,
         "rotated": false
       },
-      "controls": 10,
+      "controls": 9,
       "smallControls": [],
       "scroll": []
     },
@@ -530,7 +509,7 @@
         "height": 800,
         "rotated": false
       },
-      "controls": 9,
+      "controls": 8,
       "smallControls": [],
       "scroll": []
     },
@@ -542,7 +521,7 @@
         "height": 900,
         "rotated": false
       },
-      "controls": 9,
+      "controls": 8,
       "smallControls": [],
       "scroll": []
     },
@@ -554,7 +533,7 @@
         "height": 390,
         "rotated": false
       },
-      "controls": 9,
+      "controls": 8,
       "smallControls": [],
       "scroll": []
     },
@@ -566,7 +545,7 @@
         "height": 844,
         "rotated": false
       },
-      "controls": 9,
+      "controls": 8,
       "smallControls": [],
       "scroll": []
     },
@@ -578,16 +557,9 @@
         "height": 375,
         "rotated": false
       },
-      "controls": 9,
+      "controls": 8,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 235,
-          "scroll": 249
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "laptop-720",
@@ -597,7 +569,7 @@
         "height": 720,
         "rotated": false
       },
-      "controls": 9,
+      "controls": 8,
       "smallControls": [],
       "scroll": []
     },
@@ -723,14 +695,14 @@
         "height": 800,
         "rotated": false
       },
-      "controls": 17,
+      "controls": 16,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 592,
-          "scroll": 741
+          "scroll": 713
         }
       ]
     },
@@ -742,14 +714,14 @@
         "height": 900,
         "rotated": false
       },
-      "controls": 17,
+      "controls": 16,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 692,
-          "scroll": 741
+          "scroll": 713
         }
       ]
     },
@@ -761,14 +733,14 @@
         "height": 390,
         "rotated": false
       },
-      "controls": 17,
+      "controls": 16,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 210,
-          "scroll": 492
+          "scroll": 480
         }
       ]
     },
@@ -780,14 +752,14 @@
         "height": 844,
         "rotated": false
       },
-      "controls": 17,
+      "controls": 16,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
-          "client": 356,
-          "scroll": 708
+          "client": 383,
+          "scroll": 660
         }
       ]
     },
@@ -799,14 +771,14 @@
         "height": 375,
         "rotated": false
       },
-      "controls": 17,
+      "controls": 16,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 195,
-          "scroll": 492
+          "scroll": 480
         }
       ]
     },
@@ -818,14 +790,14 @@
         "height": 720,
         "rotated": false
       },
-      "controls": 17,
+      "controls": 16,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 512,
-          "scroll": 741
+          "scroll": 713
         }
       ]
     },

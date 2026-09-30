@@ -79,6 +79,16 @@ try {
     "Continue lost points",
   );
   await click("#start-btn");
+  const cupBeforeMap = await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1"));
+  await click("#menu-map-btn");
+  await p.locator("#menu-confirm:not(.hidden)").waitFor();
+  await click("#confirm-cancel");
+  await step("startline");
+  assert.equal(
+    await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1")),
+    cupBeforeMap,
+    "Map cancellation changed cup progress",
+  );
   await click("#setup-mode");
   await click("#mode-tt");
   await click("#confirm-cancel");
@@ -116,7 +126,7 @@ try {
     return { world: getSeed(), url: new URL(location.href).searchParams.get("seed") };
   });
   assert.equal(daily.world, daily.url, "Daily inherited saved custom seed");
-  await click("#setup-track");
+  await click("#menu-map-btn");
   await p.locator("#menu-confirm:not(.hidden)").waitFor();
   await click("#confirm-cancel");
   await step("startline");

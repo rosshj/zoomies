@@ -200,7 +200,7 @@ else errors.push(`FAIL d-pad moves focus: stayed on '${before}'`);
 // (Classic circuit).
 await page.evaluate(() => {
   document.getElementById("mode-gp").click();
-  document.getElementById("setup-track").click();
+  document.getElementById("menu-map-btn").click();
 });
 await frames(2);
 await check("track screen auto-seats on the first card", () => {

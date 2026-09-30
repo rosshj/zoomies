@@ -104,7 +104,7 @@ try {
   await click("#flow-cat [data-back]");
   await step("startline");
   assert.deepEqual(await garage(), saved, "Cancelled custom draft leaked");
-  await click("#setup-track");
+  await click("#menu-map-btn");
   await step("track");
   await click("#track-grid .is-current");
   await step("startline");
@@ -205,7 +205,7 @@ try {
   await shot("settings-display");
   await click("#settings-back");
   await p.setViewportSize({ width: 1280, height: 800 });
-  await click("#setup-track");
+  await click("#menu-map-btn");
   await click("#track-grid .track-tap:nth-child(2)");
   await p.waitForFunction(
     () => window.__zoomies?.track && document.getElementById("menu").dataset.step === "startline",
@@ -213,8 +213,8 @@ try {
     { timeout: 180000 },
   );
   assert.equal(
-    await p.locator("#setup-track-name").textContent(),
-    "Buttercup Run",
+    await p.locator("#menu-map-btn").getAttribute("aria-label"),
+    "Change track: Buttercup Run",
     "Track reload lost setup destination",
   );
   // Collection purchase/equip uses a confirmation and the owner's saved loadout.

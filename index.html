@@ -667,7 +667,7 @@
         <div class="setup-track-panel">
           <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
           <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
-            <span class="map-preview-heading">Track preview</span>
+            <span class="map-preview-heading">Track <span class="map-chevron" aria-hidden="true">›</span></span>
             <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
             <span id="menu-map-label" class="map-label">Classic circuit</span>
             <span class="map-edit-hint">Choose track ›</span>
@@ -679,7 +679,6 @@
                the primary action can never be pushed off-screen. -->
           <div class="start-scroll">
           <div class="setup-pickers">
-            <div class="setup-track-choice"><button id="setup-track" class="setup-choice"><span class="setup-icon">↝</span><span><small id="setup-track-kind">TRACK</small><strong id="setup-track-name">Classic Circuit</strong></span><b>Change ›</b></button></div>
             <div id="laps-row"><button id="setup-laps" class="setup-choice"><span><small>LENGTH</small><strong id="setup-laps-name">3 laps</strong></span></button></div>
             <div id="diff-row"><button id="setup-rivals" class="setup-choice"><span><small>RIVALS</small><strong id="setup-rivals-name">Medium</strong></span></button></div>
           </div>
@@ -741,10 +740,6 @@
               <span class="seat-names" id="p4-names">Tuxedo · Sunbeam</span>
             </span>
             <button id="p4-edit" class="btn-cream small-pill" aria-label="Edit Player 4's racer">Edit</button>
-          </div>
-          <div class="setup-race-note">
-            <div id="stakes-row"><span class="start-stakes" id="start-stakes"></span></div>
-            <p id="start-note" class="start-note hidden"></p>
           </div>
           </div>
           <!-- Pre-GO controller check (Versus): who's missing an input, said

@@ -69,23 +69,22 @@ async function capture(name) {
           const bounds = portrait.getBoundingClientRect();
           if (portrait.dataset.ready !== "true" || bounds.width < 100 || bounds.height < 90)
             issues.push("Combined racer portrait missing or too small");
-          const prize = document.getElementById("stakes-row").getBoundingClientRect();
-          const scroll = document.querySelector(".start-scroll").getBoundingClientRect();
-          if (innerWidth >= 375 && prize.height && prize.bottom > scroll.bottom + 1)
-            issues.push("Prize summary is clipped");
           const mode = document.getElementById("setup-mode").getBoundingClientRect();
           if (mode.bottom > map.top + 1) issues.push("Mode must appear above the map");
           const row = document.querySelector(".setup-pickers");
           const rowBounds = row.getBoundingClientRect();
           const choices = [...row.children].map((el) => el.getBoundingClientRect()).filter((r) => r.width);
-          if (Math.abs(choices[0].left - rowBounds.left) > 1 || Math.abs(choices.at(-1).right - rowBounds.right) > 1)
+          if (
+            choices.length &&
+            (Math.abs(choices[0].left - rowBounds.left) > 1 || Math.abs(choices.at(-1).right - rowBounds.right) > 1)
+          )
             issues.push("Summary choices leave a gap at the edge");
           if (choices.some((r) => Math.abs(r.width - choices[0].width) > 1))
             issues.push("Summary choices have unequal widths");
           const go = document.getElementById("go-btn").getBoundingClientRect();
           if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
         }
-        const root = document.getElementById(name === "setup" ? "flow-startline" : "settings");
+        const root = document.getElementById(name.startsWith("setup") ? "flow-startline" : "settings");
         for (const group of root.querySelectorAll(".seg-toggle")) {
           if (!group.getBoundingClientRect().width) continue;
           const bounds = group.getBoundingClientRect();
@@ -190,7 +189,7 @@ try {
     await capture("setup-tt");
     await click("#setup-mode");
     await click("#mode-gp");
-    await click("#setup-track");
+    await click("#menu-map-btn");
     await capture("tracks");
     await click("#flow-track [data-back]");
     await click("#setup-mode");
@@ -262,7 +261,7 @@ try {
     await click("#flow-cup [data-back]");
     await click("#setup-mode");
     await click("#mode-gp");
-    await click("#setup-track");
+    await click("#menu-map-btn");
     await capture("tracks");
     await click(".track-maker-card");
     await capture("track-maker");

@@ -2548,7 +2548,6 @@ document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
       localStorage.setItem(LAPS_KEY, String(TOTAL_LAPS));
     } catch {}
     refreshRaceOptSegs();
-    refreshStakes();
     flowGo("startline", -1);
   }),
 );
@@ -2561,7 +2560,6 @@ document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
       localStorage.setItem(DIFF_KEY, DIFFICULTY);
     } catch {}
     refreshRaceOptSegs();
-    refreshStakes();
     flowGo("startline", -1);
   }),
 );
@@ -4078,8 +4076,7 @@ function refreshMenuMap() {
   const label = document.getElementById("menu-map-label");
   if (label) label.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
 }
-// Cup Series maps are fixed recipes — the map is a preview there, not an editor
-// entry point (the button's Edit affordance is hidden via .map-no-edit too).
+// The map opens the track or cup picker, preserving in-progress confirmation.
 document.getElementById("menu-map-btn")?.addEventListener("click", () => {
   openTrackPicker();
 });
@@ -5375,7 +5372,6 @@ function openTrackPicker() {
     );
   else open();
 }
-document.getElementById("setup-track").addEventListener("click", openTrackPicker);
 
 // Kept as the shared "mode/options changed" refresher (setRaceMode calls it).
 function applyModeUI() {
@@ -5661,43 +5657,6 @@ function chooseTrackCard(cfg) {
 
 // --- Start line: the only full summary — map, racer, options, one giant GO --
 const GO_LABELS = { gp: "🏁  START RACE", tt: "⏱  START TIME TRIAL", cup: "🏆  START CUP", split: "🛋️  START VERSUS" };
-// The stakes line: what a WIN pays at the current laps/difficulty (plus the
-// daily bonus when it's still unclaimed) — so the segs read as a bet, not a
-// form. Time trial hides it (its note talks PBs instead).
-function refreshStakes() {
-  const el = document.getElementById("start-stakes");
-  if (!el) return;
-  const show = raceMode !== "tt" && raceMode !== "split"; // Versus pays in bragging rights
-  document.getElementById("stakes-row")?.classList.toggle("hidden", !show);
-  if (!show) return;
-  const daily = _dailyActive && profile.dailyPaid !== todayStr();
-  const top = racePayout({
-    place: 1,
-    field: ROSTER.length,
-    laps: TOTAL_LAPS,
-    difficulty: DIFFICULTY,
-    daily,
-    stats: {},
-  }).total;
-  const est = estimatedRaceMinutes();
-  el.textContent = (est ? `≈ ${est} min · ` : "") + `Win up to 🐟 ${top}`;
-}
-// Rough race length for the stakes line: a mid-pack lap of the classic circuit
-// (2811u) runs ~73s, scaled by this track's length, plus the standing start.
-// Rounded to the half minute so it reads as a promise ("about 4 minutes"), not
-// a stopwatch. Null when the track isn't built yet (menu boot order).
-function estimatedRaceMinutes() {
-  let len = 0;
-  try {
-    len = track.length;
-  } catch {
-    return null;
-  }
-  if (!(len > 0)) return null;
-  const secs = TOTAL_LAPS * 73 * (len / 2811) + 4;
-  const halves = Math.max(1, Math.round(secs / 30)) / 2;
-  return Number.isInteger(halves) ? String(halves) : halves.toFixed(1);
-}
 // --- Versus: seat racer picks (preset roster, persisted per seat) -----------
 // Seats 2..4, one storage key each; defaults fan out across the roster so
 // four fresh seats never start as look-alikes.
@@ -5810,21 +5769,20 @@ for (let n = 2; n <= 4; n++) {
 function refreshStartline() {
   const modeNames = { gp: "Single Race", tt: "Time Trial", cup: "Cup Series", split: "Versus" };
   document.getElementById("setup-mode-name").textContent = _dailyActive ? "Daily Challenge" : modeNames[raceMode];
-  document.getElementById("setup-track-kind").textContent = raceMode === "cup" ? "CUP" : "TRACK";
   const featured = FEATURED_TRACKS.find((t) => trackCardCurrent(t.cfg));
-  document.getElementById("setup-track-name").textContent =
+  const selectedTrackName =
     raceMode === "cup"
       ? cupById(_cupChoice)?.name || "Choose a cup"
       : _dailyActive
         ? "Today's shared track"
         : featured?.name || (trackConfig.mode === "custom" ? "My custom track" : "Classic Circuit");
+  const mapButton = document.getElementById("menu-map-btn");
+  mapButton.setAttribute("aria-label", `Change ${raceMode === "cup" ? "cup" : "track"}: ${selectedTrackName}`);
+  mapButton.title = raceMode === "cup" ? "Choose cup" : "Choose track";
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
   refreshRacerSummary();
   refreshRaceOptSegs();
-  refreshStakes();
   const goBtn = document.getElementById("go-btn");
-  const note = document.getElementById("start-note");
-  const cupDef = cupById(_cupChoice);
   const midCup = raceMode === "cup" && _cupState && _activeCup;
   document
     .getElementById("laps-row")
@@ -5833,25 +5791,6 @@ function refreshStartline() {
     .getElementById("diff-row")
     ?.classList.toggle("hidden", !(raceMode === "gp" || raceMode === "split" || (raceMode === "cup" && !midCup)));
   refreshSeatTiles(); // seat tiles + count segment (hidden outside split)
-  if (note) {
-    let txt = "";
-    if (_dailyActive) txt = "📅 Today's challenge — everyone races the same track. Daily bonus when you finish!";
-    else if (midCup)
-      txt = `${_activeCup.emoji} ${_activeCup.name} — race ${_cupState.race + 1} of ${_activeCup.races.length}. Points carry across the series.`;
-    else if (raceMode === "cup" && cupDef) {
-      txt = `${cupDef.emoji} ${cupDef.name} — ${cupDef.races.length} races, points and trophies.`;
-      if (cupDef.unlockId && !profile.trophies[cupDef.id]) txt += ` 🎁 First win: ${unlockName(cupDef.unlockId)}.`;
-    } else if (raceMode === "tt") {
-      const pb = loadTimeTrial()[0];
-      txt = pb
-        ? `⏱ One flying lap against the clock — your best is ${formatLap(pb.time)}.`
-        : "⏱ One flying lap against the clock — set your first PB!";
-    } else if (raceMode === "split") {
-      txt = "🛋️ Versus is for bragging rights — no treats.";
-    }
-    note.textContent = txt;
-    note.classList.toggle("hidden", !txt);
-  }
   if (goBtn) {
     if (midCup)
       goBtn.textContent = `Continue cup · Race ${_cupState.race + (_cupState.scored === _cupState.race ? 2 : 1)} of ${_activeCup.races.length}`;
@@ -6109,8 +6048,6 @@ function refreshMenuMapCycle() {
     clearInterval(_mapCycleTimer);
     _mapCycleTimer = null;
   }
-  // Cup previews aren't editable — drop the Edit affordance while cycling.
-  document.getElementById("menu-map-btn")?.classList.toggle("map-no-edit", !!cupDef);
   const canvas = document.getElementById("menu-map");
   if (!cupDef || !canvas) {
     if (canvas) canvas.style.opacity = "1";
