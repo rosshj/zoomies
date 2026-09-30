@@ -60,3 +60,12 @@ Home now separates a compact brand lockup, a large two-line headline, the primar
 Menu emoji are replaced with original filled SVG pictograms from `src/menu-icons.js`, including dynamically rendered rewards, currency, mode cards, and settings. The module preserves existing DOM event handlers and text inputs while decorating changing labels. Menu surfaces and selected segments use solid fills rather than stacked borders and shadows; focus outlines remain available for keyboard/controller navigation.
 
 The visual audit additionally rejects visible menu emoji. The refreshed gallery includes 168 captures. Interaction and controller navigation regressions were rerun after this revision.
+
+
+## Map and control sizing
+
+Race setup gives the track map a full panel beside controls in landscape and above them in portrait. The higher-resolution canvas retains readable route strokes and landmarks. Compact landscape spacing preserves the primary action; extra Versus controls scroll independently. Menu buttons share rounded rectangular corners, including selected segments and Settings tabs.
+
+Settings option groups use explicit grid columns. In portrait, labels sit above full-width groups so Graphics and Frame rate choices stay inside the card. Audio retains its label, toggle, and slider layout. Narrow 320px screens stack setup option labels and reduce Settings card padding while retaining 44px targets.
+
+The visual sweep now adds 320×568 setup and Display captures to the six-device gallery (170 total). Regression assertions check map visibility, the pinned Start action, and segmented controls staying within their containers and viewport.

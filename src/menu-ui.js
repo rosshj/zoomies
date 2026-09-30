@@ -23,6 +23,10 @@ export function initMenuUI() {
   catalogTabs.classList.add("settings-nav");
   document.querySelector("#catalog .flow-head").after(catalogTabs);
   const settings = document.getElementById("settings");
+  for (const row of settings.querySelectorAll(".setting-row")) {
+    row.classList.toggle("setting-row-segmented", !!row.querySelector(".seg-toggle"));
+    row.classList.toggle("setting-row-audio", !!row.querySelector('input[type="range"]'));
+  }
   const sections = [...settings.querySelectorAll(".settings-list > .settings-card")];
   const groups = ["audio", "display", "controls", "save", "display"];
   sections.forEach((section, i) => (section.dataset.settingsPanel = groups[i]));

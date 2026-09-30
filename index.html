@@ -644,11 +644,11 @@
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body startline-body">
-        <!-- The hero is the 3D starting grid rendered behind the menu (your kart
-             in pole + the actual rivals, framed by the gantry) — so the map
-             demotes to a small corner chip and the panel docks right. -->
+        <!-- A large track preview sits beside setup on wide screens and above
+             it in portrait. The Start action stays outside scrolling content. -->
         <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
-          <canvas id="menu-map" class="track-map" width="480" height="300"></canvas>
+          <span class="map-preview-heading">Track preview</span>
+          <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
           <span id="menu-map-label" class="map-label">Classic circuit</span>
           <span class="map-edit-hint">Choose track ›</span>
         </button>

@@ -23,7 +23,8 @@ async function click(sel) {
   await page.waitForTimeout(600);
 }
 async function capture(name) {
-  for (const [device, width, height] of sizes) {
+  const captureSizes = ["setup", "settings-display"].includes(name) ? [...sizes, ["narrow-portrait", 320, 568]] : sizes;
+  for (const [device, width, height] of captureSizes) {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(550);
     // Simulate an iPhone notch/home indicator; viewport resizing alone misses
@@ -55,6 +56,30 @@ async function capture(name) {
         return document.getElementById("open-settings").getBoundingClientRect().width < grid.clientWidth * 0.6;
       });
       if (!gridOK) errors.push(`${device}/${name}: Settings breaks the utility grid`);
+    }
+    if (name === "setup" || name === "settings-display") {
+      const fitIssues = await page.evaluate((name) => {
+        const issues = [];
+        if (name === "setup") {
+          const map = document.getElementById("menu-map-btn").getBoundingClientRect();
+          if (map.width < 200 || map.height < (innerHeight > innerWidth ? 160 : 100))
+            issues.push("Map panel is too small or hidden");
+          const go = document.getElementById("go-btn").getBoundingClientRect();
+          if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
+        }
+        const root = document.getElementById(name === "setup" ? "flow-startline" : "settings");
+        for (const group of root.querySelectorAll(".seg-toggle")) {
+          if (!group.getBoundingClientRect().width) continue;
+          const bounds = group.getBoundingClientRect();
+          for (const button of group.querySelectorAll("button")) {
+            const b = button.getBoundingClientRect();
+            if (b.left < bounds.left - 1 || b.right > bounds.right + 1 || b.right > innerWidth)
+              issues.push("Option escapes group: " + button.textContent.trim());
+          }
+        }
+        return issues;
+      }, name);
+      errors.push(...fitIssues.map((issue) => `${device}/${name}: ${issue}`));
     }
     const emoji = await page.evaluate(() => {
       const root =

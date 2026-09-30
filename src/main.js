@@ -1990,8 +1990,12 @@ function paintTrackMap(canvas, controlPoints, glyphs = null) {
   const points = [];
   for (let i = 0; i < 300; i++) points.push(curve.getPointAt(i / 300));
   const ctx = canvas.getContext("2d");
-  const W = canvas.width;
-  const H = canvas.height;
+  // Keep strokes and landmarks readable on the higher-resolution setup map.
+  const pixelScale = canvas.id === "menu-map" ? 2 : 1;
+  ctx.save();
+  ctx.scale(pixelScale, pixelScale);
+  const W = canvas.width / pixelScale;
+  const H = canvas.height / pixelScale;
   const pad = 16;
   ctx.clearRect(0, 0, W, H);
   let minX = Infinity,
@@ -2038,6 +2042,7 @@ function paintTrackMap(canvas, controlPoints, glyphs = null) {
       ctx.shadowBlur = 0;
     }
   }
+  ctx.restore();
 }
 
 // The minimap redraws at ~20 Hz, not every frame — dots crawling across a

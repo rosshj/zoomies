@@ -1674,3 +1674,252 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   outline: 3px solid #83e5db;
   outline-offset: 3px;
 }
+
+/* A shared control shape, with smaller matching corners inside button groups. */
+#stage {
+  --control-radius: 14px;
+  --segment-radius: 10px;
+}
+#stage #menu button,
+#stage .overlay button,
+#stage #menu-chrome button {
+  border-radius: var(--control-radius);
+}
+#stage #menu .seg-btn,
+#stage .overlay .seg-btn,
+#stage .settings-nav button {
+  border-radius: var(--segment-radius);
+}
+#stage #menu .seg-toggle,
+#stage .overlay .seg-toggle,
+#stage .settings-nav {
+  border-radius: var(--control-radius);
+  padding: 4px;
+  gap: 4px;
+}
+#stage #menu .swatch-dot {
+  border-radius: var(--segment-radius);
+}
+
+/* The map now owns a full panel instead of a thumbnail corner. */
+#stage #flow-startline .startline-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 20px;
+  align-items: stretch;
+  padding: 20px max(20px, var(--safe-right)) max(20px, var(--safe-bottom)) max(20px, var(--safe-left));
+  overflow: hidden;
+}
+#stage #flow-startline .map-chip {
+  position: relative;
+  inset: auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  padding: 20px;
+  margin: 0;
+  background: #211e31;
+  text-align: left;
+  border-radius: var(--control-radius);
+  overflow: hidden;
+}
+#stage #flow-startline .map-preview-heading {
+  flex: 0 0 auto;
+  color: #bfb0d0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+#stage #flow-startline .map-chip .track-map {
+  display: block;
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  height: 0;
+  object-fit: contain;
+  border: 0;
+  background: transparent;
+}
+#stage #flow-startline .map-chip .map-label {
+  position: static;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: none;
+  display: block;
+  margin: 0;
+  padding: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.3;
+  color: #fff2d8;
+  white-space: normal;
+  text-align: left;
+  -webkit-line-clamp: unset;
+}
+#stage #flow-startline .start-side {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  gap: 12px;
+  justify-content: center;
+  align-self: stretch;
+}
+#stage #flow-startline .start-scroll {
+  gap: 10px;
+  padding: 0;
+  flex-shrink: 1;
+}
+#stage #flow-startline .start-scroll > * {
+  flex-shrink: 0;
+}
+#stage #flow-startline .setup-pickers {
+  flex-direction: row;
+  gap: 8px;
+}
+#stage #flow-startline .setup-choice {
+  min-width: 0;
+  flex: 1;
+  padding: 10px 12px;
+  gap: 0;
+}
+#stage #flow-startline .setup-choice .setup-icon,
+#stage #flow-startline .setup-choice b {
+  display: none;
+}
+#stage #flow-startline .start-racer {
+  padding: 10px;
+}
+#stage #flow-startline .start-opts {
+  padding: 10px;
+}
+#stage #flow-startline .mode-opt-row {
+  gap: 6px;
+}
+#stage #flow-startline .mode-opt-label {
+  min-width: 40px;
+  flex: 0 0 40px;
+  font-size: 10px;
+}
+#stage #flow-startline .seg-toggle {
+  min-width: 0;
+  flex: 1;
+}
+#stage #flow-startline .seg-btn {
+  min-width: 44px;
+  padding: 8px 4px;
+  font-size: 12px;
+}
+#stage #flow-startline #go-btn {
+  flex: 0 0 auto;
+  min-height: 52px;
+  margin: 0;
+  padding: 12px;
+}
+#stage.menu-compact #flow-startline .startline-body {
+  padding: 8px max(16px, var(--safe-right)) max(12px, var(--safe-bottom)) max(16px, var(--safe-left));
+  gap: 12px;
+}
+#stage.menu-compact #flow-startline .start-side {
+  gap: 8px;
+}
+#stage.menu-compact #flow-startline .start-scroll {
+  gap: 6px;
+}
+#stage.menu-compact #flow-startline .setup-choice {
+  min-height: 44px;
+  padding: 4px 10px;
+}
+#stage.menu-compact #flow-startline .start-racer {
+  padding: 4px 8px;
+}
+#stage.menu-compact #flow-startline .start-opts {
+  padding: 6px 8px;
+  gap: 4px;
+}
+#stage.menu-compact #flow-startline .seg-toggle {
+  padding: 2px;
+  gap: 2px;
+}
+#stage.menu-compact #flow-startline .map-chip {
+  padding: 14px;
+}
+#stage.menu-portrait #flow-startline .startline-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(160px, 1fr) minmax(0, min(360px, 60%));
+  gap: 12px;
+  padding: 12px 16px max(16px, var(--safe-bottom));
+}
+#stage.menu-portrait #flow-startline .map-chip {
+  padding: 12px 16px;
+}
+#stage.menu-portrait #flow-startline .start-side {
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* Settings controls get their own available width; no implicit grid columns. */
+#stage #settings .setting-row:not(.backup-row) {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(0, 2fr);
+  gap: 12px;
+}
+#stage #settings .setting-row.setting-row-audio {
+  grid-template-columns: minmax(70px, 1fr) 72px minmax(100px, 1fr);
+}
+#stage #settings .setting-row > * {
+  min-width: 0;
+}
+#stage #settings .setting-row > .seg-toggle {
+  grid-column: auto;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+#stage #settings .setting-row > .seg-toggle .seg-btn {
+  min-width: 44px;
+  padding: 8px 4px;
+  font-size: 13px;
+  width: 100%;
+}
+#stage #settings .setting-row > button {
+  justify-self: start;
+  min-width: 72px;
+}
+#stage.menu-portrait #settings .setting-row.setting-row-segmented {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+#stage.menu-portrait #settings .setting-row.setting-row-audio {
+  grid-template-columns: minmax(60px, 1fr) 64px minmax(80px, 1fr);
+  gap: 8px;
+}
+#stage.menu-portrait #settings .setting-row > .seg-toggle .seg-btn {
+  font-size: 12px;
+}
+#stage.menu-portrait #settings .setting-label {
+  font-size: 14px;
+}
+#stage #settings .settings-card {
+  min-width: 0;
+}
+
+@media (max-width: 360px) and (orientation: portrait) {
+  #stage.menu-portrait #flow-startline .mode-opt-row:has(.seg-toggle) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+  #stage.menu-portrait #flow-startline .mode-opt-row:has(.seg-toggle) .mode-opt-label {
+    flex: 0 0 auto;
+  }
+  #stage.menu-portrait #settings .settings-card {
+    padding: 14px;
+  }
+}
