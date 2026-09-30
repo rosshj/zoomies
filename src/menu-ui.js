@@ -63,6 +63,12 @@ export function initMenuUI() {
     );
   const sync = () => {
     const next = scope();
+    // Keep global actions in the same layout row as Back and the title. Floating
+    // chrome applied the safe-area inset twice and collided with picker tools.
+    const flow = document.querySelector(".flow-screen.is-active");
+    const slot = flow?.querySelector(".flow-head-right");
+    const chrome = document.getElementById("menu-chrome");
+    if (slot && chrome.parentElement !== slot) slot.append(chrome);
     document.getElementById("menu-chrome").inert = !!next && !next.classList.contains("flow-screen");
     for (const root of roots) root.inert = !!next && root !== next && !root.contains(next);
     for (const screen of document.querySelectorAll(".flow-screen"))
@@ -94,7 +100,11 @@ export function initMenuUI() {
     if (!current) return;
     const list = controls(current);
     // Global menu chrome belongs to the active flow screen.
-    if (current.classList.contains("flow-screen") && visible(document.getElementById("menu-chrome")))
+    if (
+      current.classList.contains("flow-screen") &&
+      !current.contains(document.getElementById("menu-chrome")) &&
+      visible(document.getElementById("menu-chrome"))
+    )
       list.push(...controls(document.getElementById("menu-chrome")));
     if (!list.length) return;
     const i = list.indexOf(document.activeElement);

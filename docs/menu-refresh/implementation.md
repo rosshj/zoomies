@@ -20,7 +20,7 @@ Results include automatic, idempotent badge rewards and a fixed footer for Race 
 
 ## Layout and input
 
-Menus use native portrait orientation; driving remains landscape. Stage-relative sizing supports short landscape screens without using portrait viewport dimensions for their logical layout. Primary actions stay outside long scroll regions, including Track Maker and results. The existing cream, plum, and gold palette now has consistent cards, headers, spacing, and focus treatments.
+Pre-race menus and results use native portrait orientation; driving and pause remain landscape. Stage-relative sizing supports short landscape screens without using portrait viewport dimensions for their logical layout. Primary actions stay outside long scroll regions, including Track Maker and results. The existing cream, plum, and gold palette now has consistent cards, headers, spacing, and focus treatments.
 
 Keyboard focus stays within the active surface and returns to the previous control. Controller navigation remembers its position, supports text inputs, and opens an on-screen keyboard for names and backup codes. Text entry uses a cancellable draft. Selected controls expose their state to assistive technology, and inactive surfaces are inert.
 
@@ -44,3 +44,10 @@ These are Chromium viewport and simulated-controller checks on a Mac, not physic
 Run `npm run check:menus`, `npm run check:menu-state`, and `npm run check:menupad` for the main interaction regressions. The scripts serve isolated local instances. `npm run check:offline` checks cached startup. `npm run build:web` includes the new UI assets.
 
 For the gallery, serve the repository at port 8080 and run `node tools/menu-audit.mjs`. It writes only `review/`. Tests also save selected captures to `after/`.
+
+
+## Device feedback revision
+
+The notched-iPhone screenshot exposed a double safe-area inset on floating header actions. Actions now belong to the active header's flex layout, so Back, title, balance, and Settings share one row. The visual pass standardizes the system sans-serif type scale, dark header and toolbar surfaces, compact utility buttons, card borders, and selected states. The gallery now simulates 59px top and 34px bottom portrait safe-area insets and asserts that header actions neither overlap titles nor escape the header.
+
+Pause keeps the driving orientation. Motion sampling is disabled outside countdown/racing; resume recalibrates the current grip, and calibration clears stale steering output. `node tools/tilt-menu-check.mjs` covers motion isolation, fresh neutral, preserved steering sensitivity, and calibration reset. These checks do not reproduce physical iPhone motion sensors; driving feel still needs device verification.

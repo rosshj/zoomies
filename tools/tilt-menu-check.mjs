@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import { Input } from "../src/input.js";
+globalThis.screen = { orientation: { angle: 90 } };
+globalThis.window = {};
+const input = Object.create(Input.prototype);
+input._motionActive = true;
+const motion = (degrees) => {
+  const a = (degrees * Math.PI) / 180;
+  input._onMotion({ accelerationIncludingGravity: { x: -9.81 * Math.cos(a), y: 9.81 * Math.sin(a), z: 0 } });
+};
+const settle = (degrees) => {
+  for (let i = 0; i < 8; i++) motion(degrees);
+};
+input.calibrate();
+settle(0);
+motion(10);
+assert.ok(input._steerTarget > 0.2, "a deliberate lean should steer");
+input.setMotionActive(false);
+settle(85);
+assert.equal(input._steerTarget, 0, "portrait menu motion must not steer");
+input.setMotionActive(true);
+settle(4);
+assert.equal(input._steerTarget, 0, "resuming should center the current driving grip");
+motion(14);
+assert.ok(input._steerTarget > 0.2, "steering sensitivity must survive pause/resume");
+input.calibrate();
+assert.equal(input._steerTarget, 0, "recalibration must clear stale full-lock steering");
+screen.orientation.angle = 270;
+input.calibrate();
+settle(0);
+motion(10);
+assert.ok(input._steerTarget < -0.2, "the opposite landscape grip must retain its steering polarity");
+console.log("PASS: menu motion isolation, resume neutral, steering response and calibration reset");

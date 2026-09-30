@@ -35,6 +35,7 @@ export class Input {
     this._neutralSamples = 0;
     this._calNeutral = 0; // baseline neutral captured at calibrate; clamp anchor
     this._sign = -1; // steering sign, fixed at calibrate (see calibrate())
+    this._motionActive = true;
     this._haveMotion = false;
     this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
@@ -115,7 +116,15 @@ export class Input {
   // lock the steering sign to the current orientation. The sign is fixed here
   // (not re-evaluated per motion event) so that if the OS flips orientation
   // mid-steer, steering stays continuous instead of suddenly inverting.
+  setMotionActive(active) {
+    if (this._motionActive === active) return;
+    this._motionActive = active;
+    if (active) this.calibrate();
+    else this._steerTarget = this.steer = 0;
+  }
+
   calibrate() {
+    this._steerTarget = this.steer = 0;
     this._neutralRoll = null; // next motion events re-capture neutral
     this._neutralSamples = 0;
     this._calNeutral = 0; // re-anchored once the new neutral settles
@@ -124,6 +133,7 @@ export class Input {
   }
 
   _onMotion(e) {
+    if (!this._motionActive) return;
     const g = e.accelerationIncludingGravity;
     if (!g || g.x === null || g.y === null) return;
     this._haveMotion = true;

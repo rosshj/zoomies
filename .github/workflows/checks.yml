@@ -22,6 +22,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: code formatting (prettier)
         run: npm run format:check
+      - name: tilt steering across menu transitions
+        run: npm run check:tilt-menus
       - name: world-config codec (cup reload token)
         run: npm run check:worldcfg
       - name: progression economy (treats/unlocks/cups)

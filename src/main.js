@@ -1517,9 +1517,9 @@ function layoutStage() {
   const a = ((rawAngle % 360) + 360) % 360;
   const portrait = ih > iw;
 
-  // Menus follow the device orientation; only driving and free-camera play
-  // use the landscape stage. Safe-area insets are remapped below when rotated.
-  const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
+  // Setup/results follow the device orientation. Pause keeps the driving
+  // frame so opening it never asks the player to change their grip.
+  const menuLayout = state === State.MENU || state === State.FINISHED;
   const rot = portrait && !menuLayout ? (a === 180 ? 270 : 90) : 0;
   const W = menuLayout ? iw : Math.max(iw, ih);
   const H = menuLayout ? ih : Math.min(iw, ih);
@@ -2591,6 +2591,7 @@ function pauseGame() {
   if (state !== State.RACING && !(state === State.COUNTDOWN && !_veilActive)) return;
   _pausedFrom = state;
   state = State.PAUSED;
+  input.setMotionActive(false);
   audio.stopEngine();
   audio.setSkid(false);
   hud.showToast("");
@@ -2607,6 +2608,8 @@ function resumeGame() {
   pauseOverlay.classList.add("hidden");
   if (_pausedFrom === State.RACING) audio.startEngine();
   state = _pausedFrom;
+  if (stageState.menuLayout) layoutStage();
+  input.setMotionActive(true);
   _pausedFrom = State.RACING;
 }
 
@@ -8286,7 +8289,8 @@ function loop(now) {
   if (ms > _perfMain.max) _perfMain.max = ms;
 }
 function loopBody(now) {
-  const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
+  input.setMotionActive(state === State.COUNTDOWN || state === State.RACING);
+  const menuLayout = state === State.MENU || state === State.FINISHED;
   if (stageState.menuLayout !== menuLayout) {
     if (window.innerHeight > window.innerWidth) layoutStage();
     else stageState.menuLayout = menuLayout;

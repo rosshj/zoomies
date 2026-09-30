@@ -26,6 +26,29 @@ async function capture(name) {
   for (const [device, width, height] of sizes) {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(550);
+    // Simulate an iPhone notch/home indicator; viewport resizing alone misses
+    // the safe-area collision reported on the actual device.
+    await page.evaluate(
+      (portrait) => {
+        const stage = document.getElementById("stage");
+        stage.style.setProperty("--safe-top", portrait ? "59px" : "0px", "important");
+        stage.style.setProperty("--safe-bottom", portrait ? "34px" : "0px", "important");
+      },
+      device === "iphone-portrait" && name !== "pause" && name !== "confirmation",
+    );
+    const headerIssue = await page.evaluate(() => {
+      const chrome = document.getElementById("menu-chrome");
+      if (chrome.classList.contains("hidden")) return null;
+      const head = chrome.closest(".flow-head");
+      if (!head) return "Actions are outside the header layout";
+      const c = chrome.getBoundingClientRect(),
+        h = head.getBoundingClientRect();
+      const title = head.querySelector(".flow-head-text").getBoundingClientRect();
+      if (c.left < title.right - 1 || c.bottom > h.bottom + 1 || c.right > h.right + 1)
+        return "Header actions overlap title or escape header";
+      return null;
+    });
+    if (headerIssue) errors.push(`${device}/${name}: ${headerIssue}`);
     await page.screenshot({ path: new URL(`screenshots/${device}-${name}.jpg`, out).pathname, quality: 75 });
     measurements.push(
       await page.evaluate(
@@ -59,6 +82,9 @@ async function capture(name) {
     );
   }
   await page.setViewportSize({ width: 1280, height: 800 });
+  await page.evaluate(() => {
+    for (const name of ["--safe-top", "--safe-bottom"]) document.getElementById("stage").style.removeProperty(name);
+  });
   console.log("captured", name);
 }
 try {

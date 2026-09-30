@@ -238,7 +238,7 @@ export class MenuPad {
     };
     collect(scope);
     const chrome = this._chrome(scope);
-    if (chrome) collect(chrome);
+    if (chrome && !scope.contains(chrome)) collect(chrome);
     return out;
   }
 

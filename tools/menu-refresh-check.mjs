@@ -255,7 +255,7 @@ try {
   assert.ok(await p.locator("#stage").evaluate((e) => e.classList.contains("rotated")));
   await p.keyboard.press("p");
   await p.waitForFunction(
-    () => window.__zoomies.state() === 4 && !document.getElementById("stage").classList.contains("rotated"),
+    () => window.__zoomies.state() === 4 && document.getElementById("stage").classList.contains("rotated"),
   );
   await shot("pause-portrait");
   await click("#resume-btn");

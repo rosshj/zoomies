@@ -50,7 +50,8 @@
     "check:kart-roster-art": "node tools/kart-roster-check.mjs",
     "check:kart-roster-ui": "node tools/kart-roster-ui-check.mjs",
     "check:menus": "node tools/menu-refresh-check.mjs",
-    "check:menu-state": "node tools/menu-state-check.mjs"
+    "check:menu-state": "node tools/menu-state-check.mjs",
+    "check:tilt-menus": "node tools/tilt-menu-check.mjs"
   },
   "license": "MIT",
   "dependencies": {
