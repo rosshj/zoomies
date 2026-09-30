@@ -160,6 +160,27 @@ await press(0);
 await check("A opens race setup", () => document.getElementById("flow-startline").classList.contains("is-active"));
 await frames(2);
 await check("setup seats Start", () => document.getElementById("go-btn").classList.contains("pad-focus"));
+await page.evaluate(() => document.getElementById("setup-rivals").click());
+await frames(2);
+await check("Rivals seats the selected difficulty", () =>
+  document.querySelector('#diff-seg [data-diff="medium"]').classList.contains("pad-focus"),
+);
+await press(1);
+await check(
+  "B returns from Rivals without changing difficulty",
+  () =>
+    document.getElementById("flow-startline").classList.contains("is-active") &&
+    document.getElementById("setup-rivals-name").textContent === "Medium",
+);
+await page.evaluate(() => document.getElementById("setup-laps").click());
+await frames(2);
+await check("Race length seats the selected laps", () =>
+  document.querySelector('#laps-seg [data-laps="3"]').classList.contains("pad-focus"),
+);
+await press(0);
+await check("A chooses laps and returns to setup", () =>
+  document.getElementById("flow-startline").classList.contains("is-active"),
+);
 await page.evaluate(() => document.getElementById("setup-mode").click());
 // …and the ring is ALREADY on Single race (first non-back button), not the
 // back arrow.

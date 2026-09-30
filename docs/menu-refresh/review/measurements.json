@@ -9,7 +9,7 @@
         "height": 800,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
       "scroll": []
     },
@@ -21,7 +21,7 @@
         "height": 900,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
       "scroll": []
     },
@@ -33,7 +33,7 @@
         "height": 390,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
       "scroll": []
     },
@@ -45,7 +45,7 @@
         "height": 844,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
       "scroll": []
     },
@@ -57,16 +57,9 @@
         "height": 375,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 235,
-          "scroll": 241
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "laptop-720",
@@ -76,7 +69,7 @@
         "height": 720,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
       "scroll": []
     },
@@ -88,16 +81,202 @@
         "height": 568,
         "rotated": false
       },
-      "controls": 18,
+      "controls": 11,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
-          "client": 256,
-          "scroll": 413
+          "client": 276,
+          "scroll": 431
         }
       ]
+    },
+    {
+      "device": "deck",
+      "name": "rivals",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 7,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "rivals",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 7,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "rivals",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 7,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 330,
+          "scroll": 445
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "rivals",
+      "stage": {
+        "width": 390,
+        "height": 844,
+        "rotated": false
+      },
+      "controls": 7,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 733,
+          "scroll": 853
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "rivals",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 7,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 315,
+          "scroll": 511
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "rivals",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 7,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "length",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 8,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "length",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 8,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "length",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 8,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 330,
+          "scroll": 444
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "length",
+      "stage": {
+        "width": 390,
+        "height": 844,
+        "rotated": false
+      },
+      "controls": 8,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 733,
+          "scroll": 742
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "length",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 8,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 315,
+          "scroll": 465
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "length",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 8,
+      "smallControls": [],
+      "scroll": []
     },
     {
       "device": "deck",
@@ -107,14 +286,14 @@
         "height": 800,
         "rotated": false
       },
-      "controls": 24,
+      "controls": 17,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 592,
-          "scroll": 737
+          "scroll": 807
         }
       ]
     },
@@ -126,14 +305,14 @@
         "height": 900,
         "rotated": false
       },
-      "controls": 24,
+      "controls": 17,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 692,
-          "scroll": 737
+          "scroll": 807
         }
       ]
     },
@@ -145,14 +324,14 @@
         "height": 390,
         "rotated": false
       },
-      "controls": 24,
+      "controls": 17,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 210,
-          "scroll": 512
+          "scroll": 492
         }
       ]
     },
@@ -164,14 +343,14 @@
         "height": 844,
         "rotated": false
       },
-      "controls": 24,
+      "controls": 17,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
-          "client": 346,
-          "scroll": 710
+          "client": 396,
+          "scroll": 754
         }
       ]
     },
@@ -183,14 +362,14 @@
         "height": 375,
         "rotated": false
       },
-      "controls": 24,
+      "controls": 17,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 195,
-          "scroll": 512
+          "scroll": 495
         }
       ]
     },
@@ -202,14 +381,14 @@
         "height": 720,
         "rotated": false
       },
-      "controls": 24,
+      "controls": 17,
       "smallControls": [],
       "scroll": [
         {
           "id": "",
           "class": "start-scroll",
           "client": 512,
-          "scroll": 737
+          "scroll": 807
         }
       ]
     },

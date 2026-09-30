@@ -1,3 +1,4 @@
+import { renderRacerPortrait } from "./racer-portrait.js";
 import { initMenuUI } from "./menu-ui.js";
 import * as THREE from "three";
 import { installSceneryRendering } from "./scenery-shadows.js";
@@ -2513,9 +2514,8 @@ window.__zoomies.setFpsCap = (c) => {
   }
 }; // debug hook (pacing probe)
 
-// Lap count + difficulty live on the Game Mode screen as segmented rows (inside
-// the Grand Prix card), replacing the old cycle-tap buttons. Laps persist like
-// difficulty does. Applied at race build (buildKarts) + per-frame in aiActions.
+// Lap count and difficulty persist across the setup summary and detail pickers.
+// Applied at race build (buildKarts) and per-frame in aiActions.
 const LAPS_KEY = "zoomies-laps";
 if (_worldLaps) {
   TOTAL_LAPS = _worldLaps; // cup round: use the encoded world's lap count, not this device's saved one
@@ -2526,12 +2526,20 @@ if (_worldLaps) {
   } catch {}
 }
 function refreshRaceOptSegs() {
-  document
-    .querySelectorAll("#laps-seg .seg-btn")
-    .forEach((b) => b.classList.toggle("is-active", Number(b.dataset.laps) === TOTAL_LAPS));
-  document
-    .querySelectorAll("#diff-seg .seg-btn")
-    .forEach((b) => b.classList.toggle("is-active", b.dataset.diff === DIFFICULTY));
+  document.getElementById("setup-laps-name").textContent = `${TOTAL_LAPS} ${TOTAL_LAPS === 1 ? "lap" : "laps"}`;
+  document.getElementById("setup-rivals-name").textContent = AI_DIFFICULTY[DIFFICULTY].label;
+  document.querySelectorAll("#laps-seg .seg-btn").forEach((b) => {
+    const selected = Number(b.dataset.laps) === TOTAL_LAPS;
+    b.classList.toggle("is-active", selected);
+    b.classList.toggle("is-current", selected);
+    b.setAttribute("aria-pressed", String(selected));
+  });
+  document.querySelectorAll("#diff-seg .seg-btn").forEach((b) => {
+    const selected = b.dataset.diff === DIFFICULTY;
+    b.classList.toggle("is-active", selected);
+    b.classList.toggle("is-current", selected);
+    b.setAttribute("aria-pressed", String(selected));
+  });
 }
 document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
@@ -2541,11 +2549,11 @@ document.querySelectorAll("#laps-seg .seg-btn").forEach((b) =>
     } catch {}
     refreshRaceOptSegs();
     refreshStakes();
+    flowGo("startline", -1);
   }),
 );
-// Rivals segment (#diff-seg in index.html: Easy / Medium / Hard / Expert). The
-// handler + refreshRaceOptSegs are data-driven off data-diff, so adding a tier
-// is one button plus its AI_DIFFICULTY row.
+// Rivals detail cards share the AI table keys. Selecting one commits the
+// choice and returns to the summary; Back leaves the current value unchanged.
 document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   b.addEventListener("click", () => {
     DIFFICULTY = b.dataset.diff;
@@ -2554,6 +2562,7 @@ document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
     } catch {}
     refreshRaceOptSegs();
     refreshStakes();
+    flowGo("startline", -1);
   }),
 );
 
@@ -4406,29 +4415,23 @@ function syncGarageUI() {
   syncCreators();
   refreshEditorLocks();
 }
-// Setup preview cards share the catalog renders and open each picker directly.
+// Cache the combined portrait until the actual appearance changes.
+let racerPortraitKey = "";
 function refreshRacerSummary() {
-  const el = document.getElementById("racer-summary");
-  if (!el) return;
-  const cat = catSpec(garageConfig);
-  const kart = kartSpec(garageConfig);
-  el.textContent = `${cat.name} · ${kart.name}`;
-  document.getElementById("setup-cat-name").textContent = cat.name;
-  document.getElementById("setup-kart-name").textContent = kart.name;
-  document.getElementById("startline-edit").setAttribute("aria-label", `Change cat: ${cat.name}`);
-  document.getElementById("startline-kart").setAttribute("aria-label", `Change kart: ${kart.name}`);
-  const ct = document.getElementById("racer-thumb-cat");
-  if (ct)
-    ct.src =
-      garageConfig.cat === CUSTOM_CAT_IDX
-        ? "assets/catalog/custom-cat.jpg"
-        : `assets/catalog/cat-${garageConfig.cat}.jpg`;
-  const kt = document.getElementById("racer-thumb-kart");
-  if (kt)
-    kt.src =
-      garageConfig.kart === CUSTOM_KART_IDX
-        ? "assets/catalog/custom-kart.jpg"
-        : `assets/catalog/kart-${garageConfig.kart}.jpg`;
+  const cat = catSpec(garageConfig),
+    kart = kartSpec(garageConfig);
+  document.getElementById("racer-summary").textContent = `${cat.name} · ${kart.name}`;
+  const canvas = document.getElementById("racer-portrait");
+  canvas.setAttribute("aria-label", `${cat.name} driving ${kart.name}`);
+  const key = _previewKey(garageConfig);
+  if (key !== racerPortraitKey) {
+    racerPortraitKey = key;
+    canvas.dataset.ready = "false";
+    renderRacerPortrait(canvas, cat, kart).catch((error) => {
+      racerPortraitKey = "";
+      console.warn("Racer portrait unavailable", error);
+    });
+  }
 }
 // Entering any racer-family screen (cat / kart / the two studios): open the
 // showroom once — the draft persists across the whole family and commits when
@@ -5177,6 +5180,7 @@ function flowGo(step, dir = 1, instant = false) {
   // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
   if (step === "title") refreshTitlePlay();
   else if (step === "mode") refreshModeCards();
+  else if (step === "rivals" || step === "length") refreshRaceOptSegs();
   else if (step === "track") renderTrackCards();
   else if (step === "cup") renderCupOptions();
   else if (step === "garage") {
@@ -5259,7 +5263,14 @@ function flowBack() {
     flowGo(flowStep === "cat-edit" ? "cat" : "kart", -1);
     return true;
   }
-  const back = { mode: "startline", track: "startline", cup: "startline", startline: "title" }[flowStep];
+  const back = {
+    rivals: "startline",
+    length: "startline",
+    mode: "startline",
+    track: "startline",
+    cup: "startline",
+    startline: "title",
+  }[flowStep];
   if (!back) return false;
   flowGo(back, -1);
   return true;
@@ -5848,6 +5859,8 @@ function refreshStartline() {
     else goBtn.textContent = GO_LABELS[raceMode] || GO_LABELS.gp;
   }
 }
+document.getElementById("setup-rivals").addEventListener("click", () => flowGo("rivals"));
+document.getElementById("setup-laps").addEventListener("click", () => flowGo("length"));
 document.getElementById("startline-edit")?.addEventListener("click", () => openRacerPicker("cat"));
 document.getElementById("startline-kart")?.addEventListener("click", () => openRacerPicker("kart"));
 // GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.

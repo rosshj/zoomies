@@ -75,7 +75,8 @@ const cacheInfo = await page.evaluate(async () => {
     menusCached:
       !!(await c.match("./menu-refresh.css")) &&
       !!(await c.match("./src/menu-ui.js")) &&
-      !!(await c.match("./src/menu-icons.js")),
+      !!(await c.match("./src/menu-icons.js")) &&
+      !!(await c.match("./src/racer-portrait.js")),
   };
 });
 

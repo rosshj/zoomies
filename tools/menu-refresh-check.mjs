@@ -51,7 +51,25 @@ try {
   await shot("home-deck");
   await click("#start-btn");
   await step("startline");
+  await p.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
   await shot("setup-deck");
+  await click("#setup-rivals");
+  await step("rivals");
+  await click('#diff-seg [data-diff="hard"]');
+  await step("startline");
+  assert.equal(await p.locator("#setup-rivals-name").textContent(), "Hard");
+  assert.equal(await p.evaluate(() => localStorage.getItem("zoomies-difficulty")), "hard");
+  await click("#setup-rivals");
+  await click("#flow-rivals [data-back]");
+  assert.equal(await p.locator("#setup-rivals-name").textContent(), "Hard");
+  await click("#setup-laps");
+  await step("length");
+  await click('#laps-seg [data-laps="2"]');
+  await step("startline");
+  assert.equal(await p.locator("#setup-laps-name").textContent(), "2 laps");
+  await click("#setup-laps");
+  await click('#laps-seg [data-laps="3"]');
+  const portraitBefore = await p.locator("#racer-portrait").evaluate((c) => c.toDataURL());
   await click("#setup-mode");
   await click("#mode-tt");
   await step("startline");
@@ -66,6 +84,12 @@ try {
   await step("startline");
   const saved = await garage();
   assert.equal(saved.cat, 1);
+  await p.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
+  assert.notEqual(
+    await p.locator("#racer-portrait").evaluate((c) => c.toDataURL()),
+    portraitBefore,
+    "Portrait did not update with selected cat",
+  );
   await click("#startline-kart");
   await step("kart");
   await click("#flow-kart [data-back]");

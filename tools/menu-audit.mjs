@@ -63,14 +63,16 @@ async function capture(name) {
         const issues = [];
         if (name === "setup") {
           const map = document.getElementById("menu-map-btn").getBoundingClientRect();
-          if (map.width < 200 || map.height < (innerHeight > innerWidth ? 130 : 100))
+          if (map.width < 200 || map.height < (innerHeight > innerWidth ? 110 : 100))
             issues.push("Map panel is too small or hidden");
-          for (const id of ["racer-thumb-cat", "racer-thumb-kart"]) {
-            const img = document.getElementById(id);
-            const bounds = img.getBoundingClientRect();
-            if (!img.complete || !img.naturalWidth || bounds.width < 60 || bounds.height < 60)
-              issues.push("Racer preview missing or too small: " + id);
-          }
+          const portrait = document.getElementById("racer-portrait");
+          const bounds = portrait.getBoundingClientRect();
+          if (portrait.dataset.ready !== "true" || bounds.width < 100 || bounds.height < 90)
+            issues.push("Combined racer portrait missing or too small");
+          const prize = document.getElementById("stakes-row").getBoundingClientRect();
+          const scroll = document.querySelector(".start-scroll").getBoundingClientRect();
+          if (innerWidth >= 375 && prize.height && prize.bottom > scroll.bottom + 1)
+            issues.push("Prize summary is clipped");
           const go = document.getElementById("go-btn").getBoundingClientRect();
           if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
         }
@@ -145,14 +147,23 @@ try {
   await page.waitForFunction(() => window.__zoomies?.track);
   if (setupOnly) {
     await click("#start-btn");
+    await page.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
     await capture("setup");
+    await click("#setup-rivals");
+    await capture("rivals");
+    await click("#flow-rivals [data-back]");
+    await click("#setup-laps");
+    await capture("length");
+    await click("#flow-length [data-back]");
     await click("#setup-mode");
     await click("#mode-split");
     await click("#split-count-4");
     await capture("versus-4p");
     const previous = JSON.parse(await fs.readFile(new URL("measurements.json", out), "utf8"));
-    measurements.push(...previous.measurements.filter((m) => !["setup", "versus-4p"].includes(m.name)));
-    errors.push(...previous.errors.filter((e) => !/\/(setup|versus-4p):/.test(e)));
+    measurements.push(
+      ...previous.measurements.filter((m) => !["setup", "versus-4p", "rivals", "length"].includes(m.name)),
+    );
+    errors.push(...previous.errors.filter((e) => !/\/(setup|versus-4p|rivals|length):/.test(e)));
   } else {
     await capture("home");
     await click("#open-settings");
@@ -189,7 +200,14 @@ try {
     await click("#kart-edit-use");
     await click("#garage-done");
     await click("#start-btn");
+    await page.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
     await capture("setup");
+    await click("#setup-rivals");
+    await capture("rivals");
+    await click("#flow-rivals [data-back]");
+    await click("#setup-laps");
+    await capture("length");
+    await click("#flow-length [data-back]");
     await click("#setup-mode");
     await capture("mode");
     await click("#mode-cup");

@@ -1924,99 +1924,141 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   }
 }
 
-/* Visual racer choices: selecting the preview opens that picker directly. */
-#stage #flow-startline .setup-racer-preview {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  background: transparent;
-  padding: 0;
-  gap: 6px;
-}
-#stage #flow-startline .racer-summary-accessible {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-#stage #flow-startline .setup-racer-actions {
+/* Race setup presents the current recipe; choices live one level below. */
+#stage #flow-startline .setup-pickers {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
-#stage #flow-startline .racer-preview-choice {
-  min-width: 0;
-  padding: 0;
-  overflow: hidden;
-  background: #fff2d8;
-  color: #261c36;
-  border: 0;
-  box-shadow: none;
+#stage #flow-startline .setup-pickers .setup-choice {
+  width: 100%;
+  height: 100%;
+  min-height: 56px;
+}
+#stage #flow-startline .setup-racer-preview {
   display: flex;
   flex-direction: column;
-  text-align: left;
+  align-items: stretch;
+  background: #211e31;
+  border-radius: var(--control-radius);
+  overflow: hidden;
+  gap: 0;
+  padding: 0;
 }
-#stage #flow-startline .racer-preview-choice img {
+#stage #flow-startline .setup-racer-preview > .start-racer-label {
+  padding: 12px 14px 0;
+}
+#stage #flow-startline #racer-portrait {
   display: block;
   width: 100%;
-  height: 120px;
-  background: #211e31;
+  height: 230px;
   object-fit: contain;
-  object-position: center;
-  border: 0;
-  border-radius: 0;
+  background: radial-gradient(ellipse at 50% 80%, #4c3f64, #211e31 75%);
 }
-#stage #flow-startline .racer-preview-choice > span {
-  width: 100%;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+#stage #flow-startline .racer-preview-footer {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 10px 12px;
+  background: #2b223b;
 }
-#stage #flow-startline .racer-preview-choice small {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  opacity: .7;
-}
-#stage #flow-startline .racer-preview-choice strong {
+#stage #flow-startline #racer-summary {
   font-size: 14px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
 }
-#stage.menu-portrait #flow-startline .racer-preview-choice img {
-  height: 96px;
-}
-#stage.menu-portrait #flow-startline .racer-preview-choice > span {
-  padding: 10px;
+#stage #flow-startline .setup-racer-actions {
+  display: flex;
+  flex: 0 0 auto;
   gap: 6px;
 }
-#stage.menu-portrait #flow-startline .racer-preview-choice strong {
+#stage #flow-startline .setup-racer-actions button {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px 12px;
   font-size: 12px;
+}
+#stage #flow-startline .setup-race-note {
+  padding: 0 4px;
+}
+#stage.menu-portrait #flow-startline .startline-body {
+  grid-template-rows: minmax(110px, 1fr) minmax(0, min(500px, 80%));
+}
+#stage.menu-portrait #flow-startline #racer-portrait {
+  height: 180px;
+}
+#stage.menu-compact #flow-startline .setup-pickers {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+#stage.menu-compact #flow-startline .setup-choice {
+  padding: 6px;
+  min-height: 52px;
+}
+#stage.menu-compact #flow-startline .setup-choice strong {
+  font-size: 12px;
+}
+#stage.menu-compact #flow-startline #racer-portrait {
+  height: 90px;
+}
+#stage.menu-compact #flow-startline .racer-preview-footer {
+  padding: 4px 8px;
+}
+#stage.menu-compact #flow-startline #racer-summary {
+  font-size: 12px;
+}
+#stage .race-detail-inner {
+  width: min(800px, 100%);
+  margin: 0 auto;
+  padding: 20px;
+}
+#stage .race-detail-inner > p {
+  color: #d3c7df;
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 0 0 20px;
+}
+#stage .race-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+#stage #menu .race-detail-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  white-space: normal;
+  padding: 20px;
+  gap: 8px;
+  background: #2b223b;
+  color: #fff2d8;
+}
+#stage #menu .race-detail-choice.is-active {
+  background: #fff2d8;
+  color: #261c36;
+}
+#stage .race-detail-choice strong { font-size: 20px; }
+#stage .race-detail-choice span { font-size: 14px; line-height: 1.5; }
+#stage.menu-portrait .race-detail-grid { grid-template-columns: minmax(0, 1fr); }
+
+#stage.menu-compact #flow-startline .setup-racer-preview > .start-racer-label:has(.seat-input.hidden) {
+  display: none;
 }
 #stage.menu-compact #flow-startline .setup-racer-preview {
   padding: 0;
 }
-#stage.menu-compact #flow-startline .racer-preview-choice {
-  display: grid;
-  grid-template-columns: 60px minmax(0, 1fr);
+
+#stage.menu-compact #flow-startline .setup-choice small {
+  white-space: nowrap;
+  font-size: 9px;
+  letter-spacing: .08em;
 }
-#stage.menu-compact #flow-startline .racer-preview-choice img {
-  height: 60px;
+#stage.menu-compact #flow-startline .setup-choice strong {
+  font-size: 11px;
+  line-height: 1.2;
 }
-#stage.menu-compact #flow-startline .racer-preview-choice > span {
-  grid-template-columns: minmax(0, 1fr);
-  padding: 6px;
-  gap: 2px;
-}
-#stage.menu-compact #flow-startline .racer-preview-choice strong {
-  font-size: 12px;
-}
-#stage.menu-compact #flow-startline .racer-preview-choice b,
-#stage.menu-compact #flow-startline .setup-racer-preview > .start-racer-label:has(.seat-input.hidden) {
-  display: none;
+#stage .race-detail-choice span {
+  font-weight: 400;
 }

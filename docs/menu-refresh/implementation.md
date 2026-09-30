@@ -78,3 +78,12 @@ The setup map yields space to two visual picker cards for the selected cat and k
 Setup audit checks now require both preview images to load and remain at least 60×60 CSS pixels, alongside map and control bounds checks. The menu interaction regression covers changing either selection and returning to setup.
 
 For setup-only visual iterations, `node tools/menu-audit.mjs --setup-only` refreshes setup and Versus captures and retains the other validated gallery measurements.
+
+
+## Summary-first setup and a combined racer portrait
+
+Race setup presents Mode, Track, Length, and Rivals as compact current-value cards. Length and Rivals open dedicated pickers; selecting a value saves it and returns to setup, while Back leaves the selection unchanged. Difficulty descriptions reflect the AI table's pace, shot frequency, shielding, and catnip behavior. The selected choice exposes its pressed state and receives initial keyboard/controller focus.
+
+A single cat-in-kart portrait replaces the two catalog images. `src/racer-portrait.js` renders the actual race models, mounting pose, colours, livery, number, breed, and accessories into a cached canvas whenever the selected appearance changes. It uses a small lazy WebGL renderer and renders only on selection changes; no extra animation loop runs during racing. Stale queued selections are skipped, and temporary model resources are disposed after each snapshot.
+
+The setup visual pass includes both drill-in screens at all six viewport sizes (182 gallery captures total). Interaction checks cover choosing difficulty/laps, Back without changes, and portrait updates when changing the cat; controller checks cover initial selection focus and A/B return paths. Cup/daily and offline checks cover state preservation and the new portrait module.
