@@ -4794,7 +4794,7 @@ function commitRacer() {
     // One seat per visit, straight back to the start line. Leaving the racer
     // family closes the showroom, so the next entry reseeds the shared draft
     // from P1's save — a finished seat pass can't leak its picks into P1's.
-    refreshRacerEyebrows();
+    refreshRacerTitles();
     refreshSeatTiles();
     flowGo(_racerReturn);
     return;
@@ -4808,11 +4808,11 @@ function commitRacer() {
   flowGo(_racerReturn);
 }
 // Versus labels whose racer is being picked on each pass.
-function refreshRacerEyebrows() {
+function refreshRacerTitles() {
   for (const which of ["cat", "kart"]) {
-    document.getElementById(which + "-eyebrow").textContent = _pickingSeat
-      ? `Player ${_pickingSeat} · Garage`
-      : "Make it yours";
+    document.querySelector(`#flow-${which} .flow-h`).textContent = _pickingSeat
+      ? `Player ${_pickingSeat}’s ${which}`
+      : `Pick your ${which}`;
   }
 }
 // Studio actions: Unlock buys the creator; Use adopts the design and rolls on.
@@ -5029,11 +5029,11 @@ function flowGo(step, dir = 1, instant = false) {
   } else if (step === "cat") {
     openRacerStep();
     renderCatCards();
-    refreshRacerEyebrows();
+    refreshRacerTitles();
   } else if (step === "kart") {
     openRacerStep();
     renderKartCards();
-    refreshRacerEyebrows();
+    refreshRacerTitles();
   } else if (step === "cat-edit") {
     openRacerStep();
     _garageDraft.cat = CUSTOM_CAT_IDX;
@@ -5161,7 +5161,9 @@ function openRacerPicker(which, origin = "startline") {
 function refreshGarageHome() {
   const cat = catSpec(_garageDraft),
     kart = kartSpec(_garageDraft);
-  document.getElementById("garage-eyebrow").textContent = _pickingSeat ? `Player ${_pickingSeat}` : "Make it yours";
+  document.querySelector("#flow-garage .flow-h").textContent = _pickingSeat
+    ? `Player ${_pickingSeat}’s garage`
+    : "Garage";
   document.getElementById("garage-cat-name").textContent = cat.name;
   document.getElementById("garage-kart-name").textContent = kart.name;
   document.getElementById("garage-cat-thumb").src =
