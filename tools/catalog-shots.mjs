@@ -14,7 +14,7 @@ import path from "node:path";
 const ROOT = path.resolve(new URL("..", import.meta.url).pathname),
   PORT = 8093;
 const OUT = path.join(ROOT, "assets", "catalog");
-const SIZE = 320; // square tile; displayed at ~100px so this is plenty
+const SIZE = 480; // square artwork, sharp enough for the expanded unlock sheet
 const MIME = {
   ".html": "text/html",
   ".js": "text/javascript",
@@ -77,13 +77,12 @@ function contrastBg(hex) {
 // --- The shot list: every catalog id → a viewer preset spec + its backdrop.
 // Cat portraits cycle a few camera angles so the grid reads like a photo wall
 // — the classic ¾, a low straight-on "selfie", the mirrored ¾, and a low ¾.
-// ty aims BELOW the cat's centre so it sits high in frame (aiming above the
-// centre pushed the subject to the bottom of the tile).
+// Each angle is fitted to the full model bounds, including its accessories.
 const CAT_ANGLES = [
-  { theta: 0.75, phi: 1.22, r: 0.97, ty: -0.22 }, // classic ¾
-  { theta: 0.06, phi: 1.34, r: 0.9, ty: -0.05 }, // low straight-on selfie
-  { theta: -0.65, phi: 1.26, r: 0.94, ty: -0.18 }, // mirrored ¾
-  { theta: 0.42, phi: 1.38, r: 0.92, ty: -0.12 }, // low ¾
+  { theta: 0.75, phi: 1.22 }, // classic ¾
+  { theta: 0.06, phi: 1.34 }, // low straight-on selfie
+  { theta: -0.65, phi: 1.26 }, // mirrored ¾
+  { theta: 0.42, phi: 1.38 }, // low ¾
 ];
 const shots = [];
 CAT_PRESETS.forEach((c, i) =>
@@ -94,13 +93,11 @@ CAT_PRESETS.forEach((c, i) =>
     spec: { kind: "cat", ...c },
   }),
 );
-// Karts shoot WIDE (3:2) — they're wide subjects, and the pick-your-kart grid
-// + Cat-alog show them on wide tiles.
+// Cats and karts share square artwork in every picker and detail sheet.
 KART_PRESETS.forEach((k, i) =>
   shots.push({
     file: `kart-${i}.jpg`,
     bg: contrastBg(k.color),
-    wide: true,
     spec: { kind: "kart", name: k.name, color: k.color, style: k.style, number: k.number, livery: k.livery },
   }),
 );
@@ -115,7 +112,6 @@ shots.push({
 shots.push({
   file: "custom-kart.jpg",
   bg: contrastBg(0xa259ff),
-  wide: true,
   spec: { kind: "kart", name: "Custom Kart", color: 0xa259ff, style: 3, number: 0 },
 });
 // Prize accessories (the acc.* Cat-alog entries), each worn by a plain grey cat
@@ -159,22 +155,18 @@ await page.evaluate(() => window.__viewer.setGameLook(true)); // ship the in-gam
 
 const selectedShots = shots.filter(
   (s) =>
-    (!process.env.CATS_ONLY || s.file.startsWith("cat-")) && (!process.env.KARTS_ONLY || s.file.startsWith("kart-")),
+    (!process.env.ROSTER_ONLY || !s.file.startsWith("acc-")) &&
+    (!process.env.CATS_ONLY || s.file.startsWith("cat-")) &&
+    (!process.env.KARTS_ONLY || s.file.startsWith("kart-")),
 );
 for (const shot of selectedShots) {
-  // Karts render on a wide 3:2 canvas; everything else stays square.
-  await page.setViewportSize(shot.wide ? { width: 480, height: 320 } : { width: SIZE, height: SIZE });
+  await page.setViewportSize({ width: SIZE, height: SIZE });
   await page.evaluate(({ spec, bg, zoom, angle }) => {
     const v = window.__viewer;
     v.setBackground(bg);
     v.showPreset(spec);
     v.freeze(0); // straight wheels / neutral idle pose
-    // Tight three-quarter framing: pull in from the browse-friendly default
-    // (0.88 keeps a whisker of headroom — 0.8 clipped the tallest ears). The
-    // sitting cats run taller (legs to the floor), so they get a slightly
-    // wider, more level view that keeps paws and hind feet in frame.
-    // Accessory tiles bias toward where the accessory sits: "head" pulls in
-    // high on the hat, "neck" keeps the chest in view.
+    // Accessory close-ups keep their crop; full racers fit their model bounds.
     v.orbit.theta = 0.75;
     if (zoom === "head") {
       v.orbit.phi = 1.08;
@@ -187,15 +179,11 @@ for (const shot of selectedShots) {
     } else if (angle) {
       v.orbit.theta = angle.theta;
       v.orbit.phi = angle.phi;
-      v.orbit.radius *= angle.r;
-      v.orbit.target.y += angle.ty;
     } else {
-      // Karts: level ¾, pulled a touch tighter on the wide canvas, aimed a
-      // touch low so the kart rides high in the tile.
+      // Karts: level three-quarter view, fitted below to the square canvas.
       v.orbit.phi = 1.13;
-      v.orbit.radius *= 0.82;
-      v.orbit.target.y -= 0.32;
     }
+    if (!zoom) v.fitCurrent(1.12);
   }, shot);
   await page.waitForTimeout(350); // let a few frames render at the new framing
   await page.screenshot({ path: path.join(OUT, shot.file), type: "jpeg", quality: 88 });

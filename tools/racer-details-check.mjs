@@ -15,11 +15,17 @@ try {
   await page.locator("#startline-kart").click();
   await page.locator('[data-inventory="kart"][data-filter="all"]').click();
   const card = (id) => page.locator(`[data-racer-id="${id}"]`);
+  const assertSquare = async (locator) => {
+    const box = await locator.boundingBox();
+    assert.ok(Math.abs(box.width - box.height) < 1, "Artwork frame must be square");
+  };
+  await assertSquare(card("kart.0").locator(".racer-shot"));
   assert.equal(await card("kart.0").locator(".track-sub").textContent(), "Equipped");
   assert.equal(await card("kart.1").locator(".track-sub").textContent(), "Owned");
   await card("kart.3").click();
   await page.locator("#racer-details:not(.hidden)").waitFor();
   await page.waitForTimeout(200);
+  await assertSquare(page.locator("#racer-details-image"));
   assert.equal(await page.evaluate(() => document.activeElement.id), "racer-details-close");
   assert.match(await page.locator("#racer-details-action").textContent(), /Buy for/);
   await page.screenshot({ path: "/tmp/racer-details-buy.png" });
@@ -40,6 +46,7 @@ try {
   assert.match(await page.locator("#racer-details-requirement").textContent(), /Expert/);
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(300);
+  await assertSquare(page.locator("#racer-details-image"));
   await page.screenshot({ path: "/tmp/racer-details-cup.png" });
   await page.locator("#racer-details-action").click();
   assert.equal(await page.locator("#menu").getAttribute("data-step"), "cup");

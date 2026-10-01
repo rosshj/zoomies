@@ -2259,6 +2259,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #menu .racer-tap .racer-shot {
   width: 100%;
   max-width: none;
+  aspect-ratio: 1;
   height: auto;
   flex: 0 0 auto;
   align-self: stretch;
@@ -2290,7 +2291,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   background: #2b233b;
   color: #fff3dc;
 }
-#racer-details-image { width: 100%; height: 100%; object-fit: contain; min-height: 0; background: #211a30; }
+#racer-details-image { width: 100%; height: auto; aspect-ratio: 1; align-self: start; object-fit: contain; min-height: 0; background: #211a30; }
 .racer-details-copy { padding: 20px; text-align: left; }
 .racer-details-copy h2 { margin: 0; font-size: 22px; }
 .racer-details-copy p { font-size: 14px; line-height: 1.45; margin: 12px 0; }
@@ -2298,4 +2299,5 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 .racer-details-copy button { width: 100%; min-height: 44px; margin-top: 8px; }
 #racer-details-action[hidden] { display: none; }
 #stage.menu-portrait .racer-details-card { grid-template-columns: minmax(0, 1fr); max-width: 360px; }
-#stage.menu-portrait #racer-details-image { height: 180px; object-fit: contain; background: #211a30; }
+#stage.menu-portrait #racer-details-image { height: auto; }
+#stage .prize-tile .prize-shot { aspect-ratio: 1; }
