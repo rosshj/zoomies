@@ -83,6 +83,15 @@ async function capture(name) {
             issues.push("Summary choices have unequal widths");
           const go = document.getElementById("go-btn").getBoundingClientRect();
           if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
+          if (!document.getElementById("stage").classList.contains("menu-portrait")) {
+            const racer = document.querySelector(".setup-racer-preview").getBoundingClientRect();
+            const topCard = choices.length ? rowBounds : racer;
+            if (Math.abs(topCard.top - mode.top) > 1 || Math.abs(go.bottom - map.bottom) > 1)
+              issues.push("Landscape columns do not align at top and bottom");
+            const gap = parseFloat(getComputedStyle(document.querySelector(".start-side")).gap);
+            if (Math.abs(go.top - racer.bottom - gap) > 1)
+              issues.push("Racer card does not fill the space above Start");
+          }
         }
         const root = document.getElementById(name.startsWith("setup") ? "flow-startline" : "settings");
         for (const group of root.querySelectorAll(".seg-toggle")) {

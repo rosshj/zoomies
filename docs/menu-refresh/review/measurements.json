@@ -697,14 +697,7 @@
       },
       "controls": 16,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 592,
-          "scroll": 713
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "macbook",
@@ -716,14 +709,7 @@
       },
       "controls": 16,
       "smallControls": [],
-      "scroll": [
-        {
-          "id": "",
-          "class": "start-scroll",
-          "client": 692,
-          "scroll": 713
-        }
-      ]
+      "scroll": []
     },
     {
       "device": "iphone-landscape",
@@ -797,7 +783,7 @@
           "id": "",
           "class": "start-scroll",
           "client": 512,
-          "scroll": 713
+          "scroll": 573
         }
       ]
     },

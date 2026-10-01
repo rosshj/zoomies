@@ -2137,3 +2137,22 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-portrait #flow-startline .start-scroll {
   flex: 0 1 auto;
 }
+
+/* Let the racer absorb landscape space between the choices and Start. */
+#stage:not(.menu-portrait) #flow-startline .start-side {
+  justify-content: flex-start;
+}
+#stage:not(.menu-portrait) #flow-startline .start-scroll {
+  flex: 1 1 0;
+}
+#stage:not(.menu-portrait) #flow-startline .setup-racer-preview {
+  flex: 1 0 auto;
+}
+#stage:not(.menu-portrait) #flow-startline #racer-portrait {
+  flex: 1 0 90px;
+  height: 90px;
+  min-height: 90px;
+}
+#stage:not(.menu-portrait) #flow-startline .setup-racer-preview > :not(canvas) {
+  flex-shrink: 0;
+}
