@@ -2169,7 +2169,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-portrait :is(#flow-mode, #flow-track, #flow-cup, #flow-rivals, #flow-length) > .flow-body {
   padding: 12px max(16px, var(--safe-right)) max(20px, var(--safe-bottom)) max(16px, var(--safe-left));
 }
-#stage #flow-startline .setup-track-panel {
+#stage #flow-startline .setup-racer-panel {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -2181,7 +2181,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   width: 100%;
   min-height: 56px;
 }
-#stage #flow-startline .setup-track-panel .map-chip {
+#stage #flow-startline .setup-racer-panel .setup-racer-preview {
   flex: 1 1 0;
   height: auto;
 }
@@ -2202,7 +2202,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 /* One spacing rhythm, with no empty summary row or footer copy. */
 #stage #flow-startline { --setup-gap: 12px; }
 #stage.menu-compact #flow-startline { --setup-gap: 8px; }
-#stage #flow-startline.flow-screen :is(.startline-body, .setup-track-panel, .start-side, .start-scroll, .setup-pickers) {
+#stage #flow-startline.flow-screen :is(.startline-body, .setup-racer-panel, .start-side, .start-scroll, .setup-pickers) {
   gap: var(--setup-gap);
 }
 #stage #flow-startline .setup-pickers:not(:has(> :not(.hidden))) {
@@ -2216,7 +2216,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   display: flex;
   flex-direction: column;
 }
-#stage.menu-portrait #flow-startline .setup-track-panel {
+#stage.menu-portrait #flow-startline .setup-racer-panel {
   flex: 1 1 0;
   min-height: 184px;
 }
@@ -2229,7 +2229,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   flex: 0 1 auto;
 }
 
-/* Let the racer absorb landscape space between the choices and Start. */
+/* Keep both landscape columns stretched to the available height. */
 #stage:not(.menu-portrait) #flow-startline .start-side {
   justify-content: flex-start;
 }
@@ -2333,3 +2333,24 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-startline .racer-preview-footer { background: transparent; }
 #stage #flow-startline .setup-racer-preview .start-racer-label,
 #stage #flow-startline #racer-summary { color: inherit; }
+
+/* Racer leads the setup; the track fills the space above Start. */
+#stage #flow-startline .setup-racer-panel #racer-portrait {
+  flex: 1 1 90px;
+  height: 90px;
+  min-height: 90px;
+}
+#stage #flow-startline .start-scroll > .map-chip {
+  flex: 1 0 130px;
+  height: auto;
+}
+#stage.menu-portrait #flow-startline .setup-racer-panel {
+  min-height: 240px;
+}
+#stage.menu-portrait #flow-startline .start-side {
+  max-height: calc(100% - 252px);
+}
+#stage.menu-portrait #flow-startline .start-scroll > .map-chip {
+  height: clamp(110px, 24svh, 210px);
+  flex: 0 0 auto;
+}

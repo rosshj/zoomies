@@ -655,25 +655,9 @@
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body startline-body">
-        <!-- Mode comes first, followed by the track map and race summary. -->
-        <div class="setup-track-panel">
+        <!-- Mode comes first, followed by your racer and the race summary. -->
+        <div class="setup-racer-panel">
           <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
-          <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
-            <span class="map-preview-heading">Track <span class="map-chevron" aria-hidden="true">›</span></span>
-            <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
-            <span id="menu-map-label" class="map-label">Classic circuit</span>
-            <span class="map-edit-hint">Choose track ›</span>
-          </button>
-        </div>
-        <div class="start-side">
-          <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
-               720p window); GO itself stays pinned below the scroll region so
-               the primary action can never be pushed off-screen. -->
-          <div class="start-scroll">
-          <div class="setup-pickers">
-            <div id="laps-row"><button id="setup-laps" class="setup-choice"><span><small>LENGTH</small><strong id="setup-laps-name">3 laps</strong></span></button></div>
-            <div id="diff-row"><button id="setup-rivals" class="setup-choice"><span><small>RIVALS</small><strong id="setup-rivals-name">Medium</strong></span></button></div>
-          </div>
           <div class="start-racer setup-racer-preview">
             <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
             <canvas id="racer-portrait" width="640" height="400" role="img" aria-label="Your cat driving your kart"></canvas>
@@ -685,6 +669,22 @@
               </div>
             </div>
           </div>
+        </div>
+        <div class="start-side">
+          <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
+               720p window); GO itself stays pinned below the scroll region so
+               the primary action can never be pushed off-screen. -->
+          <div class="start-scroll">
+          <div class="setup-pickers">
+            <div id="laps-row"><button id="setup-laps" class="setup-choice"><span><small>LENGTH</small><strong id="setup-laps-name">3 laps</strong></span></button></div>
+            <div id="diff-row"><button id="setup-rivals" class="setup-choice"><span><small>RIVALS</small><strong id="setup-rivals-name">Medium</strong></span></button></div>
+          </div>
+          <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
+            <span class="map-preview-heading">Track <span class="map-chevron" aria-hidden="true">›</span></span>
+            <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
+            <span id="menu-map-label" class="map-label">Classic circuit</span>
+            <span class="map-edit-hint">Choose track ›</span>
+          </button>
           <!-- Versus only (revealed in split mode): how many humans share the
                screen (2 rows / quadrants), then one compact row per extra seat
                — catalog thumbnails + a live input badge (which pad / keyboard

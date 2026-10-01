@@ -70,7 +70,8 @@ async function capture(name) {
           if (portrait.dataset.ready !== "true" || bounds.width < 100 || bounds.height < 90)
             issues.push("Combined racer portrait missing or too small");
           const mode = document.getElementById("setup-mode").getBoundingClientRect();
-          if (mode.bottom > map.top + 1) issues.push("Mode must appear above the map");
+          const racer = document.querySelector(".setup-racer-preview").getBoundingClientRect();
+          if (mode.bottom > racer.top + 1) issues.push("Mode must appear above your racer");
           const row = document.querySelector(".setup-pickers");
           const rowBounds = row.getBoundingClientRect();
           const choices = [...row.children].map((el) => el.getBoundingClientRect()).filter((r) => r.width);
@@ -84,13 +85,11 @@ async function capture(name) {
           const go = document.getElementById("go-btn").getBoundingClientRect();
           if (go.bottom > innerHeight || go.right > innerWidth) issues.push("Start action is clipped");
           if (!document.getElementById("stage").classList.contains("menu-portrait")) {
-            const racer = document.querySelector(".setup-racer-preview").getBoundingClientRect();
-            const topCard = choices.length ? rowBounds : racer;
-            if (Math.abs(topCard.top - mode.top) > 1 || Math.abs(go.bottom - map.bottom) > 1)
+            const topCard = choices.length ? rowBounds : map;
+            if (Math.abs(topCard.top - mode.top) > 1 || Math.abs(go.bottom - racer.bottom) > 1)
               issues.push("Landscape columns do not align at top and bottom");
             const gap = parseFloat(getComputedStyle(document.querySelector(".start-side")).gap);
-            if (Math.abs(go.top - racer.bottom - gap) > 1)
-              issues.push("Racer card does not fill the space above Start");
+            if (Math.abs(go.top - map.bottom - gap) > 1) issues.push("Track card does not fill the space above Start");
           }
         }
         const root = document.getElementById(name.startsWith("setup") ? "flow-startline" : "settings");
