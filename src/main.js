@@ -8303,10 +8303,14 @@ function loopBody(now) {
     // the top of the loop): showroom and track drift both draw at ~30fps
     // (20 in Battery saver, 10 when idle) and the canvas holds the frame between.
     if (_garageOpen) {
-      // Garage sub-screen: orbit the camera around the parked preview kart so the
-      // player can inspect their chosen cat + kart in 3D.
-      renderGarage(now / 1000, dt);
-      return;
+      // Pickers keep the same track orbit as Home and setup. Only the garage
+      // and custom studios need the separate, live showroom preview.
+      const showroom = flowStep !== "cat" && flowStep !== "kart";
+      if (_garagePreview) _garagePreview.visible = showroom;
+      if (showroom) {
+        renderGarage(now / 1000, dt);
+        return;
+      }
     }
     // Debug/screenshot hook: window.__campin = [x,y,z, tx,ty,tz] pins the menu
     // camera to a fixed shot (headless tooling flies it to the track set pieces).

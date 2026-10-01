@@ -92,6 +92,11 @@ try {
   await step("startline");
   await click("#startline-edit");
   await step("cat");
+  assert.deepEqual(
+    await p.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]),
+    [homeCamera.fov, homeCamera.position[1]],
+    "Cat picker changed the Home track orbit",
+  );
   await shot("cats-deck");
   await click("#cat-grid button:nth-child(2)");
   await step("startline");
@@ -105,6 +110,11 @@ try {
   );
   await click("#startline-kart");
   await step("kart");
+  assert.deepEqual(
+    await p.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]),
+    [homeCamera.fov, homeCamera.position[1]],
+    "Kart picker changed the Home track orbit",
+  );
   await click("#flow-kart [data-back]");
   await step("startline");
   assert.deepEqual(await garage(), saved, "Cancel changed saved racer");
