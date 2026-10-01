@@ -15,9 +15,6 @@ export function initMenuUI() {
     () => document.documentElement.classList.remove("keyboard-navigation"),
     true,
   );
-  // Apply stays outside Track Maker's long scroll area.
-  const trackActions = document.querySelector("#track-panel .track-actions");
-  document.getElementById("track-panel").append(trackActions);
   document.getElementById("track-apply").textContent = "Use this track";
   const catalogTabs = document.querySelector(".catalog-tabs");
   catalogTabs.classList.add("settings-nav");

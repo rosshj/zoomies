@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { launchArtBrowser } from "./art-browser.mjs";
+const browser = await launchArtBrowser();
+try {
+  const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  p.setDefaultTimeout(120000);
+  const errors = [];
+  p.on("pageerror", (e) => errors.push(e.message));
+  await p.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
+  await p.waitForFunction(() => window.__zoomies?.track);
+  await p.locator("#start-btn").click();
+  await p.waitForFunction(() => document.getElementById("track-scenery").dataset.ready === "true");
+  assert.equal(await p.locator("#menu-map-btn").evaluate((e) => getComputedStyle(e).borderTopWidth), "0px");
+  await p.locator("#menu-map-btn").click();
+  await p.waitForTimeout(700);
+  assert.ok((await p.locator("#track-grid .racer-tap").count()) > 8);
+  await p.screenshot({ path: "/tmp/track-picker.png" });
+  await p.locator("#track-custom-open").click();
+  await p.waitForTimeout(500);
+  assert.equal(await p.locator("#track-panel .flow-h").textContent(), "Track Builder");
+  for (const [width, height] of [
+    [390, 844],
+    [844, 390],
+    [320, 568],
+  ]) {
+    await p.setViewportSize({ width, height });
+    await p.waitForTimeout(300);
+    const before = await p.locator("#track-preview").boundingBox();
+    await p.locator('[data-builder-field="biomes"]').click();
+    assert.deepEqual(await p.locator("#track-preview").boundingBox(), before);
+    const back = await p.locator(".builder-done").boundingBox();
+    assert.ok(back.y + back.height <= height);
+    await p.screenshot({ path: `/tmp/track-builder-${width}.png` });
+    await p.locator(".builder-done").click();
+  }
+  await p.locator('[data-builder-field="style"]').click();
+  await p.locator('[data-style="wild"]').click();
+  await p.locator('[data-builder-field="details"]').click();
+  await p.keyboard.press("Escape");
+  assert.equal(await p.locator("#track-panel .flow-h").textContent(), "Track Builder");
+  assert.match(await p.locator('[data-builder-field="style"] strong').textContent(), /Wild/);
+  await p.locator("#track-back").click();
+  assert.ok(await p.locator("#track-custom-open").isVisible());
+  await p.reload();
+  await p.waitForFunction(() => document.getElementById("track-scenery").dataset.cached === "true");
+  assert.deepEqual(errors, []);
+  console.log("PASS: shared track tiles, border, builder drill-ins, fixed actions, cancel and cached preview reload.");
+} finally {
+  await browser.close();
+}

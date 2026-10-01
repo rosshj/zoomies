@@ -273,7 +273,7 @@ try {
     await click("#mode-gp");
     await click("#menu-map-btn");
     await capture("tracks");
-    await click(".track-maker-card");
+    await click("#track-custom-open");
     await capture("track-maker");
     await click("#track-back");
     await click("#flow-track [data-back]");

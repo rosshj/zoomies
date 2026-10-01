@@ -403,7 +403,8 @@
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body">
-        <div id="track-grid" class="track-grid"></div>
+        <div class="picker-toolbar"><button id="track-custom-open" class="btn-cream small-pill">✦ Create your own</button></div>
+        <div id="track-grid" class="track-grid racer-grid"></div>
       </div>
     </section>
 
@@ -850,12 +851,11 @@
   <!-- ===== Track generator ===== -->
   <div id="track-panel" class="overlay sheet hidden">
     <header class="flow-head">
-      <div class="flow-head-spacer"></div>
+      <button id="track-back" class="flow-back" aria-label="Go back">←</button>
       <div class="flow-head-text">
-        <h2 class="flow-h">Track Maker</h2>
+        <h2 class="flow-h">Track Builder</h2>
       </div>
       <div class="flow-head-right">
-        <button id="track-back" class="flow-back flow-close" aria-label="Close">✕</button>
       </div>
     </header>
     <div class="flow-body">
@@ -949,7 +949,7 @@
           </div>
           <div class="track-actions">
             <!-- btn-gold: the pad's ring seats on the sheet's primary action. -->
-            <button id="track-apply" class="btn-gold">✓ Play this map</button>
+            <button id="track-apply" class="btn-gold">✓ Use this track</button>
           </div>
         </div>
       </div>

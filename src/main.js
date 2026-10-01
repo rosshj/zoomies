@@ -1,3 +1,5 @@
+import { mountTrackBuilder } from "./track-builder-ui.js";
+import { cachedTrackImage, cacheTrackImage, trackImageKey } from "./track-image-cache.js";
 import { renderTrackPortrait } from "./track-portrait.js";
 import { mountStudio } from "./studio-ui.js";
 import { contrastBg } from "./catalog-palette.js";
@@ -3974,6 +3976,7 @@ function syncTrackPanel() {
   trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
     chip.classList.toggle("on", _trackDraft.features.includes(chip.dataset.feat));
   });
+  trackBuilderUI?.refresh();
   scheduleTrackPreview();
 }
 
@@ -3999,7 +4002,9 @@ const TRACK_STYLES = {
   wild: { curviness: 0.75, twist: 0.85, hilliness: 0.75, hills: 0.75 },
 };
 const TRACK_SIZES = { small: 0.3, medium: 0.55, large: 0.85 };
+const trackBuilderUI = mountTrackBuilder(trackPanel, () => _trackDraft);
 function openTrackPanel() {
+  trackBuilderUI.close();
   // The maker is custom-only — Classic Circuit is a card on the Track step.
   _trackDraft = {
     mode: "custom",
@@ -4091,7 +4096,9 @@ new ResizeObserver(() => {
   const points = mapPreviewPoints.get(canvas);
   if (points) paintTrackMap(canvas, points);
 }).observe(document.getElementById("menu-map"));
-document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
+document.getElementById("track-back")?.addEventListener("click", () => {
+  if (!trackBuilderUI.close()) closeSubScreen(trackPanel);
+});
 // The shape sliders re-sync the whole panel (not just their label) so the
 // Style chips light up when the knobs land on a preset and clear when they
 // drift off one.
@@ -4800,7 +4807,7 @@ function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
   document.getElementById("racer-details").classList.remove("hidden");
   document.getElementById("racer-details-close").focus({ preventScroll: true });
 }
-function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
+function racerGridCard({ img, art, status, name, sub, buyId, onPick, rerender, current }) {
   const owned = !buyId || isUnlocked(profile, buyId);
   const b = document.createElement("button");
   b.className = "tap-card racer-tap" + (owned ? "" : " locked") + (current ? " is-current" : "");
@@ -4809,11 +4816,11 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
   const shot = document.createElement("span");
   shot.className = "racer-shot";
   const im = document.createElement("img");
-  im.src = img;
+  if (img) im.src = img;
   im.alt = name;
   im.loading = "lazy";
   im.addEventListener("error", () => im.remove());
-  shot.appendChild(im);
+  shot.appendChild(art || im);
   if (!owned) {
     const lk = document.createElement("span");
     lk.className = "racer-lock";
@@ -4825,7 +4832,7 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
   nm.textContent = name;
   const sb = document.createElement("span");
   sb.className = "track-sub";
-  sb.textContent = racerStatus(buyId, owned, current);
+  sb.textContent = status ?? racerStatus(buyId, owned, current);
   b.append(shot, nm, sb);
   cueifyButton(b);
   b.addEventListener("click", () => {
@@ -5047,6 +5054,7 @@ window.addEventListener("keydown", (e) => {
     // A sheet up over ANY state closes first: Settings opened from the pause
     // card used to fall through to "paused → resume", un-pausing the race
     // behind the still-open sheet.
+    if (!trackPanel.classList.contains("hidden") && trackBuilderUI.close()) return;
     if (escCloseTopScreen()) return;
     if (state === State.RACING || state === State.COUNTDOWN) pauseGame();
     else if (state === State.PAUSED) resumeGame();
@@ -5587,34 +5595,35 @@ function trackCardCurrent(cfg) {
     String(trackConfig.biomes || []) === String(cfg.biomes || [])
   );
 }
+const trackOutlineCache = new Map();
 function renderTrackCards() {
   const grid = document.getElementById("track-grid");
   if (!grid) return;
   grid.replaceChildren();
   const addCard = (name, sub, cfg, current) => {
-    const b = document.createElement("button");
-    b.className = "tap-card track-tap" + (current ? " is-current" : "");
-    if (current) b.setAttribute("aria-current", "true");
-    const shot = document.createElement("span");
-    shot.className = "track-shot";
     const canvas = document.createElement("canvas");
-    canvas.width = 300;
-    canvas.height = 188;
-    shot.appendChild(canvas);
-    const nm = document.createElement("span");
-    nm.className = "track-name";
-    nm.textContent = name;
-    const sb = document.createElement("span");
-    sb.className = "track-sub";
-    sb.textContent = sub;
-    b.append(shot, nm, sb);
-    cueifyButton(b);
-    b.addEventListener("click", () => chooseTrackCard(cfg));
-    grid.appendChild(b);
-    try {
-      paintTrackMap(canvas, previewLoopPoints(cfg));
-    } catch {
-      /* a bad recipe just leaves a blank shot */
+    canvas.width = canvas.height = 300;
+    canvas.className = "track-map";
+    const img = cachedTrackImage({ ...trackConfig, ...cfg });
+    const b = racerGridCard({
+      img,
+      art: img ? null : canvas,
+      name,
+      sub,
+      status: current ? "Selected" : sub,
+      current,
+      onPick: () => chooseTrackCard(cfg),
+    });
+    b.classList.add("track-tap");
+    grid.append(b);
+    if (!img) {
+      const key = trackImageKey(cfg);
+      const cached = trackOutlineCache.get(key);
+      if (cached) canvas.getContext("2d").drawImage(cached, 0, 0);
+      else {
+        paintTrackMap(canvas, previewLoopPoints(cfg));
+        trackOutlineCache.set(key, canvas);
+      }
     }
   };
   addCard("Classic Circuit", "🏁 The original loop", { mode: "classic" }, trackConfig.mode !== "custom");
@@ -5628,13 +5637,8 @@ function renderTrackCards() {
       true,
     );
   }
-  const mk = document.createElement("button");
-  mk.className = "tap-card track-maker-card";
-  mk.innerHTML = `<span class="tap-chip" style="background:#ff9ecb">🛠️</span><span class="tap-title">Make your own track</span><span class="tap-chev">›</span>`;
-  cueifyButton(mk);
-  mk.addEventListener("click", openTrackPanel);
-  grid.appendChild(mk);
 }
+document.getElementById("track-custom-open").addEventListener("click", openTrackPanel);
 function chooseTrackCard(cfg) {
   if (trackCardCurrent(cfg)) {
     flowGo("startline");
@@ -6894,19 +6898,32 @@ function _orbitMenuCam(anchor, ang) {
 let trackPortraitPending = false;
 // Home and race setup share the session's one shot and uninterrupted slow orbit.
 function renderMenuBackground(timeSec) {
-  if (!trackPortraitPending && _rendererReady) {
+  if (!trackPortraitPending && _rendererReady && _warmAllFrames <= 0) {
     trackPortraitPending = true;
-    renderTrackPortrait({
-      renderer,
-      scene,
-      track,
-      world,
-      anchor: _menuShots[_menuShot],
-      canvas: document.getElementById("track-scenery"),
-      skyMesh,
-      starField,
-      sun,
-    }).catch((error) => console.warn("Track portrait unavailable", error));
+    const portraitCanvas = document.getElementById("track-scenery");
+    const cached = cachedTrackImage(trackConfig);
+    if (cached) {
+      const image = new Image();
+      image.onload = () => {
+        portraitCanvas.getContext("2d").drawImage(image, 0, 0, 640, 400);
+        portraitCanvas.dataset.ready = "true";
+        portraitCanvas.dataset.cached = "true";
+      };
+      image.src = cached;
+    } else
+      renderTrackPortrait({
+        renderer,
+        scene,
+        track,
+        world,
+        anchor: _menuShots[_menuShot],
+        canvas: document.getElementById("track-scenery"),
+        skyMesh,
+        starField,
+        sun,
+      })
+        .then(() => cacheTrackImage(trackConfig, portraitCanvas))
+        .catch((error) => console.warn("Track portrait unavailable", error));
   }
   _orbitMenuCam(_menuAnchor, timeSec * 0.07); // gentle drift
   renderFrame();

@@ -2572,3 +2572,40 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   background: rgba(24, 18, 38, .62); pointer-events: none; z-index: 1;
 }
 #stage #flow-startline .map-chip > :not(#track-scenery) { position: relative; z-index: 2; }
+
+/* Track cards share the catalog tile, with artwork reaching the clipped edge. */
+#stage #flow-startline #menu-map-btn { border: 0; box-shadow: none; }
+#stage #menu #track-grid .racer-tap { padding: 0 0 12px; height: auto; min-height: 0; overflow: hidden; border-radius: var(--control-radius); }
+#stage #track-grid .racer-shot { background: var(--menu-surface); }
+#stage #track-grid .track-map { width: 100%; height: 100%; padding: 16px; box-sizing: border-box; }
+#stage #track-grid .track-sub { overflow: hidden; text-overflow: ellipsis; }
+#stage #flow-track .picker-toolbar { justify-content: flex-end; margin-bottom: 12px; }
+#stage #track-panel .builder-layout {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr);
+  gap: 12px; padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left)); overflow: hidden;
+}
+#stage #track-panel .track-col-map { min-width: 0; min-height: 0; width: auto; }
+#stage #track-panel .map-frame { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: 16px; border: 0; border-radius: var(--control-radius); background: var(--menu-surface); gap: 8px; }
+#stage #track-panel #track-preview { width: 100%; height: 0; flex: 1; min-height: 60px; object-fit: contain; }
+#stage #track-panel .map-reroll { flex-shrink: 0; margin: 0; min-height: 44px; }
+#stage #track-panel .builder-side { display: flex; flex-direction: column; min-height: 0; min-width: 0; gap: 12px; }
+#stage #track-panel .builder-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+#stage #track-panel .studio-summary { width: 100%; padding: 12px 16px; min-height: 60px; text-align: left; display: flex; flex-direction: column; gap: 4px; background: var(--menu-surface); color: #fff3dc; }
+#stage #track-panel .studio-summary:last-child { grid-column: 1 / -1; }
+#stage #track-panel .studio-summary strong { text-transform: capitalize; }
+#stage #track-panel .builder-detail { background: var(--menu-surface); border-radius: var(--control-radius); padding: 16px; }
+#stage #track-panel .biome-pick, #stage #track-panel .tod-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#stage #track-panel .biome-chip { width: 100%; min-height: 44px; border: 0; border-radius: var(--control-radius); background: transparent; color: #fff3dc; }
+#stage #track-panel .biome-chip.on { background: #fff2d8; color: #30263d; }
+#stage #track-panel .track-actions { position: static; margin: 0; padding: 0; background: none; }
+#stage #track-panel .track-actions button, #stage #track-panel .builder-done { width: 100%; margin: 0; min-height: 44px; flex-shrink: 0; }
+#stage.menu-portrait #track-panel .builder-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 1fr) minmax(0, 1fr); }
+#stage #track-panel .track-col-map { position: static; top: auto; align-self: stretch; max-width: none; height: 100%; overflow: hidden; }
+#stage #track-panel .map-frame { align-self: stretch; min-height: 0; }
+#stage #track-panel .track-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+#stage #track-panel .track-row .setting-label { flex: 0 0 60px; font-size: 13px; }
+#stage #track-panel .track-row .slider { flex: 1; min-width: 0; width: auto; }
+#stage #track-panel .track-val { font-size: 12px; }
+#stage #track-panel .map-frame { box-shadow: none; }
+#stage #track-panel :is(.map-reroll, .biome-chip) { display: flex; align-items: center; justify-content: center; gap: 6px; }
+#stage #track-panel #biome-max-hint { display: block; font-size: 12px; line-height: 1.4; color: #c3b8cf; margin-bottom: 12px; }
