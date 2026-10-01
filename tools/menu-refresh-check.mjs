@@ -49,8 +49,21 @@ try {
   await p.waitForFunction(() => window.__zoomies?.track);
   await p.locator("#start-btn").waitFor();
   await shot("home-deck");
+  const homeCamera = await p.evaluate(() => ({
+    position: window.__zoomies.camera.position.toArray(),
+    fov: window.__zoomies.camera.fov,
+  }));
   await click("#start-btn");
   await step("startline");
+  const setupCamera = await p.evaluate(() => ({
+    position: window.__zoomies.camera.position.toArray(),
+    fov: window.__zoomies.camera.fov,
+  }));
+  assert.equal(setupCamera.fov, homeCamera.fov, "Setup changed the background camera lens");
+  assert.ok(
+    Math.hypot(...setupCamera.position.map((v, i) => v - homeCamera.position[i])) < 8,
+    "Setup jumped away from the Home track view instead of continuing its slow orbit",
+  );
   await p.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
   await shot("setup-deck");
   await click("#setup-rivals");
