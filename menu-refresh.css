@@ -735,6 +735,19 @@ button.small-pill {
 .settings-main {
   max-width: 680px;
 }
+/* Keep the tabs floating inside the scroll area so cards pass behind them. */
+#stage #settings > .flow-body {
+  padding-top: 12px;
+  scroll-padding-top: 84px;
+}
+#stage #settings .settings-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  width: 100%;
+  max-width: 680px;
+  margin: 0 auto 12px;
+}
 .settings-list {
   gap: 16px;
 }

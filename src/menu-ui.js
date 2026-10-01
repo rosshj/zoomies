@@ -59,7 +59,7 @@ export function initMenuUI() {
     button.addEventListener("click", () => select(key));
     nav.append(button);
   }
-  settings.querySelector(".flow-head").after(nav);
+  settings.querySelector(".flow-body").prepend(nav);
   select(category);
 
   // Focus is scoped to the currently visible sheet or flow. Keep each surface's
