@@ -2423,3 +2423,9 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage :is(.sticker-deep, .track-col-ctrl) {
   background: var(--menu-surface);
 }
+#stage #startline-garage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--menu-content-gap);
+}

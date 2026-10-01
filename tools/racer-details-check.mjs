@@ -12,7 +12,8 @@ try {
   await page.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
   await page.waitForFunction(() => window.__zoomies?.track);
   await page.locator("#start-btn").click();
-  await page.locator("#startline-kart").click();
+  await page.locator("#startline-garage").click();
+  await page.locator("#garage-kart").click();
   await page.locator('[data-inventory="kart"][data-filter="all"]').click();
   const card = (id) => page.locator(`[data-racer-id="${id}"]`);
   const assertSquare = async (locator) => {
@@ -51,8 +52,11 @@ try {
   await page.locator("#racer-details-action").click();
   assert.equal(await page.locator("#menu").getAttribute("data-step"), "cup");
   await page.keyboard.press("Escape");
-  await page.locator("#startline-kart").click();
+  await page.locator("#startline-garage").click();
+  await page.locator("#garage-kart").click();
   await card("kart.3").click();
+  assert.equal(await page.locator("#menu").getAttribute("data-step"), "garage");
+  await page.locator("#garage-done").click();
   assert.equal(await page.locator("#menu").getAttribute("data-step"), "startline");
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("zoomies-garage-v1")).kart), 3);
   assert.deepEqual(errors, []);

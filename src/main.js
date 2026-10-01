@@ -5712,8 +5712,7 @@ function refreshStartline() {
 }
 document.getElementById("setup-rivals").addEventListener("click", () => flowGo("rivals"));
 document.getElementById("setup-laps").addEventListener("click", () => flowGo("length"));
-document.getElementById("startline-edit")?.addEventListener("click", () => openRacerPicker("cat"));
-document.getElementById("startline-kart")?.addEventListener("click", () => openRacerPicker("kart"));
+document.getElementById("startline-garage").addEventListener("click", () => startSeatPick(0));
 // GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.
 document.getElementById("go-btn")?.addEventListener("click", () => {
   if (raceMode === "tt") startTimeTrial();
