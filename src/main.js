@@ -3159,7 +3159,7 @@ wireMenuCues();
 // now); hidden during racing and the results/claim flow. A MutationObserver
 // watches the screens' class flips, so no open/close path needs to know about
 // the chrome.
-const CHROME_SCREENS = ["catalog", "track-panel", "settings", "howto", "install-help"];
+const CHROME_SCREENS = ["catalog", "track-panel", "settings", "howto", "install-help", "racer-details"];
 const menuChrome = document.getElementById("menu-chrome");
 function refreshMenuChrome() {
   if (!menuChrome) return;
@@ -3198,6 +3198,7 @@ document.getElementById("chrome-treats")?.addEventListener("click", () => {
 // (the same button a tap would use), one screen per press. Ordered by stacking:
 // settings/help float over catalog, which floats over the config panels.
 const ESC_EXITS = [
+  ["racer-details", "racer-details-close"],
   ["settings", "settings-back"],
   ["howto", "howto-back"],
   ["install-help", "install-help-back"],
@@ -4626,14 +4627,84 @@ function closeNamePicker() {
 _wireNamePicker("cat", CUSTOM_CAT_NAMES, (name) => editCustomCat({ name }, false));
 _wireNamePicker("kart", CUSTOM_KART_NAMES, (name) => editCustomKart({ name }, false));
 
-// --- Racer grids: one card per cat/kart (real catalog renders), doors that
-// advance. Locked priced cards buy in place with a tap-again confirm; cup and
-// difficulty prizes shake and say how to win them. ---
+// Racer cards show one compact status. Locked items explain their unlock in a sheet.
+function racerStatus(id, owned, current) {
+  if (current) return "Equipped";
+  if (owned) return "Owned";
+  const entry = catalogEntry(id);
+  if (typeof entry?.price === "number") return `🐟 ${entry.price}`;
+  if (entry?.stat) {
+    const labels = {
+      races: "races",
+      wins: "wins",
+      winsHard: "Hard+ wins",
+      winsNight: "night wins",
+      treatsEarned: "treats",
+      driftBoosts: "boosts",
+      heartSaves: "saves",
+      propsKnocked: "props",
+      slipSeconds: "seconds",
+      dailies: "dailies",
+      racesCustom: "custom races",
+      boxes: "boxes",
+      versusRaces: "Versus races",
+    };
+    return `${Math.min(entry.min, Math.floor(profile.stats[entry.stat] || 0))}/${entry.min} ${labels[entry.stat] || "progress"}`;
+  }
+  return entry?.cup || entry?.cups || entry?.diff ? "🏆 Cup reward" : "🏁 Race reward";
+}
+let racerDetailsReturn = null;
+function closeRacerDetails() {
+  document.getElementById("racer-details").classList.add("hidden");
+  racerDetailsReturn?.focus({ preventScroll: true });
+}
+document.getElementById("racer-details-close").addEventListener("click", closeRacerDetails);
+function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
+  const entry = catalogEntry(buyId);
+  racerDetailsReturn = button;
+  document.getElementById("racer-details-title").textContent = name;
+  document.getElementById("racer-details-image").src = img;
+  document.getElementById("racer-details-type").textContent = sub || "Cosmetic kart · Same performance in every race";
+  document.getElementById("racer-details-requirement").textContent =
+    typeof entry?.price === "number" ? `Unlock for 🐟 ${entry.price}.` : prizeHow(buyId);
+  const balance = document.getElementById("racer-details-balance");
+  const action = document.getElementById("racer-details-action");
+  balance.textContent = "";
+  action.hidden = false;
+  action.disabled = false;
+  action.onclick = null;
+  if (typeof entry?.price === "number") {
+    balance.textContent = `You have 🐟 ${profile.treats}.`;
+    action.textContent = `Buy for 🐟 ${entry.price}`;
+    action.disabled = profile.treats < entry.price;
+    if (action.disabled) balance.textContent += ` Earn ${entry.price - profile.treats} more to unlock.`;
+    action.onclick = () => {
+      if (!buyUnlock(profile, buyId)) return;
+      saveProfile();
+      refreshTreatsChip();
+      uiCue("chime");
+      rerender();
+      racerDetailsReturn = document.querySelector(`[data-racer-id="${buyId}"]`);
+      closeRacerDetails();
+    };
+  } else if (entry?.cup || entry?.cups || entry?.diff) {
+    action.textContent = "Choose cup";
+    action.onclick = () => {
+      closeRacerDetails();
+      chooseRaceMode("cup");
+    };
+  } else {
+    action.hidden = true;
+  }
+  document.getElementById("racer-details").classList.remove("hidden");
+  document.getElementById("racer-details-close").focus({ preventScroll: true });
+}
 function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
   const owned = !buyId || isUnlocked(profile, buyId);
   const b = document.createElement("button");
   b.className = "tap-card racer-tap" + (owned ? "" : " locked") + (current ? " is-current" : "");
   if (current) b.setAttribute("aria-current", "true");
+  if (buyId) b.dataset.racerId = buyId;
   const shot = document.createElement("span");
   shot.className = "racer-shot";
   const im = document.createElement("img");
@@ -4653,7 +4724,7 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
   nm.textContent = name;
   const sb = document.createElement("span");
   sb.className = "track-sub";
-  sb.textContent = sub ?? (owned ? "" : prizeHow(buyId));
+  sb.textContent = racerStatus(buyId, owned, current);
   b.append(shot, nm, sb);
   cueifyButton(b);
   b.addEventListener("click", () => {
@@ -4661,32 +4732,7 @@ function racerGridCard({ img, name, sub, buyId, onPick, rerender, current }) {
       onPick();
       return;
     }
-    const entry = catalogEntry(buyId);
-    if (entry && typeof entry.price === "number") {
-      if (b.dataset.confirm) {
-        if (buyUnlock(profile, buyId)) {
-          saveProfile();
-          refreshTreatsChip();
-          uiCue("chime");
-          rerender();
-        } else {
-          uiCue("error");
-          sb.textContent = `Unlocks at 🐟 ${entry.price} — you have 🐟 ${profile.treats}`;
-        }
-      } else {
-        b.dataset.confirm = "1";
-        sb.textContent = `Tap again to unlock · 🐟 ${entry.price}`;
-        setTimeout(() => {
-          delete b.dataset.confirm;
-          sb.textContent = prizeHow(buyId);
-        }, 4000);
-      }
-      return;
-    }
-    // Cup / difficulty exclusives: the sub already says how to win it.
-    uiCue("error");
-    b.classList.add("shake");
-    setTimeout(() => b.classList.remove("shake"), 500);
+    openRacerDetails({ img, name, sub, buyId, rerender, button: b });
   });
   return b;
 }
@@ -4701,7 +4747,7 @@ function renderCatCards() {
       racerGridCard({
         img: `assets/catalog/cat-${i}.jpg`,
         name: c.name,
-        sub: _pickingSeat || isUnlocked(profile, `cat.${i}`) ? CAT_TYPES[c.type]?.label || "Classic" : undefined,
+        sub: `${CAT_TYPES[c.type]?.label || "Classic"} cat · Cosmetic only`,
         // Couch rule: a guest's seat pass rides any preset free — Versus pays
         // no treats, and P1's locks/prices (and wallet!) are P1's alone.
         buyId: _pickingSeat ? null : `cat.${i}`,
@@ -4719,9 +4765,9 @@ function renderCatCards() {
       racerGridCard({
         img: "assets/catalog/custom-cat.jpg",
         name: "Custom Cat",
-        sub: isUnlocked(profile, "custom.cat")
-          ? "✨ your design — tap to edit"
-          : `✨ design one · ${prizeHow("custom.cat")}`,
+        sub: "Your own cat design",
+        buyId: "custom.cat",
+        rerender: renderCatCards,
         current: _garageDraft?.cat === CUSTOM_CAT_IDX,
         onPick: () => flowGo("cat-edit"),
       }),
@@ -4755,9 +4801,9 @@ function renderKartCards() {
       racerGridCard({
         img: "assets/catalog/custom-kart.jpg",
         name: "Custom Kart",
-        sub: isUnlocked(profile, "custom.kart")
-          ? "✨ your design — tap to edit"
-          : `✨ design one · ${prizeHow("custom.kart")}`,
+        sub: "Your own kart design",
+        buyId: "custom.kart",
+        rerender: renderKartCards,
         current: _garageDraft?.kart === CUSTOM_KART_IDX,
         onPick: () => flowGo("kart-edit"),
       }),

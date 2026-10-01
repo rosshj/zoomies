@@ -104,6 +104,7 @@ export function initMenuUI() {
     const candidates = controls(next);
     const target =
       candidates.find((el) => next.id === "menu-confirm" && el.id === "confirm-cancel") ||
+      candidates.find((el) => next.id === "racer-details" && el.id === "racer-details-close") ||
       candidates.find((el) => el.id === "resume-race-btn" && el.classList.contains("btn-gold")) ||
       (candidates.includes(remembered) ? remembered : null) ||
       candidates.find((el) => el.matches(".btn-gold,.is-current")) ||

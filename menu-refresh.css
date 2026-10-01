@@ -2268,3 +2268,34 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #menu .racer-tap :is(.track-name, .track-sub) {
   padding: 0 12px;
 }
+#stage #menu .racer-tap .track-sub {
+  min-height: 1.4em;
+  white-space: nowrap;
+  font-size: 11px;
+}
+#stage #racer-details {
+  background: #100b1db3;
+  padding: 16px;
+}
+#stage .racer-details-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  width: min(640px, 100%);
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 0;
+  gap: 0;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: #2b233b;
+  color: #fff3dc;
+}
+#racer-details-image { width: 100%; height: 100%; object-fit: contain; min-height: 0; background: #211a30; }
+.racer-details-copy { padding: 20px; text-align: left; }
+.racer-details-copy h2 { margin: 0; font-size: 22px; }
+.racer-details-copy p { font-size: 14px; line-height: 1.45; margin: 12px 0; }
+#racer-details-type, #racer-details-balance { color: #c2b8ce; }
+.racer-details-copy button { width: 100%; min-height: 44px; margin-top: 8px; }
+#racer-details-action[hidden] { display: none; }
+#stage.menu-portrait .racer-details-card { grid-template-columns: minmax(0, 1fr); max-width: 360px; }
+#stage.menu-portrait #racer-details-image { height: 180px; object-fit: contain; background: #211a30; }

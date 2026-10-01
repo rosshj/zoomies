@@ -260,6 +260,7 @@ export class MenuPad {
     const remembered = this._memory.get(scope);
     const pick =
       cands.find((c) => scope.id === "menu-confirm" && c.el.id === "confirm-cancel") ||
+      cands.find((c) => scope.id === "racer-details" && c.el.id === "racer-details-close") ||
       cands.find((c) => c.el.id === "resume-race-btn" && c.el.classList.contains("btn-gold")) ||
       cands.find((c) => c.el === remembered) ||
       cands.find((c) => c.el.classList.contains("btn-gold")) ||
