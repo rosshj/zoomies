@@ -4363,8 +4363,6 @@ function syncCreators() {
   const c = _garageDraft.customCat;
   const typeName = document.getElementById("cat-type-name");
   if (typeName) typeName.textContent = CAT_TYPES[c.type]?.label || "Classic";
-  const patName = document.getElementById("cat-pat-name");
-  if (patName) patName.textContent = c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern);
   const accName = document.getElementById("cat-acc-name");
   if (accName) {
     const entry = catalogEntry(`acc.${c.accessory}`);
@@ -4421,8 +4419,8 @@ function refreshEditorLocks() {
     buy.disabled = profile.treats < entry.price;
     note.textContent =
       profile.treats < entry.price
-        ? `Design freely. You need ${entry.price - profile.treats} more treats to unlock this creator.`
-        : "Design freely. Unlock this creator to use your creation.";
+        ? `You need ${entry.price - profile.treats} more treats to unlock this creator.`
+        : "";
   }
 }
 function syncGarageUI() {
@@ -4431,12 +4429,13 @@ function syncGarageUI() {
 }
 // Cache the combined portrait until the actual appearance changes.
 const racerPortraitKeys = new WeakMap();
-function refreshRacerCard(canvas, summary, config) {
+function refreshRacerCard(canvas, summary, config, subject = "racer") {
   const cat = catSpec(config),
     kart = kartSpec(config);
-  summary.textContent = `${cat.name} · ${kart.name}`;
-  canvas.setAttribute("aria-label", `${cat.name} driving ${kart.name}`);
-  const backdrop = contrastBg(kart.color);
+  summary.textContent = subject === "cat" ? cat.name : subject === "kart" ? kart.name : `${cat.name} · ${kart.name}`;
+  canvas.setAttribute("aria-label", subject === "racer" ? `${cat.name} driving ${kart.name}` : summary.textContent);
+  canvas.dataset.subject = subject;
+  const backdrop = contrastBg(subject === "cat" ? cat.fur : kart.color);
   const racerCard = canvas.closest(".setup-racer-preview");
   racerCard.style.setProperty("--racer-backdrop", backdrop);
   racerCard.style.setProperty("--racer-ink", backdrop === "#46568a" ? "#fff3dc" : "#30263d");
@@ -4444,7 +4443,7 @@ function refreshRacerCard(canvas, summary, config) {
   if (key !== racerPortraitKeys.get(canvas)) {
     racerPortraitKeys.set(canvas, key);
     canvas.dataset.ready = "false";
-    renderRacerPortrait(canvas, cat, kart).catch((error) => {
+    renderRacerPortrait(canvas, cat, kart, subject).catch((error) => {
       racerPortraitKeys.delete(canvas);
       console.warn("Racer portrait unavailable", error);
     });
@@ -4489,8 +4488,12 @@ function closeGarage() {
 }
 // Mutate the draft's custom cat/kart, then refresh UI + preview. `rebuild=false`
 // skips the (model-irrelevant) preview rebuild for pure name edits.
+function studioCatPattern(type) {
+  return CAT_PRESETS.find((cat) => (cat.type || "classic") === type)?.pattern || DEFAULT_CUSTOM_CAT.pattern;
+}
 function editCustomCat(patch, rebuild = true) {
   Object.assign(_garageDraft.customCat, patch);
+  _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type);
   syncGarageUI();
   if (rebuild) buildGaragePreview();
 }
@@ -4500,7 +4503,7 @@ function editCustomKart(patch, rebuild = true) {
   if (rebuild) buildGaragePreview();
 }
 function stepCustom(which, list, dir) {
-  if (which === "type" || which === "pattern" || which === "accessory") {
+  if (which === "type" || which === "accessory") {
     const i = list.indexOf(_garageDraft.customCat[which]);
     const patch = { [which]: list[(i + dir + list.length) % list.length] };
     // Switching accessory resets its colour to that type's natural default.
@@ -4515,8 +4518,6 @@ for (const [suffix, dir] of [
 ])
   document.getElementById(`cat-type-${suffix}`)?.addEventListener("click", () => stepCustom("type", CAT_TYPE_IDS, dir));
 _buildSwatchGrid("cat-color-grid", CAT_FUR_SWATCHES, (c) => editCustomCat({ fur: c }));
-document.getElementById("cat-pat-prev")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, -1));
-document.getElementById("cat-pat-next")?.addEventListener("click", () => stepCustom("pattern", CAT_PATTERNS, 1));
 document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, -1));
 document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
 document
@@ -4528,7 +4529,6 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
   editCustomCat({
     type: _pick(CAT_TYPE_IDS),
     fur: _pick(CAT_FUR_SWATCHES),
-    pattern: _pick(CAT_PATTERNS),
     accessory,
     name: _pick(CUSTOM_CAT_NAMES),
     accessoryColor: pal.length ? _pick(pal) : null,
@@ -4598,13 +4598,6 @@ studioUIs.cat = mountStudio({
       "cat-type-name",
       (c) => CAT_TYPES[c.type]?.label || "Classic",
       studioOptions(CAT_TYPE_IDS, (id) => CAT_TYPES[id].label),
-    ),
-    studioField(
-      "pattern",
-      "Pattern",
-      "cat-pat-name",
-      (c) => (c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern)),
-      studioOptions(CAT_PATTERNS, (id) => (id === "mittedPoint" ? "Mitted points" : _cap(id))),
     ),
     {
       ...studioField(
@@ -4680,6 +4673,7 @@ function refreshStudioPortraits() {
       document.getElementById(`${which}-studio-portrait`),
       document.getElementById(`${which}-studio-summary`),
       _garageDraft,
+      which,
     );
   }
 }
@@ -5190,6 +5184,7 @@ function flowGo(step, dir = 1, instant = false) {
   } else if (step === "cat-edit") {
     openRacerStep();
     _garageDraft.cat = CUSTOM_CAT_IDX;
+    _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type);
     syncGarageUI();
     refreshRacerPreview();
   } else if (step === "kart-edit") {

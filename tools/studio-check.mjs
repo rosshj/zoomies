@@ -19,6 +19,9 @@ try {
   await click("#cat-custom-open");
   await page.waitForFunction(() => document.getElementById("cat-studio-portrait").dataset.ready === "true");
   assert.equal(await page.locator("#cat-edit-use").isVisible(), false);
+  assert.equal(await page.locator("#cat-studio-portrait").getAttribute("data-subject"), "cat");
+  assert.equal(await page.locator('#flow-cat-edit [data-studio-field="pattern"]').count(), 0);
+  assert.equal(await page.locator("#cat-edit-note").textContent(), "");
   for (const [width, height] of [
     [390, 844],
     [844, 390],
@@ -63,8 +66,13 @@ try {
     await page.evaluate(() => JSON.parse(localStorage.getItem("zoomies-garage-v1")).customCat.name),
     "Studio Cat",
   );
+  assert.equal(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("zoomies-garage-v1")).customCat.pattern),
+    "tabby",
+  );
   await click("#garage-kart");
   await click("#kart-custom-open");
+  assert.equal(await page.locator("#kart-studio-portrait").getAttribute("data-subject"), "kart");
   await click('#flow-kart-edit [data-studio-field="number"]');
   await click('#flow-kart-edit .studio-field-active .studio-option[data-value="42"]');
   await click('#flow-kart-edit [data-studio-field="style"]');

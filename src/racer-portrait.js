@@ -7,7 +7,7 @@ import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
 let rendererPromise;
 let queue = Promise.resolve();
 const revisions = new WeakMap();
-export function renderRacerPortrait(canvas, cat, kart) {
+export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
   const revision = (revisions.get(canvas) || 0) + 1;
   revisions.set(canvas, revision);
   const job = async () => {
@@ -22,18 +22,24 @@ export function renderRacerPortrait(canvas, cat, kart) {
     if (revisions.get(canvas) !== revision) return;
     const scene = new THREE.Scene();
     const group = new THREE.Group();
-    const model = createKartModel(kart.color, { style: kart.style, number: kart.number, livery: kart.livery });
-    group.add(model.group);
-    const driver = createCat(cat.fur, {
-      type: cat.type,
-      pattern: cat.pattern,
-      accessory: cat.accessory,
-      accessoryColor: cat.accessoryColor,
-      pose: "kart",
-    });
-    driver.scale.setScalar(0.62);
-    driver.position.set(0, 0.85, -0.35);
-    group.add(driver);
+    if (subject !== "cat") {
+      const model = createKartModel(kart.color, { style: kart.style, number: kart.number, livery: kart.livery });
+      group.add(model.group);
+    }
+    if (subject !== "kart") {
+      const driver = createCat(cat.fur, {
+        type: cat.type,
+        pattern: cat.pattern,
+        accessory: cat.accessory,
+        accessoryColor: cat.accessoryColor,
+        pose: subject === "racer" ? "kart" : "sit",
+      });
+      if (subject === "racer") {
+        driver.scale.setScalar(0.62);
+        driver.position.set(0, 0.85, -0.35);
+      }
+      group.add(driver);
+    }
     scene.add(group);
     // Match the catalog studio lighting and the game's shared cel materials.
     scene.add(new THREE.HemisphereLight(0xbfd4ff, 0x54493a, 1.1));
@@ -47,6 +53,29 @@ export function renderRacerPortrait(canvas, cat, kart) {
     camera.position.set(7.5, 5.2, 9.5);
     camera.lookAt(0, 1.05, 0);
     camera.zoom = 1.6;
+    if (subject !== "racer") {
+      // Fit the entire standalone model, including tall accessories and wide karts.
+      const bounds = new THREE.Box3().setFromObject(group);
+      const center = bounds.getCenter(new THREE.Vector3());
+      const direction = new THREE.Vector3(...(subject === "cat" ? [3, 1.6, 9] : [7.5, 5.2, 9.5])).normalize();
+      const right = new THREE.Vector3().crossVectors(camera.up, direction).normalize();
+      const up = new THREE.Vector3().crossVectors(direction, right);
+      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+      let distance = 0;
+      for (const x of [bounds.min.x, bounds.max.x])
+        for (const y of [bounds.min.y, bounds.max.y])
+          for (const z of [bounds.min.z, bounds.max.z]) {
+            const corner = new THREE.Vector3(x, y, z).sub(center);
+            distance = Math.max(
+              distance,
+              corner.dot(direction) +
+                Math.max(Math.abs(corner.dot(right)) / (tanV * camera.aspect), Math.abs(corner.dot(up)) / tanV),
+            );
+          }
+      camera.zoom = 1;
+      camera.position.copy(center).addScaledVector(direction, distance * 1.12);
+      camera.lookAt(center);
+    }
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld();
     const rawMaterials = new Set();
