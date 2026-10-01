@@ -1512,7 +1512,7 @@ button.small-pill {
   background: linear-gradient(90deg, #181321f2 0%, #181321dc 38%, #18132126 100%);
 }
 #stage .title-wrap {
-  width: min(460px, 46%);
+  width: min(440px, calc(100vmin - 48px));
   left: max(6%, var(--safe-left));
   top: 50%;
   transform: translateY(-50%);
@@ -1696,7 +1696,7 @@ button.small-pill {
   margin-bottom: 16px;
 }
 #stage.menu-compact .title-wrap {
-  width: min(520px, 70%);
+  width: min(440px, calc(100vmin - 48px));
   gap: 8px;
 }
 #stage.menu-compact .title-logo {
@@ -1736,8 +1736,8 @@ button.small-pill {
 }
 #stage.menu-compact .title-extras {
   margin-top: 0;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 #stage.menu-compact .title-extras .extra-btn {
   padding: 8px;
