@@ -2393,3 +2393,29 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #menu :is(#cat-grid, #kart-grid) .racer-tap :is(.track-name, .track-sub) {
   padding-inline: var(--menu-inset);
 }
+
+/* The group's outer frame, rather than each inset segment, is button-height. */
+#stage { --menu-button-height: 44px; }
+#stage :is(#menu, #settings, #catalog) .seg-toggle {
+  box-sizing: border-box;
+  height: var(--menu-button-height);
+  min-height: var(--menu-button-height);
+  padding: 4px;
+  align-items: stretch;
+}
+#stage :is(#menu, #settings, #catalog) .seg-toggle > .seg-btn.seg-btn {
+  height: 100%;
+  min-height: 0;
+  padding-block: 0;
+  margin-block: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+#stage #menu .picker-toolbar > .btn-cream {
+  box-sizing: border-box;
+  height: var(--menu-button-height);
+  min-height: var(--menu-button-height);
+  padding-block: 0;
+}
+#stage #menu .picker-toolbar .seg-toggle { margin: 0; }
