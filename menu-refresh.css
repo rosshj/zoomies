@@ -1707,7 +1707,7 @@ button.small-pill {
   width: 24px;
 }
 #stage.menu-compact .title-tag {
-  display: none;
+  display: block;
 }
 #stage.menu-compact .title-description {
   font-size: 28px;
