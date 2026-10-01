@@ -30,6 +30,15 @@ try {
   ]) {
     await page.setViewportSize({ width, height });
     await page.waitForTimeout(500);
+    const scroll = await page.locator("#flow-cat-edit .studio-scroll").evaluate((el) => ({
+      height: el.clientHeight,
+      content: el.scrollHeight,
+    }));
+    assert.ok(scroll.content <= scroll.height + 1, "Overview needs scrolling");
+    assert.equal(await page.locator("#flow-cat-edit .studio-overview [data-studio-field=name]").count(), 0);
+    const random = await page.locator("#cat-randomize").boundingBox();
+    const preview = await page.locator("#flow-cat-edit .setup-racer-preview").boundingBox();
+    assert.ok(random.y >= preview.y && random.y + random.height <= preview.y + preview.height, "Random action clipped");
     const bounds = await page.locator("#cat-edit-buy").boundingBox();
     assert.ok(bounds.y + bounds.height <= height, "Unlock action clipped");
     const canvas = await page.locator("#cat-studio-portrait").boundingBox();

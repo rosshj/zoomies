@@ -12,12 +12,17 @@ export function mountStudio({ which, fields, apply, getDraft }) {
   const done = document.createElement("button");
   done.className = "btn-cream studio-detail-done";
   done.textContent = "Back to studio";
+  const footer = root.querySelector(".racer-preview-footer");
+  const summary = document.getElementById(`${which}-studio-summary`);
+  const randomize = document.getElementById(`${which}-randomize`);
   let active = null;
   const close = (focus = true) => {
     if (!active) return false;
     const previous = active;
     active = null;
     root.removeAttribute("data-studio-detail");
+    randomize.disabled = false;
+    fields.find((field) => field.key === "name").button.disabled = false;
     heading.textContent = title;
     for (const field of fields) field.row.classList.remove("studio-field-active");
     if (focus) previous.button.focus({ preventScroll: true });
@@ -38,7 +43,13 @@ export function mountStudio({ which, fields, apply, getDraft }) {
     button.append(label, value);
     field.button = button;
     field.value = value;
-    overview.append(button);
+    if (field.key === "name") {
+      button.className = "studio-name-edit";
+      button.setAttribute("aria-label", `Edit ${which} name`);
+      summary.replaceWith(button);
+      button.replaceChildren(summary);
+      footer.append(randomize);
+    } else overview.append(button);
     if (field.options) {
       field.row.querySelector(".mini-stepper").classList.add("studio-legacy-stepper");
       const grid = document.createElement("div");
@@ -61,7 +72,10 @@ export function mountStudio({ which, fields, apply, getDraft }) {
       if (event.target.closest(".swatch-dot")) close();
     });
     button.addEventListener("click", () => {
+      close(false);
       active = field;
+      randomize.disabled = true;
+      fields.find((item) => item.key === "name").button.disabled = true;
       root.dataset.studioDetail = field.key;
       heading.textContent = field.label;
       field.row.classList.add("studio-field-active");
@@ -73,8 +87,7 @@ export function mountStudio({ which, fields, apply, getDraft }) {
       scroller.scrollTop = 0;
     });
   }
-  // Keep randomisation available on the overview, outside the drill-in controls.
-  overview.after(document.getElementById(`${which}-randomize`));
+  // The preview owns naming and randomisation; only choices scroll in drill-ins.
   const scroller = document.createElement("div");
   scroller.className = "studio-scroll";
   const actions = card.querySelector(".racer-actions");
@@ -96,7 +109,7 @@ export function mountStudio({ which, fields, apply, getDraft }) {
           button.setAttribute("aria-pressed", String(selected));
         }
     }
-    const visible = fields.filter((field) => !field.button.classList.contains("hidden"));
+    const visible = fields.filter((field) => field.key !== "name" && !field.button.classList.contains("hidden"));
     for (const field of fields)
       field.button.classList.toggle("studio-summary-wide", visible.length % 2 === 1 && field === visible.at(-1));
   }
