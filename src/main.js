@@ -1,3 +1,4 @@
+import { renderTrackPortrait } from "./track-portrait.js";
 import { mountStudio } from "./studio-ui.js";
 import { contrastBg } from "./catalog-palette.js";
 import { menuIcon } from "./menu-icons.js";
@@ -6890,8 +6891,21 @@ function _orbitMenuCam(anchor, ang) {
   _uAberr.value = 0;
 }
 
+let trackPortraitPending = false;
 // Home and race setup share the session's one shot and uninterrupted slow orbit.
 function renderMenuBackground(timeSec) {
+  if (!trackPortraitPending && _rendererReady) {
+    trackPortraitPending = true;
+    renderTrackPortrait({
+      renderer,
+      scene,
+      track,
+      canvas: document.getElementById("track-scenery"),
+      skyMesh,
+      starField,
+      sun,
+    }).catch((error) => console.warn("Track portrait unavailable", error));
+  }
   _orbitMenuCam(_menuAnchor, timeSec * 0.07); // gentle drift
   renderFrame();
 }

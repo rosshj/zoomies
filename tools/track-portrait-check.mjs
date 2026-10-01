@@ -1,0 +1,52 @@
+import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import { launchArtBrowser } from "./art-browser.mjs";
+const browser = await launchArtBrowser();
+try {
+  const page = await browser.newPage({ viewport: { width: 844, height: 390 } });
+  page.setDefaultTimeout(120000);
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  page.on("console", (m) => {
+    if (m.type() === "warning") console.log(m.text());
+  });
+  const source = await fs.readFile(new URL("../src/main.js", import.meta.url), "utf8");
+  const featured = Function(`return ${source.match(/const FEATURED_TRACKS = (\[[\s\S]*?\n\]);/)[1]}`)();
+  for (const name of process.env.TRACK_CASE
+    ? [process.env.TRACK_CASE]
+    : ["Classic Circuit", "Snowcap Sprint", "Basalt Blast"]) {
+    const cfg = featured.find((t) => t.name === name)?.cfg || { mode: "classic" };
+    await page.addInitScript((cfg) => localStorage.setItem("zoomies-track-v1", JSON.stringify(cfg)), cfg);
+    await page.goto(`http://localhost:8080/?${process.env.BACKEND === "webgpu" ? "webgpu" : "webgl"}=1&nosw=1&nowd=1`);
+    await page.waitForFunction(() => window.__zoomies?.track);
+    await page.locator("#start-btn").click();
+    await page.waitForFunction(() => document.getElementById("track-scenery").dataset.ready === "true");
+    const data = await page
+      .locator("#track-scenery")
+      .evaluate((c) => ({ url: c.toDataURL(), camera: +c.dataset.cameraHeight, ceiling: +c.dataset.sceneryCeiling }));
+    assert.ok(data.camera >= data.ceiling + 59, "Camera inside scenery envelope");
+    await fs.writeFile(`/tmp/track-${cfg.seed || "classic"}.png`, Buffer.from(data.url.split(",")[1], "base64"));
+    await page.waitForTimeout(700);
+    await page.screenshot({ path: `/tmp/track-card-${cfg.seed || "classic"}.png` });
+    await page.waitForTimeout(700);
+    assert.equal(
+      await page.locator("#track-scenery").evaluate((c) => c.toDataURL()),
+      data.url,
+      "Still changed on animation frames",
+    );
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(500);
+    await page.screenshot({ path: `/tmp/track-card-portrait-${cfg.seed || "classic"}.png` });
+    await page.setViewportSize({ width: 844, height: 390 });
+    console.log(
+      name,
+      data.camera,
+      data.ceiling,
+      await page.evaluate(() => (window.__zoomies.renderer.backend.isWebGPUBackend ? "WebGPU" : "WebGL")),
+    );
+  }
+  assert.deepEqual(errors, []);
+  console.log("PASS: track stills, static cache, and clearance above mountains/tunnels.");
+} finally {
+  await browser.close();
+}

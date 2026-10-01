@@ -2560,3 +2560,15 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact .studio-scroll { gap: 8px; }
 
 #stage .studio-summary-wide { grid-column: 1 / -1; }
+
+/* A quiet still beneath the high-contrast track outline and labels. */
+#stage #flow-startline #track-scenery {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; pointer-events: none; opacity: 0;
+}
+#stage #flow-startline #track-scenery[data-ready="true"] { opacity: 1; }
+#stage #flow-startline .map-chip::before {
+  content: ""; position: absolute; inset: 0;
+  background: rgba(24, 18, 38, .62); pointer-events: none; z-index: 1;
+}
+#stage #flow-startline .map-chip > :not(#track-scenery) { position: relative; z-index: 2; }
