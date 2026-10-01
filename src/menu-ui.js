@@ -31,7 +31,7 @@ export function initMenuUI() {
   const groups = ["audio", "display", "controls", "save", "display"];
   sections.forEach((section, i) => (section.dataset.settingsPanel = groups[i]));
   const nav = document.createElement("nav");
-  nav.className = "settings-nav";
+  nav.className = "settings-nav seg-toggle";
   nav.setAttribute("aria-label", "Settings categories");
   const names = { audio: "Audio", controls: "Controls", display: "Display", save: "Save data" };
   let category = "audio";

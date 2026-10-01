@@ -70,7 +70,7 @@ async function capture(name) {
           if (portrait.dataset.ready !== "true" || bounds.width < 100 || bounds.height < 90)
             issues.push("Combined racer portrait missing or too small");
           const mode = document.getElementById("setup-mode").getBoundingClientRect();
-          const racer = document.querySelector(".setup-racer-preview").getBoundingClientRect();
+          const racer = document.querySelector("#flow-startline .setup-racer-preview").getBoundingClientRect();
           if (mode.bottom > racer.top + 1) issues.push("Mode must appear above your racer");
           const row = document.querySelector(".setup-pickers");
           const rowBounds = row.getBoundingClientRect();
@@ -234,6 +234,13 @@ try {
       await click("#catalog-tab-" + category);
       await capture("collection-" + category);
     }
+    await click("#catalog-tab-prizes");
+    await click('#catalog [data-prize="cat.3"]');
+    await capture("collection-purchase");
+    await click("#racer-details-close");
+    await click('#catalog [data-prize="cat.12"]');
+    await capture("collection-reward");
+    await click("#racer-details-close");
     await click("#catalog-back");
     await click("#open-garage");
     await capture("garage");
@@ -243,6 +250,9 @@ try {
     await capture("cats-all");
     await click("#cat-custom-open");
     await capture("cat-studio");
+    await click('#flow-cat-edit [data-studio-field="type"]');
+    await capture("cat-types");
+    await click("#flow-cat-edit .studio-detail-done");
     await click('#flow-cat-edit [data-studio-field="name"]');
     await click("#cat-name-pick");
     await capture("name-picker");
@@ -253,6 +263,9 @@ try {
     await capture("karts");
     await click("#kart-custom-open");
     await capture("kart-shop");
+    await click('#flow-kart-edit [data-studio-field="number"]');
+    await capture("kart-numbers");
+    await click("#flow-kart-edit .studio-detail-done");
     await click("#kart-edit-use");
     await click("#garage-done");
     await click("#start-btn");
@@ -268,13 +281,20 @@ try {
     await capture("mode");
     await click("#mode-cup");
     await capture("cups");
-    await click("#flow-cup [data-back]");
+    await click("#cup-list button:first-child");
+    await capture("setup-cup");
+    await click("#setup-mode");
+    await click("#mode-tt");
+    await capture("setup-tt");
     await click("#setup-mode");
     await click("#mode-gp");
     await click("#menu-map-btn");
     await capture("tracks");
     await click("#track-custom-open");
-    await capture("track-maker");
+    await capture("track-builder");
+    await click('[data-builder-field="details"]');
+    await capture("track-builder-details");
+    await click(".builder-done");
     await click("#track-back");
     await click("#flow-track [data-back]");
     await click("#setup-mode");
@@ -304,9 +324,13 @@ try {
     await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1", { timeout: 180000 });
     await page.waitForFunction(() => window.__zoomies?.track);
     await capture("home-web");
+    // Exercise the iOS help handler; this is not a native install test.
+    await page.locator("#install-btn").evaluate((button) => button.click());
+    await capture("install-help");
+    await click("#install-help-back");
   }
   await fs.writeFile(new URL("measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
-  const files = (await fs.readdir(new URL("screenshots/", out))).filter((f) => f.endsWith(".jpg"));
+  const files = measurements.map(({ device, name }) => `${device}-${name}.jpg`);
   const cards = files
     .map(
       (f) =>

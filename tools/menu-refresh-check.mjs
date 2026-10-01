@@ -253,7 +253,7 @@ try {
     "Change track: Buttercup Run",
     "Track reload lost setup destination",
   );
-  // Collection purchase/equip uses a confirmation and the owner's saved loadout.
+  // Collection purchase/equip uses shared details and the owner's saved loadout.
   await click("#chrome-treats");
   const ownedCount = await p.locator("#catalog-prizes .owned:not(.hidden)").count();
   assert.ok(ownedCount > 0);
@@ -262,11 +262,11 @@ try {
   assert.equal((await garage()).kart, 1);
   await click("#catalog-tab-prizes");
   await click('[data-prize="cat.3"]');
-  await p.locator("#menu-confirm:not(.hidden)").waitFor();
-  await click("#confirm-cancel");
+  await p.locator("#racer-details:not(.hidden)").waitFor();
+  await click("#racer-details-close");
   const wallet = await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats);
   await click('[data-prize="cat.3"]');
-  await click("#confirm-accept");
+  await click("#racer-details-action");
   assert.equal(
     await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats),
     wallet - 100,

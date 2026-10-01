@@ -4764,12 +4764,17 @@ function racerStatus(id, owned, current) {
 let racerDetailsReturn = null;
 function closeRacerDetails() {
   document.getElementById("racer-details").classList.add("hidden");
-  racerDetailsReturn?.focus({ preventScroll: true });
+  // Wait for the shared overlay observer to release the underlying screen's inert state.
+  const target = racerDetailsReturn;
+  queueMicrotask(() => {
+    if (target?.isConnected && !target.closest("[inert]")) target.focus({ preventScroll: true });
+  });
 }
 document.getElementById("racer-details-close").addEventListener("click", closeRacerDetails);
 function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
   const entry = catalogEntry(buyId);
   racerDetailsReturn = button;
+  const origin = button.closest(".overlay, .flow-screen");
   document.getElementById("racer-details-title").textContent = name;
   document.getElementById("racer-details-image").src = img;
   document.getElementById("racer-details-type").textContent = sub || "Cosmetic kart · Same performance in every race";
@@ -4792,13 +4797,14 @@ function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
       refreshTreatsChip();
       uiCue("chime");
       rerender();
-      racerDetailsReturn = document.querySelector(`[data-racer-id="${buyId}"]`);
+      racerDetailsReturn = origin?.querySelector(`[data-racer-id="${buyId}"]`);
       closeRacerDetails();
     };
   } else if (entry?.cup || entry?.cups || entry?.diff) {
     action.textContent = "Choose cup";
     action.onclick = () => {
       closeRacerDetails();
+      if (!catalogEl.classList.contains("hidden")) closeSubScreen(catalogEl);
       chooseRaceMode("cup");
     };
   } else {
@@ -6022,7 +6028,7 @@ document.getElementById("mode-daily")?.addEventListener("click", () => {
 });
 
 // Cup step: one tap-card per series, showing the prize. Picking advances.
-const CUP_CHIP_COLORS = ["#ffc24b", "#4cc9f0", "#ff5d5d", "#a4e022"];
+const CUP_CHIP_COLORS = ["#e5bd70", "#9acdc9", "#dda6b5", "#bfabda"];
 function renderCupOptions() {
   const list = document.getElementById("cup-list");
   if (!list) return;
@@ -6116,28 +6122,6 @@ function sparkleBurst(el, n = 10) {
   }
 }
 
-// Collection purchases confirm the price before charging; owned prizes equip directly.
-function beginPrizeBuy(tile, id, name, price) {
-  if (isUnlocked(profile, id)) {
-    equipCatalogItem(id);
-    return;
-  }
-  confirmMenuAction(`Unlock ${name}?`, `Costs ${price} treats. You have ${profile.treats}.`, "Unlock", () => {
-    if (!buyUnlock(profile, id)) {
-      hud.showToast(`You need ${Math.max(0, price - profile.treats)} more treats`);
-      return;
-    }
-    saveProfile();
-    refreshTreatsChip();
-    const body = document.querySelector("#catalog .flow-body");
-    const scroll = body.scrollTop;
-    renderPrizes();
-    setCatalogTab(_catalogTab);
-    body.scrollTop = scroll;
-    document.getElementById("catalog-treats").textContent = `🐟 ${profile.treats}`;
-    uiCue("success");
-  });
-}
 function equipCatalogItem(id) {
   if (id.startsWith("custom.")) {
     const which = id.split(".")[1];
@@ -6167,8 +6151,7 @@ function equipCatalogItem(id) {
     tile.classList.toggle("is-current", current);
     if (current) tile.setAttribute("aria-current", "true");
     else tile.removeAttribute("aria-current");
-    if (tile.classList.contains("owned"))
-      tile.querySelector(".prize-how").textContent = current ? "✓ Equipped" : "Equip";
+    if (tile.classList.contains("owned")) tile.querySelector(".prize-how").textContent = current ? "Equipped" : "Owned";
   }
   uiCue("success");
 }
@@ -6186,45 +6169,36 @@ function bankPendingBadges() {
   }
   return paid;
 }
-function prizeTile(id, name, colorHex, how, owned) {
-  // Real buttons keep every item reachable by touch, keyboard and controller.
-  const d = document.createElement("button");
-  d.type = "button";
-  d.dataset.prize = id;
-  d.className =
-    "prize-tile" + (owned ? " owned" : "") + (id.startsWith("kart.") || id === "custom.kart" ? " wide" : "");
-  // Real render of the prize (tools/catalog-shots.mjs). If a shot is missing,
-  // fall back to the old colour swatch so the tile never shows a broken image.
-  const im = document.createElement("img");
-  im.className = "prize-shot";
-  im.alt = name;
-  im.loading = "lazy";
-  im.src = `assets/catalog/${id.replace(".", "-")}.jpg`;
-  im.addEventListener("error", () => {
-    const sw = document.createElement("span");
-    sw.className = "prize-swatch";
-    sw.style.background = colorHex;
-    im.replaceWith(sw);
-  });
-  const nm = document.createElement("span");
-  nm.className = "prize-name";
-  nm.textContent = name;
-  const st = document.createElement("span");
-  st.className = "prize-how";
+function prizeTile(id, name) {
+  const owned = isUnlocked(profile, id);
   const current = id === `cat.${garageConfig.cat}` || id === `kart.${garageConfig.kart}`;
-  st.textContent = owned ? (current ? "✓ Equipped" : id.startsWith("custom.") ? "Open creator" : "Equip") : how;
-  if (current) {
-    d.classList.add("is-current");
-    d.setAttribute("aria-current", "true");
-  }
-  if (owned) d.addEventListener("click", () => equipCatalogItem(id));
-  d.append(im, nm, st);
-  const e = catalogEntry(id);
-  if (!owned && e && typeof e.price === "number" && e.price > 0) {
-    d.classList.add("buyable");
-    d.addEventListener("click", () => beginPrizeBuy(d, id, name, e.price));
-  }
-  return d;
+  const kind = id.startsWith("cat.") ? "cat" : "kart";
+  const sub = id.startsWith("custom.")
+    ? "Your own " + id.split(".")[1] + " design"
+    : kind === "cat"
+      ? `${CAT_TYPES[CAT_PRESETS[Number(id.split(".")[1])].type]?.label || "Classic"} cat · Cosmetic only`
+      : "Cosmetic kart · Same performance in every race";
+  const tile = racerGridCard({
+    img: `assets/catalog/${id.replace(".", "-")}.jpg`,
+    name,
+    sub,
+    buyId: id,
+    current,
+    status: owned && id.startsWith("custom.") ? "Open creator" : racerStatus(id, owned, current),
+    onPick: () => equipCatalogItem(id),
+    rerender: () => {
+      const body = document.querySelector("#catalog .flow-body");
+      const scroll = body.scrollTop;
+      renderCatalog();
+      body.scrollTop = scroll;
+    },
+  });
+  tile.classList.add("prize-tile");
+  tile.classList.toggle("owned", owned);
+  tile.dataset.prize = id;
+  tile.querySelector(".track-name").classList.add("prize-name");
+  tile.querySelector(".track-sub").classList.add("prize-how");
+  return tile;
 }
 function prizeHow(id) {
   const e = catalogEntry(id);
@@ -6274,7 +6248,7 @@ function renderPrizes() {
   catGrid.className = "prize-grid";
   CAT_PRESETS.forEach((c, i) => {
     const id = `cat.${i}`;
-    catGrid.appendChild(prizeTile(id, c.name, _hex6(c.fur), prizeHow(id), isUnlocked(profile, id)));
+    catGrid.appendChild(prizeTile(id, c.name));
   });
   box.appendChild(catGrid);
   head("🏎 Karts", "karts");
@@ -6283,19 +6257,15 @@ function renderPrizes() {
   kartGrid.className = "prize-grid prize-grid-wide";
   KART_PRESETS.forEach((k, i) => {
     const id = `kart.${i}`;
-    kartGrid.appendChild(prizeTile(id, k.name, _hex6(k.color), prizeHow(id), isUnlocked(profile, id)));
+    kartGrid.appendChild(prizeTile(id, k.name));
   });
   box.appendChild(kartGrid);
   head("✨ Creators", "creators");
   const cGrid = document.createElement("div");
   cGrid.dataset.collection = "creators";
   cGrid.className = "prize-grid";
-  cGrid.appendChild(
-    prizeTile("custom.cat", "Custom Cat", "#f0a830", prizeHow("custom.cat"), isUnlocked(profile, "custom.cat")),
-  );
-  cGrid.appendChild(
-    prizeTile("custom.kart", "Custom Kart", "#e53935", prizeHow("custom.kart"), isUnlocked(profile, "custom.kart")),
-  );
+  cGrid.appendChild(prizeTile("custom.cat", "Custom Cat"));
+  cGrid.appendChild(prizeTile("custom.kart", "Custom Kart"));
   box.appendChild(cGrid);
 }
 let _catalogTab = "cats";

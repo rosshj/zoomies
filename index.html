@@ -960,13 +960,12 @@
   <!-- ===== Cat-alog: treats, trophy shelf, achievements, career stats ===== -->
   <div id="catalog" class="overlay sheet hidden">
     <header class="flow-head">
-      <div class="flow-head-spacer">
-        <p id="catalog-treats" class="catalog-treats">🐟 0</p>
-      </div>
+
       <div class="flow-head-text">
         <h2 class="flow-h">Collection</h2>
       </div>
       <div class="flow-head-right">
+        <p id="catalog-treats" class="catalog-treats">🐟 0</p>
         <button id="catalog-back" class="flow-back flow-close" aria-label="Close">✕</button>
       </div>
     </header>
@@ -1080,12 +1079,12 @@
           </div>
         </section>
         <section class="settings-card">
-          <h2 class="settings-section">💾 Progress</h2>
+          <h2 class="settings-section">💾 Save data</h2>
           <!-- Backup code in an in-sheet field (Electron has no window.prompt):
                Copy fills it + copies, Paste reads the clipboard into it,
                Restore imports whatever's in it. -->
           <div class="backup-row">
-            <span class="setting-label">Import progress from the web version</span>
+            <span class="setting-label">Back up or restore progress</span>
             <textarea id="backup-code" class="creator-input backup-code" rows="2" spellcheck="false" autocomplete="off" placeholder="Paste your backup code here (ZP1.…)"></textarea>
             <div class="share-row">
               <button id="backup-copy" class="secondary small">📋 Copy my code</button>
