@@ -21,10 +21,14 @@ try {
     await page.waitForFunction(() => window.__zoomies?.track);
     await page.locator("#start-btn").click();
     await page.waitForFunction(() => document.getElementById("track-scenery").dataset.ready === "true");
-    const data = await page
-      .locator("#track-scenery")
-      .evaluate((c) => ({ url: c.toDataURL(), camera: +c.dataset.cameraHeight, ceiling: +c.dataset.sceneryCeiling }));
-    assert.ok(data.camera >= data.ceiling + 59, "Camera inside scenery envelope");
+    const data = await page.locator("#track-scenery").evaluate((c) => ({
+      url: c.toDataURL(),
+      camera: +c.dataset.cameraHeight,
+      road: +c.dataset.roadHeight,
+      clear: c.dataset.clearView,
+    }));
+    assert.ok(data.camera >= data.road + 5 && data.camera <= data.road + 12, "Camera is not close to the road");
+    assert.equal(data.clear, "true", "Scenery blocks the camera");
     await fs.writeFile(`/tmp/track-${cfg.seed || "classic"}.png`, Buffer.from(data.url.split(",")[1], "base64"));
     await page.waitForTimeout(700);
     await page.screenshot({ path: `/tmp/track-card-${cfg.seed || "classic"}.png` });
@@ -41,12 +45,12 @@ try {
     console.log(
       name,
       data.camera,
-      data.ceiling,
+      data.road,
       await page.evaluate(() => (window.__zoomies.renderer.backend.isWebGPUBackend ? "WebGPU" : "WebGL")),
     );
   }
   assert.deepEqual(errors, []);
-  console.log("PASS: track stills, static cache, and clearance above mountains/tunnels.");
+  console.log("PASS: track stills, static cache, and close road framing and clear sightlines.");
 } finally {
   await browser.close();
 }

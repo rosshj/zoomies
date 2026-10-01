@@ -1,44 +1,69 @@
 import * as THREE from "three";
+import { featureCameraClamp } from "./features.js";
 import { uSunViewNode } from "./toon.js";
 
-// An overhead still of the already-built world; no second world or animation loop.
-export async function renderTrackPortrait({ renderer, scene, track, canvas, skyMesh, starField, sun }) {
-  const points = Array.from({ length: 160 }, (_, i) => track.getPointAt(i / 160));
-  const road = new THREE.Box3().setFromPoints(points);
-  const center = road.getCenter(new THREE.Vector3());
-  const size = road.getSize(new THREE.Vector3());
-  const span = Math.max(size.x, size.z, 100);
+// A close roadside still of the existing world, with no extra animation loop.
+export async function renderTrackPortrait({
+  renderer,
+  scene,
+  track,
+  world,
+  canvas,
+  skyMesh,
+  starField,
+  sun,
+  anchor = 0,
+}) {
   scene.updateMatrixWorld(true);
-  // Include actual mountain/tunnel/building geometry, not just the ground sampler.
-  // Exclude only the sky and stars, which deliberately enclose the entire world.
-  let ceiling = road.max.y;
-  const box = new THREE.Box3();
+  const blockers = [];
   scene.traverseVisible((mesh) => {
-    if (!mesh.isMesh || mesh === skyMesh || mesh === starField || mesh.userData.skyDecoration) return;
-    if (mesh.isInstancedMesh) {
-      if (!mesh.boundingBox) mesh.computeBoundingBox();
-      box.copy(mesh.boundingBox).applyMatrix4(mesh.matrixWorld);
-    } else {
-      if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-      box.copy(mesh.geometry.boundingBox).applyMatrix4(mesh.matrixWorld);
-    }
-    if (Number.isFinite(box.max.y)) ceiling = Math.max(ceiling, box.max.y);
+    if (mesh.isMesh && mesh !== skyMesh && mesh !== starField && !mesh.userData.skyDecoration) blockers.push(mesh);
   });
-  const camera = new THREE.PerspectiveCamera(48, 1.6, 1, 12000);
-  camera.position.set(center.x + span * 0.3, Math.max(ceiling + 60, center.y + span * 0.95), center.z + span * 0.5);
-  camera.lookAt(center);
-  camera.updateMatrixWorld();
+  const camera = new THREE.PerspectiveCamera(58, 1.6, 0.3, 12000);
+  const ray = new THREE.Raycaster();
+  let roadHeight = 0;
+  let clearView = false;
+  // Start near the menu's scenic anchor. Try other sections when a tunnel or
+  // steep bend obstructs the view, instead of lifting the camera into the sky.
+  for (let i = 0; i < 32; i++) {
+    const t = (anchor + i / 32) % 1;
+    const point = track.getPointAt(t);
+    const look = track.getPointAt((t + 42 / track.length) % 1).clone();
+    const nearTunnel = track.features?.runs.some(
+      (run) => run.kind === "tunnel" && run.spine.some((p) => Math.hypot(p.x - point.x, p.z - point.z) < 55),
+    );
+    if (nearTunnel && i < 31) continue;
+    roadHeight = Math.max(point.y, world.heightAt(point.x, point.z));
+    camera.position.set(point.x, roadHeight + 10, point.z);
+    featureCameraClamp(track.features, track, camera.position);
+    look.y += 3;
+    camera.lookAt(look);
+    camera.updateMatrixWorld();
+    const direction = look.clone().sub(camera.position);
+    ray.set(camera.position, direction.clone().normalize());
+    ray.near = 0;
+    ray.far = direction.length() - 2;
+    if (ray.intersectObjects(blockers, false).length) continue;
+    // Check the near field across the image as well as its centre, keeping
+    // foreground trees, bridge pieces and tunnel walls away from the lens.
+    clearView = true;
+    ray.far = 6;
+    for (const x of [-0.8, 0, 0.8])
+      for (const y of [-0.6, 0, 0.6]) {
+        ray.setFromCamera(new THREE.Vector2(x, y), camera);
+        if (ray.intersectObjects(blockers, false).length) clearView = false;
+      }
+    if (clearView) break;
+  }
+  if (!clearView) throw new Error("No unobstructed roadside view found");
   const target = new THREE.RenderTarget(640, 400, { type: THREE.UnsignedByteType, depthBuffer: true });
   target.texture.colorSpace = THREE.SRGBColorSpace;
   const oldTarget = renderer.getRenderTarget();
-  const fog = scene.fog;
   const skyPosition = skyMesh?.position.clone();
   const starPosition = starField?.position.clone();
   const sunView = uSunViewNode.value.clone();
   let pixels;
   try {
-    // Distant overview should show the route, rather than the driving-distance fog.
-    scene.fog = null;
     skyMesh?.position.copy(camera.position);
     starField?.position.copy(camera.position);
     uSunViewNode.value.copy(sun.position).normalize().negate().transformDirection(camera.matrixWorldInverse);
@@ -50,7 +75,6 @@ export async function renderTrackPortrait({ renderer, scene, track, canvas, skyM
     throw error;
   } finally {
     renderer.setRenderTarget(oldTarget);
-    scene.fog = fog;
     if (skyPosition) skyMesh.position.copy(skyPosition);
     if (starPosition) starField.position.copy(starPosition);
     uSunViewNode.value.copy(sunView);
@@ -73,7 +97,8 @@ export async function renderTrackPortrait({ renderer, scene, track, canvas, skyM
     ctx.restore();
     canvas.dataset.ready = "true";
     canvas.dataset.cameraHeight = String(camera.position.y);
-    canvas.dataset.sceneryCeiling = String(ceiling);
+    canvas.dataset.roadHeight = String(roadHeight);
+    canvas.dataset.clearView = String(clearView);
   } finally {
     target.dispose();
   }

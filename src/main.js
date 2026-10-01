@@ -6900,6 +6900,8 @@ function renderMenuBackground(timeSec) {
       renderer,
       scene,
       track,
+      world,
+      anchor: _menuShots[_menuShot],
       canvas: document.getElementById("track-scenery"),
       skyMesh,
       starField,
