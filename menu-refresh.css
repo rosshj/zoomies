@@ -136,6 +136,35 @@ button.small-pill {
   min-height: 110px;
   padding: 22px;
 }
+#stage #flow-mode .mode-tap {
+  background: #2b233b;
+  color: #fff3dc;
+  border-radius: var(--control-radius);
+  box-shadow: none;
+}
+#stage #flow-mode .mode-tap:hover {
+  background: #382c49;
+}
+#stage #flow-mode .tap-chip {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: #ffc64b;
+  font-size: 26px;
+}
+#stage #flow-mode .tap-sub {
+  color: #c2b8ce;
+  font-weight: 400;
+}
+#stage #flow-mode .tap-chev {
+  color: #ffc64b;
+}
+#stage #flow-mode .mode-daily {
+  grid-column: auto;
+}
+#stage:not(.menu-portrait) #flow-mode .mode-grid:has(#mode-split:not(.hidden)) .mode-daily {
+  grid-column: 1 / -1;
+}
 .tap-title {
   font-size: 20px;
   letter-spacing: -0.3px;
