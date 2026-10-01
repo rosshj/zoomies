@@ -422,8 +422,7 @@
       </div>
     </section>
 
-    <!-- Racer: the showroom. The live 3D cat-in-kart orbits in the open left
-         half; the controls dock right. (Was the garage overlay.) -->
+    <!-- Garage shares the racer card and rotating track with race setup. -->
     <!-- Pick your cat: a portrait grid (real catalog renders). Locked cats buy
          in place; the Custom Cat card drills into the studio. -->
     <section id="flow-garage" class="flow-screen">
@@ -433,9 +432,12 @@
         <div class="flow-head-right"></div>
       </header>
       <div class="flow-body racer-body garage-body">
-        <div class="racer-showroom" aria-hidden="true"></div>
+        <div class="setup-racer-preview">
+          <span class="start-racer-label">Your racer</span>
+          <canvas id="garage-portrait" width="640" height="400" role="img" aria-label="Your cat driving your kart"></canvas>
+          <div class="racer-preview-footer"><strong id="garage-summary" class="racer-summary"></strong></div>
+        </div>
         <div class="garage-side">
-          <div class="garage-intro"><h3>Your kind of fast.</h3><p>Pick a companion. Find their ride.</p></div>
           <button id="garage-cat" class="garage-choice btn-cream"><img id="garage-cat-thumb" alt=""><span><small>CAT</small><strong id="garage-cat-name"></strong></span><b>›</b></button>
           <button id="garage-kart" class="garage-choice btn-cream"><img id="garage-kart-thumb" alt=""><span><small>KART</small><strong id="garage-kart-name"></strong></span><b>›</b></button>
           <p class="garage-save-note">Your choices save automatically.</p>
@@ -662,7 +664,7 @@
             <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
             <canvas id="racer-portrait" width="640" height="400" role="img" aria-label="Your cat driving your kart"></canvas>
             <div class="racer-preview-footer">
-              <strong id="racer-summary">Marmalade · Ember</strong>
+              <strong id="racer-summary" class="racer-summary">Marmalade · Ember</strong>
               <div class="setup-racer-actions">
                 <button id="startline-garage" class="btn-cream small-pill" data-menu-icon="garage">Garage</button>
               </div>

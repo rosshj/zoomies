@@ -4421,26 +4421,28 @@ function syncGarageUI() {
   refreshEditorLocks();
 }
 // Cache the combined portrait until the actual appearance changes.
-let racerPortraitKey = "";
-function refreshRacerSummary() {
-  const cat = catSpec(garageConfig),
-    kart = kartSpec(garageConfig);
-  document.getElementById("racer-summary").textContent = `${cat.name} · ${kart.name}`;
-  const canvas = document.getElementById("racer-portrait");
+const racerPortraitKeys = new WeakMap();
+function refreshRacerCard(canvas, summary, config) {
+  const cat = catSpec(config),
+    kart = kartSpec(config);
+  summary.textContent = `${cat.name} · ${kart.name}`;
   canvas.setAttribute("aria-label", `${cat.name} driving ${kart.name}`);
   const backdrop = contrastBg(kart.color);
   const racerCard = canvas.closest(".setup-racer-preview");
   racerCard.style.setProperty("--racer-backdrop", backdrop);
   racerCard.style.setProperty("--racer-ink", backdrop === "#46568a" ? "#fff3dc" : "#30263d");
-  const key = _previewKey(garageConfig);
-  if (key !== racerPortraitKey) {
-    racerPortraitKey = key;
+  const key = _previewKey(config);
+  if (key !== racerPortraitKeys.get(canvas)) {
+    racerPortraitKeys.set(canvas, key);
     canvas.dataset.ready = "false";
     renderRacerPortrait(canvas, cat, kart).catch((error) => {
-      racerPortraitKey = "";
+      racerPortraitKeys.delete(canvas);
       console.warn("Racer portrait unavailable", error);
     });
   }
+}
+function refreshRacerSummary() {
+  refreshRacerCard(document.getElementById("racer-portrait"), document.getElementById("racer-summary"), garageConfig);
 }
 // Entering any racer-family screen (cat / kart / the two studios): open the
 // showroom once — the draft persists across the whole family and commits when
@@ -5216,6 +5218,7 @@ function openRacerPicker(which, origin = "startline") {
   flowGo(which);
 }
 function refreshGarageHome() {
+  refreshRacerCard(document.getElementById("garage-portrait"), document.getElementById("garage-summary"), _garageDraft);
   const cat = catSpec(_garageDraft),
     kart = kartSpec(_garageDraft);
   document.querySelector("#flow-garage .flow-h").textContent = _pickingSeat
@@ -8318,9 +8321,9 @@ function loopBody(now) {
     // the top of the loop): showroom and track drift both draw at ~30fps
     // (20 in Battery saver, 10 when idle) and the canvas holds the frame between.
     if (_garageOpen) {
-      // Pickers keep the same track orbit as Home and setup. Only the garage
-      // and custom studios need the separate, live showroom preview.
-      const showroom = flowStep !== "cat" && flowStep !== "kart";
+      // Garage and pickers share Home’s track orbit. Only custom studios
+      // need the separate live showroom preview.
+      const showroom = flowStep === "cat-edit" || flowStep === "kart-edit";
       if (_garagePreview) _garagePreview.visible = showroom;
       if (showroom) {
         renderGarage(now / 1000, dt);

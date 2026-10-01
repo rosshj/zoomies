@@ -2025,7 +2025,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   height: 100%;
   min-height: 56px;
 }
-#stage #flow-startline .setup-racer-preview {
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2035,7 +2035,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   gap: 0;
   padding: 0;
 }
-#stage #flow-startline .setup-racer-preview > .start-racer-label {
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > .start-racer-label {
   padding: 12px 14px 0;
 }
 #stage #flow-startline #racer-portrait {
@@ -2045,7 +2045,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   object-fit: contain;
   background: radial-gradient(ellipse at 50% 80%, #4c3f64, #211e31 75%);
 }
-#stage #flow-startline .racer-preview-footer {
+#stage :is(#flow-startline, #flow-garage) .racer-preview-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2053,7 +2053,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   padding: 10px 12px;
   background: var(--menu-surface);
 }
-#stage #flow-startline #racer-summary {
+#stage :is(#flow-startline, #flow-garage) .racer-summary {
   font-size: 14px;
   min-width: 0;
 }
@@ -2091,10 +2091,10 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact #flow-startline #racer-portrait {
   height: 90px;
 }
-#stage.menu-compact #flow-startline .racer-preview-footer {
+#stage.menu-compact :is(#flow-startline, #flow-garage) .racer-preview-footer {
   padding: 4px 8px;
 }
-#stage.menu-compact #flow-startline #racer-summary {
+#stage.menu-compact :is(#flow-startline, #flow-garage) .racer-summary {
   font-size: 12px;
 }
 #stage .race-detail-inner {
@@ -2133,10 +2133,10 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .race-detail-choice span { font-size: 14px; line-height: 1.5; }
 #stage.menu-portrait .race-detail-grid { grid-template-columns: minmax(0, 1fr); }
 
-#stage.menu-compact #flow-startline .setup-racer-preview > .start-racer-label:has(.seat-input.hidden) {
+#stage.menu-compact :is(#flow-startline, #flow-garage) .setup-racer-preview > .start-racer-label:has(.seat-input.hidden) {
   display: none;
 }
-#stage.menu-compact #flow-startline .setup-racer-preview {
+#stage.menu-compact :is(#flow-startline, #flow-garage) .setup-racer-preview {
   padding: 0;
 }
 
@@ -2235,7 +2235,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage:not(.menu-portrait) #flow-startline .start-scroll {
   flex: 1 1 0;
 }
-#stage:not(.menu-portrait) #flow-startline .setup-racer-preview {
+#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage) .setup-racer-preview {
   flex: 1 0 auto;
 }
 #stage:not(.menu-portrait) #flow-startline #racer-portrait {
@@ -2243,7 +2243,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   height: 90px;
   min-height: 90px;
 }
-#stage:not(.menu-portrait) #flow-startline .setup-racer-preview > :not(canvas) {
+#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage) .setup-racer-preview > :not(canvas) {
   flex-shrink: 0;
 }
 
@@ -2324,14 +2324,14 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-startline #setup-mode > span:not(.setup-icon) { padding: 8px 12px; }
 #stage #flow-startline #setup-mode small { color: #6c6078; }
 #stage #flow-startline #setup-mode small::after { color: #6c6078; }
-#stage #flow-startline .setup-racer-preview {
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview {
   background: radial-gradient(ellipse 100% 100% at 50% 125%, #30263d26 99.5%, transparent 100%), var(--racer-backdrop, #a4dedf);
   color: var(--racer-ink, #30263d);
 }
 #stage #flow-startline #racer-portrait,
-#stage #flow-startline .racer-preview-footer { background: transparent; }
-#stage #flow-startline .setup-racer-preview .start-racer-label,
-#stage #flow-startline #racer-summary { color: inherit; }
+#stage :is(#flow-startline, #flow-garage) .racer-preview-footer { background: transparent; }
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview .start-racer-label,
+#stage :is(#flow-startline, #flow-garage) .racer-summary { color: inherit; }
 
 /* Racer leads the setup; the track fills the space above Start. */
 #stage #flow-startline .setup-racer-panel #racer-portrait {
@@ -2365,7 +2365,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .overlay :is(.btn-cream, .btn-gold),
 #stage #flow-startline.flow-screen .setup-choice,
 #stage #flow-startline.flow-screen #setup-mode > span:not(.setup-icon),
-#stage #flow-startline.flow-screen .racer-preview-footer,
+#stage :is(#flow-startline, #flow-garage).flow-screen .racer-preview-footer,
 #stage #flow-startline.flow-screen #go-btn,
 #stage #flow-startline.flow-screen .setup-racer-actions button,
 #stage .picker-toolbar .btn-cream,
@@ -2379,14 +2379,14 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .racer-details-copy {
   padding: var(--menu-inset);
 }
-#stage #flow-startline.flow-screen .setup-racer-preview > .start-racer-label {
+#stage :is(#flow-startline, #flow-garage).flow-screen .setup-racer-preview > .start-racer-label {
   padding: var(--menu-inset) var(--menu-inset) 0;
 }
 #stage #flow-mode.flow-screen .tap-text {
   padding: var(--menu-control-y) var(--menu-inset);
 }
 #stage #flow-startline.flow-screen .setup-racer-actions,
-#stage #flow-startline.flow-screen .racer-preview-footer {
+#stage :is(#flow-startline, #flow-garage).flow-screen .racer-preview-footer {
   gap: var(--menu-content-gap);
 }
 #stage #menu :is(#cat-grid, #kart-grid) .racer-tap :is(.track-name, .track-sub) {
@@ -2429,3 +2429,36 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   justify-content: center;
   gap: var(--menu-content-gap);
 }
+
+/* Garage uses the same still racer card over the uninterrupted track orbit. */
+#stage #flow-garage .garage-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, .85fr);
+  gap: 16px;
+  align-items: stretch;
+  padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
+}
+#stage #flow-garage .setup-racer-preview { min-height: 180px; min-width: 0; }
+#stage #garage-portrait {
+  display: block;
+  width: 100%;
+  height: 0;
+  min-height: 90px;
+  flex: 1 1 0;
+  object-fit: contain;
+  background: transparent;
+}
+#stage #flow-garage .garage-side {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  align-self: center;
+  gap: 12px;
+}
+#stage.menu-portrait #flow-garage .garage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#stage.menu-portrait #flow-garage .setup-racer-preview { flex: 1 0 180px; }
+#stage.menu-portrait #flow-garage .garage-side { flex: 0 0 auto; }
