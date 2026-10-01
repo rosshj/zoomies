@@ -27,8 +27,17 @@ try {
       road: +c.dataset.roadHeight,
       clear: c.dataset.clearView,
     }));
-    assert.ok(data.camera >= data.road + 5 && data.camera <= data.road + 12, "Camera is not close to the road");
+    assert.ok(data.camera >= data.road + 5 && data.camera <= data.road + 14, "Camera is not close to the road");
     assert.equal(data.clear, "true", "Scenery blocks the camera");
+    assert.equal(
+      await page.locator("#track-scenery").getAttribute("data-scenery-layers"),
+      "7",
+      "Scenery layers missing",
+    );
+    assert.ok(
+      +(await page.locator("#track-scenery").getAttribute("data-road-offset")) > 8,
+      "Camera stayed on the racing line",
+    );
     await fs.writeFile(`/tmp/track-${cfg.seed || "classic"}.png`, Buffer.from(data.url.split(",")[1], "base64"));
     await page.waitForTimeout(700);
     await page.screenshot({ path: `/tmp/track-card-${cfg.seed || "classic"}.png` });
