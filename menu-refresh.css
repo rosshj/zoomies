@@ -2354,3 +2354,42 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   height: clamp(110px, 24svh, 210px);
   flex: 0 0 auto;
 }
+
+/* Shared content insets: compact layouts reduce height, never side padding. */
+#stage {
+  --menu-inset: 16px;
+  --menu-control-y: 12px;
+  --menu-content-gap: 8px;
+}
+#stage.menu-compact { --menu-control-y: 8px; }
+#stage #menu :is(.btn-cream, .btn-gold),
+#stage .overlay :is(.btn-cream, .btn-gold),
+#stage #flow-startline.flow-screen .setup-choice,
+#stage #flow-startline.flow-screen #setup-mode > span:not(.setup-icon),
+#stage #flow-startline.flow-screen .racer-preview-footer,
+#stage #flow-startline.flow-screen #go-btn,
+#stage #flow-startline.flow-screen .setup-racer-actions button,
+#stage .picker-toolbar .btn-cream,
+#stage .racer-details-copy button {
+  padding: var(--menu-control-y) var(--menu-inset);
+}
+#stage #flow-startline.flow-screen #setup-mode { padding: 0; }
+#stage #flow-startline.flow-screen .map-chip,
+#stage #menu .race-detail-choice,
+#stage .garage-choice,
+#stage .racer-details-copy {
+  padding: var(--menu-inset);
+}
+#stage #flow-startline.flow-screen .setup-racer-preview > .start-racer-label {
+  padding: var(--menu-inset) var(--menu-inset) 0;
+}
+#stage #flow-mode.flow-screen .tap-text {
+  padding: var(--menu-control-y) var(--menu-inset);
+}
+#stage #flow-startline.flow-screen .setup-racer-actions,
+#stage #flow-startline.flow-screen .racer-preview-footer {
+  gap: var(--menu-content-gap);
+}
+#stage #menu :is(#cat-grid, #kart-grid) .racer-tap :is(.track-name, .track-sub) {
+  padding-inline: var(--menu-inset);
+}
