@@ -14,7 +14,27 @@ try {
   await p.locator("#menu-map-btn").click();
   await p.waitForTimeout(700);
   assert.ok((await p.locator("#track-grid .racer-tap").count()) > 8);
+  const previews = p.locator("#track-grid .track-preview-art");
+  assert.equal(await previews.count(), 11);
+  for (const preview of await previews.all()) {
+    await preview.scrollIntoViewIfNeeded();
+    await preview.locator("img").evaluate((img) => img.decode());
+    assert.equal(await preview.locator("img").evaluate((img) => img.naturalWidth), 640);
+    assert.ok(
+      await preview.locator("canvas").evaluate((canvas) =>
+        canvas
+          .getContext("2d")
+          .getImageData(0, 0, 300, 300)
+          .data.some((v, i) => i % 4 === 3 && v > 0),
+      ),
+      "Track outline missing",
+    );
+  }
+  await previews.first().scrollIntoViewIfNeeded();
   await p.screenshot({ path: "/tmp/track-picker.png" });
+  await p.setViewportSize({ width: 844, height: 390 });
+  await p.screenshot({ path: "/tmp/track-picker-landscape.png" });
+  await p.setViewportSize({ width: 390, height: 844 });
   await p.locator("#track-custom-open").click();
   await p.waitForTimeout(500);
   assert.equal(await p.locator("#track-panel .flow-h").textContent(), "Track Builder");

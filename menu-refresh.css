@@ -2609,3 +2609,31 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #track-panel .map-frame { box-shadow: none; }
 #stage #track-panel :is(.map-reroll, .biome-chip) { display: flex; align-items: center; justify-content: center; gap: 6px; }
 #stage #track-panel #biome-max-hint { display: block; font-size: 12px; line-height: 1.4; color: #c3b8cf; margin-bottom: 12px; }
+
+/* Bundled scenery is available before a track has ever been selected. */
+#stage #track-grid .track-preview-art {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+#stage #track-grid .track-preview-art > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+#stage #track-grid .track-preview-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 18, 38, .62);
+  pointer-events: none;
+}
+#stage #track-grid .track-preview-art > .track-map {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}

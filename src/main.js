@@ -5600,14 +5600,25 @@ function renderTrackCards() {
   const grid = document.getElementById("track-grid");
   if (!grid) return;
   grid.replaceChildren();
-  const addCard = (name, sub, cfg, current) => {
+  const addCard = (name, sub, cfg, current, bundled = false) => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 300;
     canvas.className = "track-map";
-    const img = cachedTrackImage({ ...trackConfig, ...cfg });
+    const img = bundled
+      ? `assets/track-previews/${cfg.seed || "classic"}.jpg`
+      : cachedTrackImage({ ...trackConfig, ...cfg });
+    const art = document.createElement("span");
+    art.className = "track-preview-art";
+    if (img) {
+      const scenery = document.createElement("img");
+      scenery.src = img;
+      scenery.alt = "";
+      scenery.loading = "lazy";
+      art.append(scenery);
+    }
+    art.append(canvas);
     const b = racerGridCard({
-      img,
-      art: img ? null : canvas,
+      art,
       name,
       sub,
       status: current ? "Selected" : sub,
@@ -5616,18 +5627,16 @@ function renderTrackCards() {
     });
     b.classList.add("track-tap");
     grid.append(b);
-    if (!img) {
-      const key = trackImageKey(cfg);
-      const cached = trackOutlineCache.get(key);
-      if (cached) canvas.getContext("2d").drawImage(cached, 0, 0);
-      else {
-        paintTrackMap(canvas, previewLoopPoints(cfg));
-        trackOutlineCache.set(key, canvas);
-      }
+    const key = trackImageKey(cfg);
+    const cached = trackOutlineCache.get(key);
+    if (cached) canvas.getContext("2d").drawImage(cached, 0, 0);
+    else {
+      paintTrackMap(canvas, previewLoopPoints(cfg));
+      trackOutlineCache.set(key, canvas);
     }
   };
-  addCard("Classic Circuit", "🏁 The original loop", { mode: "classic" }, trackConfig.mode !== "custom");
-  for (const t of FEATURED_TRACKS) addCard(t.name, t.sub, t.cfg, trackCardCurrent(t.cfg));
+  addCard("Classic Circuit", "🏁 The original loop", { mode: "classic" }, trackConfig.mode !== "custom", true);
+  for (const t of FEATURED_TRACKS) addCard(t.name, t.sub, t.cfg, trackCardCurrent(t.cfg), true);
   // The player's own recipe, when the live world isn't one of the cards above.
   if (trackConfig.mode === "custom" && !FEATURED_TRACKS.some((t) => trackCardCurrent(t.cfg))) {
     addCard(
