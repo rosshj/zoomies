@@ -2326,7 +2326,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-startline #setup-mode small { color: #6c6078; }
 #stage #flow-startline #setup-mode small::after { color: #6c6078; }
 #stage #flow-startline .setup-racer-preview {
-  background: linear-gradient(168deg, transparent 53%, #30263d26 53%), var(--racer-backdrop, #a4dedf);
+  background: radial-gradient(ellipse 100% 100% at 50% 140%, #30263d26 99.5%, transparent 100%), var(--racer-backdrop, #a4dedf);
   color: var(--racer-ink, #30263d);
 }
 #stage #flow-startline #racer-portrait,
