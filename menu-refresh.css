@@ -2462,3 +2462,11 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 }
 #stage.menu-portrait #flow-garage .setup-racer-preview { flex: 1 0 180px; }
 #stage.menu-portrait #flow-garage .garage-side { flex: 0 0 auto; }
+
+/* Home's two primary actions share one responsive height. */
+#stage { --home-action-height: 68px; }
+#stage.menu-portrait { --home-action-height: 58px; }
+#stage.menu-compact { --home-action-height: 48px; }
+#stage #menu :is(.title-play, .title-garage) {
+  min-height: var(--home-action-height);
+}
