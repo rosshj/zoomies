@@ -736,17 +736,24 @@ button.small-pill {
   max-width: 680px;
 }
 /* Keep the tabs floating inside the scroll area so cards pass behind them. */
-#stage #settings > .flow-body {
+#stage :is(#settings, #catalog, #flow-cat, #flow-kart) > .flow-body {
   padding-top: 12px;
   scroll-padding-top: 84px;
 }
-#stage #settings .settings-nav {
+#stage :is(#settings, #catalog) .settings-nav,
+#stage #menu .picker-toolbar {
   position: sticky;
   top: 0;
   z-index: 2;
   width: 100%;
-  max-width: 680px;
   margin: 0 auto 12px;
+}
+#stage :is(#settings, #catalog) .settings-nav {
+  max-width: 680px;
+}
+#stage #menu .picker-toolbar {
+  padding: 0;
+  background: transparent;
 }
 .settings-list {
   gap: 16px;

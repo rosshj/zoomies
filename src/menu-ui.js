@@ -21,7 +21,10 @@ export function initMenuUI() {
   document.getElementById("track-apply").textContent = "Use this track";
   const catalogTabs = document.querySelector(".catalog-tabs");
   catalogTabs.classList.add("settings-nav");
-  document.querySelector("#catalog .flow-head").after(catalogTabs);
+  document.querySelector("#catalog .flow-body").prepend(catalogTabs);
+  for (const screen of document.querySelectorAll("#flow-cat, #flow-kart")) {
+    screen.querySelector(".flow-body").prepend(screen.querySelector(".picker-toolbar"));
+  }
   const settings = document.getElementById("settings");
   for (const row of settings.querySelectorAll(".setting-row")) {
     row.classList.toggle("setting-row-segmented", !!row.querySelector(".seg-toggle"));
