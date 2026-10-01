@@ -2301,3 +2301,35 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-portrait .racer-details-card { grid-template-columns: minmax(0, 1fr); max-width: 360px; }
 #stage.menu-portrait #racer-details-image { height: auto; }
 #stage .prize-tile .prize-shot { aspect-ratio: 1; }
+
+/* Setup repeats the visual identity of the choices that lead into it. */
+#stage #flow-startline #setup-mode {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  padding: 0;
+  overflow: hidden;
+  background: #fff3dc;
+  color: #30263d;
+  border: 0;
+}
+#stage #flow-startline #setup-mode .setup-icon {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  width: 100%;
+  height: 100%;
+  font-size: 28px;
+  color: #30263d;
+  background: var(--mode-art-color);
+}
+#stage #flow-startline #setup-mode > span:not(.setup-icon) { padding: 8px 12px; }
+#stage #flow-startline #setup-mode small { color: #6c6078; }
+#stage #flow-startline #setup-mode small::after { color: #6c6078; }
+#stage #flow-startline .setup-racer-preview {
+  background: linear-gradient(168deg, transparent 53%, #30263d26 53%), var(--racer-backdrop, #a4dedf);
+  color: var(--racer-ink, #30263d);
+}
+#stage #flow-startline #racer-portrait,
+#stage #flow-startline .racer-preview-footer { background: transparent; }
+#stage #flow-startline .setup-racer-preview .start-racer-label,
+#stage #flow-startline #racer-summary { color: inherit; }

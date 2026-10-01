@@ -1,3 +1,5 @@
+import { contrastBg } from "./catalog-palette.js";
+import { menuIcon } from "./menu-icons.js";
 import { renderRacerPortrait } from "./racer-portrait.js";
 import { initMenuUI } from "./menu-ui.js";
 import * as THREE from "three";
@@ -1983,6 +1985,7 @@ function setupMinimap() {
 // Paint a top-down outline of a loop (array of {x,z}) into a 2D canvas, fitting
 // its world bounds with padding and preserving aspect. Used by the track-menu
 // preview and the main-menu map so you can see the shape before you race.
+const mapPreviewPoints = new WeakMap();
 function paintTrackMap(canvas, controlPoints, glyphs = null) {
   if (!canvas || !controlPoints || !controlPoints.length) return;
   // Smooth the control points into the same closed Catmull-Rom the road is built
@@ -1991,8 +1994,14 @@ function paintTrackMap(canvas, controlPoints, glyphs = null) {
   const points = [];
   for (let i = 0; i < 300; i++) points.push(curve.getPointAt(i / 300));
   const ctx = canvas.getContext("2d");
-  // Keep strokes and landmarks readable on the higher-resolution setup map.
-  const pixelScale = canvas.id === "menu-map" ? 2 : 1;
+  // Draw setup at its displayed size so the selector's bold stroke stays readable.
+  const isSetup = canvas.id === "menu-map";
+  const pixelScale = isSetup ? Math.min(devicePixelRatio || 1, 2) : 1;
+  if (isSetup) {
+    mapPreviewPoints.set(canvas, controlPoints);
+    canvas.width = Math.max(1, Math.round(canvas.clientWidth * pixelScale));
+    canvas.height = Math.max(1, Math.round(canvas.clientHeight * pixelScale));
+  }
   ctx.save();
   ctx.scale(pixelScale, pixelScale);
   const W = canvas.width / pixelScale;
@@ -4062,26 +4071,24 @@ trackPanel?.querySelectorAll("#track-feats .biome-chip").forEach((chip) => {
 // The track maker opens as a sheet from the Track step's "Make your own" card
 // and from the start line's map Edit affordance.
 
-// Main-menu map: a thumbnail of the track you're about to race, doubling as a
-// shortcut into the track editor. The Track tile echoes the same name plus the
-// chosen time of day so the whole setup reads off the front screen.
+// Setup map: the same simple outline as the track selector, with only its name.
 const TOD_LABELS = { midday: "Midday", sunset: "Sunset", night: "Night", random: "Random sky" };
 function refreshMenuMap() {
-  // The menu map shows the LIVE world, so its set pieces (planned at build)
-  // can be drawn right on the loop, and the track gets its generated name.
-  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig), featureGlyphs(track.features));
-  const name =
-    trackConfig.mode === "custom"
-      ? `${trackTitle(track.features, WORLD_SEED)} · ${trackConfig.seed || "—"}`
-      : "Classic circuit";
+  paintTrackMap(document.getElementById("menu-map"), previewLoopPoints(trackConfig));
   const label = document.getElementById("menu-map-label");
-  if (label) label.textContent = `${name} · ${TOD_LABELS[trackConfig.timeOfDay] || TOD_LABELS.midday}`;
+  if (label)
+    label.textContent = trackConfig.mode === "custom" ? trackTitle(track.features, WORLD_SEED) : "Classic Circuit";
 }
 // The map opens the track or cup picker, preserving in-progress confirmation.
 document.getElementById("menu-map-btn")?.addEventListener("click", () => {
   openTrackPicker();
 });
 refreshMenuMap();
+new ResizeObserver(() => {
+  const canvas = document.getElementById("menu-map");
+  const points = mapPreviewPoints.get(canvas);
+  if (points) paintTrackMap(canvas, points);
+}).observe(document.getElementById("menu-map"));
 document.getElementById("track-back")?.addEventListener("click", () => closeSubScreen(trackPanel));
 // The shape sliders re-sync the whole panel (not just their label) so the
 // Style chips light up when the knobs land on a preset and clear when they
@@ -4421,6 +4428,10 @@ function refreshRacerSummary() {
   document.getElementById("racer-summary").textContent = `${cat.name} · ${kart.name}`;
   const canvas = document.getElementById("racer-portrait");
   canvas.setAttribute("aria-label", `${cat.name} driving ${kart.name}`);
+  const backdrop = contrastBg(kart.color);
+  const racerCard = canvas.closest(".setup-racer-preview");
+  racerCard.style.setProperty("--racer-backdrop", backdrop);
+  racerCard.style.setProperty("--racer-ink", backdrop === "#46568a" ? "#fff3dc" : "#30263d");
   const key = _previewKey(garageConfig);
   if (key !== racerPortraitKey) {
     racerPortraitKey = key;
@@ -5659,6 +5670,15 @@ for (let n = 2; n <= 4; n++) {
 function refreshStartline() {
   const modeNames = { gp: "Single Race", tt: "Time Trial", cup: "Cup Series", split: "Versus" };
   document.getElementById("setup-mode-name").textContent = _dailyActive ? "Daily Challenge" : modeNames[raceMode];
+  const mode = _dailyActive ? "daily" : raceMode;
+  const modeCard = document.getElementById("setup-mode");
+  modeCard.querySelector(".setup-icon").innerHTML = menuIcon(
+    { gp: "race", cup: "trophy", tt: "time", split: "pad", daily: "calendar" }[mode],
+  );
+  modeCard.style.setProperty(
+    "--mode-art-color",
+    getComputedStyle(document.querySelector(`#mode-${mode} .mode-art`)).backgroundColor,
+  );
   const featured = FEATURED_TRACKS.find((t) => trackCardCurrent(t.cfg));
   const selectedTrackName =
     raceMode === "cup"
@@ -5670,6 +5690,8 @@ function refreshStartline() {
   mapButton.setAttribute("aria-label", `Change ${raceMode === "cup" ? "cup" : "track"}: ${selectedTrackName}`);
   mapButton.title = raceMode === "cup" ? "Choose cup" : "Choose track";
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
+  if (raceMode !== "cup" && (featured || _dailyActive))
+    document.getElementById("menu-map-label").textContent = selectedTrackName;
   refreshRacerSummary();
   refreshRaceOptSegs();
   const goBtn = document.getElementById("go-btn");
@@ -5949,13 +5971,7 @@ function refreshMenuMapCycle() {
   const paint = () => {
     const race = cupDef.races[_mapCycleIdx % cupDef.races.length];
     paintTrackMap(canvas, previewLoopPoints(race.cfg));
-    // Two lines on the small chip: the cup's name, then which race is showing.
-    if (label)
-      label.replaceChildren(
-        `${cupDef.emoji} ${cupDef.name}`,
-        document.createElement("br"),
-        `Race ${(_mapCycleIdx % cupDef.races.length) + 1}/${cupDef.races.length}`,
-      );
+    if (label) label.textContent = cupDef.name;
   };
   paint();
   canvas.style.opacity = "1";
