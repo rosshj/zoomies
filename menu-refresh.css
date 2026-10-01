@@ -2470,3 +2470,9 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #menu :is(.title-play, .title-garage) {
   min-height: var(--home-action-height);
 }
+
+/* Portrait actions use one gap from Race through the last utility row. */
+#stage.menu-portrait .title-extras {
+  margin-top: 0;
+  gap: 12px;
+}
