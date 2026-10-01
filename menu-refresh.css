@@ -2025,7 +2025,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   height: 100%;
   min-height: 56px;
 }
-#stage :is(#flow-startline, #flow-garage) .setup-racer-preview {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview {
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -2035,7 +2035,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   gap: 0;
   padding: 0;
 }
-#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > .start-racer-label {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview > .start-racer-label {
   padding: 12px 14px 0;
 }
 #stage #flow-startline #racer-portrait {
@@ -2045,7 +2045,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   object-fit: contain;
   background: radial-gradient(ellipse at 50% 80%, #4c3f64, #211e31 75%);
 }
-#stage :is(#flow-startline, #flow-garage) .racer-preview-footer {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-preview-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2053,7 +2053,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   padding: 10px 12px;
   background: var(--menu-surface);
 }
-#stage :is(#flow-startline, #flow-garage) .racer-summary {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-summary {
   font-size: 14px;
   min-width: 0;
 }
@@ -2091,10 +2091,10 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact #flow-startline #racer-portrait {
   height: 90px;
 }
-#stage.menu-compact :is(#flow-startline, #flow-garage) .racer-preview-footer {
+#stage.menu-compact :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-preview-footer {
   padding: 4px 8px;
 }
-#stage.menu-compact :is(#flow-startline, #flow-garage) .racer-summary {
+#stage.menu-compact :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-summary {
   font-size: 12px;
 }
 #stage .race-detail-inner {
@@ -2133,10 +2133,10 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .race-detail-choice span { font-size: 14px; line-height: 1.5; }
 #stage.menu-portrait .race-detail-grid { grid-template-columns: minmax(0, 1fr); }
 
-#stage.menu-compact :is(#flow-startline, #flow-garage) .setup-racer-preview > .start-racer-label:has(.seat-input.hidden) {
+#stage.menu-compact :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview > .start-racer-label:has(.seat-input.hidden) {
   display: none;
 }
-#stage.menu-compact :is(#flow-startline, #flow-garage) .setup-racer-preview {
+#stage.menu-compact :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview {
   padding: 0;
 }
 
@@ -2235,7 +2235,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage:not(.menu-portrait) #flow-startline .start-scroll {
   flex: 1 1 0;
 }
-#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage) .setup-racer-preview {
+#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview {
   flex: 1 0 auto;
 }
 #stage:not(.menu-portrait) #flow-startline #racer-portrait {
@@ -2243,7 +2243,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   height: 90px;
   min-height: 90px;
 }
-#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage) .setup-racer-preview > :not(canvas) {
+#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview > :not(canvas) {
   flex-shrink: 0;
 }
 
@@ -2324,14 +2324,14 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-startline #setup-mode > span:not(.setup-icon) { padding: 8px 12px; }
 #stage #flow-startline #setup-mode small { color: #6c6078; }
 #stage #flow-startline #setup-mode small::after { color: #6c6078; }
-#stage :is(#flow-startline, #flow-garage) .setup-racer-preview {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview {
   background: radial-gradient(ellipse 100% 100% at 50% 125%, #30263d26 99.5%, transparent 100%), var(--racer-backdrop, #a4dedf);
   color: var(--racer-ink, #30263d);
 }
 #stage #flow-startline #racer-portrait,
-#stage :is(#flow-startline, #flow-garage) .racer-preview-footer { background: transparent; }
-#stage :is(#flow-startline, #flow-garage) .setup-racer-preview .start-racer-label,
-#stage :is(#flow-startline, #flow-garage) .racer-summary { color: inherit; }
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-preview-footer { background: transparent; }
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview .start-racer-label,
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-summary { color: inherit; }
 
 /* Racer leads the setup; the track fills the space above Start. */
 #stage #flow-startline .setup-racer-panel #racer-portrait {
@@ -2365,7 +2365,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .overlay :is(.btn-cream, .btn-gold),
 #stage #flow-startline.flow-screen .setup-choice,
 #stage #flow-startline.flow-screen #setup-mode > span:not(.setup-icon),
-#stage :is(#flow-startline, #flow-garage).flow-screen .racer-preview-footer,
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit).flow-screen .racer-preview-footer,
 #stage #flow-startline.flow-screen #go-btn,
 #stage #flow-startline.flow-screen .setup-racer-actions button,
 #stage .picker-toolbar .btn-cream,
@@ -2379,14 +2379,14 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .racer-details-copy {
   padding: var(--menu-inset);
 }
-#stage :is(#flow-startline, #flow-garage).flow-screen .setup-racer-preview > .start-racer-label {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit).flow-screen .setup-racer-preview > .start-racer-label {
   padding: var(--menu-inset) var(--menu-inset) 0;
 }
 #stage #flow-mode.flow-screen .tap-text {
   padding: var(--menu-control-y) var(--menu-inset);
 }
 #stage #flow-startline.flow-screen .setup-racer-actions,
-#stage :is(#flow-startline, #flow-garage).flow-screen .racer-preview-footer {
+#stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit).flow-screen .racer-preview-footer {
   gap: var(--menu-content-gap);
 }
 #stage #menu :is(#cat-grid, #kart-grid) .racer-tap :is(.track-name, .track-sub) {
@@ -2476,3 +2476,86 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   margin-top: 0;
   gap: 12px;
 }
+
+/* Studios: a shared racer preview, summaries, and one focused choice at a time. */
+#stage .studio-screen .racer-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 1fr);
+  align-items: stretch;
+  gap: 12px;
+  padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
+  overflow: hidden;
+}
+#stage .studio-screen .setup-racer-preview { min-height: 160px; min-width: 0; }
+#stage .studio-screen .setup-racer-preview canvas {
+  display: block; width: 100%; height: 0; min-height: 90px; flex: 1 1 0;
+  object-fit: contain; background: transparent;
+}
+#stage .studio-screen .racer-card {
+  display: flex; flex-direction: column; gap: 12px;
+  width: 100%; max-width: none; max-height: none; min-height: 0;
+  padding: 0; margin: 0; background: transparent; border: 0; box-shadow: none;
+  overflow: hidden; align-self: stretch;
+}
+#stage .studio-overview {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
+}
+#stage #menu .studio-summary {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 4px; padding: 12px 16px; min-height: 60px; min-width: 0;
+  background: var(--menu-surface); color: #fff3dc; text-align: left;
+}
+#stage .studio-summary small { color: #c3b8cf; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+#stage .studio-summary small::after { content: ' ›'; color: #ffc64b; }
+#stage .studio-summary strong { font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
+#stage .studio-summary.has-color strong::before {
+  content: ''; display: inline-block; width: 14px; height: 14px; margin-right: 6px;
+  border-radius: 4px; background: var(--choice-color); vertical-align: -2px;
+}
+#stage .studio-screen .creator,
+#stage .studio-screen .studio-detail-done,
+#stage .studio-screen .creator-row,
+#stage .studio-screen .studio-legacy-stepper { display: none; }
+#stage .studio-screen[data-studio-detail] .studio-overview,
+#stage .studio-screen[data-studio-detail] .creator-rand,
+#stage .studio-screen[data-studio-detail] .racer-actions,
+#stage .studio-screen[data-studio-detail] .garage-lock-note { display: none; }
+#stage .studio-screen[data-studio-detail] .creator {
+  display: block; padding: 16px; background: var(--menu-surface);
+  border: 0; border-radius: var(--control-radius); overflow: visible; min-height: 0; flex: 0 0 auto;
+}
+#stage .studio-screen .creator-row.studio-field-active {
+  display: flex; flex-direction: column; align-items: stretch; gap: 12px; padding: 0;
+}
+#stage .studio-screen .creator-label { display: none; }
+#stage .studio-screen .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); width: 100%; gap: 12px; }
+#stage .studio-screen .swatch-dot { width: 100%; height: 48px; min-height: 48px; border-radius: var(--control-radius); }
+#stage .studio-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+#stage #menu .studio-option { min-height: 44px; padding: 10px 12px; background: transparent; color: #fff3dc; font-size: 14px; white-space: normal; }
+#stage #menu .studio-option[aria-pressed="true"] { background: #fff2d8; color: #30263d; }
+#stage .studio-screen[data-studio-detail="number"] .studio-option-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+#stage .studio-screen[data-studio-detail] .studio-detail-done { display: block; flex-shrink: 0; min-height: 44px; }
+#stage .studio-screen .racer-actions { position: static; margin: 0; padding: 0; gap: 8px; background: transparent; flex-shrink: 0; }
+#stage .studio-screen .racer-actions button { font-size: 14px; min-height: 44px; margin: 0; }
+#stage .studio-screen .garage-lock-note { font-size: 12px; line-height: 1.4; margin: 0; padding: 0 4px; }
+#stage .studio-screen .garage-lock-note:empty { display: none; }
+#stage .studio-screen .creator-rand { margin: 0; min-height: 44px; }
+#stage .studio-screen .picking-name .creator,
+#stage .studio-screen .picking-name .studio-detail-done { display: none; }
+#stage .studio-screen .name-picker { flex: 1; min-height: 0; overflow: auto; }
+#stage.menu-portrait .studio-screen .racer-body { display: flex; flex-direction: column; }
+#stage.menu-portrait .studio-screen .setup-racer-preview { flex: 1 0 180px; }
+#stage.menu-portrait .studio-screen .racer-card { flex: 0 1 auto; }
+#stage.menu-portrait .studio-screen[data-studio-detail] .racer-card { flex: 1 1 240px; }
+#stage.menu-compact .studio-screen .studio-overview { gap: 8px; }
+#stage.menu-compact #menu .studio-summary { min-height: 48px; padding: 8px 16px; }
+#stage.menu-compact .studio-screen .racer-card { gap: 8px; }
+
+#stage .studio-scroll { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; flex: 1 1 auto; }
+#stage .studio-scroll > * { flex-shrink: 0; }
+#stage .studio-screen[data-studio-detail] .studio-scroll { background: var(--menu-surface); border-radius: var(--control-radius); }
+#stage .studio-screen .studio-detail-done { margin: 0 16px 16px; }
+#stage .studio-screen .picking-name .studio-scroll { min-height: 0; }
+#stage.menu-compact .studio-scroll { gap: 8px; }
+
+#stage .studio-summary-wide { grid-column: 1 / -1; }

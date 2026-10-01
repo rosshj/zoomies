@@ -243,9 +243,11 @@ try {
     await capture("cats-all");
     await click("#cat-custom-open");
     await capture("cat-studio");
+    await click('#flow-cat-edit [data-studio-field="name"]');
     await click("#cat-name-pick");
     await capture("name-picker");
     await click("#cat-name-close");
+    await click("#flow-cat-edit .studio-detail-done");
     await click("#cat-edit-use");
     await click("#garage-kart");
     await capture("karts");

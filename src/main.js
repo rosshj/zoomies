@@ -1,3 +1,4 @@
+import { mountStudio } from "./studio-ui.js";
 import { contrastBg } from "./catalog-palette.js";
 import { menuIcon } from "./menu-icons.js";
 import { renderRacerPortrait } from "./racer-portrait.js";
@@ -4161,7 +4162,6 @@ let _garageOpen = false;
 let _garagePreview = null; // the preview kart's group in the scene
 let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
 const _garageAnchor = new THREE.Vector3();
-const _garageLook = new THREE.Vector3();
 
 // The last-built preview kart is CACHED (not disposed) so re-entering the
 // showroom is instant; a boot-idle prewarm builds + pipeline-compiles the saved
@@ -4390,13 +4390,15 @@ function syncCreators() {
   const nk = document.getElementById("kart-custom-name");
   if (nk && nk.value !== k.name) nk.value = k.name;
   _markSelectedSwatch("kart-color-grid", k.color);
+  for (const studio of Object.values(studioUIs)) studio.refresh();
+  refreshStudioPortraits();
 }
 // The studios gate USING a design on the creator purchase (design freely —
 // window shopping stays). Each editor carries its own note + Buy row.
 function refreshEditorLocks() {
-  for (const [which, id, label] of [
-    ["cat", "custom.cat", "Custom Cat"],
-    ["kart", "custom.kart", "Custom Kart"],
+  for (const [which, id] of [
+    ["cat", "custom.cat"],
+    ["kart", "custom.kart"],
   ]) {
     const note = document.getElementById(which + "-edit-note");
     const buy = document.getElementById(which + "-edit-buy");
@@ -4404,16 +4406,23 @@ function refreshEditorLocks() {
     const owned = isUnlocked(profile, id);
     const entry = catalogEntry(id);
     buy.classList.toggle("hidden", owned);
+    document.getElementById(which + "-edit-use").classList.toggle("hidden", !owned);
+    buy.classList.replace("btn-cream", "btn-gold");
     if (owned) {
-      note.textContent = "";
+      const accessory = _garageDraft?.customCat.accessory;
+      const entry = which === "cat" && accessory ? catalogEntry(`acc.${accessory}`) : null;
+      note.textContent =
+        which === "cat" && accessory && !isUnlocked(profile, `acc.${accessory}`)
+          ? `Unlock ${CAT_PRESETS[Number(entry.cat.slice(4))].name} to use this accessory.`
+          : "";
       continue;
     }
-    buy.textContent = `🐟 Unlock the ${label} creator · ${entry.price}`;
+    buy.textContent = `Unlock creator · 🐟 ${entry.price}`;
     buy.disabled = profile.treats < entry.price;
     note.textContent =
       profile.treats < entry.price
-        ? `🔒 Design freely — unlocking the creator lets you race it. Unlocks at 🐟 ${entry.price} — you have 🐟 ${profile.treats}.`
-        : `🔒 Design freely — unlock the creator to race your design.`;
+        ? `Design freely. You need ${entry.price - profile.treats} more treats to unlock this creator.`
+        : "Design freely. Unlock this creator to use your creation.";
   }
 }
 function syncGarageUI() {
@@ -4499,36 +4508,6 @@ function stepCustom(which, list, dir) {
     editCustomCat(patch);
   }
 }
-// Slowly orbit the camera around the parked preview kart. The control card is
-// docked to the RIGHT half of the (landscape) screen, so frame the kart in the
-// open LEFT half: orbit a touch further back (smaller kart) and pan the aim to
-// the right, which slides the kart leftward on screen.
-const _garageRight = new THREE.Vector3();
-function renderGarage(timeSec, dt = 0.016) {
-  if (!_garagePreview) return;
-  _garagePreviewKart?.idleBlink(dt); // the parked cat blinks now and then
-  const p = _garagePreview.position;
-  const ang = timeSec * 0.5;
-  // Fit the six-unit kart envelope inside the open left half on narrower
-  // windows too. A fixed distance/pan cropped wheels and tall cages there.
-  const halfFov = Math.tan((19 * Math.PI) / 180);
-  const r = Math.max(11.2, (camera.aspect < 1 ? 3.5 : 7.4) / (halfFov * camera.aspect));
-  camera.position.set(p.x + Math.sin(ang) * r, p.y + 1.55 + r * 0.16, p.z + Math.cos(ang) * r);
-  if (camera.fov !== 38) {
-    camera.fov = 38;
-    camera.updateProjectionMatrix();
-  }
-  _garageLook.set(p.x, p.y + 1.55, p.z);
-  camera.lookAt(_garageLook);
-  // Pan the aim right along the camera's screen-right axis so the kart sits in
-  // the open left half (the card covers the right). Re-aim after the shift.
-  _garageRight.set(1, 0, 0).applyQuaternion(camera.quaternion);
-  if (camera.aspect < 1) _garageLook.y -= r * halfFov * 0.48;
-  else _garageLook.addScaledVector(_garageRight, r * halfFov * camera.aspect * 0.52);
-  camera.lookAt(_garageLook);
-  renderFrame();
-}
-
 // Custom-cat creator controls.
 for (const [suffix, dir] of [
   ["prev", -1],
@@ -4590,6 +4569,120 @@ document.getElementById("kart-randomize")?.addEventListener("click", () =>
     name: _pick(CUSTOM_KART_NAMES),
   }),
 );
+
+const studioColorNames = new Map([
+  ...CAT_FUR_SWATCHES.map((value, i) => [
+    value,
+    ["Ginger", "Tan", "Grey", "Charcoal", "White", "Cream", "Chocolate", "Silver", "Brown", "Sand", "Ivory", "Walnut"][
+      i
+    ],
+  ]),
+  ...KART_COLOR_SWATCHES.map((value, i) => [
+    value,
+    ["Red", "Blue", "Green", "Orange", "Purple", "Yellow", "Teal", "Cyan", "Pink", "Violet", "Black", "White"][i],
+  ]),
+]);
+const studioColorName = (value) => studioColorNames.get(value) || "Custom colour";
+const studioUIs = {};
+const studioField = (key, label, control, describe, options) => ({ key, label, control, describe, options });
+const studioOptions = (values, label = _cap) => values.map((value) => ({ value, label: label(value) }));
+studioUIs.cat = mountStudio({
+  which: "cat",
+  getDraft: () => _garageDraft.customCat,
+  apply: editCustomCat,
+  fields: [
+    { ...studioField("fur", "Colour", "cat-color-grid", (c) => studioColorName(c.fur)), color: (c) => _hex6(c.fur) },
+    studioField(
+      "type",
+      "Type",
+      "cat-type-name",
+      (c) => CAT_TYPES[c.type]?.label || "Classic",
+      studioOptions(CAT_TYPE_IDS, (id) => CAT_TYPES[id].label),
+    ),
+    studioField(
+      "pattern",
+      "Pattern",
+      "cat-pat-name",
+      (c) => (c.pattern === "mittedPoint" ? "Mitted points" : _cap(c.pattern)),
+      studioOptions(CAT_PATTERNS, (id) => (id === "mittedPoint" ? "Mitted points" : _cap(id))),
+    ),
+    {
+      ...studioField(
+        "accessory",
+        "Accessory",
+        "cat-acc-name",
+        (c) => ACCESSORY_LABELS[c.accessory] || _cap(c.accessory),
+        studioOptions(CAT_ACCESSORIES, (id) => ACCESSORY_LABELS[id] || _cap(id)),
+      ),
+      optionLabel: (id) => (ACCESSORY_LABELS[id] || _cap(id)) + (isUnlocked(profile, `acc.${id}`) ? "" : " · Locked"),
+      patch: (accessory) => ({ accessory, accessoryColor: null }),
+    },
+    {
+      ...studioField("accessoryColor", "Accessory colour", "cat-acccolor-grid", (c) =>
+        c.accessoryColor == null ? "Default" : studioColorName(c.accessoryColor),
+      ),
+      available: (c) => !!ACCESSORY_COLORS[c.accessory]?.length,
+      color: (c) => _hex6(c.accessoryColor ?? ACCESSORY_COLORS[c.accessory]?.[0] ?? 0),
+    },
+    studioField("name", "Name", "cat-custom-name", (c) => c.name || "My Cat"),
+  ],
+});
+studioUIs.kart = mountStudio({
+  which: "kart",
+  getDraft: () => _garageDraft.customKart,
+  apply: editCustomKart,
+  fields: [
+    {
+      ...studioField("color", "Colour", "kart-color-grid", (k) => studioColorName(k.color)),
+      color: (k) => _hex6(k.color),
+    },
+    studioField(
+      "style",
+      "Body",
+      "kart-style-name",
+      (k) => KART_STYLE_NAMES[k.style],
+      studioOptions(
+        Array.from({ length: KART_STYLE_COUNT }, (_, i) => i),
+        (i) => KART_STYLE_NAMES[i],
+      ),
+    ),
+    studioField(
+      "livery",
+      "Livery",
+      "kart-livery-name",
+      (k) => KART_LIVERIES[k.livery],
+      studioOptions(
+        KART_LIVERIES.map((_, i) => i),
+        (i) => KART_LIVERIES[i],
+      ),
+    ),
+    studioField(
+      "number",
+      "Number",
+      "kart-num-name",
+      (k) => String(k.number),
+      studioOptions(
+        Array.from({ length: 100 }, (_, i) => i),
+        String,
+      ),
+    ),
+    studioField("name", "Name", "kart-custom-name", (k) => k.name || "My Kart"),
+  ],
+});
+function closeStudioDetail(focus = true) {
+  return Object.values(studioUIs).some((studio) => studio.close(focus));
+}
+function refreshStudioPortraits() {
+  for (const which of ["cat", "kart"]) {
+    const root = document.getElementById(`flow-${which}-edit`);
+    if (!root.classList.contains("is-active")) continue;
+    refreshRacerCard(
+      document.getElementById(`${which}-studio-portrait`),
+      document.getElementById(`${which}-studio-summary`),
+      _garageDraft,
+    );
+  }
+}
 
 // Name picker (both studios): "✏️ Pick" swaps the creator for a grid of the
 // curated names — every one a <button>, so the pad's ring walks it — plus
@@ -5075,6 +5168,7 @@ function flowGo(step, dir = 1, instant = false) {
   const changing = flowStep !== step;
   // Leave hooks: the racer family (cat/kart + studios) shares the 3D showroom
   // preview and its draft — close only when leaving the family entirely.
+  if (changing) closeStudioDetail(false);
   if (changing && RACER_FAMILY.includes(flowStep) && !RACER_FAMILY.includes(step)) closeGarage();
   // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
   if (step === "title") refreshTitlePlay();
@@ -5126,6 +5220,7 @@ function flowGo(step, dir = 1, instant = false) {
     menuFlowEl.dataset.step = step;
   }
   for (const screen of menuFlowEl.querySelectorAll(".flow-screen")) screen.inert = screen !== next;
+  refreshStudioPortraits();
   refreshMenuChrome();
   refreshScrollHint();
   if (changing) setTimeout(refreshScrollHint, 500); // after the slide has landed
@@ -5146,6 +5241,7 @@ window.addEventListener("resize", () => setTimeout(refreshScrollHint, 60));
 // depends on how you got there.
 function flowBack() {
   if (state !== State.MENU || menuFlowEl.classList.contains("hidden")) return false;
+  if (closeNamePicker() || closeStudioDetail()) return true;
   if (flowStep === "garage") {
     _pickingSeat = 0;
     flowGo(_garageReturn, -1);
@@ -8320,16 +8416,7 @@ function loopBody(now) {
     // Every MENU tick that reaches here is a draw tick (the cadence gate is at
     // the top of the loop): showroom and track drift both draw at ~30fps
     // (20 in Battery saver, 10 when idle) and the canvas holds the frame between.
-    if (_garageOpen) {
-      // Garage and pickers share Home’s track orbit. Only custom studios
-      // need the separate live showroom preview.
-      const showroom = flowStep === "cat-edit" || flowStep === "kart-edit";
-      if (_garagePreview) _garagePreview.visible = showroom;
-      if (showroom) {
-        renderGarage(now / 1000, dt);
-        return;
-      }
-    }
+    if (_garagePreview) _garagePreview.visible = false;
     // Debug/screenshot hook: window.__campin = [x,y,z, tx,ty,tz] pins the menu
     // camera to a fixed shot (headless tooling flies it to the track set pieces).
     if (window.__campin) {

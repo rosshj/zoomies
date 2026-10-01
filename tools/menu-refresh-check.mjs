@@ -131,7 +131,8 @@ try {
   await click("#garage-cat");
   await click("#cat-custom-open");
   await step("cat-edit");
-  await click("#cat-type-next");
+  await click('#flow-cat-edit [data-studio-field="type"]');
+  await click('#flow-cat-edit .studio-option[data-value="maine"]');
   await click("#flow-cat-edit [data-back]");
   await step("cat");
   await click("#flow-cat [data-back]");
