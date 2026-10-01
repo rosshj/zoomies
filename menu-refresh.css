@@ -1444,7 +1444,7 @@ button.small-pill {
 }
 #stage .flow-head {
   border: 0;
-  background: #211a30;
+  background: linear-gradient(180deg, #211a30 0%, #211a30 20%, rgba(33, 26, 48, 0) 100%);
 }
 #stage .picker-toolbar {
   background: #211a30;
