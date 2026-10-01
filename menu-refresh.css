@@ -4,7 +4,7 @@
   --stage-vh: 1vh;
 }
 :root {
-  --menu-surface: rgba(36, 26, 57, 0.96);
+  --menu-surface: #2b223b;
   --menu-muted: #d4c9df;
   --menu-border: rgba(255, 246, 229, 0.16);
 }
@@ -1183,7 +1183,6 @@ button.small-pill {
   --menu-font: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --menu-ink: #f8f3e9;
   --menu-muted: #c3b8cf;
-  --menu-surface: rgba(32, 25, 46, 0.96);
 }
 #menu,
 .overlay,
@@ -1252,7 +1251,7 @@ button.small-pill {
   padding: 0;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.22);
-  background: #382c49;
+  background: var(--menu-surface);
   color: #fff6e5;
   box-shadow: none;
   font-size: 20px;
@@ -1273,7 +1272,7 @@ button.small-pill {
   padding: 3px;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 14px;
-  background: #20192e;
+  background: var(--menu-surface);
 }
 #stage .picker-toolbar .seg-btn {
   min-width: 64px;
@@ -1290,7 +1289,7 @@ button.small-pill {
   margin: 0;
   box-shadow: none;
   border: 1px solid #84728f;
-  background: #382c49;
+  background: var(--menu-surface);
   color: #fff6e5;
 }
 #stage .btn-cream,
@@ -1451,7 +1450,7 @@ button.small-pill {
   background: #211a30;
 }
 #stage :is(.seg-toggle, .settings-nav) {
-  background: #171222;
+  background: var(--menu-surface);
   border: 0;
   box-shadow: none;
 }
@@ -1467,7 +1466,7 @@ button.small-pill {
   box-shadow: none;
 }
 #stage :is(.start-opts, .start-racer, .setup-choice, .settings-card, .menu-card, .racer-card) {
-  background: #2b223b;
+  background: var(--menu-surface);
 }
 #stage .btn-gold {
   background: #ffc64b;
@@ -1500,7 +1499,7 @@ button.small-pill {
 }
 #stage .flow-back,
 #stage #menu-chrome button {
-  background: #3b2e50;
+  background: var(--menu-surface);
   border: 0;
   box-shadow: none;
 }
@@ -1591,14 +1590,14 @@ button.small-pill {
 }
 #stage .title-play.btn-cream {
   order: 4;
-  background: #3b2e50;
+  background: var(--menu-surface);
   color: #fff2d8;
   min-height: 52px;
   font-size: 17px;
 }
 #stage .title-garage {
   order: 5;
-  background: #3b2e50;
+  background: var(--menu-surface);
   color: #fff2d8;
   min-height: 76px;
   display: flex;
@@ -1642,7 +1641,7 @@ button.small-pill {
   min-height: 48px;
   padding: 12px 14px;
   border-radius: 12px;
-  background: #292135;
+  background: var(--menu-surface);
   color: #ded3e8;
   font-size: 13px;
   font-weight: 500;
@@ -1813,7 +1812,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   min-width: 0;
   padding: 20px;
   margin: 0;
-  background: #211e31;
+  background: var(--menu-surface);
   text-align: left;
   border-radius: var(--control-radius);
   overflow: hidden;
@@ -2030,7 +2029,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  background: #211e31;
+  background: var(--menu-surface);
   border-radius: var(--control-radius);
   overflow: hidden;
   gap: 0;
@@ -2052,7 +2051,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  background: #2b223b;
+  background: var(--menu-surface);
 }
 #stage #flow-startline #racer-summary {
   font-size: 14px;
@@ -2123,7 +2122,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   white-space: normal;
   padding: 20px;
   gap: 8px;
-  background: #2b223b;
+  background: var(--menu-surface);
   color: #fff2d8;
 }
 #stage #menu .race-detail-choice.is-active {
@@ -2288,7 +2287,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   gap: 0;
   border: 0;
   border-radius: var(--control-radius);
-  background: #2b233b;
+  background: var(--menu-surface);
   color: #fff3dc;
 }
 #racer-details-image { width: 100%; height: auto; aspect-ratio: 1; align-self: start; object-fit: contain; min-height: 0; background: #211a30; }
@@ -2419,3 +2418,8 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   padding-block: 0;
 }
 #stage #menu .picker-toolbar .seg-toggle { margin: 0; }
+
+/* All indigo control/card fills share one opaque surface color. */
+#stage :is(.sticker-deep, .track-col-ctrl) {
+  background: var(--menu-surface);
+}
