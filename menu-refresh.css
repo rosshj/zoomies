@@ -2540,13 +2540,14 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .studio-screen .garage-lock-note { font-size: 12px; line-height: 1.4; margin: 0; padding: 0 4px; }
 #stage .studio-screen .garage-lock-note:empty { display: none; }
 #stage .studio-screen .creator-rand { margin: 0; min-height: 44px; }
-#stage .studio-screen .picking-name .creator,
-#stage .studio-screen .picking-name .studio-detail-done { display: none; }
+#stage .studio-screen .picking-name .creator { display: none; }
 #stage .studio-screen .name-picker { flex: 1; min-height: 0; overflow: auto; }
-#stage.menu-portrait .studio-screen .racer-body { display: flex; flex-direction: column; }
-#stage.menu-portrait .studio-screen .setup-racer-preview { flex: 1 0 180px; }
-#stage.menu-portrait .studio-screen .racer-card { flex: 0 1 auto; }
-#stage.menu-portrait .studio-screen[data-studio-detail] .racer-card { flex: 1 1 240px; }
+/* Both panes keep the same tracks regardless of the active editing field. */
+#stage .studio-screen .racer-body { grid-template-rows: minmax(0, 1fr); }
+#stage.menu-portrait .studio-screen .racer-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(180px, 1fr) minmax(0, 1fr);
+}
 #stage.menu-compact .studio-screen .studio-overview { gap: 8px; }
 #stage.menu-compact #menu .studio-summary { min-height: 48px; padding: 8px 16px; }
 #stage.menu-compact .studio-screen .racer-card { gap: 8px; }
@@ -2554,7 +2555,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .studio-scroll { display: flex; flex-direction: column; gap: 12px; min-height: 0; overflow-y: auto; flex: 1 1 auto; }
 #stage .studio-scroll > * { flex-shrink: 0; }
 #stage .studio-screen[data-studio-detail] .studio-scroll { background: var(--menu-surface); border-radius: var(--control-radius); }
-#stage .studio-screen .studio-detail-done { margin: 0 16px 16px; }
+#stage .studio-screen .studio-detail-done { margin: 0; }
 #stage .studio-screen .picking-name .studio-scroll { min-height: 0; }
 #stage.menu-compact .studio-scroll { gap: 8px; }
 

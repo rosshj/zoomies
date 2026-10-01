@@ -39,6 +39,19 @@ try {
       homeCamera,
     );
     await page.screenshot({ path: `/tmp/studio-cat-${width}.png` });
+    await click('#flow-cat-edit [data-studio-field="type"]');
+    assert.deepEqual(await page.locator("#cat-studio-portrait").boundingBox(), canvas, "Preview shifted in drill-in");
+    const done = page.locator("#flow-cat-edit .studio-detail-done");
+    const buttonBounds = await done.boundingBox();
+    assert.ok(buttonBounds.y + buttonBounds.height <= height, "Back action clipped");
+    assert.equal(await done.evaluate((el) => !!el.closest(".studio-scroll")), false);
+    await page.locator("#flow-cat-edit .studio-scroll").evaluate((el) => {
+      el.scrollTop = el.scrollHeight;
+    });
+    assert.deepEqual(await done.boundingBox(), buttonBounds, "Back action moved with choices");
+    await page.screenshot({ path: `/tmp/studio-detail-${width}.png` });
+    await done.click();
+    assert.deepEqual(await page.locator("#cat-studio-portrait").boundingBox(), canvas, "Preview shifted on return");
   }
   await click('#flow-cat-edit [data-studio-field="type"]');
   assert.equal(await page.locator("#flow-cat-edit .studio-field-active .studio-option").count(), 27);

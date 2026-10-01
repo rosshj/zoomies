@@ -12,7 +12,6 @@ export function mountStudio({ which, fields, apply, getDraft }) {
   const done = document.createElement("button");
   done.className = "btn-cream studio-detail-done";
   done.textContent = "Back to studio";
-  creator.after(done);
   let active = null;
   const close = (focus = true) => {
     if (!active) return false;
@@ -24,7 +23,10 @@ export function mountStudio({ which, fields, apply, getDraft }) {
     if (focus) previous.button.focus({ preventScroll: true });
     return true;
   };
-  done.addEventListener("click", () => close());
+  done.addEventListener("click", () => {
+    document.getElementById(`${which}-name-close`)?.click();
+    close();
+  });
   for (const field of fields) {
     field.row = document.getElementById(field.control).closest(".creator-row");
     const button = document.createElement("button");
@@ -78,6 +80,7 @@ export function mountStudio({ which, fields, apply, getDraft }) {
   const actions = card.querySelector(".racer-actions");
   for (const child of [...card.children]) if (child !== actions) scroller.append(child);
   card.insertBefore(scroller, actions);
+  actions.after(done);
   function refresh() {
     const draft = getDraft();
     for (const field of fields) {
