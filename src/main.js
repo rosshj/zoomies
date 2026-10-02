@@ -1543,9 +1543,10 @@ function layoutStage() {
   const a = ((rawAngle % 360) + 360) % 360;
   const portrait = ih > iw;
 
-  // Setup/results follow the device orientation. Pause keeps the driving
-  // frame so opening it never asks the player to change their grip.
-  const menuLayout = state === State.MENU || state === State.FINISHED;
+  // Menus follow the device orientation. Pause and results keep the driving
+  // frame so neither asks the player to change their grip mid-session; only
+  // Home / Race setup after a race returns to the device's orientation.
+  const menuLayout = state === State.MENU;
   const rot = portrait && !menuLayout ? (a === 180 ? 270 : 90) : 0;
   const W = menuLayout ? iw : Math.max(iw, ih);
   const H = menuLayout ? ih : Math.min(iw, ih);
@@ -8227,7 +8228,7 @@ function loop(now) {
 }
 function loopBody(now) {
   input.setMotionActive(state === State.COUNTDOWN || state === State.RACING);
-  const menuLayout = state === State.MENU || state === State.FINISHED;
+  const menuLayout = state === State.MENU;
   if (stageState.menuLayout !== menuLayout) {
     if (window.innerHeight > window.innerWidth) layoutStage();
     else stageState.menuLayout = menuLayout;

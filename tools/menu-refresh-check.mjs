@@ -311,9 +311,18 @@ try {
   await shot("pause-portrait");
   await click("#resume-btn");
   await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  // Results keep the driving frame (the phone is still held sideways); Home returns to portrait.
   await p.evaluate(() => window.__zoomies.debugFinish());
+  await p.locator("#results:not(.hidden)").waitFor();
+  await p.waitForTimeout(600);
+  assert.ok(
+    await p.locator("#stage").evaluate((e) => e.classList.contains("rotated")),
+    "Results left the driving frame",
+  );
+  await shot("results-landscape-frame");
+  await click("#results-menu-btn");
   await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
-  await shot("results-portrait");
+  await shot("home-portrait");
   assert.deepEqual(errors, []);
   console.log(
     "PASS: setup, independent picks, cancel, garage, guest isolation, rewards, collection, keyboard, focus, portrait race/pause transitions and responsive actions.",
