@@ -4472,8 +4472,10 @@ function studioCatPattern(type, current) {
   if (type === "classic") return CLASSIC_COATS.includes(current) ? current : CLASSIC_COATS[0];
   return CAT_PRESETS.find((cat) => cat.type === type)?.pattern || DEFAULT_CUSTOM_CAT.pattern;
 }
+// The summary names the coat alone for Classic cats ("Tabby"): the option list
+// spells out "Classic · Tabby", and the longer form wraps on a 320px screen.
 function studioCatTypeLabel(c) {
-  return c.type === "classic" || !CAT_TYPES[c.type] ? `Classic · ${coatLabel(c.pattern)}` : CAT_TYPES[c.type].label;
+  return c.type === "classic" || !CAT_TYPES[c.type] ? coatLabel(c.pattern) : CAT_TYPES[c.type].label;
 }
 function editCustomCat(patch) {
   Object.assign(_garageDraft.customCat, patch);

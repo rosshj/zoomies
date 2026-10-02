@@ -77,7 +77,14 @@ try {
     assert.deepEqual(await page.locator("#cat-studio-portrait").boundingBox(), canvas, "Preview shifted on return");
   }
   await click('#flow-cat-edit [data-studio-field="type"]');
-  assert.equal(await page.locator("#flow-cat-edit .studio-field-active .studio-option").count(), 27);
+  // One entry per Classic coat the roster uses, then every breed but Classic.
+  const expectedTypes = await page.evaluate(async () => {
+    const { CAT_PRESETS } = await import("/src/presets.js");
+    const { CAT_TYPE_IDS } = await import("/src/cat-types.js");
+    return new Set(CAT_PRESETS.filter((c) => !c.type).map((c) => c.pattern)).size + CAT_TYPE_IDS.length - 1;
+  });
+  assert.equal(await page.locator("#flow-cat-edit .studio-field-active .studio-option").count(), expectedTypes);
+  assert.equal(await page.locator('#flow-cat-edit .studio-option[data-value="classic:tabby"]').count(), 1);
   await click('#flow-cat-edit .studio-option[data-value="maine"]');
   assert.equal(await page.locator('#flow-cat-edit [data-studio-field="type"] strong').textContent(), "Maine Coon");
   await click('#flow-cat-edit [data-studio-field="name"]');
@@ -88,7 +95,7 @@ try {
   assert.equal(await page.locator("#flow-cat-edit").getAttribute("data-studio-detail"), null);
   await click("#flow-cat-edit [data-back]");
   await click("#cat-custom-open");
-  assert.equal(await page.locator('#flow-cat-edit [data-studio-field="type"] strong').textContent(), "Classic");
+  assert.equal(await page.locator('#flow-cat-edit [data-studio-field="type"] strong').textContent(), "Spotted"); // the default Classic cat, named by its coat
   await click("#cat-edit-buy");
   assert.equal(await page.locator("#cat-edit-use").isVisible(), true);
   await click('#flow-cat-edit [data-studio-field="type"]');
