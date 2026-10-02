@@ -2520,8 +2520,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .studio-screen .swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(44px, 1fr)); width: 100%; gap: 12px; }
 #stage .studio-screen .swatch-dot { width: 100%; height: 48px; min-height: 48px; border-radius: var(--control-radius); }
 #stage .studio-option-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-#stage #menu .studio-option { min-height: 44px; padding: 10px 12px; background: transparent; color: #fff3dc; font-size: 14px; white-space: normal; }
-#stage #menu .studio-option[aria-pressed="true"] { background: #fff2d8; color: #30263d; }
 #stage .studio-screen[data-studio-detail="number"] .studio-option-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 #stage .studio-screen[data-studio-detail] .studio-detail-done { display: block; flex-shrink: 0; min-height: 44px; }
 #stage .studio-screen .racer-actions { position: static; margin: 0; padding: 0; gap: 8px; background: transparent; flex-shrink: 0; }
