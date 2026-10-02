@@ -153,6 +153,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
         for (const y of [bounds.min.y, bounds.max.y])
           for (const z of [bounds.min.z, bounds.max.z]) sweep(new THREE.Vector3(x, y, z).sub(target));
     const offset = new THREE.Vector3();
+    let renderWidth = 640;
     let renderHeight = 400;
     let fitted = "";
     // The card's label and footer may sit over the canvas; the stylesheet
@@ -169,12 +170,18 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
       let top = measured ? 1 - (2 * inset("--portrait-inset-top")) / canvas.clientHeight : 1;
       let bottom = measured ? -1 + (2 * inset("--portrait-inset-bottom")) / canvas.clientHeight : -1;
       if (top - bottom < 0.5) ((top = 1), (bottom = -1));
-      const key = `${aspect.toFixed(4)} ${top.toFixed(4)} ${bottom.toFixed(4)}`;
+      // Render at the slot's device resolution (within 640–1280 px a side), so a
+      // wide card on a retina screen is not a 640 px still blown up.
+      const dpr = measured ? Math.min(2, window.devicePixelRatio || 1) : 1;
+      renderWidth = measured ? Math.round(Math.min(1280, Math.max(640, canvas.clientWidth * dpr))) : 640;
+      if (renderWidth / aspect > 1280) renderWidth = Math.round(1280 * aspect);
+      const key = `${renderWidth} ${aspect.toFixed(4)} ${top.toFixed(4)} ${bottom.toFixed(4)}`;
       if (key === fitted) return;
       fitted = key;
-      renderHeight = Math.round(640 / aspect);
+      renderHeight = Math.round(renderWidth / aspect);
+      canvas.width = renderWidth;
       canvas.height = renderHeight;
-      camera.aspect = 640 / renderHeight;
+      camera.aspect = renderWidth / renderHeight;
       let distance = 0;
       for (const point of fitPoints)
         distance = Math.max(
@@ -240,7 +247,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
       try {
         uSunViewNode.value.copy(sun.position).normalize().negate().transformDirection(camera.matrixWorldInverse);
         uSunColNode.value.set(0xffe6b0).multiplyScalar(0.6);
-        renderer.setSize(640, renderHeight);
+        renderer.setSize(renderWidth, renderHeight);
         renderer.render(scene, camera);
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
