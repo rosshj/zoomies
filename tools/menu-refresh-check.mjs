@@ -33,19 +33,23 @@ try {
   await p.waitForFunction(() => window.__zoomies?.track);
   await p.locator("#start-btn").waitFor();
   await shot("home-deck");
-  const homeCamera = await p.evaluate(() => ({
-    position: window.__zoomies.camera.position.toArray(),
-    fov: window.__zoomies.camera.fov,
-  }));
+  const sampleCamera = () =>
+    p.evaluate(() => ({
+      position: window.__zoomies.camera.position.toArray(),
+      fov: window.__zoomies.camera.fov,
+      at: performance.now(),
+    }));
+  const homeCamera = await sampleCamera();
   await click("#start-btn");
   await step("startline");
-  const setupCamera = await p.evaluate(() => ({
-    position: window.__zoomies.camera.position.toArray(),
-    fov: window.__zoomies.camera.fov,
-  }));
+  const setupCamera = await sampleCamera();
   assert.equal(setupCamera.fov, homeCamera.fov, "Setup changed the background camera lens");
+  // The menu orbit moves 0.07 rad/s on a 34-unit radius (2.4 units/s); allow
+  // for however long the slide took (seconds under a software renderer), so
+  // only a different anchor or lens counts as a jump.
+  const allowed = 8 + (2.4 * (setupCamera.at - homeCamera.at)) / 1000;
   assert.ok(
-    Math.hypot(...setupCamera.position.map((v, i) => v - homeCamera.position[i])) < 8,
+    Math.hypot(...setupCamera.position.map((v, i) => v - homeCamera.position[i])) < allowed,
     "Setup jumped away from the Home track view instead of continuing its slow orbit",
   );
   await p.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
