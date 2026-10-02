@@ -2174,12 +2174,13 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   align-self: flex-end;
 }
 /* Portrait caps the card at a square: a phone-tall card is mostly empty teal
-   around a width-bound racer. The body bottom-aligns, so the card and Done
-   stay in thumb reach with the track orbit showing above. */
+   around a width-bound racer. Done stays pinned at the bottom in thumb reach;
+   the auto margins centre the card in the space above it. */
 #stage.menu-portrait #flow-garage .setup-racer-preview {
   flex: 0 1 auto;
   aspect-ratio: 1;
   min-height: 180px;
+  margin-block: auto;
 }
 
 /* Home's two primary actions share one responsive height. */
