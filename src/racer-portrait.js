@@ -106,7 +106,9 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
     const fill = new THREE.DirectionalLight(0x9db4e6, 0.7);
     fill.position.set(-7, 4, -6);
     scene.add(fill);
-    const camera = new THREE.PerspectiveCamera(35, 1.6, 0.1, 100);
+    const renderHeight = subject === "racer" ? 640 : 400;
+    canvas.height = renderHeight;
+    const camera = new THREE.PerspectiveCamera(35, 640 / renderHeight, 0.1, 100);
     camera.position.set(7.5, 5.2, 9.5);
     camera.lookAt(0, 1.05, 0);
     camera.zoom = 1.6;
@@ -120,21 +122,32 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
       const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
       let distance = 0;
       const axis = new THREE.Vector3(0, 1, 0);
-      for (const x of [bounds.min.x, bounds.max.x])
-        for (const y of [bounds.min.y, bounds.max.y])
-          for (const z of [bounds.min.z, bounds.max.z]) {
-            const corner = new THREE.Vector3(x, y, z).sub(center);
-            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 16) {
-              const rotated = corner.clone().applyAxisAngle(axis, angle);
-              distance = Math.max(
-                distance,
-                rotated.dot(direction) +
-                  Math.max(Math.abs(rotated.dot(right)) / (tanV * camera.aspect), Math.abs(rotated.dot(up)) / tanV),
-              );
+      // Fit individual parts for the combined racer: the empty corners of its
+      // overall bounding box otherwise leave excessive space around the model.
+      const fitBounds = [];
+      if (subject === "racer") {
+        group.traverse((object) => {
+          if (!object.isMesh || !object.geometry) return;
+          object.geometry.computeBoundingBox();
+          fitBounds.push({ box: object.geometry.boundingBox, matrix: object.matrixWorld });
+        });
+      } else fitBounds.push({ box: bounds, matrix: new THREE.Matrix4() });
+      for (const { box, matrix } of fitBounds)
+        for (const x of [box.min.x, box.max.x])
+          for (const y of [box.min.y, box.max.y])
+            for (const z of [box.min.z, box.max.z]) {
+              const corner = new THREE.Vector3(x, y, z).applyMatrix4(matrix).sub(center);
+              for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 32) {
+                const rotated = corner.clone().applyAxisAngle(axis, angle);
+                distance = Math.max(
+                  distance,
+                  rotated.dot(direction) +
+                    Math.max(Math.abs(rotated.dot(right)) / (tanV * camera.aspect), Math.abs(rotated.dot(up)) / tanV),
+                );
+              }
             }
-          }
       camera.zoom = 1;
-      camera.position.copy(center).addScaledVector(direction, distance * 1.12);
+      camera.position.copy(center).addScaledVector(direction, distance * (subject === "racer" ? 1.06 : 1.12));
       camera.lookAt(center);
     }
     camera.updateProjectionMatrix();
@@ -161,6 +174,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
       try {
         uSunViewNode.value.copy(sun.position).normalize().negate().transformDirection(camera.matrixWorldInverse);
         uSunColNode.value.set(0xffe6b0).multiplyScalar(0.6);
+        renderer.setSize(640, renderHeight);
         renderer.render(scene, camera);
         const ctx = canvas.getContext("2d");
         ctx.clearRect(0, 0, canvas.width, canvas.height);
