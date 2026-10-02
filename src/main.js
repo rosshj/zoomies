@@ -1543,14 +1543,19 @@ function layoutStage() {
   const a = ((rawAngle % 360) + 360) % 360;
   const portrait = ih > iw;
 
-  // Menus follow the device orientation. Pause and results keep the driving
-  // frame so neither asks the player to change their grip mid-session; only
-  // Home / Race setup after a race returns to the device's orientation.
-  const menuLayout = state === State.MENU;
-  const rot = portrait && !menuLayout ? (a === 180 ? 270 : 90) : 0;
-  const W = menuLayout ? iw : Math.max(iw, ih);
-  const H = menuLayout ? ih : Math.min(iw, ih);
-  stageState = { iw, ih, W, H, rot, menuLayout };
+  // Driving is always landscape: a portrait viewport is counter-rotated. Menus,
+  // pause and results follow how the phone is held. Where the phone's sensors
+  // say how that is (input.heldLandscape), trust them over the viewport: with
+  // the system rotation lock on, iOS keeps the viewport portrait however the
+  // phone is turned, and a menu drawn upright for that viewport is sideways for
+  // the player. Without a reading (desktop, no motion permission yet) the
+  // viewport decides.
+  const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
+  const wantLandscape = !menuLayout || (input.heldLandscape ?? !portrait);
+  const rot = portrait && wantLandscape ? (a === 180 ? 270 : 90) : 0;
+  const W = rot ? Math.max(iw, ih) : iw;
+  const H = rot ? Math.min(iw, ih) : ih;
+  stageState = { iw, ih, W, H, rot, menuLayout, frameKey: stageFrameKey() };
   stage.style.setProperty("--stage-vw", `${W / 100}px`);
   stage.style.setProperty("--stage-vh", `${H / 100}px`);
   stage.classList.toggle("menu-portrait", W < H);
@@ -1592,6 +1597,15 @@ function layoutStage() {
     }
   }
   applyResolution();
+}
+
+// Everything layoutStage's orientation choice depends on besides the viewport
+// (which has its own resize listener): the loop re-lays the stage out when
+// this changes, e.g. pausing, finishing, or turning the phone under a locked
+// viewport.
+function stageFrameKey() {
+  const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
+  return `${menuLayout}|${input.heldLandscape}`;
 }
 
 // Reads the live safe-area-inset-* values (in px) via a hidden probe element.
@@ -2654,7 +2668,6 @@ function resumeGame() {
   pauseOverlay.classList.add("hidden");
   if (_pausedFrom === State.RACING) audio.startEngine();
   state = _pausedFrom;
-  if (stageState.menuLayout) layoutStage();
   input.setMotionActive(true);
   _pausedFrom = State.RACING;
 }
@@ -8228,10 +8241,8 @@ function loop(now) {
 }
 function loopBody(now) {
   input.setMotionActive(state === State.COUNTDOWN || state === State.RACING);
-  const menuLayout = state === State.MENU;
-  if (stageState.menuLayout !== menuLayout) {
-    if (window.innerHeight > window.innerWidth) layoutStage();
-    else stageState.menuLayout = menuLayout;
+  if (stageState.frameKey !== stageFrameKey()) {
+    layoutStage(); // the stage frame follows state and how the phone is held
     _pauseDrawn = false;
     _resultsDrawn = false;
   }

@@ -298,28 +298,43 @@ try {
     );
   }
   await click("#settings-back");
-  // Portrait menus stay upright; entering and resuming a race returns to landscape.
+  // Portrait menus stay upright; driving counter-rotates to landscape; pause and
+  // results follow how the phone is held — the viewport when the sensors are
+  // silent, gravity when they aren't (iOS keeps a locked viewport portrait).
+  const rotated = () => p.locator("#stage").evaluate((e) => e.classList.contains("rotated"));
+  const hold = (landscape) =>
+    p.evaluate((landscape) => {
+      window.dispatchEvent(
+        new DeviceMotionEvent("devicemotion", {
+          accelerationIncludingGravity: landscape ? { x: 9.8, y: 0.3, z: 0.5 } : { x: 0.3, y: 9.8, z: 0.5 },
+        }),
+      );
+    }, landscape);
   await p.setViewportSize({ width: 390, height: 844 });
   await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
   await click("#go-btn");
   await p.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
-  assert.ok(await p.locator("#stage").evaluate((e) => e.classList.contains("rotated")));
+  assert.ok(await rotated(), "Driving must be landscape");
   await p.keyboard.press("p");
   await p.waitForFunction(
-    () => window.__zoomies.state() === 4 && document.getElementById("stage").classList.contains("rotated"),
+    () => window.__zoomies.state() === 4 && !document.getElementById("stage").classList.contains("rotated"),
   );
   await shot("pause-portrait");
+  await hold(true); // phone turned sideways under a locked portrait viewport
+  await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  await shot("pause-held-landscape");
+  await hold(false);
+  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
   await click("#resume-btn");
   await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
-  // Results keep the driving frame (the phone is still held sideways); Home returns to portrait.
   await p.evaluate(() => window.__zoomies.debugFinish());
   await p.locator("#results:not(.hidden)").waitFor();
-  await p.waitForTimeout(600);
-  assert.ok(
-    await p.locator("#stage").evaluate((e) => e.classList.contains("rotated")),
-    "Results left the driving frame",
-  );
-  await shot("results-landscape-frame");
+  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
+  await shot("results-portrait");
+  await hold(true);
+  await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  await shot("results-held-landscape");
+  await hold(false);
   await click("#results-menu-btn");
   await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
   await shot("home-portrait");
