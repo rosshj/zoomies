@@ -147,8 +147,12 @@ async function capture(name) {
           const out = [];
           for (const el of document.querySelectorAll("#stage, #stage *")) {
             const cs = getComputedStyle(el);
-            let s = "";
-            for (const p of cs) s += p + ":" + cs.getPropertyValue(p) + ";";
+            // Sorted: Chromium lists custom properties in declaration order, so a
+            // reordered :root block would otherwise change every element's hash.
+            const s = [...cs]
+              .sort()
+              .map((p) => p + ":" + cs.getPropertyValue(p))
+              .join(";");
             const r = el.getBoundingClientRect();
             const path = [];
             for (let e = el; e && e.id !== "stage"; e = e.parentElement)

@@ -9,6 +9,14 @@ export function initMenuUI() {
   // so trust the browser's own :focus-visible unless a tap just moved focus
   // programmatically (the surface observer below seats focus after each tap).
   let lastPointer = -Infinity;
+  let lastScriptFocus = -Infinity;
+  // Our own focus() calls (surface seating below, the pad ring, confirm
+  // dialogs) are not keyboard navigation, whatever :focus-visible says of them.
+  const nativeFocus = HTMLElement.prototype.focus;
+  HTMLElement.prototype.focus = function (options) {
+    lastScriptFocus = performance.now();
+    return nativeFocus.call(this, options);
+  };
   document.addEventListener(
     "keydown",
     (e) => {
@@ -27,7 +35,8 @@ export function initMenuUI() {
   document.addEventListener(
     "focusin",
     (e) => {
-      if (performance.now() - lastPointer > 600 && e.target.matches?.(":focus-visible"))
+      const now = performance.now();
+      if (now - lastPointer > 600 && now - lastScriptFocus > 50 && e.target.matches?.(":focus-visible"))
         document.documentElement.classList.add("keyboard-navigation");
     },
     true,
