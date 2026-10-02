@@ -5357,17 +5357,9 @@ function openRacerPicker(which, origin = "startline") {
 }
 function refreshGarageHome() {
   refreshRacerCard(document.getElementById("garage-portrait"), document.getElementById("garage-summary"), _garageDraft);
-  const cat = catSpec(_garageDraft),
-    kart = kartSpec(_garageDraft);
   document.querySelector("#flow-garage .flow-h").textContent = _pickingSeat
     ? `Player ${_pickingSeat}’s garage`
     : "Garage";
-  document.getElementById("garage-cat-name").textContent = cat.name;
-  document.getElementById("garage-kart-name").textContent = kart.name;
-  document.getElementById("garage-cat-thumb").src =
-    `assets/catalog/${_garageDraft.cat === CUSTOM_CAT_IDX ? "custom-cat" : "cat-" + _garageDraft.cat}.jpg`;
-  document.getElementById("garage-kart-thumb").src =
-    `assets/catalog/${_garageDraft.kart === CUSTOM_KART_IDX ? "custom-kart" : "kart-" + _garageDraft.kart}.jpg`;
 }
 document.getElementById("open-garage").addEventListener("click", () => {
   _pickingSeat = 0;
@@ -5739,7 +5731,13 @@ document.getElementById("players-p1-edit").addEventListener("click", () => {
 });
 document.getElementById("setup-rivals").addEventListener("click", () => flowGo("rivals"));
 document.getElementById("setup-laps").addEventListener("click", () => flowGo("length"));
-document.getElementById("startline-garage").addEventListener("click", () => startSeatPick(0));
+// The setup card's Cat and Kart pills open P1's pickers straight from the
+// start line, skipping the garage screen; a commit or back lands right here.
+for (const which of ["cat", "kart"])
+  document.getElementById("setup-" + which).addEventListener("click", () => {
+    _pickingSeat = 0;
+    openRacerPicker(which, "startline");
+  });
 // GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.
 document.getElementById("go-btn")?.addEventListener("click", () => {
   if (raceMode === "split" && _seatInputLabels().some((label) => !label)) {

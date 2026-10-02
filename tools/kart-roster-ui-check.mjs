@@ -77,8 +77,7 @@ try {
     await p.waitForFunction(() => window.__zoomies?.track, null, { timeout: 180000 });
   };
   const editor = async () => {
-    await p.evaluate(() => document.querySelector("#startline-garage").click());
-    await p.locator("#garage-kart").click();
+    await p.evaluate(() => document.querySelector("#setup-kart").click());
     await p.getByText("Custom Kart", { exact: true }).click();
   };
   await load();
@@ -115,8 +114,9 @@ try {
   await p.screenshot({ path: `${out}/creator-rally.png` });
   await p.setViewportSize({ width: 844, height: 390 });
   await p.waitForTimeout(750);
-  await p.locator("#kart-livery-next").scrollIntoViewIfNeeded();
-  await p.locator("#kart-livery-next").click();
+  // The drill-in studio hides the legacy stepper arrows; step them by script like the rest of this check.
+  await p.evaluate(() => document.querySelector("#kart-livery-next").click());
+  await p.waitForTimeout(250);
   await p.locator("#kart-edit-use").scrollIntoViewIfNeeded();
   await p.screenshot({ path: `${out}/creator-phone.png` });
   await p.setViewportSize({ width: 1100, height: 800 });
@@ -189,7 +189,8 @@ try {
   const legacyPaint = await p.evaluate(() => {
     while (document.querySelector("#kart-style-name").textContent !== "GP")
       document.querySelector("#kart-style-next").click();
-    if (document.querySelector("#kart-livery-next").getClientRects().length === 0)
+    // The paint choice is a drill-in field now; the legacy arrows only back it by script.
+    if (document.querySelector('#flow-kart-edit [data-studio-field="livery"]').getClientRects().length === 0)
       throw Error("Original chassis paint control hidden");
     const labels = new Set();
     for (let i = 0; i < 8; i++) {

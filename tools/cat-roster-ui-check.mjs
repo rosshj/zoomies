@@ -81,8 +81,7 @@ try {
     await p.waitForFunction(() => window.__zoomies?.track, null, { timeout: 180000 });
   };
   const editor = async () => {
-    await p.evaluate(() => document.querySelector("#startline-garage").click());
-    await p.locator("#garage-cat").click();
+    await p.evaluate(() => document.querySelector("#setup-cat").click());
     await p.getByText("Custom Cat", { exact: true }).click();
   };
   await load();
@@ -92,7 +91,8 @@ try {
       if (!x) throw Error(m);
     };
     assert(document.querySelector("#cat-custom-name").value === "Legacy", "Legacy custom selection lost");
-    assert(document.querySelector("#cat-type-name").textContent === "Classic", "Legacy type default");
+    // A legacy save migrates to a Classic cat, which the summary names by its coat.
+    assert(document.querySelector("#cat-type-name").textContent === "Solid", "Legacy type default");
     const labels = new Set();
     for (let i = 0; i < 27; i++) {
       labels.add(document.querySelector("#cat-type-name").textContent);
