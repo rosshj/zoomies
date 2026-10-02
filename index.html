@@ -776,7 +776,10 @@
     </header>
     <div class="flow-body">
     <div class="sheet-inner install-main">
-
+      <!-- Shown in gate mode (touch device, not installed): there is no Back. -->
+      <p id="install-gate-note" class="install-gate-note hidden">
+        Zoomies&nbsp;GP runs as an app — add it to your Home Screen to play.
+      </p>
       <!-- Native install (Chromium): shown when the browser offers it. -->
       <button id="install-help-go" class="hidden">Install</button>
       <ol class="install-steps">

@@ -3228,7 +3228,10 @@ function escCloseTopScreen() {
   for (const [scr, btn] of ESC_EXITS) {
     const el = document.getElementById(scr);
     if (el && !el.classList.contains("hidden")) {
-      document.getElementById(btn)?.click();
+      // A sheet whose close button is hidden (the install gate) stays up; the
+      // key is still consumed so it can't fall through to the race controls.
+      const close = document.getElementById(btn);
+      if (close && !close.classList.contains("hidden")) close.click();
       return true;
     }
   }
@@ -3835,6 +3838,7 @@ const installBtn = document.getElementById("install-btn");
 const installHelp = document.getElementById("install-help");
 const installGo = document.getElementById("install-help-go"); // native install (in overlay)
 const installBack = document.getElementById("install-help-back");
+const installGateNote = document.getElementById("install-gate-note");
 const _isIOS =
   /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 // The native (Capacitor) app IS the installed app — it just doesn't report the
@@ -3854,11 +3858,12 @@ const _isStandalone =
 const _isTouch = window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
 let _deferredInstall = null;
+let _installGate = false; // mandatory-install mode (touch device, not installed)
 
 function refreshInstallUI() {
   const canNative = !!_deferredInstall;
   // Menu button: useful only when not gated, not installed, and there's an action.
-  const showBtn = !_isStandalone && (canNative || _isIOS);
+  const showBtn = !_installGate && !_isStandalone && (canNative || _isIOS);
   installBtn?.classList.toggle("hidden", !showBtn);
   // Native install button inside the overlay appears whenever the browser offers it.
   installGo?.classList.toggle("hidden", !canNative);
@@ -3890,7 +3895,18 @@ installBtn?.addEventListener("click", () => {
 installGo?.addEventListener("click", triggerNativeInstall);
 installBack?.addEventListener("click", () => closeSubScreen(installHelp));
 
-// Installation is optional; browser players can try a race before installing.
+// Mandatory install on touch devices: the bar/flip/link issues only behave in
+// a standalone (home-screen) app, so block in-browser play on phones and
+// tablets until installed. Desktop keeps playing in the tab (none of those
+// issues apply there). The install sheet floats over the live scene like the
+// other menus, with no way to dismiss it (its close button hides, and
+// escCloseTopScreen leaves it alone).
+if (_isTouch && !_isStandalone) {
+  _installGate = true;
+  installGateNote?.classList.remove("hidden");
+  installBack?.classList.add("hidden");
+  openSubScreen(installHelp);
+}
 refreshInstallUI();
 
 // --- Track generator panel ---

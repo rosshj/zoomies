@@ -706,6 +706,13 @@ body {
 }
 
 /* Add-to-Home-Screen instructions */
+.install-gate-note {
+  margin: 10px auto 4px;
+  max-width: 340px;
+  font-size: 13.5px;
+  color: var(--accent);
+  font-weight: bold;
+}
 .install-steps {
   text-align: left;
   margin: 14px auto;
