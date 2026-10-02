@@ -160,7 +160,7 @@ export function initMenuUI() {
       if (target.matches("button.seg-btn"))
         target.setAttribute("aria-pressed", String(target.classList.contains("is-active")));
       if (target.matches("button.toggle"))
-        target.setAttribute("aria-pressed", String(!target.classList.contains("off")));
+        target.setAttribute("aria-checked", String(!target.classList.contains("off")));
     }
   });
   for (const button of document.querySelectorAll("button.seg-btn,button.toggle")) {
@@ -172,6 +172,13 @@ export function initMenuUI() {
           : !button.classList.contains("off"),
       ),
     );
+    if (button.classList.contains("toggle")) {
+      button.setAttribute("role", "switch");
+      button.setAttribute("aria-checked", String(!button.classList.contains("off")));
+      button.removeAttribute("aria-pressed");
+      const label = button.closest(".setting-row")?.querySelector(".setting-label");
+      if (label) button.setAttribute("aria-label", label.textContent.trim());
+    }
     selectedObserver.observe(button, { attributes: true, attributeFilter: ["class"] });
   }
 }
