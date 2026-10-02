@@ -430,8 +430,8 @@
     </section>
 
     <!-- Garage shares the racer card and rotating track with race setup. -->
-    <!-- Pick your cat: a portrait grid (real catalog renders). Locked cats buy
-         in place; the Custom Cat card drills into the studio. -->
+    <!-- Pick your cat: a portrait grid (real catalog renders). Locked cats open
+         the unlock sheet; the Custom Cat card drills into the studio. -->
     <section id="flow-garage" class="flow-screen">
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
@@ -460,14 +460,14 @@
         </div>
         <div class="flow-head-right"></div>
       </header>
-      <div class="picker-toolbar">
-        <div class="seg-toggle" aria-label="Show cats">
-          <button class="seg-btn is-active" data-inventory="cat" data-filter="owned" aria-pressed="true">Owned</button>
-          <button class="seg-btn" data-inventory="cat" data-filter="all" aria-pressed="false">All</button>
-        </div>
-        <button id="cat-custom-open" class="btn-cream small-pill">✦ Create your own</button>
-      </div>
       <div class="flow-body">
+        <div class="picker-toolbar">
+          <div class="seg-toggle" aria-label="Show cats">
+            <button class="seg-btn is-active" data-inventory="cat" data-filter="owned" aria-pressed="true">Owned</button>
+            <button class="seg-btn" data-inventory="cat" data-filter="all" aria-pressed="false">All</button>
+          </div>
+          <button id="cat-custom-open" class="btn-cream small-pill">✦ Create your own</button>
+        </div>
         <div id="cat-grid" class="racer-grid"></div>
       </div>
     </section>
@@ -481,20 +481,22 @@
         </div>
         <div class="flow-head-right"></div>
       </header>
-      <div class="picker-toolbar">
-        <div class="seg-toggle" aria-label="Show karts">
-          <button class="seg-btn is-active" data-inventory="kart" data-filter="owned" aria-pressed="true">Owned</button>
-          <button class="seg-btn" data-inventory="kart" data-filter="all" aria-pressed="false">All</button>
-        </div>
-        <button id="kart-custom-open" class="btn-cream small-pill">✦ Create your own</button>
-      </div>
       <div class="flow-body">
+        <div class="picker-toolbar">
+          <div class="seg-toggle" aria-label="Show karts">
+            <button class="seg-btn is-active" data-inventory="kart" data-filter="owned" aria-pressed="true">Owned</button>
+            <button class="seg-btn" data-inventory="kart" data-filter="all" aria-pressed="false">All</button>
+          </div>
+          <button id="kart-custom-open" class="btn-cream small-pill">✦ Create your own</button>
+        </div>
         <div id="kart-grid" class="racer-grid"></div>
       </div>
     </section>
 
-    <!-- Cat studio: the custom-cat editor, one drill-in with room to breathe.
-         The live 3D preview orbits in the open left half. -->
+    <!-- Cat studio: the custom-cat editor. The portrait canvas is the preview;
+         src/studio-ui.js mounts this section at boot: it wraps the creator rows in
+         a scroll region, adds a summary button per field that drills into that
+         row, and moves the name/randomize controls into the preview footer. -->
     <section id="flow-cat-edit" class="flow-screen">
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
@@ -563,7 +565,7 @@
       </div>
     </section>
 
-    <!-- Kart shop: the custom-kart editor. -->
+    <!-- Kart studio: same shape as the cat studio, mounted by src/studio-ui.js. -->
     <section id="flow-kart-edit" class="flow-screen">
       <header class="flow-head">
         <button class="flow-back" data-back aria-label="Go back">←</button>
@@ -866,6 +868,8 @@
   </div>
 
   <!-- ===== Track generator ===== -->
+  <!-- src/track-builder-ui.js mounts this sheet at boot: the controls below become
+       drill-in fields behind a summary grid beside the preview column. -->
   <div id="track-panel" class="overlay sheet hidden">
     <header class="flow-head">
       <button id="track-back" class="flow-back" aria-label="Go back">←</button>
@@ -966,7 +970,7 @@
           </div>
           <div class="track-actions">
             <!-- btn-gold: the pad's ring seats on the sheet's primary action. -->
-            <button id="track-apply" class="btn-gold">✓ Use this track</button>
+            <button id="track-apply" class="btn-gold">Use this track</button>
           </div>
         </div>
       </div>
@@ -987,13 +991,13 @@
       </div>
     </header>
     <div class="flow-body">
+    <div class="seg-toggle catalog-tabs settings-nav">
+      <button id="catalog-tab-prizes" class="seg-btn is-active">Cats</button>
+      <button id="catalog-tab-karts" class="seg-btn">Karts</button>
+      <button id="catalog-tab-creators" class="seg-btn">Creators</button>
+      <button id="catalog-tab-ach" class="seg-btn">Awards</button>
+    </div>
     <div class="sheet-inner catalog-main">
-      <div class="seg-toggle catalog-tabs">
-        <button id="catalog-tab-prizes" class="seg-btn is-active">Cats</button>
-        <button id="catalog-tab-karts" class="seg-btn">Karts</button>
-        <button id="catalog-tab-creators" class="seg-btn">Creators</button>
-        <button id="catalog-tab-ach" class="seg-btn">Awards</button>
-      </div>
       <!-- Prizes: EVERYTHING you can win — cats, karts, creators — with how to
            get each one. The main page (kids love knowing what they can win). -->
       <div id="catalog-prizes" class="catalog-prizes"></div>
@@ -1020,24 +1024,32 @@
       </div>
     </header>
     <div class="flow-body">
+    <!-- Category bar: menu-ui.js shows one settings-card (by data-settings-panel)
+         at a time and remembers the last category. -->
+    <nav class="settings-nav seg-toggle" aria-label="Settings categories">
+      <button class="seg-btn" data-category="audio">Audio</button>
+      <button class="seg-btn" data-category="controls">Controls</button>
+      <button class="seg-btn" data-category="display">Display</button>
+      <button class="seg-btn" data-category="save">Save data</button>
+    </nav>
     <div class="sheet-inner settings-main">
       <div class="settings-list">
-        <section class="settings-card">
-          <div class="setting-row">
+        <section class="settings-card" data-settings-panel="audio">
+          <div class="setting-row setting-row-audio">
             <span class="setting-label">Music</span>
             <button id="set-music-toggle" class="secondary small toggle">On</button>
             <input id="set-music-vol" class="slider" type="range" min="0" max="100" value="25"
                    aria-label="Music volume" />
           </div>
-          <div class="setting-row">
+          <div class="setting-row setting-row-audio">
             <span class="setting-label">Sound FX</span>
             <button id="set-sfx-toggle" class="secondary small toggle">On</button>
             <input id="set-sfx-vol" class="slider" type="range" min="0" max="100" value="100"
                    aria-label="Sound effects volume" />
           </div>
         </section>
-        <section class="settings-card">
-          <div class="setting-row">
+        <section class="settings-card" data-settings-panel="display">
+          <div class="setting-row setting-row-segmented">
             <span class="setting-label">Graphics</span>
             <div id="quality-toggle" class="seg-toggle">
               <button id="set-quality-low" class="seg-btn">Low</button>
@@ -1047,7 +1059,7 @@
             </div>
           </div>
           <p class="setting-note" id="quality-note"><b>Low</b> saves power. <b>Balanced</b> is recommended for most phones. <b>Medium</b> adds richer effects. <b>High</b> adds the most detail and uses more power. Some detail changes apply on the next launch.</p>
-          <div class="setting-row" id="fps-cap-row">
+          <div class="setting-row setting-row-segmented" id="fps-cap-row">
             <span class="setting-label">Frame rate</span>
             <div id="set-fps-cap-seg" class="seg-toggle">
               <button class="seg-btn is-active" data-cap="auto">Auto</button>
@@ -1076,7 +1088,7 @@
           </div>
           <p class="setting-note" id="compat-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
         </section>
-        <section class="settings-card">
+        <section class="settings-card" data-settings-panel="controls">
           <div class="setting-row" id="tilt-indicator-row"><span class="setting-label">Steering indicator</span><button id="indicator-btn" class="secondary small toggle off">Off</button></div>
           <div class="setting-row">
             <span class="setting-label">Controller rumble</span>
@@ -1092,7 +1104,7 @@
             <p class="setting-note" id="versus-controls-note"><b>Versus (2–4P, desktop)</b> — controllers are dealt in player order (P1 gets the first pad), and the first player without a pad gets the keyboard. The start line shows who has what.</p>
           </div>
         </section>
-        <section class="settings-card">
+        <section class="settings-card" data-settings-panel="save">
           <!-- Backup code in an in-sheet field (Electron has no window.prompt):
                Copy fills it + copies, Paste reads the clipboard into it,
                Restore imports whatever's in it. -->
@@ -1115,7 +1127,7 @@
           </div>
         </section>
         <!-- Diagnostics share the Display page. -->
-        <section class="settings-card">
+        <section class="settings-card" data-settings-panel="display">
           <div id="adv-settings">
             <div class="setting-row">
               <span class="setting-label">FPS counter</span>
@@ -1151,6 +1163,17 @@
         <button id="racer-details-action" class="btn-gold"></button>
         <button id="racer-details-close" class="btn-cream">Back to choices</button>
       </div>
+    </div>
+  </div>
+  <!-- Controller text entry (menu-ui.js): edits a draft of the focused input
+       with on-screen keys; physical typing and paste still work. -->
+  <div id="menu-keyboard" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="keyboard-title">
+    <div class="menu-card keyboard-card">
+      <h1 id="keyboard-title">Enter text</h1>
+      <input id="keyboard-draft" aria-label="Text" data-no-virtual autocomplete="off" spellcheck="false">
+      <div class="keyboard-keys"></div>
+      <div class="keyboard-actions"><button id="keyboard-case" class="btn-cream">a ⇄ A</button><button id="keyboard-space" class="btn-cream">Space</button><button id="keyboard-delete" class="btn-cream">⌫ Delete</button></div>
+      <div class="keyboard-actions"><button id="keyboard-cancel" class="btn-cream">Cancel</button><button id="keyboard-done" class="btn-gold">Done</button></div>
     </div>
   </div>
   <div id="menu-confirm" class="overlay hidden" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">

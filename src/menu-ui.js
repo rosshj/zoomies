@@ -32,25 +32,12 @@ export function initMenuUI() {
     },
     true,
   );
-  document.getElementById("track-apply").textContent = "Use this track";
-  const catalogTabs = document.querySelector(".catalog-tabs");
-  catalogTabs.classList.add("settings-nav");
-  document.querySelector("#catalog .flow-body").prepend(catalogTabs);
-  for (const screen of document.querySelectorAll("#flow-cat, #flow-kart")) {
-    screen.querySelector(".flow-body").prepend(screen.querySelector(".picker-toolbar"));
-  }
+  // Settings shows one category of cards at a time (index.html tags each
+  // settings-card with data-settings-panel) and remembers the last one.
   const settings = document.getElementById("settings");
-  for (const row of settings.querySelectorAll(".setting-row")) {
-    row.classList.toggle("setting-row-segmented", !!row.querySelector(".seg-toggle"));
-    row.classList.toggle("setting-row-audio", !!row.querySelector('input[type="range"]'));
-  }
   const sections = [...settings.querySelectorAll(".settings-list > .settings-card")];
-  const groups = ["audio", "display", "controls", "save", "display"];
-  sections.forEach((section, i) => (section.dataset.settingsPanel = groups[i]));
-  const nav = document.createElement("nav");
-  nav.className = "settings-nav seg-toggle";
-  nav.setAttribute("aria-label", "Settings categories");
-  const names = { audio: "Audio", controls: "Controls", display: "Display", save: "Save data" };
+  const nav = settings.querySelector(".settings-nav");
+  const names = Object.fromEntries([...nav.children].map((button) => [button.dataset.category, button.textContent]));
   let category = "audio";
   try {
     const saved = localStorage.getItem("zoomies-settings-category");
@@ -68,15 +55,7 @@ export function initMenuUI() {
       localStorage.setItem("zoomies-settings-category", key);
     } catch {}
   };
-  for (const [key, label] of Object.entries(names)) {
-    const button = document.createElement("button");
-    button.className = "seg-btn";
-    button.textContent = label;
-    button.dataset.category = key;
-    button.addEventListener("click", () => select(key));
-    nav.append(button);
-  }
-  settings.querySelector(".flow-body").prepend(nav);
+  for (const button of nav.children) button.addEventListener("click", () => select(button.dataset.category));
   select(category);
 
   // Focus is scoped to the currently visible sheet or flow. Keep each surface's
@@ -201,14 +180,7 @@ export function initMenuUI() {
 // A controller can edit names, seeds and backup codes without a hardware keyboard.
 // Physical typing and paste still work; the virtual keys only edit a local draft.
 function installTextEntry() {
-  const overlay = document.createElement("div");
-  overlay.id = "menu-keyboard";
-  overlay.className = "overlay hidden";
-  overlay.setAttribute("role", "dialog");
-  overlay.setAttribute("aria-modal", "true");
-  overlay.setAttribute("aria-labelledby", "keyboard-title");
-  overlay.innerHTML = `<div class="menu-card keyboard-card"><h1 id="keyboard-title">Enter text</h1><input id="keyboard-draft" aria-label="Text" data-no-virtual autocomplete="off" spellcheck="false"><div class="keyboard-keys"></div><div class="keyboard-actions"><button id="keyboard-case" class="btn-cream">a ⇄ A</button><button id="keyboard-space" class="btn-cream">Space</button><button id="keyboard-delete" class="btn-cream">⌫ Delete</button></div><div class="keyboard-actions"><button id="keyboard-cancel" class="btn-cream">Cancel</button><button id="keyboard-done" class="btn-gold">Done</button></div></div>`;
-  document.getElementById("stage").append(overlay);
+  const overlay = document.getElementById("menu-keyboard");
   const draft = overlay.querySelector("#keyboard-draft");
   const keys = overlay.querySelector(".keyboard-keys");
   let input = null,
