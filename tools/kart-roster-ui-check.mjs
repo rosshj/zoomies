@@ -77,8 +77,7 @@ try {
     await p.waitForFunction(() => window.__zoomies?.track, null, { timeout: 180000 });
   };
   const editor = async () => {
-    await p.evaluate(() => document.querySelector("#startline-garage").click());
-    await p.locator("#garage-kart").click();
+    await p.evaluate(() => document.querySelector("#setup-kart").click());
     await p.getByText("Custom Kart", { exact: true }).click();
   };
   await load();

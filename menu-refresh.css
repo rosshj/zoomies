@@ -236,40 +236,7 @@ button.small-pill {
 .racer-body {
   gap: 24px;
 }
-.garage-side {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  align-self: center;
-}
-.garage-choice {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 14px;
-  text-align: left;
-  letter-spacing: 0;
-}
-.garage-choice img {
-  width: 76px;
-  height: 68px;
-  object-fit: cover;
-  border-radius: 12px;
-}
-.garage-choice span {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 5px;
-}
-.garage-choice small {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  color: #6c5b93;
-}
-.garage-choice strong {
-  font-size: 19px;
-}
+
 #garage-done {
   min-height: 52px;
 }
@@ -471,20 +438,7 @@ button.small-pill {
   left: 16px;
   bottom: 16px;
 }
-#stage.menu-compact .garage-side {
-  gap: 10px;
-}
-#stage.menu-compact .garage-choice {
-  padding: 10px;
-  gap: 12px;
-}
-#stage.menu-compact .garage-choice img {
-  height: 46px;
-  width: 52px;
-}
-#stage.menu-compact .garage-choice strong {
-  font-size: 16px;
-}
+
 #stage.menu-compact #garage-done {
   min-height: 46px;
 }
@@ -498,12 +452,6 @@ button.small-pill {
   }
 }
 /* Consistent compact menus; the next action never scrolls away. */
-.garage-side {
-  width: 100%;
-  max-width: 420px;
-  justify-self: end;
-  margin-right: calc(var(--stage-vw) * 3);
-}
 .map-chip .map-edit-hint {
   display: none;
 }
@@ -634,11 +582,7 @@ button.small-pill {
   flex-basis: 48px;
   font-size: 10px;
 }
-#stage.menu-compact .garage-side {
-  max-width: 390px;
-  width: 100%;
-  margin-right: 0;
-}
+
 #stage.menu-compact .menu-card.pause-card {
   width: min(540px, 100%);
   padding: 16px 22px;
@@ -900,22 +844,7 @@ button.small-pill {
   flex: 0 1 auto;
   padding: 16px;
 }
-#stage.menu-portrait .garage-side {
-  align-self: stretch;
-  width: 100%;
-  margin: 0;
-  gap: 12px;
-}
-#stage.menu-portrait .garage-choice {
-  padding: 12px;
-}
-#stage.menu-portrait .garage-choice img {
-  width: 58px;
-  height: 54px;
-}
-#stage.menu-portrait .garage-choice strong {
-  font-size: 17px;
-}
+
 #stage.menu-portrait .settings-nav {
   gap: 3px;
   border-radius: 16px;
@@ -1205,8 +1134,7 @@ button.small-pill {
 #stage .racer-tap.is-current {
   border-color: #ffbf47;
 }
-#stage .tap-title,
-#stage .garage-choice strong {
+#stage .tap-title {
   font-size: 18px;
   font-weight: 700;
 }
@@ -1871,13 +1799,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview > .start-racer-label {
   padding: 12px 14px 0;
 }
-#stage #flow-startline #racer-portrait {
-  display: block;
-  width: 100%;
-  height: 230px;
-  object-fit: contain;
-  background: radial-gradient(ellipse at 50% 80%, #4c3f64, #211e31 75%);
-}
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-preview-footer {
   display: flex;
   align-items: center;
@@ -1890,19 +1811,16 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   font-size: 14px;
   min-width: 0;
 }
-#stage #flow-startline .setup-racer-actions {
+#stage :is(#flow-startline, #flow-garage) .setup-racer-actions {
   display: flex;
   flex: 0 0 auto;
   gap: 6px;
 }
-#stage #flow-startline .setup-racer-actions button {
+#stage :is(#flow-startline, #flow-garage) .setup-racer-actions button {
   min-width: 44px;
   min-height: 44px;
   padding: 8px 12px;
   font-size: 12px;
-}
-#stage.menu-portrait #flow-startline #racer-portrait {
-  height: 180px;
 }
 #stage.menu-compact #flow-startline .setup-pickers {
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1911,9 +1829,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact #flow-startline .setup-choice {
   padding: 6px;
   min-height: 52px;
-}
-#stage.menu-compact #flow-startline #racer-portrait {
-  height: 90px;
 }
 #stage.menu-compact :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-preview-footer {
   padding: 4px 8px;
@@ -2056,11 +1971,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage:not(.menu-portrait) :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview {
   flex: 1 0 auto;
 }
-#stage:not(.menu-portrait) #flow-startline #racer-portrait {
-  flex: 1 0 90px;
-  height: 90px;
-  min-height: 90px;
-}
 #stage:not(.menu-portrait) :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview > :not(canvas) {
   flex-shrink: 0;
 }
@@ -2145,29 +2055,24 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   background: radial-gradient(ellipse 100% 100% at 50% 125%, #30263d26 99.5%, transparent 100%), var(--racer-backdrop, #a4dedf);
   color: var(--racer-ink, #30263d);
 }
-#stage #flow-startline #racer-portrait,
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > canvas,
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-preview-footer { background: transparent; }
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview .start-racer-label,
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .racer-summary { color: inherit; }
 
 /* Racer leads the setup; the track fills the space above Start. */
-#stage #flow-startline .setup-racer-panel #racer-portrait {
-  flex: 1 1 90px;
-  height: 90px;
-  min-height: 90px;
-}
 #stage #flow-startline .start-scroll > .map-chip {
   flex: 1 0 130px;
   height: auto;
 }
 #stage.menu-portrait #flow-startline .setup-racer-panel {
-  min-height: 240px;
+  min-height: 260px;
 }
 #stage.menu-portrait #flow-startline .start-side {
-  max-height: calc(100% - 252px);
+  max-height: calc(100% - 272px);
 }
 #stage.menu-portrait #flow-startline .start-scroll > .map-chip {
-  height: clamp(110px, 24svh, 210px);
+  height: clamp(100px, 19svh, 180px);
   flex: 0 0 auto;
 }
 
@@ -2184,7 +2089,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-startline.flow-screen #setup-mode > span:not(.setup-icon),
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit).flow-screen .racer-preview-footer,
 #stage #flow-startline.flow-screen #go-btn,
-#stage #flow-startline.flow-screen .setup-racer-actions button,
+#stage :is(#flow-startline, #flow-garage).flow-screen .setup-racer-actions button,
 #stage .picker-toolbar .btn-cream,
 #stage .racer-details-copy button {
   padding: var(--menu-control-y) var(--menu-inset);
@@ -2192,7 +2097,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-startline.flow-screen #setup-mode { padding: 0; }
 #stage #flow-startline.flow-screen .map-chip,
 #stage #menu .race-detail-choice,
-#stage .garage-choice,
 #stage .racer-details-copy {
   padding: var(--menu-inset);
 }
@@ -2202,7 +2106,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-mode.flow-screen .tap-text {
   padding: var(--menu-control-y) var(--menu-inset);
 }
-#stage #flow-startline.flow-screen .setup-racer-actions,
+#stage :is(#flow-startline, #flow-garage).flow-screen .setup-racer-actions,
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit).flow-screen .racer-preview-footer {
   gap: var(--menu-content-gap);
 }
@@ -2240,45 +2144,34 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage :is(.sticker-deep, .track-col-ctrl) {
   background: var(--menu-surface);
 }
-#stage #startline-garage {
+#stage :is(#flow-startline, #flow-garage) .setup-racer-actions button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--menu-content-gap);
 }
 
-/* Garage uses the same still racer card over the uninterrupted track orbit. */
+/* Garage uses the same still racer card over the uninterrupted track orbit:
+   the card spans the body (its footer opens the pickers), Done sits below. */
 #stage #flow-garage .garage-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, .85fr);
-  gap: 16px;
-  align-items: stretch;
-  padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
-}
-#stage #flow-garage .setup-racer-preview { min-height: 180px; min-width: 0; }
-#stage #garage-portrait {
-  display: block;
-  width: 100%;
-  height: 0;
-  min-height: 90px;
-  flex: 1 1 0;
-  object-fit: contain;
-  background: transparent;
-}
-#stage #flow-garage .garage-side {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  align-self: center;
-  gap: 12px;
-}
-#stage.menu-portrait #flow-garage .garage-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
 }
-#stage.menu-portrait #flow-garage .setup-racer-preview { flex: 1 0 180px; }
-#stage.menu-portrait #flow-garage .garage-side { flex: 0 0 auto; }
+#stage #flow-garage .setup-racer-preview {
+  flex: 1 1 0;
+  min-height: 180px;
+  min-width: 0;
+}
+#stage #flow-garage #garage-done {
+  flex: 0 0 auto;
+  width: 100%;
+}
+#stage:not(.menu-portrait) #flow-garage #garage-done {
+  width: min(100%, 360px);
+  align-self: flex-end;
+}
 
 /* Home's two primary actions share one responsive height. */
 #stage { --home-action-height: 68px; }
@@ -2513,4 +2406,48 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 }
 #stage #flow-startline #menu-map-btn:disabled :is(.map-chevron, .map-edit-hint) {
   display: none;
+}
+
+/* Setup and garage racer cards: the portrait fills the whole card, with the
+   label and the footer laid over it, and the fitter keeps the model between
+   them (it reads --portrait-inset-top/bottom off the canvas). The model is as
+   large as the card allows instead of a strip squeezed above a solid footer. */
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview {
+  position: relative;
+  --racer-footer-y: 8px;
+  --portrait-inset-top: 16px;
+  --portrait-inset-bottom: calc(var(--menu-button-height) + 2 * var(--racer-footer-y));
+}
+#stage.menu-compact :is(#flow-startline, #flow-garage) .setup-racer-preview {
+  --racer-footer-y: 4px;
+  --portrait-inset-top: 10px;
+}
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > canvas {
+  display: block;
+  width: 100%;
+  height: 90px;
+  min-height: 150px;
+  flex: 1 1 90px;
+  object-fit: contain;
+}
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > .start-racer-label,
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > .racer-preview-footer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+}
+#stage :is(#flow-startline, #flow-garage) .setup-racer-preview > .start-racer-label {
+  top: 0;
+  pointer-events: none;
+}
+#stage :is(#flow-startline, #flow-garage).flow-screen .setup-racer-preview > .racer-preview-footer {
+  bottom: 0;
+  padding: var(--racer-footer-y) var(--menu-inset);
+}
+#stage :is(#flow-startline, #flow-garage) .racer-preview-footer .racer-summary {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

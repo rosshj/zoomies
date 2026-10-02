@@ -115,36 +115,63 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
     const up = new THREE.Vector3().crossVectors(direction, right);
     const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
     const axis = new THREE.Vector3(0, 1, 0);
-    const fitBounds = [];
-    if (subject === "racer") {
-      group.traverse((object) => {
-        if (!object.isMesh || !object.geometry) return;
-        object.geometry.computeBoundingBox();
-        fitBounds.push({ box: object.geometry.boundingBox, matrix: object.matrixWorld });
-      });
-    } else fitBounds.push({ box: bounds, matrix: new THREE.Matrix4() });
+    // Frame the envelope of a complete turn about the vertical axis, so the
+    // framing holds still while the model is dragged around.
     const fitPoints = [];
-    for (const { box, matrix } of fitBounds)
-      for (const x of [box.min.x, box.max.x])
-        for (const y of [box.min.y, box.max.y])
-          for (const z of [box.min.z, box.max.z]) {
-            const corner = new THREE.Vector3(x, y, z).applyMatrix4(matrix).sub(target);
-            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 32) {
-              const rotated = corner.clone().applyAxisAngle(axis, angle);
-              fitPoints.push({ x: rotated.dot(right), y: rotated.dot(up), z: rotated.dot(direction) });
-            }
-          }
+    const sweep = (point) => {
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 32) {
+        const rotated = point.clone().applyAxisAngle(axis, angle);
+        fitPoints.push({ x: rotated.dot(right), y: rotated.dot(up), z: rotated.dot(direction) });
+      }
+    };
+    if (subject === "racer") {
+      // Every vertex sweeps a circle of radius r at height y, so the silhouette
+      // of the turn depends only on (r, y): bin the vertices by height and keep
+      // the widest radius per bin, applied to both bin edges. That is still
+      // conservative, but far tighter than rotated bounding-box corners, whose
+      // diagonals padded the frame by about a wheel on every side.
+      const BINS = 96;
+      const span = Math.max(1e-6, bounds.max.y - bounds.min.y);
+      const radii = new Float32Array(BINS);
+      const vertex = new THREE.Vector3();
+      group.traverse((object) => {
+        const position = object.isMesh && object.geometry?.attributes.position;
+        if (!position) return;
+        for (let i = 0; i < position.count; i++) {
+          vertex.fromBufferAttribute(position, i).applyMatrix4(object.matrixWorld);
+          const bin = Math.min(BINS - 1, Math.max(0, Math.floor(((vertex.y - bounds.min.y) / span) * BINS)));
+          radii[bin] = Math.max(radii[bin], Math.hypot(vertex.x - target.x, vertex.z - target.z));
+        }
+      });
+      for (let bin = 0; bin < BINS; bin++) {
+        if (!radii[bin]) continue;
+        for (const edge of [bin, bin + 1])
+          sweep(new THREE.Vector3(radii[bin], bounds.min.y + (edge / BINS) * span - target.y, 0));
+      }
+    } else
+      for (const x of [bounds.min.x, bounds.max.x])
+        for (const y of [bounds.min.y, bounds.max.y])
+          for (const z of [bounds.min.z, bounds.max.z]) sweep(new THREE.Vector3(x, y, z).sub(target));
     const offset = new THREE.Vector3();
     let renderHeight = 400;
-    let fittedAspect = 0;
+    let fitted = "";
+    // The card's label and footer may sit over the canvas; the stylesheet
+    // declares how much of the top and bottom they cover, in CSS pixels.
+    const inset = (name) => {
+      const value = parseFloat(getComputedStyle(canvas).getPropertyValue(name));
+      return Number.isFinite(value) && value > 0 ? value : 0;
+    };
     const fit = () => {
       // Use the actual preview slot, so landscape is not letterboxed into a square.
-      const aspect =
-        subject === "racer" && canvas.clientWidth && canvas.clientHeight
-          ? Math.max(0.5, Math.min(4, canvas.clientWidth / canvas.clientHeight))
-          : 1.6;
-      if (Math.abs(aspect - fittedAspect) < 0.001) return;
-      fittedAspect = aspect;
+      const measured = subject === "racer" && canvas.clientWidth > 0 && canvas.clientHeight > 0;
+      const aspect = measured ? Math.max(0.5, Math.min(4, canvas.clientWidth / canvas.clientHeight)) : 1.6;
+      // Safe band in NDC y, between the overlays.
+      let top = measured ? 1 - (2 * inset("--portrait-inset-top")) / canvas.clientHeight : 1;
+      let bottom = measured ? -1 + (2 * inset("--portrait-inset-bottom")) / canvas.clientHeight : -1;
+      if (top - bottom < 0.5) ((top = 1), (bottom = -1));
+      const key = `${aspect.toFixed(4)} ${top.toFixed(4)} ${bottom.toFixed(4)}`;
+      if (key === fitted) return;
+      fitted = key;
       renderHeight = Math.round(640 / aspect);
       canvas.height = renderHeight;
       camera.aspect = 640 / renderHeight;
@@ -155,8 +182,9 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
           point.z + Math.max(Math.abs(point.x) / (tanV * camera.aspect), Math.abs(point.y) / tanV),
         );
       if (subject === "racer") {
-        // After vertical centering, fit the projected height rather than reserving
-        // equal space around the world origin. This gives wide previews more scale.
+        // After vertical centering, fit the projected height into the safe band
+        // rather than reserving equal space around the world origin. This gives
+        // wide previews more scale. 3% stays clear on every side.
         let near = fitPoints.reduce((max, point) => Math.max(max, point.z), -Infinity) + 0.01;
         let far = distance * 1.06;
         for (let step = 0; step < 20; step++) {
@@ -170,7 +198,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
             high = Math.max(high, point.y / depth);
             width = Math.max(width, Math.abs(point.x) / (depth * camera.aspect));
           }
-          if (width <= 0.94 && high - low <= 1.88) far = candidate;
+          if (width <= 0.97 && high - low <= (top - bottom) * 0.97) far = candidate;
           else near = candidate;
         }
         distance = far;
@@ -178,8 +206,8 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
       offset.copy(direction).multiplyScalar(distance);
       camera.updateProjectionMatrix();
       if (subject === "racer") {
-        // Center the projected silhouette rather than its world-space bounding box.
-        // Use the envelope of a complete turn to keep the framing steady while dragging.
+        // Center the projected silhouette of the whole turn in the safe band,
+        // rather than its world-space bounding box in the canvas.
         let low = Infinity,
           high = -Infinity;
         for (const point of fitPoints) {
@@ -187,7 +215,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
           low = Math.min(low, y);
           high = Math.max(high, y);
         }
-        camera.projectionMatrix.elements[9] = (low + high) / 2;
+        camera.projectionMatrix.elements[9] = (low + high) / 2 - (top + bottom) / 2;
         camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
       }
     };

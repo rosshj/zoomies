@@ -78,9 +78,8 @@ try {
   await click("#setup-mode");
   await click("#mode-gp");
   await step("startline");
-  await click("#startline-garage");
-  await step("garage");
-  await click("#garage-cat");
+  // The setup card's pills skip the garage: pick, and land straight back.
+  await click("#setup-cat");
   await step("cat");
   assert.deepEqual(
     await p.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]),
@@ -89,8 +88,6 @@ try {
   );
   await shot("cats-deck");
   await click("#cat-grid button:nth-child(2)");
-  await step("garage");
-  await click("#garage-done");
   await step("startline");
   const saved = await garage();
   assert.equal(saved.cat, 1);
@@ -100,9 +97,7 @@ try {
     portraitBefore,
     "Portrait did not update with selected cat",
   );
-  await click("#startline-garage");
-  await step("garage");
-  await click("#garage-kart");
+  await click("#setup-kart");
   await step("kart");
   assert.deepEqual(
     await p.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]),
@@ -110,13 +105,9 @@ try {
     "Kart picker changed the Home track orbit",
   );
   await click("#flow-kart [data-back]");
-  await step("garage");
-  await click("#garage-done");
   await step("startline");
   assert.deepEqual(await garage(), saved, "Cancel changed saved racer");
-  await click("#startline-garage");
-  await step("garage");
-  await click("#garage-cat");
+  await click("#setup-cat");
   await click("#cat-custom-open");
   await step("cat-edit");
   await click('#flow-cat-edit [data-studio-field="type"]');
@@ -124,8 +115,6 @@ try {
   await click("#flow-cat-edit [data-back]");
   await step("cat");
   await click("#flow-cat [data-back]");
-  await step("garage");
-  await click("#garage-done");
   await step("startline");
   assert.deepEqual(await garage(), saved, "Cancelled custom draft leaked");
   await click("#menu-map-btn");
