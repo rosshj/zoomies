@@ -360,6 +360,19 @@ try {
 const _cupParam = _qs.get("cup");
 if (!_cupState || !_cupParam || _cupState.id !== _cupParam || !cupById(_cupState.id)) _cupState = null;
 let _activeCup = _cupState ? cupById(_cupState.id) : null;
+// START CUP and the results' "Race N of M" reload into the next seed and ask
+// for that race to begin as soon as the world is built (autostartCupRace), so
+// the series never detours through Home and setup. Honoured only while the
+// cup state is intact; a stale flag on an ordinary boot is simply dropped.
+const CUP_AUTOSTART_KEY = "zoomies-cup-autostart";
+let _cupAutostart = false;
+try {
+  _cupAutostart = sessionStorage.getItem(CUP_AUTOSTART_KEY) === "1";
+  sessionStorage.removeItem(CUP_AUTOSTART_KEY);
+} catch {
+  /* ignore */
+}
+if (!_cupState || !_activeCup) _cupAutostart = false;
 
 // Daily challenge: today's shared seed (local date — "the day" as the player sees it).
 function todayStr() {
@@ -1921,6 +1934,7 @@ function renderFrame() {
   // First real frame is on screen — fade out the boot loading screen to reveal it.
   if (!_loadHidden) {
     _loadHidden = true;
+    if (_cupAutostart) autostartCupRace(); // the race veil is up before the loader fades
     hideLoadingScreen();
   }
 }
@@ -5288,7 +5302,8 @@ menuFlowEl.querySelectorAll("[data-back]").forEach((b) => b.addEventListener("cl
 function refreshTitlePlay() {
   if (!startBtn) return;
   if (_raceParked) startBtn.textContent = "Race setup";
-  else if (raceMode === "cup" && _cupState && _activeCup) startBtn.textContent = "Continue cup";
+  else if (raceMode === "cup" && _cupState && _activeCup)
+    startBtn.textContent = _cupState.race > 0 || _cupState.scored === _cupState.race ? "Continue cup" : "Start cup";
   else startBtn.textContent = "Race";
 }
 startBtn?.addEventListener("click", () => {
@@ -5362,26 +5377,12 @@ for (const button of document.querySelectorAll("[data-inventory]")) {
   });
 }
 document.getElementById("setup-mode").addEventListener("click", () => flowGo("mode"));
+// Opening a list never prompts; committing to a DIFFERENT cup, track or mode
+// while a series or the daily is live does (see renderCupOptions,
+// chooseTrackCard and chooseRaceMode), and re-choosing the current one just
+// returns to setup with the run intact.
 function openTrackPicker() {
-  const open = () => {
-    if (_cupState || _dailyActive) leaveSpecialRun();
-    flowGo(raceMode === "cup" ? "cup" : "track");
-  };
-  if (_cupState)
-    confirmMenuAction(
-      "Choose another cup?",
-      "This ends your current series. Earned treats and unlocks stay saved.",
-      "Choose cup",
-      open,
-    );
-  else if (_dailyActive)
-    confirmMenuAction(
-      "Leave the daily challenge?",
-      "A different track will be a regular race without today's challenge bonus.",
-      "Choose track",
-      open,
-    );
-  else open();
+  flowGo(raceMode === "cup" ? "cup" : "track");
 }
 
 // Kept as the shared "mode/options changed" refresher (setRaceMode calls it).
@@ -5419,6 +5420,11 @@ function leaveSpecialRun() {
   history.replaceState(null, "", u);
 }
 function chooseRaceMode(mode) {
+  if (mode === "cup" && _cupState && _activeCup) {
+    setRaceMode("cup"); // still in the series: back to setup, nothing lost
+    flowGo("startline");
+    return;
+  }
   const apply = () => {
     leaveSpecialRun();
     setRaceMode(mode);
@@ -5502,8 +5508,22 @@ function renderTrackCards() {
   }
 }
 document.getElementById("track-custom-open").addEventListener("click", openTrackPanel);
-async function chooseTrackCard(cfg) {
-  if (trackCardCurrent(cfg)) {
+async function chooseTrackCard(cfg, rebuild = false) {
+  if (_dailyActive) {
+    // Leaving the daily always rebuilds (its world is today's seed, whatever
+    // the card says), so the "already built" shortcut below doesn't apply.
+    confirmMenuAction(
+      "Leave the daily challenge?",
+      "A different track will be a regular race without today's challenge bonus.",
+      "Choose track",
+      () => {
+        leaveSpecialRun();
+        chooseTrackCard(cfg, true);
+      },
+    );
+    return;
+  }
+  if (trackCardCurrent(cfg) && !rebuild) {
     flowGo("startline");
     return;
   } // already built → onward
@@ -5681,7 +5701,7 @@ function refreshStartline() {
   refreshSeatTiles(); // seat tiles + count segment (hidden outside split)
   if (goBtn) {
     if (midCup)
-      goBtn.textContent = `Continue cup · Race ${_cupState.race + (_cupState.scored === _cupState.race ? 2 : 1)} of ${_activeCup.races.length}`;
+      goBtn.textContent = `Start race ${_cupState.race + (_cupState.scored === _cupState.race ? 2 : 1)} of ${_activeCup.races.length}`;
     else if (_dailyActive) goBtn.textContent = "📅  START DAILY";
     else goBtn.textContent = GO_LABELS[raceMode] || GO_LABELS.gp;
   }
@@ -5834,11 +5854,42 @@ function startCup(id) {
   } // grab iOS tilt permission inside the tap
   try {
     sessionStorage.setItem(CUP_KEY, JSON.stringify({ id, race: 0, points: {}, diff: DIFFICULTY }));
+    sessionStorage.setItem(CUP_AUTOSTART_KEY, "1");
   } catch {
     /* ignore */
   }
-  markReload("cup-start");
+  saveFlowResume("startline"); // where the boot lands if the race can't start itself
+  markReload("cup-start", `${cup.name} · Race 1 of ${cup.races.length}`);
   location.href = cupRaceURL(cup, 0);
+}
+// Begin the race the player already asked for (START CUP or the results'
+// "Race N of M"), straight off the boot: the veil covers the build exactly as a
+// tapped start does. iOS hands out motion access only from a tap, so where that
+// grant can't be confirmed silently the veil asks for one tap instead of
+// sending the player back through Home and setup.
+function autostartCupRace() {
+  _cupAutostart = false;
+  if (state !== State.MENU || !_cupState || !_activeCup) return;
+  const go = () => {
+    if (state === State.MENU) startRace();
+  };
+  const needsGrant = _isTouch && typeof window.DeviceMotionEvent?.requestPermission === "function";
+  if (!needsGrant) {
+    go();
+    return;
+  }
+  input.enableMotion().then((granted) => {
+    if (granted) {
+      go();
+      return;
+    }
+    if (!raceVeilEl || state !== State.MENU) return;
+    showRaceVeil();
+    raceVeilEl.classList.add("tap");
+    raceVeilEl.querySelector(".rv-text").textContent =
+      `Tap to start · Race ${_cupState.race + 1} of ${_activeCup.races.length}`;
+    raceVeilEl.addEventListener("pointerdown", go, { once: true });
+  });
 }
 function advanceCupRace() {
   if (!_cupState || !_activeCup) return;
@@ -5850,10 +5901,12 @@ function advanceCupRace() {
   }
   try {
     input.enableMotion();
+    sessionStorage.setItem(CUP_AUTOSTART_KEY, "1");
   } catch {
     /* ignore */
   } // tap = motion permission survives the reload
-  markReload("cup-next");
+  saveFlowResume("startline");
+  markReload("cup-next", `${_activeCup.name} · Race ${_cupState.race + 1} of ${_activeCup.races.length}`);
   location.href = cupRaceURL(_activeCup, _cupState.race);
 }
 document.getElementById("results-next-btn")?.addEventListener("click", advanceCupRace);
@@ -5919,14 +5972,29 @@ function renderCupOptions() {
       `<span class="cup-meta"><span class="cup-pill">🏁 ${cup.races.length} races</span>${prize}</span>`;
     cueifyButton(b);
     b.addEventListener("click", () => {
-      _cupChoice = cup.id;
-      try {
-        localStorage.setItem(CUP_CHOICE_KEY, cup.id);
-      } catch {
-        /* ignore */
-      }
-      clearCupRun(); // picking a new cup starts a fresh series
-      flowGo("startline");
+      const pick = () => {
+        _cupChoice = cup.id;
+        try {
+          localStorage.setItem(CUP_CHOICE_KEY, cup.id);
+        } catch {
+          /* ignore */
+        }
+        clearCupRun(); // picking a new cup starts a fresh series
+        flowGo("startline");
+      };
+      if (!_cupState || !_activeCup) pick();
+      else if (cup.id === _cupState.id)
+        flowGo("startline"); // mid-series: nothing changes
+      else
+        confirmMenuAction(
+          "Leave this cup?",
+          `Your points in ${_activeCup.name} will be lost. Earned treats and unlocks stay saved.`,
+          "Switch cup",
+          () => {
+            leaveSpecialRun();
+            pick();
+          },
+        );
     });
     list.appendChild(b);
   });
@@ -6426,7 +6494,8 @@ function showRaceVeil() {
   _veilStartedAt = performance.now();
   _veilStableMs = 0;
   clearTimeout(_veilHideTimer); // a still-pending fade-out must not re-hide us
-  raceVeilEl.classList.remove("hidden", "fading");
+  raceVeilEl.classList.remove("hidden", "fading", "tap");
+  raceVeilEl.querySelector(".rv-text").textContent = "GET READY…";
 }
 function hideRaceVeil() {
   _veilActive = false;

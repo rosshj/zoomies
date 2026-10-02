@@ -121,6 +121,10 @@ body {
   letter-spacing: 0.18em;
   color: rgba(255, 255, 255, 0.85);
 }
+/* Cup auto-start on iOS: motion access needs a tap, so the veil asks for one. */
+#race-veil.tap { cursor: pointer; }
+#race-veil.tap .rv-ring { display: none; }
+#race-veil.tap .rv-text { font-size: 18px; color: #ffd54f; }
 @keyframes rv-spin {
   to { transform: rotate(360deg); }
 }

@@ -14,7 +14,7 @@ Collection separates Cats, Karts, Creators, and Awards. Owned items equip direct
 
 Pause offers Resume, Restart, Settings, Controls, and Home. Home parks an unfinished solo race and makes Resume its primary action. Resume returns directly to the race. Restarting, ending Versus, quitting during a race, replacing a parked race, or leaving a series requires an explicit confirmation with Cancel selected initially.
 
-Cup progress survives Home/resume. Returning to setup after a completed round advances the series instead of replaying the scored round. Leaving a cup or daily challenge clears its active state explicitly. Daily challenges use the same classic recipe, seed, and three laps even when the device previously used a custom track.
+Cup progress survives Home/resume. Returning to setup after a completed round advances the series instead of replaying the scored round. START CUP and the results' "Race N of M" reload into the next seed and start that race themselves once the world is built (the race veil covers the build; on iOS, where motion access needs a tap, the veil asks for one tap instead of a trip through Home and setup). Opening the cup, track or mode list never prompts; committing to a different cup, track or mode while a series or the daily is live does, and re-choosing the current one returns to setup with the run intact. Daily challenges use the same classic recipe, seed, and three laps even when the device previously used a custom track.
 
 Results include automatic, idempotent badge rewards and a fixed footer for Race again/Next race, Race setup, and Home. The separate badge-claim gate is gone. Countdown announcements are cleared on pause.
 

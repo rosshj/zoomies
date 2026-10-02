@@ -47,29 +47,45 @@ try {
   assert.ok(scored.points.You > 0);
   await click("#results-menu-btn");
   await click("#start-btn");
-  assert.match(await p.locator("#go-btn").textContent(), /Race 2/);
+  assert.match(await p.locator("#go-btn").textContent(), /race 2 of/i);
   await click("#go-btn");
+  // The reload into race 2 starts the race itself: no Home / setup detour.
   await p.waitForFunction(
     () => window.__zoomies?.track && JSON.parse(sessionStorage.getItem("zoomies-cup-v1")).race === 1,
     null,
     { timeout: 180000 },
   );
+  await p.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
+  assert.ok(await p.evaluate(() => document.getElementById("menu").classList.contains("hidden")), "Menu up in race 2");
   assert.deepEqual(
     await p.evaluate(() => JSON.parse(sessionStorage.getItem("zoomies-cup-v1")).points),
     scored.points,
     "Continue lost points",
   );
+  await p.keyboard.press("p");
+  await click("#menu-btn"); // park race 2, back Home
+  assert.match(await p.locator("#start-btn").textContent(), /race setup/i);
   await click("#start-btn");
+  await click("#confirm-accept"); // give up the parked race, keep the series
+  await step("startline");
   const cupBeforeMap = await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1"));
-  await click("#menu-map-btn");
+  await click("#menu-map-btn"); // opening the cup list never prompts…
+  await step("cup");
+  await click("#cup-list button:nth-child(2)"); // …switching cups does
   await p.locator("#menu-confirm:not(.hidden)").waitFor();
   await click("#confirm-cancel");
+  await step("cup");
+  await click("#cup-list button:first-child"); // the current cup: straight back, nothing lost
   await step("startline");
   assert.equal(
     await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1")),
     cupBeforeMap,
-    "Map cancellation changed cup progress",
+    "Cup list visit changed cup progress",
   );
+  await click("#setup-mode");
+  await click("#mode-cup"); // the current mode mid-series: back to setup, no prompt
+  await step("startline");
+  assert.equal(await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1")), cupBeforeMap);
   await click("#setup-mode");
   await click("#mode-tt");
   await click("#confirm-cancel");
@@ -107,9 +123,14 @@ try {
     return { world: getSeed(), url: new URL(location.href).searchParams.get("seed") };
   });
   assert.equal(daily.world, daily.url, "Daily inherited saved custom seed");
-  await click("#menu-map-btn");
+  await click("#menu-map-btn"); // the list opens without a prompt…
+  await step("track");
+  await click("#track-grid button:first-child"); // …picking a track (even Classic) asks first
   await p.locator("#menu-confirm:not(.hidden)").waitFor();
   await click("#confirm-cancel");
+  await step("track");
+  assert.ok(await p.evaluate(() => new URL(location.href).searchParams.get("daily")), "Cancel left the daily");
+  await p.locator(".flow-screen.is-active .flow-back").click();
   await step("startline");
   assert.deepEqual(errors, []);
   console.log("PASS: cup park/resume, scoring, next round, abandon/cancel, deterministic daily routing.");
