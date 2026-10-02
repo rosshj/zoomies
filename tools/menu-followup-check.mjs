@@ -21,29 +21,29 @@ try {
   };
   await click("#open-settings");
   await click("[data-category=display]");
-  assert.ok(await p.locator("[data-display-field=graphics]").isVisible());
-  assert.equal(await p.locator("#quality-toggle").isVisible(), false);
+  assert.ok(await p.locator("#quality-toggle").isVisible());
+  assert.equal(await p.locator("[data-display-field]").count(), 0);
   for (const [width, height] of [
     [390, 844],
     [844, 390],
     [320, 568],
   ]) {
     await p.setViewportSize({ width, height });
-    await p.waitForTimeout(300);
-    await p.screenshot({ path: `/tmp/display-overview-${width}.png` });
-    await click("[data-display-field=graphics]");
     await click("#set-quality-low");
-    const bounds = await p.locator("#settings .menu-fixed-actions button").boundingBox();
-    assert.ok(bounds.y + bounds.height <= height, "Display back clipped");
-    await p.screenshot({ path: `/tmp/display-detail-${width}.png` });
-    await p.keyboard.press("Escape");
-    assert.equal(await p.locator("[data-display-field=graphics] strong").textContent(), "Low");
-    assert.ok(await p.locator("#settings").isVisible(), "Escape closed all Settings");
+    assert.ok(await p.locator("#set-quality-low").evaluate((el) => el.classList.contains("is-active")));
+    await click('[data-cap="30"]');
+    assert.ok(await p.locator('[data-cap="30"]').evaluate((el) => el.classList.contains("is-active")));
+    await p.locator("#set-saver-toggle").scrollIntoViewIfNeeded();
+    await p.screenshot({ path: `/tmp/display-inline-${width}.png` });
   }
-  await click("[data-display-field=frame-rate]");
-  await click('[data-cap="30"]');
-  await click("#settings-back");
-  assert.equal(await p.locator("[data-display-field=frame-rate] strong").textContent(), "30");
+  await click("[data-category=controls]");
+  const indicator = p.locator("#indicator-btn");
+  assert.equal(await indicator.getAttribute("role"), "switch");
+  const before = await indicator.getAttribute("aria-checked");
+  // The simulated desktop shell hides this mobile-only row; exercise its handler directly.
+  await indicator.evaluate((button) => button.click());
+  await p.waitForTimeout(100);
+  assert.notEqual(await indicator.getAttribute("aria-checked"), before);
   await click("#settings-back");
   await click("#open-catalog");
   await click("#catalog-tab-ach");
@@ -90,7 +90,7 @@ try {
   assert.equal(await p.locator("#loading .ls-status").textContent(), "Loading Buttercup Run");
   assert.equal(await p.evaluate(() => sessionStorage.getItem("zoomies-loading-track")), null);
   console.log(
-    "PASS: Display drill-ins and values, Escape/back, award claim regrouping, Players layouts, and loading feedback.",
+    "PASS: Inline Display values and steering switch, award claim regrouping, Players layouts, and loading feedback.",
   );
 } finally {
   await browser.close();

@@ -3408,24 +3408,6 @@ compatToggle?.addEventListener("click", () => {
 });
 applyCompatUI();
 
-// "Advanced" expander hides the debug toggles (FPS counter, Tilt debug) so the
-// settings menu stays tidy for normal players.
-const advToggle = document.getElementById("adv-toggle");
-const advSettings = document.getElementById("adv-settings");
-advToggle?.addEventListener("click", () => {
-  const open = advSettings.classList.toggle("hidden") === false;
-  advToggle.textContent = open ? "Advanced ▾" : "Advanced ▸";
-  advToggle.setAttribute("aria-expanded", String(open));
-  // The revealed rows + Back button can fall below the fold on a short landscape
-  // screen — scroll the settings overlay down so they're not stranded off-screen.
-  if (open) {
-    const body = document.querySelector("#settings .flow-body");
-    setTimeout(() => {
-      if (body) body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
-    }, 60);
-  }
-});
-
 // --- Tilt debug readout (opt-in via Settings; persisted) ---
 // A diagnostic to chase down the steering sensitivity: it prints the live device
 // pitch (forward/back tilt), the in-plane gravity magnitude (which shrinks as the
@@ -5062,7 +5044,10 @@ const indicatorBtn = document.getElementById("indicator-btn");
 let showIndicator = false;
 function applyIndicator() {
   if (steerBar) steerBar.style.display = showIndicator ? "block" : "none";
-  if (indicatorBtn) indicatorBtn.textContent = showIndicator ? "On" : "Off";
+  if (indicatorBtn) {
+    indicatorBtn.textContent = showIndicator ? "On" : "Off";
+    indicatorBtn.classList.toggle("off", !showIndicator);
+  }
 }
 if (indicatorBtn)
   indicatorBtn.addEventListener("click", () => {

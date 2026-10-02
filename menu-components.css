@@ -18,10 +18,6 @@
 #stage .menu-fixed-actions { flex: 0 0 auto; display: flex; padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left)); }
 #stage .menu-fixed-actions.hidden { display: none; }
 #stage .menu-fixed-actions > button { width: 100%; min-height: var(--menu-button-height); margin: 0; }
-#stage #settings .settings-card:has(.display-overview) { padding: 0; background: transparent; }
-#stage #settings .display-detail { padding: 16px; background: var(--menu-surface); border-radius: var(--control-radius); }
-#stage #settings[data-display-detail] [data-settings-panel=display]:not(:has(.display-overview)) { display: none; }
-#stage #settings > .menu-fixed-actions { width: min(680px, 100%); box-sizing: border-box; align-self: center; }
 #stage .players-body { display: flex; flex-direction: column; gap: var(--menu-gap); padding: 12px max(16px, var(--safe-right)) 0 max(16px, var(--safe-left)); }
 #stage .players-body > * { flex-shrink: 0; }
 #stage .players-help { margin: 0; color: var(--menu-muted); font-size: 14px; }

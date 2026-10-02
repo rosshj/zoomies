@@ -227,14 +227,6 @@ try {
     for (const category of ["audio", "controls", "display", "save"]) {
       await click(`[data-category="${category}"]`);
       await capture("settings-" + category);
-      if (category === "display") {
-        await click('[data-display-field="graphics"]');
-        await capture("display-graphics");
-        await click("#settings .menu-fixed-actions button");
-        await click('[data-display-field="frame-rate"]');
-        await capture("display-frame-rate");
-        await click("#settings .menu-fixed-actions button");
-      }
     }
     await click("#settings-back");
     await click("#howto-btn");

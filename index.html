@@ -1023,7 +1023,6 @@
     <div class="sheet-inner settings-main">
       <div class="settings-list">
         <section class="settings-card">
-          <h2 class="settings-section">🔊 Audio</h2>
           <div class="setting-row">
             <span class="setting-label">Music</span>
             <button id="set-music-toggle" class="secondary small toggle">On</button>
@@ -1038,7 +1037,6 @@
           </div>
         </section>
         <section class="settings-card">
-          <h2 class="settings-section">🖥 Display</h2>
           <div class="setting-row">
             <span class="setting-label">Graphics</span>
             <div id="quality-toggle" class="seg-toggle">
@@ -1079,8 +1077,7 @@
           <p class="setting-note" id="compat-note">Use if the game crashes — switches to more stable graphics (restarts).</p>
         </section>
         <section class="settings-card">
-          <h2 class="settings-section">🎮 Controls</h2>
-          <div class="setting-row" id="tilt-indicator-row"><span class="setting-label">Steering indicator</span><button id="indicator-btn" class="secondary small">Off</button></div>
+          <div class="setting-row" id="tilt-indicator-row"><span class="setting-label">Steering indicator</span><button id="indicator-btn" class="secondary small toggle off">Off</button></div>
           <div class="setting-row">
             <span class="setting-label">Controller rumble</span>
             <button id="set-rumble-toggle" class="secondary small toggle">On</button>
@@ -1096,7 +1093,6 @@
           </div>
         </section>
         <section class="settings-card">
-          <h2 class="settings-section">💾 Save data</h2>
           <!-- Backup code in an in-sheet field (Electron has no window.prompt):
                Copy fills it + copies, Paste reads the clipboard into it,
                Restore imports whatever's in it. -->
@@ -1118,10 +1114,9 @@
             <div class="setting-row"><span class="setting-label">Dev mode</span><button id="dev-off" class="secondary small">Turn off</button></div>
           </div>
         </section>
-        <!-- Advanced / debug toggles, hidden behind an expander to keep the menu tidy. -->
+        <!-- Diagnostics share the Display page. -->
         <section class="settings-card">
-          <button id="adv-toggle" class="adv-toggle" aria-expanded="false">Advanced ▸</button>
-          <div id="adv-settings" class="hidden">
+          <div id="adv-settings">
             <div class="setting-row">
               <span class="setting-label">FPS counter</span>
               <button id="set-fps-toggle" class="secondary small toggle off">Off</button>
