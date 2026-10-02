@@ -1,0 +1,1618 @@
+{
+  "errors": [],
+  "measurements": [
+    {
+      "device": "deck",
+      "name": "title",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "title",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "title",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [
+        {
+          "id": "open-catalog",
+          "text": "📖 Cat‑alog!",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "howto-btn",
+          "text": "❓ How to Play",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "download-btn",
+          "text": "⬇️ Get the App",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "open-settings",
+          "text": "⚙️ Settings",
+          "w": 460,
+          "h": 40
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "title",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "title",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [
+        {
+          "id": "open-catalog",
+          "text": "📖 Cat‑alog!",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "howto-btn",
+          "text": "❓ How to Play",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "download-btn",
+          "text": "⬇️ Get the App",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "open-settings",
+          "text": "⚙️ Settings",
+          "w": 387,
+          "h": 40
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "title",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "settings",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 742,
+          "scroll": 1228
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "settings",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 842,
+          "scroll": 1228
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "settings",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1180
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "settings",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1180
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "settings",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 1180
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "settings",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 662,
+          "scroll": 1228
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "help",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 1,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "help",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 1,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "help",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 1,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "help",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 1,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "help",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 1,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "help",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 1,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "catalog",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 79,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 742,
+          "scroll": 5106
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "catalog",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 79,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 842,
+          "scroll": 5106
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "catalog",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 79,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 5037
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "catalog",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 79,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 5074
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "catalog",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 79,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 4346
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "catalog",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 79,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 662,
+          "scroll": 5103
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "mode",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "mode",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "mode",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "mode",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "mode",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "mode",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "cups",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "cups",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "cups",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "cups",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "cups",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "cups",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "tracks",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "tracks",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "tracks",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 655
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "tracks",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 13,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 691
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "tracks",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 572
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "tracks",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 662,
+          "scroll": 733
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "track-maker",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 30,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "track-maker",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 30,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "track-maker",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 30,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 619
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "track-maker",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 30,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 619
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "track-maker",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 30,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 673
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "track-maker",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 30,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "cats",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 42,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 742,
+          "scroll": 2138
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "cats",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 42,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 842,
+          "scroll": 2378
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "cats",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 42,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1446
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "cats",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 42,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 2270
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "cats",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 42,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 1446
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "cats",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 42,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 662,
+          "scroll": 1894
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "karts",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 36,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 742,
+          "scroll": 2844
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "karts",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 36,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 842,
+          "scroll": 3164
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "karts",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 36,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1920
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "karts",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 36,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 3020
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "karts",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 36,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 1920
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "karts",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 36,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 662,
+          "scroll": 2519
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "startline",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "startline",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "startline",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "startline",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 13,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "1",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "2",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "3",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "4",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "5",
+          "w": 39,
+          "h": 44
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "startline",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "1",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "2",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "3",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "4",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "5",
+          "w": 39,
+          "h": 44
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "startline",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 13,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "pause",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 4,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "pause",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 4,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "pause",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 4,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "pause",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 4,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "pause",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 4,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "pause",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 4,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "pause-settings",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 742,
+          "scroll": 1228
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "pause-settings",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 842,
+          "scroll": 1228
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "pause-settings",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1180
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "pause-settings",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1180
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "pause-settings",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 1180
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "pause-settings",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 662,
+          "scroll": 1228
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "parked-title",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "parked-title",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "parked-title",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [
+        {
+          "id": "open-catalog",
+          "text": "📖 Cat‑alog!",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "howto-btn",
+          "text": "❓ How to Play",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "download-btn",
+          "text": "⬇️ Get the App",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "open-settings",
+          "text": "⚙️ Settings",
+          "w": 460,
+          "h": 40
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "parked-title",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "parked-title",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [
+        {
+          "id": "open-catalog",
+          "text": "📖 Cat‑alog!",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "howto-btn",
+          "text": "❓ How to Play",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "download-btn",
+          "text": "⬇️ Get the App",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "open-settings",
+          "text": "⚙️ Settings",
+          "w": 387,
+          "h": 40
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "parked-title",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "results",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "results",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "results",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "results",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "results",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "results",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "claims",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "claims",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "claims",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "claims",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "claims",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "claims",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 2,
+      "smallControls": [],
+      "scroll": []
+    }
+  ]
+}

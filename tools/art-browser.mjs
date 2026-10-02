@@ -3,6 +3,8 @@
 import { chromium } from "playwright-core";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import http from "node:http";
+import { readFile } from "node:fs/promises";
 export const softwareRendering =
   process.env.SOFTWARE === "1" || (process.env.NATIVE !== "1" && process.platform === "linux");
 function chromePath() {
@@ -58,4 +60,43 @@ export async function artBackends(browser, port) {
   }
   console.log(`[browser] ${gpu ? "WebGL + WebGPU" : "WebGPU unavailable; exercising WebGL fallback"}`);
   return gpu ? ["webgl", "webgpu"] : ["webgl"];
+}
+
+// Serve the repository root over plain HTTP for a browser check. Port 0 picks
+// a free port so checks can run side by side; the server is unref'd so a tool
+// that forgets to close it still exits. Returns the origin to navigate to.
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".webmanifest": "application/manifest+json",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".svg": "image/svg+xml",
+  ".ico": "image/x-icon",
+  ".wasm": "application/wasm",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".woff2": "font/woff2",
+};
+export async function serveRepo({ port = 0 } = {}) {
+  const root = path.resolve(new URL("..", import.meta.url).pathname);
+  const server = http.createServer(async (req, res) => {
+    try {
+      const url = new URL(req.url, "http://localhost");
+      const file = path.join(root, url.pathname === "/" ? "index.html" : decodeURIComponent(url.pathname));
+      if (!file.startsWith(root)) throw Error("outside root");
+      res.setHeader("content-type", MIME[path.extname(file)] || "application/octet-stream");
+      res.end(await readFile(file));
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise((r) => server.listen(port, "127.0.0.1", r));
+  server.unref();
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  return { server, origin, port: server.address().port, close: () => new Promise((r) => server.close(r)) };
 }

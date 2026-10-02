@@ -148,19 +148,40 @@ await check("no ring before the pad is touched", () => !document.querySelector("
 // the title's primary action — never activate an invisible focus.
 await press(0);
 await check(
-  "first pad touch seats the ring on Let's Go! (and only seats it)",
+  "first pad touch seats the ring on Race (and only seats it)",
   () =>
     document.getElementById("start-btn").classList.contains("pad-focus") &&
     document.getElementById("flow-title").classList.contains("is-active"),
 );
 if (process.env.SHOT) await page.screenshot({ path: process.env.SHOT }).catch(() => {});
 
-// Now A presses it: the mode screen slides in…
+// Home goes straight to setup, with Start as the default controller action.
 await press(0);
-await check("A advances to the mode screen", () =>
-  document.getElementById("flow-mode").classList.contains("is-active"),
+await check("A opens race setup", () => document.getElementById("flow-startline").classList.contains("is-active"));
+await frames(2);
+await check("setup seats Start", () => document.getElementById("go-btn").classList.contains("pad-focus"));
+await page.evaluate(() => document.getElementById("setup-rivals").click());
+await frames(2);
+await check("Rivals seats the selected difficulty", () =>
+  document.querySelector('#diff-seg [data-diff="medium"]').classList.contains("pad-focus"),
 );
-
+await press(1);
+await check(
+  "B returns from Rivals without changing difficulty",
+  () =>
+    document.getElementById("flow-startline").classList.contains("is-active") &&
+    document.getElementById("setup-rivals-name").textContent === "Medium",
+);
+await page.evaluate(() => document.getElementById("setup-laps").click());
+await frames(2);
+await check("Race length seats the selected laps", () =>
+  document.querySelector('#laps-seg [data-laps="3"]').classList.contains("pad-focus"),
+);
+await press(0);
+await check("A chooses laps and returns to setup", () =>
+  document.getElementById("flow-startline").classList.contains("is-active"),
+);
+await page.evaluate(() => document.getElementById("setup-mode").click());
 // …and the ring is ALREADY on Single race (first non-back button), not the
 // back arrow.
 await frames(2);
@@ -177,7 +198,10 @@ else errors.push(`FAIL d-pad moves focus: stayed on '${before}'`);
 
 // A on Single race → the track screen, auto-seated on the FIRST track card
 // (Classic circuit).
-await page.evaluate(() => document.getElementById("mode-gp").click());
+await page.evaluate(() => {
+  document.getElementById("mode-gp").click();
+  document.getElementById("menu-map-btn").click();
+});
 await frames(2);
 await check("track screen auto-seats on the first card", () => {
   const f = document.querySelector("#flow-track .pad-focus");
@@ -188,7 +212,14 @@ await check("track screen auto-seats on the first card", () => {
 // Seating focus mid-slide must never drag the flow sideways: #menu is
 // overflow:hidden and a scrollIntoView on a still-translated button scrolls
 // it permanently (cut-off headers, stranded panels — the desktop bug).
-await frames(6); // let the slide finish
+await page.waitForFunction(
+  () =>
+    !document
+      .querySelector(".flow-screen.is-active")
+      .getAnimations()
+      .some((a) => a.playState === "running"),
+);
+// A frame count is not a duration: the slide is 440ms on every backend.
 await check("menu container never scrolls sideways", () => {
   const menu = document.getElementById("menu");
   const scr = document.querySelector(".flow-screen.is-active").getBoundingClientRect();
@@ -211,6 +242,8 @@ await check("focus auto-seats in the open sheet", () => {
 // Range sliders are candidates: right from the Music toggle lands on the
 // music slider, and right AGAIN nudges it (5% of its range) instead of
 // leaving it — the volume handler runs off the synthesised input event.
+// First navigate from the category bar to the Music toggle, then its slider.
+await press(13);
 await press(15);
 await check("d-pad reaches the music slider", () =>
   document.getElementById("set-music-vol").classList.contains("pad-focus"),
@@ -228,13 +261,40 @@ await check(
 await press(1);
 await check("B closes the sheet", () => document.getElementById("settings").classList.contains("hidden"));
 
+// Save-data text entry must be reachable with the actual pad, not only a click.
+await page.evaluate(() => {
+  document.getElementById("open-settings").click();
+  document.querySelector('[data-category="save"]').click();
+});
+await frames(2);
+for (let i = 0; i < 12; i++) {
+  if (await page.evaluate(() => document.getElementById("backup-code").classList.contains("pad-focus"))) break;
+  await press(13);
+}
+await check("d-pad reaches backup text entry", () =>
+  document.getElementById("backup-code").classList.contains("pad-focus"),
+);
+await press(0);
+await check(
+  "A opens the controller keyboard",
+  () => !document.getElementById("menu-keyboard").classList.contains("hidden"),
+);
+await press(1);
+await check(
+  "B cancels text entry and keeps Settings open",
+  () =>
+    document.getElementById("menu-keyboard").classList.contains("hidden") &&
+    !document.getElementById("settings").classList.contains("hidden"),
+);
+await press(1);
+
 // Keyboard spatial nav rides the same ring: ArrowDown from the title's
-// Let's Go! moves to the extras row, Enter presses the ringed button.
+// Race moves to the extras row, Enter presses the ringed button.
 await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowDown" })));
 await frames(1);
 await page.evaluate(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "ArrowDown" })));
 await frames(1);
-await check("arrow keys move the ring off Let's Go!", () => {
+await check("arrow keys move the ring off Race", () => {
   const f = document.querySelector("#flow-title .pad-focus");
   return !!f && f.id !== "start-btn";
 });
@@ -242,7 +302,7 @@ await page.evaluate(() => {
   document.querySelector(".pad-focus")?.blur();
 });
 
-// Cat-alog: the buyable prize tiles are <button>s the ring can walk onto.
+// Collection: the prize tiles (locked ones open the unlock sheet) are <button>s the ring can walk onto.
 await page.evaluate(() => document.getElementById("open-catalog").click());
 await frames(2);
 for (let i = 0; i < 4; i++) {
@@ -252,7 +312,7 @@ for (let i = 0; i < 4; i++) {
 }
 await check("d-pad reaches a Cat-alog prize tile (a <button>)", () => {
   const f = document.querySelector("#catalog .prize-tile.pad-focus");
-  return !!f && f.tagName === "BUTTON" && document.querySelectorAll("#catalog .prize-tile.buyable").length > 0;
+  return !!f && f.tagName === "BUTTON" && document.querySelectorAll("#catalog .prize-tile.locked").length > 0;
 });
 await press(1);
 await check("B closes the Cat-alog", () => document.getElementById("catalog").classList.contains("hidden"));
@@ -270,17 +330,9 @@ await frames(2);
 // --- Race surfaces: pause from the countdown, Settings over pause, results.
 // One race is worth the SwiftShader warm-up: the pause/results ordering bugs
 // only exist with a race behind the sheets.
-await page.evaluate(() => {
-  document.getElementById("mode-gp").click();
-});
+await page.evaluate(() => document.getElementById("start-btn").click());
 await frames(4);
-await page.evaluate(() => document.querySelector("#track-grid .track-tap").click()); // Classic is current → no reload
-await frames(6);
-await page.evaluate(() => document.querySelector("#cat-grid .racer-tap").click());
-await frames(4);
-await page.evaluate(() => document.querySelector("#kart-grid .racer-tap").click());
-await frames(6);
-await check("kart pick lands on the start line", () =>
+await check("race setup reachable again", () =>
   document.getElementById("flow-startline").classList.contains("is-active"),
 );
 await page.evaluate(() => document.getElementById("go-btn").click());
@@ -315,39 +367,18 @@ await check(
   "B on the pause card resumes the countdown",
   () => window.__zoomies.state() === 1 && document.getElementById("pause-overlay").classList.contains("hidden"),
 );
-// Finish → results (after the victory-lap delay) → B walks out through the
-// claim interstitial: first press claims every badge, the next continues.
-await page.evaluate(() => {
-  window.__zoomies.debugFinish();
-});
-await page
-  .waitForFunction(() => !document.getElementById("results").classList.contains("hidden"), null, { timeout: 120000 })
-  .catch(() => errors.push("results never appeared"));
+// Finish banks badge rewards and Back returns home in one press.
+await page.evaluate(() => window.__zoomies.debugFinish());
+await page.waitForSelector("#results:not(.hidden)", { timeout: 30000 });
 await frames(2);
-await press(1);
 await check(
-  "B on results leaves through the claim screen",
-  () =>
-    !document.getElementById("claim-screen").classList.contains("hidden") &&
-    document.querySelectorAll("#claim-screen .claim-card").length > 0,
-);
-await check("claim copy says Press A with a pad", () =>
-  /Press Ⓐ/.test(document.querySelector("#claim-screen .claim-cta")?.textContent || ""),
+  "badge rewards bank automatically",
+  () => JSON.parse(localStorage.getItem("zoomies-profile-v1")).pendingClaims.length === 0,
 );
 await press(1);
 await check(
-  "B on the claim screen collects every badge",
-  () =>
-    document.querySelectorAll("#claim-screen .claim-card:not(.claimed)").length === 0 &&
-    !document.getElementById("claim-continue").classList.contains("hidden"),
-);
-await press(1);
-await check(
-  "B again continues to the menu",
-  () =>
-    document.getElementById("claim-screen").classList.contains("hidden") &&
-    !document.getElementById("menu").classList.contains("hidden") &&
-    window.__zoomies.state() === 0,
+  "B on results returns Home",
+  () => !document.getElementById("menu").classList.contains("hidden") && window.__zoomies.state() === 0,
 );
 
 console.log(JSON.stringify({ errors }, null, 2));

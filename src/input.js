@@ -35,7 +35,13 @@ export class Input {
     this._neutralSamples = 0;
     this._calNeutral = 0; // baseline neutral captured at calibrate; clamp anchor
     this._sign = -1; // steering sign, fixed at calibrate (see calibrate())
+    this._motionActive = true;
     this._haveMotion = false;
+    // How the phone is physically held, from gravity: true = landscape, false =
+    // portrait, null until the first motion event. Updated on every event even
+    // while steering is off, so menus can follow the hand rather than a
+    // viewport that iOS leaves in portrait under the system rotation lock.
+    this.heldLandscape = null;
     this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
     this._keyboardSteering = false;
@@ -115,7 +121,15 @@ export class Input {
   // lock the steering sign to the current orientation. The sign is fixed here
   // (not re-evaluated per motion event) so that if the OS flips orientation
   // mid-steer, steering stays continuous instead of suddenly inverting.
+  setMotionActive(active) {
+    if (this._motionActive === active) return;
+    this._motionActive = active;
+    if (active) this.calibrate();
+    else this._steerTarget = this.steer = 0;
+  }
+
   calibrate() {
+    this._steerTarget = this.steer = 0;
     this._neutralRoll = null; // next motion events re-capture neutral
     this._neutralSamples = 0;
     this._calNeutral = 0; // re-anchored once the new neutral settles
@@ -126,6 +140,14 @@ export class Input {
   _onMotion(e) {
     const g = e.accelerationIncludingGravity;
     if (!g || g.x === null || g.y === null) return;
+    // Device axes don't rotate with the screen, so the larger in-plane gravity
+    // component says which way the phone is held. A flat phone keeps the last
+    // answer; the 1.3× margin stops the answer flapping around 45°.
+    const ax = Math.abs(g.x),
+      ay = Math.abs(g.y);
+    if (ax > ay * 1.3 && ax > 2.5) this.heldLandscape = true;
+    else if (ay > ax * 1.3 && ay > 2.5) this.heldLandscape = false;
+    if (!this._motionActive) return;
     this._haveMotion = true;
     this._g = { x: g.x, y: g.y, z: g.z ?? 0 };
 

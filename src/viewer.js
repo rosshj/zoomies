@@ -545,6 +545,34 @@ window.__viewer = {
     curAnim?.(t);
     refreshAnimPlayBtn();
   },
+  // Fit every corner of the posed model, including hats, spoilers and wheels.
+  fitCurrent(padding = 1.12) {
+    if (!current) return;
+    const box = new THREE.Box3().setFromObject(current);
+    const center = box.getCenter(new THREE.Vector3());
+    const direction = new THREE.Vector3(
+      Math.sin(orbit.phi) * Math.sin(orbit.theta),
+      Math.cos(orbit.phi),
+      Math.sin(orbit.phi) * Math.cos(orbit.theta),
+    );
+    const right = new THREE.Vector3(Math.cos(orbit.theta), 0, -Math.sin(orbit.theta));
+    const up = new THREE.Vector3().crossVectors(direction, right);
+    const tanV = Math.tan((camera.fov * Math.PI) / 360);
+    const tanH = tanV * camera.aspect;
+    let radius = 0;
+    for (const x of [box.min.x, box.max.x])
+      for (const y of [box.min.y, box.max.y])
+        for (const z of [box.min.z, box.max.z]) {
+          const corner = new THREE.Vector3(x, y, z).sub(center);
+          radius = Math.max(
+            radius,
+            corner.dot(direction) +
+              padding * Math.max(Math.abs(corner.dot(right)) / tanH, Math.abs(corner.dot(up)) / tanV),
+          );
+        }
+    orbit.target.copy(center);
+    orbit.radius = radius;
+  },
 };
 console.log(
   `[zoomies] asset viewer: ${entries.length} assets · ${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"}`,

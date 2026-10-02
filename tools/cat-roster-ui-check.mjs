@@ -81,7 +81,8 @@ try {
     await p.waitForFunction(() => window.__zoomies?.track, null, { timeout: 180000 });
   };
   const editor = async () => {
-    await p.evaluate(() => document.querySelector("#startline-edit").click());
+    await p.evaluate(() => document.querySelector("#startline-garage").click());
+    await p.locator("#garage-cat").click();
     await p.getByText("Custom Cat", { exact: true }).click();
   };
   await load();
@@ -101,7 +102,6 @@ try {
     while (document.querySelector("#cat-type-name").textContent !== "British Shorthair")
       document.querySelector("#cat-type-next").click();
     document.querySelector("#cat-edit-use").click();
-    document.querySelector("#kart-grid button").click();
     const save = JSON.parse(localStorage.getItem("zoomies-garage-v1"));
     assert(
       save.v === 3 && save.cat === 40 && save.catId === "custom" && save.customCat.type === "british",
@@ -118,7 +118,6 @@ try {
   if ((await p.locator("#cat-type-name").textContent()) !== "British Shorthair") throw Error("Reload lost type");
   await p.evaluate(() => {
     document.querySelector("#cat-edit-use").click();
-    document.querySelector("#kart-grid button").click();
     document.querySelector("#go-btn").click();
   });
   await p.waitForFunction(() => window.__zoomies.karts?.length === 6, null, { timeout: 180000 });

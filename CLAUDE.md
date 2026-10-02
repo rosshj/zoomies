@@ -83,3 +83,21 @@ Bending rules that keep re-appearing (the grass got both wrong first):
 3. `node tools/catalog-shots.mjs` when presets/models changed.
 4. `npm run check` (+ `node tools/progress-check.mjs` if the economy changed),
    `node tools/build-web.mjs`, then commit + push.
+
+## Verification loop for menu / CSS changes
+
+Menus are plain HTML in `index.html` plus `styles.css`, `menu-refresh.css`
+and `menu-components.css`; game state stays in `main.js`, shared DOM behaviour
+in `src/menu-ui.js`. Put structure in the markup, not in boot-time DOM moves.
+
+1. `npm run check:menus`, `check:menu-state`, `check:menupad` (browser checks;
+   each serves the repo itself). `check:menupad` times its presses in real
+   frames, so under SwiftShader a slow frame can double-register a held
+   direction — a one-off failure there is worth a rerun before a fix.
+2. For a stylesheet refactor, prove it visually neutral instead of eyeballing:
+   `STYLE_DUMP=before.json npm run menu:gallery` on the old tree, the same with
+   `after.json` on the new one, then `npm run menu:style-diff -- before.json
+   after.json` (every element's computed style + rect on every surface and
+   viewport; `--by-rect` ignores pure markup reordering).
+3. Every browser tool gets a `check:*` / `menu:*` script in package.json;
+   node-only checks also go in `.github/workflows/checks.yml`.

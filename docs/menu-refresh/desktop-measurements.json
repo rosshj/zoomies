@@ -1,0 +1,3267 @@
+{
+  "errors": [],
+  "measurements": [
+    {
+      "device": "deck",
+      "name": "desktop-title",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "desktop-title",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "desktop-title",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [
+        {
+          "id": "open-catalog",
+          "text": "📖 Cat‑alog!",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "howto-btn",
+          "text": "❓ How to Play",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "open-settings",
+          "text": "⚙️ Settings",
+          "w": 226,
+          "h": 40
+        },
+        {
+          "id": "quit-btn-title",
+          "text": "⏻ Quit",
+          "w": 226,
+          "h": 40
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "desktop-title",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "desktop-title",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [
+        {
+          "id": "open-catalog",
+          "text": "📖 Cat‑alog!",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "howto-btn",
+          "text": "❓ How to Play",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "open-settings",
+          "text": "⚙️ Settings",
+          "w": 189,
+          "h": 40
+        },
+        {
+          "id": "quit-btn-title",
+          "text": "⏻ Quit",
+          "w": 189,
+          "h": 40
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "desktop-title",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 5,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "desktop-mode",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "desktop-mode",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "desktop-mode",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "desktop-mode",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "small-phone",
+      "name": "desktop-mode",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "laptop-720",
+      "name": "desktop-mode",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 6,
+      "smallControls": [],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "cat-studio",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 32,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "cat-custom-name",
+          "text": "",
+          "w": 251,
+          "h": 42
+        },
+        {
+          "id": "cat-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "cat-randomize",
+          "text": "🎲 Surprise me",
+          "w": 410,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "cat-studio",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 32,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "cat-custom-name",
+          "text": "",
+          "w": 251,
+          "h": 42
+        },
+        {
+          "id": "cat-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "cat-randomize",
+          "text": "🎲 Surprise me",
+          "w": 410,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "cat-studio",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 32,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "cat-custom-name",
+          "text": "",
+          "w": 233,
+          "h": 42
+        },
+        {
+          "id": "cat-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "cat-randomize",
+          "text": "🎲 Surprise me",
+          "w": 392,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 332,
+          "scroll": 655
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "cat-studio",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 32,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "cat-custom-name",
+          "text": "",
+          "w": 221,
+          "h": 42
+        },
+        {
+          "id": "cat-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "cat-randomize",
+          "text": "🎲 Surprise me",
+          "w": 380,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 331,
+          "scroll": 667
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "cat-studio",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 32,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "cat-custom-name",
+          "text": "",
+          "w": 136,
+          "h": 42
+        },
+        {
+          "id": "cat-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "cat-randomize",
+          "text": "🎲 Surprise me",
+          "w": 295,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 317,
+          "scroll": 747
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "cat-studio",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 32,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "cat-custom-name",
+          "text": "",
+          "w": 251,
+          "h": 42
+        },
+        {
+          "id": "cat-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "cat-randomize",
+          "text": "🎲 Surprise me",
+          "w": 410,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 659,
+          "scroll": 667
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "name-picker",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 27,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "Biscuit",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mochi",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pumpkin",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Waffles",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Bandit",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Noodle",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mittens",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Gizmo",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Tofu",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pixel",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Luna",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Oreo",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Peanut",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Nacho",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Boots",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sushi",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Muffin",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Toffee",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Olive",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Maple",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sprout",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Truffle",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Widget",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Dumpling",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "cat-name-random",
+          "text": "🎲 Random",
+          "w": 213,
+          "h": 38
+        },
+        {
+          "id": "cat-name-close",
+          "text": "✕ Close",
+          "w": 213,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "name-picker",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 27,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "Biscuit",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mochi",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pumpkin",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Waffles",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Bandit",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Noodle",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mittens",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Gizmo",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Tofu",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pixel",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Luna",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Oreo",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Peanut",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Nacho",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Boots",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sushi",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Muffin",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Toffee",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Olive",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Maple",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sprout",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Truffle",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Widget",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Dumpling",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "cat-name-random",
+          "text": "🎲 Random",
+          "w": 213,
+          "h": 38
+        },
+        {
+          "id": "cat-name-close",
+          "text": "✕ Close",
+          "w": 213,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "name-picker",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 27,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "Biscuit",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mochi",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pumpkin",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Waffles",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Bandit",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Noodle",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mittens",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Gizmo",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Tofu",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pixel",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Luna",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Oreo",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Peanut",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Nacho",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Boots",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sushi",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Muffin",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Toffee",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Olive",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Maple",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sprout",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Truffle",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Widget",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Dumpling",
+          "w": 100,
+          "h": 40
+        },
+        {
+          "id": "cat-name-random",
+          "text": "🎲 Random",
+          "w": 204,
+          "h": 38
+        },
+        {
+          "id": "cat-name-close",
+          "text": "✕ Close",
+          "w": 204,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 332,
+          "scroll": 398
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "name-picker",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 27,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "Biscuit",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mochi",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pumpkin",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Waffles",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Bandit",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Noodle",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mittens",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Gizmo",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Tofu",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pixel",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Luna",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Oreo",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Peanut",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Nacho",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Boots",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sushi",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Muffin",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Toffee",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Olive",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Maple",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sprout",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Truffle",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Widget",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Dumpling",
+          "w": 97,
+          "h": 40
+        },
+        {
+          "id": "cat-name-random",
+          "text": "🎲 Random",
+          "w": 198,
+          "h": 38
+        },
+        {
+          "id": "cat-name-close",
+          "text": "✕ Close",
+          "w": 198,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 331,
+          "scroll": 410
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "name-picker",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 27,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "Biscuit",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mochi",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pumpkin",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Waffles",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Bandit",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Noodle",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mittens",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Gizmo",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Tofu",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pixel",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Luna",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Oreo",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Peanut",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Nacho",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Boots",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sushi",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Muffin",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Toffee",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Olive",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Maple",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sprout",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Truffle",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Widget",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Dumpling",
+          "w": 75,
+          "h": 40
+        },
+        {
+          "id": "cat-name-random",
+          "text": "🎲 Random",
+          "w": 155,
+          "h": 38
+        },
+        {
+          "id": "cat-name-close",
+          "text": "✕ Close",
+          "w": 155,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 317,
+          "scroll": 398
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "name-picker",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 27,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "Biscuit",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mochi",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pumpkin",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Waffles",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Bandit",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Noodle",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Mittens",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Gizmo",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Tofu",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Pixel",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Luna",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Oreo",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Peanut",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Nacho",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Boots",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sushi",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Muffin",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Toffee",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Olive",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Maple",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Sprout",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Truffle",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Widget",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "",
+          "text": "Dumpling",
+          "w": 104,
+          "h": 40
+        },
+        {
+          "id": "cat-name-random",
+          "text": "🎲 Random",
+          "w": 213,
+          "h": 38
+        },
+        {
+          "id": "cat-name-close",
+          "text": "✕ Close",
+          "w": 213,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "kart-shop",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "kart-custom-name",
+          "text": "",
+          "w": 251,
+          "h": 42
+        },
+        {
+          "id": "kart-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "kart-randomize",
+          "text": "🎲 Surprise me",
+          "w": 410,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "kart-shop",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "kart-custom-name",
+          "text": "",
+          "w": 251,
+          "h": 42
+        },
+        {
+          "id": "kart-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "kart-randomize",
+          "text": "🎲 Surprise me",
+          "w": 410,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "kart-shop",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "kart-custom-name",
+          "text": "",
+          "w": 233,
+          "h": 42
+        },
+        {
+          "id": "kart-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "kart-randomize",
+          "text": "🎲 Surprise me",
+          "w": 392,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 332,
+          "scroll": 560
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "kart-shop",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 23,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "kart-custom-name",
+          "text": "",
+          "w": 221,
+          "h": 42
+        },
+        {
+          "id": "kart-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "kart-randomize",
+          "text": "🎲 Surprise me",
+          "w": 380,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 331,
+          "scroll": 572
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "kart-shop",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "kart-custom-name",
+          "text": "",
+          "w": 136,
+          "h": 42
+        },
+        {
+          "id": "kart-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "kart-randomize",
+          "text": "🎲 Surprise me",
+          "w": 295,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body racer-body",
+          "client": 317,
+          "scroll": 606
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "kart-shop",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 23,
+      "smallControls": [
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "",
+          "w": 38,
+          "h": 38
+        },
+        {
+          "id": "kart-custom-name",
+          "text": "",
+          "w": 251,
+          "h": 42
+        },
+        {
+          "id": "kart-name-pick",
+          "text": "✏️ Pick",
+          "w": 75,
+          "h": 42
+        },
+        {
+          "id": "kart-randomize",
+          "text": "🎲 Surprise me",
+          "w": 410,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "deck",
+      "name": "versus-4p",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 19,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p2-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p3-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p4-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "macbook",
+      "name": "versus-4p",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 19,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p2-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p3-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p4-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": []
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "versus-4p",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 19,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p2-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p3-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p4-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 206,
+          "scroll": 505
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "versus-4p",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 19,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p2-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p3-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p4-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "1",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "2",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "3",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "4",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "5",
+          "w": 39,
+          "h": 44
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 169,
+          "scroll": 572
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "versus-4p",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 19,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p2-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p3-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p4-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "",
+          "text": "1",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "2",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "3",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "4",
+          "w": 39,
+          "h": 44
+        },
+        {
+          "id": "",
+          "text": "5",
+          "w": 39,
+          "h": 44
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 174,
+          "scroll": 538
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "versus-4p",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 19,
+      "smallControls": [
+        {
+          "id": "startline-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p2-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p3-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        },
+        {
+          "id": "p4-edit",
+          "text": "Edit",
+          "w": 56,
+          "h": 38
+        }
+      ],
+      "scroll": [
+        {
+          "id": "",
+          "class": "start-scroll",
+          "client": 517,
+          "scroll": 538
+        }
+      ]
+    },
+    {
+      "device": "deck",
+      "name": "seat-picker",
+      "stage": {
+        "width": 1280,
+        "height": 800,
+        "rotated": false
+      },
+      "controls": 41,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 739,
+          "scroll": 1903
+        }
+      ]
+    },
+    {
+      "device": "macbook",
+      "name": "seat-picker",
+      "stage": {
+        "width": 1440,
+        "height": 900,
+        "rotated": false
+      },
+      "controls": 41,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 839,
+          "scroll": 2116
+        }
+      ]
+    },
+    {
+      "device": "iphone-landscape",
+      "name": "seat-picker",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": false
+      },
+      "controls": 41,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 332,
+          "scroll": 1288
+        }
+      ]
+    },
+    {
+      "device": "iphone-portrait",
+      "name": "seat-picker",
+      "stage": {
+        "width": 844,
+        "height": 390,
+        "rotated": true
+      },
+      "controls": 41,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 331,
+          "scroll": 2020
+        }
+      ]
+    },
+    {
+      "device": "small-phone",
+      "name": "seat-picker",
+      "stage": {
+        "width": 667,
+        "height": 375,
+        "rotated": false
+      },
+      "controls": 41,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 317,
+          "scroll": 1288
+        }
+      ]
+    },
+    {
+      "device": "laptop-720",
+      "name": "seat-picker",
+      "stage": {
+        "width": 1280,
+        "height": 720,
+        "rotated": false
+      },
+      "controls": 41,
+      "smallControls": [],
+      "scroll": [
+        {
+          "id": "",
+          "class": "flow-body",
+          "client": 659,
+          "scroll": 1686
+        }
+      ]
+    }
+  ]
+}

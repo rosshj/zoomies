@@ -1,0 +1,352 @@
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+import fs from "node:fs/promises";
+import path from "node:path";
+import assert from "node:assert/strict";
+const root = path.resolve(new URL("..", import.meta.url).pathname);
+const output = path.join(root, "docs/menu-refresh/after");
+await fs.mkdir(output, { recursive: true });
+const { origin, close } = await serveRepo();
+const browser = await launchArtBrowser();
+const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+const errors = [];
+p.on("pageerror", (e) => {
+  errors.push(e.message);
+  console.error(e.message);
+});
+p.setDefaultTimeout(60000);
+p.setDefaultNavigationTimeout(180000);
+const step = async (name) => assert.equal(await p.locator("#menu").getAttribute("data-step"), name);
+const click = async (selector) => {
+  await p.locator(selector).click();
+  await p.waitForTimeout(500);
+};
+const garage = () => p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-garage-v1") || "null"));
+async function shot(name) {
+  await p.waitForTimeout(550);
+  await p.screenshot({ path: path.join(output, name + ".jpg"), quality: 80 });
+}
+try {
+  await p.addInitScript(() => {
+    window.zoomiesDesktop = { quit() {} };
+  });
+  await p.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
+  await p.waitForFunction(() => window.__zoomies?.track);
+  await p.locator("#start-btn").waitFor();
+  await shot("home-deck");
+  const sampleCamera = () =>
+    p.evaluate(() => ({
+      position: window.__zoomies.camera.position.toArray(),
+      fov: window.__zoomies.camera.fov,
+      at: performance.now(),
+    }));
+  const homeCamera = await sampleCamera();
+  await click("#start-btn");
+  await step("startline");
+  const setupCamera = await sampleCamera();
+  assert.equal(setupCamera.fov, homeCamera.fov, "Setup changed the background camera lens");
+  // The menu orbit moves 0.07 rad/s on a 34-unit radius (2.4 units/s); allow
+  // for however long the slide took (seconds under a software renderer), so
+  // only a different anchor or lens counts as a jump.
+  const allowed = 8 + (2.4 * (setupCamera.at - homeCamera.at)) / 1000;
+  assert.ok(
+    Math.hypot(...setupCamera.position.map((v, i) => v - homeCamera.position[i])) < allowed,
+    "Setup jumped away from the Home track view instead of continuing its slow orbit",
+  );
+  await p.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
+  await shot("setup-deck");
+  await click("#setup-rivals");
+  await step("rivals");
+  await click('#diff-seg [data-diff="hard"]');
+  await step("startline");
+  assert.equal(await p.locator("#setup-rivals-name").textContent(), "Hard");
+  assert.equal(await p.evaluate(() => localStorage.getItem("zoomies-difficulty")), "hard");
+  await click("#setup-rivals");
+  await click("#flow-rivals [data-back]");
+  assert.equal(await p.locator("#setup-rivals-name").textContent(), "Hard");
+  await click("#setup-laps");
+  await step("length");
+  await click('#laps-seg [data-laps="2"]');
+  await step("startline");
+  assert.equal(await p.locator("#setup-laps-name").textContent(), "2 laps");
+  await click("#setup-laps");
+  await click('#laps-seg [data-laps="3"]');
+  const portraitBefore = await p.locator("#racer-portrait").evaluate((c) => c.toDataURL());
+  await click("#setup-mode");
+  await click("#mode-tt");
+  await step("startline");
+  assert.equal(await p.locator("#setup-mode-name").textContent(), "Time Trial");
+  await click("#setup-mode");
+  await click("#mode-gp");
+  await step("startline");
+  await click("#startline-garage");
+  await step("garage");
+  await click("#garage-cat");
+  await step("cat");
+  assert.deepEqual(
+    await p.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]),
+    [homeCamera.fov, homeCamera.position[1]],
+    "Cat picker changed the Home track orbit",
+  );
+  await shot("cats-deck");
+  await click("#cat-grid button:nth-child(2)");
+  await step("garage");
+  await click("#garage-done");
+  await step("startline");
+  const saved = await garage();
+  assert.equal(saved.cat, 1);
+  await p.waitForFunction(() => document.getElementById("racer-portrait").dataset.ready === "true");
+  assert.notEqual(
+    await p.locator("#racer-portrait").evaluate((c) => c.toDataURL()),
+    portraitBefore,
+    "Portrait did not update with selected cat",
+  );
+  await click("#startline-garage");
+  await step("garage");
+  await click("#garage-kart");
+  await step("kart");
+  assert.deepEqual(
+    await p.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]),
+    [homeCamera.fov, homeCamera.position[1]],
+    "Kart picker changed the Home track orbit",
+  );
+  await click("#flow-kart [data-back]");
+  await step("garage");
+  await click("#garage-done");
+  await step("startline");
+  assert.deepEqual(await garage(), saved, "Cancel changed saved racer");
+  await click("#startline-garage");
+  await step("garage");
+  await click("#garage-cat");
+  await click("#cat-custom-open");
+  await step("cat-edit");
+  await click('#flow-cat-edit [data-studio-field="type"]');
+  await click('#flow-cat-edit .studio-option[data-value="maine"]');
+  await click("#flow-cat-edit [data-back]");
+  await step("cat");
+  await click("#flow-cat [data-back]");
+  await step("garage");
+  await click("#garage-done");
+  await step("startline");
+  assert.deepEqual(await garage(), saved, "Cancelled custom draft leaked");
+  await click("#menu-map-btn");
+  await step("track");
+  await click("#track-grid .is-current");
+  await step("startline");
+  await click("#flow-startline [data-back]");
+  await step("title");
+  await click("#open-garage");
+  await step("garage");
+  await shot("garage-deck");
+  await click("#garage-kart");
+  await click("#kart-grid button:first-child");
+  await step("garage");
+  await click("#garage-done");
+  await step("title");
+  await click("#start-btn");
+  await click("#setup-mode");
+  await click("#mode-split");
+  await click("#setup-players");
+  await click("#split-count-4");
+  const beforeSeat = await garage();
+  await click("#p2-edit");
+  await step("garage");
+  await click("#garage-cat");
+  await click("#cat-grid button:nth-child(3)");
+  await step("garage");
+  await click("#garage-done");
+  await step("players");
+  await click("#players-done");
+  await step("startline");
+  assert.deepEqual(await garage(), beforeSeat, "Guest overwrote Player 1");
+  await shot("versus-deck");
+  await click("#setup-mode");
+  await click("#mode-gp");
+  for (const [name, width, height] of [
+    ["phone", 844, 390],
+    ["small-phone", 667, 375],
+    ["portrait", 390, 844],
+    ["macbook", 1440, 900],
+    ["720", 1280, 720],
+  ]) {
+    await p.setViewportSize({ width, height });
+    await p.waitForTimeout(300);
+    await shot("setup-" + name);
+    const visible = await p.locator("#go-btn").evaluate((e) => {
+      const r = e.getBoundingClientRect();
+      return r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 1 && r.bottom <= innerHeight + 1;
+    });
+    assert.ok(visible, "Start clipped at " + name);
+  }
+  await p.setViewportSize({ width: 1280, height: 800 });
+  await click("#go-btn");
+  await p.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
+  await p.keyboard.press("p");
+  await p.waitForFunction(() => window.__zoomies.state() === 4);
+  assert.equal(await p.locator("#toast").textContent(), "");
+  await shot("pause-deck");
+  await click("#open-settings-pause");
+  await click('[data-category="controls"]');
+  await shot("settings-controls");
+  await p.keyboard.press("Escape");
+  assert.equal(await p.evaluate(() => window.__zoomies.state()), 4);
+  await click("#pause-restart");
+  await p.keyboard.press("Escape");
+  assert.equal(await p.evaluate(() => window.__zoomies.state()), 4);
+  await click("#menu-btn");
+  await step("title");
+  await click("#start-btn");
+  await p.locator("#menu-confirm:not(.hidden)").waitFor();
+  await click("#confirm-cancel");
+  await click("#resume-race-btn");
+  assert.equal(await p.evaluate(() => window.__zoomies.state()), 2, "Resume needs another click");
+  await p.evaluate(() => window.__zoomies.debugFinish());
+  await p.locator("#results:not(.hidden)").waitFor();
+  const paid = await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")));
+  assert.equal(paid.pendingClaims.length, 0, "Badge payouts still gated");
+  await p.evaluate(() => window.__zoomies.debugFinish());
+  assert.equal(
+    await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats),
+    paid.treats,
+    "Double badge payment",
+  );
+  for (const [name, width, height] of [
+    ["phone", 844, 390],
+    ["small-phone", 667, 375],
+    ["deck", 1280, 800],
+  ]) {
+    await p.setViewportSize({ width, height });
+    await p.waitForTimeout(200);
+    await shot("results-" + name);
+    assert.ok(
+      await p.locator("#restart-btn").evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        return r.top >= 0 && r.bottom <= innerHeight;
+      }),
+      "Results action clipped at " + name,
+    );
+  }
+  await click("#results-setup-btn");
+  await step("startline");
+  await click("#chrome-gear");
+  await click('[data-category="display"]');
+  await shot("settings-display");
+  await click("#settings-back");
+  await p.setViewportSize({ width: 1280, height: 800 });
+  await click("#menu-map-btn");
+  await click("#track-grid .track-tap:nth-child(2)");
+  await p.waitForFunction(
+    () => window.__zoomies?.track && document.getElementById("menu").dataset.step === "startline",
+    null,
+    { timeout: 180000 },
+  );
+  assert.equal(
+    await p.locator("#menu-map-btn").getAttribute("aria-label"),
+    "Change track: Buttercup Run",
+    "Track reload lost setup destination",
+  );
+  // Collection purchase/equip uses shared details and the owner's saved loadout.
+  await click("#chrome-treats");
+  const ownedCount = await p.locator("#catalog-prizes .owned:not(.hidden)").count();
+  assert.ok(ownedCount > 0);
+  await click("#catalog-tab-karts");
+  await click('[data-prize="kart.1"]');
+  assert.equal((await garage()).kart, 1);
+  await click("#catalog-tab-prizes");
+  await click('[data-prize="cat.3"]');
+  await p.locator("#racer-details:not(.hidden)").waitFor();
+  await click("#racer-details-close");
+  const wallet = await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats);
+  await click('[data-prize="cat.3"]');
+  await click("#racer-details-action");
+  assert.equal(
+    await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats),
+    wallet - 100,
+    "Purchase not settled once",
+  );
+  await click('[data-prize="cat.3"]');
+  assert.equal((await garage()).cat, 3, "Owned prize did not equip");
+  assert.equal(
+    await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats),
+    wallet - 100,
+    "Equipping charged again",
+  );
+  await click("#catalog-back");
+  await click("#chrome-gear");
+  await click('[data-category="save"]');
+  await p.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("zoomies:text-entry", { detail: { input: document.getElementById("backup-code") } }),
+    ),
+  );
+  await click("#keyboard-case");
+  await p.getByRole("button", { name: "z", exact: true }).click();
+  await click("#keyboard-done");
+  assert.equal(await p.locator("#backup-code").inputValue(), "z");
+  await p.evaluate(() =>
+    window.dispatchEvent(
+      new CustomEvent("zoomies:text-entry", { detail: { input: document.getElementById("backup-code") } }),
+    ),
+  );
+  await p.getByRole("button", { name: "x", exact: true }).click();
+  await p.keyboard.press("Escape");
+  assert.equal(await p.locator("#backup-code").inputValue(), "z", "Cancelled virtual typing leaked");
+  for (let i = 0; i < 30; i++) {
+    await p.keyboard.press("Tab");
+    assert.ok(
+      await p.evaluate(() => document.getElementById("settings").contains(document.activeElement)),
+      "Tab escaped settings",
+    );
+    assert.ok(
+      await p.evaluate(() => getComputedStyle(document.activeElement).outlineStyle !== "none"),
+      `Keyboard focus became invisible: ${await p.evaluate(() => document.activeElement.id)}`,
+    );
+  }
+  await click("#settings-back");
+  // Portrait menus stay upright; driving counter-rotates to landscape; pause and
+  // results follow how the phone is held — the viewport when the sensors are
+  // silent, gravity when they aren't (iOS keeps a locked viewport portrait).
+  const rotated = () => p.locator("#stage").evaluate((e) => e.classList.contains("rotated"));
+  const hold = (landscape) =>
+    p.evaluate((landscape) => {
+      window.dispatchEvent(
+        new DeviceMotionEvent("devicemotion", {
+          accelerationIncludingGravity: landscape ? { x: 9.8, y: 0.3, z: 0.5 } : { x: 0.3, y: 9.8, z: 0.5 },
+        }),
+      );
+    }, landscape);
+  await p.setViewportSize({ width: 390, height: 844 });
+  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
+  await click("#go-btn");
+  await p.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
+  assert.ok(await rotated(), "Driving must be landscape");
+  await p.keyboard.press("p");
+  await p.waitForFunction(
+    () => window.__zoomies.state() === 4 && !document.getElementById("stage").classList.contains("rotated"),
+  );
+  await shot("pause-portrait");
+  await hold(true); // phone turned sideways under a locked portrait viewport
+  await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  await shot("pause-held-landscape");
+  await hold(false);
+  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
+  await click("#resume-btn");
+  await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  await p.evaluate(() => window.__zoomies.debugFinish());
+  await p.locator("#results:not(.hidden)").waitFor();
+  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
+  await shot("results-portrait");
+  await hold(true);
+  await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  await shot("results-held-landscape");
+  await hold(false);
+  await click("#results-menu-btn");
+  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
+  await shot("home-portrait");
+  assert.deepEqual(errors, []);
+  console.log(
+    "PASS: setup, independent picks, cancel, garage, guest isolation, rewards, collection, keyboard, focus, portrait race/pause transitions and responsive actions.",
+  );
+} finally {
+  await browser.close();
+  await close();
+}

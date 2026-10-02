@@ -191,6 +191,7 @@ export function createScene() {
 
   const sky = buildSky(scene); // returns { mesh, geo }
   const sunVis = buildSun(scene); // returns { core, coreMat, glows: [...] } (sun by day, moon by night)
+  sunVis.core.userData.skyDecoration = true;
   const stars = buildStars(scene); // a star field, faded in at night via applyMood
 
   const hemi = new THREE.HemisphereLight(0xbfe3ff, 0x3a5f3a, 0.55);

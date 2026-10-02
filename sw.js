@@ -16,7 +16,7 @@
 // worker has redirections"), which broke offline relaunch because Vercel's
 // cleanUrls 308-redirects /index.html → /. We rebuild such responses so the
 // redirected flag is cleared. The bump also purges any poisoned v1 cache.
-const CACHE = "zoomies-v2";
+const CACHE = "zoomies-v3";
 
 // Strip the "redirected" flag by rebuilding the response from its body. A Response
 // with redirected===true cannot be returned from a SW navigation on Safari; a
@@ -35,6 +35,8 @@ const SHELL = [
   "./",
   "./index.html",
   "./styles.css",
+  "./menu-refresh.css",
+  "./menu-components.css",
   "./manifest.json",
   "./vendor/three/three.webgpu.min.js",
   "./vendor/three/three.core.min.js",

@@ -48,7 +48,20 @@
     "check:cat-roster-ui": "node tools/cat-roster-ui-check.mjs",
     "check:kart-roster": "node tools/kart-roster-data-check.mjs",
     "check:kart-roster-art": "node tools/kart-roster-check.mjs",
-    "check:kart-roster-ui": "node tools/kart-roster-ui-check.mjs"
+    "check:kart-roster-ui": "node tools/kart-roster-ui-check.mjs",
+    "check:menus": "node tools/menu-refresh-check.mjs",
+    "check:menu-state": "node tools/menu-state-check.mjs",
+    "check:tilt-menus": "node tools/tilt-menu-check.mjs",
+    "check:menu-consistency": "node tools/menu-consistency-check.mjs",
+    "check:menu-followup": "node tools/menu-followup-check.mjs",
+    "check:preview-rotation": "node tools/preview-rotation-check.mjs",
+    "check:racer-details": "node tools/racer-details-check.mjs",
+    "check:studio": "node tools/studio-check.mjs",
+    "check:track-builder": "node tools/track-builder-check.mjs",
+    "check:track-portrait": "node tools/track-portrait-check.mjs",
+    "menu:gallery": "node tools/menu-audit.mjs",
+    "gen:track-previews": "node tools/generate-track-previews.mjs",
+    "menu:style-diff": "node tools/menu-style-diff.mjs"
   },
   "license": "MIT",
   "dependencies": {
