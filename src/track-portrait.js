@@ -16,8 +16,13 @@ export async function renderTrackPortrait({
 }) {
   scene.updateMatrixWorld(true);
   const blockers = [];
+  // Ground cover (layer 2: grass blades, flower stems) never hides a roadside
+  // view from 12 units up, and its instanced meshes are most of the scene's
+  // instances — leaving them out keeps the raycasts below a frame's budget.
   scene.traverseVisible((mesh) => {
-    if (mesh.isMesh && mesh !== skyMesh && mesh !== starField && !mesh.userData.skyDecoration) blockers.push(mesh);
+    if (!mesh.isMesh || mesh === skyMesh || mesh === starField || mesh.userData.skyDecoration) return;
+    if (!(mesh.layers.mask & ~(1 << 2))) return;
+    blockers.push(mesh);
   });
   const camera = new THREE.PerspectiveCamera(58, 1.6, 0.3, 12000);
   camera.layers.enable(1); // flora, fauna and roadside dressing, like the menu camera

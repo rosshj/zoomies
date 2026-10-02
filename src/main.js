@@ -4513,17 +4513,33 @@ document.getElementById("kart-randomize")?.addEventListener("click", () =>
   }),
 );
 
+// Swatch names keyed by the swatch value itself, so reordering or extending
+// CAT_FUR_SWATCHES / KART_COLOR_SWATCHES can't silently mislabel a colour.
 const studioColorNames = new Map([
-  ...CAT_FUR_SWATCHES.map((value, i) => [
-    value,
-    ["Ginger", "Tan", "Grey", "Charcoal", "White", "Cream", "Chocolate", "Silver", "Brown", "Sand", "Ivory", "Walnut"][
-      i
-    ],
-  ]),
-  ...KART_COLOR_SWATCHES.map((value, i) => [
-    value,
-    ["Red", "Blue", "Green", "Orange", "Purple", "Yellow", "Teal", "Cyan", "Pink", "Violet", "Black", "White"][i],
-  ]),
+  [0xf0a830, "Ginger"],
+  [0xc8966a, "Tan"],
+  [0x8c9298, "Grey"],
+  [0x2a2a2a, "Charcoal"],
+  [0xfbfbfb, "White"],
+  [0xf3dcb6, "Cream"],
+  [0x4a3328, "Chocolate"],
+  [0x9aa2a8, "Silver"],
+  [0x5a3b2a, "Brown"],
+  [0xd9b38c, "Sand"],
+  [0xe8e2d6, "Ivory"],
+  [0x6b4a2f, "Walnut"],
+  [0xe53935, "Red"],
+  [0x1e88e5, "Blue"],
+  [0x43a047, "Green"],
+  [0xfb8c00, "Orange"],
+  [0x8e24aa, "Purple"],
+  [0xfdd835, "Yellow"],
+  [0x00897b, "Teal"],
+  [0x26c6da, "Cyan"],
+  [0xec407a, "Pink"],
+  [0x5e35b1, "Violet"],
+  [0x16181d, "Black"],
+  [0xeeeeee, "White"],
 ]);
 const studioColorName = (value) => studioColorNames.get(value) || "Custom colour";
 const studioUIs = {};
@@ -7428,7 +7444,7 @@ function renderRaceEarnings(settled) {
   } // re-renders keep the panel from the first settle
   box.innerHTML = "";
   box.classList.remove("hidden");
-  const { payout, fresh, cup, earned = [] } = settled;
+  const { payout, cup, earned = [] } = settled;
   for (const id of earned) box.appendChild(earnRow(`🎁 Unlocked: ${unlockName(id)}`, "NEW", "earn-ach"));
   for (const l of payout.lines) box.appendChild(earnRow(l.label, `+${l.amt}`));
   box.appendChild(earnRow("Treats earned", `🐟 ${payout.total}`, "earn-total"));

@@ -42,6 +42,9 @@ const paths = {
     "M7 2h10a6 6 0 0 1 6 6v8a6 6 0 0 1-6 6H7a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6zm0 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z",
   time: "M9 1h6v3H9zm3 4a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm-1 3h2v5l4 3-2 2-4-4z",
   arrow: "M2 10h13l-5-5 3-3 10 10-10 10-3-3 5-5H2z",
+  milk: "M5 2h14l-2 20H7zm2.3 4 .3 3h8.8l.3-3z",
+  yarn: "M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM4.6 7.2 14 14.8l-1.2 1.4L3.6 8.8zm2.4-2.8 9.4 7.6-1.2 1.4L5.8 5.8zM15 18c3 .6 5.2 1.4 7 3l-1.4 1.6c-1.6-1.4-3.6-2.2-6.2-2.6z",
+  wind: "M2 6h12a3 3 0 1 0-3-3h2a1 1 0 1 1 1 1H2zm0 5h17a3 3 0 1 0-3-3h2a1 1 0 1 1 1 1H2zm0 5h12a3 3 0 1 1-3 3h2a1 1 0 1 0 1-1H2z",
 };
 export function menuIcon(name) {
   return `<svg class="ui-icon" viewBox="0 0 24 24" ${name === "fish" ? 'role="img" aria-label="Treats"' : 'aria-hidden="true"'} focusable="false"><path fill="currentColor" fill-rule="evenodd" d="${paths[name] || paths.spark}"/></svg>`;
@@ -132,6 +135,15 @@ const names = {
   "✅": "check",
   "✦": "spark",
   "✨": "spark",
+  "⭐": "spark",
+  "🌟": "spark",
+  "🥛": "milk",
+  "🧶": "yarn",
+  "💨": "wind",
+  "🌀": "wind",
+  "🌼": "world",
+  "🌆": "world",
+  "🚂": "track",
 };
 const symbols = /(?:\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*|[▶⏻✓✦])/gu;
 export function installMenuIcons() {
