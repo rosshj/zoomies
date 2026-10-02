@@ -4344,7 +4344,7 @@ function syncCreators() {
   if (!_garageDraft) return;
   const c = _garageDraft.customCat;
   const typeName = document.getElementById("cat-type-name");
-  if (typeName) typeName.textContent = CAT_TYPES[c.type]?.label || "Classic";
+  if (typeName) typeName.textContent = studioCatTypeLabel(c);
   const accName = document.getElementById("cat-acc-name");
   if (accName) {
     const entry = catalogEntry(`acc.${c.accessory}`);
@@ -4449,12 +4449,21 @@ function closeGarage() {
   _garageOpen = false;
 }
 // Mutate the draft's custom cat/kart, then refresh the controls + portraits.
-function studioCatPattern(type) {
-  return CAT_PRESETS.find((cat) => (cat.type || "classic") === type)?.pattern || DEFAULT_CUSTOM_CAT.pattern;
+// A breed brings its own coat (the roster's preset for that breed); the Classic
+// type is the one that comes in several coats, so there the coat is the choice.
+const CLASSIC_COATS = [...new Set(CAT_PRESETS.filter((cat) => !cat.type).map((cat) => cat.pattern))];
+const COAT_LABELS = { point: "Colourpoint", tortie: "Tortoiseshell", mittedPoint: "Mitted points" };
+const coatLabel = (pattern) => COAT_LABELS[pattern] || _cap(pattern);
+function studioCatPattern(type, current) {
+  if (type === "classic") return CLASSIC_COATS.includes(current) ? current : CLASSIC_COATS[0];
+  return CAT_PRESETS.find((cat) => cat.type === type)?.pattern || DEFAULT_CUSTOM_CAT.pattern;
+}
+function studioCatTypeLabel(c) {
+  return c.type === "classic" || !CAT_TYPES[c.type] ? `Classic · ${coatLabel(c.pattern)}` : CAT_TYPES[c.type].label;
 }
 function editCustomCat(patch) {
   Object.assign(_garageDraft.customCat, patch);
-  _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type);
+  _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type, _garageDraft.customCat.pattern);
   syncGarageUI();
 }
 function editCustomKart(patch) {
@@ -4487,6 +4496,7 @@ document.getElementById("cat-randomize")?.addEventListener("click", () => {
   const pal = ACCESSORY_COLORS[accessory] || [];
   editCustomCat({
     type: _pick(CAT_TYPE_IDS),
+    pattern: _pick(CLASSIC_COATS), // only Classic keeps it; a breed brings its own coat
     fur: _pick(CAT_FUR_SWATCHES),
     accessory,
     name: _pick(CUSTOM_CAT_NAMES),
@@ -4567,13 +4577,15 @@ studioUIs.cat = mountStudio({
   apply: editCustomCat,
   fields: [
     { ...studioField("fur", "Colour", "cat-color-grid", (c) => studioColorName(c.fur)), color: (c) => _hex6(c.fur) },
-    studioField(
-      "type",
-      "Type",
-      "cat-type-name",
-      (c) => CAT_TYPES[c.type]?.label || "Classic",
-      studioOptions(CAT_TYPE_IDS, (id) => CAT_TYPES[id].label),
-    ),
+    {
+      // One list: the Classic coats first, then the breeds (each with its own coat).
+      ...studioField("type", "Type", "cat-type-name", studioCatTypeLabel, [
+        ...CLASSIC_COATS.map((pattern) => ({ value: `classic:${pattern}`, label: `Classic · ${coatLabel(pattern)}` })),
+        ...CAT_TYPE_IDS.filter((id) => id !== "classic").map((id) => ({ value: id, label: CAT_TYPES[id].label })),
+      ]),
+      selected: (c) => (c.type === "classic" || !CAT_TYPES[c.type] ? `classic:${c.pattern}` : c.type),
+      patch: (value) => (value.startsWith("classic:") ? { type: "classic", pattern: value.slice(8) } : { type: value }),
+    },
     {
       ...studioField(
         "accessory",
@@ -5189,7 +5201,7 @@ function flowGo(step, dir = 1, instant = false) {
   } else if (step === "cat-edit") {
     openRacerStep();
     _garageDraft.cat = CUSTOM_CAT_IDX;
-    _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type);
+    _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type, _garageDraft.customCat.pattern);
     syncGarageUI();
   } else if (step === "kart-edit") {
     openRacerStep();

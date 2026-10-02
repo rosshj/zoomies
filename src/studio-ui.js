@@ -105,7 +105,7 @@ export function mountStudio({ which, fields, apply, getDraft }) {
       if (field.grid)
         for (const button of field.grid.children) {
           if (field.optionLabel) button.textContent = field.optionLabel(button.dataset.value);
-          const selected = button.dataset.value === String(draft[field.key]);
+          const selected = button.dataset.value === String(field.selected ? field.selected(draft) : draft[field.key]);
           button.setAttribute("aria-pressed", String(selected));
         }
     }
