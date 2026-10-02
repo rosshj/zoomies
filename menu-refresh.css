@@ -2156,6 +2156,7 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage #flow-garage .garage-body {
   display: flex;
   flex-direction: column;
+  align-items: stretch; /* .racer-body centres its grid rows; here that would shrink-wrap the card */
   gap: 12px;
   padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left));
 }
