@@ -4148,20 +4148,14 @@ document.getElementById("track-apply")?.addEventListener("click", () => {
   location.reload(); // rebuild the world from the new recipe
 });
 
-// --- Racer step: pick your cat + kart, with a live 3D preview --------------
+// --- Racer family: garage, cat/kart pickers and the two studios -------------
 // The selection just rides in garageConfig; the player kart reads it at race start
-// (raceRoster/buildKarts) so no reload is needed. While the Racer step is up the
-// menu loop renders an orbiting preview kart instead of the cinematic (see the loop).
-let _garageDraft = null; // { cat, kart } in-progress; committed to garageConfig on Done
-let _garageOpen = false;
-let _garagePreview = null; // the preview kart's group in the scene
-let _garagePreviewKart = null; // the preview Kart instance (for the idle blink)
-const _garageAnchor = new THREE.Vector3();
+// (raceRoster/buildKarts) so no reload is needed. The racer is previewed by the
+// on-demand portrait canvases (racer-portrait.js), not by a kart in the live scene.
+let _garageDraft = null; // { cat, kart, customCat, customKart } in-progress; committed on pick
+let _garageOpen = false; // a racer-family screen is up, so the draft is live
 
-// The last-built preview kart is CACHED (not disposed) so re-entering the
-// showroom is instant; a boot-idle prewarm builds + pipeline-compiles the saved
-// racer so even the FIRST entry doesn't hitch. Changing the draft evicts.
-const _previewCache = { key: null, kart: null };
+// One key per distinct look: the portrait canvases re-render only when it changes.
 function _previewKey(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
@@ -4178,6 +4172,8 @@ function _previewKey(draft) {
     kart.livery,
   ].join("|");
 }
+// A throwaway Kart of the saved look, built once at boot idle so its pipelines
+// are compiled before the first race (see the prewarm below).
 function _buildPreviewKart(draft) {
   const cat = catSpec(draft);
   const kart = kartSpec(draft);
@@ -4204,32 +4200,6 @@ function _buildPreviewKart(draft) {
   // batches stalled the next render 2-6s on device. See startRace note.)
   return pk;
 }
-// (_disposeGroup is models.js's disposeGroup: frees per-instance geometries +
-// materials, skipping the shared colour-keyed/constant ones other karts use.)
-function _clearGaragePreview() {
-  if (!_garagePreview) return;
-  scene.remove(_garagePreview); // stays parked in _previewCache for next time
-  _garagePreview = null;
-  _garagePreviewKart = null;
-}
-// Show the draft's kart: pulled straight from the cache when it matches, else
-// built fresh (a click-time cost, same as the old garage steppers).
-function buildGaragePreview() {
-  const key = _previewKey(_garageDraft);
-  if (_garagePreview && _previewCache.key === key) return; // already showing it
-  _clearGaragePreview();
-  if (_previewCache.key !== key) {
-    if (_previewCache.kart) _disposeGroup(_previewCache.kart.group); // evict the stale build
-    _previewCache.kart = _buildPreviewKart(_garageDraft);
-    _previewCache.key = key;
-  }
-  const pk = _previewCache.kart;
-  pk.placeAt(_garageAnchor, Math.PI * 0.85, track); // park on the grid slot, ¾ angle
-  scene.add(pk.group);
-  _garagePreview = pk.group;
-  _garagePreviewKart = pk;
-}
-
 // --- Custom creator -------------------------------------------------------
 // Curated fur tones (real cat colours) and bold kart liveries the swatch grids
 // offer. Custom picks aren't limited to these — they just seed quick choices.
@@ -4447,55 +4417,32 @@ function refreshRacerCard(canvas, summary, config, subject = "racer") {
 function refreshRacerSummary() {
   refreshRacerCard(document.getElementById("racer-portrait"), document.getElementById("racer-summary"), garageConfig);
 }
-// Entering any racer-family screen (cat / kart / the two studios): open the
-// showroom once — the draft persists across the whole family and commits when
-// the kart is chosen.
+// Entering any racer-family screen (garage / cat / kart / the two studios):
+// seed the draft once — it persists across the whole family and commits when a
+// cat or kart is picked.
 function openRacerStep() {
-  if (!_garageOpen) {
-    // A seat pass (startSeatPick) has already seated the draft on that seat's
-    // racer before arriving here — reseeding from P1's save would clobber it
-    // and quietly run the whole pass on P1's picks instead.
-    if (!_pickingSeat)
-      _garageDraft = {
-        cat: garageConfig.cat,
-        kart: garageConfig.kart,
-        customCat: { ...garageConfig.customCat },
-        customKart: { ...garageConfig.customKart },
-      };
-    const slot = track.gridSlot(0); // a flat start-grid spot with scenery behind it
-    _garageAnchor.copy(slot.position);
-    _garageOpen = true;
-  }
-  refreshRacerPreview();
-}
-// Instant when the cached kart matches (the prewarmed/common case); a cold
-// build waits for the slide to land so the transition never stutters.
-function refreshRacerPreview() {
-  if (_previewCache.key === _previewKey(_garageDraft)) buildGaragePreview();
-  else
-    setTimeout(() => {
-      if (_garageOpen) buildGaragePreview();
-    }, 470);
+  if (_garageOpen) return;
+  // A seat pass (startSeatPick) has already seated the draft on that seat's
+  // racer before arriving here — reseeding from P1's save would clobber it
+  // and quietly run the whole pass on P1's picks instead.
+  if (!_pickingSeat) resetRacerDraft();
+  _garageOpen = true;
 }
 function closeGarage() {
   _garageOpen = false;
-  _clearGaragePreview();
 }
-// Mutate the draft's custom cat/kart, then refresh UI + preview. `rebuild=false`
-// skips the (model-irrelevant) preview rebuild for pure name edits.
+// Mutate the draft's custom cat/kart, then refresh the controls + portraits.
 function studioCatPattern(type) {
   return CAT_PRESETS.find((cat) => (cat.type || "classic") === type)?.pattern || DEFAULT_CUSTOM_CAT.pattern;
 }
-function editCustomCat(patch, rebuild = true) {
+function editCustomCat(patch) {
   Object.assign(_garageDraft.customCat, patch);
   _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type);
   syncGarageUI();
-  if (rebuild) buildGaragePreview();
 }
-function editCustomKart(patch, rebuild = true) {
+function editCustomKart(patch) {
   Object.assign(_garageDraft.customKart, patch);
   syncGarageUI();
-  if (rebuild) buildGaragePreview();
 }
 function stepCustom(which, list, dir) {
   if (which === "type" || which === "accessory") {
@@ -4517,7 +4464,7 @@ document.getElementById("cat-acc-prev")?.addEventListener("click", () => stepCus
 document.getElementById("cat-acc-next")?.addEventListener("click", () => stepCustom("accessory", CAT_ACCESSORIES, 1));
 document
   .getElementById("cat-custom-name")
-  ?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }, false));
+  ?.addEventListener("input", (e) => editCustomCat({ name: e.target.value.slice(0, 14) }));
 document.getElementById("cat-randomize")?.addEventListener("click", () => {
   const accessory = _pick(CAT_ACCESSORIES.filter((a) => isUnlocked(profile, `acc.${a}`)));
   const pal = ACCESSORY_COLORS[accessory] || [];
@@ -4554,7 +4501,7 @@ document
   ?.addEventListener("click", () => editCustomKart({ number: (_garageDraft.customKart.number + 1) % 100 }));
 document
   .getElementById("kart-custom-name")
-  ?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }, false));
+  ?.addEventListener("input", (e) => editCustomKart({ name: e.target.value.slice(0, 14) }));
 document.getElementById("kart-randomize")?.addEventListener("click", () =>
   editCustomKart({
     color: _pick(KART_COLOR_SWATCHES),
@@ -4719,8 +4666,8 @@ function closeNamePicker() {
   for (const close of _namePickers) close();
   return true;
 }
-_wireNamePicker("cat", CUSTOM_CAT_NAMES, (name) => editCustomCat({ name }, false));
-_wireNamePicker("kart", CUSTOM_KART_NAMES, (name) => editCustomKart({ name }, false));
+_wireNamePicker("cat", CUSTOM_CAT_NAMES, (name) => editCustomCat({ name }));
+_wireNamePicker("kart", CUSTOM_KART_NAMES, (name) => editCustomKart({ name }));
 
 // Racer cards show one compact status. Locked items explain their unlock in a sheet.
 function racerStatus(id, owned, current) {
@@ -5211,12 +5158,10 @@ function flowGo(step, dir = 1, instant = false) {
     _garageDraft.cat = CUSTOM_CAT_IDX;
     _garageDraft.customCat.pattern = studioCatPattern(_garageDraft.customCat.type);
     syncGarageUI();
-    refreshRacerPreview();
   } else if (step === "kart-edit") {
     openRacerStep();
     _garageDraft.kart = CUSTOM_KART_IDX;
     syncGarageUI();
-    refreshRacerPreview();
   } else if (step === "startline") {
     refreshStartline();
   }
@@ -5927,28 +5872,25 @@ refreshRaceOptSegs();
     setTimeout(() => flowGo(_resume, 1, true), 60);
   }
 }
-// Prewarm the showroom: build the saved cat-in-kart during title idle and draw
-// it far underground for two culling-off frames (compiles its pipelines), then
-// park it in the cache — entering "Pick your racer" is seamless instead of a
-// visible hitch on the first visit.
+// Prewarm the player's kart: build the saved cat-in-kart during title idle and
+// draw it far underground for two culling-off frames so its pipelines are
+// compiled before the first race builds the real one, then throw it away.
 setTimeout(() => {
-  if (state !== State.MENU || _garageOpen || _previewCache.kart) return;
+  if (state !== State.MENU) return;
   try {
-    const draft = {
+    const pk = _buildPreviewKart({
       cat: garageConfig.cat,
       kart: garageConfig.kart,
       customCat: { ...garageConfig.customCat },
       customKart: { ...garageConfig.customKart },
-    };
-    const pk = _buildPreviewKart(draft);
-    _previewCache.kart = pk;
-    _previewCache.key = _previewKey(draft);
+    });
     const slot = track.gridSlot(0);
     pk.group.position.set(slot.position.x, slot.position.y - 80, slot.position.z);
     scene.add(pk.group);
     beginWarmAll(2); // culling-off frames so the buried kart actually draws
     setTimeout(() => {
-      if (pk.group !== _garagePreview && pk.group.parent) scene.remove(pk.group);
+      scene.remove(pk.group);
+      _disposeGroup(pk.group); // per-instance geometry/materials only; shared ones stay cached
     }, 800);
   } catch {
     /* prewarm is best-effort */
@@ -6176,7 +6118,7 @@ function equipCatalogItem(id) {
   // Collection is the owner's wardrobe; guest seat drafts must stay isolated.
   if (_garageOpen && !_pickingSeat) {
     resetRacerDraft();
-    refreshRacerPreview();
+    refreshStudioPortraits();
     if (flowStep === "cat") renderCatCards();
     if (flowStep === "kart") renderKartCards();
     if (flowStep === "garage") refreshGarageHome();
@@ -8477,9 +8419,8 @@ function loopBody(now) {
 
   if (state === State.MENU) {
     // Every MENU tick that reaches here is a draw tick (the cadence gate is at
-    // the top of the loop): showroom and track drift both draw at ~30fps
-    // (20 in Battery saver, 10 when idle) and the canvas holds the frame between.
-    if (_garagePreview) _garagePreview.visible = false;
+    // the top of the loop): the track drift draws at ~30fps (20 in Battery
+    // saver, 10 when idle) and the canvas holds the frame between.
     // Debug/screenshot hook: window.__campin = [x,y,z, tx,ty,tz] pins the menu
     // camera to a fixed shot (headless tooling flies it to the track set pieces).
     if (window.__campin) {
