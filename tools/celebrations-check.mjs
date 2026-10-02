@@ -66,7 +66,9 @@ try {
   await race();
   assert.ok(await p.evaluate(() => window.__zoomies.debugFinishSequence()), "finish sequence did not start");
   await p.waitForFunction(() => !!window.__zoomies.podium, null, { timeout: 30000 });
-  await p.waitForTimeout(1200);
+  // Sim time runs behind wall time under a software renderer (frame deltas are
+  // clamped), so wait on the ceremony's own state, never a fixed sleep.
+  await p.waitForFunction(() => window.__zoomies.podium?.confetti.active, null, { timeout: 90000 });
   const podium = await p.evaluate(() => {
     const P = window.__zoomies.podium;
     return {
@@ -83,7 +85,7 @@ try {
   assert.ok(podium.confetti, "Cannons did not fire");
   assert.ok(podium.results, "Results came up before the ceremony");
   await shot("podium-ceremony");
-  await p.locator("#results:not(.hidden)").waitFor({ timeout: 30000 });
+  await p.locator("#results:not(.hidden)").waitFor({ timeout: 240000 });
   assert.ok(await p.evaluate(() => !!window.__zoomies.podium), "Podium should stay behind the results");
   assert.match(await p.locator("#results-title").textContent(), /Champion/);
   await shot("podium-results");
