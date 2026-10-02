@@ -91,7 +91,8 @@ try {
       if (!x) throw Error(m);
     };
     assert(document.querySelector("#cat-custom-name").value === "Legacy", "Legacy custom selection lost");
-    assert(document.querySelector("#cat-type-name").textContent === "Classic", "Legacy type default");
+    // A legacy save migrates to a Classic cat, which the summary names by its coat.
+    assert(document.querySelector("#cat-type-name").textContent === "Solid", "Legacy type default");
     const labels = new Set();
     for (let i = 0; i < 27; i++) {
       labels.add(document.querySelector("#cat-type-name").textContent);
