@@ -4781,7 +4781,26 @@ function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
   racerDetailsReturn = button;
   const origin = button.closest(".overlay, .flow-screen");
   document.getElementById("racer-details-title").textContent = name;
-  document.getElementById("racer-details-image").src = img;
+  const image = document.getElementById("racer-details-image");
+  image.src = img;
+  const preview = document.getElementById("racer-details-preview");
+  const preset = /^(cat|kart)\.(\d+)$/.exec(buyId || "");
+  const subject = preset?.[1];
+  const cat = subject === "cat" ? CAT_PRESETS[Number(preset[2])] : CAT_PRESETS[0];
+  const kart = subject === "kart" ? KART_PRESETS[Number(preset[2])] : KART_PRESETS[0];
+  preview.hidden = !subject;
+  image.hidden = !!subject;
+  if (subject) {
+    preview.setAttribute("aria-label", name);
+    preview.parentElement.style.setProperty("--racer-backdrop", contrastBg(subject === "cat" ? cat.fur : kart.color));
+    preview.getContext("2d").clearRect(0, 0, preview.width, preview.height);
+    preview.dataset.ready = "false";
+    renderRacerPortrait(preview, cat, kart, subject).catch((error) => {
+      console.warn("Item preview unavailable", error);
+      preview.hidden = true;
+      image.hidden = false;
+    });
+  }
   document.getElementById("racer-details-type").textContent = sub || "Cosmetic kart · Same performance in every race";
   document.getElementById("racer-details-requirement").textContent =
     typeof entry?.price === "number" ? `Unlock for 🐟 ${entry.price}.` : prizeHow(buyId);

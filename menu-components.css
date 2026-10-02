@@ -172,3 +172,11 @@
 }
 #stage #menu .studio-screen[data-studio-detail="number"] .studio-option { padding: 10px 16px 10px 4px; }
 #stage #menu .studio-screen[data-studio-detail="number"] .studio-option::after { right: 5px; width: 3px; height: 6px; }
+
+#stage .rotatable-preview { touch-action: pan-y; cursor: grab; }
+#stage .rotatable-preview:active { cursor: grabbing; }
+#stage .rotatable-preview:focus-visible { outline: 2px solid var(--menu-gold); outline-offset: -3px; }
+#stage .racer-details-art { position: relative; aspect-ratio: 1; align-self: start; overflow: hidden;
+  background: radial-gradient(ellipse 100% 100% at 50% 125%, #30263d26 99.5%, transparent 100%), var(--racer-backdrop, #a4dedf); }
+#stage #racer-details-preview { width: 100%; height: 100%; object-fit: contain; position: absolute; inset: 0; }
+#stage .racer-details-art [hidden] { display: none; }
