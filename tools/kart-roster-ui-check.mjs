@@ -189,7 +189,8 @@ try {
   const legacyPaint = await p.evaluate(() => {
     while (document.querySelector("#kart-style-name").textContent !== "GP")
       document.querySelector("#kart-style-next").click();
-    if (document.querySelector("#kart-livery-next").getClientRects().length === 0)
+    // The paint choice is a drill-in field now; the legacy arrows only back it by script.
+    if (document.querySelector('#flow-kart-edit [data-studio-field="livery"]').getClientRects().length === 0)
       throw Error("Original chassis paint control hidden");
     const labels = new Set();
     for (let i = 0; i < 8; i++) {
