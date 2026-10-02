@@ -20,7 +20,7 @@ Results include automatic, idempotent badge rewards and a fixed footer for Race 
 
 ## Layout and input
 
-Pre-race menus and results use native portrait orientation; driving and pause remain landscape. Stage-relative sizing supports short landscape screens without using portrait viewport dimensions for their logical layout. Primary actions stay outside long scroll regions, including Track Maker and results. The existing cream, plum, and gold palette now has consistent cards, headers, spacing, and focus treatments.
+Pre-race menus and results use native portrait orientation; driving and pause remain landscape. On laptops and desktops every flow screen past Home caps its body (1120px for the two-column setup, garage, studios and track builder; 900px for the mode, track, cup, rivals, length and players lists) and centres it under the full-width header, as Collection and Settings already do; phone layouts are below those widths and unchanged. Stage-relative sizing supports short landscape screens without using portrait viewport dimensions for their logical layout. Primary actions stay outside long scroll regions, including Track Maker and results. The existing cream, plum, and gold palette now has consistent cards, headers, spacing, and focus treatments.
 
 Keyboard focus stays within the active surface and returns to the previous control. Controller navigation remembers its position, supports text inputs, and opens an on-screen keyboard for names and backup codes. Text entry uses a cancellable draft. Selected controls expose their state to assistive technology, and inactive surfaces are inert.
 

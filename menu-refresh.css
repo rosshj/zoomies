@@ -2481,3 +2481,24 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-portrait .studio-screen .racer-body {
   grid-template-rows: minmax(160px, 1fr) minmax(208px, .65fr);
 }
+
+/* Desktop width. The phone-first flow layouts stretch edge to edge on a laptop
+   or a 1440px MacBook, so every flow body past Home gets a cap and is centred
+   under its full-width header, the way Collection and Settings already sit in
+   their sheets. Two-column screens (setup, garage, studios, track builder) get
+   the wide cap; lists get the narrower one. Phones never reach these widths. */
+#stage #menu .flow-screen:not(#flow-title) > .flow-body,
+#stage #track-panel > .flow-body {
+  width: 100%;
+  max-width: var(--flow-max, 1120px);
+  margin-inline: auto;
+}
+#stage :is(#flow-mode, #flow-track, #flow-cup, #flow-rivals, #flow-length, #flow-players) > .flow-body {
+  --flow-max: 900px;
+}
+#stage :is(#flow-cat, #flow-kart) > .flow-body {
+  --flow-max: 1160px; /* the racer grids already cap at 1100px plus gutters */
+}
+#stage :is(#flow-cat, #flow-kart) .racer-grid {
+  margin-inline: auto; /* centred under the cap, like the Collection grid */
+}
