@@ -45,6 +45,15 @@ try {
     [320, 568],
   ]) {
     await p.setViewportSize({ width, height });
+    // The stage re-lays itself out on resize a frame or two later (seconds under
+    // SwiftShader), so wait for it to match the viewport before measuring.
+    await p.waitForFunction(
+      ([w, h]) => {
+        const r = document.getElementById("stage").getBoundingClientRect();
+        return Math.round(r.width) === w && Math.round(r.height) === h;
+      },
+      [width, height],
+    );
     await p.waitForTimeout(300);
     await p.locator('[data-builder-field="biomes"]').click();
     await p.waitForTimeout(300);
