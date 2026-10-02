@@ -36,6 +36,7 @@ const SHELL = [
   "./index.html",
   "./styles.css",
   "./menu-refresh.css",
+  "./menu-components.css",
   "./manifest.json",
   "./vendor/three/three.webgpu.min.js",
   "./vendor/three/three.core.min.js",

@@ -7,7 +7,7 @@ export function mountStudio({ which, fields, apply, getDraft }) {
   const heading = root.querySelector(".flow-h");
   const title = which === "cat" ? "Cat studio" : "Kart studio";
   const overview = document.createElement("div");
-  overview.className = "studio-overview";
+  overview.className = "studio-overview summary-grid";
   creator.before(overview);
   const done = document.createElement("button");
   done.className = "btn-cream studio-detail-done";
@@ -35,7 +35,7 @@ export function mountStudio({ which, fields, apply, getDraft }) {
   for (const field of fields) {
     field.row = document.getElementById(field.control).closest(".creator-row");
     const button = document.createElement("button");
-    button.className = "studio-summary";
+    button.className = "studio-summary summary-choice";
     button.dataset.studioField = field.key;
     const label = document.createElement("small");
     label.textContent = field.label;

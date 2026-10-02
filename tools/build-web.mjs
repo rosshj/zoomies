@@ -43,6 +43,7 @@ const INCLUDE = [
   "download", // static /download/ page (desktop builds live on the zoomies-releases repo)
   "styles.css",
   "menu-refresh.css",
+  "menu-components.css",
   "sw.js",
   "manifest.json",
   "apple-touch-icon.png",

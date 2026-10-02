@@ -24,6 +24,7 @@
 
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./menu-refresh.css" />
+  <link rel="stylesheet" href="./menu-components.css" />
   <!-- Import map: every dependency is vendored LOCALLY — three under
        vendor/three/ (removes the unpkg dependency AND the external
        greggman.github.io debug import the non-min build pulls in).
@@ -68,15 +69,10 @@
       border:4px solid rgba(255,255,255,.16);border-top-color:#ffd54f;
       animation:ls-spin .85s linear infinite;}
     @keyframes ls-spin{to{transform:rotate(360deg);}}
-    /* The game forces landscape by counter-rotating #stage (layoutStage), but
-       the loading screen paints before any JS runs — mirror that rotation in
-       pure CSS so a portrait viewport shows the loader in landscape too. */
-    @media (orientation:portrait){
-      #loading{inset:auto;left:50%;top:50%;width:100vh;height:100vw;
-        transform:translate(-50%,-50%) rotate(90deg);}
-      #loading .ls-title{font-size:clamp(30px,6vh,54px);}
-      #loading .ls-tag{font-size:clamp(12px,2.3vh,17px);}
-    }
+    #loading .ls-status{font-size:20px;margin:8px 20px 0;text-align:center;}
+    #loading .ls-detail{font-size:14px;color:#c3b8cf;margin:0 20px;text-align:center;}
+    #loading{background:#211a30;font-family:system-ui,sans-serif;}
+    #loading .ls-title{text-shadow:none;letter-spacing:-.5px;color:#ffc64b;}
     @media (prefers-reduced-motion:reduce){#loading .ls-ring{animation:none;
       border-top-color:rgba(255,213,79,.6);}}
   </style>
@@ -104,6 +100,17 @@
   </div>
   <!-- Everything lives inside #stage, which we counter-rotate so the game
        always presents in landscape no matter how the OS orients the page. -->
+  <script>
+    try {
+      const name = sessionStorage.getItem('zoomies-loading-track');
+      if (name) {
+        sessionStorage.removeItem('zoomies-loading-track');
+        const label = document.createElement('p'); label.className = 'ls-status'; label.textContent = 'Loading ' + name;
+        const note = document.createElement('p'); note.className = 'ls-detail'; note.textContent = 'Building the track and preparing scenery…';
+        const loading = document.getElementById('loading'); loading.setAttribute('role', 'status'); loading.querySelector('.ls-ring').before(label, note);
+      }
+    } catch {}
+  </script>
   <div id="stage">
   <!-- WebGL canvas mount -->
   <div id="game"></div>
@@ -647,45 +654,10 @@
 <button class="seg-btn race-detail-choice" data-laps="4"><strong>4 laps</strong><span>A longer contest with more room to recover.</span></button>
 <button class="seg-btn race-detail-choice" data-laps="5"><strong>5 laps</strong><span>The longest race. Settle in and fight for the finish.</span></button>
 </div></div></div></section>
-    <section id="flow-startline" class="flow-screen">
-      <header class="flow-head">
-        <button class="flow-back" data-back aria-label="Go back">←</button>
-        <div class="flow-head-text">
-          <h2 class="flow-h">Race setup</h2>
-        </div>
-        <div class="flow-head-right"></div>
-      </header>
-      <div class="flow-body startline-body">
-        <!-- Mode comes first, followed by your racer and the race summary. -->
-        <div class="setup-racer-panel">
-          <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
-          <div class="start-racer setup-racer-preview">
-            <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
-            <canvas id="racer-portrait" width="640" height="400" role="img" aria-label="Your cat driving your kart"></canvas>
-            <div class="racer-preview-footer">
-              <strong id="racer-summary" class="racer-summary">Marmalade · Ember</strong>
-              <div class="setup-racer-actions">
-                <button id="startline-garage" class="btn-cream small-pill" data-menu-icon="garage">Garage</button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="start-side">
-          <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
-               720p window); GO itself stays pinned below the scroll region so
-               the primary action can never be pushed off-screen. -->
-          <div class="start-scroll">
-          <div class="setup-pickers">
-            <div id="laps-row"><button id="setup-laps" class="setup-choice"><span><small>LENGTH</small><strong id="setup-laps-name">3 laps</strong></span></button></div>
-            <div id="diff-row"><button id="setup-rivals" class="setup-choice"><span><small>RIVALS</small><strong id="setup-rivals-name">Medium</strong></span></button></div>
-          </div>
-          <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
-            <canvas id="track-scenery" width="640" height="400" aria-hidden="true"></canvas>
-            <span class="map-preview-heading">Track <span class="map-chevron" aria-hidden="true">›</span></span>
-            <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
-            <span id="menu-map-label" class="map-label">Classic circuit</span>
-            <span class="map-edit-hint">Choose track ›</span>
-          </button>
+    <section id="flow-players" class="flow-screen">
+      <header class="flow-head"><button class="flow-back" data-back aria-label="Back to race setup">←</button><div class="flow-head-text"><h2 class="flow-h">Players</h2></div><div class="flow-head-right"></div></header>
+      <div class="flow-body players-body">
+        <p class="players-help">Connect a controller for each player, then press any button on it. One player can use the keyboard.</p>
           <!-- Versus only (revealed in split mode): how many humans share the
                screen (2 rows / quadrants), then one compact row per extra seat
                — catalog thumbnails + a live input badge (which pad / keyboard
@@ -700,6 +672,10 @@
                 <button class="seg-btn" id="split-count-4">4</button>
               </div>
             </div>
+          </div>
+          <div class="sticker-deep start-racer seat-row" id="player-one-card">
+            <span class="start-racer-text"><span class="start-racer-label">Player 1 <span class="seat-input" id="players-p1-input"></span></span><span class="seat-names" id="players-p1-name"></span></span>
+            <button id="players-p1-edit" class="btn-cream small-pill">Garage</button>
           </div>
           <div class="sticker-deep start-racer seat-row hidden" id="p2-racer">
             <span class="seat-thumbs">
@@ -734,10 +710,51 @@
             </span>
             <button id="p4-edit" class="btn-cream small-pill" aria-label="Edit Player 4's racer">Edit</button>
           </div>
-          </div>
-          <!-- Pre-GO controller check (Versus): who's missing an input, said
-               HERE where it can be fixed — not as a toast after the veil. -->
           <p id="start-input-warn" class="start-input-warn hidden"></p>
+      </div>
+      <footer class="menu-fixed-actions"><button id="players-done" class="btn-gold" data-back>Back to race setup</button></footer>
+    </section>
+    <section id="flow-startline" class="flow-screen">
+      <header class="flow-head">
+        <button class="flow-back" data-back aria-label="Go back">←</button>
+        <div class="flow-head-text">
+          <h2 class="flow-h">Race setup</h2>
+        </div>
+        <div class="flow-head-right"></div>
+      </header>
+      <div class="flow-body startline-body">
+        <!-- Mode comes first, followed by your racer and the race summary. -->
+        <div class="setup-racer-panel">
+          <button id="setup-mode" class="setup-choice"><span class="setup-icon">🏁</span><span><small>MODE</small><strong id="setup-mode-name">Single Race</strong></span><b>Change ›</b></button>
+          <div class="start-racer setup-racer-preview">
+            <span class="start-racer-label">Your racer <span class="seat-input hidden" id="p1-input"></span></span>
+            <canvas id="racer-portrait" width="640" height="400" role="img" aria-label="Your cat driving your kart"></canvas>
+            <div class="racer-preview-footer">
+              <strong id="racer-summary" class="racer-summary">Marmalade · Ember</strong>
+              <div class="setup-racer-actions">
+                <button id="startline-garage" class="btn-cream small-pill" data-menu-icon="garage">Garage</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="start-side">
+          <!-- Everything above GO scrolls when it must (a 4P couch lobby on a
+               720p window); GO itself stays pinned below the scroll region so
+               the primary action can never be pushed off-screen. -->
+          <div class="start-scroll">
+          <div class="setup-pickers">
+            <div id="players-row" class="hidden"><button id="setup-players" class="setup-choice"><span><small>PLAYERS</small><strong id="setup-players-name">2 players</strong></span></button></div>
+            <div id="laps-row"><button id="setup-laps" class="setup-choice"><span><small>LENGTH</small><strong id="setup-laps-name">3 laps</strong></span></button></div>
+            <div id="diff-row"><button id="setup-rivals" class="setup-choice"><span><small>RIVALS</small><strong id="setup-rivals-name">Medium</strong></span></button></div>
+          </div>
+          <button id="menu-map-btn" class="map-chip map-frame-btn" title="Choose track">
+            <canvas id="track-scenery" width="640" height="400" aria-hidden="true"></canvas>
+            <span class="map-preview-heading">Track <span class="map-chevron" aria-hidden="true">›</span></span>
+            <canvas id="menu-map" class="track-map" width="960" height="640"></canvas>
+            <span id="menu-map-label" class="map-label">Classic circuit</span>
+            <span class="map-edit-hint">Choose track ›</span>
+          </button>
+          </div>
           <button id="go-btn" class="btn-gold go-btn">🏁&nbsp; START RACE</button>
         </div>
       </div>

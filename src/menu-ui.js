@@ -1,3 +1,4 @@
+import { mountDisplaySettings } from "./display-settings-ui.js";
 import { installMenuIcons } from "./menu-icons.js";
 // Shared DOM behavior for menu surfaces. Game state stays in main.js.
 export function initMenuUI() {
@@ -61,6 +62,7 @@ export function initMenuUI() {
   }
   settings.querySelector(".flow-body").prepend(nav);
   select(category);
+  mountDisplaySettings(settings);
 
   // Focus is scoped to the currently visible sheet or flow. Keep each surface's
   // last control so closing a picker restores the control that opened it.

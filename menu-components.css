@@ -1,0 +1,152 @@
+/* Shared menu primitives. Imported after the legacy layout rules so new screens
+   can reuse these classes instead of growing screen-specific overrides. */
+#stage {
+  --menu-cream: #fff3dc;
+  --menu-gold: #ffc64b;
+  --menu-gap: 12px;
+}
+#stage .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--menu-gap); }
+#stage .summary-choice {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 4px; padding: 12px 16px; min-height: 60px; min-width: 0;
+  background: var(--menu-surface); color: var(--menu-cream);
+  border: 0; border-radius: var(--control-radius); box-shadow: none; text-align: left;
+}
+#stage .summary-choice small { color: var(--menu-muted); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+#stage .summary-choice small::after { content: ' ›'; color: var(--menu-gold); }
+#stage .summary-choice strong { font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
+#stage .menu-fixed-actions { flex: 0 0 auto; display: flex; padding: 12px max(16px, var(--safe-right)) max(16px, var(--safe-bottom)) max(16px, var(--safe-left)); }
+#stage .menu-fixed-actions.hidden { display: none; }
+#stage .menu-fixed-actions > button { width: 100%; min-height: var(--menu-button-height); margin: 0; }
+#stage #settings .settings-card:has(.display-overview) { padding: 0; background: transparent; }
+#stage #settings .display-detail { padding: 16px; background: var(--menu-surface); border-radius: var(--control-radius); }
+#stage #settings[data-display-detail] [data-settings-panel=display]:not(:has(.display-overview)) { display: none; }
+#stage #settings > .menu-fixed-actions { width: min(680px, 100%); box-sizing: border-box; align-self: center; }
+#stage .players-body { display: flex; flex-direction: column; gap: var(--menu-gap); padding: 12px max(16px, var(--safe-right)) 0 max(16px, var(--safe-left)); }
+#stage .players-body > * { flex-shrink: 0; }
+#stage .players-help { margin: 0; color: var(--menu-muted); font-size: 14px; }
+#stage #flow-players :is(.seat-row, #split-count-row) { display: flex; align-items: center; gap: 12px; padding: 16px; background: var(--menu-surface); border: 0; border-radius: var(--control-radius); }
+#stage #flow-players .hidden { display: none; }
+#stage #flow-players .mode-opt-row { width: 100%; display: flex; align-items: center; gap: 16px; }
+#stage #flow-players .seg-toggle { flex: 1; }
+#stage #flow-players .start-racer-text { flex: 1; min-width: 0; }
+#stage #flow-players .seat-names { display: block; }
+#stage #flow-players .seat-input { display: inline-block; }
+#stage #flow-players .start-input-warn { margin: 0; }
+#stage #flow-startline .setup-pickers:has(#players-row:not(.hidden)) { flex-wrap: wrap; }
+#stage #flow-startline #players-row:not(.hidden) { flex: 1 0 100%; }
+#stage .award-group-title { margin: 16px 0 4px; font-size: 16px; }
+#stage .award-group { display: flex; flex-direction: column; gap: 8px; }
+
+/* Audit alignment: collection uses the same edge-to-edge inventory cards. */
+#stage #catalog .racer-tap {
+  padding: 0 0 12px;
+  height: auto;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--control-radius);
+  background: #fff3dc;
+  color: #30263d;
+  box-shadow: none;
+  gap: 8px;
+  cursor: pointer;
+}
+#stage #catalog .racer-tap.is-current { background: #ffc64b; }
+#stage #catalog .racer-shot {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  align-self: stretch;
+  border: 0;
+  border-radius: 0;
+}
+#stage #catalog .racer-tap :is(.track-name, .track-sub) { padding: 0 var(--menu-inset); }
+#stage #catalog .racer-tap .track-sub {
+  min-height: 1.4em;
+  font-size: 11px;
+  white-space: nowrap;
+  color: #6c6078;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+#stage #catalog .prize-head { display: none; }
+#stage #catalog .prize-grid { gap: 16px; }
+/* Keep the shared flat indigo fill on utility surfaces, too. */
+#stage :is(.how-item, .how-item.how-win, .shelf-cup, .ach-row, .name-picker) {
+  background: var(--menu-surface);
+  border: 0;
+  box-shadow: none;
+  border-radius: var(--control-radius);
+}
+#stage .studio-screen .name-picker { padding: 12px; box-sizing: border-box; }
+#stage #pause-overlay .flow-eyebrow { display: none; }
+/* Cup selection follows the coloured-icon / cream-copy cards used by Mode. */
+#stage #flow-cup .cup-tap {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 16px;
+  grid-template-rows: 1fr auto;
+  gap: 8px 12px;
+  padding: 0 16px 0 0;
+  overflow: hidden;
+  background: #fff3dc;
+  border: 0;
+  border-radius: var(--control-radius);
+  box-shadow: none;
+}
+#stage #flow-cup .cup-tap .tap-chip {
+  grid-row: 1 / -1;
+  width: 76px;
+  height: 100%;
+  min-height: 120px;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 32px;
+}
+#stage #flow-cup .cup-tap .tap-text { padding-top: 16px; }
+#stage #flow-cup .cup-tap .tap-chev { grid-column: 3; grid-row: 1 / -1; align-self: center; }
+#stage #flow-cup .cup-tap .cup-meta { grid-column: 2; padding: 0 0 16px; margin: 0; }
+#stage #flow-cup .cup-pill { border: 0; box-shadow: none; background: #30263d12; }
+#stage #settings .backup-row .share-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+#stage #settings .backup-row .share-row button { margin: 0; width: 100%; }
+#stage #settings #backup-restore { grid-column: 1 / -1; }
+#stage :is(.shelf-cup, .ach-row) { opacity: 1; }
+#stage .catalog-trophies { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+#stage.menu-portrait .catalog-trophies { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+#stage .shelf-cup { min-width: 0; padding: 12px; }
+#stage .catalog-achievements { gap: 8px; }
+#stage .ach-row { padding: 12px; }
+#stage .ach-desc { color: var(--menu-muted); font-size: 12px; line-height: 1.4; }
+#stage #catalog .flow-head-right { display: flex; align-items: center; gap: 8px; }
+#stage #catalog-treats {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--menu-button-height);
+  padding: 0 12px;
+  margin: 0;
+  border: 0;
+  border-radius: var(--control-radius);
+  box-shadow: none;
+  background: var(--menu-surface);
+  color: var(--menu-ink);
+  font-size: 14px;
+  white-space: nowrap;
+}
+#stage #flow-cup .tap-sub { color: #6c6078; font-weight: 400; }
+#stage:not(.menu-portrait) .players-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 8px; }
+#stage:not(.menu-portrait) #flow-players :is(.players-help, #split-count-row, .start-input-warn) { grid-column: 1 / -1; }
+#stage:not(.menu-portrait) #flow-players :is(.seat-row, #split-count-row) { padding: 10px 12px; }
+#stage #flow-players.can-scroll::after { bottom: calc(72px + var(--safe-bottom)); }
+/* Each seat already identifies missing input; avoid repeating the same warning
+   below the grid where it steals space from the last row on short screens. */
+#stage #flow-players #start-input-warn { display: none; }

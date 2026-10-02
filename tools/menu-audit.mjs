@@ -202,7 +202,10 @@ try {
     await click("#flow-track [data-back]");
     await click("#setup-mode");
     await click("#mode-split");
+    await click("#setup-players");
     await click("#split-count-4");
+    await capture("players");
+    await click("#players-done");
     await capture("versus-4p");
     const previous = JSON.parse(await fs.readFile(new URL("measurements.json", out), "utf8"));
     measurements.push(
@@ -224,6 +227,14 @@ try {
     for (const category of ["audio", "controls", "display", "save"]) {
       await click(`[data-category="${category}"]`);
       await capture("settings-" + category);
+      if (category === "display") {
+        await click('[data-display-field="graphics"]');
+        await capture("display-graphics");
+        await click("#settings .menu-fixed-actions button");
+        await click('[data-display-field="frame-rate"]');
+        await capture("display-frame-rate");
+        await click("#settings .menu-fixed-actions button");
+      }
     }
     await click("#settings-back");
     await click("#howto-btn");
@@ -299,7 +310,10 @@ try {
     await click("#flow-track [data-back]");
     await click("#setup-mode");
     await click("#mode-split");
+    await click("#setup-players");
     await click("#split-count-4");
+    await capture("players");
+    await click("#players-done");
     await capture("versus-4p");
     await click("#setup-mode");
     await click("#mode-gp");

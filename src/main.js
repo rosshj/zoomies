@@ -1,3 +1,4 @@
+import { showTrackLoading } from "./track-loading.js";
 import { mountTrackBuilder } from "./track-builder-ui.js";
 import { cachedTrackImage, cacheTrackImage, trackImageKey } from "./track-image-cache.js";
 import { renderTrackPortrait } from "./track-portrait.js";
@@ -382,7 +383,11 @@ let _racePaid = false; // the payout runs once per race, on the first showResult
 // page — e.g. iOS killing the web content process under memory pressure and
 // the shell reloading it — which is otherwise invisible in the logs.
 const RELOAD_CAUSE_KEY = "zoomies-reload-cause";
-function markReload(cause) {
+function markReload(cause, label) {
+  if (["track-pick", "track-apply", "cup-start", "cup-next", "daily-start"].includes(cause))
+    showTrackLoading(
+      label || (cause === "daily-start" ? "Daily Challenge" : cause.startsWith("cup") ? "Cup race" : "Your track"),
+    );
   try {
     sessionStorage.setItem(RELOAD_CAUSE_KEY, cause);
   } catch {
@@ -4933,7 +4938,7 @@ function renderKartCards() {
 let _pickingSeat = 0; // 0 = P1's own (garage) pass; 2..4 = that seat's pass
 function startSeatPick(seat) {
   _pickingSeat = seat;
-  _garageReturn = "startline";
+  _garageReturn = flowStep === "players" ? "players" : "startline";
   resetRacerDraft();
   flowGo("garage");
 }
@@ -5182,6 +5187,7 @@ function flowGo(step, dir = 1, instant = false) {
   // Enter hooks BEFORE the slide, so the screen arrives fully drawn.
   if (step === "title") refreshTitlePlay();
   else if (step === "mode") refreshModeCards();
+  else if (step === "players") refreshSeatTiles();
   else if (step === "rivals" || step === "length") refreshRaceOptSegs();
   else if (step === "track") renderTrackCards();
   else if (step === "cup") renderCupOptions();
@@ -5268,6 +5274,7 @@ function flowBack() {
     return true;
   }
   const back = {
+    players: "startline",
     rivals: "startline",
     length: "startline",
     mode: "startline",
@@ -5654,7 +5661,7 @@ function renderTrackCards() {
   }
 }
 document.getElementById("track-custom-open").addEventListener("click", openTrackPanel);
-function chooseTrackCard(cfg) {
+async function chooseTrackCard(cfg) {
   if (trackCardCurrent(cfg)) {
     flowGo("startline");
     return;
@@ -5662,7 +5669,13 @@ function chooseTrackCard(cfg) {
   saveTrackConfig({ ...trackConfig, ...cfg });
   saveFlowResume("startline");
   uiCue("loading");
-  markReload("track-pick");
+  markReload(
+    "track-pick",
+    cfg.mode !== "custom"
+      ? "Classic Circuit"
+      : FEATURED_TRACKS.find((t) => t.cfg.seed === cfg.seed)?.name || "Your track",
+  );
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   // Drop any explicit world params (a daily/cup/join link) so the saved recipe
   // drives the rebuild instead of the URL's seed.
   const u = new URL(location.href);
@@ -5717,6 +5730,8 @@ function _seatInputLabels() {
 }
 function refreshSeatTiles() {
   const split = raceMode === "split";
+  document.getElementById("players-row").classList.toggle("hidden", !split);
+  document.getElementById("setup-players-name").textContent = `${splitCount} players`;
   const labels = split ? _seatInputLabels() : [];
   const setBadge = (seat) => {
     const el = document.getElementById(`p${seat}-input`);
@@ -5741,6 +5756,12 @@ function refreshSeatTiles() {
     if (nm) nm.textContent = `${cat.name} · ${kart.name}`;
     setBadge(seat);
   }
+  document.getElementById("players-p1-input").textContent = labels[0] || "No controller";
+  document.getElementById("players-p1-name").textContent =
+    `${catSpec(garageConfig).name} · ${kartSpec(garageConfig).name}`;
+  const missingCount = split ? labels.filter((label) => !label).length : 0;
+  document.getElementById("setup-players-name").textContent =
+    `${splitCount} players${missingCount ? ` · ${missingCount} need input` : " · Ready"}`;
   // The seat-count segment mirrors the persisted choice.
   for (let n = 2; n <= 4; n++) {
     document.getElementById(`split-count-${n}`)?.classList.toggle("is-active", splitCount === n);
@@ -5765,7 +5786,7 @@ for (let seat = 2; seat <= 4; seat++) {
 // live so plugging in / waking a pad updates the start line while it's open.
 for (const ev of ["gamepadconnected", "gamepaddisconnected"]) {
   window.addEventListener(ev, () => {
-    if (flowStep === "startline") refreshSeatTiles();
+    if (flowStep === "startline" || flowStep === "players") refreshSeatTiles();
   });
 }
 // Seat count: how many humans share the screen (2 rows / quadrants).
@@ -5824,11 +5845,22 @@ function refreshStartline() {
     else goBtn.textContent = GO_LABELS[raceMode] || GO_LABELS.gp;
   }
 }
+document.getElementById("setup-players").addEventListener("click", () => flowGo("players"));
+document.getElementById("players-p1-edit").addEventListener("click", () => {
+  _pickingSeat = 0;
+  _garageReturn = "players";
+  resetRacerDraft();
+  flowGo("garage");
+});
 document.getElementById("setup-rivals").addEventListener("click", () => flowGo("rivals"));
 document.getElementById("setup-laps").addEventListener("click", () => flowGo("length"));
 document.getElementById("startline-garage").addEventListener("click", () => startSeatPick(0));
 // GO: the tap that grants fullscreen + tilt, then starts whichever mode is up.
 document.getElementById("go-btn")?.addEventListener("click", () => {
+  if (raceMode === "split" && _seatInputLabels().some((label) => !label)) {
+    flowGo("players");
+    return;
+  }
   if (raceMode === "tt") startTimeTrial();
   else if (raceMode === "cup") {
     if (_cupState && _activeCup) {
@@ -6314,6 +6346,18 @@ function renderCatalog() {
   const list = document.getElementById("catalog-achievements");
   if (list) {
     list.innerHTML = "";
+    const groups = new Map(
+      ["Ready to collect", "In progress", "Completed"].map((label) => {
+        const section = document.createElement("section");
+        const title = document.createElement("h3");
+        title.className = "award-group-title";
+        const items = document.createElement("div");
+        items.className = "award-group";
+        section.append(title, items);
+        list.append(section);
+        return [label, { section, title, items }];
+      }),
+    );
     for (const a of ACHIEVEMENTS) {
       const got = profile.achievements.includes(a.id);
       const pend = profile.pendingClaims.includes(a.id);
@@ -6337,10 +6381,18 @@ function renderCatalog() {
           );
           const bal = document.getElementById("catalog-treats");
           if (bal) bal.textContent = `🐟 ${profile.treats}`;
+          const body = document.querySelector("#catalog .flow-body");
+          const scroll = body.scrollTop;
+          renderCatalog();
+          body.scrollTop = scroll;
         });
         d.appendChild(b);
       }
-      list.appendChild(d);
+      groups.get(pend ? "Ready to collect" : got ? "Completed" : "In progress").items.append(d);
+    }
+    for (const [label, group] of groups) {
+      group.section.classList.toggle("hidden", !group.items.children.length);
+      group.title.textContent = `${label} · ${group.items.children.length}`;
     }
   }
   const st = document.getElementById("catalog-stats");

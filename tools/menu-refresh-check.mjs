@@ -157,6 +157,7 @@ try {
   await click("#start-btn");
   await click("#setup-mode");
   await click("#mode-split");
+  await click("#setup-players");
   await click("#split-count-4");
   const beforeSeat = await garage();
   await click("#p2-edit");
@@ -165,6 +166,8 @@ try {
   await click("#cat-grid button:nth-child(3)");
   await step("garage");
   await click("#garage-done");
+  await step("players");
+  await click("#players-done");
   await step("startline");
   assert.deepEqual(await garage(), beforeSeat, "Guest overwrote Player 1");
   await shot("versus-deck");

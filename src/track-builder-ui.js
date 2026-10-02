@@ -4,7 +4,7 @@ export function mountTrackBuilder(root, getDraft) {
   const actions = root.querySelector(".track-actions");
   const title = root.querySelector(".flow-h");
   const overview = document.createElement("div");
-  overview.className = "studio-overview";
+  overview.className = "studio-overview summary-grid";
   const scroll = document.createElement("div");
   scroll.className = "builder-scroll";
   const side = document.createElement("div");
@@ -46,7 +46,7 @@ export function mountTrackBuilder(root, getDraft) {
         if (event.target.closest(".biome-chip")) close();
       });
     const button = document.createElement("button");
-    button.className = "studio-summary";
+    button.className = "studio-summary summary-choice";
     button.dataset.builderField = key;
     const heading = document.createElement("small");
     heading.textContent = label;
