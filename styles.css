@@ -36,6 +36,9 @@ body {
      than a dead black bar. Solid so it looks the same on whichever edge the
      strip lands. */
   background: #241c0c;
+  /* Keep mobile browsers from inflating selected text blocks after rotation. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
   color: #fff;
   overscroll-behavior: none;
