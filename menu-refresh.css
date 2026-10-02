@@ -2416,11 +2416,13 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   position: relative;
   --racer-footer-y: 8px;
   --portrait-inset-top: 16px;
-  --portrait-inset-bottom: calc(var(--menu-button-height) + 2 * var(--racer-footer-y));
+  --portrait-inset-bottom: 60px; /* 44px pills + 2 × --racer-footer-y, spelled out: the fitter
+                                    reads these with getComputedStyle, which leaves calc() unresolved */
 }
 #stage.menu-compact :is(#flow-startline, #flow-garage) .setup-racer-preview {
   --racer-footer-y: 4px;
   --portrait-inset-top: 10px;
+  --portrait-inset-bottom: 52px;
 }
 #stage :is(#flow-startline, #flow-garage) .setup-racer-preview > canvas {
   display: block;
