@@ -69,9 +69,13 @@ try {
   await click("#confirm-accept"); // give up the parked race, keep the series
   await step("startline");
   const cupBeforeMap = await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1"));
-  await click("#menu-map-btn"); // opening the cup list never prompts…
+  // In Cup mode the track card is a fixed preview of the series.
+  assert.ok(await p.evaluate(() => document.getElementById("menu-map-btn").disabled), "Cup map still a picker");
+  assert.match(await p.locator("#menu-map-label").textContent(), /Race \d of \d/);
+  await click("#setup-mode");
+  await click("#mode-cup"); // Cup Series mid-series: the list opens without a prompt…
   await step("cup");
-  await click("#cup-list button:nth-child(2)"); // …switching cups does
+  await click("#cup-list button:nth-child(2)"); // …switching cups asks
   await p.locator("#menu-confirm:not(.hidden)").waitFor();
   await click("#confirm-cancel");
   await step("cup");
@@ -82,10 +86,6 @@ try {
     cupBeforeMap,
     "Cup list visit changed cup progress",
   );
-  await click("#setup-mode");
-  await click("#mode-cup"); // the current mode mid-series: back to setup, no prompt
-  await step("startline");
-  assert.equal(await p.evaluate(() => sessionStorage.getItem("zoomies-cup-v1")), cupBeforeMap);
   await click("#setup-mode");
   await click("#mode-tt");
   await click("#confirm-cancel");

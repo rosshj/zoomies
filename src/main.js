@@ -5421,8 +5421,7 @@ function leaveSpecialRun() {
 }
 function chooseRaceMode(mode) {
   if (mode === "cup" && _cupState && _activeCup) {
-    setRaceMode("cup"); // still in the series: back to setup, nothing lost
-    flowGo("startline");
+    flowGo("cup"); // still in the series: the list opens, only a different cup asks
     return;
   }
   const apply = () => {
@@ -5682,9 +5681,18 @@ function refreshStartline() {
       : _dailyActive
         ? "Today's shared track"
         : featured?.name || (trackConfig.mode === "custom" ? "My custom track" : "Classic Circuit");
+  // A cup brings its own tracks: the card becomes a fixed preview that pages
+  // through the series (cups are chosen from Mode → Cup Series), so it can't
+  // be tapped into the track picker.
   const mapButton = document.getElementById("menu-map-btn");
-  mapButton.setAttribute("aria-label", `Change ${raceMode === "cup" ? "cup" : "track"}: ${selectedTrackName}`);
-  mapButton.title = raceMode === "cup" ? "Choose cup" : "Choose track";
+  mapButton.disabled = raceMode === "cup";
+  document.getElementById("menu-map-kind").textContent = raceMode === "cup" ? "Cup" : "Track";
+  mapButton.setAttribute(
+    "aria-label",
+    raceMode === "cup" ? `Cup: ${selectedTrackName}` : `Change track: ${selectedTrackName}`,
+  );
+  if (raceMode === "cup") mapButton.removeAttribute("title");
+  else mapButton.title = "Choose track";
   refreshMenuMapCycle(); // live-world map, or the chosen cup's cycling previews
   if (raceMode !== "cup" && (featured || _dailyActive))
     document.getElementById("menu-map-label").textContent = selectedTrackName;
@@ -6022,7 +6030,8 @@ function refreshMenuMapCycle() {
   const paint = () => {
     const race = cupDef.races[_mapCycleIdx % cupDef.races.length];
     paintTrackMap(canvas, previewLoopPoints(race.cfg));
-    if (label) label.textContent = cupDef.name;
+    if (label)
+      label.textContent = `${cupDef.name} · Race ${(_mapCycleIdx % cupDef.races.length) + 1} of ${cupDef.races.length}`;
   };
   paint();
   canvas.style.opacity = "1";

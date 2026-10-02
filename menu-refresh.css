@@ -2504,3 +2504,13 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   max-height: 760px;
   margin-block: auto;
 }
+
+/* Cup mode: the track card is a preview of the series, not a picker. */
+#stage #flow-startline #menu-map-btn:disabled {
+  cursor: default;
+  transform: none;
+  opacity: 1;
+}
+#stage #flow-startline #menu-map-btn:disabled :is(.map-chevron, .map-edit-hint) {
+  display: none;
+}
