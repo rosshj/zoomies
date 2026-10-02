@@ -25,6 +25,7 @@ function bindRotation(canvas) {
       queue = result.catch((error) => console.warn("Preview rotation unavailable", error));
     });
   };
+  new ResizeObserver(redraw).observe(canvas);
   canvas.addEventListener("pointerdown", (event) => {
     if (!event.isPrimary || event.button !== 0) return;
     state.pointer = { id: event.pointerId, x: event.clientX, y: event.clientY, dragging: false };
@@ -106,61 +107,98 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
     const fill = new THREE.DirectionalLight(0x9db4e6, 0.7);
     fill.position.set(-7, 4, -6);
     scene.add(fill);
-    const renderHeight = subject === "racer" ? 640 : 400;
-    canvas.height = renderHeight;
-    const camera = new THREE.PerspectiveCamera(35, 640 / renderHeight, 0.1, 100);
-    camera.position.set(7.5, 5.2, 9.5);
-    camera.lookAt(0, 1.05, 0);
-    camera.zoom = 1.6;
-    {
-      // Fit the entire standalone model, including tall accessories and wide karts.
-      const bounds = new THREE.Box3().setFromObject(group);
-      const center = bounds.getCenter(new THREE.Vector3());
-      const direction = new THREE.Vector3(...(subject === "cat" ? [3, 1.6, 9] : [7.5, 5.2, 9.5])).normalize();
-      const right = new THREE.Vector3().crossVectors(camera.up, direction).normalize();
-      const up = new THREE.Vector3().crossVectors(direction, right);
-      const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
-      let distance = 0;
-      const axis = new THREE.Vector3(0, 1, 0);
-      // Fit individual parts for the combined racer: the empty corners of its
-      // overall bounding box otherwise leave excessive space around the model.
-      const fitBounds = [];
-      if (subject === "racer") {
-        group.traverse((object) => {
-          if (!object.isMesh || !object.geometry) return;
-          object.geometry.computeBoundingBox();
-          fitBounds.push({ box: object.geometry.boundingBox, matrix: object.matrixWorld });
-        });
-      } else fitBounds.push({ box: bounds, matrix: new THREE.Matrix4() });
-      for (const { box, matrix } of fitBounds)
-        for (const x of [box.min.x, box.max.x])
-          for (const y of [box.min.y, box.max.y])
-            for (const z of [box.min.z, box.max.z]) {
-              const corner = new THREE.Vector3(x, y, z).applyMatrix4(matrix).sub(center);
-              for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 32) {
-                const rotated = corner.clone().applyAxisAngle(axis, angle);
-                distance = Math.max(
-                  distance,
-                  rotated.dot(direction) +
-                    Math.max(Math.abs(rotated.dot(right)) / (tanV * camera.aspect), Math.abs(rotated.dot(up)) / tanV),
-                );
-              }
+    const camera = new THREE.PerspectiveCamera(35, 1.6, 0.1, 100);
+    const bounds = new THREE.Box3().setFromObject(group);
+    const target = bounds.getCenter(new THREE.Vector3());
+    const direction = new THREE.Vector3(...(subject === "cat" ? [3, 1.6, 9] : [7.5, 5.2, 9.5])).normalize();
+    const right = new THREE.Vector3().crossVectors(camera.up, direction).normalize();
+    const up = new THREE.Vector3().crossVectors(direction, right);
+    const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const axis = new THREE.Vector3(0, 1, 0);
+    const fitBounds = [];
+    if (subject === "racer") {
+      group.traverse((object) => {
+        if (!object.isMesh || !object.geometry) return;
+        object.geometry.computeBoundingBox();
+        fitBounds.push({ box: object.geometry.boundingBox, matrix: object.matrixWorld });
+      });
+    } else fitBounds.push({ box: bounds, matrix: new THREE.Matrix4() });
+    const fitPoints = [];
+    for (const { box, matrix } of fitBounds)
+      for (const x of [box.min.x, box.max.x])
+        for (const y of [box.min.y, box.max.y])
+          for (const z of [box.min.z, box.max.z]) {
+            const corner = new THREE.Vector3(x, y, z).applyMatrix4(matrix).sub(target);
+            for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 32) {
+              const rotated = corner.clone().applyAxisAngle(axis, angle);
+              fitPoints.push({ x: rotated.dot(right), y: rotated.dot(up), z: rotated.dot(direction) });
             }
-      camera.zoom = 1;
-      camera.position.copy(center).addScaledVector(direction, distance * (subject === "racer" ? 1.06 : 1.12));
-      camera.lookAt(center);
-    }
-    camera.updateProjectionMatrix();
-    camera.updateMatrixWorld();
+          }
+    const offset = new THREE.Vector3();
+    let renderHeight = 400;
+    let fittedAspect = 0;
+    const fit = () => {
+      // Use the actual preview slot, so landscape is not letterboxed into a square.
+      const aspect =
+        subject === "racer" && canvas.clientWidth && canvas.clientHeight
+          ? Math.max(0.5, Math.min(4, canvas.clientWidth / canvas.clientHeight))
+          : 1.6;
+      if (Math.abs(aspect - fittedAspect) < 0.001) return;
+      fittedAspect = aspect;
+      renderHeight = Math.round(640 / aspect);
+      canvas.height = renderHeight;
+      camera.aspect = 640 / renderHeight;
+      let distance = 0;
+      for (const point of fitPoints)
+        distance = Math.max(
+          distance,
+          point.z + Math.max(Math.abs(point.x) / (tanV * camera.aspect), Math.abs(point.y) / tanV),
+        );
+      if (subject === "racer") {
+        // After vertical centering, fit the projected height rather than reserving
+        // equal space around the world origin. This gives wide previews more scale.
+        let near = fitPoints.reduce((max, point) => Math.max(max, point.z), -Infinity) + 0.01;
+        let far = distance * 1.06;
+        for (let step = 0; step < 20; step++) {
+          const candidate = (near + far) / 2;
+          let low = Infinity,
+            high = -Infinity,
+            width = 0;
+          for (const point of fitPoints) {
+            const depth = (candidate - point.z) * tanV;
+            low = Math.min(low, point.y / depth);
+            high = Math.max(high, point.y / depth);
+            width = Math.max(width, Math.abs(point.x) / (depth * camera.aspect));
+          }
+          if (width <= 0.94 && high - low <= 1.88) far = candidate;
+          else near = candidate;
+        }
+        distance = far;
+      } else distance *= 1.12;
+      offset.copy(direction).multiplyScalar(distance);
+      camera.updateProjectionMatrix();
+      if (subject === "racer") {
+        // Center the projected silhouette rather than its world-space bounding box.
+        // Use the envelope of a complete turn to keep the framing steady while dragging.
+        let low = Infinity,
+          high = -Infinity;
+        for (const point of fitPoints) {
+          const y = point.y / ((distance - point.z) * tanV);
+          low = Math.min(low, y);
+          high = Math.max(high, y);
+        }
+        camera.projectionMatrix.elements[9] = (low + high) / 2;
+        camera.projectionMatrixInverse.copy(camera.projectionMatrix).invert();
+      }
+    };
     const rawMaterials = new Set();
     group.traverse((o) => {
       if (o.material)
         for (const material of Array.isArray(o.material) ? o.material : [o.material]) rawMaterials.add(material);
     });
     toonify(group);
-    const target = new THREE.Box3().setFromObject(group).getCenter(new THREE.Vector3());
-    const offset = camera.position.clone().sub(target);
     const draw = () => {
+      fit();
       camera.position
         .copy(offset)
         .applyAxisAngle(new THREE.Vector3(0, 1, 0), interaction.yaw)
