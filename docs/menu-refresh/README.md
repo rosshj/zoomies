@@ -1,6 +1,6 @@
 # Menu refresh audit
 
-This report records the original baseline. The redesign and its verification are documented in [Implementation](implementation.md); browse the [refreshed menus](review/gallery.html) alongside the [baseline gallery](gallery.html).
+This report records the original baseline. The redesign and its verification are documented in [Implementation](implementation.md); representative before/after captures are in [samples/](samples/) (`samples/before/` is this baseline, `samples/after/` the refresh); the full gallery is regenerated locally with `npm run menu:gallery`.
 
 Baseline: `c06ce70` (merged art refresh), branch `menu-refresh`. Audit performed September 29, 2026. No gameplay or menu implementation changes in this pass.
 
@@ -25,7 +25,7 @@ Captured CSS viewports:
 | iPhone portrait | 390 × 844 | Game rotates an 844 × 390 stage |
 | Small phone landscape | 667 × 375 | Constrained width and height |
 
-Browse the [screenshot gallery](gallery.html). The 138 screenshots and measured element sizes are in this directory. The JSON records scrollable descendants, not the root overlay itself; an empty scroll list does not prove that results fit without scrolling. Browser resizing does not reproduce iOS browser bars, safe-area values, software keyboard, touch scrolling, Steam overlay, real gamepad hardware, or Electron behavior. These require device follow-up. The source review also covers daily and cup transitions, installation help, purchases, backup/restore, advanced settings, and Track Viewer; these are not all end-to-end device-tested. Native portrait menus are a design recommendation, not current behavior.
+Nine representative baseline captures are kept in `samples/before/`; the measured element sizes are in this directory (`measurements.json`, `desktop-measurements.json`). The JSON records scrollable descendants, not the root overlay itself; an empty scroll list does not prove that results fit without scrolling. Browser resizing does not reproduce iOS browser bars, safe-area values, software keyboard, touch scrolling, Steam overlay, real gamepad hardware, or Electron behavior. These require device follow-up. The source review also covers daily and cup transitions, installation help, purchases, backup/restore, advanced settings, and Track Viewer; these are not all end-to-end device-tested. Native portrait menus are a design recommendation, not current behavior.
 
 The baseline capture tool is preserved in commit `b1176e1`. The current `tools/menu-audit.mjs` captures the redesigned menus into `review/` and leaves this baseline unchanged. Run a local server on port 8080, then `node tools/menu-audit.mjs`. Each run uses an isolated browser profile.
 
@@ -74,7 +74,7 @@ At 844 × 390 the initial results viewport shows standings and the start of earn
 
 **Change:** pin a results footer containing Next Race / Race Again, Change Setup, and Home. Put standings and earnings in the scrollable body. Present earned badges within results and offer one Collect All action, or bank them automatically with a celebration. Preserve idempotent reward settlement.
 
-Evidence: `screenshots/iphone-landscape-results.jpg`; `index.html` results/claim markup; `showClaimScreen`, `claimScreenBack`, `settleRaceRewards`.
+Evidence: `samples/before/iphone-landscape-results.jpg`; `index.html` results/claim markup; `showClaimScreen`, `claimScreenBack`, `settleRaceRewards`.
 
 ### P1 — Race announcements can draw over pause
 
@@ -82,7 +82,7 @@ The audit pauses as soon as the race enters the racing state. The frozen “GO!�
 
 **Change:** hide transient race announcements while any blocking menu is open and define overlay stacking centrally. Verify countdown pause, regular pause, settings over pause, finish, and Track Viewer separately.
 
-Evidence: `screenshots/iphone-landscape-pause.jpg` and other pause captures; `pauseGame`, `#countdown` / announcement styling.
+Evidence: `samples/before/iphone-landscape-pause.jpg` and other pause captures; `pauseGame`, `#countdown` / announcement styling.
 
 ### P2 — Phone layout is scaled desktop UI rather than a distinct composition
 

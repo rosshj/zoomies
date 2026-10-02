@@ -1,6 +1,6 @@
 # Menu refresh implementation
 
-Branch: `menu-refresh`, based on merged art refresh `c06ce70`. The [original audit](README.md) and its screenshots remain intact. [Open the refreshed gallery](review/gallery.html).
+Branch: `menu-refresh`, based on merged art refresh `c06ce70`. The [original audit](README.md) remains as the baseline record. Representative captures of the refresh are in [samples/after/](samples/after/); the full 194-capture gallery is regenerated into `review/` (gitignored) with `npm run menu:gallery`.
 
 ## Navigation
 
@@ -26,7 +26,7 @@ Keyboard focus stays within the active surface and returns to the previous contr
 
 ## Verification
 
-The visual sweep captured 28 surfaces at 1280×800, 1440×900, 1280×720, 844×390, 390×844, and 667×375: **168 captures**, no page errors, and no measured visible controls smaller than 44×44 CSS pixels. See [measurements](review/measurements.json). Representative portrait, compact landscape, editor, setup, pause, and results captures were inspected visually.
+The visual sweep captured 28 surfaces at 1280×800, 1440×900, 1280×720, 844×390, 390×844, and 667×375: **168 captures**, no page errors, and no measured visible controls smaller than 44×44 CSS pixels. The per-capture measurements are written to `review/measurements.json` when the gallery is regenerated. Representative portrait, compact landscape, editor, setup, pause, and results captures were inspected visually.
 
 Automated checks cover:
 
@@ -43,7 +43,7 @@ These are Chromium viewport and simulated-controller checks on a Mac, not physic
 
 Run `npm run check:menus`, `npm run check:menu-state`, and `npm run check:menupad` for the main interaction regressions. The scripts serve isolated local instances. `npm run check:offline` checks cached startup. `npm run build:web` includes the new UI assets.
 
-For the gallery, serve the repository at port 8080 and run `node tools/menu-audit.mjs`. It writes only `review/`. Tests also save selected captures to `after/`.
+For the gallery run `npm run menu:gallery` (it serves the repository itself and writes only `review/`, which is gitignored). Tests also save selected captures to `after/`.
 
 
 ## Device feedback revision
@@ -77,7 +77,7 @@ The setup map yields space to two visual picker cards for the selected cat and k
 
 Setup audit checks now require both preview images to load and remain at least 60×60 CSS pixels, alongside map and control bounds checks. The menu interaction regression covers changing either selection and returning to setup.
 
-For setup-only visual iterations, `node tools/menu-audit.mjs --setup-only` refreshes setup and Versus captures and retains the other validated gallery measurements.
+For setup-only visual iterations, `npm run menu:gallery -- --setup-only` refreshes setup and Versus captures and retains the other validated gallery measurements.
 
 
 ## Summary-first setup and a combined racer portrait
