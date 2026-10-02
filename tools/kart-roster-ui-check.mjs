@@ -114,8 +114,9 @@ try {
   await p.screenshot({ path: `${out}/creator-rally.png` });
   await p.setViewportSize({ width: 844, height: 390 });
   await p.waitForTimeout(750);
-  await p.locator("#kart-livery-next").scrollIntoViewIfNeeded();
-  await p.locator("#kart-livery-next").click();
+  // The drill-in studio hides the legacy stepper arrows; step them by script like the rest of this check.
+  await p.evaluate(() => document.querySelector("#kart-livery-next").click());
+  await p.waitForTimeout(250);
   await p.locator("#kart-edit-use").scrollIntoViewIfNeeded();
   await p.screenshot({ path: `${out}/creator-phone.png` });
   await p.setViewportSize({ width: 1100, height: 800 });
