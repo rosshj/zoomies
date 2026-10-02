@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { launchArtBrowser } from "./art-browser.mjs";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -13,7 +14,7 @@ try {
       JSON.stringify({ treats: 1000, achievements: ["first-race", "first-win"], pendingClaims: ["first-race"] }),
     );
   });
-  await p.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
+  await p.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
   await p.waitForFunction(() => window.__zoomies?.track);
   const click = async (s) => {
     await p.locator(s).click();

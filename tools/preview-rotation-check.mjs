@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { launchArtBrowser } from "./art-browser.mjs";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   page.setDefaultTimeout(90000);
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1", { waitUntil: "domcontentloaded" });
+  await page.goto(`${origin}/?webgl=1&nosw=1&nowd=1`, { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.__zoomies?.track);
   const click = async (selector) => {
     await page.locator(selector).click();

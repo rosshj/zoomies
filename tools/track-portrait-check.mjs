@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
-import { launchArtBrowser } from "./art-browser.mjs";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+import { FEATURED_TRACKS as featured } from "../src/featured-tracks.js";
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   const page = await browser.newPage({ viewport: { width: 844, height: 390 } });
@@ -10,14 +12,12 @@ try {
   page.on("console", (m) => {
     if (m.type() === "warning") console.log(m.text());
   });
-  const source = await fs.readFile(new URL("../src/main.js", import.meta.url), "utf8");
-  const featured = Function(`return ${source.match(/const FEATURED_TRACKS = (\[[\s\S]*?\n\]);/)[1]}`)();
   for (const name of process.env.TRACK_CASE
     ? [process.env.TRACK_CASE]
     : ["Classic Circuit", "Snowcap Sprint", "Basalt Blast"]) {
     const cfg = featured.find((t) => t.name === name)?.cfg || { mode: "classic" };
     await page.addInitScript((cfg) => localStorage.setItem("zoomies-track-v1", JSON.stringify(cfg)), cfg);
-    await page.goto(`http://localhost:8080/?${process.env.BACKEND === "webgpu" ? "webgpu" : "webgl"}=1&nosw=1&nowd=1`);
+    await page.goto(`${origin}/?${process.env.BACKEND === "webgpu" ? "webgpu" : "webgl"}=1&nosw=1&nowd=1`);
     await page.waitForFunction(() => window.__zoomies?.track);
     await page.locator("#start-btn").click();
     await page.waitForFunction(() => document.getElementById("track-scenery").dataset.ready === "true");

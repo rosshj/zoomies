@@ -1,5 +1,6 @@
-import { launchArtBrowser } from "./art-browser.mjs";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
 import assert from "node:assert/strict";
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
 page.setDefaultTimeout(90000);
@@ -9,7 +10,7 @@ await page.addInitScript(() =>
   localStorage.setItem("zoomies-profile-v1", JSON.stringify({ treats: 150, stats: { racesCustom: 3 } })),
 );
 try {
-  await page.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
+  await page.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
   await page.waitForFunction(() => window.__zoomies?.track);
   await page.locator("#start-btn").click();
   await page.locator("#startline-garage").click();

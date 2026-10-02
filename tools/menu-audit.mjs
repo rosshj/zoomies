@@ -1,8 +1,9 @@
-// Visual audit against a local server: python3 -m http.server 8080
-import { launchArtBrowser } from "./art-browser.mjs";
+// Visual audit of every menu surface: serves the repo itself, writes docs/menu-refresh/review/.
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
 import fs from "node:fs/promises";
 const out = new URL("../docs/menu-refresh/review/", import.meta.url);
 await fs.mkdir(new URL("screenshots/", out), { recursive: true });
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 let page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 page.setDefaultTimeout(60000);
@@ -19,6 +20,8 @@ const sizes = [
 ];
 const measurements = [];
 const setupOnly = process.argv.includes("--setup-only");
+// STYLE_DUMP=<file.json> also records every element's computed-style hash per capture (see tools/css-style-diff.mjs).
+const styleDump = process.env.STYLE_DUMP ? [] : null;
 async function click(sel) {
   await page.locator(sel).click();
   await page.waitForTimeout(600);
@@ -129,6 +132,38 @@ async function capture(name) {
     });
     if (emoji) errors.push(`${device}/${name}: remaining emoji ${emoji.join(" ")}`);
     await page.screenshot({ path: new URL(`screenshots/${device}-${name}.jpg`, out).pathname, quality: 75 });
+    if (styleDump)
+      styleDump.push({
+        device,
+        name,
+        elements: await page.evaluate(() => {
+          // One FNV-1a hash per element over every computed property, keyed by
+          // its path, so a stylesheet refactor can be diffed for visual change.
+          const hash = (s) => {
+            let h = 0x811c9dc5;
+            for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+            return h.toString(16);
+          };
+          const out = [];
+          for (const el of document.querySelectorAll("#stage, #stage *")) {
+            const cs = getComputedStyle(el);
+            let s = "";
+            for (const p of cs) s += p + ":" + cs.getPropertyValue(p) + ";";
+            const r = el.getBoundingClientRect();
+            const path = [];
+            for (let e = el; e && e.id !== "stage"; e = e.parentElement)
+              path.unshift(
+                e.tagName +
+                  (e.id ? "#" + e.id : "") +
+                  (e.className && typeof e.className === "string"
+                    ? "." + e.className.trim().split(/\s+/).join(".")
+                    : ""),
+              );
+            out.push([path.join(">"), hash(s), [r.x, r.y, r.width, r.height].map((v) => Math.round(v)).join(",")]);
+          }
+          return out;
+        }),
+      });
     measurements.push(
       await page.evaluate(
         ({ device, name }) => {
@@ -174,7 +209,7 @@ try {
       JSON.stringify({ unlocked: ["custom.cat", "custom.kart"], treats: 1000 }),
     );
   });
-  await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1");
+  await page.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
   await page.waitForFunction(() => window.__zoomies?.track);
   if (setupOnly) {
     await click("#start-btn");
@@ -207,7 +242,9 @@ try {
     await capture("players");
     await click("#players-done");
     await capture("versus-4p");
-    const previous = JSON.parse(await fs.readFile(new URL("measurements.json", out), "utf8"));
+    const previous = JSON.parse(
+      await fs.readFile(new URL("measurements.json", out), "utf8").catch(() => '{"measurements":[]}'),
+    );
     measurements.push(
       ...previous.measurements.filter(
         (m) =>
@@ -327,7 +364,7 @@ try {
     await page.close();
     page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
     page.on("pageerror", (e) => errors.push(e.message));
-    await page.goto("http://127.0.0.1:8080/?webgl=1&nosw=1&nowd=1", { timeout: 180000 });
+    await page.goto(`${origin}/?webgl=1&nosw=1&nowd=1`, { timeout: 180000 });
     await page.waitForFunction(() => window.__zoomies?.track);
     await capture("home-web");
     // Exercise the iOS help handler; this is not a native install test.
@@ -336,6 +373,7 @@ try {
     await click("#install-help-back");
   }
   await fs.writeFile(new URL("measurements.json", out), JSON.stringify({ errors, measurements }, null, 2));
+  if (styleDump) await fs.writeFile(process.env.STYLE_DUMP, JSON.stringify(styleDump));
   const files = measurements.map(({ device, name }) => `${device}-${name}.jpg`);
   const cards = files
     .map(

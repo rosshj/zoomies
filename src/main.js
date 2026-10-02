@@ -7,6 +7,7 @@ import { contrastBg } from "./catalog-palette.js";
 import { menuIcon } from "./menu-icons.js";
 import { renderRacerPortrait } from "./racer-portrait.js";
 import { initMenuUI } from "./menu-ui.js";
+import { FEATURED_TRACKS } from "./featured-tracks.js";
 import * as THREE from "three";
 import { installSceneryRendering } from "./scenery-shadows.js";
 // WebGPU post-processing (M4): TSL node graph via PostProcessing, replacing the
@@ -5392,162 +5393,9 @@ for (const mode of ["gp", "tt", "split", "cup"]) {
   document.getElementById("mode-" + mode)?.addEventListener("click", () => chooseRaceMode(mode));
 }
 
-// --- Track step: featured recipes painted from the real generator ----------
-// Fixed seeds/knobs so the cards are stable, nameable places. Picking a card
-// that isn't already built saves the recipe and reloads (the world is built
-// from the config at boot), resuming the flow at the Racer step.
-const FEATURED_TRACKS = [
-  {
-    name: "Buttercup Run",
-    sub: "🌳 Meadow · Midday",
-    cfg: {
-      mode: "custom",
-      seed: "MEOW",
-      size: 0.45,
-      curviness: 0.5,
-      twist: 0.42,
-      hilliness: 0.35,
-      hills: 0.5,
-      biomes: ["meadow", "forest"],
-      timeOfDay: "midday",
-    },
-  },
-  {
-    name: "Whisker Canyon",
-    sub: "⛰️ Desert · Sunset",
-    cfg: {
-      mode: "custom",
-      seed: "DUNE",
-      size: 0.55,
-      curviness: 0.55,
-      twist: 0.5,
-      hilliness: 0.6,
-      hills: 0.6,
-      biomes: ["desert", "mesa"],
-      timeOfDay: "sunset",
-    },
-  },
-  {
-    name: "Neon Alley",
-    sub: "🏙 City · Night",
-    cfg: {
-      mode: "custom",
-      seed: "NEON",
-      size: 0.5,
-      curviness: 0.45,
-      twist: 0.55,
-      hilliness: 0.3,
-      hills: 0.4,
-      biomes: ["city"],
-      timeOfDay: "night",
-    },
-  },
-  {
-    name: "Tuna Cove",
-    sub: "🏖 Beach · Midday",
-    cfg: {
-      mode: "custom",
-      seed: "TUNA",
-      size: 0.5,
-      curviness: 0.5,
-      twist: 0.45,
-      hilliness: 0.35,
-      hills: 0.45,
-      biomes: ["beach", "jungle"],
-      timeOfDay: "midday",
-    },
-  },
-  {
-    name: "Snowcap Sprint",
-    sub: "🏔 Alpine · Sunset",
-    cfg: {
-      mode: "custom",
-      seed: "PEAK",
-      size: 0.5,
-      curviness: 0.55,
-      twist: 0.5,
-      hilliness: 0.7,
-      hills: 0.65,
-      biomes: ["alpine", "tundra"],
-      timeOfDay: "sunset",
-    },
-  },
-  {
-    name: "Maple Falls",
-    sub: "🍂 Autumn · Sunset",
-    cfg: {
-      mode: "custom",
-      seed: "LEAF",
-      size: 0.5,
-      curviness: 0.55,
-      twist: 0.48,
-      hilliness: 0.5,
-      hills: 0.55,
-      biomes: ["autumn", "forest"],
-      timeOfDay: "sunset",
-    },
-  },
-  {
-    name: "Petal Parade",
-    sub: "🌸 Blossom · Midday",
-    cfg: {
-      mode: "custom",
-      seed: "POSY",
-      size: 0.45,
-      curviness: 0.5,
-      twist: 0.4,
-      hilliness: 0.3,
-      hills: 0.45,
-      biomes: ["blossom", "meadow"],
-      timeOfDay: "midday",
-    },
-  },
-  {
-    name: "Lavender Loop",
-    sub: "🪻 Countryside · Sunset",
-    cfg: {
-      mode: "custom",
-      seed: "BLOOM",
-      size: 0.5,
-      curviness: 0.5,
-      twist: 0.42,
-      hilliness: 0.3,
-      hills: 0.45,
-      biomes: ["lavender"],
-      timeOfDay: "sunset",
-    },
-  },
-  {
-    name: "Willow Wash",
-    sub: "🌧 Wetlands · Midday",
-    cfg: {
-      mode: "custom",
-      seed: "REED",
-      size: 0.5,
-      curviness: 0.4,
-      twist: 0.4,
-      hilliness: 0.2,
-      hills: 0.3,
-      biomes: ["wetlands"],
-      timeOfDay: "midday",
-    },
-  },
-  {
-    name: "Basalt Blast",
-    sub: "🌋 Badlands · Sunset",
-    cfg: {
-      mode: "custom",
-      seed: "BASALT",
-      size: 0.5,
-      curviness: 0.55,
-      twist: 0.5,
-      hilliness: 0.6,
-      hills: 0.6,
-      biomes: ["volcanic"],
-      timeOfDay: "sunset",
-    },
-  },
-];
+// --- Track step: featured recipes (src/featured-tracks.js) painted from the
+// real generator. Picking a card that isn't already built saves the recipe and
+// reloads (the world is built from the config at boot), resuming at race setup.
 const _TRACK_CFG_KEYS = ["seed", "size", "curviness", "twist", "hilliness", "hills", "timeOfDay"];
 function trackCardCurrent(cfg) {
   if (cfg.mode !== "custom") return trackConfig.mode !== "custom";

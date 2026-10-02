@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { launchArtBrowser } from "./art-browser.mjs";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   const page = await browser.newPage();
@@ -7,7 +8,7 @@ try {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript(() => localStorage.setItem("zoomies-profile-v1", JSON.stringify({ treats: 1000 })));
-  await page.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
+  await page.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
   await page.waitForFunction(() => window.__zoomies?.track);
   const homeCamera = await page.evaluate(() => [window.__zoomies.camera.fov, window.__zoomies.camera.position.y]);
   const click = async (selector) => {

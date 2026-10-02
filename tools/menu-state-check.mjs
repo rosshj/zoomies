@@ -1,25 +1,6 @@
-import { launchArtBrowser } from "./art-browser.mjs";
-import http from "node:http";
-import fs from "node:fs/promises";
-import path from "node:path";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
 import assert from "node:assert/strict";
-const root = path.resolve(new URL("..", import.meta.url).pathname);
-const server = http.createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url, "http://localhost");
-    const f = path.join(root, url.pathname === "/" ? "index.html" : url.pathname);
-    res.setHeader(
-      "content-type",
-      { ".js": "text/javascript", ".css": "text/css", ".html": "text/html", ".json": "application/json" }[
-        path.extname(f)
-      ] || "application/octet-stream",
-    );
-    res.end(await fs.readFile(f));
-  } catch {
-    res.writeHead(404).end();
-  }
-});
-await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const { origin, close } = await serveRepo();
 const browser = await launchArtBrowser();
 const p = await browser.newPage({ viewport: { width: 1280, height: 800 } });
 const errors = [];
@@ -35,7 +16,7 @@ const click = async (selector) => {
   await p.waitForTimeout(500);
 };
 try {
-  await p.goto(`http://127.0.0.1:${server.address().port}/?webgl=1&nosw=1&nowd=1`);
+  await p.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
   await p.waitForFunction(() => window.__zoomies?.track);
   const cupURL = await p.evaluate(async () => {
     const { CUPS } = await import("/src/progress.js");
@@ -134,5 +115,5 @@ try {
   console.log("PASS: cup park/resume, scoring, next round, abandon/cancel, deterministic daily routing.");
 } finally {
   await browser.close();
-  await new Promise((r) => server.close(r));
+  await close();
 }

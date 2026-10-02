@@ -1,13 +1,13 @@
 // Regenerate bundled scenery after changing featured recipes or world art.
-// Run with the app served at localhost:8080.
+// Serves the repo itself; run after `npm run check` passes.
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
-import { launchArtBrowser } from "./art-browser.mjs";
-const source = await fs.readFile(new URL("../src/main.js", import.meta.url), "utf8");
-const featured = Function(`return ${source.match(/const FEATURED_TRACKS = (\[[\s\S]*?\n\]);/)[1]}`)();
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+import { FEATURED_TRACKS as featured } from "../src/featured-tracks.js";
 const tracks = [{ name: "Classic Circuit", cfg: { mode: "classic" } }, ...featured];
 const directory = new URL("../assets/track-previews/", import.meta.url);
 await fs.mkdir(directory, { recursive: true });
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   for (const { name, cfg } of tracks) {
@@ -18,7 +18,7 @@ try {
         localStorage.setItem("zoomies-track-v1", JSON.stringify(cfg));
         sessionStorage.clear();
       }, cfg);
-      await page.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
+      await page.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
       await page.waitForFunction(() => document.getElementById("track-scenery")?.dataset.ready === "true");
       const data = await page.locator("#track-scenery").evaluate((c) => ({
         url: c.toDataURL("image/jpeg", 0.85),

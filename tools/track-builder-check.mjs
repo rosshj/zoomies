@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
-import { launchArtBrowser } from "./art-browser.mjs";
+import { launchArtBrowser, serveRepo } from "./art-browser.mjs";
+const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   const p = await browser.newPage({ viewport: { width: 390, height: 844 } });
   p.setDefaultTimeout(120000);
   const errors = [];
   p.on("pageerror", (e) => errors.push(e.message));
-  await p.goto("http://localhost:8080/?webgl=1&nosw=1&nowd=1");
+  await p.goto(`${origin}/?webgl=1&nosw=1&nowd=1`);
   await p.waitForFunction(() => window.__zoomies?.track);
   await p.locator("#start-btn").click();
   await p.waitForFunction(() => document.getElementById("track-scenery").dataset.ready === "true");
