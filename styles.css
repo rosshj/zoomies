@@ -2822,8 +2822,6 @@ button.small { white-space: nowrap; }
   font-size: 17px;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
 }
-#kart-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); max-width: 760px; }
-#kart-grid .racer-shot { aspect-ratio: 3 / 2; }
 /* The card matching the current selection: a gold ring + corner check, so
    every pass shows where you already are before you tap anything. The
    track cards wear the same ring for the world that's already built. */

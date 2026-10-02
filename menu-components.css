@@ -71,7 +71,11 @@
   box-sizing: border-box;
 }
 #stage #catalog .prize-head { display: none; }
-#stage #catalog .prize-grid { gap: 16px; }
+/* One card size for every Collection tab (cats, karts, creators). */
+#stage #catalog .prize-grid {
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
 /* Keep the shared flat indigo fill on utility surfaces, too. */
 #stage :is(.how-item, .how-item.how-win, .shelf-cup, .ach-row, .name-picker) {
   background: var(--menu-surface);

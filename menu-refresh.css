@@ -209,8 +209,9 @@ button.small-pill {
   min-height: 44px;
   min-width: 86px;
 }
+/* Cats and karts share square artwork, so their cards share one size. */
 .racer-grid {
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   max-width: 1100px;
   min-height: 0;
   align-content: start;
@@ -223,7 +224,7 @@ button.small-pill {
 }
 .racer-shot {
   width: 100%;
-  max-width: 160px;
+  max-width: 220px;
 }
 .racer-tap .track-name {
   font-size: 16px;
@@ -231,13 +232,6 @@ button.small-pill {
 .racer-tap .track-sub {
   font-size: 12px;
   min-height: 2.5em;
-}
-#kart-grid {
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  max-width: 1100px;
-}
-#kart-grid .racer-shot {
-  max-width: 220px;
 }
 .racer-body {
   gap: 24px;
