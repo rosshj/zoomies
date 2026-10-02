@@ -302,7 +302,7 @@ await page.evaluate(() => {
   document.querySelector(".pad-focus")?.blur();
 });
 
-// Cat-alog: the buyable prize tiles are <button>s the ring can walk onto.
+// Collection: the prize tiles (locked ones open the unlock sheet) are <button>s the ring can walk onto.
 await page.evaluate(() => document.getElementById("open-catalog").click());
 await frames(2);
 for (let i = 0; i < 4; i++) {
@@ -312,7 +312,7 @@ for (let i = 0; i < 4; i++) {
 }
 await check("d-pad reaches a Cat-alog prize tile (a <button>)", () => {
   const f = document.querySelector("#catalog .prize-tile.pad-focus");
-  return !!f && f.tagName === "BUTTON" && document.querySelectorAll("#catalog .prize-tile.buyable").length > 0;
+  return !!f && f.tagName === "BUTTON" && document.querySelectorAll("#catalog .prize-tile.locked").length > 0;
 });
 await press(1);
 await check("B closes the Cat-alog", () => document.getElementById("catalog").classList.contains("hidden"));
