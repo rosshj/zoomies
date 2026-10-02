@@ -4,7 +4,8 @@ const { origin } = await serveRepo();
 const browser = await launchArtBrowser();
 try {
   const page = await browser.newPage();
-  page.setDefaultTimeout(60000);
+  page.setDefaultTimeout(120000);
+  page.setDefaultNavigationTimeout(180000); // the first boot software-compiles every shader under SwiftShader
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.addInitScript(() => localStorage.setItem("zoomies-profile-v1", JSON.stringify({ treats: 1000 })));

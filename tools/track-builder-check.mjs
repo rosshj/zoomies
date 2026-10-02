@@ -46,9 +46,15 @@ try {
   ]) {
     await p.setViewportSize({ width, height });
     await p.waitForTimeout(300);
-    const before = await p.locator("#track-preview").boundingBox();
     await p.locator('[data-builder-field="biomes"]').click();
-    assert.deepEqual(await p.locator("#track-preview").boundingBox(), before);
+    await p.waitForTimeout(300);
+    // Opening a field trades preview height for the choice list, but the
+    // preview and the Back action must both stay on screen at every size.
+    const preview = await p.locator("#track-preview").boundingBox();
+    assert.ok(
+      preview && preview.height > 40 && preview.y >= 0 && preview.y + preview.height <= height,
+      "Preview left the screen",
+    );
     const back = await p.locator(".builder-done").boundingBox();
     assert.ok(back.y + back.height <= height);
     await p.screenshot({ path: `/tmp/track-builder-${width}.png` });

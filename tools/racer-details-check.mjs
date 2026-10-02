@@ -27,7 +27,8 @@ try {
   await card("kart.3").click();
   await page.locator("#racer-details:not(.hidden)").waitFor();
   await page.waitForTimeout(200);
-  await assertSquare(page.locator("#racer-details-image"));
+  // Presets render a live portrait canvas; the catalog image only backs non-preset items.
+  await assertSquare(page.locator("#racer-details-preview:not([hidden]), #racer-details-image:not([hidden])").first());
   assert.equal(await page.evaluate(() => document.activeElement.id), "racer-details-close");
   assert.match(await page.locator("#racer-details-action").textContent(), /Buy for/);
   await page.screenshot({ path: "/tmp/racer-details-buy.png" });
@@ -48,7 +49,8 @@ try {
   assert.match(await page.locator("#racer-details-requirement").textContent(), /Expert/);
   await page.setViewportSize({ width: 844, height: 390 });
   await page.waitForTimeout(300);
-  await assertSquare(page.locator("#racer-details-image"));
+  // Presets render a live portrait canvas; the catalog image only backs non-preset items.
+  await assertSquare(page.locator("#racer-details-preview:not([hidden]), #racer-details-image:not([hidden])").first());
   await page.screenshot({ path: "/tmp/racer-details-cup.png" });
   await page.locator("#racer-details-action").click();
   assert.equal(await page.locator("#menu").getAttribute("data-step"), "cup");
