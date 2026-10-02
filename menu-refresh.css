@@ -2502,3 +2502,11 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage :is(#flow-cat, #flow-kart) .racer-grid {
   margin-inline: auto; /* centred under the cap, like the Collection grid */
 }
+/* …and height: the two-column screens grew to the window, so on a tall desktop
+   window the racer card was a metre high. Cap them and centre them between
+   the header and the bottom edge. Portrait keeps its own stacked layout. */
+#stage:not(.menu-portrait) :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) > .flow-body,
+#stage:not(.menu-portrait) #track-panel > .flow-body {
+  max-height: 760px;
+  margin-block: auto;
+}
