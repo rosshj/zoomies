@@ -5,11 +5,7 @@
 }
 :root {
   --menu-surface: #2b223b;
-  --menu-muted: #d4c9df;
   --menu-border: rgba(255, 246, 229, 0.16);
-}
-#menu {
-  background: linear-gradient(90deg, rgba(17, 19, 27, 0.56), rgba(17, 19, 27, 0.12) 60%, rgba(17, 19, 27, 0.32));
 }
 .flow-head {
   min-height: 76px;
@@ -40,10 +36,6 @@
   min-width: 44px;
   min-height: 44px;
 }
-#menu-chrome {
-  top: max(15px, var(--safe-top));
-  right: max(20px, var(--safe-right));
-}
 .btn-gold,
 .btn-cream,
 .setup-choice,
@@ -52,12 +44,6 @@
     transform 0.12s ease,
     box-shadow 0.12s ease,
     background 0.12s ease;
-}
-button:focus-visible,
-input:focus-visible,
-textarea:focus-visible {
-  outline: 3px solid #71e7eb;
-  outline-offset: 4px;
 }
 button.small-pill {
   min-height: 44px;
@@ -87,12 +73,6 @@ button.small-pill {
 .title-tag {
   text-align: left;
   font-size: 12px;
-}
-.title-description {
-  font-size: 16px;
-  color: #fff6e5;
-  order: -1;
-  letter-spacing: 0.03em;
 }
 .title-play {
   min-height: 62px;
@@ -263,20 +243,10 @@ button.small-pill {
   gap: 24px;
 }
 .garage-side {
-  width: min(420px, 48%);
   display: flex;
   flex-direction: column;
   gap: 16px;
   align-self: center;
-}
-.garage-intro h3 {
-  font-size: 30px;
-  letter-spacing: -0.6px;
-}
-.garage-intro p {
-  margin-top: 6px;
-  color: var(--menu-muted);
-  font-size: 15px;
 }
 .garage-choice {
   display: flex;
@@ -305,11 +275,6 @@ button.small-pill {
 }
 .garage-choice strong {
   font-size: 19px;
-}
-.garage-save-note {
-  font-size: 12px;
-  color: #fff6e5;
-  text-align: center;
 }
 #garage-done {
   min-height: 52px;
@@ -401,11 +366,6 @@ button.small-pill {
 .start-opts {
   padding: 12px;
 }
-.start-note {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--menu-muted);
-}
 .go-btn {
   min-height: 58px;
   font-size: 20px;
@@ -429,8 +389,7 @@ button.small-pill {
   padding-top: 12px;
 }
 #pause-overlay,
-#results,
-#claim-screen {
+#results {
   background: rgba(14, 12, 24, 0.6);
 }
 .menu-card h1 {
@@ -439,38 +398,15 @@ button.small-pill {
   text-shadow: none;
   letter-spacing: -0.6px;
 }
-#stage.menu-compact .flow-head {
-  min-height: 60px;
-  padding-top: 6px;
-  padding-bottom: 4px;
-}
-#stage.menu-compact .flow-h {
-  font-size: 21px;
-}
 #stage.menu-compact .flow-eyebrow {
   font-size: 10px;
 }
 #stage.menu-compact .flow-body {
   padding: 8px max(16px, var(--safe-right)) max(12px, var(--safe-bottom)) max(16px, var(--safe-left));
 }
-#stage.menu-compact #menu-chrome {
-  top: 8px;
-  right: max(16px, var(--safe-right));
-}
-#stage.menu-compact .title-wrap {
-  width: min(430px, 60%);
-  gap: 7px;
-}
-#stage.menu-compact .title-logo {
-  font-size: 27px;
-}
 #stage.menu-compact .title-tag {
   font-size: 10px;
   margin-bottom: 0;
-}
-#stage.menu-compact .title-description,
-#stage.menu-compact .build-stamp {
-  display: none;
 }
 #stage.menu-compact .title-play {
   min-height: 48px;
@@ -478,17 +414,7 @@ button.small-pill {
   font-size: 21px;
 }
 #stage.menu-compact .title-garage {
-  min-height: 44px;
-  padding: 9px 16px;
   font-size: 16px;
-}
-#stage.menu-compact .title-extras {
-  gap: 7px;
-}
-#stage.menu-compact .title-extras .extra-btn {
-  min-height: 44px;
-  padding: 8px 12px;
-  font-size: 12px;
 }
 #stage.menu-compact .mode-grid {
   gap: 12px;
@@ -530,9 +456,6 @@ button.small-pill {
 #stage.menu-compact .setup-choice {
   padding: 10px 12px;
 }
-#stage.menu-compact .setup-choice strong {
-  font-size: 15px;
-}
 #stage.menu-compact .setup-choice b {
   font-size: 10px;
 }
@@ -556,14 +479,6 @@ button.small-pill {
 }
 #stage.menu-compact .garage-side {
   gap: 10px;
-  width: min(390px, 49%);
-}
-#stage.menu-compact .garage-intro h3 {
-  font-size: 22px;
-}
-#stage.menu-compact .garage-intro p,
-#stage.menu-compact .garage-save-note {
-  display: none;
 }
 #stage.menu-compact .garage-choice {
   padding: 10px;
@@ -725,9 +640,6 @@ button.small-pill {
   flex-basis: 48px;
   font-size: 10px;
 }
-#stage.menu-compact .start-stakes {
-  font-size: 11px;
-}
 #stage.menu-compact .garage-side {
   max-width: 390px;
   width: 100%;
@@ -864,9 +776,6 @@ button.small-pill {
   gap: 10px;
   padding: max(12px, var(--safe-top)) 16px 8px;
 }
-#stage.menu-portrait .flow-head-right {
-  width: 110px;
-}
 #stage.menu-portrait .flow-h {
   font-size: 22px;
 }
@@ -878,18 +787,10 @@ button.small-pill {
   padding: 12px 16px max(20px, var(--safe-bottom));
 }
 #stage.menu-portrait #menu-chrome {
-  top: max(15px, var(--safe-top));
-  right: 16px;
   gap: 6px;
 }
 #stage.menu-portrait #chrome-treats {
   padding: 8px 10px;
-}
-#stage.menu-portrait .title-wrap {
-  width: calc(100% - 48px);
-  max-width: 440px;
-  left: 24px;
-  gap: 12px;
 }
 #stage.menu-portrait .title-logo {
   font-size: clamp(25px, calc(var(--stage-vw) * 8), 36px);
@@ -900,9 +801,6 @@ button.small-pill {
 #stage.menu-portrait .title-play {
   font-size: 24px;
   min-height: 58px;
-}
-#stage.menu-portrait .title-extras {
-  gap: 10px;
 }
 #stage.menu-portrait .mode-grid,
 #stage.menu-portrait .cup-grid {
@@ -988,10 +886,6 @@ button.small-pill {
   flex-basis: 44px;
   font-size: 10px;
 }
-#stage.menu-portrait .start-stakes {
-  font-size: 11px;
-  white-space: normal;
-}
 #stage.menu-portrait .seg-btn {
   min-width: 44px;
 }
@@ -1004,10 +898,6 @@ button.small-pill {
   align-items: stretch;
   justify-content: flex-end;
   gap: 0;
-}
-#stage.menu-portrait .racer-showroom {
-  flex: 1;
-  min-height: 180px;
 }
 #stage.menu-portrait .racer-card {
   width: 100%;
@@ -1022,9 +912,6 @@ button.small-pill {
   margin: 0;
   gap: 12px;
 }
-#stage.menu-portrait .garage-intro {
-  display: none;
-}
 #stage.menu-portrait .garage-choice {
   padding: 12px;
 }
@@ -1034,9 +921,6 @@ button.small-pill {
 }
 #stage.menu-portrait .garage-choice strong {
   font-size: 17px;
-}
-#stage.menu-portrait .garage-save-note {
-  display: block;
 }
 #stage.menu-portrait .settings-nav {
   gap: 3px;
@@ -1207,7 +1091,6 @@ button.small-pill {
   padding: calc(var(--safe-top) + 12px) max(20px, var(--safe-right)) 14px max(20px, var(--safe-left));
   gap: 12px;
   align-items: center;
-  background: rgba(25, 19, 37, 0.82);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 #stage .flow-head-right {
@@ -1265,7 +1148,6 @@ button.small-pill {
 #stage .picker-toolbar {
   padding: 12px max(20px, var(--safe-right)) 12px max(20px, var(--safe-left));
   gap: 12px;
-  background: rgba(25, 19, 37, 0.82);
   align-items: center;
 }
 #stage .picker-toolbar .seg-toggle {
@@ -1302,12 +1184,9 @@ button.small-pill {
   gap: 16px;
 }
 #stage .racer-tap {
-  border: 2px solid transparent;
   border-radius: 18px;
-  background: #fff3dc;
   color: #30263d;
   padding: 10px;
-  box-shadow: 0 4px 10px #100a1833;
   height: auto;
   min-height: 210px;
   gap: 8px;
@@ -1331,7 +1210,6 @@ button.small-pill {
 }
 #stage .racer-tap.is-current {
   border-color: #ffbf47;
-  box-shadow: 0 0 0 2px #ffbf47;
 }
 #stage .tap-title,
 #stage .garage-choice strong {
@@ -1358,7 +1236,6 @@ button.small-pill {
   font-size: 26px;
   font-weight: 700;
 }
-#stage .pause-actions button,
 #stage .results-actions button {
   font-size: 16px;
 }
@@ -1503,8 +1380,10 @@ button.small-pill {
   border: 0;
   box-shadow: none;
 }
+/* One ring for every way of moving focus: the pad's seat, Tab, or focus that
+   arrives from outside the page (menu-ui.js turns .keyboard-navigation on). */
 #stage .pad-focus,
-#stage button:focus-visible {
+#stage :is(button, input, textarea):focus-visible {
   outline: 3px solid #83e5db;
   outline-offset: 3px;
 }
@@ -1551,16 +1430,6 @@ button.small-pill {
   letter-spacing: 0.22em;
   color: #baaccb;
   margin: 0 0 12px 42px;
-}
-#stage .title-description {
-  display: block;
-  order: 2;
-  font-size: clamp(34px, calc(var(--stage-vh) * 5.5), 52px);
-  line-height: 1.02;
-  font-weight: 750;
-  letter-spacing: -1.8px;
-  color: #fff4df;
-  margin: 2px 0 18px;
 }
 #stage .title-play,
 #stage .title-resume {
@@ -1691,10 +1560,6 @@ button.small-pill {
   left: 24px;
   gap: 12px;
 }
-#stage.menu-portrait .title-description {
-  font-size: 44px;
-  margin-bottom: 16px;
-}
 #stage.menu-compact .title-wrap {
   width: min(440px, calc(100vmin - 48px));
   gap: 8px;
@@ -1708,18 +1573,6 @@ button.small-pill {
 }
 #stage.menu-compact .title-tag {
   display: block;
-}
-#stage.menu-compact .title-description {
-  font-size: 28px;
-  line-height: 1;
-  letter-spacing: -0.8px;
-  margin: 0 0 4px;
-}
-#stage.menu-compact .title-description br {
-  display: none;
-}
-#stage.menu-compact .title-description br::after {
-  content: " ";
 }
 #stage.menu-compact .title-play,
 #stage.menu-compact .title-resume {
@@ -1868,7 +1721,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 }
 #stage #flow-startline .setup-pickers {
   flex-direction: row;
-  gap: 8px;
 }
 #stage #flow-startline .setup-choice {
   min-width: 0;
@@ -1919,10 +1771,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact #flow-startline .start-scroll {
   gap: 4px;
 }
-#stage.menu-compact #flow-startline .setup-choice {
-  min-height: 44px;
-  padding: 4px 10px;
-}
 #stage.menu-compact #flow-startline .start-racer {
   padding: 4px 8px;
 }
@@ -1938,8 +1786,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   padding: 14px;
 }
 #stage.menu-portrait #flow-startline .startline-body {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(130px, 1fr) minmax(0, min(450px, 72%));
   gap: 12px;
   padding: 12px 16px max(16px, var(--safe-bottom));
 }
@@ -2015,21 +1861,14 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 }
 
 /* Race setup presents the current recipe; choices live one level below. */
-#stage #flow-startline .setup-pickers {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
 #stage #flow-startline .setup-pickers .setup-choice {
   width: 100%;
-  height: 100%;
   min-height: 56px;
 }
 #stage :is(#flow-startline, #flow-garage, #flow-cat-edit, #flow-kart-edit) .setup-racer-preview {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  background: var(--menu-surface);
   border-radius: var(--control-radius);
   overflow: hidden;
   gap: 0;
@@ -2068,12 +1907,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   padding: 8px 12px;
   font-size: 12px;
 }
-#stage #flow-startline .setup-race-note {
-  padding: 0 4px;
-}
-#stage.menu-portrait #flow-startline .startline-body {
-  grid-template-rows: minmax(110px, 1fr) minmax(0, min(500px, 80%));
-}
 #stage.menu-portrait #flow-startline #racer-portrait {
   height: 180px;
 }
@@ -2084,9 +1917,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage.menu-compact #flow-startline .setup-choice {
   padding: 6px;
   min-height: 52px;
-}
-#stage.menu-compact #flow-startline .setup-choice strong {
-  font-size: 12px;
 }
 #stage.menu-compact #flow-startline #racer-portrait {
   height: 90px;
@@ -2100,7 +1930,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .race-detail-inner {
   width: min(800px, 100%);
   margin: 0 auto;
-  padding: 20px;
 }
 #stage .race-detail-inner > p {
   color: #d3c7df;
@@ -2192,9 +2021,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
   flex: 1 1 0;
   min-width: 0;
 }
-#stage.menu-portrait #flow-startline .startline-body {
-  grid-template-rows: minmax(180px, 1fr) minmax(0, min(460px, calc(100% - 192px)));
-}
 #stage.menu-compact #flow-startline #setup-mode {
   min-height: 52px;
 }
@@ -2217,12 +2043,10 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 }
 #stage.menu-portrait #flow-startline .setup-racer-panel {
   flex: 1 1 0;
-  min-height: 184px;
 }
 #stage.menu-portrait #flow-startline .start-side {
   flex: 0 1 auto;
   height: auto;
-  max-height: calc(100% - 196px);
 }
 #stage.menu-portrait #flow-startline .start-scroll {
   flex: 0 1 auto;
@@ -2299,7 +2123,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #racer-details-action[hidden] { display: none; }
 #stage.menu-portrait .racer-details-card { grid-template-columns: minmax(0, 1fr); max-width: 360px; }
 #stage.menu-portrait #racer-details-image { height: auto; }
-#stage .prize-tile .prize-shot { aspect-ratio: 1; }
 
 /* Setup repeats the visual identity of the choices that lead into it. */
 #stage #flow-startline #setup-mode {
@@ -2533,7 +2356,6 @@ html:not(.keyboard-navigation) #stage button:focus-visible:not(.pad-focus) {
 #stage .studio-screen .racer-body { grid-template-rows: minmax(0, 1fr); }
 #stage.menu-portrait .studio-screen .racer-body {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(180px, 1fr) minmax(0, 1fr);
 }
 #stage.menu-compact .studio-screen .studio-overview { gap: 8px; }
 #stage.menu-compact #menu .studio-summary { min-height: 48px; padding: 8px 16px; }

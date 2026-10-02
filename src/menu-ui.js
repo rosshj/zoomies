@@ -3,6 +3,12 @@ import { installMenuIcons } from "./menu-icons.js";
 export function initMenuUI() {
   installTextEntry();
   installMenuIcons();
+  // Focus rings show for keyboard users only. A key press turns them on and a
+  // pointer tap turns them off; focus that arrives from outside the page (Tab
+  // in from the browser chrome, a screen reader) never raises a keydown here,
+  // so trust the browser's own :focus-visible unless a tap just moved focus
+  // programmatically (the surface observer below seats focus after each tap).
+  let lastPointer = -Infinity;
   document.addEventListener(
     "keydown",
     (e) => {
@@ -12,7 +18,18 @@ export function initMenuUI() {
   );
   document.addEventListener(
     "pointerdown",
-    () => document.documentElement.classList.remove("keyboard-navigation"),
+    () => {
+      lastPointer = performance.now();
+      document.documentElement.classList.remove("keyboard-navigation");
+    },
+    true,
+  );
+  document.addEventListener(
+    "focusin",
+    (e) => {
+      if (performance.now() - lastPointer > 600 && e.target.matches?.(":focus-visible"))
+        document.documentElement.classList.add("keyboard-navigation");
+    },
     true,
   );
   document.getElementById("track-apply").textContent = "Use this track";
