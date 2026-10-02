@@ -43,7 +43,9 @@ These are Chromium viewport and simulated-controller checks on a Mac, not physic
 
 Run `npm run check:menus`, `npm run check:menu-state`, and `npm run check:menupad` for the main interaction regressions. The scripts serve isolated local instances. `npm run check:offline` checks cached startup. `npm run build:web` includes the new UI assets.
 
-For the gallery run `npm run menu:gallery` (it serves the repository itself and writes only `review/`, which is gitignored). Tests also save selected captures to `after/`.
+The narrower browser checks are `check:studio`, `check:track-builder`, `check:racer-details`, `check:preview-rotation`, `check:track-portrait`, `check:menu-consistency` and `check:menu-followup`; every tool serves the repository itself. `npm run gen:track-previews` regenerates the bundled track stills after a featured recipe or world-art change.
+
+For the gallery run `npm run menu:gallery` (it writes only `review/`, which is gitignored). Tests also save selected captures to `after/`. For a stylesheet refactor, run the gallery with `STYLE_DUMP=before.json` on the old tree and `STYLE_DUMP=after.json` on the new one, then `npm run menu:style-diff -- before.json after.json`: it compares every element's computed style and rect on every captured surface and viewport.
 
 
 ## Device feedback revision

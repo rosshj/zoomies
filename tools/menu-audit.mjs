@@ -20,7 +20,7 @@ const sizes = [
 ];
 const measurements = [];
 const setupOnly = process.argv.includes("--setup-only");
-// STYLE_DUMP=<file.json> also records every element's computed-style hash per capture (see tools/css-style-diff.mjs).
+// STYLE_DUMP=<file.json> also records every element's computed-style hash per capture (diff two dumps with tools/menu-style-diff.mjs).
 const styleDump = process.env.STYLE_DUMP ? [] : null;
 async function click(sel) {
   await page.locator(sel).click();
