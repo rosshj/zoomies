@@ -1,0 +1,351 @@
+/* Celebrations — the layer src/celebrate.js drives: confetti canvas, the
+   sticker banner, reveal cards, the treats fly-in and the badge stamp. It sits
+   inside #stage above the results overlay, so it rotates with the phone. */
+#celebrate {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  pointer-events: none;
+  font-family: var(--menu-font);
+  overflow: hidden;
+}
+#celebrate.hidden {
+  display: none;
+}
+#celebrate-confetti {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* --- Sticker banner -------------------------------------------------------- */
+.celebrate-banner {
+  position: absolute;
+  left: 50%;
+  top: 38%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 14px 34px 16px;
+  border-radius: 22px;
+  background: #fff3dc;
+  color: #30263d;
+  border: 4px solid #30263d;
+  box-shadow:
+    0 0 0 5px #ffc64b,
+    0 18px 40px rgba(0, 0, 0, 0.45);
+  transform: translate(-50%, -50%) rotate(-4deg) scale(2.6);
+  opacity: 0;
+  text-align: center;
+  max-width: min(92%, 640px);
+  white-space: nowrap;
+}
+.celebrate-banner[data-tone="teal"] {
+  box-shadow:
+    0 0 0 5px #5ad1c9,
+    0 18px 40px rgba(0, 0, 0, 0.45);
+}
+.celebrate-banner.is-in {
+  animation: celebrate-slam 0.42s cubic-bezier(0.2, 1.4, 0.3, 1) forwards;
+}
+.celebrate-banner.is-out {
+  animation: celebrate-drop 0.42s ease-in forwards;
+}
+.celebrate-banner-emoji {
+  font-size: 44px;
+  line-height: 1;
+}
+.celebrate-banner-emoji:empty {
+  display: none;
+}
+.celebrate-banner-title {
+  font-size: clamp(26px, 6vw, 44px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  line-height: 1.05;
+}
+.celebrate-banner-sub {
+  font-size: clamp(13px, 2.4vw, 18px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #6c5b93;
+}
+.celebrate-banner-sub.hidden {
+  display: none;
+}
+@keyframes celebrate-slam {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) rotate(-10deg) scale(2.6);
+  }
+  60% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-3deg) scale(0.94);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-4deg) scale(1);
+  }
+}
+@keyframes celebrate-drop {
+  0% {
+    opacity: 1;
+    transform: translate(-50%, -50%) rotate(-4deg) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, 30%) rotate(6deg) scale(0.8);
+  }
+}
+
+/* --- Reveal cards ------------------------------------------------------------ */
+#celebrate-reveal {
+  pointer-events: auto;
+  z-index: 2;
+  align-items: center;
+  background: radial-gradient(circle at 50% 40%, rgba(12, 10, 22, 0.55), rgba(6, 5, 12, 0.88) 80%);
+}
+#celebrate-reveal.hidden {
+  display: none;
+}
+.celebrate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(420px, 100%);
+  padding: 20px 20px 18px;
+  border-radius: 28px;
+  background: var(--menu-surface, #2a2338);
+  color: #fff3dc;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+  animation: celebrate-card-in 0.5s cubic-bezier(0.2, 1.3, 0.3, 1) both;
+}
+@keyframes celebrate-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.celebrate-card .flow-eyebrow {
+  letter-spacing: 0.16em;
+}
+.celebrate-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: min(52vh, 360px);
+  border-radius: 22px;
+  overflow: hidden;
+  background: radial-gradient(ellipse 100% 100% at 50% 125%, #30263d26 99.5%, transparent 100%),
+    var(--celebrate-backdrop, #a4dedf);
+  display: grid;
+  place-items: center;
+}
+#celebrate-portrait {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  grid-area: 1 / 1;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.35s ease,
+    transform 0.55s cubic-bezier(0.2, 1.4, 0.3, 1);
+}
+.celebrate-mystery {
+  grid-area: 1 / 1;
+  font-size: clamp(90px, 30vw, 170px);
+  font-weight: 900;
+  color: #30263d;
+  opacity: 0.85;
+  animation: celebrate-wobble 1.1s ease-in-out infinite;
+  transition:
+    opacity 0.25s ease,
+    transform 0.35s ease-in;
+}
+@keyframes celebrate-wobble {
+  0%,
+  100% {
+    transform: rotate(-6deg) scale(1);
+  }
+  50% {
+    transform: rotate(6deg) scale(1.06);
+  }
+}
+.celebrate-ribbon {
+  position: absolute;
+  top: 18px;
+  right: -40px;
+  padding: 6px 48px;
+  background: #ff6b6b;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  transform: rotate(35deg) translateY(-120px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.5s cubic-bezier(0.2, 1.4, 0.3, 1) 0.15s;
+}
+.celebrate-stage[data-subject="none"] .celebrate-mystery {
+  animation: none;
+  opacity: 1;
+}
+#celebrate-reveal.is-open #celebrate-portrait {
+  opacity: 1;
+  transform: none;
+}
+#celebrate-reveal.is-open .celebrate-stage[data-subject]:not([data-subject="none"]) .celebrate-mystery {
+  opacity: 0;
+  transform: scale(1.8);
+  animation: none;
+}
+#celebrate-reveal.is-open .celebrate-ribbon {
+  transform: rotate(35deg) translateY(0);
+}
+.celebrate-name {
+  margin: 4px 0 0;
+  font-size: clamp(24px, 6vw, 34px);
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  color: #ffc64b;
+  opacity: 0;
+  transform: scale(2.2);
+}
+#celebrate-reveal.is-open .celebrate-name {
+  animation: celebrate-stamp-in 0.4s cubic-bezier(0.2, 1.4, 0.3, 1) 0.1s forwards;
+}
+@keyframes celebrate-stamp-in {
+  from {
+    opacity: 0;
+    transform: scale(2.2) rotate(-6deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.celebrate-sub {
+  margin: 0;
+  font-size: 14px;
+  color: #d9cfeb;
+  line-height: 1.45;
+}
+.celebrate-sub.hidden {
+  display: none;
+}
+.celebrate-dots {
+  display: flex;
+  gap: 6px;
+  min-height: 8px;
+}
+.celebrate-dots i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 243, 220, 0.3);
+}
+.celebrate-dots i.is-on {
+  background: #ffc64b;
+}
+#celebrate-continue {
+  width: 100%;
+  min-height: 52px;
+}
+
+/* --- Treats fly-in ------------------------------------------------------------ */
+.celebrate-fish {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 22px;
+  line-height: 1;
+  pointer-events: none;
+  z-index: 3;
+  animation: celebrate-fly 0.75s cubic-bezier(0.3, 0, 0.7, 1) both;
+}
+/* Two keyframes can't bend a path on their own: the arc is the lift halfway. */
+@keyframes celebrate-fly {
+  0% {
+    transform: translate(var(--x0), var(--y0)) translate(-50%, -50%) scale(0.6);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc((var(--x0) + var(--x1)) / 2), calc((var(--y0) + var(--y1)) / 2 + var(--lift)))
+      translate(-50%, -50%) scale(1.15);
+  }
+  100% {
+    transform: translate(var(--x1), var(--y1)) translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+}
+.celebrate-bump {
+  display: inline-block; /* transforms need a box; the amount spans are inline */
+  animation: celebrate-bump 0.32s cubic-bezier(0.2, 1.4, 0.3, 1);
+}
+@keyframes celebrate-bump {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.22);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* --- Badge stamp --------------------------------------------------------------- */
+.celebrate-stamp {
+  animation: celebrate-stamp 0.45s cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+@keyframes celebrate-stamp {
+  0% {
+    opacity: 0;
+    transform: scale(1.6) rotate(-4deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(0.96);
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celebrate-banner.is-in,
+  .celebrate-banner.is-out,
+  .celebrate-card,
+  .celebrate-mystery,
+  #celebrate-reveal.is-open .celebrate-name,
+  .celebrate-fish,
+  .celebrate-bump,
+  .celebrate-stamp {
+    animation: none;
+  }
+  .celebrate-banner.is-in {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+  .celebrate-name,
+  #celebrate-portrait,
+  .celebrate-ribbon {
+    transition: none;
+  }
+  #celebrate-reveal.is-open .celebrate-name {
+    opacity: 1;
+    transform: none;
+  }
+}

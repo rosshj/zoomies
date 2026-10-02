@@ -59,6 +59,7 @@
     "check:studio": "node tools/studio-check.mjs",
     "check:track-builder": "node tools/track-builder-check.mjs",
     "check:track-portrait": "node tools/track-portrait-check.mjs",
+    "check:celebrations": "node tools/celebrations-check.mjs",
     "menu:gallery": "node tools/menu-audit.mjs",
     "gen:track-previews": "node tools/generate-track-previews.mjs",
     "menu:style-diff": "node tools/menu-style-diff.mjs"

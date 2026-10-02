@@ -35,6 +35,7 @@ export function defaultStats() {
     treatsEarned: 0,
     propsKnocked: 0,
     versusRaces: 0,
+    customsMade: 0, // custom cats/karts adopted from the studio (the first is a moment)
     winsByBiome: {},
   };
 }

@@ -25,6 +25,7 @@
   <link rel="stylesheet" href="./styles.css" />
   <link rel="stylesheet" href="./menu-refresh.css" />
   <link rel="stylesheet" href="./menu-components.css" />
+  <link rel="stylesheet" href="./celebrate.css" />
   <!-- Import map: every dependency is vendored LOCALLY — three under
        vendor/three/ (removes the unpkg dependency AND the external
        greggman.github.io debug import the non-min build pulls in).
@@ -870,6 +871,34 @@
         <button id="results-next-btn" class="btn-gold hidden">Next race</button>
         <button id="restart-btn" class="btn-gold">Race again</button>
         <div class="results-secondary"><button id="results-setup-btn" class="btn-cream">Race setup</button><button id="results-menu-btn" class="btn-cream">Home</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Celebrations ===== -->
+  <!-- The big-moment layer (src/celebrate.js): a confetti canvas over the whole
+       stage, the sticker banner that slams in for "CHAMPION!" / "NEW BEST!",
+       and the reveal cards a fresh unlock bursts out of. Above the results so a
+       prize can be revealed over the standings; rotates with the stage. -->
+  <div id="celebrate" class="hidden">
+    <canvas id="celebrate-confetti" aria-hidden="true"></canvas>
+    <div id="celebrate-banner" class="celebrate-banner hidden" role="status" aria-live="polite">
+      <span class="celebrate-banner-emoji"></span>
+      <span class="celebrate-banner-title"></span>
+      <span class="celebrate-banner-sub hidden"></span>
+    </div>
+    <div id="celebrate-reveal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="celebrate-reveal-title">
+      <div class="celebrate-card">
+        <div class="flow-eyebrow" id="celebrate-reveal-kicker">New cat</div>
+        <div class="celebrate-stage" data-subject="none">
+          <canvas id="celebrate-portrait" width="640" height="640" role="img" aria-label=""></canvas>
+          <div class="celebrate-mystery" aria-hidden="true">?</div>
+          <span class="celebrate-ribbon" aria-hidden="true">NEW</span>
+        </div>
+        <h2 id="celebrate-reveal-title" class="celebrate-name"></h2>
+        <p class="celebrate-sub hidden"></p>
+        <div class="celebrate-dots" aria-hidden="true"></div>
+        <button id="celebrate-continue" class="btn-gold">Nice!</button>
       </div>
     </div>
   </div>

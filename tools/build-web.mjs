@@ -44,6 +44,7 @@ const INCLUDE = [
   "styles.css",
   "menu-refresh.css",
   "menu-components.css",
+  "celebrate.css",
   "sw.js",
   "manifest.json",
   "apple-touch-icon.png",

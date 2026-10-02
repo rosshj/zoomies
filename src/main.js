@@ -5,7 +5,19 @@ import { renderTrackPortrait } from "./track-portrait.js";
 import { mountStudio } from "./studio-ui.js";
 import { contrastBg } from "./catalog-palette.js";
 import { menuIcon } from "./menu-icons.js";
-import { renderRacerPortrait } from "./racer-portrait.js";
+import { renderRacerPortrait, spinPortrait } from "./racer-portrait.js";
+import {
+  installCelebrations,
+  banner as celebrateBanner,
+  reveal as celebrateReveal,
+  flyTreats,
+  countUp,
+  stamp as celebrateStamp,
+  confettiCannons,
+  clearCelebrations,
+  reducedMotion,
+} from "./celebrate.js";
+import { buildPodium, WorldConfetti } from "./podium.js";
 import { initMenuUI } from "./menu-ui.js";
 import { FEATURED_TRACKS } from "./featured-tracks.js";
 import * as THREE from "three";
@@ -48,6 +60,7 @@ import {
   disposeGroup as _disposeGroup,
   createKartModel,
   createCat,
+  updateCatRig,
   CAT_PATTERNS,
   CAT_ACCESSORIES,
   ACCESSORY_COLORS,
@@ -1535,6 +1548,13 @@ let _ghostGroup = null; // the translucent ghost kart in the scene
 const stage = document.getElementById("stage");
 const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
+installCelebrations({
+  renderPortrait: renderRacerPortrait,
+  spinPortrait,
+  haptic: (style) => getPlatform().haptics?.impact?.(style),
+  cue: uiCue,
+  stageSize: () => ({ w: stageState.W || stage.clientWidth, h: stageState.H || stage.clientHeight }),
+});
 
 function layoutStage() {
   const iw = window.innerWidth;
@@ -3006,6 +3026,8 @@ function refreshResumeBtn() {
   refreshTitlePlay();
 }
 function toMenu() {
+  endPodium();
+  clearCelebrations();
   // Opening the menu mid-race parks it (so START is a fresh race but you can also
   // Resume). Reaching the menu from results clears any parked race.
   hideFlyUI(); // safety: never leave the fly-cam chrome up over the menu
@@ -4827,6 +4849,7 @@ function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
       rerender();
       racerDetailsReturn = origin?.querySelector(`[data-racer-id="${buyId}"]`);
       closeRacerDetails();
+      celebrateReveal([{ ...revealCardFor(buyId), kicker: "Yours!", ribbon: "BOUGHT" }]);
     };
   } else if (entry?.cup || entry?.cups || entry?.diff) {
     action.textContent = "Choose cup";
@@ -5013,6 +5036,7 @@ for (const [which, id] of [
       saveProfile();
       refreshTreatsChip();
       uiCue("chime");
+      celebrateReveal([{ ...revealCardFor(id), kicker: "Yours!", ribbon: "BOUGHT" }]);
     } else uiCue("error");
     refreshEditorLocks();
   });
@@ -5024,8 +5048,16 @@ document.getElementById("cat-edit-use")?.addEventListener("click", () => {
     return;
   }
   _garageDraft.cat = CUSTOM_CAT_IDX;
+  noteCustomMade("cat");
   commitRacer();
 });
+// The first time a studio design is adopted is a moment; after that it's routine.
+function noteCustomMade(which) {
+  profile.stats.customsMade = (profile.stats.customsMade || 0) + 1;
+  saveProfile();
+  if (profile.stats.customsMade === 1)
+    celebrateBanner({ emoji: "✦", title: "Your own racer!", sub: `A custom ${which}, made by you`, hold: 2200 });
+}
 document.getElementById("kart-edit-use")?.addEventListener("click", () => {
   if (!isUnlocked(profile, "custom.kart")) {
     uiCue("error");
@@ -5033,6 +5065,7 @@ document.getElementById("kart-edit-use")?.addEventListener("click", () => {
     return;
   }
   _garageDraft.kart = CUSTOM_KART_IDX;
+  noteCustomMade("kart");
   commitRacer();
 });
 refreshRacerSummary();
@@ -6301,15 +6334,32 @@ function renderCatalog() {
         b.className = "ach-claim";
         b.textContent = `CLAIM +${a.pay}`;
         b.addEventListener("click", () => {
+          const before = profile.treats;
           if (!claimAchievement(profile, a.id)) return;
           saveProfile();
           refreshTreatsChip();
           sparkleBurst(d, 10);
-          b.replaceWith(
-            Object.assign(document.createElement("span"), { className: "ach-pay", textContent: `+${a.pay} 🐟` }),
-          );
+          const paid = Object.assign(document.createElement("span"), {
+            className: "ach-pay",
+            textContent: `+${a.pay} 🐟`,
+          });
+          b.replaceWith(paid);
           const bal = document.getElementById("catalog-treats");
-          if (bal) bal.textContent = `🐟 ${profile.treats}`;
+          if (bal) {
+            const after = profile.treats;
+            flyTreats({
+              from: paid,
+              to: bal,
+              count: Math.max(2, Math.min(6, Math.round(a.pay / 25))),
+              onLand: (j, n) =>
+                countUp(
+                  bal,
+                  Math.round(before + ((after - before) * j) / n),
+                  Math.round(before + ((after - before) * (j + 1)) / n),
+                  { ms: 200, prefix: "🐟 " },
+                ),
+            });
+          }
           const body = document.querySelector("#catalog .flow-body");
           const scroll = body.scrollTop;
           renderCatalog();
@@ -6549,6 +6599,8 @@ function setTimeTrialHud(on) {
   if (timerEl) timerEl.classList.remove("ahead", "behind");
 }
 function beginRace() {
+  endPodium();
+  clearCelebrations();
   // These need the user-gesture from the click, so fire them synchronously.
   audio.unlock(); // browsers only allow audio to start from a gesture
   audio.uiClick();
@@ -7543,7 +7595,7 @@ function settleRaceRewards() {
   const earned = awardEarnedUnlocks(profile);
   saveProfile();
   refreshTreatsChip();
-  return { payout, fresh, cup, earned };
+  return { payout, fresh, cup, earned, daily };
 }
 function clearCupRun() {
   try {
@@ -7643,10 +7695,10 @@ window.__zoomies.debugFinish = () => {
   return true;
 };
 
-function showResults() {
+function showResults(presettled = null) {
   state = State.FINISHED;
   renderResults();
-  const settled = settleRaceRewards();
+  const settled = presettled || settleRaceRewards();
   renderRaceEarnings(settled);
   if (settled?.cup?.last) {
     _cupState = null;
@@ -7656,14 +7708,258 @@ function showResults() {
   document.getElementById("results-setup-btn").classList.toggle("btn-gold", !!settled?.cup?.last);
   const badges = bankPendingBadges();
   const earnings = document.getElementById("results-earnings");
-  for (const badge of badges)
-    earnings.appendChild(earnRow(`🏅 ${badge.name} · collected`, `+${badge.pay}`, "earn-ach"));
+  const badgeRows = badges.map((badge) =>
+    earnings.appendChild(earnRow(`🏅 ${badge.name} · collected`, `+${badge.pay}`, "earn-ach earn-badge")),
+  );
   if (badges.length) earnings.classList.remove("hidden");
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // results overlay takes over from the faded victory HUD
   document.getElementById("results").classList.remove("hidden");
+  celebrateResults(settled, badgeRows);
 }
+
+// The 6.5s victory orbit is over: settle the race, then either cut to the
+// podium (the player just won a cup) or bring the standings up.
+function finishSequence() {
+  if (state !== State.FINISHED || !player?.finished) return; // the player already left
+  const settled = settleRaceRewards();
+  const cup = settled?.cup;
+  if (cup?.last && cup.standings[0]?.name === "You" && !splitActive && !reducedMotion()) startPodium(settled);
+  else showResults(settled);
+}
+
+// --- Celebrations: what each results screen gets on top of the ledger ---------
+// Small: the payout rows fly their fish into the total, which counts up, and a
+// collected badge stamps down. Medium: a reveal card per fresh unlock (and a
+// trophy card on a cup win). Banners for the one-off firsts.
+function celebrateResults(settled, badgeRows = []) {
+  if (!settled) return;
+  animateEarnings(settled.payout, badgeRows);
+  const cup = settled.cup;
+  const cards = [];
+  if (cup?.last && cup.award) {
+    cards.push(trophyCard(cup));
+    if (cup.award.unlockId) cards.push(revealCardFor(cup.award.unlockId));
+    for (const id of cup.award.extraUnlocks || []) cards.push(revealCardFor(id));
+    if (CUPS.every((c) => Object.hasOwn(profile.trophies, c.id)) && cup.award.firstWin)
+      cards.push({
+        kicker: "Every cup conquered",
+        name: "Grand Champion",
+        sub: "Each trophy keeps its best difficulty — Expert sweeps are the final flex.",
+        emoji: "👑",
+        ribbon: "ALL CUPS",
+      });
+  }
+  for (const id of settled.earned || []) if (id !== cup?.award?.unlockId) cards.push(revealCardFor(id));
+  // One-off firsts get a banner (a cup win already has the podium's).
+  if (!cup?.last) {
+    if (player.place === 1 && profile.stats.wins === 1)
+      celebrateBanner({ emoji: "🏁", title: "First win!", sub: "The first of many", hold: 2400 });
+    else if (settled.daily)
+      celebrateBanner({
+        emoji: "📅",
+        title: "Daily done!",
+        sub: `${profile.stats.dailies} dail${profile.stats.dailies === 1 ? "y" : "ies"} raced`,
+        hold: 2200,
+      });
+  }
+  if (cards.length) setTimeout(() => celebrateReveal(cards), cup?.last ? 1600 : 700);
+}
+function animateEarnings(payout, badgeRows) {
+  const box = document.getElementById("results-earnings");
+  const totalRow = box?.querySelector(".earn-total");
+  const totalAmt = totalRow?.lastElementChild;
+  if (!totalAmt || !payout) return;
+  const lines = [...box.querySelectorAll(".earn-row:not(.earn-ach):not(.earn-total)")];
+  let shown = 0;
+  if (!reducedMotion() && lines.length) totalAmt.textContent = "🐟 0";
+  lines.forEach((row, i) => {
+    const amt = payout.lines[i]?.amt || 0;
+    const fish = Math.max(1, Math.min(5, Math.round(amt / 25)));
+    const before = shown;
+    shown += amt;
+    const after = shown;
+    flyTreats({
+      from: row.lastElementChild,
+      to: totalAmt,
+      count: fish,
+      delay: 350 + i * 260,
+      onLand: (j, n) =>
+        countUp(
+          totalAmt,
+          Math.round(before + ((after - before) * j) / n),
+          Math.round(before + ((after - before) * (j + 1)) / n),
+          { ms: 220, prefix: "🐟 " },
+        ),
+    });
+  });
+  badgeRows.forEach((row, i) => celebrateStamp(row, 600 + lines.length * 260 + i * 220));
+}
+function trophyCard(cup) {
+  const diff = cup.award.difficulty;
+  const label = AI_DIFFICULTY[diff]?.label || diff;
+  return {
+    kicker: cup.award.firstWin ? "Cup won" : "Trophy upgraded",
+    name: cup.cupDef.name,
+    sub: cup.award.firstWin ? `${label} trophy · 🐟 +${cup.award.treats}` : `Now a ${label} trophy`,
+    emoji: cup.cupDef.emoji || "🏆",
+    ribbon: cup.award.firstWin ? "WON" : "UPGRADED",
+    backdrop: "#ffe7a8",
+  };
+}
+// A reveal card for an unlock id: live model for cats, karts and accessories.
+function revealCardFor(id) {
+  const m = id.match(/^(cat|kart)\.(\d+)$/);
+  if (m && m[1] === "cat") {
+    const cat = catSpec({ cat: +m[2] });
+    return {
+      kicker: "New cat",
+      name: cat.name,
+      subject: "cat",
+      cat,
+      kart: kartSpec({ kart: 0 }),
+      backdrop: contrastBg(cat.fur),
+    };
+  }
+  if (m) {
+    const kart = kartSpec({ kart: +m[2] });
+    return {
+      kicker: "New kart",
+      name: kart.name,
+      subject: "kart",
+      cat: catSpec({ cat: 0 }),
+      kart,
+      backdrop: contrastBg(kart.color),
+    };
+  }
+  const am = id.match(/^acc\.(\w+)$/);
+  if (am) {
+    const cat = catSpec({ cat: CUSTOM_CAT_IDX, customCat: { ...DEFAULT_CUSTOM_CAT, accessory: am[1] } });
+    return {
+      kicker: "New accessory",
+      name: ACCESSORY_LABELS[am[1]] || am[1],
+      sub: "For your custom cat",
+      subject: "cat",
+      cat,
+      kart: kartSpec({ kart: 0 }),
+      backdrop: contrastBg(cat.fur),
+    };
+  }
+  if (id === "custom.cat")
+    return { kicker: "Creator unlocked", name: "Custom Cat", sub: "Design your own racer in the garage", emoji: "✦" };
+  if (id === "custom.kart")
+    return { kicker: "Creator unlocked", name: "Custom Kart", sub: "Build your own ride in the garage", emoji: "✦" };
+  return { kicker: "Unlocked", name: unlockName(id), emoji: "🎁" };
+}
+
+// --- Podium ceremony -------------------------------------------------------------
+// The top three of the cup stand on the podium just past the start gate, the
+// confetti cannons fire and the camera dollies in from down the straight. The
+// standings come up over it after a few seconds and it keeps going behind them.
+let _podium = null;
+function startPodium(settled) {
+  endPodium();
+  const built = buildPodium(track);
+  scene.add(built.group);
+  const byName = new Map(karts.map((k) => [k === player ? "You" : k.name, k]));
+  const parked = new Map();
+  settled.cup.standings.slice(0, 3).forEach((row, i) => {
+    const k = byName.get(row.name);
+    if (!k) return;
+    if (!k.finished) {
+      // Still out on the track: its projected gap becomes its time, so the
+      // standings read the same as if it had driven home.
+      k.finishTime = raceTime + projectedGap(k);
+      k.finished = true;
+    }
+    k.speed = 0;
+    k.y = 0;
+    parked.set(k, built.slots[i]);
+  });
+  for (const k of karts) k.group.visible = parked.has(k);
+  _podium = { built, confetti: new WorldConfetti(scene), parked, t: 0, settled, shown: false, nextPop: 0.3, pops: 0 };
+  _fwTimer = 9; // the arch mortars join in
+  _fwNext = 0.3;
+  camera.fov = 48;
+  camera.updateProjectionMatrix();
+  updatePodium(0);
+  uiCue("success");
+  celebrateBanner({ emoji: "🏆", title: "Champion!", sub: settled.cup.cupDef.name, hold: 2800, burst: false });
+  confettiCannons(1500, 110);
+  window.__zoomies.podium = _podium;
+}
+const _podCam = new THREE.Vector3();
+const _podUp = new THREE.Vector3(0, 1, 0);
+function updatePodium(dt) {
+  const P = _podium;
+  if (!P) return;
+  P.t += dt;
+  for (const [k, slot] of P.parked) {
+    k.position.copy(slot.position);
+    k.heading = slot.heading;
+    k.group.position.set(slot.position.x, slot.position.y, slot.position.z);
+    k.group.rotation.set(0, slot.heading, 0);
+    updateCatRig(k.catRig, dt, 0, 0, false, true, true);
+  }
+  // Cannons: a volley through the first seconds, then the odd pop for colour.
+  P.nextPop -= dt;
+  if (P.nextPop <= 0 && P.t < 60) {
+    P.nextPop = P.t < 7 ? 0.4 + Math.random() * 0.35 : 2.5 + Math.random() * 2.5;
+    const i = P.pops++ % 2;
+    const dir = _podCam
+      .copy(P.built.forward)
+      .multiplyScalar(-0.35)
+      .addScaledVector(P.built.side, i ? -0.5 : 0.5)
+      .add(_podUp)
+      .normalize();
+    P.confetti.burst(P.built.cannons[i], dir, P.t < 7 ? 70 : 30, 12);
+  }
+  P.confetti.update(dt);
+  // Camera: dolly in from far down the straight, then a slow sway.
+  const c = P.built.centre;
+  const e = 1 - Math.pow(1 - Math.min(1, P.t / 5.5), 3);
+  const dist = 30 - 15 * e;
+  const height = 10 - 5.2 * e;
+  const ang = 0.22 * Math.sin(P.t * 0.28);
+  _podCam
+    .copy(c)
+    .addScaledVector(P.built.forward, dist * Math.cos(ang))
+    .addScaledVector(P.built.side, dist * Math.sin(ang));
+  _podCam.y = c.y + height;
+  if (P.t === 0) camPos.copy(_podCam);
+  else camPos.lerp(_podCam, 1 - Math.pow(0.05, dt));
+  camera.position.copy(camPos);
+  camera.lookAt(c.x, c.y + 0.4, c.z);
+  camera.fov += (50 - camera.fov) * Math.min(1, dt * 2);
+  camera.updateProjectionMatrix();
+  _uVignette.value += (BASE_VIGNETTE - _uVignette.value) * Math.min(1, dt * 5);
+  _uAberr.value += (0 - _uAberr.value) * Math.min(1, dt * 5);
+  if (!P.shown && P.t >= 6.5) {
+    P.shown = true;
+    showResults(P.settled);
+  }
+}
+function endPodium() {
+  const P = _podium;
+  if (!P) return;
+  _podium = null;
+  window.__zoomies.podium = null;
+  scene.remove(P.built.group);
+  _disposeGroup(P.built.group);
+  P.confetti.dispose();
+  for (const k of karts) k.group.visible = true;
+}
+// Debug hook: run the whole finish → podium → results sequence now, as if the
+// 6.5s victory orbit had just ended (the celebrations check drives this).
+window.__zoomies.debugFinishSequence = () => {
+  if (!player || player.finished) return false;
+  player.finished = true;
+  player.finishTime = raceTime;
+  state = State.FINISHED;
+  finishSequence();
+  return true;
+};
 
 // --- Finish clock ------------------------------------------------------------
 // Once the human(s) are home the rest of the field keeps racing through the
@@ -8876,13 +9172,17 @@ function loopBody(now) {
         // New best lap → save this run's path as the ghost to chase next time.
         if (ttRecord && ttRecord.length >= 10 && _ttResult.top[0] === _ttResult.entry) saveGhostData(ttRecord);
         if (_ghostGroup) _ghostGroup.visible = false;
-        hud.showToast(_ttResult.top[0] === _ttResult.entry ? "🏁 NEW BEST!" : "LAP DONE!");
+        if (_ttResult.top[0] === _ttResult.entry) {
+          hud.showToast("🏁 NEW BEST!");
+          celebrateBanner({ emoji: "⏱", title: "New best!", sub: formatLap(lapTime), tone: "teal" });
+        } else hud.showToast("LAP DONE!");
         setTimeout(showResults, 4000);
       } else {
         hud.showToast(splitActive ? "🏁 RACE OVER!" : "FINISH!");
         // The HUD fades for the victory lap now, so a long empty orbit drags —
-        // one flying pass (~6.5s) is celebration enough before the results.
-        setTimeout(showResults, 6500);
+        // one flying pass (~6.5s) is celebration enough before the results
+        // (a cup win cuts to the podium first; see finishSequence).
+        setTimeout(finishSequence, 6500);
       }
       state = State.FINISHED; // freeze player input; kart auto-pilots its victory lap
     }
@@ -8891,14 +9191,17 @@ function loopBody(now) {
   if (state === State.FINISHED) {
     // Victory lap: every kart auto-pilots around the circuit and the camera orbits
     // the player's kart (each half keeps chasing its own kart in Versus);
-    // fireworks keep popping from the arch.
-    for (const k of karts) k.driveAI(track, dt);
-    for (const k of karts) k.update(dt, track);
+    // fireworks keep popping from the arch. During the podium ceremony the
+    // top three stand still on their steps and the camera belongs to the podium;
+    // the rest of the field keeps racing (unseen) so the standings settle.
+    for (const k of karts) if (!_podium || !_podium.parked.has(k)) k.driveAI(track, dt);
+    for (const k of karts) if (!_podium || !_podium.parked.has(k)) k.update(dt, track);
     tickFinishClock(dt); // race clock + straggler settlement + live standings
-    resolveCollisions();
+    if (!_podium) resolveCollisions();
     updateFireworks(dt);
     effects.update(dt);
-    if (splitActive && player2) {
+    if (_podium) updatePodium(dt);
+    else if (splitActive && player2) {
       for (let i = 0; i < splitPlayers.length; i++) _sCams[i].update(splitPlayers[i], track, dt);
     } else {
       updateCamera(dt);

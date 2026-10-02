@@ -276,3 +276,19 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
   queue = result.catch(() => {});
   return result;
 }
+
+// Turn a retained preview to an absolute yaw (radians) and redraw — the reveal
+// card's turntable. A no-op until the canvas has a preview.
+export function spinPortrait(canvas, yaw) {
+  const preview = previews.get(canvas);
+  if (!preview) return;
+  const state = bindRotation(canvas);
+  state.yaw = yaw;
+  if (state.pending) return;
+  state.pending = true;
+  requestAnimationFrame(() => {
+    state.pending = false;
+    const result = queue.then(() => previews.get(canvas)?.draw());
+    queue = result.catch((error) => console.warn("Preview rotation unavailable", error));
+  });
+}
