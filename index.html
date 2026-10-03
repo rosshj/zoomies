@@ -209,18 +209,17 @@
     <!-- Steering indicator (bottom center) -->
     <div id="steer">
       <div id="steer-bar"><div id="steer-dot"></div></div>
-      <button id="calibrate">↺ center steering</button>
     </div>
 
-    <!-- Item pickup toast (bottom center, above the steering bar): a rounded
-         pill that springs up when the player grabs a power-up box. Kept off
-         the centre of the screen on purpose — the big #toast is for the
-         countdown, laps and FINISH; a pickup should be noticed, not block the
-         road. Lives inside #hud so the split-screen layouts can re-anchor it
-         into P1's view. -->
+    <!-- Item pickup toast (bottom center, above the steering bar): a solid
+         rounded pill (icon + item name) that springs up when the player grabs
+         a power-up box. Kept off the centre of the screen on purpose — the
+         big #toast is for the countdown, laps and FINISH; a pickup should be
+         noticed, not block the road. Lives inside #hud so the split-screen
+         layouts can re-anchor it into P1's view. -->
     <div id="pickup-toast" data-tone="catnip" aria-live="polite">
       <span class="pt-ico">🌿</span>
-      <span class="pt-text"><b class="pt-title"></b><span class="pt-sub"></span></span>
+      <b class="pt-title"></b>
     </div>
 
     <!-- Split screen (Versus 2P): a divider line between the two views and a
@@ -1107,6 +1106,11 @@
         </section>
         <section class="settings-card" data-settings-panel="controls">
           <div class="setting-row" id="tilt-indicator-row"><span class="setting-label">Steering indicator</span><button id="indicator-btn" class="secondary small toggle off">Off</button></div>
+          <!-- Touch only: re-zero tilt steering to however the phone is held
+               right now (it also re-zeroes itself at every race start and on
+               resume). Used to be a button under the HUD's steering bar. -->
+          <div class="setting-row" id="calibrate-row"><span class="setting-label">Center tilt steering</span><button id="calibrate" class="secondary small">↺ Center</button></div>
+          <p class="setting-note" id="calibrate-note">Hold the phone in your driving grip, then tap.</p>
           <div class="setting-row">
             <span class="setting-label">Controller rumble</span>
             <button id="set-rumble-toggle" class="secondary small toggle">On</button>

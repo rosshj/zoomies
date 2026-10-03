@@ -807,27 +807,23 @@ function grantItem(kart) {
   switch (ITEM_ROLL[pick].name) {
     case "shield":
       kart.giveShield(10);
-      if (kart === player) hud.showPickup({ icon: "🛡️", title: "Shield", sub: "10s of protection", tone: "shield" });
+      if (kart === player) hud.showPickup({ icon: "🛡️", title: "10 seconds of shield", tone: "shield" });
       break;
     case "milk":
       kart.giveMilk();
-      if (kart === player)
-        hud.showPickup({ icon: "🥛", title: "Milk bottle", sub: "Drop it behind you", tone: "milk" });
+      if (kart === player) hud.showPickup({ icon: "🥛", title: "Milk bottle", tone: "milk" });
       break;
     case "yarn":
       kart.giveYarn();
-      if (kart === player)
-        hud.showPickup({ icon: "🧶", title: "Yarn ball", sub: "Your next shot homes in", tone: "yarn" });
+      if (kart === player) hud.showPickup({ icon: "🧶", title: "Homing yarn ball", tone: "yarn" });
       break;
     case "tri":
       kart.giveTriShots(3);
-      if (kart === player)
-        hud.showPickup({ icon: "🐾", title: "Tri-furball", sub: "3 shots, 3-way spread", tone: "tri" });
+      if (kart === player) hud.showPickup({ icon: "🐾", title: "Tri-furball ×3", tone: "tri" });
       break;
     case "life":
       kart.giveLife();
-      if (kart === player)
-        hud.showPickup({ icon: "😻", title: "Extra life", sub: "Your next wipeout is forgiven", tone: "life" });
+      if (kart === player) hud.showPickup({ icon: "😻", title: "Extra life", tone: "life" });
       break;
     default:
       kart.giveCatnip();
@@ -841,7 +837,7 @@ function grantItem(kart) {
       ) {
         // A rival close behind just armed the comeback item — a heads-up so
         // the green blur past your shoulder isn't a mystery.
-        hud.showPickup({ icon: "🌿", title: `${kart.name} has catnip!`, sub: "Coming up behind you", tone: "rival" });
+        hud.showPickup({ icon: "🌿", title: `${kart.name} has catnip!`, tone: "rival" });
       }
       break;
   }
@@ -1010,10 +1006,20 @@ toonify(scene);
 const rearThreatEl = document.getElementById("rear-threat");
 let _threatState = "none"; // "none" | "warn" | "lock"
 
-// Steering indicator + recalibrate button
+// Steering indicator + the Settings "Center tilt steering" button (touch only;
+// a brief "Centered" on the button is the only feedback it needs).
 const steerDot = document.getElementById("steer-dot");
 let _steerDotLast = Infinity; // last written steer value (guards the style write)
-document.getElementById("calibrate").addEventListener("click", () => input.calibrate());
+{
+  const btn = document.getElementById("calibrate");
+  let revert = 0;
+  btn?.addEventListener("click", () => {
+    input.calibrate();
+    btn.textContent = "✓ Centered";
+    clearTimeout(revert);
+    revert = setTimeout(() => (btn.textContent = "↺ Center"), 1200);
+  });
+}
 
 const input = new Input();
 window.__zoomies.input = input; // debug hook (headless gamepad probe reads steer/throttle)
@@ -5772,7 +5778,15 @@ if (window.zoomiesDesktop) {
   if (qn)
     qn.innerHTML =
       "<b>Low</b> saves power. <b>Balanced</b> is recommended for Steam Deck and most laptops. <b>Medium</b> adds richer effects. <b>High</b> adds the most detail and uses more power. Some detail changes apply on the next launch.";
-  for (const id of ["touch-controls-note", "compat-row", "compat-note", "tilt-row", "tilt-indicator-row"]) {
+  for (const id of [
+    "touch-controls-note",
+    "compat-row",
+    "compat-note",
+    "tilt-row",
+    "tilt-indicator-row",
+    "calibrate-row",
+    "calibrate-note",
+  ]) {
     document.getElementById(id)?.classList.add("hidden");
   }
 } else {
@@ -5791,7 +5805,9 @@ if (window.zoomiesDesktop) {
     t.setAttribute("aria-expanded", String(open));
   });
 }
-if (!_isTouch) document.getElementById("tilt-indicator-row")?.classList.add("hidden");
+if (!_isTouch)
+  for (const id of ["tilt-indicator-row", "calibrate-row", "calibrate-note"])
+    document.getElementById(id)?.classList.add("hidden");
 applyModeUI();
 refreshRaceOptSegs();
 // Boot restore: a track pick / maker apply reloaded mid-flow — land back on the

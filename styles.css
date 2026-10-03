@@ -1356,23 +1356,6 @@ kbd {
   transition: transform 0.05s linear;
 }
 
-#calibrate {
-  pointer-events: auto;
-  font-size: 11px;
-  letter-spacing: 0.5px;
-  padding: 5px 12px;
-  border-radius: var(--pill);
-  color: #fff;
-  background: rgba(16, 22, 38, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: none;
-}
-
-#calibrate:active {
-  transform: none;
-  background: rgba(255, 179, 0, 0.4);
-}
-
 /* Pause button: right side, under the lap/speed box, clear of the top bar */
 /* Active power-up pills (top-left): one per live item-box power-up, shown only
    while active, with the remaining time or shot count. */
@@ -1817,30 +1800,30 @@ button.small {
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
 
-/* Item pickup toast — bottom centre, just above the steering bar. A rounded
-   pill (icon + name + one-line effect) that springs up from below, settles,
-   holds, then drops away. Deliberately NOT the big centre #toast: a power-up
-   grab should register without blocking the road ahead. Per-item accent via
-   data-tone (matches the #powerups pill borders top-left, so the toast and
-   the pill it announces read as the same item). */
+/* Item pickup toast — bottom centre, just above the steering bar. A solid
+   rounded pill (icon + item name) in the item's colour that springs up from
+   below, settles, holds, then drops away. Deliberately NOT the big centre
+   #toast: a power-up grab should register without blocking the road ahead.
+   Per-item colour via data-tone (same hues as the #powerups pill borders
+   top-left, so the toast and the pill it announces read as the same item). */
 #pickup-toast {
   --pt-c: 120, 224, 90; /* catnip green by default */
   position: absolute;
-  bottom: calc(max(12px, var(--safe-bottom, 0px)) + 78px);
+  bottom: calc(max(12px, var(--safe-bottom, 0px)) + 34px);
   left: 50%;
   transform: translate(-50%, 60px) scale(0.7);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 18px 8px 10px;
+  gap: 9px;
+  padding: 7px 18px 7px 8px;
   border-radius: var(--pill);
-  background: linear-gradient(180deg, rgba(22, 30, 48, 0.94), rgba(10, 14, 24, 0.94));
-  border: 2px solid rgba(var(--pt-c), 0.85);
-  box-shadow:
-    0 0 0 3px rgba(var(--pt-c), 0.18),
-    0 0 26px rgba(var(--pt-c), 0.38),
-    0 8px 22px rgba(0, 0, 0, 0.5);
-  color: #fff;
+  background: rgb(var(--pt-c));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #141a28;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  line-height: 1.15;
   white-space: nowrap;
   max-width: calc(100vw - 32px);
   opacity: 0;
@@ -1850,33 +1833,14 @@ button.small {
 #pickup-toast .pt-ico {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  background: rgba(var(--pt-c), 0.22);
-  font-size: 21px;
+  background: rgba(0, 0, 0, 0.16);
+  font-size: 20px;
   line-height: 1;
   flex: none;
 }
-#pickup-toast .pt-text {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-  text-align: left;
-}
-#pickup-toast .pt-title {
-  font-size: 17px;
-  font-weight: 900;
-  letter-spacing: 0.3px;
-  color: rgb(var(--pt-c));
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
-}
-#pickup-toast .pt-sub {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.86);
-}
-#pickup-toast .pt-sub:empty { display: none; }
 #pickup-toast[data-tone="shield"] { --pt-c: 120, 180, 255; }
 #pickup-toast[data-tone="tri"] { --pt-c: 255, 180, 90; }
 #pickup-toast[data-tone="catnip"] { --pt-c: 120, 224, 90; }
@@ -1909,14 +1873,11 @@ button.small {
   70% { transform: scale(1.05) rotate(4deg); }
   100% { transform: scale(1) rotate(0); }
 }
-/* Narrow screens (phones in landscape): the full pill (~285px) would sit on
-   the minimap's right edge and under the boost button, so it goes compact —
-   icon + item name only; the effect line is on the top-left pill anyway. */
+/* Narrow screens (phones in landscape): a smaller pill, so the longest name
+   clears the minimap on the left and the touch buttons on the right. */
 @media (max-width: 860px) {
-  #pickup-toast { gap: 7px; padding: 5px 13px 5px 6px; }
+  #pickup-toast { gap: 7px; padding: 5px 14px 5px 6px; font-size: 14px; }
   #pickup-toast .pt-ico { width: 28px; height: 28px; font-size: 16px; }
-  #pickup-toast .pt-title { font-size: 14px; }
-  #pickup-toast .pt-sub { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   #pickup-toast.show { animation: pt-fade 2.4s ease-out both; }
@@ -1979,10 +1940,9 @@ button.secondary.small,
   justify-content: center;
 }
 
-/* Steppers + the HUD calibrate button: easier to hit. */
+/* Steppers: easier to hit. */
 .garage-arrow { min-width: var(--tap); min-height: var(--tap); }
 .mini-stepper .garage-arrow { min-width: 40px; min-height: 40px; }
-#calibrate { min-height: 40px; }
 
 /* Settings section headers. */
 .settings-section {
@@ -3080,12 +3040,11 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 #hud.split #pickup-toast { bottom: calc(50% + 14px); }
 #hud.split-3 #pickup-toast, #hud.split-4 #pickup-toast {
   left: 25%;
-  gap: 8px;
-  padding: 6px 14px 6px 8px;
+  gap: 7px;
+  padding: 5px 14px 5px 6px;
+  font-size: 14px;
 }
 #hud.split-3 #pickup-toast .pt-ico, #hud.split-4 #pickup-toast .pt-ico { width: 28px; height: 28px; font-size: 16px; }
-#hud.split-3 #pickup-toast .pt-title, #hud.split-4 #pickup-toast .pt-title { font-size: 14px; }
-#hud.split-3 #pickup-toast .pt-sub, #hud.split-4 #pickup-toast .pt-sub { font-size: 11px; }
 /* Quadrant layouts (3-4 players): a vertical divider joins the horizontal
    one, and the panels move to the four quadrant corners — P1 TL, P2 TR,
    P3 BL, P4 BR. Panels 3/4 and the spectator corner only exist here. */
