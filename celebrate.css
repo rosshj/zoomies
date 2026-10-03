@@ -201,17 +201,22 @@
     transform: rotate(6deg) scale(1.06);
   }
 }
+/* A corner ribbon: the band's centre sits on the corner's diagonal (32px in on
+   both axes) and it turns 45°, so the stage's edges clip both ends evenly. */
 .celebrate-ribbon {
   position: absolute;
   top: 18px;
-  right: -40px;
-  padding: 6px 48px;
+  right: -68px;
+  width: 200px;
+  padding: 6px 0;
+  box-sizing: border-box;
+  text-align: center;
   background: #ff6b6b;
   color: #fff;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.2em;
-  transform: rotate(35deg) translateY(-120px);
+  transform: rotate(45deg) translateY(-140px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: transform 0.5s cubic-bezier(0.2, 1.4, 0.3, 1) 0.15s;
 }
@@ -229,7 +234,7 @@
   animation: none;
 }
 #celebrate-reveal.is-open .celebrate-ribbon {
-  transform: rotate(35deg) translateY(0);
+  transform: rotate(45deg);
 }
 .celebrate-name {
   margin: 4px 0 0;
