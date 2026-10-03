@@ -100,7 +100,7 @@ try {
   // Buying opens a reveal card (src/celebrate.js); tap it away before carrying on.
   await page.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
   await page.locator("#celebrate-continue").click();
-  await page.locator("#celebrate-reveal.hidden").waitFor();
+  await page.locator("#celebrate-reveal:not(.hidden)").waitFor({ state: "hidden" });
   assert.equal(await page.locator("#cat-edit-use").isVisible(), true);
   await click('#flow-cat-edit [data-studio-field="type"]');
   await click('#flow-cat-edit .studio-option[data-value="maine"]');
@@ -130,7 +130,7 @@ try {
   // Buying opens a reveal card (src/celebrate.js); tap it away before carrying on.
   await page.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
   await page.locator("#celebrate-continue").click();
-  await page.locator("#celebrate-reveal.hidden").waitFor();
+  await page.locator("#celebrate-reveal:not(.hidden)").waitFor({ state: "hidden" });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: "/tmp/studio-kart.png" });
