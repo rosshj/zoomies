@@ -34,6 +34,7 @@ let _bannerDone = null;
 let _revealQueue = [];
 let _revealResolve = null;
 let _revealTimer = 0;
+let _revealReturn = null; // the control focused before the stack opened
 let _spinRaf = 0;
 
 export function reducedMotion() {
@@ -241,8 +242,10 @@ export function reveal(cards) {
       prev?.();
       resolve();
     };
-    if (_reveal.classList.contains("hidden")) nextReveal();
-    else refreshDots();
+    if (_reveal.classList.contains("hidden")) {
+      _revealReturn = document.activeElement;
+      nextReveal();
+    } else refreshDots();
   });
 }
 
@@ -336,6 +339,9 @@ function closeReveal() {
   const done = _revealResolve;
   _revealResolve = null;
   maybeHideLayer();
+  const back = _revealReturn;
+  _revealReturn = null;
+  if (back?.isConnected && back !== document.body) back.focus?.({ preventScroll: true });
   done?.();
 }
 

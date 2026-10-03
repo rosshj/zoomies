@@ -35,6 +35,10 @@ try {
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats), 150);
   await card("kart.3").click();
   await page.locator("#racer-details-action").click();
+  // Buying opens a reveal card (src/celebrate.js); tap it away before carrying on.
+  await page.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
+  await page.locator("#celebrate-continue").click();
+  await page.locator("#celebrate-reveal.hidden").waitFor();
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats), 50);
   assert.equal(await card("kart.3").locator(".track-sub").textContent(), "Owned");
   await card("kart.4").click();

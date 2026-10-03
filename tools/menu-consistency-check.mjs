@@ -16,6 +16,11 @@ try {
   assert.ok(await page.locator("#racer-details").isVisible());
   await page.locator("#racer-details-action").click();
   assert.equal(await page.locator("#racer-details").isVisible(), false);
+  // Buying opens a reveal card (src/celebrate.js); tap it away before carrying on.
+  await page.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
+  await page.locator("#celebrate-continue").click();
+  await page.locator("#celebrate-reveal.hidden").waitFor();
+  // Focus lands back on the tile once the reveal card is dismissed.
   assert.equal(await page.evaluate(() => document.activeElement.dataset.prize), "cat.3");
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats), 900);
   await item.click();

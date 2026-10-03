@@ -258,6 +258,7 @@ try {
   const wallet = await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats);
   await click('[data-prize="cat.3"]');
   await click("#racer-details-action");
+  await dismissReveals();
   assert.equal(
     await p.evaluate(() => JSON.parse(localStorage.getItem("zoomies-profile-v1")).treats),
     wallet - 100,
