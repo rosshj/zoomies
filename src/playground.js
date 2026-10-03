@@ -222,7 +222,13 @@ async function setArea(id) {
   placeKart(player, 0, 0, 12);
   setDummy(!!area.dummy && dummyOn, true);
   flight.reset();
-  history.replaceState(null, "", `?area=${area.id}${params.has("webgl") ? "&webgl=1" : ""}`);
+  history.replaceState(
+    null,
+    "",
+    `?area=${area.id}${params.has("webgl") ? "&webgl=1" : ""}${autoplay ? "&autoplay=1" : ""}`,
+  );
+  if (autoplay) setAutoplay(true); // re-arm (spawns the dummy in the item area)
+  $("side").classList.remove("open");
 }
 
 function renderTargets() {
@@ -485,6 +491,82 @@ const flight = {
 };
 
 // ---------------------------------------------------------------------------
+// Autopilot: drives the player round the loop, lining up on each station in
+// turn (the AI driver sticks to the racing line, which misses everything
+// parked by the kerb), so an area can be watched hands-free — the phone test.
+// In the power-up area it also hands itself an item every few seconds and
+// uses it, with the dummy rival out as a target.
+// ---------------------------------------------------------------------------
+let autoplay = false;
+const auto = { target: null, itemT: 0 };
+const _apPoint = new THREE.Vector3(),
+  _apTan = new THREE.Vector3();
+function autopilot(dt) {
+  const k = player,
+    track = cur.track;
+  const proj = k._proj || track.project(k.position);
+  // Next station ahead on the lap (wrapping); stay with it until we're past.
+  const targets = cur.targets;
+  let best = null,
+    bestGap = 2;
+  for (const tg of targets) {
+    let gap = (tg.t - proj.t + 1) % 1;
+    if (gap < 0.004) gap += 1; // just passed it: it's the one a lap away now
+    if (gap < bestGap) {
+      bestGap = gap;
+      best = tg;
+    }
+  }
+  auto.target = best;
+  const ahead = bestGap * track.length;
+  // Aim lateral: the station's own offset once it's close, the centre line
+  // in between (so the kart isn't scraping a kerb for half a lap).
+  const wantLat = best && ahead < 70 ? best.lateral : 0;
+  const look = 14 + Math.abs(k.speed) * 0.25;
+  const tt = proj.t + look / track.length;
+  track.getPointAt(tt, _apPoint);
+  track.getTangentAt(tt, _apTan);
+  _apPoint.x += -_apTan.z * wantLat;
+  _apPoint.z += _apTan.x * wantLat;
+  const want = Math.atan2(_apPoint.x - k.position.x, _apPoint.z - k.position.z);
+  let d = want - k.heading;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  input._steerTarget = Math.max(-1, Math.min(1, d * 2.4));
+  input._keyboardSteering = false;
+  input.throttle = 1;
+  input._keyboardThrottle = false;
+  // Power-ups: a fresh item every few seconds, used straight away.
+  if (cur.area.items) {
+    auto.itemT -= dt;
+    if (auto.itemT <= 0) {
+      auto.itemT = 4;
+      const giver = ITEM_GIVERS[Math.floor(Math.random() * 7)]; // not "spin me out"
+      giver[1](k);
+      toast(`🤖 ${giver[0]}`);
+      if (k.milkBottles > 0 && k.spinTimer <= 0) {
+        k.milkBottles = 0;
+        cur.items.dropMilk(k);
+      } else if (k.boostMeter >= 1 && !k.catnipBoosting && k.tootBoost(k.boostMeter)) {
+        k.boostMeter = 0;
+        effects.tootBurst(k, 2);
+      } else {
+        k.shootCooldown = 0;
+        fireShot(k, 0.6);
+      }
+    }
+  }
+}
+function setAutoplay(on) {
+  autoplay = on;
+  $("auto-btn").classList.toggle("on", on);
+  $("auto-btn").textContent = on ? "⏹ Auto" : "▶ Auto";
+  if (!on) {
+    input._steerTarget = 0;
+    input.throttle = 0;
+  } else if (cur?.area.dummy && !dummyOn) setDummy(true);
+}
+
+// ---------------------------------------------------------------------------
 // Cameras: the game's chase cam, a wide "action" cam for watching debris, and
 // a top-down view. C cycles.
 // ---------------------------------------------------------------------------
@@ -569,12 +651,15 @@ for (const a of AREAS) {
   $("areas").appendChild(b);
 }
 $("cam-btn").addEventListener("click", () => setCamMode(camMode + 1));
+$("auto-btn").addEventListener("click", () => setAutoplay(!autoplay));
+$("side-toggle").addEventListener("click", () => $("side").classList.toggle("open"));
 $("slow-btn").addEventListener("click", () => setSlowMo(!slowMo));
 $("sound-btn").addEventListener("click", () => setSound(!soundOn));
 $("reset-btn").addEventListener("click", resetArea);
 window.addEventListener("keydown", (e) => {
   if (e.repeat || e.target?.tagName === "INPUT") return;
   if (e.code === "KeyR") resetArea();
+  else if (e.code === "KeyP") setAutoplay(!autoplay);
   else if (e.code === "KeyC") setCamMode(camMode + 1);
   else if (e.code === "KeyT") setSlowMo(!slowMo);
   else if (/^Digit[1-9]$/.test(e.code)) {
@@ -594,6 +679,7 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 window.addEventListener("resize", resize);
+new ResizeObserver(resize).observe($("game")); // the phone panel opening/closing resizes the canvas host
 
 // ---------------------------------------------------------------------------
 // Frame loop
@@ -607,6 +693,7 @@ let frozen = false; // tools: pause the sim (camera still renders)
 let pinned = false; // tools: leave the camera exactly where a probe parked it
 function step(dt) {
   input.update(dt);
+  if (autoplay) autopilot(dt);
   applyHumanControls(player, input, dt);
   if (dummyOn) {
     dummy.driveAI(cur.track, dt, cur.props ? cur.props.boxTargets() : null, karts);
@@ -705,6 +792,7 @@ renderer.setAnimationLoop((now) => {
 resize();
 setCamMode(0);
 await setArea(params.get("area") || AREAS[0].id);
+if (params.has("autoplay")) setAutoplay(true);
 statusEl.textContent = `${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"} · ${AREAS.length} areas`;
 console.log(`[zoomies] feature playground: ${AREAS.length} areas · ${statusEl.textContent}`);
 
@@ -733,6 +821,10 @@ window.__playground = {
   setDummy,
   setCamMode,
   setSlowMo,
+  setAutoplay,
+  get autoplay() {
+    return autoplay;
+  },
   grantItem,
   fireShot,
   flight,
@@ -751,6 +843,7 @@ window.__playground = {
     updateCamera(dt * frames);
   },
   drive(throttle = 1, steer = 0) {
+    autoplay = false;
     input.throttle = throttle;
     input._steerTarget = steer;
     input._keyboardThrottle = false;

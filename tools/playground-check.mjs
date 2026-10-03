@@ -107,6 +107,25 @@ await run(() => window.__playground.freeze(true));
   check("reset re-assembles every structure", !rs.broken && rs.dormant && rs.smashed === 0, JSON.stringify(rs));
 }
 
+// --- Autopilot: hands-free driving must line up on stations and smash ---------
+{
+  const r = await run(() => {
+    const P = window.__playground;
+    P.resetArea();
+    P.setAutoplay(true);
+    let offroad = 0;
+    for (let i = 0; i < 1500; i++) {
+      P.step(1 / 60);
+      if (Math.abs(P.player._proj?.lateral ?? 0) > P.area.track.halfWidth) offroad++;
+    }
+    const out = { smashed: P.smashed, offroad, speed: Math.abs(P.player.speed), t: P.player.trackT };
+    P.setAutoplay(false);
+    P.resetArea();
+    return out;
+  });
+  check("autopilot smashes stations hands-free", r.smashed >= 2 && r.offroad === 0 && r.speed > 10, JSON.stringify(r));
+}
+
 // --- Jumps: launch off the ramp and land -------------------------------------
 {
   const r = await run(async () => {
