@@ -140,8 +140,14 @@ rather than hand-plotting world XZ.
 - Ramps/humps are `SurfaceFeatures` (`src/track-surface.js`): a height
   profile in the road's frame that `Track._projResult` adds to `groundY`, plus
   a mesh built from the same profile. The kart goes airborne when the road
-  falls away faster than gravity (`Kart._integrate`, `RAMP_KICK`) — the
-  generator's smoothed hills never trip it (`check:breakables` asserts this).
+  falls away faster than gravity (`Kart._integrate`, `RAMP_KICK`) — and ONLY
+  while its wheels are on (or within 0.1s of leaving) a surface feature. Bare
+  terrain never launches: the road is a polyline through samples 2-3u apart,
+  and a hilly lap's sharper crests kink enough per sample that the raw rule
+  hopped the kart a hand's height a dozen times a lap ("my kart spontaneously
+  jumps"). `check:breakables` asserts smooth hills AND sharp bare crests stay
+  glued; the scratchpad's launch probe drives the featured laps headless in
+  the real page and counts `airLaunch` (Meadow 4 → 0, Desert 15 → 0).
 - `npm run check:breakables` (node) and `npm run check:playground` (browser)
   after touching any of this; `tools/playground-check.mjs` drives the areas
   through `window.__playground` (`freeze` + `step` for deterministic probes,

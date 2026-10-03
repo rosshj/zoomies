@@ -195,6 +195,19 @@ function fly(track, frames = 420) {
   const f = fly(track, 900);
   check("long smooth hills never launch the kart", !f.launched && f.airFrames === 0 && f.finite, JSON.stringify(f));
 }
+{
+  // A hilly lap's SHARPER crests (the featured Meadow/Desert laps have
+  // ~40u-radius crests at 3u sample spacing): bare terrain never launches
+  // the kart, however it kinks — jumps are surface features only. This is
+  // the "my kart spontaneously hops from time to time" regression.
+  const track = stubTrack((x) => 6 * Math.sin((x / 60) * Math.PI * 2));
+  const f = fly(track, 900);
+  check(
+    "sharp crests on bare terrain never launch the kart",
+    !f.launched && f.airFrames === 0 && f.finite,
+    JSON.stringify(f),
+  );
+}
 
 console.log(failures ? `\n${failures} breakables/surface check(s) failed` : "\nall breakables/surface checks passed");
 process.exit(failures ? 1 : 0);
