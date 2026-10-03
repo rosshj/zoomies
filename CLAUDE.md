@@ -146,3 +146,30 @@ rather than hand-plotting world XZ.
   after touching any of this; `tools/playground-check.mjs` drives the areas
   through `window.__playground` (`freeze` + `step` for deterministic probes,
   `pin` to park the camera for a screenshot).
+
+## Road edges: barriers and verges are a per-span PLAN
+
+`src/track-edges.js` plans what lines each side of the road per sample
+(`track.edges[side][i] = { style, verge, vergeW }`): the biome's stock
+barrier (scenery.js `BARRIER_STYLES`) most of the way, with the biome's own
+alternatives from `BIOME_EDGES` for 60-160u spans (rock faces, boulder rows,
+hedges, snow banks, adobe, concrete, tyre walls, hay, logs, sandbags, basalt
+columns) and runoff verges (`VERGE_KINDS`: sand/gravel/mud/snow/grass) on
+some spans. Swept kinds are drawn by `Track._buildWalls` off the kerb's
+profile (hMul/wMul + paint); discrete kinds stand on a low sill and are built
+in `buildEdgeExtras` as instanced meshes per world cell. The plan uses its own
+rng stream (`seed|edges`) so it never shifts the scenery's random draws.
+
+- The kart asks the track, not the mesh: `track.barrierAt(proj)` gives the
+  style's `scrub` (what a scrape costs; a hedge is soft, rock is not) and
+  `bounce` (tyres/concrete kick back); `track.dragAt(proj)` gives the verge's
+  drag when the wheels are on it. Stub tracks without those methods still
+  work (`check:sim`).
+- Side 0 of the plan is the +lateral side (dirSign 1 in `_buildWalls`);
+  `config.edges` spans use "right" for it and "left" for side 1. Steer + is
+  LEFT, which is NEGATIVE lateral.
+- A loop's `t` at the start of a straight is still inside the bend's tangent:
+  teleport a probe a little way into the straight before measuring anything
+  that depends on holding a lane.
+- The playground's "Road edges" area lines every barrier kind down the left of
+  its first straight and every verge down the back straight.

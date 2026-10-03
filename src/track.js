@@ -23,6 +23,7 @@ import {
   fitInstanceBounds,
 } from "./scenery.js";
 import { planFeatures } from "./features.js";
+import { planEdges, buildEdgeExtras, buildVerges, VERGE_KINDS } from "./track-edges.js";
 import { rand, makeRng } from "./rng.js";
 
 // Scratch record every projection writes into (see _projectArr).
@@ -1326,8 +1327,25 @@ export class Track {
     // projection hot path pays one null check.
     this.surface = null;
 
+    // Edge treatments: per side, per sample — which barrier lines the road
+    // and whether the outer strip is a runoff verge (track-edges.js).
+    this.edges = planEdges(this, config);
+
     this.group = new THREE.Group();
     this._buildRoad();
+  }
+
+  // Runoff verge drag at a projection (speed lost per second), 0 on tarmac.
+  dragAt(proj) {
+    const cell = this.edges[proj.lateral > 0 ? 0 : 1][proj.i];
+    if (!cell || !cell.verge) return 0;
+    return Math.abs(proj.lateral) > this.halfWidth - cell.vergeW ? VERGE_KINDS[cell.verge].drag : 0;
+  }
+
+  // The barrier style beside a projection (its `scrub` / `bounce` feel).
+  barrierAt(proj) {
+    const cell = this.edges[proj.lateral > 0 ? 0 : 1][proj.i];
+    return cell ? cell.style : null;
   }
 
   _sideAt(i) {
@@ -1466,6 +1484,8 @@ export class Track {
 
     this._buildSandTrim();
     this._buildWalls();
+    buildEdgeExtras(this); // boulders, tyres, hay, logs, sandbags, basalt, beams
+    buildVerges(this); // sand / gravel / mud / snow / grass runoff strips
     this._buildCenterLine();
     this._buildEdgeLines();
     this._buildRoadSeams();
@@ -1814,7 +1834,7 @@ export class Track {
         const side = this._sideAt(idx); // horizontal lateral; outward when scaled by dirSign
         const sx = side.x * dirSign;
         const sz = side.z * dirSign;
-        const style = biomeBarrierStyle(p.x + sx * off, p.z + sz * off);
+        const style = this.edges[dirSign === 1 ? 0 : 1][idx].style;
 
         // --- the swept body: full wall for kerb/stone, a low sill under a fence
         let hMul = 1;
@@ -1833,6 +1853,40 @@ export class Track {
           hMul = 0.26; // a low bank the uprights stand in
           wMul = 1.25;
           c.set(style.sill);
+        } else if (style.kind === "rockface") {
+          // A cliff: tall, thick, lumpy, with strata bands by height.
+          hMul = (style.h / wallH) * (0.84 + wob(idx, 1) * 0.32);
+          wMul = 1.7 + wob(idx, 2) * 1.1;
+          c.set(style.lo).lerp(_hiCol.set(style.hi), wob(idx, 3));
+        } else if (style.kind === "hedge") {
+          // Bulky and soft-edged; flecks of flower/leaf colour by hash.
+          hMul = 0.95 + wob(idx, 1) * 0.35;
+          wMul = 2.0 + wob(idx, 2) * 0.9;
+          c.set(style.lo).lerp(_hiCol.set(style.hi), wob(idx, 3));
+          if (wob(idx, 6) > 0.8) c.lerp(_hiCol.set(style.fleck), 0.55);
+        } else if (style.kind === "snowbank") {
+          hMul = 0.85 + wob(idx, 1) * 0.25;
+          wMul = 2.6 + wob(idx, 2) * 1.0;
+          c.set(style.hi);
+        } else if (style.kind === "adobe") {
+          hMul = 0.8 + wob(idx, 1) * 0.1;
+          wMul = 1.5;
+          c.set(style.lo).lerp(_hiCol.set(style.hi), 0.3 + wob(idx, 3) * 0.4);
+        } else if (style.kind === "jersey") {
+          // Concrete blocks ~4u long: a dark seam every block, optional stripe.
+          hMul = 0.72;
+          wMul = 1.6;
+          const along = (idx * this.length) / this.samples;
+          const inBlock = along % 4.2;
+          if (inBlock < 0.25) c.set(style.seam);
+          else if (style.stripeA) c.set(Math.floor(along / 2.1) % 2 === 0 ? style.stripeA : style.stripeB);
+          else c.set(style.lo).lerp(_hiCol.set(style.hi), wob(Math.floor(along / 4.2), 3));
+        } else if (style.sill) {
+          // Discrete kinds (boulders, tyres, hay, logs, sandbags, basalt): the
+          // things themselves come from track-edges.js; this is their sill.
+          hMul = 0.22;
+          wMul = 1.3;
+          c.set(style.sill);
         } else {
           // The original alternating stripe, ~17u per band.
           c.set(Math.floor(i / 6) % 2 === 0 ? style.a : style.b);
@@ -1843,8 +1897,16 @@ export class Track {
           positions.push(p.x + sx * d, p.y + yOff * hMul, p.z + sz * d);
           // Pale capstones along the top course, so the edge of the track still
           // reads as a LINE at speed however lumpy the wall below it is.
-          if (style.kind === "stone" && yOff > wallH * 0.66) {
+          if ((style.kind === "stone" || style.kind === "adobe" || style.kind === "jersey") && yOff > wallH * 0.66) {
             const cc = _capCol.set(style.cap);
+            colors.push(cc.r, cc.g, cc.b);
+          } else if (style.kind === "rockface") {
+            // Strata: a darker band a third of the way up, a pale weathered cap.
+            const f = yOff / wallH;
+            const cc = f > 0.9 ? _capCol.set(style.cap) : f > 0.3 && f < 0.42 ? _capCol.set(style.strata) : c;
+            colors.push(cc.r, cc.g, cc.b);
+          } else if (style.kind === "snowbank" && yOff < wallH * 0.2) {
+            const cc = _capCol.set(style.lo); // blue shadow at the foot of the drift
             colors.push(cc.r, cc.g, cc.b);
           } else colors.push(c.r, c.g, c.b);
         }

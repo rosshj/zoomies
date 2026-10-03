@@ -23,7 +23,7 @@ import { setWindClock } from "./wind.js";
 import { audio } from "./audio.js";
 import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
 import { SurfaceFeatures } from "./track-surface.js";
-import { AREAS, areaPoints, resolveArea } from "./playground-areas.js";
+import { AREAS, areaPoints, resolveArea, areaTrackConfig } from "./playground-areas.js";
 
 const params = new URLSearchParams(location.search);
 if (params.has("plain")) document.body.classList.add("plain");
@@ -129,6 +129,7 @@ async function buildArea(area) {
     biomes: area.biomes,
     features: [], // no set pieces on a test loop
     seed: "playground-" + area.id,
+    ...areaTrackConfig(area),
   });
   track.totalLaps = 999;
   track.raceTime = 0;
@@ -758,6 +759,7 @@ function telemetry() {
     `last jump ${l ? `${l.air.toFixed(2)}s · ${l.peak.toFixed(1)}m up · ${l.dist.toFixed(1)}m @ ${Math.round(l.speed * 3)}km/h` : "—"}\n` +
     `smashed  <b>${smashed}</b>   pieces moving ${moving}\n` +
     `lap t    ${(k.trackT || 0).toFixed(3)}   slope ${((k.slopePitch * 180) / Math.PI).toFixed(1)}°\n` +
+    `edge     ${k._proj ? cur.track.barrierAt(k._proj)?.name || cur.track.barrierAt(k._proj)?.kind || "—" : "—"}${k.onVerge ? "   ⚠ on verge" : ""}\n` +
     `fps      ${fps.toFixed(0)}   ${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"}${slowMo ? "   🐢 slow-mo" : ""}`;
 }
 

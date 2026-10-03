@@ -70,6 +70,7 @@ await run(() => window.__playground.freeze(true));
       if (P.smashed > 0 && smashedAt < 0) {
         smashedAt = i;
         launchSpeed = Math.abs(P.player.speed);
+        P.drive(0, 0); // coast: the pieces get their 4s, the next station stays intact
       }
     }
     const st = P.area.props.structures.find((s) => s.broken);
@@ -188,6 +189,66 @@ await run(() => window.__playground.freeze(true));
   );
   check("autopilot smashes most of the biome scenes in a lap", r.smashed >= 10, `${r.smashed}/${r.scenes}`);
   await page.screenshot({ path: path.join(OUT, "scenes.png") });
+}
+
+// --- Road edges: every barrier kind is built, and verges slow the kart ---------
+{
+  const r = await run(async () => {
+    const P = window.__playground;
+    await P.setArea("edges");
+    P.freeze(true);
+    const tags = {};
+    P.area.track.group.traverse((o) => {
+      if (o.userData.barrier) tags[o.userData.barrier] = (tags[o.userData.barrier] || 0) + 1;
+      if (o.userData.verge) tags.verge = (tags.verge || 0) + 1;
+    });
+    // Flat out down the back straight on tarmac vs on the sand verge.
+    // Start a little way INTO the straight (t=0.5 is still in the bend's
+    // tangent) so the kart holds its lane for the whole measurement.
+    const speedAfter = (lateral) => {
+      P.placeKart(0.512, lateral, 0);
+      P.drive(1, 0);
+      P.player.speed = 30;
+      for (let i = 0; i < 100; i++) P.step(1 / 60);
+      return Math.abs(P.player.speed);
+    };
+    const tarmac = speedAfter(0);
+    const verge = speedAfter(12.4);
+    // Scrape a hedge vs a rock face at the same pace.
+    const scrape = (label) => {
+      const tg = P.area.targets.find((t) => t.label === label);
+      P.placeKart(tg.t, 0, 20);
+      P.player.speed = 30;
+      P.drive(1, 1); // hard left (steer + = left) into the wall
+      let hits = 0;
+      for (let i = 0; i < 150; i++) {
+        P.step(1 / 60);
+        if (P.player.wallHitPulse > 0) hits++;
+      }
+      return { speed: Math.abs(P.player.speed), hits };
+    };
+    const hedge = scrape("Hedgerow");
+    const rock = scrape("Granite rock face");
+    P.resetArea();
+    return { tags, tarmac, verge, hedge, rock };
+  });
+  const t = r.tags;
+  check(
+    "every discrete barrier kind built something",
+    ["boulders", "tyres", "hay", "logs", "sandbags", "lava", "beams"].every((k) => t[k] > 0) && t.verge === 1,
+    JSON.stringify(t),
+  );
+  check(
+    "the sand verge drags the kart below tarmac pace",
+    r.verge < r.tarmac - 4,
+    `${r.verge.toFixed(1)} vs ${r.tarmac.toFixed(1)}`,
+  );
+  check(
+    "scraping a hedge costs less than scraping rock",
+    r.hedge.hits > 0 && r.rock.hits > 0 && r.hedge.speed > r.rock.speed + 1,
+    JSON.stringify({ hedge: r.hedge, rock: r.rock }),
+  );
+  await page.screenshot({ path: path.join(OUT, "edges.png") });
 }
 
 // --- Jumps: launch off the ramp and land -------------------------------------

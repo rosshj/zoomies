@@ -191,6 +191,8 @@ export class Kart {
     this.slopePitch = 0;
     this._groundVy = undefined; // road's vertical velocity under the kart (ramp launch; see _integrate)
     this.airLaunch = false; // one-shot: the kart just left the ground off a ramp/crest
+    this.onVerge = false; // wheels on a runoff verge (sand/gravel/…) this frame
+    this._bounceCd = 0; // s until a tyre/concrete barrier can kick the kart again
 
     // Spinout
     this.spinTimer = 0;
@@ -722,8 +724,18 @@ export class Kart {
     if (Math.abs(proj.lateral) > limit) {
       const correction = Math.sign(proj.lateral) * limit - proj.lateral;
       this.position.addScaledVector(proj.side, correction);
-      this.speed *= 1 - Math.min(0.4, 1.6 * dt);
+      // What the barrier is made of decides what the scrape costs: a hedge is
+      // soft, a rock face is not, and tyres/concrete kick the kart back off.
+      const feel = track.barrierAt ? track.barrierAt(proj) : null;
+      this.speed *= 1 - Math.min(0.4, 1.6 * (feel?.scrub ?? 1) * dt);
       this.knock.multiplyScalar(0.5);
+      if (feel?.bounce && Math.abs(this.speed) > 6 && this._bounceCd <= 0) {
+        this.knock.addScaledVector(
+          proj.side,
+          -Math.sign(proj.lateral) * feel.bounce * Math.min(1, Math.abs(this.speed) / 20),
+        );
+        this._bounceCd = 0.35;
+      }
       // Clipping a wall kills an active drift and forfeits its charge (no boost
       // reward) — drive clean through the corner to keep the slide.
       if (this.drifting) {
@@ -740,6 +752,17 @@ export class Kart {
         // transient set here and cleared in the effects pass. Stays up ~0.12s.
         this.wallHitPulse = 0.12;
       }
+    }
+
+    // Runoff verges (sand, gravel, mud…) drag the kart while its wheels are on
+    // them — the road's outer strip is slower country on spans that have one.
+    if (this._bounceCd > 0) this._bounceCd -= dt;
+    if (!this.airborne && track.dragAt) {
+      const drag = track.dragAt(proj);
+      if (drag > 0) {
+        this.speed *= 1 - Math.min(0.5, drag * dt);
+        this.onVerge = true;
+      } else this.onVerge = false;
     }
 
     // Sit the kart on its front + rear wheel contacts (not just the centreline),

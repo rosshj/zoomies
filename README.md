@@ -101,7 +101,10 @@ In addition:
   stacks, tyre piles, luggage carts, scrap heaps — hit one and every piece
   goes), every biome's procedurally generated roadside scenes (the ones a
   race scatters along its kerbs: pumpkin stands, log piles, pot wagons,
-  beach loungers… at three sizes), jumps (speed bumps, humps, a kicker, a launch ramp, a tabletop, a
+  beach loungers… at three sizes), road edges (every barrier kind — rock
+  faces, boulders, hedges, snow banks, tyre walls, concrete, logs, sandbags,
+  basalt — and the sand/gravel/mud/snow/grass runoff verges that slow you),
+  jumps (speed bumps, humps, a kicker, a launch ramp, a tabletop, a
   drop-off and a gap), a power-up tester (hand yourself any item, spawn a
   dummy rival to aim at) and a line-up of the shipped road props. Keyboard or
   gamepad; `R` resets the area, `C` cycles cameras, `T` is slow motion.

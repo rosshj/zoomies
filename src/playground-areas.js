@@ -8,6 +8,7 @@
 // re-plotting every object.
 import { ROAD_PROPS } from "./road-prop-assets.js";
 import { BREAKABLES, BIOME_SCENES, SIZE_LABELS } from "./breakables.js";
+import { EDGE_STYLES, EDGE_STYLE_KEYS, VERGE_KINDS } from "./track-edges.js";
 
 // A rounded-rectangle loop: two straights of 2*halfLen along X joined by
 // semicircles of `radius`. Straights are where the test stations go (a kart
@@ -92,6 +93,48 @@ export const AREAS = [
         const kind = recipes[i % recipes.length];
         out.push({ kind, biome, size: i % 3, t: half + ((k + 0.5) / 8) * S, lateral: k % 2 ? 10 : -10, yawRel: 0 });
       });
+      return out;
+    },
+  },
+  {
+    id: "edges",
+    name: "Road edges",
+    icon: "🧱",
+    blurb:
+      "Every barrier kind down the left of the first straight (rock faces, boulders, hedges, snow bank, adobe, concrete, tyres, hay, logs, sandbags, basalt) and every runoff verge down the back straight. Stations park you against each; scrape along it to feel the difference.",
+    loop: { halfLen: 300, radius: 70 },
+    width: 30,
+    biomes: ["city"],
+    // Explicit spans in lap fractions (see planEdges): barriers on the left
+    // of straight 1, the stock kinds on its right; verges on the back straight.
+    edges: (S) => {
+      const out = [];
+      const n = EDGE_STYLE_KEYS.length;
+      EDGE_STYLE_KEYS.forEach((key, i) =>
+        out.push({ t0: (i / n) * S, t1: ((i + 1) / n) * S, side: "left", barrier: key }),
+      );
+      const verges = Object.keys(VERGE_KINDS);
+      verges.forEach((kind, i) =>
+        out.push({
+          t0: 0.5 + (i / verges.length) * S,
+          t1: 0.5 + ((i + 1) / verges.length) * S,
+          side: "both",
+          verge: kind,
+        }),
+      );
+      return out;
+    },
+    stations: (S) => {
+      const n = EDGE_STYLE_KEYS.length;
+      const out = EDGE_STYLE_KEYS.map((key, i) => ({
+        label: EDGE_STYLES[key].name,
+        t: ((i + 0.5) / n) * S,
+        lateral: -12.6,
+      }));
+      const verges = Object.keys(VERGE_KINDS);
+      verges.forEach((kind, i) =>
+        out.push({ label: `${VERGE_KINDS[kind].name} verge`, t: 0.5 + ((i + 0.5) / verges.length) * S, lateral: 12.4 }),
+      );
       return out;
     },
   },
@@ -210,6 +253,7 @@ export function resolveArea(area, track) {
     const w = world(l.t, l.lateral);
     layout.leafPiles.push({ x: w.x, z: w.z });
   }
+  for (const st of area.stations?.(S) || []) targets.push(st);
   const surface = [];
   for (const f of area.surface?.(S) || []) {
     const spec = { ...f };
@@ -219,6 +263,12 @@ export function resolveArea(area, track) {
     if (f.teleport !== false) targets.push({ label: f.label || f.type, t: spec.t, lateral: f.lateral || 0 });
   }
   return { layout, surface, targets, loopPoints: null };
+}
+
+// Track config extras an area asks for (explicit edge spans).
+export function areaTrackConfig(area) {
+  const S = loopShare(area.loop.halfLen, area.loop.radius);
+  return area.edges ? { edges: area.edges(S) } : {};
 }
 
 export function areaPoints(area) {
