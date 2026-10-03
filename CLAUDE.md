@@ -179,6 +179,18 @@ rng stream (`seed|edges`) so it never shifts the scenery's random draws.
   write → the polygonOffset bias); a line buried under the verge at the same
   height with depth writes on showed through as a flashing, jagged seam.
 
+## The race carries the playground's kit
+
+A set track keeps its shape; everything the tour proved goes on it: the
+per-span edge plan (barriers + verges), two bays per town zone with a
+composed place in each (plus the odd rural one), biome props in PAIRS at the
+kerb (a group never swallows the next crate slot — every third slot is a
+power-up crate the checks count on), and the tour's scenery density:
+`main.js` passes `buildWorld` a `density` by quality (1.3 / 2.0 / 2.4; the
+tour runs 2.6 on a short loop with one kart). Surface features (jumps) stay
+playground-only. The headless race check prints draw calls and CPU ms —
+2.0 cost ~60 draw calls over density 1 and no CPU on the sample lap.
+
 ## The biome tour is the per-biome test bench
 
 `?area=tour&biome=<name>` in the playground builds a small loop entirely

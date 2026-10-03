@@ -349,15 +349,14 @@ export function planBays(track, config) {
     // in a field zone at half odds. Own rng stream: never shifts the scenery.
     const rng = makeRng(String(config?.seed || "classic") + "|bays");
     const zones = 6;
-    // One bay per town zone in its first half (where the houses stand), and
-    // on a long lap a second in the zone's other half.
-    const halves =
-      track.length > 1800
-        ? [
-            [0.1, 0.45],
-            [0.55, 0.9],
-          ]
-        : [[0.1, 0.7]];
+    // Two bays per town zone (one in each half of it, where the houses
+    // stand) — a town reads as a town when there are a few places to smash
+    // along its street; the spacing guard in `clear` keeps them apart on a
+    // short lap.
+    const halves = [
+      [0.1, 0.45],
+      [0.55, 0.9],
+    ];
     for (let z = 0; z < zones; z += 2)
       for (const [lo, hi] of halves)
         for (let attempt = 0; attempt < 5; attempt++) {

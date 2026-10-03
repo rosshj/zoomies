@@ -32,7 +32,9 @@ for (const biome of Object.keys(ROAD_PROP_BIOMES)) {
   assert(system.sceneCount >= 1, `${biome}: no breakable scene fitted`);
   system.setItemsEnabled(false);
   for (const kind of types) {
-    const pr = props.find((p) => p.kind === kind),
+    // One that nothing has touched yet: props stand in pairs at the kerb now,
+    // so an earlier kind's sweep may already have hit this kind's neighbour.
+    const pr = props.find((p) => p.kind === kind && p.asleep && !p.hit) || props.find((p) => p.kind === kind),
       oldGeometry = pr.mesh.children[0].geometry,
       originalMesh = pr.mesh.children[0],
       originalMaterial = originalMesh.material,

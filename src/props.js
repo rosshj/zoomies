@@ -647,7 +647,6 @@ function build(scene, track, opts) {
       }
       const count = regionalCounts.get(biome) || 0;
       const kind = roster[count % roster.length];
-      regionalCounts.set(biome, count + 1);
       const spec = ROAD_PROPS[kind];
       // Bias toward a compatible roadside stall/tree/building when one is nearby.
       // Move only within this slot's short road window and retain the same biome.
@@ -680,18 +679,32 @@ function build(scene, track, opts) {
         : rand() < 0.5
           ? -1
           : 1;
-      const lat = sign * (track.halfWidth - 3.0 - rand() * 0.8),
-        x = p.x + side.x * lat,
-        z = p.z + side.z * lat;
-      // At seams, leave a crate instead of introducing a foreign regional object.
-      const fits = [
-        [0, 0],
-        [3, 0],
-        [-3, 0],
-        [0, 3],
-        [0, -3],
-      ].every(([dx, dz]) => biomeAt(x + dx, z + dz, p.y) === biome);
-      addProp(x, z, p.y, fits ? makeRoadProp(kind) : makeCrate(), { kind: fits ? kind : "crate", roadIndex: i, biome });
+      // Biome props come in small GROUPS at the kerb (a tyre and a cone left
+      // together; a couple of pots by the wall) rather than one object every
+      // few metres: this spot takes the roster's next two in a row, 2.6u
+      // apart down the road, and the pair uses up two slots so the 64-prop
+      // budget holds. A group never swallows the next crate slot (every third
+      // slot: the power-up replenishment crates the check counts on).
+      const groupN = Math.min(2, 3 - (slot % 3), slots - slot);
+      const t = track._tans[i];
+      for (let g = 0; g < groupN; g++) {
+        const along = (g - (groupN - 1) / 2) * 2.6 + (rand() - 0.5) * 0.6;
+        const lat = sign * (track.halfWidth - 3.0 - rand() * 0.8),
+          x = p.x + side.x * lat + t.x * along,
+          z = p.z + side.z * lat + t.z * along;
+        const gk = g === 0 ? kind : roster[(count + g) % roster.length];
+        // At seams, leave a crate instead of introducing a foreign regional object.
+        const fits = [
+          [0, 0],
+          [3, 0],
+          [-3, 0],
+          [0, 3],
+          [0, -3],
+        ].every(([dx, dz]) => biomeAt(x + dx, z + dz, p.y) === biome);
+        addProp(x, z, p.y, fits ? makeRoadProp(gk) : makeCrate(), { kind: fits ? gk : "crate", roadIndex: i, biome });
+      }
+      regionalCounts.set(biome, count + groupN);
+      slot += groupN - 1;
     }
     // Breakable SCENES by biome: a few per lap, each the biome's own flavour
     // (a pumpkin stand in autumn, a log pile in the forest…) at a random
@@ -746,8 +759,11 @@ function build(scene, track, opts) {
       const recipes = rural.length || planned ? rural : all;
       if (!recipes.length) continue;
       const built = makeBreakable(recipes[Math.floor(rand() * recipes.length) % recipes.length], rand, 0);
-      const lat = track.halfWidth - built.radius - 1.4;
-      if (lat < Math.min(8, track.halfWidth * 0.4)) continue; // only right at the kerb, never in the lane
+      // Parked by its DEPTH (a place runs long along the kerb, so its radius
+      // would push it into the lane): the back at the kerb, the front a kerb's
+      // worth in. Only ever right at the kerb, never in the lane.
+      const lat = track.halfWidth - (built.across || built.radius * 2) / 2 - 1.0;
+      if (lat < Math.min(8, track.halfWidth * 0.4)) continue;
       const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
       const sign = rand() < 0.5 ? -1 : 1;
       const t = track._tans[i];
