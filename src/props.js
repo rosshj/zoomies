@@ -800,7 +800,15 @@ function build(scene, track, opts) {
       }
       for (const pr of props) {
         if (pr.broken || pr.dormant || pr.hit > 0) continue;
-        if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > HIT_R * HIT_R) continue;
+        // Contact reach: the tuned 4u for crates/barrels, but a structure
+        // piece's own size (a fruit is a hand's width, a post a kart's length)
+        // so a near miss reads as a miss.
+        const reach = pr.structure ? 2.2 + pr.radius : HIT_R;
+        if (segDist2(pr.pos.x, pr.pos.z, mk.ax, mk.az, mk.bx, mk.bz) > reach * reach) continue;
+        // The sweep is 2-D: a prop still in the air from its first hit must
+        // not be "hit" again by the kart passing UNDER it (it read as a second,
+        // invisible strike that re-launched falling pieces).
+        if (pr.mode === "ground" && pr.pos.y - pr.rest - (pr.groundY ?? 0) > 1.2) continue;
         if (pr.kind === "crate" && pr.mode === "float") {
           // onItem returns false when the kart is on its pickup cooldown — leave
           // the box floating for the next eligible kart.
@@ -829,12 +837,23 @@ function build(scene, track, opts) {
         if (pr.mode !== "ground") continue; // rising / sinking: not knockable
         const launch = (16 + Math.min(mk.speed, 150) * 0.95) * (pr.profile?.launch ?? 1);
         const lift = (7 + Math.min(mk.speed, 120) * 0.06) * (pr.profile?.lift ?? 1);
+        const sm = 11 + Math.random() * 10; // tumble end-over-end about the across axis
+        if (pr.asleep) {
+          pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
+          pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
+        } else {
+          // Already tumbling (a piece coming down beside the kart, a crate it
+          // is pushing along): a SHOVE on top of its motion, not a re-launch —
+          // replacing the velocity flipped falling pieces straight back up.
+          pr.vel.x = pr.vel.x * 0.35 + mk.dx * launch * 0.55;
+          pr.vel.z = pr.vel.z * 0.35 + mk.dz * launch * 0.55;
+          pr.vel.y = Math.max(pr.vel.y * 0.35, 0) + lift * 0.3;
+          pr.angVel.x = pr.angVel.x * 0.5 - mk.dz * sm * 0.5;
+          pr.angVel.z = pr.angVel.z * 0.5 + mk.dx * sm * 0.5;
+        }
         pr.asleep = false;
         pr.settle = false;
         pr.quiet = 0;
-        pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
-        const sm = 11 + Math.random() * 10; // tumble end-over-end about the across axis
-        pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
         pr.hit = 0.4;
         opts.onKnock?.(mk.kart);
         impact(pr, mk.speed, true);
