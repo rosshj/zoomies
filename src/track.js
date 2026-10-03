@@ -2693,8 +2693,18 @@ export class Track {
     return { dist: r.dist, y: r.y };
   }
 
+  // Distance from the DRIVABLE centre: inside a bay the road is wider, so
+  // the apron counts as road — every scenery guard (`distanceToCenter(x, z) <
+  // halfWidth + k`) then keeps lamp posts, tufts and signs off the paving
+  // the kart can drive on, without each site knowing about bays.
   distanceToCenter(x, z) {
-    return this.groundInfo(x, z).dist;
+    const r = this._projectArr(this._coarse, x, z);
+    if (!this.bays || !this.bays.length) return r.dist;
+    const i = Math.min(this.samples - 1, r.i * 2); // _coarse is every other sample
+    const p = this._pts[i],
+      side = this._sideCached(i);
+    const lat = (x - p.x) * side.x + (z - p.z) * side.z;
+    return r.dist - this.extraAt(lat > 0 ? 0 : 1, i);
   }
 
   // World position + heading for a starting grid slot (on the road surface).

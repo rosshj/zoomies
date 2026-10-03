@@ -190,6 +190,52 @@ await run(() => window.__playground.freeze(true));
     ride.onKart < 70 && ride.finalDist > 4,
     JSON.stringify(ride),
   );
+  // …nor wedged on the nose or flank: a piece pushed INTO the moving kart's
+  // box (where the old collider shoved it a radius a frame and kept it,
+  // spinning) is out of the box and off to the side within half a second.
+  const wedge = await run(() => {
+    const P = window.__playground;
+    P.resetArea();
+    P.drive(1, 0);
+    const k = P.player;
+    const pr = P.area.props._props.find((p) => p.kind === "crate" && p.mode === "ground");
+    for (let i = 0; i < 60; i++) P.step(1 / 60);
+    pr.asleep = false;
+    pr.settle = false;
+    pr.vel.set(Math.sin(k.heading) * k.speed, 0, Math.cos(k.heading) * k.speed);
+    pr.angVel.set(0, 0, 0);
+    // Centre inside the box, low on the bonnet, a touch off-centre.
+    pr.pos.set(
+      k.position.x + Math.sin(k.heading) * 1.2 + Math.cos(k.heading) * 0.3,
+      k.position.y + 0.7,
+      k.position.z + Math.cos(k.heading) * 1.2 - Math.sin(k.heading) * 0.3,
+    );
+    pr.roadIndex = k._proj.i;
+    let inBox = 0,
+      near = 0,
+      peakSpin = 0;
+    for (let i = 0; i < 180; i++) {
+      P.step(1 / 60);
+      const dx = pr.pos.x - k.position.x,
+        dz = pr.pos.z - k.position.z;
+      const fx = Math.sin(k.heading),
+        fz = Math.cos(k.heading);
+      const lz = dx * fx + dz * fz,
+        lx = dx * fz - dz * fx;
+      if (Math.abs(lx) < 1.25 && Math.abs(lz) < 2.0 && pr.pos.y - k.position.y < 1.6) inBox++;
+      if (Math.hypot(dx, dz) < 3.2) near++;
+      peakSpin = Math.max(peakSpin, pr.angVel.length());
+    }
+    const d = Math.hypot(pr.pos.x - k.position.x, pr.pos.z - k.position.z);
+    P.drive(0, 0);
+    P.resetArea();
+    return { inBox, near, peakSpin, finalDist: d };
+  });
+  check(
+    "a piece wedged into the moving kart is shed within half a second",
+    wedge.inBox < 12 && wedge.near < 40 && wedge.finalDist > 6,
+    JSON.stringify(wedge),
+  );
 }
 
 // --- Biome scenes: every biome's recipes smash under the autopilot ---------
@@ -320,12 +366,41 @@ await run(() => window.__playground.freeze(true));
         verges: new Set(T.edges[0].map((c) => c.verge).filter(Boolean)).size,
         stations: P.area.targets.length,
         bays: T.bays.length,
-        // Every scene stands on an apron: beyond the lane edge, inside the widened edge.
+        // Every scene stands on an apron: on the full-depth middle of a bay, at
+        // most a kerb proud of the old kerb line, inside the widened edge.
         inBays: P.area.props.structures.filter((st) => {
           const pr = T.project(st.pos);
           const ex = T.extraAt(pr.lateral > 0 ? 0 : 1, pr.i);
-          return ex > 6 && Math.abs(pr.lateral) > T.halfWidth && Math.abs(pr.lateral) < T.halfWidth + ex;
+          const lat = Math.abs(pr.lateral);
+          return ex > 4.4 && lat - st.across / 2 > T.halfWidth - 1.7 && lat + st.across / 2 < T.halfWidth + ex + 0.05;
         }).length,
+        // The widening is gentle: the steepest step between samples (≈0.8u apart)
+        // stays under a 0.3 slope, and no bay is deeper than 6.5u.
+        steepest: Math.max(
+          ...[0, 1].map((s) => {
+            const a = T._extra[s];
+            let worst = 0;
+            for (let i = 0; i < a.length; i++) worst = Math.max(worst, Math.abs(a[i] - a[(i + 1) % a.length]));
+            return worst;
+          }),
+        ),
+        deepest: Math.max(...T.bays.map((b) => b.depth)),
+        du: T.length / T.samples,
+        // Nothing of the scenery stands on an apron: the bay-aware distance
+        // puts every scenery object OFF the drivable width.
+        onApron: (() => {
+          let n = 0;
+          P.area.worldGroup?.traverse((o) => {
+            if (!o.isMesh && !o.isInstancedMesh && !o.isPoints) return;
+            if (o.isInstancedMesh || o.isPoints) return; // merged/instanced batches have no single spot
+            o.updateWorldMatrix(true, false);
+            const e = o.matrixWorld.elements;
+            const pr = T.project({ x: e[12], y: e[13], z: e[14] });
+            const ex = T.extraAt(pr.lateral > 0 ? 0 : 1, pr.i);
+            if (ex > 1 && Math.abs(pr.lateral) > T.halfWidth - 0.5 && Math.abs(pr.lateral) < T.halfWidth + ex) n++;
+          });
+          return n;
+        })(),
       };
     };
     const meadow = snap();
@@ -345,13 +420,13 @@ await run(() => window.__playground.freeze(true));
     t = r.tundra;
   check(
     "the meadow tour is one biome, packed, with scenery built",
-    m.biomes === 1 && m.biome === "meadow" && m.scenes >= 20 && m.props >= 40 && m.sceneryOn && m.worldKids > 10,
+    m.biomes === 1 && m.biome === "meadow" && m.scenes >= 10 && m.props >= 40 && m.sceneryOn && m.worldKids > 10,
     JSON.stringify(m),
   );
   check(
     "every tour scene stands on a bay's apron, out of the lane",
-    m.bays >= 20 && m.inBays === m.scenes,
-    `${m.inBays}/${m.scenes} in ${m.bays} bays`,
+    m.bays >= 10 && m.inBays === m.scenes && m.steepest / m.du < 0.4 && m.deepest <= 6.5 && m.onApron === 0,
+    `${m.inBays}/${m.scenes} in ${m.bays} bays, steepest slope ${(m.steepest / m.du).toFixed(2)}, deepest ${m.deepest}, ${m.onApron} scenery on aprons`,
   );
   check(
     "every alternative barrier and verge of the biome is on the lap",
@@ -361,7 +436,7 @@ await run(() => window.__playground.freeze(true));
   check("the autopilot smashes along the packed kerbs", r.smashed >= 3, `${r.smashed}`);
   check(
     "switching biome rebuilds the lap in that biome with its own kit",
-    t.biome === "tundra" && t.biomes === 1 && t.scenes >= 20 && t.worldKids > 10 && t.verges === 1,
+    t.biome === "tundra" && t.biomes === 1 && t.scenes >= 10 && t.worldKids > 10 && t.verges === 1,
     JSON.stringify(t),
   );
   check(

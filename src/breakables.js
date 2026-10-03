@@ -1389,10 +1389,22 @@ export function makeBreakable(kind, rand = Math.random, size = 1) {
   built.height *= s;
   built.radius *= s;
   const group = new THREE.Group();
+  // Footprint along the road (scene x) and across it (scene z), from every
+  // piece's hull in its rest pose — a bay fits a scene by these, since a stall
+  // is long along the kerb and shallow across it, and the radius alone would
+  // reject it.
+  let along = 0,
+    across = 0;
+  const v = new THREE.Vector3();
   for (const pc of built.pieces) {
     pc.mesh.position.copy(pc.local.pos);
     pc.mesh.quaternion.copy(pc.local.quat);
     group.add(pc.mesh);
+    for (const h of pc.hull) {
+      v.copy(h).applyQuaternion(pc.local.quat).add(pc.local.pos);
+      along = Math.max(along, Math.abs(v.x));
+      across = Math.max(across, Math.abs(v.z));
+    }
   }
   return {
     kind,
@@ -1403,5 +1415,7 @@ export function makeBreakable(kind, rand = Math.random, size = 1) {
     hitPoints: built.hitPoints,
     height: built.height,
     radius: built.radius,
+    along: along * 2,
+    across: across * 2,
   };
 }

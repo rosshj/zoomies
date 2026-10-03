@@ -353,19 +353,19 @@ function tourStations(track, layout, targets, biome) {
   targets.push({ label: `🏞 ${biome}`, t: 0.01, lateral: 0, biome, header: true });
   const recipes = BIOME_SCENES[biome] || [];
   const props = ROAD_PROP_BIOMES[biome] || [];
-  // Scenes sit in the BAYS the track widened (every 40u, sides alternating):
+  // Scenes sit in the BAYS the track widened (every 72u, sides alternating):
   // on the apron, out of the lane, like a stall on a real road. The recipes
-  // cycle; a deep bay (every third) takes the large size.
+  // cycle; the deeper bay (every third) is offered the large size. props.js
+  // fits each one to its bay (`sceneInBay`), shrinking it if it has to, so
+  // the layout hands over the BAY, not a spot.
   let n = 0;
   for (const bay of track.bays || []) {
     const kind = recipes[n % recipes.length];
     const gen = BREAKABLES[kind].gen;
-    const size = bay.depth >= 15 ? (gen === "seating" ? 1 : 2) : n % 2;
-    const lateral = (bay.side === 0 ? 1 : -1) * (track.halfWidth + bay.depth * 0.55);
-    const w = world(bay.t * L, lateral);
-    const yaw = Math.atan2(-w.tz, w.tx) + ((n * 7) % 5) * 0.06 - 0.12;
-    layout.breakables.push({ kind, x: w.x, z: w.z, yaw, size });
-    targets.push({ label: `${biome} · ${BREAKABLES[kind].name} (${SIZE_LABELS[size]})`, t: w.t, lateral, biome });
+    const size = bay.depth >= 6 ? (gen === "seating" ? 1 : 2) : n % 2;
+    const lateral = (bay.side === 0 ? 1 : -1) * (track.halfWidth + bay.depth * 0.5);
+    layout.breakables.push({ kind, bay, size, yawJitter: ((n * 7) % 5) * 0.06 - 0.12 });
+    targets.push({ label: `${biome} · ${BREAKABLES[kind].name} (≤${SIZE_LABELS[size]})`, t: bay.t, lateral, biome });
     n++;
   }
   // Road props in the gaps between scenes, a pair per gap hugging BOTH kerbs

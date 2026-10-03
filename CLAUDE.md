@@ -195,17 +195,48 @@ a race. Switching biome disposes and rebuilds the area.
 
 ## Bays (lay-bys): the road widens where establishments stand
 
-`planBays` in `src/track-edges.js` widens the road on one side for 30-56u
-spans (`track.bays`, `track._extra[side][i]` = extra half-width per sample,
-8u cosine ramps each end) and `buildBays` paves the apron. Everything that
-assumed a constant half-width reads the extra: `_buildWalls` / sand trim /
-verges / `buildEdgeExtras` step out with it, `Kart._integrate` widens its
-containment, `PropPhysics.resolve` widens its fence. Bays are planned in the
-roadside builder's TOWN zones (every other of six angular zones — where the
-houses are) plus the odd rural one, on their own rng stream; props.js parks
-one breakable scene per bay on the apron, sized to it, and only the odd
-small rural stall stands at a kerb outside a bay. The tour plans a bay every
-48u (`bays: "tour"`); the other playground areas pass `bays: false`.
+`planBays` in `src/track-edges.js` widens the road on one side for 66-90u
+spans (`track.bays`, `track._extra[side][i]` = extra half-width per sample)
+and `buildBays` paves the apron. A bay is SHALLOW and GRADUAL: 5-6.5u of
+extra half-width, smoothstep tapers 40% of the span at each end (max slope
+~20°), a flat `plateau` of 13-18u in the middle. The first version (12-15u
+deep, 8u tapers) was a bite out of the road: driving in meant a wall at the
+end and the barriers around the cut read as broken. Everything that assumed
+a constant half-width reads the extra: `_buildWalls` / sand trim / verges /
+`buildEdgeExtras` step out with it, `Kart._integrate` widens its
+containment, `PropPhysics.resolve` widens its fence, and
+`track.distanceToCenter(x, z)` is BAY-AWARE (it subtracts the extra on the
+query's side), so every scenery guard of the form `distanceToCenter < halfW
++ k` keeps lamp posts, tufts and signs off the apron without knowing about
+bays. Bays are planned in the roadside builder's TOWN zones (every other of
+six angular zones — where the houses are) plus the odd rural one, on their
+own rng stream.
+
+- Scenes are fitted to a bay by FOOTPRINT (`sceneInBay` in props.js):
+  `makeBreakable` reports `along` (scene x, down the road) and `across`
+  (scene z); the size shrinks until `across <= depth + 1.6` and `along <=
+  plateau + 4`, and the scene stands with its back a step off the widened
+  edge, never more than a kerb (1.6u) proud of the old kerb line. The
+  playground's layout hands props.js the BAY (`{ kind, bay, size }`), not a
+  spot, so the tour tests the same rule a race uses.
+- The tour plans a bay every 72u (`bays: "tour"`); the other playground
+  areas pass `bays: false`. A stub track (the node fixtures) has no `bays`:
+  props.js falls back to kerb scenes so `check:biome-props` still sees one.
+
+## Loose props never ride along with the kart
+
+Two things carried a piece: the swept hit's re-shove (after its 0.4s
+cooldown a tumbling crate within 4u was shoved straight AHEAD at less than
+kart speed, caught again, and hopped down the road for as long as the
+throttle was held) and `collideKart` pushing a piece whose centre was inside
+the kart's box out by only a radius a frame. Now the re-shove goes forward
+AND to the side the piece already lies on (and skips a piece outrunning the
+kart), the box pushes all the way to its face, front contacts lean the
+normal sideways and guarantee 4u/s of outward slip, the roof sheds, the
+contact spin is capped (9 rad/s), and a hold longer than 0.35s (gaps under
+0.5s count as the same hold) kicks the piece clear sideways with a little
+lift. `check:playground` drops a piece on a moving kart and wedges one
+into its nose; both must be off it within a second.
 
 - Piles are CLOSE-PACKED (`closePack` in breakables.js): a triangular lattice
   base and the rest nestled in the hollows at r·(1+√(8/3)); beach balls and

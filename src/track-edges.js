@@ -288,7 +288,13 @@ export const BIOME_EDGES = {
 // containment and the props' fence read the same numbers, and props.js
 // parks its scenes IN the bays. Planned in the roadside's town zones (so a
 // stall sits where the buildings are) plus the odd rural one.
-const BAY_RAMP = 8; // metres of taper at each end (the apron is flat between)
+//
+// A bay is a GRADUAL, SHALLOW widening (5-6.5u over a 66-90u span, the
+// tapers 40% of the span each, so the edge never steepens past ~20°) — a
+// lay-by the kart drifts into and out of, not a bite out of the road edge.
+// The first version was 12-15u deep with 8u tapers: driving in meant a wall
+// at the end, and the barriers around the cut read as broken.
+const BAY_RAMP = 24; // minimum taper at each end, in metres (grows with the span)
 export function planBays(track, config) {
   const N = track.samples;
   const perU = N / track.length;
@@ -309,8 +315,10 @@ export function planBays(track, config) {
     if (!clear(c, half, gap)) return false;
     const i0 = c - half,
       i1 = c + half;
-    bays.push({ c, side, i0, i1, half, len, depth, kind, t: c / N });
-    const ramp = Math.round(BAY_RAMP * perU);
+    const rampU = Math.max(BAY_RAMP, len * 0.4);
+    const ramp = Math.round(rampU * perU);
+    // `plateau`: the flat, full-depth middle the scene has to stand on.
+    bays.push({ c, side, i0, i1, half, len, depth, kind, t: c / N, plateau: Math.max(8, len - 2 * rampU) });
     for (let i = i0; i <= i1; i++) {
       const k = i - i0,
         m = i1 - i;
@@ -324,16 +332,16 @@ export function planBays(track, config) {
       add(
         Math.round((((b.t % 1) + 1) % 1) * N),
         b.side === "left" ? 1 : 0,
-        b.len || 30,
-        b.depth || 12,
+        b.len || 66,
+        b.depth || 5,
         b.kind || "stall",
       );
   } else if (config?.bays === "tour") {
-    // The biome tour: a bay every 40u, sides alternating, deep enough for a
-    // large scene every third one.
+    // The biome tour: a bay every 72u, sides alternating, a little deeper
+    // every third one so the larger scenes get a spot.
     let k = 0;
-    for (let u = 30; u < track.length - 44; u += 48, k++)
-      add(Math.round(u * perU), k % 2, 42, k % 3 === 2 ? 15 : 12, "stall", 2);
+    for (let u = 30; u < track.length - 76; u += 72, k++)
+      add(Math.round(u * perU), k % 2, 66, k % 3 === 2 ? 6.5 : 5, "stall", 2);
   } else if (config?.bays !== false) {
     // A race: the roadside's town zones are where the buildings are (six
     // angular zones, every other one a town) — one bay in each, placed in the
@@ -354,13 +362,13 @@ export function planBays(track, config) {
       for (const [lo, hi] of halves)
         for (let attempt = 0; attempt < 5; attempt++) {
           const t = (z + lo + rng() * (hi - lo)) / zones;
-          if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 40 + rng() * 16, rng() < 0.4 ? 15 : 12, "town")) break;
+          if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 66 + rng() * 24, rng() < 0.4 ? 6.5 : 5, "town")) break;
         }
     if (rng() < 0.5)
       for (let attempt = 0; attempt < 4; attempt++) {
         const z = 1 + 2 * Math.floor(rng() * (zones / 2));
         const t = (z + 0.2 + rng() * 0.6) / zones;
-        if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 32, 10, "rural")) break;
+        if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 60, 4.5, "rural")) break;
       }
   }
   return { bays, extra };

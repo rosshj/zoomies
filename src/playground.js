@@ -993,12 +993,22 @@ window.addEventListener("resize", resize);
 // Belt and braces for iOS Safari, which still zooms on a fast double tap and
 // on pinch despite the viewport meta and touch-action.
 document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+document.addEventListener("dblclick", (e) => e.preventDefault(), { passive: false });
+// A second finger is a pinch, never a page gesture.
+document.addEventListener("touchstart", (e) => e.touches.length > 1 && e.preventDefault(), { passive: false });
 let _lastTouchEnd = 0;
 document.addEventListener(
   "touchend",
   (e) => {
     const now = performance.now();
-    if (now - _lastTouchEnd < 320 && e.target?.tagName !== "SELECT") e.preventDefault();
+    if (now - _lastTouchEnd < 320 && e.target?.tagName !== "SELECT") {
+      // Swallow the second tap (this is what stops Safari's double-tap zoom),
+      // but a button tapped twice fast still presses twice: preventDefault on
+      // touchend also cancels the click it would have synthesised.
+      e.preventDefault();
+      const btn = e.target?.closest?.("button");
+      if (btn && !btn.disabled) btn.click();
+    }
     _lastTouchEnd = now;
   },
   { passive: false },
