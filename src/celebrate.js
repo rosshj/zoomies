@@ -312,6 +312,8 @@ function nextReveal() {
     if (card.subject && canvas.dataset.ready === "true") startSpin(canvas);
   };
   rendered.then(() => {
+    // Opened on the fallback timer before the render landed? Start turning now.
+    if (opened && card.subject && canvas.dataset.ready === "true") startSpin(canvas);
     const wait = Math.max(0, minHold - (performance.now() - started));
     _revealTimer = setTimeout(open, wait);
   });
@@ -339,7 +341,7 @@ function closeReveal() {
 
 // Turntable: the retained model turns slowly while the card is up.
 function startSpin(canvas) {
-  if (!_hooks.spinPortrait || reducedMotion()) return;
+  if (!_hooks.spinPortrait || reducedMotion() || _spinRaf) return;
   let yaw = 0.35;
   let last = performance.now();
   const step = (now) => {
