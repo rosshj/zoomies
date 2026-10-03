@@ -232,8 +232,10 @@ export function banner({ title, sub = "", emoji = "", hold = 2200, tone = "gold"
 // --- Reveal cards ------------------------------------------------------------
 // cards: [{ kicker, name, sub, subject: "cat"|"kart"|null, cat, kart, emoji,
 //           ribbon }] — `cat`/`kart` are the spec objects the portrait renderer
-// takes. Resolves once the player has dismissed the last card.
-export function reveal(cards) {
+// takes. `returnTo` is the control focus goes back to once the stack closes
+// (default: whatever was focused when it opened). Resolves once the player
+// has dismissed the last card.
+export function reveal(cards, { returnTo = null } = {}) {
   if (!_reveal || !cards?.length) return Promise.resolve();
   return new Promise((resolve) => {
     const prev = _revealResolve;
@@ -243,7 +245,7 @@ export function reveal(cards) {
       resolve();
     };
     if (_reveal.classList.contains("hidden")) {
-      _revealReturn = document.activeElement;
+      _revealReturn = returnTo || document.activeElement;
       nextReveal();
     } else refreshDots();
   });
@@ -341,7 +343,12 @@ function closeReveal() {
   maybeHideLayer();
   const back = _revealReturn;
   _revealReturn = null;
-  if (back?.isConnected && back !== document.body) back.focus?.({ preventScroll: true });
+  // The surface underneath is inert until the menu's focus scope catches up
+  // (a microtask), so hand focus back a tick later.
+  if (back && back !== document.body)
+    setTimeout(() => {
+      if (back.isConnected && !back.closest("[inert]")) back.focus?.({ preventScroll: true });
+    }, 0);
   done?.();
 }
 

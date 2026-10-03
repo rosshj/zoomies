@@ -4850,7 +4850,9 @@ function openRacerDetails({ img, name, sub, buyId, rerender, button }) {
       rerender();
       racerDetailsReturn = origin?.querySelector(`[data-racer-id="${buyId}"]`);
       closeRacerDetails();
-      celebrateReveal([{ ...revealCardFor(buyId), kicker: "Yours!", ribbon: "BOUGHT" }]);
+      celebrateReveal([{ ...revealCardFor(buyId), kicker: "Yours!", ribbon: "BOUGHT" }], {
+        returnTo: racerDetailsReturn,
+      });
     };
   } else if (entry?.cup || entry?.cups || entry?.diff) {
     action.textContent = "Choose cup";
@@ -5037,7 +5039,11 @@ for (const [which, id] of [
       saveProfile();
       refreshTreatsChip();
       uiCue("chime");
-      celebrateReveal([{ ...revealCardFor(id), kicker: "Yours!", ribbon: "BOUGHT" }]);
+      refreshEditorLocks();
+      celebrateReveal([{ ...revealCardFor(id), kicker: "Yours!", ribbon: "BOUGHT" }], {
+        returnTo: document.getElementById(which + "-edit-use"),
+      });
+      return;
     } else uiCue("error");
     refreshEditorLocks();
   });
