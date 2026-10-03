@@ -7,7 +7,7 @@
 // against the built track by playground.js, so an area can be reshaped without
 // re-plotting every object.
 import { ROAD_PROPS } from "./road-prop-assets.js";
-import { BREAKABLES } from "./breakables.js";
+import { BREAKABLES, BIOME_SCENES, SIZE_LABELS } from "./breakables.js";
 
 // A rounded-rectangle loop: two straights of 2*halfLen along X joined by
 // semicircles of `radius`. Straights are where the test stations go (a kart
@@ -70,6 +70,30 @@ export const AREAS = [
       { kind: "trafficCone", t: 0.6 * S, lateral: 5, yaw: 0.3 },
       { kind: "cardboardBox", t: 0.8 * S, lateral: -5 },
     ],
+  },
+  {
+    id: "scenes",
+    name: "Biome scenes",
+    icon: "🏞️",
+    blurb:
+      "Every biome's procedurally generated roadside scenes (what a race scatters along its kerbs), one biome per station at a random size: S, M or L.",
+    loop: { halfLen: 300, radius: 70 },
+    width: 30,
+    biomes: ["city"],
+    // One station per biome, cycling through its recipes with the size
+    // stepping S → M → L so a lap shows the whole range.
+    breakables: (S) => {
+      const biomes = Object.keys(BIOME_SCENES);
+      const out = [];
+      biomes.forEach((biome, i) => {
+        const recipes = BIOME_SCENES[biome];
+        const half = i < 8 ? 0 : 0.5;
+        const k = i < 8 ? i : i - 8;
+        const kind = recipes[i % recipes.length];
+        out.push({ kind, biome, size: i % 3, t: half + ((k + 0.5) / 8) * S, lateral: k % 2 ? 10 : -10, yawRel: 0 });
+      });
+      return out;
+    },
   },
   {
     id: "jumps",
@@ -169,8 +193,9 @@ export function resolveArea(area, track) {
     // Structure local +X along the road: rotation.y = yaw maps local X to
     // (cos yaw, 0, -sin yaw), so yaw = atan2(-tz, tx) lines it up with the tangent.
     const yaw = Math.atan2(-w.tz, w.tx) + (b.yawRel || 0);
-    layout.breakables.push({ kind: b.kind, x: w.x, z: w.z, yaw });
-    targets.push({ label: BREAKABLES[b.kind].name, t: w.t, lateral: b.lateral });
+    layout.breakables.push({ kind: b.kind, x: w.x, z: w.z, yaw, size: b.size ?? 1 });
+    const label = `${b.biome ? b.biome + " · " : ""}${BREAKABLES[b.kind].name}${b.size !== undefined ? ` (${SIZE_LABELS[b.size]})` : ""}`;
+    targets.push({ label, t: w.t, lateral: b.lateral });
   }
   for (const o of area.props?.(S) || []) {
     const w = world(o.t, o.lateral);

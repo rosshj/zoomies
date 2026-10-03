@@ -99,7 +99,7 @@ try {
         });
         geo.dispose();
       };
-      for (const pr of props._props) if (pr.mode === "ground") check(pr);
+      for (const pr of props._props) if (pr.mode === "ground" && !pr.structure) check(pr);
       // Place a crate and barrel side by side on a steep real section, then launch
       // both into the fence. Others retain their normal generated placements.
       const shown = [

@@ -764,6 +764,11 @@ initProps(scene, track, {
   onKnock: (kart) => {
     if (kart === player && _raceStats) _raceStats.propsKnocked++;
   },
+  // Breaking a roadside scene (a stall, a log pile…) scrubs pace in proportion
+  // to how solid it is — the one place props push back on the kart.
+  onBreak: (kart, st) => {
+    if (kart) kart.speed *= 1 - (st.spec.slow || 0);
+  },
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onItem: (kart, pos) => grantItem(kart),
 }).then((p) => {

@@ -11,7 +11,7 @@ import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";
 import { ROAD_PROPS, ROAD_PROP_BIOMES, makeRoadProp, roadPropArt } from "./road-prop-assets.js";
 import { PropDebris } from "./prop-debris.js";
-import { makeBreakable } from "./breakables.js";
+import { makeBreakable, BIOME_SCENES } from "./breakables.js";
 import { windStrengthAt, uWindDir } from "./wind.js";
 import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
 
@@ -26,6 +26,9 @@ export async function initProps(scene, track, opts = {}) {
 
 // Leaves are light: weak gravity so they hang and flutter rather than drop, and
 // a wake (wind) that lingers a beat after the kart passes.
+// Set pieces a breakable scene must stay clear of (walls, water, decks); the
+// decorative treatments (billboards, arches, flowers…) can host one.
+const SCENE_EXCLUDE_RUNS = new Set(["tunnel", "bridge", "causeway", "dam", "canyon", "overpass", "crossover", "shelf"]);
 const LEAF_GRAV = 8.5; // much gentler than crates/barrels — leaves drift down
 const LEAF_AIRDRAG = 2.4; // how strongly the wake carries a leaf toward its wind speed
 const WIND_TAU = 0.75; // wake e-folding time (s): ~2s of visible linger
@@ -379,23 +382,54 @@ function build(scene, track, opts) {
   // and skipped by every loop until the structure lets them go.
   const structures = [];
   const _yawQ = new THREE.Quaternion();
-  const addBreakable = (kind, x, z, yaw = 0, groundY = null) => {
-    const built = makeBreakable(kind, rand);
+  // Global nearest road sample for a build-time placement (physics.locate is
+  // a LOCAL window search: seeded from sample 0 it pins a station on the back
+  // straight to the front one). Build-time only, so the full scan is fine.
+  const nearestIndex = (x, z) => {
+    let best = 0,
+      bd = Infinity;
+    for (let i = 0; i < N; i++) {
+      const p = track._pts[i];
+      const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = i;
+      }
+    }
+    return best;
+  };
+  const addBreakable = (kind, x, z, yaw = 0, groundY = null, size = 1) => {
+    const built = typeof kind === "string" ? makeBreakable(kind, rand, size) : kind;
     const gy = groundY ?? track.groundInfo(x, z).y;
     const root = built.group;
     root.position.set(x, gy, z);
     root.rotation.y = yaw;
     group.add(root);
     root.updateMatrixWorld(true); // a break before the first render reads this
-    // Global nearest sample (physics.locate is a LOCAL window search — seeded
-    // from sample 0 it would pin a station on the back straight to the front one).
-    const roadIndex = track.project(new THREE.Vector3(x, gy, z)).i;
+    // Intact, the scene draws as ONE merged mesh (per-material groups) — a
+    // dozen scenes of 15 pieces each would otherwise be ~180 draws a frame.
+    // The pieces' own meshes only render once the structure is broken.
+    const proxyParts = [];
+    for (const pc of built.pieces) {
+      const inner = pc.mesh.children[0];
+      if (!inner?.geometry) continue;
+      const m = new THREE.Mesh(inner.geometry, inner.material);
+      m.position.copy(pc.local.pos);
+      m.quaternion.copy(pc.local.quat);
+      m.quaternion.multiply(inner.quaternion);
+      proxyParts.push(m);
+    }
+    const proxy = mergeMeshes(proxyParts, { castShadow: false });
+    if (proxy) root.add(proxy);
+    const roadIndex = nearestIndex(x, z);
     const cy = Math.cos(yaw),
       sy = Math.sin(yaw);
     const st = {
-      kind,
+      kind: built.kind,
+      size: built.size ?? 1,
       spec: built.spec,
       root,
+      proxy,
       pos: new THREE.Vector3(x, gy, z),
       yaw,
       height: built.height,
@@ -440,6 +474,7 @@ function build(scene, track, opts) {
       pr.mesh.position.copy(pc.local.pos);
       pr.mesh.quaternion.copy(pc.local.quat);
       pr.mesh.updateMatrix(); // attach() below reads the local matrix, not position/quaternion
+      pr.mesh.visible = !proxy; // the merged proxy stands in until the break
       pr.restPose = null; // reset() re-docks pieces via the structure instead
       props.push(pr);
       st.pieces.push(pr);
@@ -450,6 +485,7 @@ function build(scene, track, opts) {
   const _rel = new THREE.Vector3();
   const breakStructure = (st, mk) => {
     st.broken = true;
+    if (st.proxy) st.proxy.visible = false;
     const spec = st.spec;
     const sp = Math.min(mk.speed, 150);
     _yawQ.setFromAxisAngle(up, st.yaw);
@@ -462,6 +498,7 @@ function build(scene, track, opts) {
       pr.pos.copy(pr.mesh.position);
       pr.quat.copy(pr.mesh.quaternion);
       pr.dormant = false;
+      pr.mesh.visible = true;
       pr.asleep = false;
       pr.settle = false;
       pr.quiet = 0;
@@ -501,16 +538,15 @@ function build(scene, track, opts) {
   if (layout) {
     for (const b of layout.boxes || []) {
       const gy = track.groundInfo(b.x, b.z).y;
-      const idx = track.project(new THREE.Vector3(b.x, gy, b.z)).i;
-      addProp(b.x, b.z, gy, makeCrate(), { kind: "crate", mode: "float", roadIndex: idx });
+      addProp(b.x, b.z, gy, makeCrate(), { kind: "crate", mode: "float", roadIndex: nearestIndex(b.x, b.z) });
     }
     for (const o of layout.props || []) {
       const gy = track.groundInfo(o.x, o.z).y;
-      const idx = track.project(new THREE.Vector3(o.x, gy, o.z)).i;
+      const idx = nearestIndex(o.x, o.z);
       const built = o.kind === "crate" ? makeCrate() : o.kind === "barrel" ? makeBarrel() : makeRoadProp(o.kind);
       addProp(o.x, o.z, gy, built, { kind: o.kind, mode: o.mode || "ground", roadIndex: idx, yaw: o.yaw || 0 });
     }
-    for (const b of layout.breakables || []) addBreakable(b.kind, b.x, b.z, b.yaw || 0);
+    for (const b of layout.breakables || []) addBreakable(b.kind, b.x, b.z, b.yaw || 0, null, b.size ?? 1);
     for (const l of layout.leafPiles || []) addLeafPile(l.x, l.z, track.groundInfo(l.x, l.z).y);
   }
   if (!layout) {
@@ -612,6 +648,49 @@ function build(scene, track, opts) {
         [0, -3],
       ].every(([dx, dz]) => biomeAt(x + dx, z + dz, p.y) === biome);
       addProp(x, z, p.y, fits ? makeRoadProp(kind) : makeCrate(), { kind: fits ? kind : "crate", roadIndex: i, biome });
+    }
+    // Breakable SCENES by biome: a few per lap, each the biome's own flavour
+    // (a pumpkin stand in autumn, a log pile in the forest…) at a random
+    // size, parked by the kerb and lined up with the road. They stay clear of
+    // the start straight, of each other and of every set piece (bridges,
+    // tunnels, decks), and never eat into the road-prop budget above.
+    // Slots scale with the lap (one every ~300u); each slot tries a few spots
+    // in its window, so a set piece or a neighbour only costs a retry, not
+    // the slot. Only STRUCTURAL set pieces exclude (walls, water, decks);
+    // treatments like billboards, arches or a giant forest can host a scene.
+    const sceneSlots = Math.max(4, Math.min(12, Math.round(track.length / 300)));
+    const runs = (track.features?.runs || []).filter((r) => SCENE_EXCLUDE_RUNS.has(r.kind));
+    const loopDist = (a, b) => {
+      const d = Math.abs(a - b) % N;
+      return Math.min(d, N - d);
+    };
+    const sceneAt = [];
+    const margin = Math.round((14 * N) / track.length);
+    const spacing = Math.round((40 * N) / track.length);
+    for (let slot = 0; slot < sceneSlots; slot++) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const i = Math.floor(((slot + 0.1 + rand() * 0.8) * N) / sceneSlots) % N;
+        if (i < 0.05 * N || i > 0.95 * N) continue; // start/finish straight
+        if (runs.some((r) => loopDist(i, ((r.c % N) + N) % N) < r.half + margin)) continue;
+        if (sceneAt.some((j) => loopDist(i, j) < spacing)) continue;
+        const p = track._pts[i];
+        const biome = biomeAt(p.x, p.z, p.y);
+        const recipes = BIOME_SCENES[biome] || BIOME_SCENES.city;
+        const recipe = recipes[Math.floor(rand() * recipes.length) % recipes.length];
+        const sz = rand() < 0.4 ? 0 : rand() < 0.65 ? 1 : 2;
+        const built = makeBreakable(recipe, rand, sz);
+        const lat = track.halfWidth - built.radius - 1.4;
+        if (lat < 3.5) continue; // too wide for this road — try another spot/size
+        const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+        const sign = rand() < 0.5 ? -1 : 1;
+        const x = p.x + side.x * lat * sign,
+          z = p.z + side.z * lat * sign;
+        const t = track._tans[i];
+        const yaw = Math.atan2(-t.z, t.x) + (rand() - 0.5) * 0.5;
+        addBreakable(built, x, z, yaw, p.y, sz);
+        sceneAt.push(i);
+        break;
+      }
     }
   } // !layout
   const debris = new PropDebris(group, physics);
@@ -723,6 +802,75 @@ function build(scene, track, opts) {
       changed = true;
     }
     if (changed) _shadowMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  // Karts are SOLID to loose props: a tumbling piece bounces off the body
+  // instead of passing through it. The kart is a box in its own frame (half
+  // extents below, from the road up to the roof); each awake prop near a kart
+  // is treated as a sphere of roughly its own size, pushed out of the box and
+  // bounced with restitution, carrying the kart's velocity so a kart driving
+  // into a settled piece shoves it along. The swept-segment fling above stays
+  // the arcade "hit" for props at rest; this is what happens afterwards.
+  const KART_HX = 1.25,
+    KART_HZ = 2.0,
+    KART_H = 1.6;
+  const _kFwd = new THREE.Vector3(),
+    _kRight = new THREE.Vector3(),
+    _kRel = new THREE.Vector3(),
+    _kN = new THREE.Vector3(),
+    _kVel = new THREE.Vector3(),
+    _kVr = new THREE.Vector3();
+  function collideKart(pr, k, dt) {
+    const dx = pr.pos.x - k.position.x,
+      dz = pr.pos.z - k.position.z;
+    if (dx * dx + dz * dz > 36) return;
+    const er = Math.max(0.3, Math.min(1.1, pr.radius * 0.55));
+    _kFwd.set(Math.sin(k.heading), 0, Math.cos(k.heading));
+    _kRight.set(_kFwd.z, 0, -_kFwd.x);
+    const base = k.position.y + (k.y || 0);
+    const lx = dx * _kRight.x + dz * _kRight.z,
+      lz = dx * _kFwd.x + dz * _kFwd.z,
+      ly = pr.pos.y - base;
+    // Closest point of the box to the sphere centre, in kart space.
+    const cx = Math.max(-KART_HX, Math.min(KART_HX, lx)),
+      cy = Math.max(0, Math.min(KART_H, ly)),
+      cz = Math.max(-KART_HZ, Math.min(KART_HZ, lz));
+    _kRel.set(lx - cx, ly - cy, lz - cz);
+    const d = _kRel.length();
+    if (d >= er) return;
+    if (d < 1e-4) {
+      // Centre inside the box: push out through the nearest face, never down.
+      const ex = KART_HX - Math.abs(lx),
+        ez = KART_HZ - Math.abs(lz),
+        ey = KART_H - ly;
+      if (ey <= ex && ey <= ez) _kRel.set(0, 1, 0);
+      else if (ex <= ez) _kRel.set(Math.sign(lx) || 1, 0, 0);
+      else _kRel.set(0, 0, Math.sign(lz) || 1);
+    } else _kRel.multiplyScalar(1 / d);
+    if (_kRel.y < 0) _kRel.y = 0; // never shove a piece into the road
+    if (_kRel.lengthSq() < 1e-6) _kRel.set(Math.sign(lx) || 1, 0, 0);
+    _kRel.normalize();
+    // Back to world: n = right*x + up*y + fwd*z.
+    _kN.set(_kRight.x * _kRel.x + _kFwd.x * _kRel.z, _kRel.y, _kRight.z * _kRel.x + _kFwd.z * _kRel.z);
+    const push = er - (d < 1e-4 ? 0 : d);
+    pr.pos.addScaledVector(_kN, push);
+    _kVel.copy(_kFwd).multiplyScalar(k.speed);
+    _kVel.y = k.vy || 0;
+    _kVr.copy(pr.vel).sub(_kVel);
+    const vn = _kVr.dot(_kN);
+    if (vn < 0) {
+      const rest = pr.profile?.restitution ?? 0.26;
+      pr.vel.addScaledVector(_kN, -(1 + rest) * vn);
+      // Contact friction scrubs the tangential slip; the spin follows the slip.
+      _kVr.copy(pr.vel).sub(_kVel).addScaledVector(_kN, -pr.vel.clone().sub(_kVel).dot(_kN));
+      pr.vel.addScaledVector(_kVr, -0.35);
+      pr.angVel.addScaledVector(_kN.clone().cross(_kVr), 0.4 / er);
+      if (-vn > 3) impact(pr, -vn * 2.5);
+    }
+    pr.asleep = false;
+    pr.settle = false;
+    pr.quiet = 0; // never settle while touching a kart (a piece on the roof would snap to the road)
+    pr.mesh.position.copy(pr.pos);
   }
 
   const prevK = [];
@@ -947,6 +1095,8 @@ function build(scene, track, opts) {
       pr.contactImpact = 0;
       physics.step(pr, dt);
       if (pr.contactImpact > 3) impact(pr, pr.contactImpact);
+      if (karts)
+        for (let ki = 0; ki < karts.length; ki++) if (karts[ki]?.kart?.position) collideKart(pr, karts[ki].kart, dt);
     }
 
     // Keep the floating pool topped up: after a pickup (and a short beat), promote
@@ -1159,8 +1309,10 @@ function build(scene, track, opts) {
   function reset() {
     for (const st of structures) {
       st.broken = false;
+      if (st.proxy) st.proxy.visible = true;
       for (const pr of st.pieces) {
         st.root.attach(pr.mesh);
+        pr.mesh.visible = !st.proxy;
         pr.mesh.position.copy(pr.local.pos);
         pr.mesh.quaternion.copy(pr.local.quat);
         pr.mesh.updateMatrix();
@@ -1213,14 +1365,16 @@ function build(scene, track, opts) {
   const groundN =
     props.filter((p) => p.kind === "crate" && p.mode === "ground").length +
     props.filter((p) => p.kind === "barrel").length;
+  const pieceN = props.filter((p) => p.structure).length;
   console.log(
-    `[zoomies] knockable props: ${groundN} universal crates/barrels + ${props.filter((p) => p.profile).length} biome props + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes`,
+    `[zoomies] knockable props: ${groundN} universal crates/barrels + ${props.filter((p) => p.profile && !p.structure).length} biome props + ${leafPiles.length} leaf piles + ${boxCount} floating power-up boxes + ${structures.length} breakable scenes (${pieceN} pieces)`,
   );
   // _props is a debug hook (headless placement/physics probes) — not gameplay API.
   return {
     update,
     group,
-    count: props.length + leafPiles.length,
+    count: props.length - pieceN + leafPiles.length, // road props + piles; scenes are counted apart
+    sceneCount: structures.length,
     boxTargets,
     setItemsEnabled,
     reset,

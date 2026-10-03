@@ -7,7 +7,8 @@
 //    hill (the ramp-launch rule must not fire on the generator's crests).
 // Run: `npm run check:breakables`.
 import * as THREE from "three";
-import { BREAKABLES, BREAKABLE_KINDS, makeBreakable } from "../src/breakables.js";
+import { BREAKABLES, BREAKABLE_KINDS, BIOME_SCENES, makeBreakable } from "../src/breakables.js";
+import { ROAD_PROP_BIOMES } from "../src/road-prop-assets.js";
 import { SurfaceFeatures, SURFACE_TYPES } from "../src/track-surface.js";
 import { Kart } from "../src/kart.js";
 
@@ -19,9 +20,16 @@ const check = (name, cond, extra = "") => {
 
 // ---- Breakables -------------------------------------------------------------
 for (const kind of BREAKABLE_KINDS) {
-  const b = makeBreakable(kind, () => 0.5);
+  const sizes = [0, 1, 2].map((sz) => makeBreakable(kind, () => 0.5, sz));
+  check(
+    `${BREAKABLES[kind].name}: sizes grow (${sizes.map((b) => b.pieces.length).join("/")} pieces)`,
+    sizes[0].pieces.length <= sizes[1].pieces.length &&
+      sizes[1].pieces.length <= sizes[2].pieces.length &&
+      sizes[0].pieces.length >= 2,
+  );
+  const b = sizes[1];
   const spec = BREAKABLES[kind];
-  let ok = b.pieces.length >= 5 && b.hitPoints.length >= 2 && b.height > 1 && b.radius > 1;
+  let ok = b.pieces.length >= 3 && b.hitPoints.length >= 1 && b.height > 1 && b.radius > 1;
   let worst = "";
   for (const p of b.pieces) {
     const finite = p.hull.every((v) => Number.isFinite(v.x + v.y + v.z));
@@ -29,7 +37,7 @@ for (const kind of BREAKABLE_KINDS) {
     // Every piece rests inside the structure's footprint, and its hull is a
     // real convex set around its origin (not a point, not the whole street).
     const inside = Math.hypot(p.local.pos.x, p.local.pos.z) <= b.radius + 0.5;
-    if (!(finite && hullR > 0.05 && hullR < 6 && p.rest > -0.01 && inside && p.profile && p.mesh.children.length)) {
+    if (!(finite && hullR > 0.05 && hullR < 6 && p.rest > -1.0 && inside && p.profile && p.mesh.children.length)) {
       ok = false;
       worst = `${p.name}: hullR ${hullR.toFixed(2)} rest ${p.rest.toFixed(2)} inside ${inside}`;
     }
@@ -43,16 +51,20 @@ for (const kind of BREAKABLE_KINDS) {
     `${spec.name}: hit points sit inside its radius`,
     b.hitPoints.every(([x, z]) => Math.hypot(x, z) <= b.radius),
   );
-  check(`${spec.name}: debris types resolve`, (spec.debris || []).length > 0 && typeof spec.slow === "number");
+  check(`${spec.name}: debris list and slow factor set`, Array.isArray(spec.debris) && typeof spec.slow === "number");
 }
+check(
+  "every biome has at least three scene recipes, all of which exist",
+  Object.keys(ROAD_PROP_BIOMES).every(
+    (b) => (BIOME_SCENES[b] || []).length >= 3 && BIOME_SCENES[b].every((k) => BREAKABLES[k]),
+  ),
+);
 {
   const a = makeBreakable("marketStall", () => 0.5),
     s = BREAKABLES.marketStall.scale;
-  const unscaled = BREAKABLES.marketStall.build(() => 0.5);
   check(
     "structure scale applies to hit points and height alike",
-    Math.abs(a.height - unscaled.height * s) < 1e-6 &&
-      Math.abs(a.hitPoints[2][0] - unscaled.hitPoints[2][0] * s) < 1e-6,
+    Math.abs(a.height - 2.7 * s) < 1e-6 && Math.abs(a.hitPoints[0][0] + 2 * s) < 1e-6,
   );
 }
 

@@ -119,11 +119,24 @@ rather than hand-plotting world XZ.
   every loop until `breakStructure` lets them go; `props.reset()` re-docks
   them. Author art at 1u ≈ 1m and set `spec.scale` — the kart is ~2u per
   metre, and unscaled furniture reads as toys next to it.
-- Anything that moves between frames needs its `roadIndex` from
-  `track.project(...)`, never from `physics.locate` seeded with 0: locate is a
-  LOCAL window search, and a wrong index lets the fence containment shove a
-  body across the infield onto the other straight (this was "the luggage cart
-  vanished").
+- Scenes are PROCEDURAL: `BREAKABLES` recipes = a generator (`stall`,
+  `stack`, `seating`, `cart`, `heap`, `pallets`, `rack`) + params + size
+  (0/1/2), and `BIOME_SCENES` says which recipes a biome scatters along its
+  kerbs in a race (props.js `build`, after the road props; never counted in
+  the 64-prop budget). Stacks and piles reuse shipped road-prop art, so a new
+  biome flavour is usually one recipe line, not new art. Intact scenes draw
+  as one merged proxy per structure; pieces only render once broken.
+- A build-time placement needs its `roadIndex` from a GLOBAL nearest-sample
+  scan (`nearestIndex` in props.js), never from `physics.locate` seeded with
+  0: locate is a LOCAL window search, and a wrong index lets the fence
+  containment shove a body across the infield onto the other straight (this
+  was "the luggage cart vanished").
+- Karts are solid to loose props (`collideKart` in props.js: sphere vs the
+  kart's box, pushed out and bounced, carrying the kart's velocity). The
+  swept-segment fling is the arcade "hit" for props at REST only; a prop
+  already tumbling gets a blended shove, and nothing above the bonnet line is
+  swept at all (a 2-D sweep re-launched falling pieces as the kart passed
+  under them — "they seem to get hit again").
 - Ramps/humps are `SurfaceFeatures` (`src/track-surface.js`): a height
   profile in the road's frame that `Track._projResult` adds to `groundY`, plus
   a mesh built from the same profile. The kart goes airborne when the road

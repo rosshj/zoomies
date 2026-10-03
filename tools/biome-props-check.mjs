@@ -17,7 +17,7 @@ for (const biome of Object.keys(ROAD_PROP_BIOMES)) {
   const opts = { seed: "REGIONAL", biomeNameAt: () => biome, onImpact: () => sounds++, onItem: () => true };
   const system = await initProps(scene, track, opts);
   assert(system);
-  const props = system._props,
+  const props = system._props.filter((p) => !p.structure), // scene pieces are checked apart
     types = [...new Set(props.filter((p) => p.profile).map((p) => p.kind))];
   assert.equal(system.boxTargets().length, 5);
   assert(props.filter((p) => p.kind === "crate" && p.mode === "ground").length >= 19);
@@ -26,9 +26,10 @@ for (const biome of Object.keys(ROAD_PROP_BIOMES)) {
   for (const pr of props) if (pr.profile) assert(ROAD_PROP_BIOMES[biome].includes(pr.kind));
   const twin = await initProps(new T.Scene(), track, opts);
   assert.deepEqual(
-    props.map((p) => [p.kind, ...p.pos.toArray()]),
+    system._props.map((p) => [p.kind, ...p.pos.toArray()]),
     twin._props.map((p) => [p.kind, ...p.pos.toArray()]),
   );
+  assert(system.sceneCount >= 3, `${biome}: only ${system.sceneCount} breakable scenes`);
   system.setItemsEnabled(false);
   for (const kind of types) {
     const pr = props.find((p) => p.kind === kind),

@@ -99,7 +99,9 @@ In addition:
   **track features**, driven with the real kart and physics. Areas:
   destructible structures (market stalls, news racks, café seating, pallet
   stacks, tyre piles, luggage carts, scrap heaps — hit one and every piece
-  goes), jumps (speed bumps, humps, a kicker, a launch ramp, a tabletop, a
+  goes), every biome's procedurally generated roadside scenes (the ones a
+  race scatters along its kerbs: pumpkin stands, log piles, pot wagons,
+  beach loungers… at three sizes), jumps (speed bumps, humps, a kicker, a launch ramp, a tabletop, a
   drop-off and a gap), a power-up tester (hand yourself any item, spawn a
   dummy rival to aim at) and a line-up of the shipped road props. Keyboard or
   gamepad; `R` resets the area, `C` cycles cameras, `T` is slow motion.

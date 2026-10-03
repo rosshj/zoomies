@@ -168,7 +168,7 @@ for (const [kind, spec] of Object.entries(ROAD_PROPS))
   entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
 // Breakable structures (playground.html smashes them): shown assembled.
 for (const [kind, spec] of Object.entries(BREAKABLES))
-  entries.push({ group: "Breakables", name: spec.name, build: () => makeBreakable(kind).group });
+  entries.push({ group: "Breakable scenes", name: spec.name, build: () => makeBreakable(kind, Math.random, 1).group });
 entries.push(...assetCatalog());
 
 // ---------------------------------------------------------------------------

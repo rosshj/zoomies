@@ -126,6 +126,70 @@ await run(() => window.__playground.freeze(true));
   check("autopilot smashes stations hands-free", r.smashed >= 2 && r.offroad === 0 && r.speed > 10, JSON.stringify(r));
 }
 
+// --- Karts are solid: a piece dropped onto the kart must not pass through ----
+{
+  const r = await run(() => {
+    const P = window.__playground;
+    P.resetArea();
+    P.drive(0, 0);
+    P.player.speed = 0;
+    const k = P.player;
+    const pr = P.area.props._props.find((p) => p.kind === "crate" && p.mode === "ground");
+    pr.asleep = false;
+    pr.settle = false;
+    pr.vel.set(0, 0, 0);
+    pr.angVel.set(0, 0, 0);
+    pr.pos.set(k.position.x, k.position.y + 4, k.position.z);
+    pr.roadIndex = k._proj.i;
+    let minBottom = Infinity,
+      bounced = false;
+    for (let i = 0; i < 180; i++) {
+      P.step(1 / 60);
+      const inside = Math.hypot(pr.pos.x - k.position.x, pr.pos.z - k.position.z) < 1.2;
+      if (inside) minBottom = Math.min(minBottom, pr.pos.y - pr.rest - k.position.y);
+      if (pr.vel.y > 0.5 && pr.pos.y - k.position.y < 3) bounced = true;
+    }
+    const d = Math.hypot(pr.pos.x - k.position.x, pr.pos.z - k.position.z);
+    return { minBottom, bounced, finalDist: d, finalY: pr.pos.y - k.position.y };
+  });
+  check(
+    "a piece dropped on the kart bounces off instead of passing through",
+    r.minBottom > -0.6 && (r.bounced || r.finalDist > 1.2),
+    JSON.stringify(r),
+  );
+}
+
+// --- Biome scenes: every biome's recipes smash under the autopilot ---------
+{
+  const r = await run(async () => {
+    const P = window.__playground;
+    await P.setArea("scenes");
+    P.freeze(true);
+    const scenes = P.area.props.sceneCount;
+    const proxies = P.area.props.structures.filter((s) => s.proxy && s.proxy.visible).length;
+    const hidden = P.area.props._props.filter((p) => p.structure && !p.mesh.visible).length;
+    P.setAutoplay(true);
+    for (let i = 0; i < 2400; i++) P.step(1 / 60);
+    const out = {
+      scenes,
+      proxies,
+      hidden,
+      smashed: P.smashed,
+      biomes: new Set(P.area.targets.map((t) => t.label.split(" · ")[0])).size,
+    };
+    P.setAutoplay(false);
+    P.resetArea();
+    return out;
+  });
+  check(
+    "one scene per biome, drawn as merged proxies while intact",
+    r.scenes === 15 && r.proxies === 15 && r.hidden > 100,
+    JSON.stringify(r),
+  );
+  check("autopilot smashes most of the biome scenes in a lap", r.smashed >= 10, `${r.smashed}/${r.scenes}`);
+  await page.screenshot({ path: path.join(OUT, "scenes.png") });
+}
+
 // --- Jumps: launch off the ramp and land -------------------------------------
 {
   const r = await run(async () => {
