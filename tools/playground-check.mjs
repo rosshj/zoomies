@@ -265,6 +265,56 @@ await run(() => window.__playground.freeze(true));
   await page.screenshot({ path: path.join(OUT, "edges.png") });
 }
 
+// --- Biome tour: all 15 biomes with their edges, scenes and props, mapped ---
+{
+  const r = await run(async () => {
+    const P = window.__playground;
+    await P.setArea("tour");
+    P.freeze(true);
+    const T = P.area.track;
+    const biomes = new Set(T.biomeNames);
+    const leftStyles = new Set(T.edges[1].map((c) => c.style.name || c.style.kind));
+    const verges = new Set(T.edges[0].map((c) => c.verge).filter(Boolean));
+    const headers = P.area.targets.filter((t) => t.header).length;
+    const map = document.getElementById("map");
+    const px = map.getContext("2d").getImageData(0, 0, map.width, map.height).data;
+    let lit = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] > 0) lit++;
+    P.setScenery(true);
+    const world = P.area.world;
+    const h = world && world.heightAt ? world.heightAt(T._pts[200].x + 60, T._pts[200].z + 60) : null;
+    for (let i = 0; i < 30; i++) P.step(1 / 60);
+    return {
+      biomes: biomes.size,
+      scenes: P.area.props.sceneCount,
+      leftStyles: leftStyles.size,
+      verges: verges.size,
+      headers,
+      mapLit: lit,
+      sceneryBuilt: !!world,
+      heightFinite: Number.isFinite(h),
+      worldKids: P.area.worldGroup?.children.length,
+    };
+  });
+  check(
+    "the tour lap crosses all 15 biomes with a scene set and header per biome",
+    r.biomes === 15 && r.headers === 15 && r.scenes >= 45,
+    JSON.stringify(r),
+  );
+  check(
+    "tour edges show every alternative barrier and every verge",
+    r.leftStyles >= 28 && r.verges === 5,
+    `${r.leftStyles} styles, ${r.verges} verges`,
+  );
+  check("the biome map is drawn", r.mapLit > 2000, `${r.mapLit} lit px`);
+  check(
+    "real scenery builds around the tour loop",
+    r.sceneryBuilt && r.heightFinite && r.worldKids > 10,
+    JSON.stringify(r),
+  );
+  await page.screenshot({ path: path.join(OUT, "tour.png") });
+}
+
 // --- Jumps: launch off the ramp and land -------------------------------------
 {
   const r = await run(async () => {

@@ -80,10 +80,20 @@
     }
     .list button:hover, .actions button:hover { background: rgba(255, 255, 255, 0.06); }
     .list button small { color: #8b96b3; margin-left: 6px; }
+    .list button.header { color: #ffd54f; font-weight: 600; margin-top: 4px; }
     .actions { padding: 0 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
     .actions button { border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03); }
     .actions button.wide { grid-column: 1 / -1; }
     .actions button.on { border-color: #ffd54f; color: #ffd54f; }
+    #map {
+      display: block;
+      width: 268px;
+      height: 190px;
+      margin: 8px 12px 0;
+      border-radius: 9px;
+      background: #0e1320;
+      cursor: pointer;
+    }
     #tele {
       margin: 6px 12px 0;
       padding: 8px 10px;
@@ -182,11 +192,11 @@
         color: #eef1f8;
         font-size: 14px;
       }
-      #side h3, #blurb, #actions, #targets, #tele, #help { display: none; }
+      #side h3, #blurb, #map, #actions, #targets, #tele, #help { display: none; }
       #areas { grid-template-columns: repeat(4, 1fr); padding: 0 8px 8px; }
       #areas button { padding: 7px 6px; font-size: 11px; text-align: center; }
       #side.open { max-height: 70vh; }
-      #side.open h3, #side.open #blurb, #side.open #actions, #side.open #targets, #side.open #tele, #side.open #help { display: block; }
+      #side.open h3, #side.open #blurb, #side.open #map, #side.open #actions, #side.open #targets, #side.open #tele, #side.open #help { display: block; }
       #side.open #actions { display: grid; }
       #topbar button { padding: 6px 8px; font-size: 11px; }
       #topbar { gap: 4px; right: 8px; top: 8px; }
@@ -205,6 +215,7 @@
     <h3>Area</h3>
     <div id="areas"></div>
     <div id="blurb"></div>
+    <canvas id="map" width="268" height="190" title="Click to jump to the nearest station"></canvas>
     <h3 id="actions-title" class="hidden">Actions</h3>
     <div id="actions" class="actions"></div>
     <h3>Stations <small style="text-transform:none;letter-spacing:0;color:#6f7a95">— teleport to</small></h3>

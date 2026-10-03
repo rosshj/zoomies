@@ -8,7 +8,8 @@
 // re-plotting every object.
 import { ROAD_PROPS } from "./road-prop-assets.js";
 import { BREAKABLES, BIOME_SCENES, SIZE_LABELS } from "./breakables.js";
-import { EDGE_STYLES, EDGE_STYLE_KEYS, VERGE_KINDS } from "./track-edges.js";
+import { EDGE_STYLES, EDGE_STYLE_KEYS, VERGE_KINDS, BIOME_EDGES } from "./track-edges.js";
+import { ROAD_PROP_BIOMES } from "./road-prop-assets.js";
 
 // A rounded-rectangle loop: two straights of 2*halfLen along X joined by
 // semicircles of `radius`. Straights are where the test stations go (a kart
@@ -41,6 +42,18 @@ function roundedLoop(halfLen, radius, straightPts = 5, arcPts = 5) {
 const loopShare = (halfLen, radius) => (2 * halfLen) / (4 * halfLen + 2 * Math.PI * radius);
 
 export const AREAS = [
+  {
+    id: "tour",
+    name: "Biome tour",
+    icon: "🗺️",
+    blurb:
+      "One lap through all 15 biomes. Each stretch shows that biome's road surface, its stock barrier then every alternative down the left, every runoff verge down the right, all its breakable scenes and its road props. Click the map to jump to a biome; 🌲 Scenery builds the real terrain and buildings around it.",
+    loop: { halfLen: 430, radius: 120 },
+    width: 30,
+    biomes: Object.keys(BIOME_SCENES),
+    edges: "tour",
+    tour: true,
+  },
   {
     id: "smash",
     name: "Destructibles",
@@ -254,6 +267,7 @@ export function resolveArea(area, track) {
     layout.leafPiles.push({ x: w.x, z: w.z });
   }
   for (const st of area.stations?.(S) || []) targets.push(st);
+  if (area.tour) tourStations(track, layout, targets);
   const surface = [];
   for (const f of area.surface?.(S) || []) {
     const spec = { ...f };
@@ -265,10 +279,81 @@ export function resolveArea(area, track) {
   return { layout, surface, targets, loopPoints: null };
 }
 
-// Track config extras an area asks for (explicit edge spans).
+// Track config extras an area asks for (explicit edge spans, or the tour plan).
 export function areaTrackConfig(area) {
   const S = loopShare(area.loop.halfLen, area.loop.radius);
-  return area.edges ? { edges: area.edges(S) } : {};
+  if (typeof area.edges === "function") return { edges: area.edges(S) };
+  if (area.edges) return { edges: area.edges };
+  return {};
+}
+
+// Contiguous biome stretches of a built track: [{ biome, i0, i1 }] in lap order.
+export function biomeStretches(track) {
+  const names = track.biomeNames || [];
+  const N = names.length;
+  const out = [];
+  let i = 0;
+  while (i < N) {
+    const biome = names[i];
+    let end = i;
+    while (end < N && names[end] === biome) end++;
+    out.push({ biome, i0: i, i1: end });
+    i = end;
+  }
+  // The lap starts mid-wedge: the first and last stretches are one biome
+  // split by the start line — join them (i0 goes negative, callers wrap).
+  if (out.length > 1 && out[0].biome === out.at(-1).biome) {
+    const last = out.pop();
+    out[0].i0 = last.i0 - N;
+  }
+  return out;
+}
+
+// The tour: for every biome stretch, every one of its scene recipes (sizes
+// cycling S/M/L, the wide seating ones capped at M) alternating kerbs, with
+// the biome's road props between them, and a station per biome and per scene.
+function tourStations(track, layout, targets) {
+  const N = track.samples;
+  const world = (i, lateral) => {
+    const w = ((Math.round(i) % N) + N) % N;
+    const p = track._pts[w],
+      tan = track._tans[w];
+    const sx = -tan.z,
+      sz = tan.x;
+    return { x: p.x + sx * lateral, z: p.z + sz * lateral, tx: tan.x, tz: tan.z, t: w / N };
+  };
+  for (const st of biomeStretches(track)) {
+    const len = st.i1 - st.i0;
+    if (len < 12) continue;
+    const recipes = BIOME_SCENES[st.biome] || [];
+    const props = ROAD_PROP_BIOMES[st.biome] || [];
+    const head = world(st.i0 + Math.round(len * 0.06), 0);
+    targets.push({ label: `🏞 ${st.biome}`, t: head.t, lateral: 0, biome: st.biome, header: true });
+    const slots = recipes.length + props.length;
+    let k = 0;
+    recipes.forEach((kind, r) => {
+      const gen = BREAKABLES[kind].gen;
+      const size = gen === "seating" ? Math.min(1, r % 3) : r % 3;
+      const i = st.i0 + Math.round((len * (k + 0.5)) / slots);
+      const lateral = (r % 2 ? 1 : -1) * (size === 2 ? 8.2 : 9.6);
+      const w = world(i, lateral);
+      const yaw = Math.atan2(-w.tz, w.tx);
+      layout.breakables.push({ kind, x: w.x, z: w.z, yaw, size });
+      targets.push({
+        label: `${st.biome} · ${BREAKABLES[kind].name} (${SIZE_LABELS[size]})`,
+        t: w.t,
+        lateral,
+        biome: st.biome,
+      });
+      k++;
+    });
+    props.forEach((kind, r) => {
+      const i = st.i0 + Math.round((len * (k + 0.5)) / slots);
+      const w = world(i, r % 2 ? -5 : 5);
+      layout.props.push({ kind, x: w.x, z: w.z, yaw: 0 });
+      k++;
+    });
+  }
 }
 
 export function areaPoints(area) {

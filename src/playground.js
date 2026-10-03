@@ -17,6 +17,7 @@ import { ItemManager } from "./items.js";
 import { HairballManager } from "./hairball.js";
 import { EffectsManager } from "./effects.js";
 import { createScene, moodForTimeOfDay } from "./scene.js";
+import { buildWorld } from "./scenery.js";
 import { ChaseCam } from "./split.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
 import { setWindClock } from "./wind.js";
@@ -71,6 +72,7 @@ _sceneCam.visible = false;
   lawn.receiveShadow = true;
   toonify(lawn);
   scene.add(lawn);
+  var lawnMesh = lawn; // hidden while an area shows the real terrain
 }
 
 // ---------------------------------------------------------------------------
@@ -164,9 +166,35 @@ async function buildArea(area) {
 function showArea(rec, on) {
   rec.track.group.visible = on;
   if (rec.props) rec.props.group.visible = on;
+  if (rec.worldGroup) rec.worldGroup.visible = on && rec.sceneryOn;
+  lawnMesh.visible = !(on && rec.worldGroup && rec.sceneryOn);
   if (!on) {
     rec.items.clear();
   }
+}
+
+// The game's real scenery (terrain, trees, buildings, lakes…) around an
+// area's loop — built on demand (it takes a few seconds) into a group that
+// stands in for the scene, so it can be toggled and left behind on a switch.
+function buildScenery(rec) {
+  if (rec.worldGroup) return rec.world;
+  statusEl.textContent = "building scenery…";
+  const g = new THREE.Group();
+  g.name = "world";
+  scene.add(g);
+  rec.worldGroup = g;
+  rec.world = buildWorld(g, rec.track, { timeOfDay: mood.tod, detail: 1 });
+  toonify(g);
+  statusEl.textContent = "";
+  return rec.world;
+}
+function setScenery(on) {
+  if (!cur) return;
+  if (on) buildScenery(cur);
+  cur.sceneryOn = on;
+  showArea(cur, true);
+  fitSunToArea(cur);
+  renderActions();
 }
 
 function fitSunToArea(rec) {
@@ -218,6 +246,7 @@ async function setArea(id) {
   fitSunToArea(cur);
   for (const b of $("areas").children) b.classList.toggle("selected", b.dataset.id === area.id);
   $("blurb").textContent = area.blurb;
+  fitMap();
   renderTargets();
   renderActions();
   placeKart(player, 0, 0, 12);
@@ -237,14 +266,128 @@ function renderTargets() {
   el.innerHTML = "";
   for (const t of cur.targets) {
     const b = document.createElement("button");
-    b.innerHTML = `${t.label}<small>t ${t.t.toFixed(2)}</small>`;
-    b.addEventListener("click", () => {
-      placeKart(player, t.t, t.lateral, 34);
-      toast(`→ ${t.label}`);
-    });
+    if (t.header) b.className = "header";
+    b.innerHTML = `${t.header ? t.label : t.label.replace(/^[^·]+· /, "")}<small>t ${t.t.toFixed(2)}</small>`;
+    b.addEventListener("click", () => teleportTo(t));
     el.appendChild(b);
   }
 }
+function teleportTo(t) {
+  placeKart(player, t.t, t.lateral, t.header ? 10 : 34);
+  toast(`→ ${t.label}`);
+}
+
+// ---------------------------------------------------------------------------
+// Biome map: the loop drawn in the side panel, coloured by the biome each
+// sample sits in, with the stations marked and the kart live. Click to jump
+// to the nearest station.
+// ---------------------------------------------------------------------------
+const BIOME_COLORS = {
+  meadow: "#5cb04a",
+  forest: "#2f7a3a",
+  alpine: "#b8c8d8",
+  autumn: "#d4863a",
+  beach: "#e8d59a",
+  desert: "#e0b56a",
+  mesa: "#c0603a",
+  tundra: "#dfe8ee",
+  city: "#8e959c",
+  jungle: "#2e8a4a",
+  wetlands: "#4f7a63",
+  volcanic: "#4a3a38",
+  savanna: "#c8a85a",
+  blossom: "#f0a0c0",
+  lavender: "#a48ed0",
+};
+const mapEl = $("map");
+const mapCtx = mapEl.getContext("2d");
+let mapFit = null;
+function fitMap() {
+  const pts = cur.track._pts;
+  let minX = Infinity,
+    maxX = -Infinity,
+    minZ = Infinity,
+    maxZ = -Infinity;
+  for (const p of pts) {
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+    minZ = Math.min(minZ, p.z);
+    maxZ = Math.max(maxZ, p.z);
+  }
+  const W = mapEl.width,
+    H = mapEl.height,
+    pad = 14;
+  const sc = Math.min((W - pad * 2) / (maxX - minX || 1), (H - pad * 2) / (maxZ - minZ || 1));
+  mapFit = {
+    sc,
+    ox: W / 2 - ((minX + maxX) / 2) * sc,
+    oz: H / 2 - ((minZ + maxZ) / 2) * sc,
+  };
+}
+const mapXY = (x, z) => [mapFit.ox + x * mapFit.sc, mapFit.oz + z * mapFit.sc];
+function drawMap() {
+  if (!cur || !mapFit) return;
+  const track = cur.track,
+    pts = track._pts,
+    names = track.biomeNames || [];
+  const ctx = mapCtx;
+  ctx.clearRect(0, 0, mapEl.width, mapEl.height);
+  ctx.lineWidth = 7;
+  ctx.lineCap = "round";
+  for (let i = 0; i < pts.length; i += 4) {
+    const a = pts[i],
+      b = pts[(i + 4) % pts.length];
+    ctx.strokeStyle = BIOME_COLORS[names[i]] || "#777";
+    ctx.beginPath();
+    ctx.moveTo(...mapXY(a.x, a.z));
+    ctx.lineTo(...mapXY(b.x, b.z));
+    ctx.stroke();
+  }
+  // Stations: a dot per scene / feature, a ring per biome header.
+  for (const t of cur.targets) {
+    const p = track.getPointAt(t.t, _mapP);
+    const [x, y] = mapXY(p.x, p.z);
+    ctx.beginPath();
+    if (t.header) {
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.strokeStyle = "#ffd54f";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    } else {
+      ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = "#0e1320";
+      ctx.fill();
+    }
+  }
+  // The kart.
+  const [kx, ky] = mapXY(player.position.x, player.position.z);
+  ctx.beginPath();
+  ctx.arc(kx, ky, 4.5, 0, Math.PI * 2);
+  ctx.fillStyle = "#ff5252";
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "#fff";
+  ctx.stroke();
+}
+const _mapP = new THREE.Vector3();
+mapEl.addEventListener("click", (e) => {
+  if (!cur || !mapFit) return;
+  const r = mapEl.getBoundingClientRect();
+  const mx = ((e.clientX - r.left) / r.width) * mapEl.width,
+    my = ((e.clientY - r.top) / r.height) * mapEl.height;
+  let best = null,
+    bd = Infinity;
+  for (const t of cur.targets) {
+    const p = cur.track.getPointAt(t.t, _mapP);
+    const [x, y] = mapXY(p.x, p.z);
+    const d = (x - mx) ** 2 + (y - my) ** 2;
+    if (d < bd) {
+      bd = d;
+      best = t;
+    }
+  }
+  if (best) teleportTo(best);
+});
 
 // Area-specific actions (the power-up tester is where most of these live).
 const ITEM_GIVERS = [
@@ -273,6 +416,10 @@ function renderActions() {
       fn(player);
       toast(label);
     });
+  if (cur.area.tour) {
+    const b = add(cur.sceneryOn ? "🌲 Scenery: on" : "🌲 Scenery: off", () => setScenery(!cur.sceneryOn), "wide");
+    b.classList.toggle("on", !!cur.sceneryOn);
+  }
   const dummyBtn = add(dummyOn ? "🐱 Remove dummy rival" : "🐱 Spawn dummy rival", () => setDummy(!dummyOn), "wide");
   dummyBtn.classList.toggle("on", dummyOn);
   if (cur.props)
@@ -739,6 +886,7 @@ function step(dt) {
   flight.update(player, dt);
   effects.update(dt);
   cur.track.raceTime += dt;
+  if (cur.world && cur.sceneryOn) cur.world.update(cur.track.raceTime, dt, player.position);
 }
 
 function telemetry() {
@@ -788,6 +936,7 @@ renderer.setAnimationLoop((now) => {
     audio.setEngine(Math.min(1, Math.abs(player.speed) / player.maxSpeed), player.boosting);
   }
   telemetry();
+  drawMap();
   renderer.render(scene, camera);
 });
 
@@ -823,6 +972,7 @@ window.__playground = {
   setDummy,
   setCamMode,
   setSlowMo,
+  setScenery,
   setAutoplay,
   get autoplay() {
     return autoplay;

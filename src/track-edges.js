@@ -293,6 +293,32 @@ export function planEdges(track, config) {
   };
   const sides = [[], []];
   for (let s = 0; s < 2; s++) for (let i = 0; i < N; i++) sides[s].push({ style: def(i), verge: null, vergeW: 0 });
+  // "tour" (the playground's biome tour): every biome stretch shows its stock
+  // barrier then each of its alternatives down the left, and its stock barrier
+  // with each of its verges down the right — the whole catalogue in context.
+  if (config && config.edges === "tour") {
+    let i = 0;
+    while (i < N) {
+      const biome = names[i];
+      let end = i;
+      while (end < N && names[end] === biome) end++;
+      const pal = BIOME_EDGES[biome] || { barriers: [], verges: [] };
+      const left = [null, ...pal.barriers];
+      const right = [null, ...pal.verges];
+      for (let k = i; k < end; k++) {
+        const f = (k - i) / Math.max(1, end - i);
+        const alt = left[Math.min(left.length - 1, Math.floor(f * left.length))];
+        if (alt) sides[1][k].style = EDGE_STYLES[alt];
+        const verge = right[Math.min(right.length - 1, Math.floor(f * right.length))];
+        if (verge) {
+          sides[0][k].verge = verge;
+          sides[0][k].vergeW = VERGE_KINDS[verge].w;
+        }
+      }
+      i = end;
+    }
+    return sides;
+  }
   if (config && Array.isArray(config.edges)) {
     for (const e of config.edges) {
       const i0 = Math.round((((e.t0 % 1) + 1) % 1) * N),
