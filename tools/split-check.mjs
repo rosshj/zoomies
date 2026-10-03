@@ -175,7 +175,9 @@ await page.evaluate(() => {
     return update.call(this, cameras);
   };
 });
-await page.waitForTimeout(100);
+// Wait for a rendered frame rather than a fixed beat: under a software renderer
+// a frame can take longer than 100ms.
+await page.waitForFunction(() => window.__lodCameraCount !== undefined, null, { timeout: 15000 }).catch(() => {});
 const lodViews = await page.evaluate(() => window.__lodCameraCount);
 check("scenery LOD considers both player cameras", lodViews === 2, { lodViews });
 
