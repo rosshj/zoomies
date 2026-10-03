@@ -190,6 +190,7 @@ export class Kart {
     this.groundY = 0; // road surface height under the kart
     this.slopePitch = 0;
     this._groundVy = undefined; // road's vertical velocity under the kart (ramp launch; see _integrate)
+    this._featureT = 9; // s since the wheels were last on a surface feature (ramp/hump lip)
     this.airLaunch = false; // one-shot: the kart just left the ground off a ramp/crest
     this.onVerge = false; // wheels on a runoff verge (sand/gravel/…) this frame
     this._bounceCd = 0; // s until a tyre/concrete barrier can kick the kart again
@@ -783,14 +784,24 @@ export class Kart {
     this.position.y = this.groundY;
 
     // Ramp launch. `y` is height ABOVE the road, so a kart glued to the ground
-    // follows any drop instantly — fine on the generator's smoothed hills, but
-    // the lip of a ramp or a sharp hump should throw it. While grounded, track
-    // the road's vertical velocity under the kart (`_groundVy`); when the road
-    // falls away faster than gravity could bring the kart down in this step,
-    // the kart keeps its upward momentum and goes ballistic from where the
-    // ground WAS. Capped: a drop bigger than a kart is a projection snapping
-    // between stacked strands (crossover decks), not a jump — keep the snap.
-    if (!this.airborne && this.y <= 0 && this._groundVy !== undefined && dt > 0) {
+    // follows any drop instantly; the lip of a ramp or a sharp hump should
+    // throw it instead. While grounded, track the road's vertical velocity
+    // under the kart (`_groundVy`); when the road falls away faster than
+    // gravity could bring the kart down in this step, the kart keeps its
+    // upward momentum and goes ballistic from where the ground WAS. Capped: a
+    // drop bigger than a kart is a projection snapping between stacked
+    // strands (crossover decks), not a jump — keep the snap.
+    //
+    // ONLY off a SURFACE FEATURE (`track.surface`: the playground's ramps and
+    // humps). Bare terrain never launches: the road is a polyline through
+    // samples 2-3u apart, and a hilly lap's sharper crests kink enough at
+    // each sample that this rule read them as lips — the kart hopped a hand's
+    // height a dozen times a lap for no visible reason. The wheels count as
+    // on a feature for a tenth of a second after leaving its lift, which is
+    // where the lip's drop actually registers.
+    const onFeature = !!track.surface && track.surface.liftAt(this.position.x, this.position.z) > 0.01;
+    this._featureT = onFeature ? 0 : this._featureT + dt;
+    if (!this.airborne && this.y <= 0 && this._groundVy !== undefined && dt > 0 && this._featureT < 0.1) {
       const ballistic = prevGround + this._groundVy * dt - 15 * dt * dt;
       const gap = ballistic - this.groundY;
       if (this._groundVy > 0.4 && gap > 0.01 && gap < 3 && Math.abs(this.speed) > 8) {
