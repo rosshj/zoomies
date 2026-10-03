@@ -24,7 +24,12 @@ import { setWindClock } from "./wind.js";
 import { audio } from "./audio.js";
 import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
 import { SurfaceFeatures } from "./track-surface.js";
-import { AREAS, areaPoints, resolveArea, areaTrackConfig } from "./playground-areas.js";
+import { AREAS, TOUR_BIOMES, tourArea, areaPoints, resolveArea, areaTrackConfig } from "./playground-areas.js";
+import { Weather } from "./weather.js";
+import { biomeWeatherAt, biomeWindAt, biomeNameAt } from "./scenery.js";
+import { windToward } from "./wind.js";
+import { environmentProfile, looseSurface } from "./environment-particles.js";
+import { disposeGroup } from "./models.js";
 
 const params = new URLSearchParams(location.search);
 if (params.has("plain")) document.body.classList.add("plain");
@@ -110,9 +115,15 @@ const karts = [player]; // live field (the dummy joins when spawned)
 const input = new Input({ touch: false });
 const hairballs = new HairballManager(scene);
 const effects = new EffectsManager(scene);
+const weather = new Weather(scene); // rain / snow for the biome the kart is in (tour)
 const chase = new ChaseCam();
 const camera = chase.camera;
 camera.aspect = 1;
+// Scenery props (animals, buildings, trees, rocks) live on layer 1 and the
+// hero set pieces on 2, so the race's rear-view mirror can skip them — the
+// main camera has to opt in or the hills are bare.
+camera.layers.enable(1);
+camera.layers.enable(2);
 
 // ---------------------------------------------------------------------------
 // Areas: built lazily on first visit, then shown/hidden. Each owns a Track
@@ -142,9 +153,15 @@ async function buildArea(area) {
   track.group.add(surface.group);
   toonify(track.group);
   scene.add(track.group);
+  const rec = { area, track, surface, props: null, items: null, targets, itemsOn: !!area.items, sceneryOn: false };
+  if (area.scenery) {
+    buildScenery(rec);
+    rec.sceneryOn = true;
+  }
   const props = await initProps(scene, track, {
     seed: "playground-" + area.id,
     layout,
+    heightAt: rec.world?.heightAt,
     onImpact: (kind, pos, strength) => audio.propImpact(kind, pos, strength),
     onBreak: (kart, st) => {
       // Smashing a structure costs pace in proportion to how solid it is —
@@ -156,11 +173,23 @@ async function buildArea(area) {
     onItem: (kart) => grantItem(kart),
   });
   if (props) props.setItemsEnabled(!!area.items);
-  const items = new ItemManager(scene, track);
-  const rec = { area, track, surface, props, items, targets, itemsOn: !!area.items };
+  rec.props = props;
+  rec.items = new ItemManager(scene, track);
   built.set(area.id, rec);
   statusEl.textContent = "";
   return rec;
+}
+
+// Drop an area entirely (the tour rebuilds per biome; keeping fifteen worlds
+// around would eat the GPU).
+function disposeArea(rec) {
+  showArea(rec, false);
+  for (const g of [rec.track.group, rec.props?.group, rec.worldGroup]) {
+    if (!g) continue;
+    scene.remove(g);
+    disposeGroup(g);
+  }
+  built.delete(rec.area.id);
 }
 
 function showArea(rec, on) {
@@ -183,10 +212,34 @@ function buildScenery(rec) {
   g.name = "world";
   scene.add(g);
   rec.worldGroup = g;
-  rec.world = buildWorld(g, rec.track, { timeOfDay: mood.tod, detail: 1 });
+  rec.world = buildWorld(g, rec.track, {
+    timeOfDay: mood.tod,
+    detail: 1.4,
+    density: rec.area.tour ? 2.6 : 1, // the tour packs its small loop
+    compact: !!rec.area.tour,
+  });
   toonify(g);
   statusEl.textContent = "";
   return rec.world;
+}
+
+// The tour's biome: swapping it rebuilds the tour area for that biome.
+let tourBiome = TOUR_BIOMES.includes(params.get("biome")) ? params.get("biome") : "meadow";
+async function setTourBiome(biome) {
+  if (!TOUR_BIOMES.includes(biome)) return;
+  tourBiome = biome;
+  AREAS[0] = tourArea(biome);
+  $("biome").value = biome;
+  const old = built.get("tour");
+  if (old && old.area.biome !== biome) {
+    if (cur === old) {
+      showArea(old, false);
+      clearProjectiles();
+      cur = null;
+    }
+    disposeArea(old);
+  }
+  await setArea("tour");
 }
 function setScenery(on) {
   if (!cur) return;
@@ -239,6 +292,8 @@ function placeKart(kart, t, lateral = 0, back = 0) {
 async function setArea(id) {
   const area = AREAS.find((a) => a.id === id) || AREAS[0];
   if (cur && cur.area.id === area.id) return;
+  $("biome-bar").classList.toggle("hidden", !area.tour);
+  if (area.tour) $("biome").value = area.biome;
   if (cur) showArea(cur, false);
   clearProjectiles();
   cur = built.get(area.id) || (await buildArea(area));
@@ -255,8 +310,9 @@ async function setArea(id) {
   history.replaceState(
     null,
     "",
-    `?area=${area.id}${params.has("webgl") ? "&webgl=1" : ""}${autoplay ? "&autoplay=1" : ""}`,
+    `?area=${area.id}${area.tour ? `&biome=${area.biome}` : ""}${params.has("tod") ? `&tod=${params.get("tod")}` : ""}${params.has("webgl") ? "&webgl=1" : ""}${autoplay ? "&autoplay=1" : ""}`,
   );
+  weather.setWeather("none");
   if (autoplay) setAutoplay(true); // re-arm (spawns the dummy in the item area)
   $("side").classList.remove("open");
 }
@@ -798,6 +854,19 @@ for (const a of AREAS) {
   b.addEventListener("click", () => setArea(a.id));
   $("areas").appendChild(b);
 }
+for (const b of TOUR_BIOMES) {
+  const o = document.createElement("option");
+  o.value = b;
+  o.textContent = b;
+  $("biome").appendChild(o);
+}
+$("biome").addEventListener("change", (e) => setTourBiome(e.target.value));
+$("biome-prev").addEventListener("click", () =>
+  setTourBiome(TOUR_BIOMES[(TOUR_BIOMES.indexOf(tourBiome) + TOUR_BIOMES.length - 1) % TOUR_BIOMES.length]),
+);
+$("biome-next").addEventListener("click", () =>
+  setTourBiome(TOUR_BIOMES[(TOUR_BIOMES.indexOf(tourBiome) + 1) % TOUR_BIOMES.length]),
+);
 $("cam-btn").addEventListener("click", () => setCamMode(camMode + 1));
 $("auto-btn").addEventListener("click", () => setAutoplay(!autoplay));
 $("side-toggle").addEventListener("click", () => $("side").classList.toggle("open"));
@@ -884,9 +953,49 @@ function step(dt) {
     }
   }
   flight.update(player, dt);
+  if (cur.area.tour) {
+    // The biome's weather and wind, and the surface the tyres kick up.
+    const px = player.position.x,
+      pz = player.position.z;
+    weather.setWeather(biomeWeatherAt(px, pz));
+    windToward(biomeWindAt(px, pz), dt);
+    for (const k of karts) emitSurfaceDebris(k, dt);
+  }
   effects.update(dt);
   cur.track.raceTime += dt;
   if (cur.world && cur.sceneryOn) cur.world.update(cur.track.raceTime, dt, player.position);
+}
+
+// Biome-tinted dust / wake debris / tyre grit off the road surface (the same
+// rule main.js applies: petals in blossom, sand on the beach, grit in the city).
+const _dustCol = new THREE.Color(),
+  _wakeCol = new THREE.Color();
+function emitSurfaceDebris(kart, dt) {
+  const speed = Math.abs(kart.speed || 0);
+  if (kart.airborne || speed < 4) return;
+  const track = cur.track,
+    n = track.samples,
+    row = Math.floor((kart.trackT || 0) * n) % n,
+    p = track._pts[row],
+    t = track._tans[row];
+  const lateral = (kart.position.x - p.x) * -t.z + (kart.position.z - p.z) * t.x;
+  const biome = biomeNameAt(kart.position.x, kart.position.z, kart.groundY),
+    spec = environmentProfile(biome);
+  const sliding = kart.drifting || kart.spinTimer > 0;
+  const loose = looseSurface(biome, kart.position.x, kart.position.z, lateral, track.halfWidth, row, sliding);
+  const pace = Math.min(1, speed / (kart.maxSpeed || 65));
+  const amount = loose * (sliding ? 1 : pace * 0.65);
+  _dustCol.set(spec.tile === 3 || spec.tile === 4 || spec.tile === 6 ? spec.colors[0] : 0x9a968b);
+  if (amount > 0.015) effects.dust(kart, _dustCol, amount, dt, biome);
+  if (pace > 0.18)
+    effects.wakeDebris(
+      kart,
+      _wakeCol,
+      pace * (spec.tile < 3 || spec.tile === 5 ? 0.2 + loose * 0.8 : loose),
+      dt,
+      biome,
+    );
+  if (sliding && pace > 0.5 && spec.tile !== 4) effects.tireGrit(kart, dt);
 }
 
 function telemetry() {
@@ -935,6 +1044,7 @@ renderer.setAnimationLoop((now) => {
     audio.setListener(player.position.x, player.position.z, Math.sin(player.heading), Math.cos(player.heading));
     audio.setEngine(Math.min(1, Math.abs(player.speed) / player.maxSpeed), player.boosting);
   }
+  weather.update(dt, camera.position);
   telemetry();
   drawMap();
   renderer.render(scene, camera);
@@ -942,6 +1052,7 @@ renderer.setAnimationLoop((now) => {
 
 resize();
 setCamMode(0);
+AREAS[0] = tourArea(tourBiome);
 await setArea(params.get("area") || AREAS[0].id);
 if (params.has("autoplay")) setAutoplay(true);
 statusEl.textContent = `${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"} · ${AREAS.length} areas`;
@@ -973,6 +1084,9 @@ window.__playground = {
   setCamMode,
   setSlowMo,
   setScenery,
+  setTourBiome,
+  TOUR_BIOMES,
+  weather,
   setAutoplay,
   get autoplay() {
     return autoplay;

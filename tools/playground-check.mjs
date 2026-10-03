@@ -265,53 +265,67 @@ await run(() => window.__playground.freeze(true));
   await page.screenshot({ path: path.join(OUT, "edges.png") });
 }
 
-// --- Biome tour: all 15 biomes with their edges, scenes and props, mapped ---
+// --- Biome tour: one biome at a time, everything it owns, packed -------------
 {
   const r = await run(async () => {
     const P = window.__playground;
     await P.setArea("tour");
     P.freeze(true);
-    const T = P.area.track;
-    const biomes = new Set(T.biomeNames);
-    const leftStyles = new Set(T.edges[1].map((c) => c.style.name || c.style.kind));
-    const verges = new Set(T.edges[0].map((c) => c.verge).filter(Boolean));
-    const headers = P.area.targets.filter((t) => t.header).length;
-    const map = document.getElementById("map");
-    const px = map.getContext("2d").getImageData(0, 0, map.width, map.height).data;
-    let lit = 0;
-    for (let i = 3; i < px.length; i += 4) if (px[i] > 0) lit++;
-    P.setScenery(true);
-    const world = P.area.world;
-    const h = world && world.heightAt ? world.heightAt(T._pts[200].x + 60, T._pts[200].z + 60) : null;
-    for (let i = 0; i < 30; i++) P.step(1 / 60);
-    return {
-      biomes: biomes.size,
-      scenes: P.area.props.sceneCount,
-      leftStyles: leftStyles.size,
-      verges: verges.size,
-      headers,
-      mapLit: lit,
-      sceneryBuilt: !!world,
-      heightFinite: Number.isFinite(h),
-      worldKids: P.area.worldGroup?.children.length,
+    const snap = () => {
+      const T = P.area.track;
+      const tags = {};
+      T.group.traverse((o) => {
+        if (o.userData.barrier) tags[o.userData.barrier] = 1;
+      });
+      return {
+        biome: P.area.area.biome,
+        biomes: new Set(T.biomeNames).size,
+        scenes: P.area.props.sceneCount,
+        props: P.area.props.count,
+        sceneryOn: !!P.area.sceneryOn,
+        worldKids: P.area.worldGroup?.children.length || 0,
+        leftStyles: new Set(T.edges[1].map((c) => c.style.name || c.style.kind)).size,
+        verges: new Set(T.edges[0].map((c) => c.verge).filter(Boolean)).size,
+        stations: P.area.targets.length,
+      };
     };
+    const meadow = snap();
+    P.setAutoplay(true);
+    for (let i = 0; i < 600; i++) P.step(1 / 60);
+    const smashed = P.smashed;
+    const weatherNone = P.weather.target;
+    P.setAutoplay(false);
+    await P.setTourBiome("tundra");
+    P.freeze(true);
+    for (let i = 0; i < 20; i++) P.step(1 / 60);
+    const tundra = snap();
+    const builtKeys = [...document.querySelectorAll("#biome option")].length;
+    return { meadow, smashed, weatherNone, tundra, snow: P.weather.target, builtKeys };
   });
+  const m = r.meadow,
+    t = r.tundra;
   check(
-    "the tour lap crosses all 15 biomes with a scene set and header per biome",
-    r.biomes === 15 && r.headers === 15 && r.scenes >= 45,
-    JSON.stringify(r),
+    "the meadow tour is one biome, packed, with scenery built",
+    m.biomes === 1 && m.biome === "meadow" && m.scenes >= 20 && m.props >= 40 && m.sceneryOn && m.worldKids > 10,
+    JSON.stringify(m),
   );
   check(
-    "tour edges show every alternative barrier and every verge",
-    r.leftStyles >= 28 && r.verges === 5,
-    `${r.leftStyles} styles, ${r.verges} verges`,
+    "every alternative barrier and verge of the biome is on the lap",
+    m.leftStyles >= 4 && m.verges === 1,
+    `${m.leftStyles} styles, ${m.verges} verge`,
   );
-  check("the biome map is drawn", r.mapLit > 2000, `${r.mapLit} lit px`);
+  check("the autopilot smashes along the packed kerbs", r.smashed >= 3, `${r.smashed}`);
   check(
-    "real scenery builds around the tour loop",
-    r.sceneryBuilt && r.heightFinite && r.worldKids > 10,
-    JSON.stringify(r),
+    "switching biome rebuilds the lap in that biome with its own kit",
+    t.biome === "tundra" && t.biomes === 1 && t.scenes >= 20 && t.worldKids > 10 && t.verges === 1,
+    JSON.stringify(t),
   );
+  check(
+    "the biome's weather follows the kart",
+    r.weatherNone === "none" && r.snow === "snow",
+    `${r.weatherNone} → ${r.snow}`,
+  );
+  check("the selector lists every biome", r.builtKeys === 15, `${r.builtKeys}`);
   await page.screenshot({ path: path.join(OUT, "tour.png") });
 }
 

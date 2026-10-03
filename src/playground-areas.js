@@ -41,19 +41,33 @@ function roundedLoop(halfLen, radius, straightPts = 5, arcPts = 5) {
 // share of the lap. Stations are spaced along those.
 const loopShare = (halfLen, radius) => (2 * halfLen) / (4 * halfLen + 2 * Math.PI * radius);
 
-export const AREAS = [
-  {
+// The biome tour: ONE biome at a time, a small loop entirely inside it with
+// everything the biome owns — its terrain, trees, grass and flowers, its
+// buildings, landmarks and set pieces, its animals, birds and insects, its
+// weather and wind, its road surface, its stock barrier and every alternative
+// (left), every runoff verge (right), every breakable scene recipe and every
+// road prop — packed along the roadside so the whole kit is on screen within a
+// lap. Pick the biome with the panel's selector (or ?biome=).
+export const TOUR_BIOMES = Object.keys(BIOME_SCENES);
+export function tourArea(biome) {
+  return {
     id: "tour",
     name: "Biome tour",
     icon: "🗺️",
-    blurb:
-      "One lap through all 15 biomes. Each stretch shows that biome's road surface, its stock barrier then every alternative down the left, every runoff verge down the right, all its breakable scenes and its road props. Click the map to jump to a biome; 🌲 Scenery builds the real terrain and buildings around it.",
-    loop: { halfLen: 430, radius: 120 },
+    biome,
+    blurb: `Everything the ${biome} biome has, on one small loop: its land, flora and fauna, buildings and set pieces, weather, every barrier (left) and verge (right), every breakable scene and road prop, packed along the kerbs. Switch biome above; R resets the smashables.`,
+    loop: { halfLen: 190, radius: 68 },
     width: 30,
-    biomes: Object.keys(BIOME_SCENES),
+    biomes: [biome],
     edges: "tour",
+    features: null, // the biome's own set pieces may spawn
+    scenery: true,
     tour: true,
-  },
+  };
+}
+
+export const AREAS = [
+  tourArea("meadow"),
   {
     id: "smash",
     name: "Destructibles",
@@ -267,7 +281,7 @@ export function resolveArea(area, track) {
     layout.leafPiles.push({ x: w.x, z: w.z });
   }
   for (const st of area.stations?.(S) || []) targets.push(st);
-  if (area.tour) tourStations(track, layout, targets);
+  if (area.tour) tourStations(track, layout, targets, area.biome);
   const surface = [];
   for (const f of area.surface?.(S) || []) {
     const spec = { ...f };
@@ -309,51 +323,67 @@ export function biomeStretches(track) {
   return out;
 }
 
-// The tour: for every biome stretch, every one of its scene recipes (sizes
-// cycling S/M/L, the wide seating ones capped at M) alternating kerbs, with
-// the biome's road props between them, and a station per biome and per scene.
-function tourStations(track, layout, targets) {
+// The tour pack: the biome's recipes cycle along the whole lap every ~40u
+// (sizes cycling, the wide seating ones capped at M) alternating kerbs, its
+// road props every ~18u hugging the kerbs (never the middle of the road),
+// leaf piles on the leafy biomes, and a station per scene and per set piece.
+const LEAFY = new Set(["meadow", "forest", "autumn", "blossom", "jungle", "lavender", "wetlands"]);
+function tourStations(track, layout, targets, biome) {
   const N = track.samples;
-  const world = (i, lateral) => {
-    const w = ((Math.round(i) % N) + N) % N;
+  const L = track.length;
+  const world = (u, lateral) => {
+    const w = ((Math.round((u / L) * N) % N) + N) % N;
     const p = track._pts[w],
       tan = track._tans[w];
     const sx = -tan.z,
       sz = tan.x;
     return { x: p.x + sx * lateral, z: p.z + sz * lateral, tx: tan.x, tz: tan.z, t: w / N };
   };
-  for (const st of biomeStretches(track)) {
-    const len = st.i1 - st.i0;
-    if (len < 12) continue;
-    const recipes = BIOME_SCENES[st.biome] || [];
-    const props = ROAD_PROP_BIOMES[st.biome] || [];
-    const head = world(st.i0 + Math.round(len * 0.06), 0);
-    targets.push({ label: `🏞 ${st.biome}`, t: head.t, lateral: 0, biome: st.biome, header: true });
-    const slots = recipes.length + props.length;
-    let k = 0;
-    recipes.forEach((kind, r) => {
-      const gen = BREAKABLES[kind].gen;
-      const size = gen === "seating" ? Math.min(1, r % 3) : r % 3;
-      const i = st.i0 + Math.round((len * (k + 0.5)) / slots);
-      const lateral = (r % 2 ? 1 : -1) * (size === 2 ? 8.2 : 9.6);
-      const w = world(i, lateral);
-      const yaw = Math.atan2(-w.tz, w.tx);
-      layout.breakables.push({ kind, x: w.x, z: w.z, yaw, size });
-      targets.push({
-        label: `${st.biome} · ${BREAKABLES[kind].name} (${SIZE_LABELS[size]})`,
-        t: w.t,
-        lateral,
-        biome: st.biome,
-      });
-      k++;
-    });
-    props.forEach((kind, r) => {
-      const i = st.i0 + Math.round((len * (k + 0.5)) / slots);
-      const w = world(i, r % 2 ? -5 : 5);
-      layout.props.push({ kind, x: w.x, z: w.z, yaw: 0 });
-      k++;
-    });
+  // Set pieces (bridges, tunnels, dams…) planned on this loop: a station each,
+  // and nothing parked inside the structural ones.
+  const runs = track.features?.runs || [];
+  const structural = new Set(["tunnel", "bridge", "causeway", "dam", "canyon", "overpass", "crossover", "shelf"]);
+  const blocked = (u) => {
+    const i = Math.round((u / L) * N) % N;
+    return runs.some((r) => structural.has(r.kind) && Math.min(Math.abs(i - r.c), N - Math.abs(i - r.c)) < r.half + 6);
+  };
+  for (const r of runs) targets.push({ label: `⛰ ${r.kind}`, t: (((r.c % N) + N) % N) / N, lateral: 0, biome });
+  targets.push({ label: `🏞 ${biome}`, t: 0.01, lateral: 0, biome, header: true });
+  const recipes = BIOME_SCENES[biome] || [];
+  const props = ROAD_PROP_BIOMES[biome] || [];
+  // Scenes every ~40u from 30u past the start line, skipping the last 40u.
+  let n = 0;
+  for (let u = 30; u < L - 40; u += 40) {
+    if (blocked(u)) continue;
+    const kind = recipes[n % recipes.length];
+    const gen = BREAKABLES[kind].gen;
+    const size = gen === "seating" ? Math.min(1, n % 3) : n % 3;
+    const lateral = (n % 2 ? 1 : -1) * (size === 2 ? 8.2 : 9.6);
+    const w = world(u, lateral);
+    const yaw = Math.atan2(-w.tz, w.tx) + ((n * 7) % 5) * 0.08 - 0.16;
+    layout.breakables.push({ kind, x: w.x, z: w.z, yaw, size });
+    targets.push({ label: `${biome} · ${BREAKABLES[kind].name} (${SIZE_LABELS[size]})`, t: w.t, lateral, biome });
+    n++;
   }
+  // Road props in the gaps between scenes, a pair per gap hugging BOTH kerbs
+  // (10-12u out: the middle of the road stays clear).
+  let k = 0;
+  for (let u = 10; u < L - 20; u += 40) {
+    if (blocked(u) || !props.length) continue;
+    for (const side of [-1, 1]) {
+      const kind = props[k % props.length];
+      const lateral = side * (10 + ((k * 13) % 5) * 0.5);
+      const w = world(u + (side > 0 ? 6 : -6), lateral);
+      layout.props.push({ kind, x: w.x, z: w.z, yaw: (k * 1.7) % 6.28 });
+      k++;
+    }
+  }
+  if (LEAFY.has(biome))
+    for (let u = 45; u < L - 40; u += 70) {
+      if (blocked(u)) continue;
+      const w = world(u, (u / 70) % 2 ? 12.5 : -12.5);
+      layout.leafPiles.push({ x: w.x, z: w.z });
+    }
 }
 
 export function areaPoints(area) {

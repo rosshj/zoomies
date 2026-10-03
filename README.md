@@ -96,7 +96,9 @@ In addition:
 - **`/viewer.html`** — the asset viewer: every procedural cat, kart, prop and
   scenery piece, inspectable in 3D.
 - **`/playground.html`** — the feature playground: small test loops for
-  **track features**, driven with the real kart and physics. Areas:
+  **track features**, driven with the real kart and physics. Areas: the
+  biome tour (one biome at a time, everything it owns on one packed loop with
+  its real scenery, weather and wildlife — the per-biome test bench),
   destructible structures (market stalls, news racks, café seating, pallet
   stacks, tyre piles, luggage carts, scrap heaps — hit one and every piece
   goes), every biome's procedurally generated roadside scenes (the ones a

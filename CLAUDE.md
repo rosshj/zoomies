@@ -173,3 +173,22 @@ rng stream (`seed|edges`) so it never shifts the scenery's random draws.
   that depends on holding a lane.
 - The playground's "Road edges" area lines every barrier kind down the left of
   its first straight and every verge down the back straight.
+
+## The biome tour is the per-biome test bench
+
+`?area=tour&biome=<name>` in the playground builds a small loop entirely
+inside ONE biome with everything it owns packed along the kerbs (every
+breakable recipe, every road prop, every alternative barrier down the left,
+every verge down the right, leaf piles on leafy biomes) and the game's real
+scenery around it via `buildWorld(group, track, { density: 2.6, compact })`
+— `density` multiplies the roadside / tree / rock / critter / flyer
+placements, `compact` confines the world-wide scatters to the loop's extent.
+Weather, wind and the surface debris the tyres kick up follow the kart as in
+a race. Switching biome disposes and rebuilds the area.
+
+- Scenery props live on render LAYER 1 (set pieces on 2) so the race's mirror
+  can skip them: any new camera must `layers.enable(1)` and `(2)` or every
+  hill looks bare while the census says the cows are there (this cost an
+  hour).
+- Keep the middle of the road clear: scenes sit 8-10u off the centre line,
+  props 10-12u, both alternating sides; only the kart's own line is empty.
