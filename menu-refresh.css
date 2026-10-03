@@ -1476,11 +1476,19 @@ button.small-pill {
   margin: 8px 0 0;
   text-align: left;
 }
+/* Upright: the stack sits at the BOTTOM of the screen, under the thumb, with
+   the world showing above it (the scrim darkens toward the bottom to match). */
 #stage.menu-portrait .title-wrap {
   width: calc(100% - 48px);
   max-width: 440px;
   left: 24px;
+  top: auto;
+  bottom: max(28px, calc(var(--safe-bottom, 0px) + 20px));
+  transform: none;
   gap: 12px;
+}
+#stage.menu-portrait #menu[data-step="title"] {
+  background: linear-gradient(180deg, #18132126 0%, #181321a6 45%, #181321f2 70%);
 }
 #stage.menu-compact .title-wrap {
   width: min(440px, calc(100vmin - 48px));
