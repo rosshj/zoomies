@@ -973,6 +973,19 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 window.addEventListener("resize", resize);
+// Belt and braces for iOS Safari, which still zooms on a fast double tap and
+// on pinch despite the viewport meta and touch-action.
+document.addEventListener("gesturestart", (e) => e.preventDefault(), { passive: false });
+let _lastTouchEnd = 0;
+document.addEventListener(
+  "touchend",
+  (e) => {
+    const now = performance.now();
+    if (now - _lastTouchEnd < 320 && e.target?.tagName !== "SELECT") e.preventDefault();
+    _lastTouchEnd = now;
+  },
+  { passive: false },
+);
 new ResizeObserver(resize).observe($("game")); // the phone panel opening/closing resizes the canvas host
 
 // ---------------------------------------------------------------------------
