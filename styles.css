@@ -1817,6 +1817,118 @@ button.small {
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
 
+/* Item pickup toast — bottom centre, just above the steering bar. A rounded
+   pill (icon + name + one-line effect) that springs up from below, settles,
+   holds, then drops away. Deliberately NOT the big centre #toast: a power-up
+   grab should register without blocking the road ahead. Per-item accent via
+   data-tone (matches the #powerups pill borders top-left, so the toast and
+   the pill it announces read as the same item). */
+#pickup-toast {
+  --pt-c: 120, 224, 90; /* catnip green by default */
+  position: absolute;
+  bottom: calc(max(12px, var(--safe-bottom, 0px)) + 78px);
+  left: 50%;
+  transform: translate(-50%, 60px) scale(0.7);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 18px 8px 10px;
+  border-radius: var(--pill);
+  background: linear-gradient(180deg, rgba(22, 30, 48, 0.94), rgba(10, 14, 24, 0.94));
+  border: 2px solid rgba(var(--pt-c), 0.85);
+  box-shadow:
+    0 0 0 3px rgba(var(--pt-c), 0.18),
+    0 0 26px rgba(var(--pt-c), 0.38),
+    0 8px 22px rgba(0, 0, 0, 0.5);
+  color: #fff;
+  white-space: nowrap;
+  max-width: calc(100vw - 32px);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+#pickup-toast .pt-ico {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(var(--pt-c), 0.22);
+  font-size: 21px;
+  line-height: 1;
+  flex: none;
+}
+#pickup-toast .pt-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  text-align: left;
+}
+#pickup-toast .pt-title {
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.3px;
+  color: rgb(var(--pt-c));
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+#pickup-toast .pt-sub {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.86);
+}
+#pickup-toast .pt-sub:empty { display: none; }
+#pickup-toast[data-tone="shield"] { --pt-c: 120, 180, 255; }
+#pickup-toast[data-tone="tri"] { --pt-c: 255, 180, 90; }
+#pickup-toast[data-tone="catnip"] { --pt-c: 120, 224, 90; }
+#pickup-toast[data-tone="yarn"] { --pt-c: 236, 128, 255; }
+#pickup-toast[data-tone="milk"] { --pt-c: 240, 236, 220; }
+#pickup-toast[data-tone="life"] { --pt-c: 255, 120, 150; }
+#pickup-toast[data-tone="rival"] { --pt-c: 255, 179, 0; }
+
+#pickup-toast.show {
+  animation: pt-spring 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+#pickup-toast.show .pt-ico {
+  animation: pt-ico-wiggle 0.9s ease-out both;
+}
+/* Spring: overshoot past the resting line, bounce back under it, settle, hold,
+   then drop away — a toy popping up, not a panel sliding in. */
+@keyframes pt-spring {
+  0% { opacity: 0; transform: translate(-50%, 60px) scale(0.7); }
+  13% { opacity: 1; transform: translate(-50%, -12px) scale(1.07); }
+  22% { transform: translate(-50%, 5px) scale(0.97); }
+  31% { transform: translate(-50%, -2px) scale(1.01); }
+  38% { transform: translate(-50%, 0) scale(1); }
+  84% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, 26px) scale(0.9); }
+}
+@keyframes pt-ico-wiggle {
+  0% { transform: scale(0.4) rotate(-30deg); }
+  30% { transform: scale(1.25) rotate(14deg); }
+  50% { transform: scale(0.95) rotate(-8deg); }
+  70% { transform: scale(1.05) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+/* Narrow screens (phones in landscape): the full pill (~285px) would sit on
+   the minimap's right edge and under the boost button, so it goes compact —
+   icon + item name only; the effect line is on the top-left pill anyway. */
+@media (max-width: 860px) {
+  #pickup-toast { gap: 7px; padding: 5px 13px 5px 6px; }
+  #pickup-toast .pt-ico { width: 28px; height: 28px; font-size: 16px; }
+  #pickup-toast .pt-title { font-size: 14px; }
+  #pickup-toast .pt-sub { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #pickup-toast.show { animation: pt-fade 2.4s ease-out both; }
+  #pickup-toast.show .pt-ico { animation: none; }
+  @keyframes pt-fade {
+    0% { opacity: 0; transform: translate(-50%, 0) scale(1); }
+    12% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    84% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, 0) scale(1); }
+  }
+}
+
 /* Minimap — bottom-left, just right of the throttle. Kept small and mostly
    transparent (track outline + dots) so it doesn't cover the driving view. */
 #minimap {
@@ -2963,6 +3075,17 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 }
 #split-panel1 { top: 10px; }
 #split-panel2 { top: calc(50% + 10px); }
+/* Pickup toast follows P1's view: bottom of the top half in 2P, bottom of the
+   top-left quadrant (smaller) in 3-4P — never over the divider or P2's road. */
+#hud.split #pickup-toast { bottom: calc(50% + 14px); }
+#hud.split-3 #pickup-toast, #hud.split-4 #pickup-toast {
+  left: 25%;
+  gap: 8px;
+  padding: 6px 14px 6px 8px;
+}
+#hud.split-3 #pickup-toast .pt-ico, #hud.split-4 #pickup-toast .pt-ico { width: 28px; height: 28px; font-size: 16px; }
+#hud.split-3 #pickup-toast .pt-title, #hud.split-4 #pickup-toast .pt-title { font-size: 14px; }
+#hud.split-3 #pickup-toast .pt-sub, #hud.split-4 #pickup-toast .pt-sub { font-size: 11px; }
 /* Quadrant layouts (3-4 players): a vertical divider joins the horizontal
    one, and the panels move to the four quadrant corners — P1 TL, P2 TR,
    P3 BL, P4 BR. Panels 3/4 and the spectator corner only exist here. */

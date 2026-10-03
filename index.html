@@ -212,7 +212,17 @@
       <button id="calibrate">↺ center steering</button>
     </div>
 
-    <!-- Lap toast -->
+    <!-- Item pickup toast (bottom center, above the steering bar): a rounded
+         pill that springs up when the player grabs a power-up box. Kept off
+         the centre of the screen on purpose — the big #toast is for the
+         countdown, laps and FINISH; a pickup should be noticed, not block the
+         road. Lives inside #hud so the split-screen layouts can re-anchor it
+         into P1's view. -->
+    <div id="pickup-toast" data-tone="catnip" aria-live="polite">
+      <span class="pt-ico">🌿</span>
+      <span class="pt-text"><b class="pt-title"></b><span class="pt-sub"></span></span>
+    </div>
+
     <!-- Split screen (Versus 2P): a divider line between the two views and a
          status chip per player (lap · place · held items). The solo HUD's
          #info block keeps serving P1 (it sits in the top half); P2 gets the

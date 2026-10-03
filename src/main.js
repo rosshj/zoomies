@@ -807,27 +807,31 @@ function grantItem(kart) {
   switch (ITEM_ROLL[pick].name) {
     case "shield":
       kart.giveShield(10);
-      if (kart === player) hud.showToast("🛡️ Shield — 10s of protection!");
+      if (kart === player) hud.showPickup({ icon: "🛡️", title: "Shield", sub: "10s of protection", tone: "shield" });
       break;
     case "milk":
       kart.giveMilk();
-      if (kart === player) hud.showToast("🥛 Milk bottle — drop it behind you!");
+      if (kart === player)
+        hud.showPickup({ icon: "🥛", title: "Milk bottle", sub: "Drop it behind you", tone: "milk" });
       break;
     case "yarn":
       kart.giveYarn();
-      if (kart === player) hud.showToast("🧶 Yarn ball — next shot homes!");
+      if (kart === player)
+        hud.showPickup({ icon: "🧶", title: "Yarn ball", sub: "Your next shot homes in", tone: "yarn" });
       break;
     case "tri":
       kart.giveTriShots(3);
-      if (kart === player) hud.showToast("🐾 Tri-furball ×3!");
+      if (kart === player)
+        hud.showPickup({ icon: "🐾", title: "Tri-furball", sub: "3 shots, 3-way spread", tone: "tri" });
       break;
     case "life":
       kart.giveLife();
-      if (kart === player) hud.showToast("😻 Extra life — your next wipeout is forgiven!");
+      if (kart === player)
+        hud.showPickup({ icon: "😻", title: "Extra life", sub: "Your next wipeout is forgiven", tone: "life" });
       break;
     default:
       kart.giveCatnip();
-      if (kart === player) hud.showToast("🌿 Catnip boost!");
+      if (kart === player) hud.showPickup({ icon: "🌿", title: "Catnip boost!", tone: "catnip" });
       else if (
         player &&
         !player.finished &&
@@ -837,7 +841,7 @@ function grantItem(kart) {
       ) {
         // A rival close behind just armed the comeback item — a heads-up so
         // the green blur past your shoulder isn't a mystery.
-        hud.showToast(`🌿 ${kart.name} has catnip!`);
+        hud.showPickup({ icon: "🌿", title: `${kart.name} has catnip!`, sub: "Coming up behind you", tone: "rival" });
       }
       break;
   }
@@ -2655,6 +2659,7 @@ function pauseGame() {
   audio.stopEngine();
   audio.setSkid(false);
   hud.showToast("");
+  hud.hidePickup();
   document.getElementById("pause-context").textContent =
     `${timeTrial ? "Time Trial" : splitActive ? "Versus" : _activeCup?.name || "Single Race"} · ${document.getElementById("lap").textContent}`;
   document.getElementById("menu-btn").textContent = splitActive ? "End race" : "Home";
@@ -6688,6 +6693,7 @@ function prepareRace() {
   yarnWarnEl?.classList.add("hidden");
   _furballsArmed = false;
   hud.setShootLock(0); // clear any leftover charge banner from a previous race
+  hud.hidePickup(); // and any pickup pill still fading out
   track.raceTime = 0;
   prevPlayerLap = -1; // so the time-trial lap-start crossing is detected cleanly
   ttLapStart = -1;

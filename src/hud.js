@@ -7,6 +7,10 @@ export class HUD {
     this.timer = document.getElementById("timer");
     this.toast = document.getElementById("toast");
     this._lastToast = "";
+    this.pickup = document.getElementById("pickup-toast");
+    this._pickupIco = this.pickup?.querySelector(".pt-ico");
+    this._pickupTitle = this.pickup?.querySelector(".pt-title");
+    this._pickupSub = this.pickup?.querySelector(".pt-sub");
     this.puShield = document.getElementById("pu-shield");
     this.puTri = document.getElementById("pu-tri");
     this.puCatnip = document.getElementById("pu-catnip");
@@ -84,6 +88,26 @@ export class HUD {
     this.toast.classList.remove("show");
     void this.toast.offsetWidth; // restart animation
     this.toast.classList.add("show");
+  }
+
+  // Item pickup toast (bottom centre): a rounded pill that springs up with the
+  // item's icon, name and a one-line effect, tinted by `tone` (the item name —
+  // see the data-tone rules in styles.css). Unlike showToast there is no
+  // dedupe: grabbing two shields in a row should pop twice.
+  showPickup({ icon, title, sub = "", tone = "catnip" }) {
+    const el = this.pickup;
+    if (!el) return;
+    el.dataset.tone = tone;
+    if (this._pickupIco) this._pickupIco.textContent = icon;
+    if (this._pickupTitle) this._pickupTitle.textContent = title;
+    if (this._pickupSub) this._pickupSub.textContent = sub;
+    el.classList.remove("show");
+    void el.offsetWidth; // restart animation
+    el.classList.add("show");
+  }
+
+  hidePickup() {
+    this.pickup?.classList.remove("show");
   }
 }
 
