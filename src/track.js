@@ -23,6 +23,7 @@ import {
   fitInstanceBounds,
 } from "./scenery.js";
 import { planFeatures } from "./features.js";
+import { planEdges, planBays, buildBays, buildEdgeExtras, buildVerges, VERGE_KINDS } from "./track-edges.js";
 import { rand, makeRng } from "./rng.js";
 
 // Scratch record every projection writes into (see _projectArr).
@@ -1172,12 +1173,18 @@ export class Track {
     // the classic hand-authored serpentine circuit.
     // Custom tracks plan their biome wedges FIRST (isolated stream), so the
     // generator's per-biome rhythm and scenery's wedge layout agree exactly.
+    // "points" mode (the feature playground, headless tooling): the caller
+    // hands over the control net itself as [x, z, y] triples — no generator,
+    // no set pieces unless asked for — so a tiny test loop can be authored by
+    // hand with the exact same road/wall/physics pipeline as a real track.
     const wedges =
       config && config.mode === "custom" ? planBiomeWedges(config.biomes, String(config.seed || "w")) : null;
     const pts =
       config && config.mode === "custom"
         ? generateLoopPoints(config, rand, wedges)
-        : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
+        : config && config.mode === "points"
+          ? config.points.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z))
+          : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
     this.length = this.curve.getLength();
@@ -1314,8 +1321,45 @@ export class Track {
     // may spawn; null/absent means everything is allowed.
     this.features = planFeatures(this, biomeNames, rand, config && config.features);
 
+    // Optional raised surface features (ramps, humps, speed bumps) that sit ON
+    // the road: anything with a liftAt(x, z) -> metres above the asphalt. Set by
+    // SurfaceFeatures (track-surface.js); null on every ordinary track, so the
+    // projection hot path pays one null check.
+    this.surface = null;
+
+    // Edge treatments: per side, per sample — which barrier lines the road
+    // and whether the outer strip is a runoff verge (track-edges.js).
+    this.edges = planEdges(this, config);
+    // Bays (lay-bys): where the road widens on one side for a paved apron.
+    // _extra[side][i] is the extra half-width per sample; the walls, trim,
+    // verges, kart containment and prop fence all read it.
+    const bayPlan = planBays(this, config);
+    this.bays = bayPlan.bays;
+    this._extra = bayPlan.extra;
+
     this.group = new THREE.Group();
     this._buildRoad();
+  }
+
+  // Extra half-width on a side (0 = +lateral) at a sample: a bay's apron.
+  extraAt(side, i) {
+    return this._extra ? this._extra[side][((i % this.samples) + this.samples) % this.samples] : 0;
+  }
+
+  // Runoff verge drag at a projection (speed lost per second), 0 on tarmac.
+  dragAt(proj) {
+    const side = proj.lateral > 0 ? 0 : 1;
+    const cell = this.edges[side][proj.i];
+    if (!cell || !cell.verge) return 0;
+    return Math.abs(proj.lateral) > this.halfWidth + this.extraAt(side, proj.i) - cell.vergeW
+      ? VERGE_KINDS[cell.verge].drag
+      : 0;
+  }
+
+  // The barrier style beside a projection (its `scrub` / `bounce` feel).
+  barrierAt(proj) {
+    const cell = this.edges[proj.lateral > 0 ? 0 : 1][proj.i];
+    return cell ? cell.style : null;
   }
 
   _sideAt(i) {
@@ -1453,7 +1497,10 @@ export class Track {
     this.group.add(road);
 
     this._buildSandTrim();
+    buildBays(this); // paved lay-by aprons where the road widens
     this._buildWalls();
+    buildEdgeExtras(this); // boulders, tyres, hay, logs, sandbags, basalt, beams
+    buildVerges(this); // sand / gravel / mud / snow / grass runoff strips
     this._buildCenterLine();
     this._buildEdgeLines();
     this._buildRoadSeams();
@@ -1594,28 +1641,51 @@ export class Track {
     }
   }
 
-  // Solid painted lines down both edges of the tarmac (just inside the verge).
+  // Solid painted lines down both edges of the tarmac. The line follows the
+  // EDGE OF THE TARMAC, not a fixed offset: it steps out with a bay's extra
+  // width and steps in past a runoff verge (the mud/sand/gravel strip lies
+  // OUTSIDE the line, as on a real road — a line buried under the verge at
+  // the same height fought it for the depth buffer and showed through as a
+  // flashing, jagged seam). The lateral change is eased over ~6u so the
+  // line never kinks. It is an overlay like the other road paint (renderOrder
+  // 1, no depth write → the depth bias applied below), so it never sparkles
+  // against the road at distance either.
   _buildEdgeLines() {
-    const inset = this.halfWidth - 0.55;
+    const N = this.samples;
     const hw = 0.22; // half-width of the painted line
     const mat = new THREE.MeshStandardMaterial({
       color: 0xece7da,
       roughness: 0.85,
       side: THREE.DoubleSide,
+      depthWrite: false,
     });
     // Both painted lines share one material — bake them into ONE mesh (one draw).
     const positions = [];
     const indices = [];
+    const win = Math.max(2, Math.round((3 * N) / this.length)); // ±3u smoothing window
     for (const sgn of [1, -1]) {
+      const sideIdx = sgn === 1 ? 0 : 1;
+      const raw = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        const cell = this.edges?.[sideIdx]?.[i];
+        const verge = cell?.verge ? cell.vergeW * 1.12 + 0.3 : 0; // inside the verge's wobbly inner edge
+        raw[i] = this.halfWidth + this.extraAt(sideIdx, i) - verge - 0.55;
+      }
+      const inset = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        let sum = 0;
+        for (let k = -win; k <= win; k++) sum += raw[(i + k + N) % N];
+        inset[i] = sum / (2 * win + 1);
+      }
       const base = positions.length / 3;
-      for (let i = 0; i <= this.samples; i++) {
-        const idx = i % this.samples;
+      for (let i = 0; i <= N; i++) {
+        const idx = i % N;
         const p = this._pts[idx];
         const side = this._sideAt(idx);
-        const a = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset - hw));
-        const b = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset + hw));
+        const a = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset[idx] - hw));
+        const b = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset[idx] + hw));
         positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-        if (i < this.samples) {
+        if (i < N) {
           const k = base + i * 2;
           indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
         }
@@ -1626,6 +1696,7 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 1; // road overlay: biased with the rest below
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }
@@ -1717,12 +1788,13 @@ export class Track {
         for (const k of [i, (i + 1) % div]) {
           const center = this._pts[k],
             side = this._sideAt(k);
+          const ex = this._extra[sign > 0 ? 0 : 1][k];
           for (const [offset, height, shade] of [
             [0, 0, 0.78],
             [0.48, 0.12, 1],
             [trim, 0, 0.86],
           ]) {
-            const distance = sign * (this.halfWidth + offset);
+            const distance = sign * (this.halfWidth + ex + offset);
             positions.push(center.x + side.x * distance, center.y + height, center.z + side.z * distance);
             colors.push(c.r * shade, c.g * shade, c.b * shade);
           }
@@ -1802,7 +1874,8 @@ export class Track {
         const side = this._sideAt(idx); // horizontal lateral; outward when scaled by dirSign
         const sx = side.x * dirSign;
         const sz = side.z * dirSign;
-        const style = biomeBarrierStyle(p.x + sx * off, p.z + sz * off);
+        const style = this.edges[dirSign === 1 ? 0 : 1][idx].style;
+        const ex = this._extra[dirSign === 1 ? 0 : 1][idx]; // a bay steps the whole barrier out
 
         // --- the swept body: full wall for kerb/stone, a low sill under a fence
         let hMul = 1;
@@ -1821,17 +1894,27 @@ export class Track {
           hMul = 0.26; // a low bank the uprights stand in
           wMul = 1.25;
           c.set(style.sill);
+        } else if (style.kind === "adobe") {
+          hMul = 0.8 + wob(idx, 1) * 0.1;
+          wMul = 1.5;
+          c.set(style.lo).lerp(_hiCol.set(style.hi), 0.3 + wob(idx, 3) * 0.4);
+        } else if (style.sill) {
+          // Discrete kinds (boulders, tyres, hay, logs, sandbags, basalt): the
+          // things themselves come from track-edges.js; this is their sill.
+          hMul = 0.22;
+          wMul = 1.3;
+          c.set(style.sill);
         } else {
           // The original alternating stripe, ~17u per band.
           c.set(Math.floor(i / 6) % 2 === 0 ? style.a : style.b);
         }
         for (let j = 0; j < P; j++) {
           const [sOff, yOff] = profile[j];
-          const d = off + sOff * wMul;
+          const d = off + ex + sOff * wMul;
           positions.push(p.x + sx * d, p.y + yOff * hMul, p.z + sz * d);
           // Pale capstones along the top course, so the edge of the track still
           // reads as a LINE at speed however lumpy the wall below it is.
-          if (style.kind === "stone" && yOff > wallH * 0.66) {
+          if ((style.kind === "stone" || style.kind === "adobe") && yOff > wallH * 0.66) {
             const cc = _capCol.set(style.cap);
             colors.push(cc.r, cc.g, cc.b);
           } else colors.push(c.r, c.g, c.b);
@@ -1862,7 +1945,7 @@ export class Track {
               [0.24, rt],
               [-0.09, rt],
             ]) {
-              const d = off + 0.42 + ds;
+              const d = off + ex + 0.42 + ds;
               rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
               // top face catches the light cap so the rail line stays legible
               const cc = dy > 0 ? cap : rc0;
@@ -1897,7 +1980,7 @@ export class Track {
             g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
             g.rotateZ((wob(idx, 4) - 0.5) * 0.09);
             g.rotateY(Math.atan2(sx, sz) + (wob(idx, 5) - 0.5) * 0.2);
-            const d = off + 0.42;
+            const d = off + ex + 0.42;
             g.translate(p.x + sx * d, p.y, p.z + sz * d);
             postGeos.push(g);
           }
@@ -1915,7 +1998,7 @@ export class Track {
               [0.28, 0.07],
               [-0.1, 0.07],
             ]) {
-              const d = off + 0.42 + ds;
+              const d = off + ex + 0.42 + ds;
               rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
               const cc = dy > 0 ? capc : railc;
               rc.push(cc.r, cc.g, cc.b);
@@ -1941,7 +2024,7 @@ export class Track {
             const per = Math.max(1, Math.round(seg / style.gap));
             for (let k = 0; k < per; k++) {
               const t = k / per;
-              const d = off + 0.42;
+              const d = off + ex + 0.42;
               const wx = p.x + (n2.x - p.x) * t + sx * d;
               const wz = p.z + (n2.z - p.z) * t + sz * d;
               const wy = p.y + (n2.y - p.y) * t;
@@ -2522,7 +2605,12 @@ export class Track {
     const tangent = this._tans[r.i];
     const side = this._sideCached(r.i);
     const lateral = (pos.x - r.cx) * side.x + (pos.z - r.cz) * side.z;
-    return { t, point, tangent, side, lateral, distance: r.dist, groundY: r.y, i: r.i };
+    // Surface features lift the ground the karts feel at the QUERY point (not
+    // the centreline), so a ramp on one side of the road only launches the
+    // kart that actually drives over it.
+    let groundY = r.y;
+    if (this.surface) groundY += this.surface.liftAt(pos.x, pos.z);
+    return { t, point, tangent, side, lateral, distance: r.dist, groundY, i: r.i };
   }
 
   project(pos) {
@@ -2629,8 +2717,18 @@ export class Track {
     return { dist: r.dist, y: r.y };
   }
 
+  // Distance from the DRIVABLE centre: inside a bay the road is wider, so
+  // the apron counts as road — every scenery guard (`distanceToCenter(x, z) <
+  // halfWidth + k`) then keeps lamp posts, tufts and signs off the paving
+  // the kart can drive on, without each site knowing about bays.
   distanceToCenter(x, z) {
-    return this.groundInfo(x, z).dist;
+    const r = this._projectArr(this._coarse, x, z);
+    if (!this.bays || !this.bays.length) return r.dist;
+    const i = Math.min(this.samples - 1, r.i * 2); // _coarse is every other sample
+    const p = this._pts[i],
+      side = this._sideCached(i);
+    const lat = (x - p.x) * side.x + (z - p.z) * side.z;
+    return r.dist - this.extraAt(lat > 0 ? 0 : 1, i);
   }
 
   // World position + heading for a starting grid slot (on the road surface).

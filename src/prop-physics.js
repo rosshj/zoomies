@@ -179,14 +179,16 @@ export class PropPhysics {
     // Use the full rotating footprint, and recheck after correction on bends.
     // Keep hulls on the asphalt, leaving room for kerbs and leaning fence slats.
     const center = this.locate(pr);
-    const nearFence = Math.abs(center.lateral) + pr.radius > this.track.halfWidth - 0.12;
+    const fence = (road) =>
+      this.track.halfWidth + (this.track.extraAt ? this.track.extraAt(road.lateral > 0 ? 0 : 1, road.i) : 0) - 0.12;
+    const nearFence = Math.abs(center.lateral) + pr.radius > fence(center);
     for (let pass = 0; nearFence && pass < 3; pass++) {
       let shift = 0,
         nx = 0,
         nz = 0;
       for (const p of pr.worldHull) {
         const road = this.locate(pr, pr.pos.x + p.x, pr.pos.z + p.z);
-        const penetration = Math.abs(road.lateral) - (this.track.halfWidth - 0.12);
+        const penetration = Math.abs(road.lateral) - fence(road);
         if (penetration > shift) {
           shift = penetration;
           nx = road.sideX * Math.sign(road.lateral);

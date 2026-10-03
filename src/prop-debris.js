@@ -7,7 +7,17 @@ const TYPES = {
   clay: { pool: "shard", color: 0xc88a61, scale: [0.26, 0.12, 0.2], restitution: 0.2 },
   dust: { pool: "round", color: 0x8a8580, scale: [0.1, 0.1, 0.1], restitution: 0.12 },
   leaf: { pool: "leaf", color: 0xbc813b, scale: [0.22, 0.1, 0.36], restitution: 0.12 },
+  // Breakable-structure bursts (breakables.js): splintered wood off a stall or
+  // pallet, loose paper off a news rack, cloth out of a burst suitcase, fish
+  // off an iced tray, oranges off a fruit counter, rust flakes off scrap.
+  splinter: { pool: "shard", color: 0xb48b57, scale: [0.34, 0.08, 0.14], restitution: 0.2 },
+  paper: { pool: "leaf", color: 0xf1ede3, scale: [0.3, 0.03, 0.42], restitution: 0.05 },
+  cloth: { pool: "leaf", color: 0xe08aa8, scale: [0.34, 0.06, 0.4], restitution: 0.05 },
+  fish: { pool: "leaf", color: 0x9fc3d8, scale: [0.2, 0.09, 0.42], restitution: 0.1 },
+  orange: { pool: "round", color: 0xf0962c, scale: [0.24, 0.24, 0.24], restitution: 0.45 },
+  rust: { pool: "shard", color: 0x7d4b2c, scale: [0.2, 0.08, 0.2], restitution: 0.15 },
 };
+export const DEBRIS_TYPES = Object.keys(TYPES);
 export class PropDebris {
   constructor(group, physics) {
     this.physics = physics;

@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Zoomies GP — Feature Playground</title>
+  <link rel="icon" href="./apple-touch-icon.png" />
+  <!-- Dev tool: a sandbox for TRACK FEATURES. A handful of tiny test loops
+       (destructible structures, jumps, power-ups, the shipped props) with the
+       real kart, the real physics and the real prop/item code — drive in, hit
+       things, read the telemetry. Independent of main.js, like viewer.html.
+       Same vendored import map as index.html. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.webgpu.min.js",
+        "three/webgpu": "./vendor/three/three.webgpu.min.js",
+        "three/tsl": "./vendor/three/three.tsl.min.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    /* No double-tap / pinch zoom anywhere: a mashed steering pad must never
+       zoom the page (Safari ignores user-scalable, so this is the real fix),
+       and nothing is selectable text — a double tap used to highlight the
+       panel's words and zoom to them. */
+    html, body, button, select { touch-action: manipulation; }
+    html, body, #panel, #topbar, #touch, #items-hud, button, label, span, div, p, h1, h2, h3 {
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    #game, #game canvas, #touch, #touch * { touch-action: none; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      background: #0e1320;
+      color: #eef1f8;
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+    #side {
+      width: 292px;
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      background: #141b2e;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      z-index: 10;
+      overflow-y: auto;
+    }
+    #side header { padding: 14px 14px 8px; }
+    #side h1 { font-size: 15px; letter-spacing: 0.04em; }
+    #side h1 span { color: #ffd54f; }
+    #side .sub { font-size: 11px; color: #9aa4bd; margin-top: 2px; }
+    #side h3 {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #8b96b3;
+      padding: 12px 14px 5px;
+    }
+    #areas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px; }
+    #areas button {
+      padding: 9px 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.04);
+      color: #dfe5f2;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    #areas button:hover { background: rgba(255, 255, 255, 0.08); }
+    #areas button.selected { background: #ffd54f; color: #201a06; font-weight: 600; border-color: #ffd54f; }
+    #blurb { font-size: 12px; color: #b9c2d8; line-height: 1.4; padding: 8px 14px 0; }
+    #biome-bar { display: flex; gap: 6px; padding: 8px 12px 0; }
+    #biome-bar select {
+      flex: 1;
+      padding: 7px 8px;
+      border-radius: 8px;
+      border: 1px solid #ffd54f;
+      background: #0e1320;
+      color: #ffd54f;
+      font-size: 16px; /* iOS zooms the page to any form control smaller than 16px on focus */
+      font-weight: 600;
+    }
+    #biome-bar button {
+      padding: 6px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.05);
+      color: #eef1f8;
+      cursor: pointer;
+    }
+    .list { padding: 0 8px; }
+    .list button, .actions button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #dfe5f2;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .list button:hover, .actions button:hover { background: rgba(255, 255, 255, 0.06); }
+    .list button small { color: #8b96b3; margin-left: 6px; }
+    .list button.header { color: #ffd54f; font-weight: 600; margin-top: 4px; }
+    .actions { padding: 0 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+    .actions button { border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03); }
+    .actions button.wide { grid-column: 1 / -1; }
+    .actions button.on { border-color: #ffd54f; color: #ffd54f; }
+    #map {
+      display: block;
+      width: 268px;
+      height: 190px;
+      margin: 8px 12px 0;
+      border-radius: 9px;
+      background: #0e1320;
+      cursor: pointer;
+    }
+    #tele {
+      margin: 6px 12px 0;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: #0e1320;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #c6cede;
+      white-space: pre;
+    }
+    #tele b { color: #ffd54f; font-weight: 600; }
+    #help { font-size: 11px; color: #8b96b3; line-height: 1.5; padding: 8px 14px 16px; }
+    #help kbd {
+      display: inline-block;
+      padding: 0 5px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.05);
+      color: #dfe5f2;
+      font: 10.5px ui-monospace, Menlo, monospace;
+    }
+    #game { flex: 1; position: relative; min-width: 0; }
+    #game canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+    #topbar { position: absolute; right: 12px; top: 10px; z-index: 5; display: flex; gap: 6px; }
+    #topbar button {
+      padding: 7px 11px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(10, 14, 25, 0.72);
+      color: #eef1f8;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #topbar button.on { border-color: #ffd54f; color: #ffd54f; }
+    #toast {
+      position: absolute;
+      left: 50%;
+      top: 52px;
+      transform: translateX(-50%);
+      z-index: 6;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(10, 14, 25, 0.8);
+      color: #ffd54f;
+      font-size: 14px;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    #toast.show { opacity: 1; }
+    #status {
+      position: absolute;
+      left: 12px;
+      bottom: 10px;
+      z-index: 5;
+      font-size: 12px;
+      color: #c6cede;
+      background: rgba(10, 14, 25, 0.72);
+      padding: 6px 10px;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    #items-hud {
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: flex;
+      gap: 6px;
+      pointer-events: none;
+    }
+    #items-hud span {
+      padding: 5px 9px;
+      border-radius: 8px;
+      background: rgba(10, 14, 25, 0.75);
+      font-size: 13px;
+      color: #eef1f8;
+    }
+    .hidden { display: none !important; }
+    #touch {
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 42%;
+      z-index: 4;
+      display: flex;
+      align-items: stretch;
+      touch-action: none;
+      pointer-events: none;
+    }
+    #touch .pad {
+      flex: 1;
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 18px;
+      font-size: 44px;
+      color: rgba(255, 255, 255, 0.35);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #touch .pad.on { color: #ffd54f; background: rgba(255, 213, 79, 0.08); }
+    #pad-mid { width: 92px; pointer-events: auto; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding-bottom: 18px; align-items: center; }
+    #pad-mid button {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(10, 14, 25, 0.6);
+      color: #eef1f8;
+      font-size: 26px;
+      touch-action: none;
+    }
+    #pad-mid button:active { border-color: #ffd54f; color: #ffd54f; }
+    #side-toggle { display: none; }
+    /* Phones: the canvas gets the screen; the panel is a collapsed strip (area
+       buttons only) that ☰ expands over the top. Autopilot does the driving. */
+    @media (max-width: 820px), (max-height: 520px) {
+      body { flex-direction: column; }
+      #side { width: 100%; flex: none; max-height: 30vh; border-right: 0; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+      #side header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; }
+      #side header h1 { font-size: 12px; flex: 1; }
+      #side header .sub { display: none; }
+      #side-toggle {
+        display: block;
+        padding: 4px 9px;
+        border-radius: 7px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        background: rgba(255, 255, 255, 0.05);
+        color: #eef1f8;
+        font-size: 14px;
+      }
+      #side h3, #blurb, #map, #actions, #targets, #tele, #help { display: none; }
+      #biome-bar { padding: 0 8px 8px; }
+      #areas { grid-template-columns: repeat(4, 1fr); padding: 0 8px 8px; }
+      #areas button { padding: 7px 6px; font-size: 11px; text-align: center; }
+      #side.open { max-height: 70vh; }
+      #side.open h3, #side.open #blurb, #side.open #map, #side.open #actions, #side.open #targets, #side.open #tele, #side.open #help { display: block; }
+      #side.open #actions { display: grid; }
+      #topbar button { padding: 6px 8px; font-size: 11px; }
+      #touch { height: 48%; }
+      #topbar { gap: 4px; right: 8px; top: 8px; }
+      #items-hud { bottom: 8px; }
+    }
+    body.plain #side, body.plain #topbar, body.plain #toast, body.plain #status, body.plain #items-hud { display: none !important; }
+  </style>
+</head>
+<body>
+  <aside id="side">
+    <header>
+      <h1><span>Zoomies GP</span> — Feature Playground</h1>
+      <div class="sub">Drive the real kart through test features. <a href="./viewer.html" style="color:#9aa4bd">Asset viewer →</a></div>
+      <button id="side-toggle" aria-label="Show panel">☰</button>
+    </header>
+    <h3>Area</h3>
+    <div id="areas"></div>
+    <div id="biome-bar" class="hidden">
+      <button id="biome-prev" aria-label="Previous biome">◀</button>
+      <select id="biome" aria-label="Biome"></select>
+      <button id="biome-next" aria-label="Next biome">▶</button>
+    </div>
+    <div id="blurb"></div>
+    <canvas id="map" width="268" height="190" title="Click to jump to the nearest station"></canvas>
+    <h3 id="actions-title" class="hidden">Actions</h3>
+    <div id="actions" class="actions"></div>
+    <h3>Stations <small style="text-transform:none;letter-spacing:0;color:#6f7a95">— teleport to</small></h3>
+    <div id="targets" class="list"></div>
+    <h3>Telemetry</h3>
+    <div id="tele">loading…</div>
+    <div id="help">
+      <kbd>W</kbd><kbd>S</kbd> gas / brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> hop / hold to drift ·
+      <kbd>F</kbd> shoot · <kbd>M</kbd> milk · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield<br />
+      <kbd>R</kbd> reset area · <kbd>C</kbd> camera · <kbd>T</kbd> slow-mo · <kbd>P</kbd> autopilot · <kbd>1</kbd>–<kbd>4</kbd> switch area · gamepad works too
+    </div>
+  </aside>
+  <main id="game">
+    <div id="topbar">
+      <button id="auto-btn" title="Autopilot (P)">▶ Auto</button>
+      <button id="drive-btn" title="Touch driving">📱 Drive</button>
+      <button id="tilt-btn" title="Tilt steering" class="hidden">📐 Tilt</button>
+      <button id="cam-btn" title="Camera (C)">📷 Chase</button>
+      <button id="slow-btn" title="Slow motion (T)">🐢 Slow-mo</button>
+      <button id="sound-btn" title="Sound">🔇 Sound</button>
+      <button id="reset-btn" title="Reset area (R)">↺ Reset</button>
+    </div>
+    <div id="toast"></div>
+    <!-- Phone driving: hold the left / right pads to steer (gas is automatic),
+         tap the middle button to hop, the top one to shoot. Tilt steering is
+         the game's own accelerometer path (📐). -->
+    <div id="touch" class="hidden">
+      <div id="pad-left" class="pad">◀</div>
+      <div id="pad-mid">
+        <button id="pad-shoot">🐾</button>
+        <button id="pad-hop">⬆</button>
+      </div>
+      <div id="pad-right" class="pad">▶</div>
+    </div>
+    <div id="items-hud"></div>
+    <div id="status">booting…</div>
+  </main>
+  <script type="module" src="./src/playground.js"></script>
+</body>
+</html>

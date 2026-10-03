@@ -101,3 +101,182 @@ in `src/menu-ui.js`. Put structure in the markup, not in boot-time DOM moves.
    viewport; `--by-rect` ignores pure markup reordering).
 3. Every browser tool gets a `check:*` / `menu:*` script in package.json;
    node-only checks also go in `.github/workflows/checks.yml`.
+
+## Track features: test them in the playground first
+
+`playground.html` + `src/playground.js` is the sandbox for anything that
+lives ON the road (like `viewer.html` is for assets): tiny loops authored as
+explicit control points (`new Track({ mode: "points", points, biomes,
+features: [] })`), the real `Kart`, the real `props.js` runtime. Areas are
+data in `src/playground-areas.js` — stations are given in track coordinates
+(`t`, `lateral`) and resolved against the built loop, so add a station there
+rather than hand-plotting world XZ.
+
+- Breakable structures (`src/breakables.js`) are ASSEMBLIES: a structure is
+  its pieces at rest, and a hit releases every piece as its own PropPhysics
+  body (so tyres roll off and become obstacles, the awning sails, fruit
+  scatters). Pieces are registered as `dormant` props up front and skipped by
+  every loop until `breakStructure` lets them go; `props.reset()` re-docks
+  them. Author art at 1u ≈ 1m and set `spec.scale` — the kart is ~2u per
+  metre, and unscaled furniture reads as toys next to it.
+- Scenes are PROCEDURAL: `BREAKABLES` recipes = a generator (`stall`,
+  `stack`, `seating`, `cart`, `heap`, `pallets`, `rack`) + params + size
+  (0/1/2), and `BIOME_SCENES` says which recipes a biome scatters along its
+  kerbs in a race (props.js `build`, after the road props; never counted in
+  the 64-prop budget). Stacks and piles reuse shipped road-prop art, so a new
+  biome flavour is usually one recipe line, not new art. Intact scenes draw
+  as one merged proxy per structure; pieces only render once broken.
+- A build-time placement needs its `roadIndex` from a GLOBAL nearest-sample
+  scan (`nearestIndex` in props.js), never from `physics.locate` seeded with
+  0: locate is a LOCAL window search, and a wrong index lets the fence
+  containment shove a body across the infield onto the other straight (this
+  was "the luggage cart vanished").
+- Karts are solid to loose props (`collideKart` in props.js: sphere vs the
+  kart's box, pushed out and bounced, carrying the kart's velocity). The
+  swept-segment fling is the arcade "hit" for props at REST only; a prop
+  already tumbling gets a blended shove, and nothing above the bonnet line is
+  swept at all (a 2-D sweep re-launched falling pieces as the kart passed
+  under them — "they seem to get hit again").
+- Ramps/humps are `SurfaceFeatures` (`src/track-surface.js`): a height
+  profile in the road's frame that `Track._projResult` adds to `groundY`, plus
+  a mesh built from the same profile. The kart goes airborne when the road
+  falls away faster than gravity (`Kart._integrate`, `RAMP_KICK`) — the
+  generator's smoothed hills never trip it (`check:breakables` asserts this).
+- `npm run check:breakables` (node) and `npm run check:playground` (browser)
+  after touching any of this; `tools/playground-check.mjs` drives the areas
+  through `window.__playground` (`freeze` + `step` for deterministic probes,
+  `pin` to park the camera for a screenshot).
+
+## Road edges: barriers and verges are a per-span PLAN
+
+`src/track-edges.js` plans what lines each side of the road per sample
+(`track.edges[side][i] = { style, verge, vergeW }`): the biome's stock
+barrier (scenery.js `BARRIER_STYLES`) most of the way, with the biome's own
+alternatives from `BIOME_EDGES` for 60-160u spans (rock faces, boulder rows,
+hedges, snow banks, adobe, concrete, tyre walls, hay, logs, sandbags, basalt
+columns) and runoff verges (`VERGE_KINDS`: sand/gravel/mud/snow/grass) on
+some spans. Swept kinds are drawn by `Track._buildWalls` off the kerb's
+profile (hMul/wMul + paint); discrete kinds stand on a low sill and are built
+in `buildEdgeExtras` as instanced meshes per world cell. The plan uses its own
+rng stream (`seed|edges`) so it never shifts the scenery's random draws.
+
+- The kart asks the track, not the mesh: `track.barrierAt(proj)` gives the
+  style's `scrub` (what a scrape costs; a hedge is soft, rock is not) and
+  `bounce` (tyres/concrete kick back); `track.dragAt(proj)` gives the verge's
+  drag when the wheels are on it. Stub tracks without those methods still
+  work (`check:sim`).
+- Side 0 of the plan is the +lateral side (dirSign 1 in `_buildWalls`);
+  `config.edges` spans use "right" for it and "left" for side 1. Steer + is
+  LEFT, which is NEGATIVE lateral.
+- A loop's `t` at the start of a straight is still inside the bend's tangent:
+  teleport a probe a little way into the straight before measuring anything
+  that depends on holding a lane.
+- The playground's "Road edges" area lines every barrier kind down the left of
+  its first straight and every verge down the back straight.
+- The painted edge line (`Track._buildEdgeLines`) follows the EDGE OF THE
+  TARMAC: out with a bay's extra, in past a verge's wobbly inner edge, eased
+  over ±3u. Every bit of road paint is an overlay (renderOrder 1, no depth
+  write → the polygonOffset bias); a line buried under the verge at the same
+  height with depth writes on showed through as a flashing, jagged seam.
+
+## The race carries the playground's kit
+
+A set track keeps its shape; everything the tour proved goes on it: the
+per-span edge plan (barriers + verges), two bays per town zone with a
+composed place in each (plus the odd rural one), biome props in PAIRS at the
+kerb (a group never swallows the next crate slot — every third slot is a
+power-up crate the checks count on), and the tour's scenery density:
+`main.js` passes `buildWorld` a `density` by quality (1.3 / 2.0 / 2.4; the
+tour runs 2.6 on a short loop with one kart). Surface features (jumps) stay
+playground-only. The headless race check prints draw calls and CPU ms —
+2.0 cost ~60 draw calls over density 1 and no CPU on the sample lap.
+
+## The biome tour is the per-biome test bench
+
+`?area=tour&biome=<name>` in the playground builds a small loop entirely
+inside ONE biome with everything it owns packed along the kerbs (every
+breakable recipe, every road prop, every alternative barrier down the left,
+every verge down the right, leaf piles on leafy biomes) and the game's real
+scenery around it via `buildWorld(group, track, { density: 2.6, compact })`
+— `density` multiplies the roadside / tree / rock / critter / flyer
+placements, `compact` confines the world-wide scatters to the loop's extent.
+Weather, wind and the surface debris the tyres kick up follow the kart as in
+a race. Switching biome disposes and rebuilds the area.
+
+- Scenery props live on render LAYER 1 (set pieces on 2) so the race's mirror
+  can skip them: any new camera must `layers.enable(1)` and `(2)` or every
+  hill looks bare while the census says the cows are there (this cost an
+  hour).
+- Keep the middle of the road clear: scenes sit 8-10u off the centre line,
+  props 10-12u, both alternating sides; only the kart's own line is empty.
+
+## Bays (lay-bys): the road widens where establishments stand
+
+`planBays` in `src/track-edges.js` widens the road on one side for 66-90u
+spans (`track.bays`, `track._extra[side][i]` = extra half-width per sample)
+and `buildBays` paves the apron. A bay is SHALLOW and GRADUAL: 5-6.5u of
+extra half-width, smoothstep tapers 40% of the span at each end (max slope
+~20°), a flat `plateau` of 13-18u in the middle. The first version (12-15u
+deep, 8u tapers) was a bite out of the road: driving in meant a wall at the
+end and the barriers around the cut read as broken. Everything that assumed
+a constant half-width reads the extra: `_buildWalls` / sand trim / verges /
+`buildEdgeExtras` step out with it, `Kart._integrate` widens its
+containment, `PropPhysics.resolve` widens its fence, and
+`track.distanceToCenter(x, z)` is BAY-AWARE (it subtracts the extra on the
+query's side), so every scenery guard of the form `distanceToCenter < halfW
++ k` keeps lamp posts, tufts and signs off the apron without knowing about
+bays. Bays are planned in the roadside builder's TOWN zones (every other of
+six angular zones — where the houses are) plus the odd rural one, on their
+own rng stream.
+
+- A bay hosts a PLACE, not an object: `BIOME_SCENES` lists `cluster`
+  recipes (`PLACE(...)` in breakables.js — a greengrocer's front, a café
+  terrace, a fish dock, a garage yard) that compose the single recipes with
+  DRESSING (chalkboard out front, barrel at the back, planter, bench, sacks,
+  a wagon wheel LEANING on the end — never standing dead on edge). Parts lie
+  along the kerb in order with a hand's gap and a little stagger; `at:
+  frontLeft/frontRight/sideRight` hangs a part off the lead. Scene +z is the
+  BACK (barrier side); props.js turns side-1 scenes round so counters face
+  the road on both sides. Stacks are never perfect: pyramids sit skew with
+  one rolled off, columns lean a touch per course with the last one fallen
+  beside them. The single recipes stay in `BREAKABLES` for the viewer and as
+  parts.
+- Scenes are fitted to a bay by FOOTPRINT (`sceneInBay` in props.js):
+  `makeBreakable` centres the scene on its real bounds and reports `along`
+  (scene x, down the road) and `across` (scene z); the size shrinks until
+  `across <= depth + 2` and `along <= plateau + 4`, and the scene stands with
+  its back a step off the widened edge, never more than 2u proud of the old
+  kerb line. The playground's layout hands props.js the BAY (`{ kind, bay,
+  size }`), not a spot, so the tour tests the same rule a race uses. Tour
+  road props come in GROUPS of three at the kerb between bays, not one every
+  few metres.
+- The tour plans a bay every 78u (`bays: "tour"`); the other playground
+  areas pass `bays: false`. A stub track (the node fixtures) has no `bays`:
+  props.js falls back to kerb scenes (any of the biome's places when none is
+  `rural`) so `check:biome-props` still sees one.
+
+## Loose props never ride along with the kart
+
+Two things carried a piece: the swept hit's re-shove (after its 0.4s
+cooldown a tumbling crate within 4u was shoved straight AHEAD at less than
+kart speed, caught again, and hopped down the road for as long as the
+throttle was held) and `collideKart` pushing a piece whose centre was inside
+the kart's box out by only a radius a frame. Now the SWEEP only hits pieces
+at rest (asleep or all but stopped); anything in motion is the body's
+problem: `collideKart` pushes an inside centre all the way out to the face,
+and the nose is a BUMPER whose normal leans to the side the piece is on
+(more the further off-centre) and a little up, so a piece being bulldozed
+slides off continuously — the drag pressing it into the bumper has a
+sideways share every frame. Never add a timer-and-kick: shedding a piece
+"after 0.35s" read as it jumping out sideways for no visible reason. The
+roof sheds, the contact spin is capped (9 rad/s). `check:playground` drops
+a piece on a moving kart and wedges one into its nose; both must be off it
+within a second with no sudden impulse.
+
+- Piles are CLOSE-PACKED (`closePack` in breakables.js): a triangular lattice
+  base and the rest nestled in the hollows at r·(1+√(8/3)); beach balls and
+  floats are `single`-layer. Lying-cylinder pyramids put the axis ACROSS the
+  scene (pitch only): with yaw too the bales lined up end to end and read as
+  one column.
+- A stub track (the node fixtures) has no `bays`: props.js falls back to kerb
+  scenes so `check:biome-props` still sees one.

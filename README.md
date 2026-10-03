@@ -91,6 +91,27 @@ In addition:
 - **iOS (Safari):** for the most immersive (full-screen, no Safari chrome)
   experience, **Add to Home Screen** and launch from the 🐱 icon.
 
+## Dev pages
+
+- **`/viewer.html`** — the asset viewer: every procedural cat, kart, prop and
+  scenery piece, inspectable in 3D.
+- **`/playground.html`** — the feature playground: small test loops for
+  **track features**, driven with the real kart and physics. Areas: the
+  biome tour (one biome at a time, everything it owns on one packed loop with
+  its real scenery, weather and wildlife — the per-biome test bench),
+  destructible structures (market stalls, news racks, café seating, pallet
+  stacks, tyre piles, luggage carts, scrap heaps — hit one and every piece
+  goes), every biome's procedurally generated roadside scenes (the ones a
+  race scatters along its kerbs: pumpkin stands, log piles, pot wagons,
+  beach loungers… at three sizes), road edges (every barrier kind — rock
+  faces, boulders, hedges, snow banks, tyre walls, concrete, logs, sandbags,
+  basalt — and the sand/gravel/mud/snow/grass runoff verges that slow you),
+  jumps (speed bumps, humps, a kicker, a launch ramp, a tabletop, a
+  drop-off and a gap), a power-up tester (hand yourself any item, spawn a
+  dummy rival to aim at) and a line-up of the shipped road props. Keyboard or
+  gamepad; `R` resets the area, `C` cycles cameras, `T` is slow motion.
+  `npm run check:playground` drives every area headless.
+
 ## How it's built
 
 Everything is procedural — no asset downloads required.

@@ -36,6 +36,8 @@ jobs:
         run: npm run check:sim
       - name: item and knockable prop logic
         run: npm run check:items
+      - name: breakable structures, surface features and ramp launches
+        run: npm run check:breakables
 
       - name: prop road/fence clearance and settling
         run: npm run check:prop-physics

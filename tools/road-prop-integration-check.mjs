@@ -64,6 +64,7 @@ try {
           if (!props) throw Error("Props build failed");
           const placed = {};
           for (const pr of props._props) {
+            if (pr.structure) continue; // breakable-scene pieces are not road props
             if (pr.profile && !ROAD_PROP_BIOMES[biomeNameAt(pr.pos.x, pr.pos.z, pr.groundY)]?.includes(pr.kind))
               throw Error("Foreign road prop");
             placed[pr.kind] = (placed[pr.kind] || 0) + 1;

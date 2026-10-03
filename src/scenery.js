@@ -800,8 +800,22 @@ function biomeGround(x, z, out, y) {
 // tiers can't change it mid-session (instanced counts are baked); main.js
 // toasts that a tier switch lands on the next launch.
 let _detail = 1;
+// Placement density (1 = a race). The playground's biome tour packs a small
+// loop with everything a biome owns, so it builds at 2-3×: more roadside
+// placements per metre, more trees / rocks / critters / flyers, and the
+// world-wide scatters (trees, rocks) confined to the loop's own extent
+// (`opts.compact`) instead of a race-sized 1700u square.
+let _density = 1;
+let _scatterRange = 1700;
 export function buildWorld(scene, track, opts = {}) {
   _detail = Math.max(0.5, Math.min(2.5, opts.detail || 1));
+  _density = Math.max(0.5, Math.min(4, opts.density || 1));
+  _scatterRange = 1700;
+  if (opts.compact) {
+    let ext = 0;
+    for (const p of track._pts) ext = Math.max(ext, Math.abs(p.x), Math.abs(p.z));
+    _scatterRange = Math.min(1700, ext * 2 + 420);
+  }
   const night = opts.timeOfDay === "night";
   // Lamps / string lights / bridge lantern come on at NIGHT and at SUNSET (dusk),
   // dimmer at dusk. `lit` = are they on at all; `litLevel` = how bright (0.55 dusk,
@@ -2398,8 +2412,8 @@ function scatter(count, track, flatten, minFlat, range) {
   let tries = 0;
   while (out.length < count && tries < count * 30) {
     tries++;
-    const x = (rand() - 0.5) * range;
-    const z = (rand() - 0.5) * range;
+    const x = (rand() - 0.5) * Math.min(range, _scatterRange);
+    const z = (rand() - 0.5) * Math.min(range, _scatterRange);
     const d = track.distanceToCenter(x, z);
     if (flatten(d) < minFlat) continue;
     out.push({ x, z });
@@ -2704,7 +2718,7 @@ function buildRoadCrossers(scene, track, heightAt) {
 function buildTrees(scene, track, heightAt, flatten) {
   // Each candidate spot is tagged with its biome, kept with that biome's tree
   // density, then bucketed by tree style (cone-shaped trees vs desert cacti).
-  const spots = scatter(340, track, flatten, 0.55, 1700)
+  const spots = scatter(Math.round(340 * _density), track, flatten, 0.55, 1700)
     .filter((s) => !_inLake(s.x, s.z)) // keep forests out of the water
     .filter((s) => !featureTreeBlock(track.features, s.x, s.z)) // bare canyon walls
     .map((s) => ({ ...s, y: heightAt(s.x, s.z), b: biomeAt(s.x, s.z) }))
@@ -4188,7 +4202,7 @@ function buildForests(scene, track, heightAt) {
     const p = track._pts[i];
     const here = biomeAt(p.x, p.z);
     if (here.style !== "pine") continue; // forest + alpine + jungle get dense woods
-    const reps = here.name === "forest" || here.name === "jungle" ? 6 : 3;
+    const reps = Math.round((here.name === "forest" || here.name === "jungle" ? 6 : 3) * _density);
     const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
     for (let r = 0; r < reps; r++) {
       const dir = rand() < 0.5 ? 1 : -1;
@@ -4220,7 +4234,7 @@ function buildForests(scene, track, heightAt) {
 }
 
 function buildRocks(scene, track, heightAt, flatten) {
-  const spots = scatter(140, track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
+  const spots = scatter(Math.round(140 * _density), track, flatten, 0.4, 1700).filter((s) => !_inLake(s.x, s.z));
   const geo = rockGeometry();
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, vertexColors: true });
   const m = new THREE.Matrix4();
@@ -4272,7 +4286,7 @@ function buildRoadside(scene, track, heightAt, motion) {
   const halfW = track.halfWidth;
   const up = new THREE.Vector3(0, 1, 0);
   const spacing = track.length / N;
-  const step = Math.max(1, Math.round(9 / spacing));
+  const step = Math.max(1, Math.round(9 / spacing / _density));
   const zones = 6;
 
   const occupied = new Map(); // build-time spacing only; no per-frame work
@@ -4364,7 +4378,7 @@ function buildRoadside(scene, track, heightAt, motion) {
     // windmill sails) keep their own meshes.
     if (!prop.userData.wander && !prop.userData.animated) prop.userData.staticProp = true;
     // Animals amble around their spawn (capped so the per-frame cost stays low).
-    if (prop.userData.wander && _critters.length < Math.round(48 * _detail)) {
+    if (prop.userData.wander && _critters.length < Math.round(48 * _detail * _density)) {
       if (kind === "gull" || kind === "parrot") {
         const flight = new THREE.Group();
         flight.rotation.y = -Math.PI / 2;
@@ -4417,13 +4431,16 @@ function buildRoadside(scene, track, heightAt, motion) {
     const roadBiome = biomeAt(p.x, p.z);
     const urban = roadBiome.name === "city";
     for (const dir of [1, -1]) {
-      if (town && (urban || phase < 0.3)) {
+      if (town && (urban || phase < Math.min(0.9, 0.3 * _density))) {
         if (rand() < (urban ? 0.62 + density * 0.32 : 0.55)) place("town", halfW + 12 + rand() * 3, dir, p, side, true);
         const rows = urban ? [24, 36, 50, 66] : [];
         for (const row of rows) if (rand() < 0.65) place("town", halfW + row + rand() * 7, dir, p, side, true);
         if (rand() < 0.5) place("verge", halfW + 6 + rand() * 2, dir, p, side, true);
-      } else if (rand() < 0.4) {
+      } else if (rand() < Math.min(0.9, 0.4 * _density)) {
         place("field", halfW + 10 + rand() * 18, dir, p, side, false);
+        // Packed worlds get a second, further row so the fields read busy too.
+        if (_density > 1.5 && rand() < 0.6) place("field", halfW + 30 + rand() * 24, dir, p, side, false);
+        if (_density > 1.5 && rand() < 0.5) place("verge", halfW + 6 + rand() * 2, dir, p, side, true);
       }
     }
   }
@@ -6390,7 +6407,7 @@ function buildFireflies(scene, track, heightAt) {
   const up = new THREE.Vector3(0, 1, 0);
   const positions = [];
   const phases = [];
-  const want = 170; // 260 was crowded, 110 too sparse — a present-but-gentle middle
+  const want = Math.round(170 * _density); // 260 was crowded, 110 too sparse — a present-but-gentle middle
   let tries = 0;
   while (positions.length / 3 < want && tries < want * 8) {
     tries++;
@@ -6504,7 +6521,7 @@ function buildAmbientFlyers(scene, track, heightAt, litLevel) {
     const isDragon = kind === "dragonfly";
     const bases = [];
     const tints = [];
-    const want = night ? 55 : isDragon ? 70 : 130;
+    const want = Math.round((night ? 55 : isDragon ? 70 : 130) * _density);
     let tries = 0;
     const _c = new THREE.Color();
     while (bases.length / 3 < want && tries < want * 9) {

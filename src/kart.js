@@ -117,6 +117,7 @@ export function driftTierFor(charge) {
 // After a spin-out settles the kart can't be spun again for this long, so a
 // second hairball in the same volley doesn't chain wipeouts.
 const SPIN_IMMUNITY = 1.0;
+export const RAMP_KICK = 1.25; // launch-speed multiplier off a ramp lip / sharp crest (see _integrate)
 
 // Soft radial blob used as a contact/grounding shadow under each kart (also
 // shared by the prop/item-box shadows in props.js, so they match).
@@ -188,6 +189,10 @@ export class Kart {
     this.airborne = false;
     this.groundY = 0; // road surface height under the kart
     this.slopePitch = 0;
+    this._groundVy = undefined; // road's vertical velocity under the kart (ramp launch; see _integrate)
+    this.airLaunch = false; // one-shot: the kart just left the ground off a ramp/crest
+    this.onVerge = false; // wheels on a runoff verge (sand/gravel/…) this frame
+    this._bounceCd = 0; // s until a tyre/concrete barrier can kick the kart again
 
     // Spinout
     this.spinTimer = 0;
@@ -348,6 +353,7 @@ export class Kart {
     this.trackT = proj.t;
     this.groundY = proj.groundY;
     this.position.y = this.groundY;
+    this._groundVy = undefined;
     this.lap = -1;
     this.totalProgress = -1 + proj.t;
     this._syncMesh();
@@ -714,12 +720,23 @@ export class Kart {
     // scrub a little speed when it scrapes the wall.
     const proj = track.project(this.position);
     this._proj = proj;
-    const limit = track.halfWidth - this.radius;
+    // A bay's apron widens the lane on its side (0 when the track has none).
+    const limit = track.halfWidth + (track.extraAt ? track.extraAt(proj.lateral > 0 ? 0 : 1, proj.i) : 0) - this.radius;
     if (Math.abs(proj.lateral) > limit) {
       const correction = Math.sign(proj.lateral) * limit - proj.lateral;
       this.position.addScaledVector(proj.side, correction);
-      this.speed *= 1 - Math.min(0.4, 1.6 * dt);
+      // What the barrier is made of decides what the scrape costs: a hedge is
+      // soft, a rock face is not, and tyres/concrete kick the kart back off.
+      const feel = track.barrierAt ? track.barrierAt(proj) : null;
+      this.speed *= 1 - Math.min(0.4, 1.6 * (feel?.scrub ?? 1) * dt);
       this.knock.multiplyScalar(0.5);
+      if (feel?.bounce && Math.abs(this.speed) > 6 && this._bounceCd <= 0) {
+        this.knock.addScaledVector(
+          proj.side,
+          -Math.sign(proj.lateral) * feel.bounce * Math.min(1, Math.abs(this.speed) / 20),
+        );
+        this._bounceCd = 0.35;
+      }
       // Clipping a wall kills an active drift and forfeits its charge (no boost
       // reward) — drive clean through the corner to keep the slide.
       if (this.drifting) {
@@ -738,6 +755,17 @@ export class Kart {
       }
     }
 
+    // Runoff verges (sand, gravel, mud…) drag the kart while its wheels are on
+    // them — the road's outer strip is slower country on spans that have one.
+    if (this._bounceCd > 0) this._bounceCd -= dt;
+    if (!this.airborne && track.dragAt) {
+      const drag = track.dragAt(proj);
+      if (drag > 0) {
+        this.speed *= 1 - Math.min(0.5, drag * dt);
+        this.onVerge = true;
+      } else this.onVerge = false;
+    }
+
     // Sit the kart on its front + rear wheel contacts (not just the centreline),
     // so the wheels lay on the slope and the rear doesn't dig into the hill on
     // crests/descents. The sample baseline matches the actual wheelbase, the
@@ -746,12 +774,36 @@ export class Kart {
     const half = 1.55; // matches the front/rear wheel positions
     const frontY = track.project(_iProbe.copy(this.position).addScaledVector(fwd, half)).groundY;
     const rearY = track.project(_iProbe.copy(this.position).addScaledVector(fwd, -half)).groundY;
+    const prevGround = this.groundY;
     this.groundY = (frontY + rearY) * 0.5 + 0.08; // lift so the tyres rest on, not in, the road
     const targetPitch = Math.atan2(rearY - frontY, 2 * half);
     // Track the slope quickly so the kart stays glued through crests/dips instead
     // of the nose stabbing in or the tail floating during the transition.
     this.slopePitch += (targetPitch - this.slopePitch) * Math.min(1, 26 * dt);
     this.position.y = this.groundY;
+
+    // Ramp launch. `y` is height ABOVE the road, so a kart glued to the ground
+    // follows any drop instantly — fine on the generator's smoothed hills, but
+    // the lip of a ramp or a sharp hump should throw it. While grounded, track
+    // the road's vertical velocity under the kart (`_groundVy`); when the road
+    // falls away faster than gravity could bring the kart down in this step,
+    // the kart keeps its upward momentum and goes ballistic from where the
+    // ground WAS. Capped: a drop bigger than a kart is a projection snapping
+    // between stacked strands (crossover decks), not a jump — keep the snap.
+    if (!this.airborne && this.y <= 0 && this._groundVy !== undefined && dt > 0) {
+      const ballistic = prevGround + this._groundVy * dt - 15 * dt * dt;
+      const gap = ballistic - this.groundY;
+      if (this._groundVy > 0.4 && gap > 0.01 && gap < 3 && Math.abs(this.speed) > 8) {
+        this.airborne = true;
+        // RAMP_KICK: arcade ramps throw a touch more than the lip's true
+        // vertical speed (gravity here is 30, so honest physics lands a 14°
+        // ramp in half a second — too brief to enjoy the air).
+        this.vy = this._groundVy * RAMP_KICK - 30 * dt;
+        this.y = gap;
+        this.airLaunch = true; // one-shot: effects/telemetry read + clear it
+      }
+    }
+    this._groundVy = this.airborne ? 0 : (this.groundY - prevGround) / Math.max(dt, 1e-4);
 
     // Vertical / jump physics (relative to the road surface).
     if (this.airborne || this.y > 0 || this.vy !== 0) {

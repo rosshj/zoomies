@@ -733,16 +733,19 @@ scene.add(track.group);
 // High graphics builds a denser world (grass verges, ambling-critter budget).
 // Read straight from storage: the world builds long before the quality module
 // initialises (same pattern as the shadow-map size in scene.js).
-const _worldDetail = (() => {
+// `density` is the playground tour's "lots going on" knob — the roadside,
+// tree, rock, critter and flyer placements all multiply by it — tuned down a
+// step from the tour's 2.6 for a full-size lap with eight karts on it.
+const [_worldDetail, _worldDensity] = (() => {
   try {
     const quality = localStorage.getItem("zoomies-quality-v2");
-    return quality === "high" ? 1.7 : quality === "low" ? 0.7 : 1;
+    return quality === "high" ? [1.7, 2.4] : quality === "low" ? [0.7, 1.3] : [1, 2.0];
   } catch {
-    return 1;
+    return [1, 2.0];
   }
 })();
 const _worldBuildStart = performance.now();
-const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail });
+const world = buildWorld(scene, track, { timeOfDay: TIME_OF_DAY, detail: _worldDetail, density: _worldDensity });
 const _worldBuildMs = performance.now() - _worldBuildStart;
 window.__zoomies.world = world; // debug hook (headless probes sample heightAt/lakes)
 window.__zoomies.setWind = setWind; // debug hook (wind probe A/Bs the sway; handy for tuning)
@@ -763,6 +766,11 @@ initProps(scene, track, {
   onImpact: (kind, pos, strength) => audio.propImpact(kind, pos, strength),
   onKnock: (kart) => {
     if (kart === player && _raceStats) _raceStats.propsKnocked++;
+  },
+  // Breaking a roadside scene (a stall, a log pile…) scrubs pace in proportion
+  // to how solid it is — the one place props push back on the kart.
+  onBreak: (kart, st) => {
+    if (kart) kart.speed *= 1 - (st.spec.slow || 0);
   },
   heightAt: world.heightAt, // so leaf piles sit on the real ground, not the road-curve height
   onItem: (kart, pos) => grantItem(kart),
