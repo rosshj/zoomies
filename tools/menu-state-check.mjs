@@ -14,6 +14,10 @@ const step = async (name) => assert.equal(await p.locator("#menu").getAttribute(
 // A fresh unlock pops a reveal card over the results (src/celebrate.js); tap it
 // away before driving the results buttons.
 const dismissReveals = async () => {
+  // The cards are queued on a timer that lands late when a frame blocks, so
+  // wait for them whenever the results say some are due.
+  if (Number(await p.locator("#results").getAttribute("data-reveals")) > 0)
+    await p.locator("#celebrate-reveal:not(.hidden)").waitFor({ timeout: 30000 });
   for (let i = 0; i < 8 && (await p.locator("#celebrate-reveal:not(.hidden)").count()); i++) {
     await p.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
     await p.locator("#celebrate-continue").click();

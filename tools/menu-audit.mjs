@@ -362,8 +362,8 @@ try {
     await click("#resume-race-btn");
     await page.evaluate(() => window.__zoomies.debugFinish());
     await page.locator("#results:not(.hidden)").waitFor();
-    await page.waitForTimeout(900);
-    if (await page.locator("#celebrate-reveal:not(.hidden)").count()) {
+    if (Number(await page.locator("#results").getAttribute("data-reveals")) > 0) {
+      await page.locator("#celebrate-reveal:not(.hidden)").waitFor({ timeout: 30000 });
       await page.locator("#celebrate-reveal.is-open").waitFor({ timeout: 30000 });
       await capture("reveal");
       while (await page.locator("#celebrate-reveal:not(.hidden)").count()) {

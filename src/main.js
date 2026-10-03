@@ -7767,6 +7767,8 @@ function celebrateResults(settled, badgeRows = []) {
         hold: 2200,
       });
   }
+  // Checks read how many cards are due before they drive the results buttons.
+  document.getElementById("results").dataset.reveals = String(cards.length);
   if (cards.length) setTimeout(() => celebrateReveal(cards), cup?.last ? 1600 : 700);
 }
 function animateEarnings(payout, badgeRows) {
