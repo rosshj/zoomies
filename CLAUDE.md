@@ -173,6 +173,11 @@ rng stream (`seed|edges`) so it never shifts the scenery's random draws.
   that depends on holding a lane.
 - The playground's "Road edges" area lines every barrier kind down the left of
   its first straight and every verge down the back straight.
+- The painted edge line (`Track._buildEdgeLines`) follows the EDGE OF THE
+  TARMAC: out with a bay's extra, in past a verge's wobbly inner edge, eased
+  over ±3u. Every bit of road paint is an overlay (renderOrder 1, no depth
+  write → the polygonOffset bias); a line buried under the verge at the same
+  height with depth writes on showed through as a flashing, jagged seam.
 
 ## The biome tour is the per-biome test bench
 

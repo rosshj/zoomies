@@ -1641,28 +1641,51 @@ export class Track {
     }
   }
 
-  // Solid painted lines down both edges of the tarmac (just inside the verge).
+  // Solid painted lines down both edges of the tarmac. The line follows the
+  // EDGE OF THE TARMAC, not a fixed offset: it steps out with a bay's extra
+  // width and steps in past a runoff verge (the mud/sand/gravel strip lies
+  // OUTSIDE the line, as on a real road — a line buried under the verge at
+  // the same height fought it for the depth buffer and showed through as a
+  // flashing, jagged seam). The lateral change is eased over ~6u so the
+  // line never kinks. It is an overlay like the other road paint (renderOrder
+  // 1, no depth write → the depth bias applied below), so it never sparkles
+  // against the road at distance either.
   _buildEdgeLines() {
-    const inset = this.halfWidth - 0.55;
+    const N = this.samples;
     const hw = 0.22; // half-width of the painted line
     const mat = new THREE.MeshStandardMaterial({
       color: 0xece7da,
       roughness: 0.85,
       side: THREE.DoubleSide,
+      depthWrite: false,
     });
     // Both painted lines share one material — bake them into ONE mesh (one draw).
     const positions = [];
     const indices = [];
+    const win = Math.max(2, Math.round((3 * N) / this.length)); // ±3u smoothing window
     for (const sgn of [1, -1]) {
+      const sideIdx = sgn === 1 ? 0 : 1;
+      const raw = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        const cell = this.edges?.[sideIdx]?.[i];
+        const verge = cell?.verge ? cell.vergeW * 1.12 + 0.3 : 0; // inside the verge's wobbly inner edge
+        raw[i] = this.halfWidth + this.extraAt(sideIdx, i) - verge - 0.55;
+      }
+      const inset = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        let sum = 0;
+        for (let k = -win; k <= win; k++) sum += raw[(i + k + N) % N];
+        inset[i] = sum / (2 * win + 1);
+      }
       const base = positions.length / 3;
-      for (let i = 0; i <= this.samples; i++) {
-        const idx = i % this.samples;
+      for (let i = 0; i <= N; i++) {
+        const idx = i % N;
         const p = this._pts[idx];
         const side = this._sideAt(idx);
-        const a = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset - hw));
-        const b = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset + hw));
+        const a = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset[idx] - hw));
+        const b = new THREE.Vector3().copy(p).addScaledVector(side, sgn * (inset[idx] + hw));
         positions.push(a.x, p.y + 0.05, a.z, b.x, p.y + 0.05, b.z);
-        if (i < this.samples) {
+        if (i < N) {
           const k = base + i * 2;
           indices.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
         }
@@ -1673,6 +1696,7 @@ export class Track {
     geo.setIndex(indices);
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 1; // road overlay: biased with the rest below
     mesh.receiveShadow = true;
     this.group.add(mesh);
   }
