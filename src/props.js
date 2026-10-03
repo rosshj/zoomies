@@ -884,6 +884,16 @@ function build(scene, track, opts) {
     if (_kRel.y < 0) _kRel.y = 0; // never shove a piece into the road
     if (_kRel.lengthSq() < 1e-6) _kRel.set(Math.sign(lx) || 1, 0, 0);
     _kRel.normalize();
+    // The roof is not a shelf: a piece landing on top is shed to the nearer
+    // side (the contact normal leans outward, like a rounded bonnet) and
+    // keeps its slip relative to the kart, so it slides off the back instead
+    // of riding along bouncing and spinning in place.
+    const onTop = _kRel.y > 0.6;
+    if (onTop) {
+      _kRel.x += (Math.sign(lx) || (Math.random() < 0.5 ? -1 : 1)) * 0.9;
+      _kRel.z += Math.sign(lz) * 0.35;
+      _kRel.normalize();
+    }
     // Back to world: n = right*x + up*y + fwd*z.
     _kN.set(_kRight.x * _kRel.x + _kFwd.x * _kRel.z, _kRel.y, _kRight.z * _kRel.x + _kFwd.z * _kRel.z);
     const push = er - (d < 1e-4 ? 0 : d);
@@ -896,11 +906,14 @@ function build(scene, track, opts) {
       const rest = pr.profile?.restitution ?? 0.26;
       pr.vel.addScaledVector(_kN, -(1 + rest) * vn);
       // Contact friction scrubs the tangential slip; the spin follows the slip.
+      // On top, barely any: the piece must keep sliding off.
       _kVr.copy(pr.vel).sub(_kVel).addScaledVector(_kN, -pr.vel.clone().sub(_kVel).dot(_kN));
-      pr.vel.addScaledVector(_kVr, -0.35);
-      pr.angVel.addScaledVector(_kN.clone().cross(_kVr), 0.4 / er);
+      pr.vel.addScaledVector(_kVr, onTop ? -0.06 : -0.35);
+      if (!onTop) pr.angVel.addScaledVector(_kN.clone().cross(_kVr), 0.4 / er);
+      else pr.angVel.multiplyScalar(0.9); // no spin pumped into a piece on the roof
       if (-vn > 3) impact(pr, -vn * 2.5);
     }
+    if (onTop) pr.vel.addScaledVector(_kN, 1.5 * dt * 60); // a steady nudge off the roof
     pr.asleep = false;
     pr.settle = false;
     pr.quiet = 0; // never settle while touching a kart (a piece on the roof would snap to the road)

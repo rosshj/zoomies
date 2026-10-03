@@ -158,6 +158,38 @@ await run(() => window.__playground.freeze(true));
     r.minBottom > -0.6 && (r.bounced || r.finalDist > 1.2),
     JSON.stringify(r),
   );
+  // …and never rides along on the roof: drop one on a MOVING kart and it
+  // must be off the kart and on the road within a couple of seconds.
+  const ride = await run(() => {
+    const P = window.__playground;
+    P.resetArea();
+    P.drive(1, 0);
+    const k = P.player;
+    const pr = P.area.props._props.find((p) => p.kind === "crate" && p.mode === "ground");
+    for (let i = 0; i < 60; i++) P.step(1 / 60);
+    pr.asleep = false;
+    pr.settle = false;
+    pr.vel.set(Math.sin(k.heading) * k.speed, 0, Math.cos(k.heading) * k.speed);
+    pr.angVel.set(0, 0, 0);
+    pr.pos.set(k.position.x, k.position.y + 2.6, k.position.z);
+    pr.roadIndex = k._proj.i;
+    let onKart = 0;
+    for (let i = 0; i < 180; i++) {
+      P.step(1 / 60);
+      const dx = pr.pos.x - k.position.x,
+        dz = pr.pos.z - k.position.z;
+      if (Math.hypot(dx, dz) < 2.2 && pr.pos.y - k.position.y > 1.0) onKart++;
+    }
+    const d = Math.hypot(pr.pos.x - k.position.x, pr.pos.z - k.position.z);
+    P.drive(0, 0);
+    P.resetArea();
+    return { onKart, finalDist: d, y: pr.pos.y - pr.rest - (pr.groundY ?? 0) };
+  });
+  check(
+    "a piece dropped on a moving kart slides off within a second",
+    ride.onKart < 70 && ride.finalDist > 4,
+    JSON.stringify(ride),
+  );
 }
 
 // --- Biome scenes: every biome's recipes smash under the autopilot ---------
