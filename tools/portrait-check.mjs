@@ -86,7 +86,7 @@ try {
   assert.ok(stage.fov > 70, `the vertical FOV widens for the square-ish view (${stage.fov.toFixed(1)})`);
 
   // --- Every control and readout is on the panel; the pause button on the view ---
-  const ids = ["#throttle-track", "#action-buttons", "#minimap", "#info"];
+  const ids = ["#throttle-track", "#action-buttons", "#info"];
   const rects = {};
   for (const id of ids) rects[id] = await rect(page, id);
   rects["#btn-pause"] = await rect(page, "#btn-pause");
@@ -98,13 +98,17 @@ try {
     assert.ok(r.b <= 844 + 0.5 && r.x >= -0.5 && r.r <= 390.5, `${id} stays inside the stage`);
   }
   assert.ok(rects["#btn-pause"].b <= stage.viewH, "the pause button sits over the view");
-  assert.ok(
-    rects["#minimap"].w >= 96 && rects["#minimap"].h === rects["#minimap"].w,
-    "the minimap is square and readable",
-  );
-  for (const a of ["#throttle-track", "#minimap", "#action-buttons", "#info"])
-    for (const b of ["#throttle-track", "#minimap", "#action-buttons", "#info"])
+  // The minimap sits over the VIEW, bottom-left (as in landscape), clear of
+  // the sheet's rounded edge.
+  rects["#minimap"] = await rect(page, "#minimap");
+  const mm = rects["#minimap"];
+  assert.ok(mm.visible && mm.w >= 96 && mm.h === mm.w, "the minimap is square and readable");
+  assert.ok(mm.b <= stage.viewH - 16 && mm.x < 40, `the minimap sits bottom-left of the view (${mm.x},${mm.b})`);
+  for (const a of ["#throttle-track", "#action-buttons", "#info"])
+    for (const b of ["#throttle-track", "#action-buttons", "#info"])
       if (a < b) assert.ok(!overlap(rects[a], rects[b]), `${a} and ${b} overlap`);
+  // The fan is at its landscape size on the panel: a thumb-sized hop button.
+  assert.ok((await rect(page, "#btn-jump")).w >= 80, "the hop button is full size");
   // The action fan's live buttons are inside the stage too (the fan is scaled).
   for (const id of ["#btn-jump", "#btn-shoot", "#btn-boost", "#btn-shield"]) {
     const r = await rect(page, id);

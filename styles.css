@@ -3287,36 +3287,20 @@ kbd,
 #stage.handheld #game {
   bottom: auto; /* height is set inline (--view-h) */
 }
+/* The panel is a flat SHEET, like an iOS bottom sheet: one colour, rounded
+   top corners that overlap the view by their radius, a soft shadow up, and
+   nothing else — no bezel, no highlight lines, no gradient. */
 #stage.handheld #handheld-shell {
   display: block;
   position: absolute;
   left: 0;
   right: 0;
-  top: var(--view-h);
+  top: calc(var(--view-h) - 18px);
   bottom: 0;
   z-index: 20; /* over the canvas, under the HUD (30) */
-  background:
-    radial-gradient(120% 60% at 50% 0%, rgba(255, 214, 120, 0.08), transparent 60%),
-    linear-gradient(180deg, #2a2213 0%, #1a150a 22%, #14100a 100%);
-  box-shadow:
-    inset 0 2px 0 rgba(255, 214, 120, 0.22),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
-    0 -12px 28px rgba(0, 0, 0, 0.6);
-}
-/* The screen's lower corners round off into the shell's bezel. */
-#stage.handheld #handheld-shell::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: -14px;
-  height: 14px;
-  background: inherit;
-  -webkit-mask: radial-gradient(14px at 14px 0, transparent 98%, #000) -14px 0 / 50% 100% no-repeat,
-    radial-gradient(14px at calc(100% - 14px) 0, transparent 98%, #000) 100% 0 / 50% 100% no-repeat;
-  mask: radial-gradient(14px at 14px 0, transparent 98%, #000) -14px 0 / 50% 100% no-repeat,
-    radial-gradient(14px at calc(100% - 14px) 0, transparent 98%, #000) 100% 0 / 50% 100% no-repeat;
-  pointer-events: none;
+  background: #1f1930;
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.45);
 }
 /* Panel geometry shared by the controls: the status strip is 48px, the
    steering bar keeps the bottom 36px above the home bar. */
@@ -3326,7 +3310,7 @@ kbd,
 }
 /* Status strip: lap · place · speed · clock in one row, centred. */
 #stage.handheld #info {
-  top: calc(var(--view-h) + 10px);
+  top: calc(var(--view-h) + 6px);
   right: auto;
   left: 50%;
   transform: translateX(-50%);
@@ -3356,50 +3340,28 @@ kbd,
 #stage.handheld #throttle {
   top: var(--hh-panel-top);
   bottom: var(--hh-panel-bottom);
-  left: max(4px, var(--safe-left, 0px));
-  width: 86px;
+  left: max(8px, var(--safe-left, 0px));
+  width: 96px;
 }
 #stage.handheld #throttle-track {
-  width: 56px;
+  width: 58px;
   height: calc(100% - 8px);
-  max-height: 300px;
+  max-height: 320px;
 }
-#stage.handheld #throttle-thumb {
-  width: 50px;
-  height: 50px;
-  margin: -25px 0 0 -25px;
-}
-/* Action fan: the right column, scaled to fit beside the minimap on a 375px
-   phone (transforms keep the hit areas with the art). */
+/* Action fan: the right column at the landscape fan's full size and spacing
+   (the minimap lives over the view, so the panel is the fan's alone). */
 #stage.handheld #action-buttons {
-  right: max(2px, var(--safe-right, 0px));
+  right: max(8px, calc(var(--safe-right, 0px) + 4px));
   bottom: var(--hh-panel-bottom);
-  transform: scale(0.84);
-  transform-origin: 100% 100%;
 }
-/* Minimap: centred in whatever is left between the two columns (the fan is
-   188px scaled, the slider's track ends ~82px in). Sized off the stage WIDTH
-   (--stage-vw) for both axes — a % in `height` would read the stage height. */
+/* Minimap: bottom-left of the VIEW, as in landscape, tucked above the sheet's
+   rounded edge. */
 #stage.handheld #minimap {
-  --hh-map: min(124px, calc(var(--stage-vw, 3.9px) * 100 - 92px - 192px - 8px));
-  width: var(--hh-map);
-  height: var(--hh-map);
-  left: calc(90px + (100% - 90px - 192px) / 2);
-  transform: translateX(-50%);
-  top: var(--hh-panel-top);
-  bottom: var(--hh-panel-bottom);
-  margin: auto 0;
-}
-/* A held milk jug stacks above the fan on the panel (its landscape slot,
-   left of the fan, would sit on the minimap). */
-#stage.handheld #btn-milk {
-  right: 8px;
-  bottom: 198px;
-}
-/* Desktop-window portrait (no touch HUD): the minimap can have the panel. */
-#stage.handheld #hud.no-touch #minimap {
-  --hh-map: min(160px, calc(100% - 20px));
-  left: 50%;
+  width: 112px;
+  height: 112px;
+  left: max(12px, var(--safe-left, 0px));
+  top: auto;
+  bottom: calc(100% - var(--view-h) + 28px);
 }
 #stage.handheld #steer { bottom: max(10px, var(--safe-bottom, 0px)); }
 /* Pause: the dim covers the whole stage (the panel's controls are blocked
@@ -3411,7 +3373,7 @@ kbd,
 /* The big banner sits in the view, the pickup pill just above the panel, and
    the hit flash stays on the screen, not the shell. */
 #stage.handheld #toast { top: calc(var(--view-h) * 0.42); }
-#stage.handheld #pickup-toast { bottom: calc(100% - var(--view-h) + 14px); }
+#stage.handheld #pickup-toast { bottom: calc(100% - var(--view-h) + 30px); }
 #stage.handheld #flash {
   bottom: auto;
   height: var(--view-h);

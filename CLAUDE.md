@@ -296,12 +296,16 @@ before (a portrait viewport is counter-rotated). Upright in a race
 (COUNTDOWN / RACING / PAUSED, solo, Portrait racing setting on) is
 `#stage.handheld`: the canvas covers only the top `--view-h` of the stage
 (`stageState.VH`; the renderer, composer, shaft target, camera aspect and the
-DRS pixel budget all size off VH, not H), `#handheld-shell` is the panel's
-body below it, and `styles.css`'s `#stage.handheld` block moves the HUD onto
-the panel (status strip, throttle left, minimap centre, action fan right,
-steer bar bottom; pause button, power-up pills and the rear-threat/yarn
-warnings stay over the view). The camera widens (`stageState.fovScale`,
-~75° across whatever the aspect) so the view is not a keyhole.
+DRS pixel budget all size off VH, not H), `#handheld-shell` is a flat SHEET
+below it (one colour, rounded top corners overlapping the view by their
+radius, a shadow up — no bezel, lines or gradients: it reads as an iOS
+bottom sheet), and `styles.css`'s `#stage.handheld` block moves the HUD onto
+the sheet (status strip, throttle left, the action fan right at its full
+landscape size and spacing, steer bar bottom). The minimap, pause button,
+power-up pills and the rear-threat/yarn warnings stay over the view, the
+minimap bottom-left as in landscape. The camera widens
+(`stageState.fovScale`, ~75° across whatever the aspect) so the view is not
+a keyhole.
 
 - The hold follows the sensors LIVE, mid-race included — never latch it (a
   latch ignored a real turn of the phone: the race stayed sideways reading
@@ -354,9 +358,7 @@ strokes a dark halo under the cream outline instead.
   `.jug` SVG markup where it appears; the single-tone `milk` path is the
   same silhouette for the menus.
 - Power-up pills are a WRAPPING ROW top-left (six stacked would reach the
-  throttle, which starts at 24% in landscape); the handheld frame stacks a
-  held jug above the fan (`#stage.handheld #btn-milk`) because its
-  landscape slot sits on the minimap there.
+  throttle, which starts at 24% in landscape).
 - The design canvas the user signed off is the reference:
   https://claude.ai/artifact/EvyUi27iELGrFaLJxK8AdP (landscape, upright, and
   every control state).
