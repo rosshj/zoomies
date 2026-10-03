@@ -175,7 +175,10 @@ try {
   await p.waitForFunction(() => document.getElementById("celebrate-portrait").dataset.ready === "true", null, {
     timeout: 60000,
   });
-  await p.waitForTimeout(900);
+  // The turntable's first redraw is a full software render; wait for it to land.
+  await p.waitForFunction(() => Number(document.getElementById("celebrate-portrait").dataset.yaw) > 0.35, null, {
+    timeout: 60000,
+  });
   const bought = await p.evaluate(() => ({
     kicker: document.getElementById("celebrate-reveal-kicker").textContent,
     ribbon: document.querySelector(".celebrate-ribbon").textContent,
