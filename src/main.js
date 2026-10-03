@@ -1549,7 +1549,8 @@ const stage = document.getElementById("stage");
 const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
 let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
 installCelebrations({
-  renderPortrait: renderRacerPortrait,
+  // Reveal cards fill their square with the model (the studios keep the looser framing).
+  renderPortrait: (canvas, cat, kart, subject) => renderRacerPortrait(canvas, cat, kart, subject, { tight: true }),
   spinPortrait,
   haptic: (style) => getPlatform().haptics?.impact?.(style),
   cue: uiCue,
@@ -7715,7 +7716,9 @@ function showResults(presettled = null) {
   const _hudEl = document.getElementById("hud");
   _hudEl.classList.remove("hidden");
   _hudEl.classList.remove("victory-hidden"); // results overlay takes over from the faded victory HUD
-  document.getElementById("results").classList.remove("hidden");
+  const resultsEl = document.getElementById("results");
+  resultsEl.classList.toggle("over-podium", !!_podium); // an opaque card over the busy ceremony shot
+  resultsEl.classList.remove("hidden");
   celebrateResults(settled, badgeRows);
 }
 
@@ -7908,8 +7911,8 @@ function updatePodium(dt) {
     P.nextPop = P.t < 7 ? 0.4 + Math.random() * 0.35 : 2.5 + Math.random() * 2.5;
     const i = P.pops++ % 2;
     const dir = _podCam
-      .copy(P.built.forward)
-      .multiplyScalar(-0.35)
+      .copy(P.built.facing)
+      .multiplyScalar(0.35)
       .addScaledVector(P.built.side, i ? -0.5 : 0.5)
       .add(_podUp)
       .normalize();
@@ -7924,7 +7927,7 @@ function updatePodium(dt) {
   const ang = 0.22 * Math.sin(P.t * 0.28);
   _podCam
     .copy(c)
-    .addScaledVector(P.built.forward, dist * Math.cos(ang))
+    .addScaledVector(P.built.facing, dist * Math.cos(ang))
     .addScaledVector(P.built.side, dist * Math.sin(ang));
   _podCam.y = c.y + height;
   if (P.t === 0) camPos.copy(_podCam);
@@ -7949,6 +7952,7 @@ function endPodium() {
   _disposeGroup(P.built.group);
   P.confetti.dispose();
   for (const k of karts) k.group.visible = true;
+  document.getElementById("results").classList.remove("over-podium");
 }
 // Debug hook: run the whole finish → podium → results sequence now, as if the
 // 6.5s victory orbit had just ended (the celebrations check drives this).
@@ -7957,6 +7961,7 @@ window.__zoomies.debugFinishSequence = () => {
   player.finished = true;
   player.finishTime = raceTime;
   state = State.FINISHED;
+  document.getElementById("hud").classList.add("victory-hidden");
   finishSequence();
   return true;
 };

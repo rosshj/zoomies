@@ -261,6 +261,12 @@
   min-height: 52px;
 }
 
+/* The standings over the podium: the ceremony is a busy backdrop, so the card
+   goes near-opaque there instead of letting the karts show through the rows. */
+#results.over-podium .menu-card.results-main {
+  background: rgba(27, 21, 41, 0.94);
+}
+
 /* --- Treats fly-in ------------------------------------------------------------ */
 .celebrate-fish {
   position: absolute;

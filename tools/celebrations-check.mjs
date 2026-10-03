@@ -167,7 +167,7 @@ try {
     localStorage.setItem("zoomies-profile-v1", JSON.stringify(prof));
   });
   await boot(`${origin}/?webgl=1&nosw=1&nowd=1`);
-  await click("#chrome-treats");
+  await click("#open-catalog");
   await click('[data-prize="cat.3"]');
   await p.locator("#racer-details:not(.hidden)").waitFor();
   await click("#racer-details-action");

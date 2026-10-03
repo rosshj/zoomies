@@ -6,9 +6,9 @@
 //                          slots are world transforms for places 1..3
 //   new WorldConfetti(scene) → .burst(origin, dir, n), .update(dt), .dispose()
 //
-// The podium sits ON the road just past the start gate, facing down the road
-// (the way the karts race), so the camera ahead on the straight looks back at
-// the champion with the "ZOOMIES GP" banner behind.
+// The podium sits ON the road just short of the start gate, turned to face the
+// approach straight (the gate's printed side faces that way), so the camera
+// down the straight sees the champion with the "ZOOMIES GP" banner behind.
 import * as THREE from "three";
 import { makeNumberTexture } from "./models.js";
 import { toonify } from "./toon.js";
@@ -20,15 +20,17 @@ const STEP_D = 5.4; // along the road (a kart is ~4.2 long)
 const STEP_H = [1.5, 1.0, 0.65]; // 1st, 2nd, 3rd
 const STEP_X = [0, -4.1, 4.1]; // 1st in the middle, 2nd on the left, 3rd on the right
 const STEP_COL = [0xffc64b, 0xd7dde6, 0xc98a4b];
-const PODIUM_T = 24; // metres past the start line
+const PODIUM_T = 26; // metres short of the start line
 
 export function buildPodium(track) {
-  const t = PODIUM_T / track.length;
+  const t = 1 - PODIUM_T / track.length;
   const p = track.getPointAt(t);
   const tan = track.getTangentAt(t).normalize();
-  const forward = new THREE.Vector3(tan.x, 0, tan.z).normalize();
-  const side = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-  const heading = Math.atan2(forward.x, forward.z);
+  // `facing` is the way the podium (and the karts on it) face: back down the
+  // approach, toward the camera. The viewer's right is the group's local +x.
+  const facing = new THREE.Vector3(-tan.x, 0, -tan.z).normalize();
+  const side = new THREE.Vector3().crossVectors(facing, new THREE.Vector3(0, 1, 0)).normalize();
+  const heading = Math.atan2(facing.x, facing.z);
   const group = new THREE.Group();
   group.position.set(p.x, p.y, p.z);
   group.rotation.y = heading;
@@ -83,7 +85,7 @@ export function buildPodium(track) {
   }
   toonify(group);
   const centre = new THREE.Vector3(p.x, p.y + 1.5, p.z);
-  return { group, slots, centre, heading, side, forward, cannons };
+  return { group, slots, centre, heading, side, facing, cannons };
 }
 
 // Flat coloured flecks that tumble and flutter down — one InstancedMesh, so a

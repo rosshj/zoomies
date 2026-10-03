@@ -62,7 +62,9 @@ function bindRotation(canvas) {
   });
   return state;
 }
-export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
+// `tight` fits the full-turn vertex envelope into the slot (the racer card's
+// framing); cats and karts alone default to the looser studio framing.
+export function renderRacerPortrait(canvas, cat, kart, subject = "racer", { tight = subject === "racer" } = {}) {
   const interaction = bindRotation(canvas);
   const revision = (revisions.get(canvas) || 0) + 1;
   revisions.set(canvas, revision);
@@ -124,7 +126,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
         fitPoints.push({ x: rotated.dot(right), y: rotated.dot(up), z: rotated.dot(direction) });
       }
     };
-    if (subject === "racer") {
+    if (tight) {
       // Every vertex sweeps a circle of radius r at height y, so the silhouette
       // of the turn depends only on (r, y): bin the vertices by height and keep
       // the widest radius per bin, applied to both bin edges. That is still
@@ -164,7 +166,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
     };
     const fit = () => {
       // Use the actual preview slot, so landscape is not letterboxed into a square.
-      const measured = subject === "racer" && canvas.clientWidth > 0 && canvas.clientHeight > 0;
+      const measured = tight && canvas.clientWidth > 0 && canvas.clientHeight > 0;
       const aspect = measured ? Math.max(0.5, Math.min(4, canvas.clientWidth / canvas.clientHeight)) : 1.6;
       // Safe band in NDC y, between the overlays.
       let top = measured ? 1 - (2 * inset("--portrait-inset-top")) / canvas.clientHeight : 1;
@@ -188,7 +190,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
           distance,
           point.z + Math.max(Math.abs(point.x) / (tanV * camera.aspect), Math.abs(point.y) / tanV),
         );
-      if (subject === "racer") {
+      if (tight) {
         // After vertical centering, fit the projected height into the safe band
         // rather than reserving equal space around the world origin. This gives
         // wide previews more scale. 3% stays clear on every side.
@@ -212,7 +214,7 @@ export function renderRacerPortrait(canvas, cat, kart, subject = "racer") {
       } else distance *= 1.12;
       offset.copy(direction).multiplyScalar(distance);
       camera.updateProjectionMatrix();
-      if (subject === "racer") {
+      if (tight) {
         // Center the projected silhouette of the whole turn in the safe band,
         // rather than its world-space bounding box in the canvas.
         let low = Infinity,
