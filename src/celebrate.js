@@ -343,12 +343,13 @@ function closeReveal() {
   maybeHideLayer();
   const back = _revealReturn;
   _revealReturn = null;
-  // The surface underneath is inert until the menu's focus scope catches up
-  // (a microtask), so hand focus back a tick later.
+  // The surface underneath is inert until the menu's focus scope catches up in
+  // its own microtask (queued by the class change above), so hand focus back in
+  // one queued after it.
   if (back && back !== document.body)
-    setTimeout(() => {
+    queueMicrotask(() => {
       if (back.isConnected && !back.closest("[inert]")) back.focus?.({ preventScroll: true });
-    }, 0);
+    });
   done?.();
 }
 
