@@ -1172,12 +1172,18 @@ export class Track {
     // the classic hand-authored serpentine circuit.
     // Custom tracks plan their biome wedges FIRST (isolated stream), so the
     // generator's per-biome rhythm and scenery's wedge layout agree exactly.
+    // "points" mode (the feature playground, headless tooling): the caller
+    // hands over the control net itself as [x, z, y] triples — no generator,
+    // no set pieces unless asked for — so a tiny test loop can be authored by
+    // hand with the exact same road/wall/physics pipeline as a real track.
     const wedges =
       config && config.mode === "custom" ? planBiomeWedges(config.biomes, String(config.seed || "w")) : null;
     const pts =
       config && config.mode === "custom"
         ? generateLoopPoints(config, rand, wedges)
-        : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
+        : config && config.mode === "points"
+          ? config.points.map(([x, z, y = 0]) => new THREE.Vector3(x, y, z))
+          : CLASSIC_POINTS.map(([x, z, y]) => new THREE.Vector3(x, y, z));
 
     this.curve = new THREE.CatmullRomCurve3(pts, true, "catmullrom", 0.5);
     this.length = this.curve.getLength();
@@ -1313,6 +1319,12 @@ export class Track {
     // config.features (from the editor's set-piece chips) filters which kinds
     // may spawn; null/absent means everything is allowed.
     this.features = planFeatures(this, biomeNames, rand, config && config.features);
+
+    // Optional raised surface features (ramps, humps, speed bumps) that sit ON
+    // the road: anything with a liftAt(x, z) -> metres above the asphalt. Set by
+    // SurfaceFeatures (track-surface.js); null on every ordinary track, so the
+    // projection hot path pays one null check.
+    this.surface = null;
 
     this.group = new THREE.Group();
     this._buildRoad();
@@ -2522,7 +2534,12 @@ export class Track {
     const tangent = this._tans[r.i];
     const side = this._sideCached(r.i);
     const lateral = (pos.x - r.cx) * side.x + (pos.z - r.cz) * side.z;
-    return { t, point, tangent, side, lateral, distance: r.dist, groundY: r.y, i: r.i };
+    // Surface features lift the ground the karts feel at the QUERY point (not
+    // the centreline), so a ramp on one side of the road only launches the
+    // kart that actually drives over it.
+    let groundY = r.y;
+    if (this.surface) groundY += this.surface.liftAt(pos.x, pos.z);
+    return { t, point, tangent, side, lateral, distance: r.dist, groundY, i: r.i };
   }
 
   project(pos) {

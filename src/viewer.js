@@ -22,6 +22,7 @@ import {
 import { assetCatalog } from "./scenery.js";
 import { ROAD_PROPS, makeRoadProp } from "./road-prop-assets.js";
 import { makeCrateProp, makeBarrelProp } from "./props.js";
+import { BREAKABLES, makeBreakable } from "./breakables.js";
 import { toToon, uSunViewNode, uSunColNode } from "./toon.js";
 import { KART_STYLES as BODY_STYLES } from "./kart-styles.js";
 import { CAT_PRESETS, KART_PRESETS } from "./presets.js";
@@ -165,6 +166,9 @@ entries.push({ group: "Props", name: "Crate", build: () => makeCrateProp().mesh 
 entries.push({ group: "Props", name: "Barrel", build: () => makeBarrelProp().mesh });
 for (const [kind, spec] of Object.entries(ROAD_PROPS))
   entries.push({ group: "Road props", name: spec.name, build: () => makeRoadProp(kind).mesh });
+// Breakable structures (playground.html smashes them): shown assembled.
+for (const [kind, spec] of Object.entries(BREAKABLES))
+  entries.push({ group: "Breakables", name: spec.name, build: () => makeBreakable(kind).group });
 entries.push(...assetCatalog());
 
 // ---------------------------------------------------------------------------

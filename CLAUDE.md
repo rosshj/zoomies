@@ -101,3 +101,35 @@ in `src/menu-ui.js`. Put structure in the markup, not in boot-time DOM moves.
    viewport; `--by-rect` ignores pure markup reordering).
 3. Every browser tool gets a `check:*` / `menu:*` script in package.json;
    node-only checks also go in `.github/workflows/checks.yml`.
+
+## Track features: test them in the playground first
+
+`playground.html` + `src/playground.js` is the sandbox for anything that
+lives ON the road (like `viewer.html` is for assets): tiny loops authored as
+explicit control points (`new Track({ mode: "points", points, biomes,
+features: [] })`), the real `Kart`, the real `props.js` runtime. Areas are
+data in `src/playground-areas.js` — stations are given in track coordinates
+(`t`, `lateral`) and resolved against the built loop, so add a station there
+rather than hand-plotting world XZ.
+
+- Breakable structures (`src/breakables.js`) are ASSEMBLIES: a structure is
+  its pieces at rest, and a hit releases every piece as its own PropPhysics
+  body (so tyres roll off and become obstacles, the awning sails, fruit
+  scatters). Pieces are registered as `dormant` props up front and skipped by
+  every loop until `breakStructure` lets them go; `props.reset()` re-docks
+  them. Author art at 1u ≈ 1m and set `spec.scale` — the kart is ~2u per
+  metre, and unscaled furniture reads as toys next to it.
+- Anything that moves between frames needs its `roadIndex` from
+  `track.project(...)`, never from `physics.locate` seeded with 0: locate is a
+  LOCAL window search, and a wrong index lets the fence containment shove a
+  body across the infield onto the other straight (this was "the luggage cart
+  vanished").
+- Ramps/humps are `SurfaceFeatures` (`src/track-surface.js`): a height
+  profile in the road's frame that `Track._projResult` adds to `groundY`, plus
+  a mesh built from the same profile. The kart goes airborne when the road
+  falls away faster than gravity (`Kart._integrate`, `RAMP_KICK`) — the
+  generator's smoothed hills never trip it (`check:breakables` asserts this).
+- `npm run check:breakables` (node) and `npm run check:playground` (browser)
+  after touching any of this; `tools/playground-check.mjs` drives the areas
+  through `window.__playground` (`freeze` + `step` for deterministic probes,
+  `pin` to park the camera for a screenshot).

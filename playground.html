@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Zoomies GP — Feature Playground</title>
+  <link rel="icon" href="./apple-touch-icon.png" />
+  <!-- Dev tool: a sandbox for TRACK FEATURES. A handful of tiny test loops
+       (destructible structures, jumps, power-ups, the shipped props) with the
+       real kart, the real physics and the real prop/item code — drive in, hit
+       things, read the telemetry. Independent of main.js, like viewer.html.
+       Same vendored import map as index.html. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.webgpu.min.js",
+        "three/webgpu": "./vendor/three/three.webgpu.min.js",
+        "three/tsl": "./vendor/three/three.tsl.min.js",
+        "three/addons/": "./vendor/three/addons/"
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; }
+    body {
+      display: flex;
+      background: #0e1320;
+      color: #eef1f8;
+      font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+    }
+    #side {
+      width: 292px;
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      background: #141b2e;
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      z-index: 10;
+      overflow-y: auto;
+    }
+    #side header { padding: 14px 14px 8px; }
+    #side h1 { font-size: 15px; letter-spacing: 0.04em; }
+    #side h1 span { color: #ffd54f; }
+    #side .sub { font-size: 11px; color: #9aa4bd; margin-top: 2px; }
+    #side h3 {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: #8b96b3;
+      padding: 12px 14px 5px;
+    }
+    #areas { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 0 12px; }
+    #areas button {
+      padding: 9px 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 9px;
+      background: rgba(255, 255, 255, 0.04);
+      color: #dfe5f2;
+      font-size: 12px;
+      cursor: pointer;
+      text-align: left;
+    }
+    #areas button:hover { background: rgba(255, 255, 255, 0.08); }
+    #areas button.selected { background: #ffd54f; color: #201a06; font-weight: 600; border-color: #ffd54f; }
+    #blurb { font-size: 12px; color: #b9c2d8; line-height: 1.4; padding: 8px 14px 0; }
+    .list { padding: 0 8px; }
+    .list button, .actions button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: #dfe5f2;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .list button:hover, .actions button:hover { background: rgba(255, 255, 255, 0.06); }
+    .list button small { color: #8b96b3; margin-left: 6px; }
+    .actions { padding: 0 8px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+    .actions button { border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(255, 255, 255, 0.03); }
+    .actions button.wide { grid-column: 1 / -1; }
+    .actions button.on { border-color: #ffd54f; color: #ffd54f; }
+    #tele {
+      margin: 6px 12px 0;
+      padding: 8px 10px;
+      border-radius: 9px;
+      background: #0e1320;
+      font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      color: #c6cede;
+      white-space: pre;
+    }
+    #tele b { color: #ffd54f; font-weight: 600; }
+    #help { font-size: 11px; color: #8b96b3; line-height: 1.5; padding: 8px 14px 16px; }
+    #help kbd {
+      display: inline-block;
+      padding: 0 5px;
+      border-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(255, 255, 255, 0.05);
+      color: #dfe5f2;
+      font: 10.5px ui-monospace, Menlo, monospace;
+    }
+    #game { flex: 1; position: relative; min-width: 0; }
+    #game canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; display: block; touch-action: none; }
+    #topbar { position: absolute; right: 12px; top: 10px; z-index: 5; display: flex; gap: 6px; }
+    #topbar button {
+      padding: 7px 11px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(10, 14, 25, 0.72);
+      color: #eef1f8;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    #topbar button.on { border-color: #ffd54f; color: #ffd54f; }
+    #toast {
+      position: absolute;
+      left: 50%;
+      top: 52px;
+      transform: translateX(-50%);
+      z-index: 6;
+      padding: 8px 14px;
+      border-radius: 10px;
+      background: rgba(10, 14, 25, 0.8);
+      color: #ffd54f;
+      font-size: 14px;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+    }
+    #toast.show { opacity: 1; }
+    #status {
+      position: absolute;
+      left: 12px;
+      bottom: 10px;
+      z-index: 5;
+      font-size: 12px;
+      color: #c6cede;
+      background: rgba(10, 14, 25, 0.72);
+      padding: 6px 10px;
+      border-radius: 8px;
+      pointer-events: none;
+    }
+    #items-hud {
+      position: absolute;
+      left: 50%;
+      bottom: 12px;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: flex;
+      gap: 6px;
+      pointer-events: none;
+    }
+    #items-hud span {
+      padding: 5px 9px;
+      border-radius: 8px;
+      background: rgba(10, 14, 25, 0.75);
+      font-size: 13px;
+      color: #eef1f8;
+    }
+    .hidden { display: none !important; }
+    body.plain #side, body.plain #topbar, body.plain #toast, body.plain #status, body.plain #items-hud { display: none !important; }
+  </style>
+</head>
+<body>
+  <aside id="side">
+    <header>
+      <h1><span>Zoomies GP</span> — Feature Playground</h1>
+      <div class="sub">Drive the real kart through test features. <a href="./viewer.html" style="color:#9aa4bd">Asset viewer →</a></div>
+    </header>
+    <h3>Area</h3>
+    <div id="areas"></div>
+    <div id="blurb"></div>
+    <h3 id="actions-title" class="hidden">Actions</h3>
+    <div id="actions" class="actions"></div>
+    <h3>Stations <small style="text-transform:none;letter-spacing:0;color:#6f7a95">— teleport to</small></h3>
+    <div id="targets" class="list"></div>
+    <h3>Telemetry</h3>
+    <div id="tele">loading…</div>
+    <div id="help">
+      <kbd>W</kbd><kbd>S</kbd> gas / brake · <kbd>A</kbd><kbd>D</kbd> steer · <kbd>Space</kbd> hop / hold to drift ·
+      <kbd>F</kbd> shoot · <kbd>M</kbd> milk · <kbd>B</kbd> boost · <kbd>Shift</kbd> shield<br />
+      <kbd>R</kbd> reset area · <kbd>C</kbd> camera · <kbd>T</kbd> slow-mo · <kbd>1</kbd>–<kbd>4</kbd> switch area · gamepad works too
+    </div>
+  </aside>
+  <main id="game">
+    <div id="topbar">
+      <button id="cam-btn" title="Camera (C)">📷 Chase</button>
+      <button id="slow-btn" title="Slow motion (T)">🐢 Slow-mo</button>
+      <button id="sound-btn" title="Sound">🔇 Sound</button>
+      <button id="reset-btn" title="Reset area (R)">↺ Reset</button>
+    </div>
+    <div id="toast"></div>
+    <div id="items-hud"></div>
+    <div id="status">booting…</div>
+  </main>
+  <script type="module" src="./src/playground.js"></script>
+</body>
+</html>

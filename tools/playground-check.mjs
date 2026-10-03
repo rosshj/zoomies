@@ -1,0 +1,213 @@
+// Feature playground smoke test (playground.html). Boots the page headless,
+// visits every area and drives the kart through the thing each one stages:
+// smashes a structure (pieces must move and the kart must slow), launches off
+// the ramp (the kart must leave the ground and land), fires every power-up,
+// and lands on the shipped-props loop — asserting no page errors throughout.
+// Screenshots of each area land in $OUT for eyeballing.
+//   node tools/playground-check.mjs        (npm run check:playground)
+import { launchArtBrowser } from "./art-browser.mjs";
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const OUT = process.env.OUT || "/tmp/zoomies-playground";
+fs.mkdirSync(OUT, { recursive: true });
+const MIME = {
+  ".html": "text/html",
+  ".js": "text/javascript",
+  ".mjs": "text/javascript",
+  ".css": "text/css",
+  ".json": "application/json",
+  ".png": "image/png",
+};
+const server = http.createServer((req, res) => {
+  let u = decodeURIComponent(req.url.split("?")[0]);
+  if (u === "/favicon.ico") return void res.writeHead(204).end();
+  fs.readFile(path.join(ROOT, u), (err, data) => {
+    if (err) return void res.writeHead(404).end("404 " + u);
+    res.writeHead(200, { "content-type": MIME[path.extname(u)] || "application/octet-stream" });
+    res.end(data);
+  });
+});
+await new Promise((r) => server.listen(0, "127.0.0.1", r));
+const port = server.address().port;
+
+let failures = 0;
+const check = (name, cond, extra = "") => {
+  console.log((cond ? "  ok  " : "FAIL  ") + name + (extra ? `  (${extra})` : ""));
+  if (!cond) failures++;
+};
+
+const browser = await launchArtBrowser();
+const page = await (await browser.newContext({ viewport: { width: 1100, height: 680 } })).newPage();
+const errors = [];
+page.on("pageerror", (e) => errors.push(e.message));
+page.on("console", (m) => {
+  if (m.type() === "error") errors.push(m.text());
+});
+await page.goto(`http://127.0.0.1:${port}/playground.html?webgl=1&area=smash`, { waitUntil: "load", timeout: 180000 });
+await page.waitForFunction(() => window.__playground && window.__playground.area, null, { timeout: 180000 });
+check("page boots with the first area built", true);
+
+// Helper: run the sim by hand (frozen live loop) so results don't depend on
+// SwiftShader's frame rate.
+const run = (js) => page.evaluate(js);
+await run(() => window.__playground.freeze(true));
+
+// --- Destructibles: drive flat out into the first station --------------------
+{
+  const r = await run(() => {
+    const P = window.__playground;
+    const before = P.area.props._props.filter((p) => p.dormant).length;
+    P.teleport(0);
+    P.drive(1, 0);
+    let launchSpeed = 0,
+      smashedAt = -1;
+    for (let i = 0; i < 360; i++) {
+      P.step(1 / 60);
+      if (P.smashed > 0 && smashedAt < 0) {
+        smashedAt = i;
+        launchSpeed = Math.abs(P.player.speed);
+      }
+    }
+    const st = P.area.props.structures.find((s) => s.broken);
+    const moved = st ? st.pieces.filter((p) => p.pos.distanceTo(st.pos) > 1.5).length : 0;
+    const dormantNow = P.area.props._props.filter((p) => p.dormant).length;
+    return {
+      before,
+      smashed: P.smashed,
+      smashedAt,
+      launchSpeed,
+      pieces: st?.pieces.length,
+      moved,
+      dormantNow,
+      kind: st?.kind,
+    };
+  });
+  check("structure broke when the kart drove through it", r.smashed >= 1, JSON.stringify(r));
+  check("its pieces were released and scattered", r.moved >= 4, `${r.moved}/${r.pieces} moved`);
+  check(
+    "released pieces are no longer dormant",
+    r.dormantNow === r.before - r.pieces,
+    `${r.dormantNow} vs ${r.before - r.pieces}`,
+  );
+  await page.screenshot({ path: path.join(OUT, "smash.png") });
+  const rs = await run(() => {
+    const P = window.__playground;
+    P.resetArea();
+    const st = P.area.props.structures[0];
+    return {
+      broken: P.area.props.structures.some((s) => s.broken),
+      dormant: st.pieces.every((p) => p.dormant),
+      smashed: P.smashed,
+    };
+  });
+  check("reset re-assembles every structure", !rs.broken && rs.dormant && rs.smashed === 0, JSON.stringify(rs));
+}
+
+// --- Jumps: launch off the ramp and land -------------------------------------
+{
+  const r = await run(async () => {
+    const P = window.__playground;
+    await P.setArea("jumps");
+    P.freeze(true);
+    const i = P.area.targets.findIndex((t) => t.label === "Launch ramp");
+    P.teleport(i);
+    P.drive(1, 0);
+    let maxY = 0,
+      airFrames = 0;
+    for (let k = 0; k < 420; k++) {
+      P.step(1 / 60);
+      if (P.player.airborne) airFrames++;
+      maxY = Math.max(maxY, P.player.y);
+      if (P.flight.last) break;
+    }
+    return { last: P.flight.last, maxY, airFrames, y: P.player.y, airborne: P.player.airborne };
+  });
+  check("the ramp launches the kart", r.airFrames > 25 && r.maxY > 1.2, JSON.stringify(r));
+  check(
+    "the kart lands again",
+    !!r.last && !r.airborne,
+    r.last ? `${r.last.air.toFixed(2)}s · ${r.last.dist.toFixed(1)}m` : "no landing",
+  );
+  const bump = await run(() => {
+    const P = window.__playground;
+    const i = P.area.targets.findIndex((t) => t.label === "Speed bumps");
+    P.teleport(i);
+    P.drive(1, 0);
+    let peak = 0;
+    for (let k = 0; k < 240; k++) {
+      P.step(1 / 60);
+      peak = Math.max(peak, P.player.y);
+    }
+    return peak;
+  });
+  check("speed bumps rattle but do not launch", bump < 0.6, `peak ${bump.toFixed(2)}m`);
+  await page.screenshot({ path: path.join(OUT, "jumps.png") });
+}
+
+// --- Power-ups: every giver + a shot, a milk drop and a yarn at the dummy --------
+{
+  const r = await run(async () => {
+    const P = window.__playground;
+    await P.setArea("items");
+    P.freeze(true);
+    const boxes = P.area.props.boxTargets().length; // before the kart can grab one
+    P.setDummy(true);
+    const k = P.player;
+    k.giveShield(10);
+    k.giveTriShots(3);
+    k.giveLife();
+    k.giveMilk();
+    k.boostMeter = 1;
+    P.drive(1, 0);
+    for (let i = 0; i < 90; i++) P.step(1 / 60);
+    const shotOK = P.fireShot(k, 0.5);
+    const balls = P.scene.children.filter((o) => o.isMesh && o.geometry?.parameters?.radius === 0.45).length;
+    for (let i = 0; i < 30; i++) P.step(1 / 60);
+    k.milkBottles = 1;
+    P.area.items.dropMilk(k);
+    k.giveYarn();
+    k.shootCooldown = 0;
+    const yarnOK = P.fireShot(k, 0);
+    for (let i = 0; i < 120; i++) P.step(1 / 60);
+    return {
+      shotOK,
+      balls,
+      tri: k.triShots,
+      yarnOK,
+      yarns: P.area.items.yarns.length + (P.area.items.yarns.length ? 0 : 0),
+      puddles: P.area.items.puddles.length,
+      boxes,
+      shield: k.shieldTimer > 0,
+      lives: k.lives,
+    };
+  });
+  check("tri-furball fired a fan and consumed a charge", r.shotOK && r.tri === 2 && r.balls >= 3, JSON.stringify(r));
+  check("milk puddle dropped and yarn ball rolling", r.puddles === 1 && r.yarnOK, JSON.stringify(r));
+  check("floating power-up boxes present", r.boxes === 4, `${r.boxes}`);
+  await page.screenshot({ path: path.join(OUT, "items.png") });
+}
+
+// --- Shipped props loop --------------------------------------------------------
+{
+  const r = await run(async () => {
+    const P = window.__playground;
+    await P.setArea("props");
+    P.freeze(true);
+    P.teleport(0);
+    P.drive(1, 0);
+    for (let i = 0; i < 120; i++) P.step(1 / 60);
+    return { count: P.area.props.count, targets: P.area.targets.length };
+  });
+  check("every shipped road prop is staged", r.count >= 26, `${r.count} props, ${r.targets} stations`);
+  await page.screenshot({ path: path.join(OUT, "props.png") });
+}
+
+check("no page errors", errors.length === 0, errors.slice(0, 3).join(" | "));
+await browser.close();
+server.close();
+console.log(failures ? `\n${failures} playground check(s) failed` : "\nall playground checks passed");
+process.exit(failures ? 1 : 0);

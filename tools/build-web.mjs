@@ -40,6 +40,7 @@ if (!TARGETS.includes(target)) {
 const INCLUDE = [
   "index.html",
   "viewer.html", // dev asset viewer (/viewer.html) — shares src/ + vendor/ below
+  "playground.html", // dev feature playground (/playground.html) — same deal
   "download", // static /download/ page (desktop builds live on the zoomies-releases repo)
   "styles.css",
   "menu-refresh.css",
@@ -54,7 +55,15 @@ const INCLUDE = [
   "assets",
 ];
 // Web-only entries the desktop target leaves out.
-const WEB_ONLY = new Set(["viewer.html", "download", "sw.js", "manifest.json", "apple-touch-icon.png", "icon-192.png"]);
+const WEB_ONLY = new Set([
+  "viewer.html",
+  "playground.html",
+  "download",
+  "sw.js",
+  "manifest.json",
+  "apple-touch-icon.png",
+  "icon-192.png",
+]);
 const entries = target === "desktop" ? INCLUDE.filter((e) => !WEB_ONLY.has(e)) : INCLUDE;
 
 rmSync(dist, { recursive: true, force: true });
