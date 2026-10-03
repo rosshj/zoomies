@@ -8,8 +8,8 @@
   />
   <title>Zoomies GP — Cat Kart Racing</title>
 
-  <!-- PWA / home-screen install (locks to landscape when launched from the
-       home screen; on iOS this is the only way to lock orientation). -->
+  <!-- PWA / home-screen install (rotates freely from the home screen: a race
+       held upright takes the handheld frame, sideways the landscape stage). -->
   <link rel="manifest" href="./manifest.json" />
   <!-- Stamped with the build time by tools/build-web.mjs ("dev" = serving the
        working tree). Logged in the boot line so a stale cached build is
@@ -112,8 +112,11 @@
     } catch {}
   </script>
   <div id="stage">
-  <!-- WebGL canvas mount -->
+  <!-- WebGL canvas mount. In the handheld frame (a race held upright) the
+       canvas covers only the top of the stage (--view-h); the panel below is
+       plain DOM: the shell is its body, the HUD's controls sit on it. -->
   <div id="game"></div>
+  <div id="handheld-shell" aria-hidden="true"></div>
 
   <!-- Menu cinematic cross-fade: holds a frozen snapshot of the previous biome
        and fades it out to reveal the next one (true dissolve, no dip to black).
@@ -1111,6 +1114,11 @@
                resume). Used to be a button under the HUD's steering bar. -->
           <div class="setting-row" id="calibrate-row"><span class="setting-label">Center tilt steering</span><button id="calibrate" class="secondary small">↺ Center</button></div>
           <p class="setting-note" id="calibrate-note">Hold the phone in your driving grip, then tap.</p>
+          <!-- Portrait racing: held upright, a race takes the handheld frame
+               (road on top, HUD + controls on a panel below). Off = every race
+               is landscape, counter-rotated if the viewport is portrait. -->
+          <div class="setting-row" id="portrait-row"><span class="setting-label">Portrait racing</span><button id="set-portrait-toggle" class="secondary small toggle">On</button></div>
+          <p class="setting-note" id="portrait-note">Hold the phone upright to race with the road on top and the controls below. Off keeps every race in landscape.</p>
           <div class="setting-row">
             <span class="setting-label">Controller rumble</span>
             <button id="set-rumble-toggle" class="secondary small toggle">On</button>
@@ -1121,7 +1129,7 @@
           <div id="controls-notes">
             <p class="setting-note"><b>Controller</b> — stick/d-pad steer (and browse the menus) · RT gas · LT brake · A hop &amp; drift · X shoot (hold to charge) · B boost · Y milk · LB/RB shield · Start pause.</p>
             <p class="setting-note"><b>Keyboard</b> — A/D or ◀▶ steer · W/S or ▲▼ gas/brake · Space hop &amp; drift · F shoot · B boost · M milk · Shift shield · P or Esc pause.</p>
-            <p class="setting-note" id="touch-controls-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks.</p>
+            <p class="setting-note" id="touch-controls-note"><b>Touch</b> — tilt to steer · left slider gas/brake · right buttons for tricks · upright or sideways.</p>
             <p class="setting-note" id="versus-controls-note"><b>Versus (2–4P, desktop)</b> — controllers are dealt in player order (P1 gets the first pad), and the first player without a pad gets the keyboard. The start line shows who has what.</p>
           </div>
         </section>

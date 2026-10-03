@@ -291,10 +291,14 @@ try {
     );
   }
   await click("#settings-back");
-  // Portrait menus stay upright; driving counter-rotates to landscape; pause and
-  // results follow how the phone is held — the viewport when the sensors are
-  // silent, gravity when they aren't (iOS keeps a locked viewport portrait).
+  // Portrait menus stay upright; a race held upright is the handheld frame
+  // (road on top, HUD below) and held sideways the counter-rotated landscape
+  // stage; pause and results follow how the phone is held — the viewport when
+  // the sensors are silent, gravity when they aren't (iOS keeps a locked
+  // viewport portrait). The hold is latched through a race: only a pause
+  // (or the OS rotating the viewport) re-reads it.
   const rotated = () => p.locator("#stage").evaluate((e) => e.classList.contains("rotated"));
+  const handheld = () => p.locator("#stage").evaluate((e) => e.classList.contains("handheld"));
   const hold = (landscape) =>
     p.evaluate((landscape) => {
       window.dispatchEvent(
@@ -307,19 +311,31 @@ try {
   await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
   await click("#go-btn");
   await p.waitForFunction(() => window.__zoomies.state() === 2, null, { timeout: 180000 });
-  assert.ok(await rotated(), "Driving must be landscape");
+  assert.ok(!(await rotated()) && (await handheld()), "Driving upright must be the handheld frame");
   await p.keyboard.press("p");
   await p.waitForFunction(
-    () => window.__zoomies.state() === 4 && !document.getElementById("stage").classList.contains("rotated"),
+    () => window.__zoomies.state() === 4 && document.getElementById("stage").classList.contains("handheld"),
   );
   await shot("pause-portrait");
   await hold(true); // phone turned sideways under a locked portrait viewport
   await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  assert.ok(!(await handheld()), "Held sideways, the pause is the landscape stage");
   await shot("pause-held-landscape");
-  await hold(false);
-  await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
+  await click("#resume-btn"); // resumed sideways: a landscape race, latched
+  await p.waitForFunction(
+    () => window.__zoomies.state() === 2 && document.getElementById("stage").classList.contains("rotated"),
+  );
+  await hold(false); // a hard lean mid-race must not flip the frame
+  await p.waitForTimeout(400);
+  assert.ok(await rotated(), "The race hold is latched against steering leans");
+  await p.keyboard.press("p"); // pause re-reads the hand: upright again
+  await p.waitForFunction(
+    () => window.__zoomies.state() === 4 && !document.getElementById("stage").classList.contains("rotated"),
+  );
   await click("#resume-btn");
-  await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
+  await p.waitForFunction(
+    () => window.__zoomies.state() === 2 && document.getElementById("stage").classList.contains("handheld"),
+  );
   await p.evaluate(() => window.__zoomies.debugFinish());
   await p.locator("#results:not(.hidden)").waitFor();
   await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));

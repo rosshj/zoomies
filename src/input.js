@@ -42,6 +42,12 @@ export class Input {
     // while steering is off, so menus can follow the hand rather than a
     // viewport that iOS leaves in portrait under the system rotation lock.
     this.heldLandscape = null;
+    // Which device axis is the steering roll. false = the landscape grip (the
+    // phone's long edge is the wheel's axle, roll shows up on device y); true =
+    // the handheld / portrait frame (upright phone, roll shows up on device x).
+    // Set by the stage layout, not guessed from the sensors: the hold is
+    // latched for the race so a hard lean never flips the axis mid-corner.
+    this.tiltPortrait = false;
     this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
     this._keyboardSteering = false;
@@ -134,7 +140,22 @@ export class Input {
     this._neutralSamples = 0;
     this._calNeutral = 0; // re-anchored once the new neutral settles
     const angle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
-    this._sign = angle === 270 || angle === -90 ? 1 : -1;
+    // Upright (portrait frame): screen-left is device -x, so a left lean drops
+    // g.x; the sign below makes that steer +, and flips when the phone is held
+    // upside down. Landscape: the long edge decides (90 vs 270).
+    if (this.tiltPortrait) this._sign = angle === 180 ? -1 : 1;
+    else this._sign = angle === 270 || angle === -90 ? 1 : -1;
+  }
+
+  // The stage layout tells the tilt which way the phone is held. Switching
+  // while steering is live re-centres on the new axis right away (a race
+  // re-laid out under a rotation lock change), otherwise the next calibrate
+  // (race start / resume) picks it up.
+  setTiltPortrait(portrait) {
+    portrait = !!portrait;
+    if (this.tiltPortrait === portrait) return;
+    this.tiltPortrait = portrait;
+    if (this._motionActive) this.calibrate();
   }
 
   _onMotion(e) {
@@ -162,7 +183,11 @@ export class Input {
     // Lateral is negated to keep the SAME steering polarity as the old measure:
     // the old denominator (g.x) is negative in the landscape hold, which flipped
     // the sign — switching to the always-positive hypot would otherwise invert it.
-    const roll = Math.atan2(-g.y, Math.hypot(g.x, g.z ?? 0)); // radians, pitch-independent
+    // Upright (handheld frame) the same lean lives on device x, with y and z
+    // making up the down vector instead.
+    const lat = this.tiltPortrait ? g.x : g.y;
+    const other = this.tiltPortrait ? g.y : g.x;
+    const roll = Math.atan2(-lat, Math.hypot(other, g.z ?? 0)); // radians, pitch-independent
 
     const shortArc = (a) => {
       while (a > Math.PI) a -= Math.PI * 2;

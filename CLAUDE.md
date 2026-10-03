@@ -280,3 +280,37 @@ within a second with no sudden impulse.
   one column.
 - A stub track (the node fixtures) has no `bays`: props.js falls back to kerb
   scenes so `check:biome-props` still sees one.
+
+## Held upright, a race is a HANDHELD (the stage has two frames)
+
+`layoutStage` in `main.js` decides the stage frame from the state, the
+viewport and how the phone is held (`input.heldLandscape` from gravity, the
+viewport when the sensors are silent). Sideways is the landscape stage as
+before (a portrait viewport is counter-rotated). Upright in a race
+(COUNTDOWN / RACING / PAUSED, solo, Portrait racing setting on) is
+`#stage.handheld`: the canvas covers only the top `--view-h` of the stage
+(`stageState.VH`; the renderer, composer, shaft target, camera aspect and the
+DRS pixel budget all size off VH, not H), `#handheld-shell` is the panel's
+body below it, and `styles.css`'s `#stage.handheld` block moves the HUD onto
+the panel (status strip, throttle left, minimap centre, action fan right,
+steer bar bottom; pause button, power-up pills and the rear-threat/yarn
+warnings stay over the view). The camera widens (`stageState.fovScale`,
+~75° across whatever the aspect) so the view is not a keyhole.
+
+- The hold is LATCHED through COUNTDOWN/RACING (`heldLandscapeNow`): tilt
+  steering leans the phone through the angles the hold detector reads, and
+  a frame flip mid-corner re-sizes the renderer (a hitch) and swaps the tilt
+  axis. Pause/finish/menus read it live; the OS rotating the viewport still
+  re-lays the stage out mid-race (resize listener).
+- Tilt steering in the handheld frame reads device X (`input.tiltPortrait`,
+  set by `layoutStage`), same gain and polarity as the landscape grip —
+  `check:tilt-menus` asserts both.
+- Sizes on the panel come off the stage WIDTH (`--stage-vw`), never a `%` in
+  `height` (that reads the stage height — the minimap came out 90×124).
+- Nothing locks the orientation any more (manifest `any`, no native lock at
+  boot, Info.plist lists portrait too); Android's web lock on START only
+  runs with Portrait racing off.
+- `npm run check:portrait` (browser, phone viewport + touch, presents as a
+  home-screen app to pass the install gate) asserts the frame, the panel
+  layout, pause/resume, rotation both ways and the setting; it screenshots
+  to `/tmp/portrait-*.png` — look at them.

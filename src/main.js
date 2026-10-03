@@ -1553,10 +1553,49 @@ let _ghostGroup = null; // the translucent ghost kart in the scene
 
 // --- Stage / orientation ---
 // We render at the true viewport size and counter-rotate the stage so the game
-// always presents in landscape (there is no "rotate your phone" prompt).
+// presents in landscape whenever the phone is held that way (there is no
+// "rotate your phone" prompt). Held upright, a race takes the HANDHELD frame
+// instead: the road on top, the HUD and the touch controls on a panel below,
+// like a Game Boy — see handheldFrame().
 const stage = document.getElementById("stage");
+const gameEl = document.getElementById("game");
 const isTouch = "ontouchstart" in window || navigator.maxTouchPoints > 0;
-let stageState = { iw: 1, ih: 1, W: 1, H: 1, rot: 0 };
+let stageState = { iw: 1, ih: 1, W: 1, H: 1, VH: 1, rot: 0, handheld: false, fovScale: 1 };
+
+// Portrait racing (Controls setting; persisted, default ON). Off = the old
+// rule: a portrait viewport is always counter-rotated for a race.
+const PORTRAIT_RACE_KEY = "zoomies-portrait-race";
+let portraitRace = true;
+try {
+  portraitRace = localStorage.getItem(PORTRAIT_RACE_KEY) !== "0";
+} catch {}
+
+// How the phone is held, as the stage sees it: the sensors where they have
+// spoken (input.heldLandscape — with the system rotation lock on, iOS keeps the
+// viewport portrait however the phone is turned), else the viewport. During a
+// race the answer is LATCHED: tilt steering leans the phone through the very
+// angles the hold detector reads, and a frame that flipped mid-corner would
+// re-size the renderer (a hitch) and swap the tilt axis under the player. On a
+// touch device the latch waits for the sensors' first word (motion permission
+// is asked for at START, so the first race would otherwise latch the viewport's
+// guess — wrong under a rotation lock); the first reading lands in the
+// countdown, before any steering lean. Pause, finish and the menus read live.
+let _raceHold = null;
+function heldLandscapeNow(portraitViewport) {
+  const live = input.heldLandscape ?? !portraitViewport;
+  if (state === State.COUNTDOWN || state === State.RACING) {
+    if (_raceHold === null && (input.heldLandscape !== null || !isTouch)) _raceHold = live;
+    return _raceHold ?? live;
+  }
+  _raceHold = null;
+  return live;
+}
+// The handheld frame applies to a race (and its pause) held upright, solo only:
+// the split layouts are rows/quadrants of a landscape stage.
+function handheldFrame(portraitViewport, heldLandscape) {
+  const racing = state === State.COUNTDOWN || state === State.RACING || state === State.PAUSED;
+  return portraitRace && racing && portraitViewport && !heldLandscape && !splitActive;
+}
 
 function layoutStage() {
   const iw = window.innerWidth;
@@ -1565,24 +1604,37 @@ function layoutStage() {
   const a = ((rawAngle % 360) + 360) % 360;
   const portrait = ih > iw;
 
-  // Driving is always landscape: a portrait viewport is counter-rotated. Menus,
-  // pause and results follow how the phone is held. Where the phone's sensors
-  // say how that is (input.heldLandscape), trust them over the viewport: with
-  // the system rotation lock on, iOS keeps the viewport portrait however the
-  // phone is turned, and a menu drawn upright for that viewport is sideways for
-  // the player. Without a reading (desktop, no motion permission yet) the
-  // viewport decides.
+  // Driving is landscape unless the handheld frame applies: a portrait viewport
+  // is counter-rotated. Menus, pause and results follow how the phone is held
+  // (heldLandscapeNow — a menu drawn upright for a locked portrait viewport is
+  // sideways for a player holding the phone landscape). Without a sensor
+  // reading (desktop, no motion permission yet) the viewport decides.
   const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
-  const wantLandscape = !menuLayout || (input.heldLandscape ?? !portrait);
+  const held = heldLandscapeNow(portrait);
+  const handheld = handheldFrame(portrait, held);
+  const wantLandscape = handheld ? false : !menuLayout || held;
   const rot = portrait && wantLandscape ? (a === 180 ? 270 : 90) : 0;
   const W = rot ? Math.max(iw, ih) : iw;
   const H = rot ? Math.min(iw, ih) : ih;
-  stageState = { iw, ih, W, H, rot, menuLayout, frameKey: stageFrameKey() };
+  const vi = readViewportInsets();
+  // Handheld: the panel takes the lower ~40% (never under 280px — the throttle
+  // track, the action fan and the status strip need that) plus the home bar;
+  // the 3D view is what is left on top. The view's aspect goes square-ish, so
+  // the camera's vertical FOV widens to keep ~75° across (see fovScale's use
+  // in the camera update) instead of a keyhole down the road.
+  const panelH = handheld ? Math.round(Math.min(Math.max(H * 0.4, 280), 420) + (rot ? 0 : vi.bottom)) : 0;
+  const VH = Math.max(1, H - panelH);
+  const fovScale = handheld ? Math.min(1.35, Math.max(1, 1.2 / (W / VH))) : 1;
+  stageState = { iw, ih, W, H, VH, rot, menuLayout, handheld, fovScale, frameKey: stageFrameKey() };
   stage.style.setProperty("--stage-vw", `${W / 100}px`);
   stage.style.setProperty("--stage-vh", `${H / 100}px`);
+  stage.style.setProperty("--view-h", `${VH}px`);
   stage.classList.toggle("menu-portrait", W < H);
   stage.classList.toggle("menu-compact", H <= 520);
   stage.classList.toggle("menu-narrow", W <= 480);
+  stage.classList.toggle("handheld", handheld);
+  gameEl.style.height = handheld ? `${VH}px` : "";
+  input.setTiltPortrait(handheld);
 
   stage.style.width = W + "px";
   stage.style.height = H + "px";
@@ -1596,7 +1648,6 @@ function layoutStage() {
 
   // Remap the physical safe-area insets into the rotated stage's frame so the
   // HUD avoids the notch / home bar on the correct visual edges.
-  const vi = readViewportInsets();
   let st, sr, sb, sl;
   if (rot === 90) [st, sr, sb, sl] = [vi.right, vi.bottom, vi.left, vi.top];
   else if (rot === 270) [st, sr, sb, sl] = [vi.left, vi.top, vi.right, vi.bottom];
@@ -1606,7 +1657,7 @@ function layoutStage() {
   stage.style.setProperty("--safe-bottom", `${sb}px`);
   stage.style.setProperty("--safe-left", `${sl}px`);
 
-  camera.aspect = W / H;
+  camera.aspect = W / VH;
   camera.updateProjectionMatrix();
   // Split-view cameras take their aspect from their own viewport rectangle
   // (full-width rows for 2 seats, quadrants for 3-4). Keyed off splitCount —
@@ -1627,7 +1678,10 @@ function layoutStage() {
 // viewport.
 function stageFrameKey() {
   const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
-  return `${menuLayout}|${input.heldLandscape}`;
+  // The hold as the stage would read it now (latched through a race, so a
+  // steering lean never re-lays the stage out — see heldLandscapeNow).
+  const held = heldLandscapeNow(window.innerHeight > window.innerWidth);
+  return `${menuLayout}|${state === State.PAUSED}|${held}|${portraitRace}|${splitActive}`;
 }
 
 // Reads the live safe-area-inset-* values (in px) via a hidden probe element.
@@ -1931,7 +1985,7 @@ function renderFrame() {
       }
     }
     renderer.setScissorTest(false);
-    renderer.setViewport(0, 0, stageState.W, stageState.H);
+    renderer.setViewport(0, 0, stageState.W, stageState.VH);
     renderer.shadowMap.autoUpdate = true; // solo/menu path expects the default
   } else {
     composer.render();
@@ -2254,16 +2308,18 @@ function baseDpr() {
   // open at 8-15MP — DRS then spent the first seconds of every race clawing
   // that back. Renders scale up to the CSS size; the HUD stays crisp.
   const maxPx = saverOn ? 1.6e6 : quality === "high" ? 4.1e6 : 2.1e6;
-  const cssPx = Math.max(1, (stageState?.W || window.innerWidth) * (stageState?.H || window.innerHeight));
+  const cssPx = Math.max(1, (stageState?.W || window.innerWidth) * (stageState?.VH || window.innerHeight));
   const pxCap = Math.sqrt(maxPx / cssPx);
   return Math.max(0.5, Math.min(window.devicePixelRatio, cap, splitCap, pxCap));
 }
 function applyResolution() {
   const pr = Math.max(0.5, baseDpr() * renderScale);
   renderer.setPixelRatio(pr);
-  renderer.setSize(stageState.W, stageState.H);
+  // The drawing buffer covers the VIEW (the whole stage, or the handheld
+  // frame's top part — the panel below is plain DOM).
+  renderer.setSize(stageState.W, stageState.VH);
   composer.setPixelRatio(pr);
-  composer.setSize(stageState.W, stageState.H);
+  composer.setSize(stageState.W, stageState.VH);
   // (Bloom sizes itself from the drawing buffer × its own resolutionScale each
   // frame — half res, quarter on Low; see _bloomNode / applyQuality.)
   // God-ray shaft target: explicit size (0.42× the drawing buffer) so RTTNode's
@@ -2272,7 +2328,7 @@ function applyResolution() {
   _shaftTex.pixelRatio = 1;
   _shaftTex.setSize(
     Math.max(1, Math.round(stageState.W * pr * 0.42)),
-    Math.max(1, Math.round(stageState.H * pr * 0.42)),
+    Math.max(1, Math.round(stageState.VH * pr * 0.42)),
   );
 }
 
@@ -2638,8 +2694,11 @@ document.querySelectorAll("#diff-seg .seg-btn").forEach((b) =>
   }),
 );
 
-// On Android, also try a real orientation lock (best-effort; iOS ignores it).
+// On Android, also try a real orientation lock (best-effort; iOS ignores it) —
+// only with portrait racing off: with it on, the OS rotation is what carries the
+// player between the landscape stage and the handheld frame.
 function lockLandscape() {
+  if (portraitRace) return;
   try {
     if (screen.orientation && screen.orientation.lock) {
       screen.orientation.lock("landscape").catch(() => {});
@@ -2813,7 +2872,7 @@ function _flyTwoState() {
 function _flyStageRay(sx, sy, out) {
   camera.updateMatrixWorld();
   return out
-    .set((sx / stageState.W) * 2 - 1, -(sy / stageState.H) * 2 + 1, 0.5)
+    .set((sx / stageState.W) * 2 - 1, -(sy / stageState.VH) * 2 + 1, 0.5)
     .unproject(camera)
     .sub(camera.position)
     .normalize();
@@ -2889,7 +2948,7 @@ flyCatch?.addEventListener("pointermove", (e) => {
     // Pan: world units per stage pixel at the anchor depth, so the terrain
     // under your fingers tracks them 1:1 (drag right → the world comes with
     // you). 0.6018 = 2·tan(62°/2 · vertical fov).
-    const pxToWorld = (1.2036 * _fly.focalDist) / stageState.H;
+    const pxToWorld = (1.2036 * _fly.focalDist) / stageState.VH;
     _fly.up.crossVectors(_fly.right, _fly.fwd); // screen-up in world space
     camera.position.addScaledVector(_fly.right, -(s.cx - _fly.cx) * pxToWorld);
     camera.position.addScaledVector(_fly.up, (s.cy - _fly.cy) * pxToWorld);
@@ -3375,6 +3434,27 @@ splitFxToggle?.addEventListener("click", () => {
   applySplitFxSetting();
 });
 applySplitFxSetting();
+
+// --- Portrait racing setting (Controls; persisted, default ON) ---
+// Off restores the landscape-only race: a portrait viewport is counter-rotated
+// however the phone is held. The stage re-lays itself out on the next frame
+// (portraitRace is part of the stage frame key).
+const portraitRaceToggle = document.getElementById("set-portrait-toggle");
+function applyPortraitRaceSetting() {
+  if (portraitRaceToggle) {
+    portraitRaceToggle.textContent = portraitRace ? "On" : "Off";
+    portraitRaceToggle.classList.toggle("off", !portraitRace);
+  }
+}
+portraitRaceToggle?.addEventListener("click", () => {
+  portraitRace = !portraitRace;
+  try {
+    localStorage.setItem(PORTRAIT_RACE_KEY, portraitRace ? "1" : "0");
+  } catch {}
+  applyPortraitRaceSetting();
+  audio.uiClick();
+});
+applyPortraitRaceSetting();
 
 // --- Controller rumble setting (Controls; persisted, default ON) ---
 // The web platform adapter checks the same key before firing the pad's
@@ -6947,7 +7027,7 @@ function updateCamera(dt, snap = false) {
     camPos.lerp(_camDesired, lerp);
     camTarget.lerp(_camLook, lerp);
     featureCameraClamp(track.features, track, camPos); // victory orbit can sweep into tunnel rock
-    camera.fov += (62 - camera.fov) * Math.min(1, dt * 4);
+    camera.fov += (62 * stageState.fovScale - camera.fov) * Math.min(1, dt * 4);
     camera.updateProjectionMatrix();
     // Ease the speed post-effects back to rest for the victory lap.
     _uVignette.value += (BASE_VIGNETTE - _uVignette.value) * Math.min(1, dt * 5);
@@ -7049,7 +7129,8 @@ function updateCamera(dt, snap = false) {
   // stretches the world toward you instead of only kicking on a boost — and the
   // boost/catnip kicks stack on top for the rush. Kicks trimmed from the old
   // 7/4 so the boosted ceiling stays readable and easy to drive.
-  const targetFov = 62 + sn * 6 + (player.boosting ? 5 : 0) + (player.catnipBoosting ? 4 : 0);
+  // (× the handheld frame's widening, 1 on a landscape stage — see layoutStage.)
+  const targetFov = (62 + sn * 6 + (player.boosting ? 5 : 0) + (player.catnipBoosting ? 4 : 0)) * stageState.fovScale;
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 6);
   camera.updateProjectionMatrix();
 

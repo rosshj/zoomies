@@ -3212,3 +3212,145 @@ kbd,
   text-align: center;
 }
 .build-stamp:empty { display: none; }
+
+/* ============================================================================
+   Handheld frame — a race held upright (portrait viewport, phone held
+   portrait). layoutStage sizes the canvas to the top --view-h of the stage and
+   sets #stage.handheld; everything below is a panel, like a Game Boy: the
+   status strip across the top, the throttle slider left, the minimap in the
+   middle, the action fan right, the steering bar along the bottom. Warnings
+   about the road (rear threat, yarn ping, power-up pills, the pause button)
+   stay over the view, where the eyes are.
+   ============================================================================ */
+#handheld-shell { display: none; }
+#stage.handheld #game {
+  bottom: auto; /* height is set inline (--view-h) */
+}
+#stage.handheld #handheld-shell {
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--view-h);
+  bottom: 0;
+  z-index: 20; /* over the canvas, under the HUD (30) */
+  background:
+    radial-gradient(120% 60% at 50% 0%, rgba(255, 214, 120, 0.08), transparent 60%),
+    linear-gradient(180deg, #2a2213 0%, #1a150a 22%, #14100a 100%);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 214, 120, 0.22),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.04),
+    0 -12px 28px rgba(0, 0, 0, 0.6);
+}
+/* The screen's lower corners round off into the shell's bezel. */
+#stage.handheld #handheld-shell::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -14px;
+  height: 14px;
+  background: inherit;
+  -webkit-mask: radial-gradient(14px at 14px 0, transparent 98%, #000) -14px 0 / 50% 100% no-repeat,
+    radial-gradient(14px at calc(100% - 14px) 0, transparent 98%, #000) 100% 0 / 50% 100% no-repeat;
+  mask: radial-gradient(14px at 14px 0, transparent 98%, #000) -14px 0 / 50% 100% no-repeat,
+    radial-gradient(14px at calc(100% - 14px) 0, transparent 98%, #000) 100% 0 / 50% 100% no-repeat;
+  pointer-events: none;
+}
+/* Panel geometry shared by the controls: the status strip is 48px, the
+   steering bar keeps the bottom 36px above the home bar. */
+#stage.handheld {
+  --hh-panel-top: calc(var(--view-h) + 58px);
+  --hh-panel-bottom: calc(max(10px, var(--safe-bottom, 0px)) + 36px);
+}
+/* Status strip: lap · place · speed · clock in one row, centred. */
+#stage.handheld #info {
+  top: calc(var(--view-h) + 10px);
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  white-space: nowrap;
+  max-width: calc(100% - 20px);
+  padding: 7px 14px;
+  text-align: center;
+  background: rgba(8, 10, 16, 0.55);
+  border: 1px solid rgba(255, 214, 120, 0.18);
+}
+#stage.handheld #lap { font-size: 16px; }
+#stage.handheld #place { font-size: 14px; }
+#stage.handheld #speed,
+#stage.handheld #timer,
+#stage.handheld #tt-best { font-size: 13px; }
+#stage.handheld #tt-delta { font-size: 14px; }
+/* Pause: top-right corner of the view (the strip has no room for it). */
+#stage.handheld #btn-pause {
+  top: max(8px, var(--safe-top, 0px));
+  right: max(10px, var(--safe-right, 0px));
+}
+/* Throttle slider: the panel's left column, full height of the control row. */
+#stage.handheld #throttle {
+  top: var(--hh-panel-top);
+  bottom: var(--hh-panel-bottom);
+  left: max(4px, var(--safe-left, 0px));
+  width: 86px;
+}
+#stage.handheld #throttle-track {
+  width: 58px;
+  height: calc(100% - 48px); /* room for the GAS / BRAKE labels */
+  max-height: 300px;
+}
+#stage.handheld #throttle-thumb {
+  width: 50px;
+  height: 50px;
+  margin: -25px 0 0 -25px;
+}
+/* Action fan: the right column, scaled to fit beside the minimap on a 375px
+   phone (transforms keep the hit areas with the art). */
+#stage.handheld #action-buttons {
+  right: max(2px, var(--safe-right, 0px));
+  bottom: var(--hh-panel-bottom);
+  transform: scale(0.84);
+  transform-origin: 100% 100%;
+}
+/* Minimap: centred in whatever is left between the two columns (the fan is
+   188px scaled, the slider's track ends ~82px in). Sized off the stage WIDTH
+   (--stage-vw) for both axes — a % in `height` would read the stage height. */
+#stage.handheld #minimap {
+  --hh-map: min(124px, calc(var(--stage-vw, 3.9px) * 100 - 92px - 192px - 8px));
+  width: var(--hh-map);
+  height: var(--hh-map);
+  left: calc(90px + (100% - 90px - 192px) / 2);
+  transform: translateX(-50%);
+  top: var(--hh-panel-top);
+  bottom: var(--hh-panel-bottom);
+  margin: auto 0;
+  background: rgba(10, 16, 32, 0.5);
+  border-color: rgba(255, 214, 120, 0.22);
+}
+/* Desktop-window portrait (no touch HUD): the minimap can have the panel. */
+#stage.handheld #hud.no-touch #minimap {
+  --hh-map: min(160px, calc(100% - 20px));
+  left: 50%;
+}
+#stage.handheld #steer { bottom: max(10px, var(--safe-bottom, 0px)); }
+/* Pause: the dim covers the whole stage (the panel's controls are blocked
+   too), but the card centres over the screen, where the frozen race is. */
+#stage.handheld #pause-overlay {
+  /* (a % here would be of the WIDTH — the stage height is --stage-vh × 100) */
+  padding-bottom: calc(var(--stage-vh, 1vh) * 100 - var(--view-h) + 10px);
+}
+/* The big banner sits in the view, the pickup pill just above the panel, and
+   the hit flash stays on the screen, not the shell. */
+#stage.handheld #toast { top: calc(var(--view-h) * 0.42); }
+#stage.handheld #pickup-toast { bottom: calc(100% - var(--view-h) + 14px); }
+#stage.handheld #flash {
+  bottom: auto;
+  height: var(--view-h);
+}
+#stage.handheld #hud.no-touch #fps-counter {
+  bottom: auto;
+  top: calc(var(--view-h) - 28px);
+}

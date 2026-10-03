@@ -28,10 +28,12 @@ export async function createNativeAdapter(name) {
     name, // 'ios' | 'android'
     isNative: true,
 
-    // Native chrome the web can't do: keep a real landscape lock, hide the OS
-    // status bar for an immersive full-screen race, then dismiss the splash now
-    // that the game is ready to draw (instead of Capacitor's default timeout).
-    // Called once at boot.
+    // Native chrome the web can't do: hide the OS status bar for an immersive
+    // full-screen race, then dismiss the splash now that the game is ready to
+    // draw (instead of Capacitor's default timeout). Called once at boot. No
+    // orientation lock any more: the stage follows how the phone is held (a
+    // race held upright takes the handheld frame), so the app rotates freely
+    // (Info.plist lists all four orientations).
     async ready() {
       // One diagnostic line so a device log shows exactly which native plugins
       // the bridge actually exposes (false = pod not installed → that capability
@@ -39,11 +41,6 @@ export async function createNativeAdapter(name) {
       console.log(
         `[zoomies] native ready (${name}): orientation=${!!ScreenOrientation} statusBar=${!!StatusBar} splash=${!!SplashScreen} haptics=${!!Haptics} audioSession=${!!AudioSession} app=${!!App}`,
       );
-      try {
-        await ScreenOrientation?.lock({ orientation: "landscape" });
-      } catch {
-        /* n/a */
-      }
       try {
         await StatusBar?.hide();
       } catch {
