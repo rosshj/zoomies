@@ -296,9 +296,11 @@ export function resolveArea(area, track) {
 // Track config extras an area asks for (explicit edge spans, or the tour plan).
 export function areaTrackConfig(area) {
   const S = loopShare(area.loop.halfLen, area.loop.radius);
-  if (typeof area.edges === "function") return { edges: area.edges(S) };
-  if (area.edges) return { edges: area.edges };
-  return {};
+  // Bays only on the tour (the other areas place things by hand).
+  const cfg = { bays: area.tour ? "tour" : false };
+  if (typeof area.edges === "function") cfg.edges = area.edges(S);
+  else if (area.edges) cfg.edges = area.edges;
+  return cfg;
 }
 
 // Contiguous biome stretches of a built track: [{ biome, i0, i1 }] in lap order.
@@ -351,16 +353,17 @@ function tourStations(track, layout, targets, biome) {
   targets.push({ label: `🏞 ${biome}`, t: 0.01, lateral: 0, biome, header: true });
   const recipes = BIOME_SCENES[biome] || [];
   const props = ROAD_PROP_BIOMES[biome] || [];
-  // Scenes every ~40u from 30u past the start line, skipping the last 40u.
+  // Scenes sit in the BAYS the track widened (every 40u, sides alternating):
+  // on the apron, out of the lane, like a stall on a real road. The recipes
+  // cycle; a deep bay (every third) takes the large size.
   let n = 0;
-  for (let u = 30; u < L - 40; u += 40) {
-    if (blocked(u)) continue;
+  for (const bay of track.bays || []) {
     const kind = recipes[n % recipes.length];
     const gen = BREAKABLES[kind].gen;
-    const size = gen === "seating" ? Math.min(1, n % 3) : n % 3;
-    const lateral = (n % 2 ? 1 : -1) * (size === 2 ? 8.2 : 9.6);
-    const w = world(u, lateral);
-    const yaw = Math.atan2(-w.tz, w.tx) + ((n * 7) % 5) * 0.08 - 0.16;
+    const size = bay.depth >= 15 ? (gen === "seating" ? 1 : 2) : n % 2;
+    const lateral = (bay.side === 0 ? 1 : -1) * (track.halfWidth + bay.depth * 0.55);
+    const w = world(bay.t * L, lateral);
+    const yaw = Math.atan2(-w.tz, w.tx) + ((n * 7) % 5) * 0.06 - 0.12;
     layout.breakables.push({ kind, x: w.x, z: w.z, yaw, size });
     targets.push({ label: `${biome} · ${BREAKABLES[kind].name} (${SIZE_LABELS[size]})`, t: w.t, lateral, biome });
     n++;

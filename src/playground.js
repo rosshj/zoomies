@@ -725,11 +725,28 @@ function autopilot(dt) {
   const ahead = bestGap * track.length;
   // Aim lateral: the station's own offset once it's close, the centre line
   // in between (so the kart isn't scraping a kerb for half a lap).
-  const wantLat = best && ahead < 70 ? best.lateral : 0;
+  let wantLat = best && ahead < 70 ? best.lateral : 0;
   const look = 14 + Math.abs(k.speed) * 0.25;
   const tt = proj.t + look / track.length;
   track.getPointAt(tt, _apPoint);
   track.getTangentAt(tt, _apTan);
+  // A station on a bay's apron is only reachable where the road has widened:
+  // aim at what is drivable at the look-ahead point so the kart slides into
+  // the bay as it opens instead of leaning on the wall before it.
+  let throttle = 1;
+  if (wantLat !== 0 && track.extraAt) {
+    // Widest the road gets between here and 40u past the look-ahead: aim at
+    // that (containment clamps the kart to the wall until the bay opens, then
+    // it slides out onto the apron) and ease off so the turn in is tight.
+    const N = track.samples;
+    const a0 = Math.round((((tt % 1) + 1) % 1) * N);
+    let ex = 0;
+    for (let k = 0; k < Math.round((40 * N) / track.length); k += 2)
+      ex = Math.max(ex, track.extraAt(wantLat > 0 ? 0 : 1, a0 + k));
+    const drivable = track.halfWidth + ex - 2.6;
+    wantLat = Math.sign(wantLat) * Math.min(Math.abs(wantLat), drivable);
+    if (Math.abs(wantLat) > track.halfWidth - 1 && ahead < 50) throttle = 0.45;
+  }
   _apPoint.x += -_apTan.z * wantLat;
   _apPoint.z += _apTan.x * wantLat;
   const want = Math.atan2(_apPoint.x - k.position.x, _apPoint.z - k.position.z);
@@ -737,7 +754,7 @@ function autopilot(dt) {
   d = Math.atan2(Math.sin(d), Math.cos(d));
   input._steerTarget = Math.max(-1, Math.min(1, d * 2.4));
   input._keyboardSteering = false;
-  input.throttle = 1;
+  input.throttle = throttle;
   input._keyboardThrottle = false;
   // Power-ups: a fresh item every few seconds, used straight away.
   if (cur.area.items) {

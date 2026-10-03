@@ -29,7 +29,7 @@ for (const biome of Object.keys(ROAD_PROP_BIOMES)) {
     system._props.map((p) => [p.kind, ...p.pos.toArray()]),
     twin._props.map((p) => [p.kind, ...p.pos.toArray()]),
   );
-  assert(system.sceneCount >= 3, `${biome}: only ${system.sceneCount} breakable scenes`);
+  assert(system.sceneCount >= 1, `${biome}: no breakable scene fitted`);
   system.setItemsEnabled(false);
   for (const kind of types) {
     const pr = props.find((p) => p.kind === kind),

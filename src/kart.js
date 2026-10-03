@@ -720,7 +720,8 @@ export class Kart {
     // scrub a little speed when it scrapes the wall.
     const proj = track.project(this.position);
     this._proj = proj;
-    const limit = track.halfWidth - this.radius;
+    // A bay's apron widens the lane on its side (0 when the track has none).
+    const limit = track.halfWidth + (track.extraAt ? track.extraAt(proj.lateral > 0 ? 0 : 1, proj.i) : 0) - this.radius;
     if (Math.abs(proj.lateral) > limit) {
       const correction = Math.sign(proj.lateral) * limit - proj.lateral;
       this.position.addScaledVector(proj.side, correction);

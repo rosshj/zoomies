@@ -658,39 +658,73 @@ function build(scene, track, opts) {
     // in its window, so a set piece or a neighbour only costs a retry, not
     // the slot. Only STRUCTURAL set pieces exclude (walls, water, decks);
     // treatments like billboards, arches or a giant forest can host a scene.
-    const sceneSlots = Math.max(4, Math.min(12, Math.round(track.length / 300)));
-    const runs = (track.features?.runs || []).filter((r) => SCENE_EXCLUDE_RUNS.has(r.kind));
+    // Scenes live in the BAYS (lay-bys the track widened for them, planned in
+    // the roadside's town zones — a stall by the houses, a café by the shops),
+    // sized to the apron: a deep bay takes a large scene, a shallow one small
+    // or medium. The odd rural stall stands alone at the kerb in a field zone
+    // at low odds: someone selling fruit from a barrow out in the country.
     const loopDist = (a, b) => {
       const d = Math.abs(a - b) % N;
       return Math.min(d, N - d);
     };
     const sceneAt = [];
+    for (const bay of track.bays || []) {
+      const c = ((bay.c % N) + N) % N;
+      const p = track._pts[c];
+      const biome = biomeAt(p.x, p.z, p.y);
+      const recipes = BIOME_SCENES[biome] || BIOME_SCENES.city;
+      const recipe = recipes[Math.floor(rand() * recipes.length) % recipes.length];
+      let sz = bay.depth >= 15 ? (rand() < 0.55 ? 2 : 1) : rand() < 0.5 ? 1 : 0;
+      let built = makeBreakable(recipe, rand, sz);
+      // Shrink until the scene fits the apron (its radius inside the bay's
+      // half-length and depth, with a kerb's worth of clearance).
+      while (sz > 0 && (built.radius > bay.len / 2 - 2 || built.radius > bay.depth * 0.5 + 2.4))
+        built = makeBreakable(recipe, rand, --sz);
+      if (built.radius > bay.len / 2 - 1) continue;
+      const side = new THREE.Vector3().crossVectors(track._tans[c], up).normalize();
+      const sign = bay.side === 0 ? 1 : -1;
+      const lat = track.halfWidth + bay.depth * 0.55;
+      const x = p.x + side.x * lat * sign,
+        z = p.z + side.z * lat * sign;
+      const t = track._tans[c];
+      const yaw = Math.atan2(-t.z, t.x) + (rand() - 0.5) * 0.2;
+      addBreakable(built, x, z, yaw, p.y, sz);
+      sceneAt.push(c);
+    }
+    // Rural stalls: two tries in the field zones (the odd zones of six).
+    const runs = (track.features?.runs || []).filter((r) => SCENE_EXCLUDE_RUNS.has(r.kind));
     const margin = Math.round((14 * N) / track.length);
-    const spacing = Math.round((40 * N) / track.length);
-    for (let slot = 0; slot < sceneSlots; slot++) {
-      for (let attempt = 0; attempt < 6; attempt++) {
-        const i = Math.floor(((slot + 0.1 + rand() * 0.8) * N) / sceneSlots) % N;
-        if (i < 0.05 * N || i > 0.95 * N) continue; // start/finish straight
-        if (runs.some((r) => loopDist(i, ((r.c % N) + N) % N) < r.half + margin)) continue;
-        if (sceneAt.some((j) => loopDist(i, j) < spacing)) continue;
-        const p = track._pts[i];
-        const biome = biomeAt(p.x, p.z, p.y);
-        const recipes = BIOME_SCENES[biome] || BIOME_SCENES.city;
-        const recipe = recipes[Math.floor(rand() * recipes.length) % recipes.length];
-        const sz = rand() < 0.4 ? 0 : rand() < 0.65 ? 1 : 2;
-        const built = makeBreakable(recipe, rand, sz);
-        const lat = track.halfWidth - built.radius - 1.4;
-        if (lat < 3.5) continue; // too wide for this road — try another spot/size
-        const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
-        const sign = rand() < 0.5 ? -1 : 1;
-        const x = p.x + side.x * lat * sign,
-          z = p.z + side.z * lat * sign;
-        const t = track._tans[i];
-        const yaw = Math.atan2(-t.z, t.x) + (rand() - 0.5) * 0.5;
-        addBreakable(built, x, z, yaw, p.y, sz);
-        sceneAt.push(i);
-        break;
-      }
+    // (A stub track with no bay plan — the node checks' fixture — gets its
+    // scenes this way instead, at the kerb, every try.)
+    const planned = Array.isArray(track.bays);
+    for (let k = 0; k < (planned ? 2 : 6); k++) {
+      if (planned && rand() > 0.35) continue;
+      const zone = 1 + 2 * Math.floor(rand() * 3);
+      const i = Math.floor(((zone + 0.15 + rand() * 0.7) / 6) * N) % N;
+      if (i < 0.05 * N || i > 0.95 * N) continue;
+      if (runs.some((r) => loopDist(i, ((r.c % N) + N) % N) < r.half + margin)) continue;
+      if (sceneAt.some((j) => loopDist(i, j) < Math.round((60 * N) / track.length))) continue;
+      const p = track._pts[i];
+      const biome = biomeAt(p.x, p.z, p.y);
+      const recipes = (BIOME_SCENES[biome] || BIOME_SCENES.city).filter((r) =>
+        /Stand|Stall|Barrow|stack|Pile/i.test(r),
+      );
+      if (!recipes.length) continue;
+      const built = makeBreakable(recipes[Math.floor(rand() * recipes.length) % recipes.length], rand, 0);
+      const lat = track.halfWidth - built.radius - 1.4;
+      if (lat < Math.min(8, track.halfWidth * 0.4)) continue; // only right at the kerb, never in the lane
+      const side = new THREE.Vector3().crossVectors(track._tans[i], up).normalize();
+      const sign = rand() < 0.5 ? -1 : 1;
+      const t = track._tans[i];
+      addBreakable(
+        built,
+        p.x + side.x * lat * sign,
+        p.z + side.z * lat * sign,
+        Math.atan2(-t.z, t.x) + (rand() - 0.5) * 0.4,
+        p.y,
+        0,
+      );
+      sceneAt.push(i);
     }
   } // !layout
   const debris = new PropDebris(group, physics);

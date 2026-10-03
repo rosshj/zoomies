@@ -287,6 +287,13 @@ await run(() => window.__playground.freeze(true));
         leftStyles: new Set(T.edges[1].map((c) => c.style.name || c.style.kind)).size,
         verges: new Set(T.edges[0].map((c) => c.verge).filter(Boolean)).size,
         stations: P.area.targets.length,
+        bays: T.bays.length,
+        // Every scene stands on an apron: beyond the lane edge, inside the widened edge.
+        inBays: P.area.props.structures.filter((st) => {
+          const pr = T.project(st.pos);
+          const ex = T.extraAt(pr.lateral > 0 ? 0 : 1, pr.i);
+          return ex > 6 && Math.abs(pr.lateral) > T.halfWidth && Math.abs(pr.lateral) < T.halfWidth + ex;
+        }).length,
       };
     };
     const meadow = snap();
@@ -308,6 +315,11 @@ await run(() => window.__playground.freeze(true));
     "the meadow tour is one biome, packed, with scenery built",
     m.biomes === 1 && m.biome === "meadow" && m.scenes >= 20 && m.props >= 40 && m.sceneryOn && m.worldKids > 10,
     JSON.stringify(m),
+  );
+  check(
+    "every tour scene stands on a bay's apron, out of the lane",
+    m.bays >= 20 && m.inBays === m.scenes,
+    `${m.inBays}/${m.scenes} in ${m.bays} bays`,
   );
   check(
     "every alternative barrier and verge of the biome is on the lap",

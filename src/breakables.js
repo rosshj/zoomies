@@ -459,26 +459,22 @@ function stack(p, rand, size) {
     for (let k = per; k >= 1 && left > 0; k--) {
       const m = Math.min(k, left);
       for (let i = 0; i < m; i++)
+        // Axis ACROSS the scene (pitch only), rows side by side along the
+        // scene's X: a real pyramid, not bales end to end that read as one
+        // column; each course sits in the hollows of the one below.
         put((i - (m - 1) / 2) * r * 2.02 + jit(rand, 0.06), r + row * r * 1.74, jit(rand, 0.15), {
-          yaw: Math.PI / 2 + jit(rand, 0.08),
+          yaw: jit(rand, 0.08),
           pitch: Math.PI / 2,
         });
       left -= m;
       row++;
     }
   } else if (pattern === "pile") {
-    // Spheres: a loose base ring with a second layer nestled on top.
-    const base = Math.ceil(n * 0.65);
-    for (let i = 0; i < base; i++) {
-      const a = (i / base) * Math.PI * 2 + jit(rand, 0.3),
-        rr = base > 1 ? r * 1.05 * (base > 4 ? 1.5 : 1) : 0;
-      put(Math.cos(a) * rr + jit(rand, 0.1), r, Math.sin(a) * rr + jit(rand, 0.1), { yaw: rand() * 6 });
-    }
-    for (let i = base; i < n; i++) {
-      const a = rand() * Math.PI * 2,
-        rr = base > 4 ? r * 0.7 : r * 0.3;
-      put(Math.cos(a) * rr, r * 2.6, Math.sin(a) * rr, { yaw: rand() * 6 });
-    }
+    // Spheres, close packed like fruit on a market floor: the base is a
+    // triangular lattice (each ball touching its neighbours), and the few on
+    // top sit in the hollows between three base balls (height r·(1+√(8/3))).
+    // `single` (beach balls, floats: too light to stack) keeps one layer.
+    for (const spot of closePack(n, r, !!p.single, rand)) put(spot.x, spot.y, spot.z, { yaw: rand() * 6 });
   } else {
     // Columns of upright things, side by side, heights varied.
     const h = d.lying ? d.cross * 2 : d.half * 2; // tyres etc. stacked FLAT
@@ -499,6 +495,37 @@ function stack(p, rand, size) {
   const hitPoints = [[0, 0]];
   if (radius > 1.6) hitPoints.push([-radius * 0.55, 0], [radius * 0.55, 0]);
   return { pieces, hitPoints, height: height + 0.3, radius: radius + 0.4 };
+}
+
+// Close-packed positions for `n` spheres of radius r: a triangular lattice
+// base filled outward from the centre (so the footprint stays round), then
+// the remainder nestled in the hollows of three touching base spheres. Each
+// spot is jittered a hair so the pile reads as dropped, not machined.
+function closePack(n, r, single, rand) {
+  const d = r * 2.02;
+  const lattice = [];
+  for (let q = -4; q <= 4; q++) for (let w = -4; w <= 4; w++) lattice.push({ x: (q + w * 0.5) * d, z: w * d * 0.866 });
+  lattice.sort((a, b) => a.x * a.x + a.z * a.z - (b.x * b.x + b.z * b.z));
+  const baseN = single ? n : Math.max(3, Math.ceil(n * 0.7));
+  const base = lattice.slice(0, baseN);
+  const out = base.map((s) => ({ x: s.x + jit(rand, 0.08), y: r, z: s.z + jit(rand, 0.08) }));
+  if (single) return out;
+  // Hollows: centroids of touching triples, nearest the centre first.
+  const hollows = [];
+  for (let i = 0; i < base.length; i++)
+    for (let j = i + 1; j < base.length; j++)
+      for (let k = j + 1; k < base.length; k++) {
+        const a = base[i],
+          b = base[j],
+          c = base[k];
+        const dd = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+        if (dd(a, b) > d * 1.1 || dd(b, c) > d * 1.1 || dd(a, c) > d * 1.1) continue;
+        hollows.push({ x: (a.x + b.x + c.x) / 3, z: (a.z + b.z + c.z) / 3 });
+      }
+  hollows.sort((a, b) => a.x * a.x + a.z * a.z - (b.x * b.x + b.z * b.z));
+  const h2 = r * (1 + Math.sqrt(8 / 3));
+  for (let i = 0; i < n - baseN && i < hollows.length; i++) out.push({ x: hollows[i].x, y: h2, z: hollows[i].z });
+  return out;
 }
 
 // Tables, chairs and parasols. Size 0 is one table and two chairs, 1 two
@@ -885,21 +912,24 @@ function heap(p, rand, size) {
     ],
   };
   if (theme === "rock") {
+    // A heap of rubble: close packed like the fruit piles (big rocks at the
+    // base, a few nestled in the hollows on top), each rock its own lump.
     const col = p.color || C.stone;
-    for (let i = 0; i < n; i++) {
-      const r = 0.45 + rand() * 0.45,
-        a = rand() * Math.PI * 2,
-        rr = i < n * 0.6 ? rand() * 1.4 : rand() * 0.6;
+    const R = 0.62;
+    const spots = closePack(n, R, false, rand);
+    spots.forEach((sp, i) => {
+      const top = sp.y > R * 1.5;
+      const r = (top ? 0.46 : 0.58) + rand() * 0.14;
       pieces.push(
         piece(
           "boulder",
-          new Parts().ball(r, col, 0, 0, 0, 1 + jit(rand, 0.4), 0.8 + jit(rand, 0.3), 1 + jit(rand, 0.4)).finish(),
+          new Parts().ball(r, col, 0, 0, 0, 1 + jit(rand, 0.4), 0.78 + jit(rand, 0.25), 1 + jit(rand, 0.4)).finish(),
           { ...STONE, launch: 0.5 - r * 0.2, lift: 0.9 - r * 0.3 },
-          { x: Math.cos(a) * rr, y: i < n * 0.6 ? r * 0.8 : r * 2.2, z: Math.sin(a) * rr, yaw: rand() * 6 },
+          { x: sp.x, y: top ? sp.y - (R - r) * 0.6 : r * 0.78, z: sp.z, yaw: rand() * 6 },
           { hull: "radial", scatter: { up: 0.8, out: 1.0, spin: 1.2 } },
         ),
       );
-    }
+    });
     return {
       pieces,
       hitPoints: [
@@ -1247,13 +1277,13 @@ export const BREAKABLES = {
   ballPile: R(
     "Beach ball pile",
     "stack",
-    { kind: "beachBall", counts: [3, 5, 8] },
+    { kind: "beachBall", counts: [3, 5, 8], single: true },
     { scale: 1, sound: "rubber", debris: [], slow: 0.05 },
   ),
   floatPile: R(
     "Fishing float pile",
     "stack",
-    { kind: "fishingFloat", counts: [4, 7, 11] },
+    { kind: "fishingFloat", counts: [4, 7, 11], single: true },
     { scale: 1, sound: "plastic", debris: [], slow: 0.1 },
   ),
   basketStack: R(

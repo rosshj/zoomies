@@ -192,3 +192,25 @@ a race. Switching biome disposes and rebuilds the area.
   hour).
 - Keep the middle of the road clear: scenes sit 8-10u off the centre line,
   props 10-12u, both alternating sides; only the kart's own line is empty.
+
+## Bays (lay-bys): the road widens where establishments stand
+
+`planBays` in `src/track-edges.js` widens the road on one side for 30-56u
+spans (`track.bays`, `track._extra[side][i]` = extra half-width per sample,
+8u cosine ramps each end) and `buildBays` paves the apron. Everything that
+assumed a constant half-width reads the extra: `_buildWalls` / sand trim /
+verges / `buildEdgeExtras` step out with it, `Kart._integrate` widens its
+containment, `PropPhysics.resolve` widens its fence. Bays are planned in the
+roadside builder's TOWN zones (every other of six angular zones — where the
+houses are) plus the odd rural one, on their own rng stream; props.js parks
+one breakable scene per bay on the apron, sized to it, and only the odd
+small rural stall stands at a kerb outside a bay. The tour plans a bay every
+48u (`bays: "tour"`); the other playground areas pass `bays: false`.
+
+- Piles are CLOSE-PACKED (`closePack` in breakables.js): a triangular lattice
+  base and the rest nestled in the hollows at r·(1+√(8/3)); beach balls and
+  floats are `single`-layer. Lying-cylinder pyramids put the axis ACROSS the
+  scene (pitch only): with yaw too the bales lined up end to end and read as
+  one column.
+- A stub track (the node fixtures) has no `bays`: props.js falls back to kerb
+  scenes so `check:biome-props` still sees one.

@@ -24,7 +24,7 @@
 // concrete.
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { biomeBarrierStyle, chunkByCell, fitInstanceBounds } from "./scenery.js";
+import { biomeBarrierStyle, biomeRoadStyle, chunkByCell, fitInstanceBounds } from "./scenery.js";
 import { makeRng } from "./rng.js";
 
 // ---- Barrier styles ----------------------------------------------------------
@@ -279,6 +279,154 @@ export const BIOME_EDGES = {
   volcanic: { barriers: ["lava", "rockface.basalt", "tyres"], verges: ["gravel"] },
 };
 
+// ---- Bays (lay-bys) -----------------------------------------------------------
+// A bay widens the road on one side for a stretch: a paved apron outside the
+// lane where a market stall, a café's tables or a vendor's barrow can stand
+// without being in the road, the way real roads host them. The barrier, sand
+// trim, verges and edge extras all step out with it (track._extra[side][i] is
+// the extra half-width per sample, a cosine ramp in and out), the kart's
+// containment and the props' fence read the same numbers, and props.js
+// parks its scenes IN the bays. Planned in the roadside's town zones (so a
+// stall sits where the buildings are) plus the odd rural one.
+const BAY_RAMP = 8; // metres of taper at each end (the apron is flat between)
+export function planBays(track, config) {
+  const N = track.samples;
+  const perU = N / track.length;
+  const extra = [new Float32Array(N), new Float32Array(N)];
+  const bays = [];
+  const runs = (track.features?.runs || []).filter((r) => STRUCTURAL_RUNS.has(r.kind));
+  const loopDist = (a, b) => {
+    const d = Math.abs(a - b) % N;
+    return Math.min(d, N - d);
+  };
+  const clear = (c, half, gap) =>
+    c > 0.05 * N &&
+    c < 0.95 * N &&
+    !runs.some((r) => loopDist(c, ((r.c % N) + N) % N) < r.half + half + Math.round(10 * perU)) &&
+    !bays.some((b) => loopDist(c, b.c) < b.half + half + Math.round(gap * perU));
+  const add = (c, side, len, depth, kind, gap = 30) => {
+    const half = Math.round((len / 2) * perU);
+    if (!clear(c, half, gap)) return false;
+    const i0 = c - half,
+      i1 = c + half;
+    bays.push({ c, side, i0, i1, half, len, depth, kind, t: c / N });
+    const ramp = Math.round(BAY_RAMP * perU);
+    for (let i = i0; i <= i1; i++) {
+      const k = i - i0,
+        m = i1 - i;
+      const f = Math.min(1, k / ramp, m / ramp);
+      extra[side][((i % N) + N) % N] = depth * (f * f * (3 - 2 * f));
+    }
+    return true;
+  };
+  if (Array.isArray(config?.bays)) {
+    for (const b of config.bays)
+      add(
+        Math.round((((b.t % 1) + 1) % 1) * N),
+        b.side === "left" ? 1 : 0,
+        b.len || 30,
+        b.depth || 12,
+        b.kind || "stall",
+      );
+  } else if (config?.bays === "tour") {
+    // The biome tour: a bay every 40u, sides alternating, deep enough for a
+    // large scene every third one.
+    let k = 0;
+    for (let u = 30; u < track.length - 44; u += 48, k++)
+      add(Math.round(u * perU), k % 2, 42, k % 3 === 2 ? 15 : 12, "stall", 2);
+  } else if (config?.bays !== false) {
+    // A race: the roadside's town zones are where the buildings are (six
+    // angular zones, every other one a town) — one bay in each, placed in the
+    // zone's first half where the houses stand, plus one rural bay somewhere
+    // in a field zone at half odds. Own rng stream: never shifts the scenery.
+    const rng = makeRng(String(config?.seed || "classic") + "|bays");
+    const zones = 6;
+    // One bay per town zone in its first half (where the houses stand), and
+    // on a long lap a second in the zone's other half.
+    const halves =
+      track.length > 1800
+        ? [
+            [0.1, 0.45],
+            [0.55, 0.9],
+          ]
+        : [[0.1, 0.7]];
+    for (let z = 0; z < zones; z += 2)
+      for (const [lo, hi] of halves)
+        for (let attempt = 0; attempt < 5; attempt++) {
+          const t = (z + lo + rng() * (hi - lo)) / zones;
+          if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 40 + rng() * 16, rng() < 0.4 ? 15 : 12, "town")) break;
+        }
+    if (rng() < 0.5)
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const z = 1 + 2 * Math.floor(rng() * (zones / 2));
+        const t = (z + 0.2 + rng() * 0.6) / zones;
+        if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 32, 10, "rural")) break;
+      }
+  }
+  return { bays, extra };
+}
+const STRUCTURAL_RUNS = new Set(["tunnel", "bridge", "causeway", "dam", "canyon", "overpass", "crossover", "shelf"]);
+
+// The bay aprons: a paved strip from the lane edge out to the widened edge,
+// in a paving tone off the biome's road tint (concrete slabs in the city,
+// packed earth / flagstones elsewhere) with a dark seam grid so it reads as
+// laid, not painted. Sits on the road's own height.
+export function buildBays(track) {
+  if (!track.bays.length) return null;
+  const N = track.samples;
+  const positions = [],
+    colors = [],
+    indices = [];
+  const c = new THREE.Color(),
+    base = new THREE.Color(0x585860);
+  for (const b of track.bays) {
+    const dirSign = b.side === 0 ? 1 : -1;
+    let prev = null;
+    for (let i = b.i0; i <= b.i1; i++) {
+      const idx = ((i % N) + N) % N;
+      const ex = track._extra[b.side][idx];
+      const p = track._pts[idx],
+        sd = track._sideAt(idx);
+      const sx = sd.x * dirSign,
+        sz = sd.z * dirSign;
+      const style = biomeRoadStyle(p.x, p.z);
+      const urban = style.kind === "urban";
+      const along = (idx * track.length) / N;
+      const seam = Math.abs(((along % 3.2) + 3.2) % 3.2) < 0.22;
+      const basePt = positions.length / 3;
+      for (const [lat, f] of [
+        [track.halfWidth - 0.3, 0],
+        [track.halfWidth + ex * 0.5, 0.5],
+        [track.halfWidth + ex + 0.35, 1],
+      ]) {
+        positions.push(p.x + sx * lat, p.y + 0.028, p.z + sz * lat);
+        c.setRGB(base.r * style.tint[0], base.g * style.tint[1], base.b * style.tint[2]);
+        c.multiplyScalar(urban ? 1.55 : 1.32); // paving: paler than the lane
+        if (!urban) c.lerp(new THREE.Color(0xa08a68), 0.35); // flagstone / packed earth
+        if (seam || (f === 0.5 && hash(idx, 7) > 0.5)) c.multiplyScalar(0.82);
+        colors.push(c.r, c.g, c.b);
+      }
+      if (prev !== null)
+        for (let j = 0; j < 2; j++)
+          indices.push(prev + j, basePt + j, prev + j + 1, prev + j + 1, basePt + j, basePt + j + 1);
+      prev = basePt;
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  const mesh = new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, side: THREE.DoubleSide }),
+  );
+  mesh.receiveShadow = true;
+  mesh.userData.bays = true;
+  track.group.add(mesh);
+  return mesh;
+}
+
 // ---- Planner -------------------------------------------------------------------
 // track.edges[0] is the +lateral side (dirSign 1 in _buildWalls), [1] the other.
 // config.edges (the playground) is an explicit list of spans:
@@ -455,7 +603,7 @@ function eachSample(track, side, kind, fn) {
     if (cell.style.kind !== kind) continue;
     const p = track._pts[i],
       s = track._sideAt(i);
-    fn(i, cell, p, s.x * dirSign, s.z * dirSign, track._tans[i]);
+    fn(i, cell, p, s.x * dirSign, s.z * dirSign, track._tans[i], track._extra ? track._extra[side][i] : 0);
   }
 }
 
@@ -517,9 +665,9 @@ export function buildEdgeExtras(track) {
   const rocks = [0, 1, 2, 3].map((k) => tintGeo(rockGeo(k * 17.3, k % 2)));
   const rockItems = [[], [], [], []];
   for (const side of [0, 1])
-    eachSample(track, side, "boulders", (i, cell, p, sx, sz) => {
+    eachSample(track, side, "boulders", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.9, 1.6, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.9, 1.6, (x, y, z, seed) => {
         const h1 = hash(seed, 1),
           h2 = hash(seed, 2);
         const s = 1.1 + h1 * 0.9;
@@ -546,10 +694,10 @@ export function buildEdgeExtras(track) {
   // the skyline breaks up instead of running level like a wall.
   const cliffItems = [[], [], [], []];
   for (const side of [0, 1])
-    eachSample(track, side, "rockface", (i, cell, p, sx, sz) => {
+    eachSample(track, side, "rockface", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
       const H = st.h || 2.5;
-      alongSegment(track, i, p, sx, sz, off + 1.3, 1.9, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 1.3, 1.9, (x, y, z, seed) => {
         const courses = [
           { s: 1.8 + hash(seed, 1) * 0.8, back: 0, y: 0, col: null, keep: 1 },
           { s: 1.2 + hash(seed, 2) * 0.6, back: 0.55, y: H * 0.5, col: st.strata, keep: 1 },
@@ -584,9 +732,9 @@ export function buildEdgeExtras(track) {
   const reed = tintGeo(new THREE.CylinderGeometry(0.03, 0.05, 1, 5).translate(0, 0.5, 0));
   const reedItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "hedge", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "hedge", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.85, 1.25, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.85, 1.25, (x, y, z, seed) => {
         for (let r = 0; r < 2; r++) {
           const s = (r ? 1.25 : 1.0) + hash(seed, 1 + r) * 0.4;
           _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 3 + r));
@@ -640,9 +788,9 @@ export function buildEdgeExtras(track) {
   const mound = tintGeo(clumpGeo(41.2, 0.6));
   const moundItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "snowbank", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "snowbank", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 1.2, 1.5, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 1.2, 1.5, (x, y, z, seed) => {
         for (let r = 0; r < 2; r++) {
           const s = (r ? 1.7 : 1.3) + hash(seed, 1 + r) * 0.6;
           _c.set(st.hi).lerp(_c2.set(st.lo), r ? 0.08 : 0.3 + hash(seed, 3) * 0.2);
@@ -666,9 +814,9 @@ export function buildEdgeExtras(track) {
   const block = jerseyGeo(); // carries its own shading tint
   const blockItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "jersey", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "jersey", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.7, 4.1, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.7, 4.1, (x, y, z, seed) => {
         const n = Math.floor(hash(seed, 1) * 1000);
         let col;
         if (st.stripeA) col = n % 2 ? st.stripeA : st.stripeB;
@@ -690,9 +838,9 @@ export function buildEdgeExtras(track) {
   const tyre = tintGeo(new THREE.TorusGeometry(0.58, 0.26, 6, 10).rotateX(Math.PI / 2));
   const tyreItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "tyres", (i, cell, p, sx, sz) => {
+    eachSample(track, side, "tyres", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.7, 1.25, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.7, 1.25, (x, y, z, seed) => {
         const rows = 2 + (hash(seed, 1) > 0.55 ? 1 : 0);
         for (let r = 0; r < rows; r++) {
           const painted = hash(seed, 2 + r) > 0.86;
@@ -712,9 +860,9 @@ export function buildEdgeExtras(track) {
   const bale = tintGeo(new THREE.CylinderGeometry(0.8, 0.8, 1.55, 10).rotateZ(Math.PI / 2));
   const hayItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "hay", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "hay", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.95, 1.7, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.95, 1.7, (x, y, z, seed) => {
         _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 1));
         hayItems.push({
           x,
@@ -732,9 +880,9 @@ export function buildEdgeExtras(track) {
   const log = tintGeo(new THREE.CylinderGeometry(0.3, 0.33, 3.3, 8).rotateZ(Math.PI / 2));
   const logItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "logs", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "logs", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.75, 3.0, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.75, 3.0, (x, y, z, seed) => {
         for (let r = 0; r < 3; r++) {
           _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 1 + r));
           const shift = (r % 2) * 1.5;
@@ -755,9 +903,9 @@ export function buildEdgeExtras(track) {
   const bag = tintGeo(new THREE.IcosahedronGeometry(1, 2).scale(0.52, 0.2, 0.32));
   const bagItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "sandbags", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "sandbags", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.7, 1.0, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.7, 1.0, (x, y, z, seed) => {
         for (let r = 0; r < 4; r++) {
           _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 1 + r));
           const shift = (r % 2) * 0.5;
@@ -781,9 +929,9 @@ export function buildEdgeExtras(track) {
   const column = tintGeo(new THREE.CylinderGeometry(0.5, 0.5, 1, 6).translate(0, 0.5, 0));
   const colItems = [];
   for (const side of [0, 1])
-    eachSample(track, side, "lava", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "lava", (i, cell, p, sx, sz, tan, ex) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.65, 0.88, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + ex + 0.65, 0.88, (x, y, z, seed) => {
         for (let r = 0; r < 2; r++) {
           const h = 1.1 + hash(seed, 1 + r) * 1.4 + (r ? 0.5 : 0);
           const hot = hash(seed, 4 + r) > 0.9;
@@ -805,7 +953,7 @@ export function buildEdgeExtras(track) {
   // Adobe beam ends poking out of the wall near the top, every ~3u.
   const beamGeos = [];
   for (const side of [0, 1])
-    eachSample(track, side, "adobe", (i, cell, p, sx, sz, tan) => {
+    eachSample(track, side, "adobe", (i, cell, p, sx, sz, tan, ex) => {
       if (i % 2) return;
       const st = cell.style;
       const g = new THREE.BoxGeometry(0.22, 0.22, 1.1);
@@ -815,7 +963,7 @@ export function buildEdgeExtras(track) {
       for (let k = 0; k < n; k++) cols.set([_c.r, _c.g, _c.b], k * 3);
       g.setAttribute("color", new THREE.BufferAttribute(cols, 3));
       g.rotateY(Math.atan2(sx, sz));
-      const d = off + 0.55;
+      const d = off + ex + 0.55;
       g.translate(p.x + sx * d, p.y + 1.1, p.z + sz * d);
       beamGeos.push(g);
     });
@@ -855,8 +1003,9 @@ export function buildVerges(track) {
         s = track._sideAt(idx);
       const sx = s.x * dirSign,
         sz = s.z * dirSign;
-      const inner = track.halfWidth - cell.vergeW * (0.82 + hash(idx, 9) * 0.3);
-      const outer = track.halfWidth + 0.45;
+      const ex = track._extra ? track._extra[side][idx] : 0;
+      const inner = track.halfWidth + ex - cell.vergeW * (0.82 + hash(idx, 9) * 0.3);
+      const outer = track.halfWidth + ex + 0.45;
       const base = positions.length / 3;
       c.set(kind.color);
       sp.set(kind.speck);

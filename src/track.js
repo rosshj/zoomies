@@ -23,7 +23,7 @@ import {
   fitInstanceBounds,
 } from "./scenery.js";
 import { planFeatures } from "./features.js";
-import { planEdges, buildEdgeExtras, buildVerges, VERGE_KINDS } from "./track-edges.js";
+import { planEdges, planBays, buildBays, buildEdgeExtras, buildVerges, VERGE_KINDS } from "./track-edges.js";
 import { rand, makeRng } from "./rng.js";
 
 // Scratch record every projection writes into (see _projectArr).
@@ -1330,16 +1330,30 @@ export class Track {
     // Edge treatments: per side, per sample — which barrier lines the road
     // and whether the outer strip is a runoff verge (track-edges.js).
     this.edges = planEdges(this, config);
+    // Bays (lay-bys): where the road widens on one side for a paved apron.
+    // _extra[side][i] is the extra half-width per sample; the walls, trim,
+    // verges, kart containment and prop fence all read it.
+    const bayPlan = planBays(this, config);
+    this.bays = bayPlan.bays;
+    this._extra = bayPlan.extra;
 
     this.group = new THREE.Group();
     this._buildRoad();
   }
 
+  // Extra half-width on a side (0 = +lateral) at a sample: a bay's apron.
+  extraAt(side, i) {
+    return this._extra ? this._extra[side][((i % this.samples) + this.samples) % this.samples] : 0;
+  }
+
   // Runoff verge drag at a projection (speed lost per second), 0 on tarmac.
   dragAt(proj) {
-    const cell = this.edges[proj.lateral > 0 ? 0 : 1][proj.i];
+    const side = proj.lateral > 0 ? 0 : 1;
+    const cell = this.edges[side][proj.i];
     if (!cell || !cell.verge) return 0;
-    return Math.abs(proj.lateral) > this.halfWidth - cell.vergeW ? VERGE_KINDS[cell.verge].drag : 0;
+    return Math.abs(proj.lateral) > this.halfWidth + this.extraAt(side, proj.i) - cell.vergeW
+      ? VERGE_KINDS[cell.verge].drag
+      : 0;
   }
 
   // The barrier style beside a projection (its `scrub` / `bounce` feel).
@@ -1483,6 +1497,7 @@ export class Track {
     this.group.add(road);
 
     this._buildSandTrim();
+    buildBays(this); // paved lay-by aprons where the road widens
     this._buildWalls();
     buildEdgeExtras(this); // boulders, tyres, hay, logs, sandbags, basalt, beams
     buildVerges(this); // sand / gravel / mud / snow / grass runoff strips
@@ -1749,12 +1764,13 @@ export class Track {
         for (const k of [i, (i + 1) % div]) {
           const center = this._pts[k],
             side = this._sideAt(k);
+          const ex = this._extra[sign > 0 ? 0 : 1][k];
           for (const [offset, height, shade] of [
             [0, 0, 0.78],
             [0.48, 0.12, 1],
             [trim, 0, 0.86],
           ]) {
-            const distance = sign * (this.halfWidth + offset);
+            const distance = sign * (this.halfWidth + ex + offset);
             positions.push(center.x + side.x * distance, center.y + height, center.z + side.z * distance);
             colors.push(c.r * shade, c.g * shade, c.b * shade);
           }
@@ -1835,6 +1851,7 @@ export class Track {
         const sx = side.x * dirSign;
         const sz = side.z * dirSign;
         const style = this.edges[dirSign === 1 ? 0 : 1][idx].style;
+        const ex = this._extra[dirSign === 1 ? 0 : 1][idx]; // a bay steps the whole barrier out
 
         // --- the swept body: full wall for kerb/stone, a low sill under a fence
         let hMul = 1;
@@ -1869,7 +1886,7 @@ export class Track {
         }
         for (let j = 0; j < P; j++) {
           const [sOff, yOff] = profile[j];
-          const d = off + sOff * wMul;
+          const d = off + ex + sOff * wMul;
           positions.push(p.x + sx * d, p.y + yOff * hMul, p.z + sz * d);
           // Pale capstones along the top course, so the edge of the track still
           // reads as a LINE at speed however lumpy the wall below it is.
@@ -1904,7 +1921,7 @@ export class Track {
               [0.24, rt],
               [-0.09, rt],
             ]) {
-              const d = off + 0.42 + ds;
+              const d = off + ex + 0.42 + ds;
               rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
               // top face catches the light cap so the rail line stays legible
               const cc = dy > 0 ? cap : rc0;
@@ -1939,7 +1956,7 @@ export class Track {
             g.setAttribute("color", new THREE.Float32BufferAttribute(cols, 3));
             g.rotateZ((wob(idx, 4) - 0.5) * 0.09);
             g.rotateY(Math.atan2(sx, sz) + (wob(idx, 5) - 0.5) * 0.2);
-            const d = off + 0.42;
+            const d = off + ex + 0.42;
             g.translate(p.x + sx * d, p.y, p.z + sz * d);
             postGeos.push(g);
           }
@@ -1957,7 +1974,7 @@ export class Track {
               [0.28, 0.07],
               [-0.1, 0.07],
             ]) {
-              const d = off + 0.42 + ds;
+              const d = off + ex + 0.42 + ds;
               rp.push(p.x + sx * d, p.y + ry + dy, p.z + sz * d);
               const cc = dy > 0 ? capc : railc;
               rc.push(cc.r, cc.g, cc.b);
@@ -1983,7 +2000,7 @@ export class Track {
             const per = Math.max(1, Math.round(seg / style.gap));
             for (let k = 0; k < per; k++) {
               const t = k / per;
-              const d = off + 0.42;
+              const d = off + ex + 0.42;
               const wx = p.x + (n2.x - p.x) * t + sx * d;
               const wz = p.z + (n2.z - p.z) * t + sz * d;
               const wy = p.y + (n2.y - p.y) * t;
