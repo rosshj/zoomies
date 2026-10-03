@@ -329,6 +329,31 @@ await run(() => window.__playground.freeze(true));
   await page.screenshot({ path: path.join(OUT, "tour.png") });
 }
 
+// --- Touch driving: pads steer, gas is automatic ------------------------------
+{
+  const r = await run(() => {
+    const P = window.__playground;
+    P.resetArea();
+    P.setTouchDrive(true);
+    const shown = !document.getElementById("touch").classList.contains("hidden");
+    for (let i = 0; i < 90; i++) P.step(1 / 60);
+    const speed = Math.abs(P.player.speed);
+    const h0 = P.player.heading;
+    P.pads.left = true;
+    for (let i = 0; i < 60; i++) P.step(1 / 60);
+    const turned = P.player.heading - h0;
+    P.pads.left = false;
+    P.setTouchDrive(false);
+    P.resetArea();
+    return { shown, speed, turned };
+  });
+  check(
+    "touch drive shows the pads, gases automatically and steers on hold",
+    r.shown && r.speed > 15 && r.turned > 0.3,
+    JSON.stringify(r),
+  );
+}
+
 // --- Jumps: launch off the ramp and land -------------------------------------
 {
   const r = await run(async () => {

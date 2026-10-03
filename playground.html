@@ -193,6 +193,41 @@
       color: #eef1f8;
     }
     .hidden { display: none !important; }
+    #touch {
+      position: absolute;
+      inset: auto 0 0 0;
+      height: 42%;
+      z-index: 4;
+      display: flex;
+      align-items: stretch;
+      touch-action: none;
+      pointer-events: none;
+    }
+    #touch .pad {
+      flex: 1;
+      pointer-events: auto;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding-bottom: 18px;
+      font-size: 44px;
+      color: rgba(255, 255, 255, 0.35);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    #touch .pad.on { color: #ffd54f; background: rgba(255, 213, 79, 0.08); }
+    #pad-mid { width: 92px; pointer-events: auto; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding-bottom: 18px; align-items: center; }
+    #pad-mid button {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: rgba(10, 14, 25, 0.6);
+      color: #eef1f8;
+      font-size: 26px;
+      touch-action: none;
+    }
+    #pad-mid button:active { border-color: #ffd54f; color: #ffd54f; }
     #side-toggle { display: none; }
     /* Phones: the canvas gets the screen; the panel is a collapsed strip (area
        buttons only) that ☰ expands over the top. Autopilot does the driving. */
@@ -219,6 +254,7 @@
       #side.open h3, #side.open #blurb, #side.open #map, #side.open #actions, #side.open #targets, #side.open #tele, #side.open #help { display: block; }
       #side.open #actions { display: grid; }
       #topbar button { padding: 6px 8px; font-size: 11px; }
+      #touch { height: 48%; }
       #topbar { gap: 4px; right: 8px; top: 8px; }
       #items-hud { bottom: 8px; }
     }
@@ -256,12 +292,25 @@
   <main id="game">
     <div id="topbar">
       <button id="auto-btn" title="Autopilot (P)">▶ Auto</button>
+      <button id="drive-btn" title="Touch driving">📱 Drive</button>
+      <button id="tilt-btn" title="Tilt steering" class="hidden">📐 Tilt</button>
       <button id="cam-btn" title="Camera (C)">📷 Chase</button>
       <button id="slow-btn" title="Slow motion (T)">🐢 Slow-mo</button>
       <button id="sound-btn" title="Sound">🔇 Sound</button>
       <button id="reset-btn" title="Reset area (R)">↺ Reset</button>
     </div>
     <div id="toast"></div>
+    <!-- Phone driving: hold the left / right pads to steer (gas is automatic),
+         tap the middle button to hop, the top one to shoot. Tilt steering is
+         the game's own accelerometer path (📐). -->
+    <div id="touch" class="hidden">
+      <div id="pad-left" class="pad">◀</div>
+      <div id="pad-mid">
+        <button id="pad-shoot">🐾</button>
+        <button id="pad-hop">⬆</button>
+      </div>
+      <div id="pad-right" class="pad">▶</div>
+    </div>
     <div id="items-hud"></div>
     <div id="status">booting…</div>
   </main>

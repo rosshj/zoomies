@@ -762,6 +762,7 @@ function autopilot(dt) {
 }
 function setAutoplay(on) {
   autoplay = on;
+  if (on && touchDrive) setTouchDrive(false);
   $("auto-btn").classList.toggle("on", on);
   $("auto-btn").textContent = on ? "⏹ Auto" : "▶ Auto";
   if (!on) {
@@ -769,6 +770,82 @@ function setAutoplay(on) {
     input.throttle = 0;
   } else if (cur?.area.dummy && !dummyOn) setDummy(true);
 }
+
+// ---------------------------------------------------------------------------
+// Touch driving (phones): hold a pad to steer, gas is automatic, the middle
+// buttons hop and shoot. Tilt steering uses the game's own accelerometer path
+// (Input.enableMotion + calibrate), which needs a tap on iOS to be allowed.
+// ---------------------------------------------------------------------------
+let touchDrive = false;
+let tilt = false;
+const pads = { left: false, right: false };
+function setTouchDrive(on) {
+  touchDrive = on;
+  $("touch").classList.toggle("hidden", !on);
+  $("drive-btn").classList.toggle("on", on);
+  $("tilt-btn").classList.toggle("hidden", !on || !("DeviceMotionEvent" in window));
+  if (on && autoplay) setAutoplay(false);
+  if (!on) {
+    pads.left = pads.right = false;
+    input.throttle = 0;
+    input._steerTarget = 0;
+    if (tilt) setTilt(false);
+  }
+}
+async function setTilt(on) {
+  if (on) {
+    const ok = await input.enableMotion(); // iOS prompts here; must follow a tap
+    if (!ok) {
+      toast("tilt not allowed");
+      return;
+    }
+    input.setMotionActive(true);
+    toast("📐 hold the phone level, then tilt to steer");
+  } else input.setMotionActive(false);
+  tilt = on;
+  $("tilt-btn").classList.toggle("on", on);
+}
+function touchControls() {
+  if (!touchDrive) return;
+  input.throttle = 1; // auto gas
+  input._keyboardThrottle = false;
+  if (!tilt) {
+    input._steerTarget = pads.left && !pads.right ? 1 : pads.right && !pads.left ? -1 : 0;
+    input._keyboardSteering = false;
+  }
+}
+for (const side of ["left", "right"]) {
+  const el = $("pad-" + side);
+  const set = (on) => {
+    pads[side] = on;
+    el.classList.toggle("on", on);
+  };
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    set(true);
+  });
+  for (const ev of ["pointerup", "pointercancel", "pointerleave"]) el.addEventListener(ev, () => set(false));
+}
+$("pad-hop").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  input._jumpQueued = true;
+  input.jumpHeld = true;
+});
+for (const ev of ["pointerup", "pointercancel"]) $("pad-hop").addEventListener(ev, () => (input.jumpHeld = false));
+$("pad-shoot").addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  input.shootHeld = true;
+});
+for (const ev of ["pointerup", "pointercancel"])
+  $("pad-shoot").addEventListener(ev, () => {
+    if (input.shootHeld) {
+      input.shootHeld = false;
+      input._shootRelease = true;
+    }
+  });
+$("drive-btn").addEventListener("click", () => setTouchDrive(!touchDrive));
+$("tilt-btn").addEventListener("click", () => setTilt(!tilt));
 
 // ---------------------------------------------------------------------------
 // Cameras: the game's chase cam, a wide "action" cam for watching debris, and
@@ -911,6 +988,7 @@ let pinned = false; // tools: leave the camera exactly where a probe parked it
 function step(dt) {
   input.update(dt);
   if (autoplay) autopilot(dt);
+  touchControls();
   applyHumanControls(player, input, dt);
   if (dummyOn) {
     dummy.driveAI(cur.track, dt, cur.props ? cur.props.boxTargets() : null, karts);
@@ -1055,6 +1133,8 @@ setCamMode(0);
 AREAS[0] = tourArea(tourBiome);
 await setArea(params.get("area") || AREAS[0].id);
 if (params.has("autoplay")) setAutoplay(true);
+// Phones default to touch driving unless the autopilot was asked for.
+else if (matchMedia("(pointer: coarse)").matches || params.has("touch")) setTouchDrive(true);
 statusEl.textContent = `${renderer.backend?.isWebGPUBackend ? "WebGPU" : "WebGL2"} · ${AREAS.length} areas`;
 console.log(`[zoomies] feature playground: ${AREAS.length} areas · ${statusEl.textContent}`);
 
@@ -1085,6 +1165,8 @@ window.__playground = {
   setSlowMo,
   setScenery,
   setTourBiome,
+  setTouchDrive,
+  pads,
   TOUR_BIOMES,
   weather,
   setAutoplay,
