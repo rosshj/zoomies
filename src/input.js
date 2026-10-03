@@ -19,11 +19,12 @@ const KB_STEER_RAMP = 0.12;
 const TURN_RATIO = 2.5;
 const TURN_N = 20;
 // Re-centring waits for a steady grip: |Δgravity| under STEADY_DG (m/s², per
-// sample — hand tremor is ~0.1, a deliberate turn far more) for STEADY_N
-// samples (~a third of a second), or SETTLE_MAX samples (~1.5s) at most.
+// sample — hand tremor is ~0.1, turning the phone over half a second ~0.45)
+// for STEADY_N samples (a quarter second), or SETTLE_MAX samples (a second)
+// at most, so the car answers soon after GO even on a bumpy ride.
 const STEADY_DG = 0.3;
-const STEADY_N = 20;
-const SETTLE_MAX = 90;
+const STEADY_N = 15;
+const SETTLE_MAX = 60;
 
 export class Input {
   constructor(opts = {}) {
@@ -58,10 +59,13 @@ export class Input {
     // Which device axis is the steering roll. false = the landscape grip (the
     // phone's long edge is the wheel's axle, roll shows up on device y); true =
     // the handheld / portrait frame (upright phone, roll shows up on device x).
-    // Set by the stage layout (setTiltFrame) together with the steering sign
-    // for the frame it draws, so the two can never disagree.
+    // Set by the stage layout (setTiltFrame). Which way is LEFT on that axis
+    // comes from gravity itself at each re-centre (see _onMotion), never from
+    // the screen angle or the stage: the sensor's sign convention differs by
+    // platform (iOS reports the gravity vector, Android the reaction to it)
+    // and the orientation APIs lag a rotation, and both read wrong the same
+    // way — as a car that steers backwards or sits off-centre.
     this.tiltPortrait = false;
-    this._frameSign = null; // steering sign from the stage; null = derive from the screen angle
     // Steady-grip gate for re-centring: after calibrate() the neutral is only
     // captured once the gravity vector has held still for STEADY_N samples
     // (or SETTLE_MAX samples have passed — a moving bus never settles).
@@ -162,31 +166,21 @@ export class Input {
     this._gPrev = null;
     this._steadyN = 0;
     this._settleN = 0;
-    if (this._frameSign !== null) {
-      this._sign = this._frameSign;
-      return;
-    }
-    // No stage frame given (the node harness): derive the sign from the screen
-    // angle. Upright (portrait frame): screen-left is device -x, so a left
-    // lean drops g.x; the sign makes that steer +, and flips when the phone is
-    // held upside down. Landscape: the long edge decides (90 vs 270).
+    // A provisional sign until the grip settles and gravity fixes it (the
+    // screen angle's guess: the long edge decides sideways, upright is +).
     const angle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
     if (this.tiltPortrait) this._sign = angle === 180 ? -1 : 1;
     else this._sign = angle === 270 || angle === -90 ? 1 : -1;
   }
 
   // The stage layout tells the tilt which axis the lean is on (upright =
-  // device x) and which way is left for the frame it draws — the stage knows
-  // its own rotation, which is more reliable than reading the screen angle
-  // mid-rotation. A change while steering is live re-centres on the new axis
-  // right away (the grip settles first — see _onMotion); otherwise the next
-  // calibrate (race start / resume) picks it up.
-  setTiltFrame(portrait, sign) {
+  // device x, sideways = device y). A change while steering is live
+  // re-centres on the new axis right away (the grip settles first — see
+  // _onMotion); otherwise the next calibrate (race start / resume) picks it up.
+  setTiltFrame(portrait) {
     portrait = !!portrait;
-    sign = sign === undefined || sign === null ? null : sign < 0 ? -1 : 1;
-    if (this.tiltPortrait === portrait && this._frameSign === sign) return;
+    if (this.tiltPortrait === portrait) return;
     this.tiltPortrait = portrait;
-    this._frameSign = sign;
     if (this._motionActive) this.calibrate();
   }
 
@@ -256,6 +250,13 @@ export class Input {
       if (this._steadyN < STEADY_N && this._settleN < SETTLE_MAX) return;
       this._neutralRoll = roll;
       this._neutralSamples = 1;
+      // Which way is left, from gravity on the axis the lean is NOT on: the
+      // long edge that is down (sideways) or upright vs upside down. Fixed at
+      // the hold where sideways steering is known good (device x reading
+      // negative → sign -1); the upright rule is the same geometry turned 90°,
+      // and both come out right whichever sign convention the platform's
+      // sensor uses, since a lean's reading flips with it too.
+      this._sign = this.tiltPortrait ? (g.y < 0 ? 1 : -1) : g.x < 0 ? -1 : 1;
       return;
     }
     // Stabilise neutral by averaging the first several samples after calibrate,

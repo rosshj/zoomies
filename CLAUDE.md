@@ -308,11 +308,15 @@ warnings stay over the view). The camera widens (`stageState.fovScale`,
   `SETTLE_MAX`) before taking the neutral; steering stays neutral until
   then. An immediate capture froze whatever tilt the hand had in that first
   tenth of a second into the whole race.
-- `layoutStage` hands `input.setTiltFrame(portrait, sign)` the tilt axis AND
-  the steering sign for the frame as drawn (rot 90 ≙ angle 90); input.js
-  never reads the screen angle while the stage is around (it lags a
-  rotation on iOS). `check:tilt-menus` asserts the gain, the sign, the
-  lean-vs-turn hold and the steady centring.
+- `layoutStage` hands `input.setTiltFrame(portrait)` only the AXIS the lean
+  is read on. Which way is LEFT comes from gravity at each re-centre (the
+  sign of the reading on the other axis), never from the screen angle or
+  the stage frame: iOS reports the gravity vector and Android the reaction
+  to it, the orientation APIs lag a rotation, and a wrong sign reads as a
+  car that steers backwards / sits off-centre. A lean's reading flips with
+  the convention too, so the gravity rule is right on both. `check:tilt-menus`
+  asserts the gain, both edges down, upside down, the lean-vs-turn hold and
+  the steady centring.
 - Sizes on the panel come off the stage WIDTH (`--stage-vw`), never a `%` in
   `height` (that reads the stage height — the minimap came out 90×124).
 - Nothing locks the orientation any more (manifest `any`, no native lock at

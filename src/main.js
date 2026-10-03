@@ -1624,13 +1624,10 @@ function layoutStage() {
   stage.classList.toggle("menu-narrow", W <= 480);
   stage.classList.toggle("handheld", handheld);
   gameEl.style.height = handheld ? `${VH}px` : "";
-  // The tilt axis and the steering sign for the frame as DRAWN: a counter-
-  // rotated stage reads like the matching landscape angle (rot 90 ≙ angle 90),
-  // an unrotated landscape viewport goes by the screen angle (270 is the
-  // other long edge down), upright is + unless the phone is upside down.
-  const tiltSign = rot === 90 ? -1 : rot === 270 ? 1 : handheld ? (a === 180 ? -1 : 1) : a === 270 ? 1 : -1;
-  input.setTiltFrame(handheld, tiltSign);
-  window.__zoomies.tiltFrame = () => `${handheld ? "portrait" : "landscape"}:${tiltSign > 0 ? "+" : "-"}`; // checks
+  // The tilt axis for the frame as drawn (upright reads the lean on device x;
+  // which way is left comes from gravity in input.js).
+  input.setTiltFrame(handheld);
+  window.__zoomies.tiltFrame = () => (handheld ? "portrait" : "landscape"); // checks
 
   stage.style.width = W + "px";
   stage.style.height = H + "px";

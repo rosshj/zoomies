@@ -345,14 +345,14 @@ try {
   );
   assert.equal(
     await p.evaluate(() => window.__zoomies.tiltFrame()),
-    "portrait:+",
+    "portrait",
     "The upright frame reads tilt on the upright axis",
   );
   await p.keyboard.press("p");
   await p.waitForFunction(() => window.__zoomies.state() === 4);
   await hold(true);
   await p.waitForFunction(() => document.getElementById("stage").classList.contains("rotated"));
-  assert.equal(await p.evaluate(() => window.__zoomies.tiltFrame()), "landscape:-", "Sideways: the long-edge axis");
+  assert.equal(await p.evaluate(() => window.__zoomies.tiltFrame()), "landscape", "Sideways: the long-edge axis");
   await hold(false);
   await p.waitForFunction(() => !document.getElementById("stage").classList.contains("rotated"));
   await click("#resume-btn");
