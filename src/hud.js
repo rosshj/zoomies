@@ -7,6 +7,9 @@ export class HUD {
     this.timer = document.getElementById("timer");
     this.toast = document.getElementById("toast");
     this._lastToast = "";
+    this.pickup = document.getElementById("pickup-toast");
+    this._pickupIco = this.pickup?.querySelector(".pt-ico");
+    this._pickupTitle = this.pickup?.querySelector(".pt-title");
     this.puShield = document.getElementById("pu-shield");
     this.puTri = document.getElementById("pu-tri");
     this.puCatnip = document.getElementById("pu-catnip");
@@ -84,6 +87,27 @@ export class HUD {
     this.toast.classList.remove("show");
     void this.toast.offsetWidth; // restart animation
     this.toast.classList.add("show");
+  }
+
+  // Pickup / notice toast (bottom centre): a solid rounded pill that springs
+  // up with an icon and one line, coloured by `tone` (an item name, or gold /
+  // warn / info — see the data-tone rules in styles.css). Everything that is
+  // not a countdown / GO! / FINISH! banner goes through here, so the big
+  // centre showToast never covers the road mid-race. Unlike showToast there
+  // is no dedupe: grabbing two shields in a row should pop twice.
+  showPickup({ icon, title, tone = "catnip" }) {
+    const el = this.pickup;
+    if (!el) return;
+    el.dataset.tone = tone;
+    if (this._pickupIco) this._pickupIco.textContent = icon;
+    if (this._pickupTitle) this._pickupTitle.textContent = title;
+    el.classList.remove("show");
+    void el.offsetWidth; // restart animation
+    el.classList.add("show");
+  }
+
+  hidePickup() {
+    this.pickup?.classList.remove("show");
   }
 }
 
