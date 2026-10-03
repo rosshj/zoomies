@@ -33,13 +33,14 @@ import { makeRng } from "./rng.js";
 // profile as the kerb; the discrete kinds stand on a low sill it sweeps.
 const S = (kind, extra) => ({ kind, scrub: 1, bounce: 0, ...extra });
 export const EDGE_STYLES = {
-  // Tall lumpy cliff faces: strata colours by height, per-metre jitter.
+  // Cliffs: two or three courses of big angular rocks jumbled on a bedrock sill.
   "rockface.granite": S("rockface", {
     name: "Granite rock face",
     lo: 0x5d6168,
     hi: 0x9a9ea3,
     cap: 0xc9ccd0,
     strata: 0x7a7d83,
+    sill: 0x4e5258,
     h: 2.6,
     scrub: 1.3,
   }),
@@ -49,6 +50,7 @@ export const EDGE_STYLES = {
     hi: 0xe0c08c,
     cap: 0xf0dcb4,
     strata: 0xc69a62,
+    sill: 0x9c7a4e,
     h: 2.4,
     scrub: 1.3,
   }),
@@ -58,6 +60,7 @@ export const EDGE_STYLES = {
     hi: 0xc9805a,
     cap: 0xe0b48e,
     strata: 0x6f3a2a,
+    sill: 0x74402c,
     h: 2.9,
     scrub: 1.3,
   }),
@@ -67,6 +70,7 @@ export const EDGE_STYLES = {
     hi: 0x5a5c68,
     cap: 0x8a8c96,
     strata: 0x3d3f4a,
+    sill: 0x26262e,
     h: 2.5,
     scrub: 1.3,
   }),
@@ -76,6 +80,7 @@ export const EDGE_STYLES = {
     hi: 0x8a9a6e,
     cap: 0xb4c48c,
     strata: 0x66705a,
+    sill: 0x3f4a3a,
     h: 2.3,
     scrub: 1.3,
   }),
@@ -121,21 +126,24 @@ export const EDGE_STYLES = {
     sill: 0x3f7a36,
     scrub: 1.3,
   }),
-  // Soft green bulk (swept).
+  // Hedges: two rows of rounded bush clumps on a soil sill, flecked with
+  // flowers / leaves where the biome has them (fleckRate 0 = plain green).
   "hedge.green": S("hedge", {
     name: "Hedgerow",
     lo: 0x3f7a2e,
     hi: 0x76b24c,
-    fleck: 0x9fd46a,
-    sill: 0x5a7a3c,
+    fleck: 0xf2f0ea,
+    fleckRate: 0.15,
+    sill: 0x4a3f2c,
     scrub: 0.5,
   }),
   "hedge.lavender": S("hedge", {
     name: "Lavender hedge",
-    lo: 0x6a5a8e,
-    hi: 0xa48ed0,
-    fleck: 0xd6c4f2,
-    sill: 0x6b6f49,
+    lo: 0x5e6a4a,
+    hi: 0x8e9a6a,
+    fleck: 0xa48ed0,
+    fleckRate: 0.9,
+    sill: 0x4a3f2c,
     scrub: 0.5,
   }),
   "hedge.blossom": S("hedge", {
@@ -143,7 +151,8 @@ export const EDGE_STYLES = {
     lo: 0x4b7a3a,
     hi: 0x86b864,
     fleck: 0xffb3cf,
-    sill: 0x6a8a4a,
+    fleckRate: 0.7,
+    sill: 0x4a3f2c,
     scrub: 0.5,
   }),
   "hedge.autumn": S("hedge", {
@@ -151,7 +160,8 @@ export const EDGE_STYLES = {
     lo: 0x8a4a22,
     hi: 0xd4863a,
     fleck: 0xf2c04a,
-    sill: 0x7a6a3a,
+    fleckRate: 0.5,
+    sill: 0x4a3f2c,
     scrub: 0.5,
   }),
   "hedge.reeds": S("hedge", {
@@ -159,20 +169,23 @@ export const EDGE_STYLES = {
     lo: 0x7a7a3e,
     hi: 0xb8b068,
     fleck: 0xe0d890,
+    fleckRate: 0.4,
     sill: 0x4f7563,
+    reeds: true,
     scrub: 0.45,
   }),
-  // Soft white berm (swept).
-  snowbank: S("snowbank", { name: "Snow bank", lo: 0xc6d6e0, hi: 0xf4f8fa, cap: 0xffffff, scrub: 0.7 }),
+  // Snow bank: overlapping soft mounds on a snow sill.
+  snowbank: S("snowbank", { name: "Snow bank", lo: 0xc6d6e0, hi: 0xf4f8fa, cap: 0xffffff, sill: 0xe4ecf2, scrub: 0.7 }),
   // Low rounded mud wall with beam ends (swept + merged beams).
   adobe: S("adobe", { name: "Adobe wall", lo: 0xc08e5e, hi: 0xdfb688, cap: 0xecd2b0, beam: 0x6f4a2a, scrub: 1.1 }),
-  // Concrete blocks (swept; seams and stripes in the paint).
+  // Concrete: real jersey-profile blocks, 4u long with a gap between them.
   jersey: S("jersey", {
     name: "Concrete barrier",
     lo: 0x8d9298,
     hi: 0xb4b9bf,
     cap: 0xcfd3d8,
     seam: 0x6c7177,
+    sill: 0x6c7177,
     scrub: 1.1,
     bounce: 3,
   }),
@@ -182,6 +195,7 @@ export const EDGE_STYLES = {
     hi: 0xb4b9bf,
     cap: 0xcfd3d8,
     seam: 0x6c7177,
+    sill: 0x6c7177,
     stripeA: 0xf2c230,
     stripeB: 0x2b2b2b,
     scrub: 1.1,
@@ -338,18 +352,70 @@ const hash = (a, b) => {
 const _c = new THREE.Color(),
   _c2 = new THREE.Color();
 
-// A lumpy rock: an icosahedron with per-vertex radial noise, flattened a touch.
-function rockGeo(seed) {
-  const g = new THREE.IcosahedronGeometry(1, 1);
+// A rock: a low-poly icosahedron with per-vertex radial noise, FLAT shaded
+// (non-indexed, so every facet keeps its own normal) — angular stone, not a
+// lumpy balloon. `detail` 0 is a 20-facet boulder, 1 a rounder 80-facet one.
+function rockGeo(seed, detail = 1, squash = 0.82) {
+  const g = new THREE.IcosahedronGeometry(1, detail).toNonIndexed();
+  const p = g.attributes.position;
+  // Jitter per UNIQUE vertex position (hash of the position itself) so the
+  // facets stay welded while the silhouette breaks up.
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i),
+      y = p.getY(i),
+      z = p.getZ(i);
+    const n =
+      0.74 +
+      0.4 * hash(seed + Math.round(x * 100) * 0.031 + 7, Math.round(y * 100) * 0.027 + Math.round(z * 100) * 0.019);
+    p.setXYZ(i, x * n, y * n * squash, z * n);
+  }
+  g.computeVertexNormals();
+  return g;
+}
+// A soft clump (bush, snow mound): smooth-shaded, gently irregular.
+function clumpGeo(seed, squash = 0.85) {
+  const g = new THREE.IcosahedronGeometry(1, 2);
   const p = g.attributes.position;
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i),
       y = p.getY(i),
       z = p.getZ(i);
-    const n = 0.78 + 0.34 * hash(seed + x * 3.1 + 7, y * 2.7 + z * 1.9);
-    p.setXYZ(i, x * n, y * n * 0.82, z * n);
+    const n = 0.86 + 0.2 * hash(seed + x * 2.1 + 3, y * 1.7 + z * 1.3);
+    p.setXYZ(i, x * n, y * n * squash, z * n);
   }
   g.computeVertexNormals();
+  return g;
+}
+// Jersey barrier block: the real profile (wide kicked base, sloped faces,
+// narrow top), extruded 3.9u along the road, flat shaded.
+function jerseyGeo() {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.46, 0);
+  shape.lineTo(0.46, 0);
+  shape.lineTo(0.46, 0.16);
+  shape.lineTo(0.32, 0.36);
+  shape.lineTo(0.16, 1.2);
+  shape.lineTo(0.1, 1.28);
+  shape.lineTo(-0.1, 1.28);
+  shape.lineTo(-0.16, 1.2);
+  shape.lineTo(-0.32, 0.36);
+  shape.lineTo(-0.46, 0.16);
+  shape.closePath();
+  const g = new THREE.ExtrudeGeometry(shape, { depth: 3.7, bevelEnabled: false }).toNonIndexed();
+  g.translate(0, 0, -1.85);
+  g.computeVertexNormals();
+  // Bake shading into the vertex colour (the instance colour multiplies it):
+  // a grimy foot, a lighter top, and darker end faces so the joints read.
+  const p = g.attributes.position,
+    n = g.attributes.normal,
+    cols = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    let v = y < 0.36 ? 0.72 : y > 1.19 ? 1.08 : 0.92 + y * 0.1;
+    if (Math.abs(n.getZ(i)) > 0.9) v *= 0.8; // the block's end faces
+    cols.set([v, v, v], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(cols, 3));
   return g;
 }
 
@@ -380,7 +446,11 @@ function alongSegment(track, i, p, sx, sz, off, spacing, fn) {
 }
 
 function instanced(group, geo, items, tag, cell = 160) {
-  const mat = new THREE.MeshStandardMaterial({ vertexColors: !!geo.attributes.color, roughness: 0.92 });
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: !!geo.attributes.color,
+    roughness: 0.92,
+    flatShading: !geo.index, // non-indexed = the angular kinds (rocks, blocks)
+  });
   const m = new THREE.Matrix4(),
     q = new THREE.Quaternion(),
     e = new THREE.Euler(),
@@ -416,31 +486,179 @@ export function buildEdgeExtras(track) {
     return g;
   };
 
-  // Boulders: 4 rock variants, scaled 1.1-2.0, overlapping so the row is solid.
-  const rocks = [0, 1, 2, 3].map((k) => tintGeo(rockGeo(k * 17.3)));
+  // Boulders: 4 angular rock variants, scaled 1.1-2.0, overlapping so the
+  // row is solid; snowy ones get a white top by colour.
+  const rocks = [0, 1, 2, 3].map((k) => tintGeo(rockGeo(k * 17.3, k % 2)));
   const rockItems = [[], [], [], []];
   for (const side of [0, 1])
     eachSample(track, side, "boulders", (i, cell, p, sx, sz) => {
       const st = cell.style;
-      alongSegment(track, i, p, sx, sz, off + 0.9, 1.7, (x, y, z, seed) => {
+      alongSegment(track, i, p, sx, sz, off + 0.9, 1.6, (x, y, z, seed) => {
         const h1 = hash(seed, 1),
           h2 = hash(seed, 2);
-        const s = 1.15 + h1 * 0.8;
+        const s = 1.1 + h1 * 0.9;
         _c.set(st.lo).lerp(_c2.set(st.hi), h2);
-        if (st.snowy && h2 > 0.4) _c.lerp(_c2.set(st.cap), 0.45);
+        if (st.snowy && h2 > 0.4) _c.lerp(_c2.set(st.cap), 0.5);
         rockItems[seed % 4].push({
           x,
-          y: y + s * 0.7,
+          y: y + s * 0.62,
           z,
           yaw: hash(seed, 3) * 6.28,
-          sx: s * (0.9 + hash(seed, 4) * 0.4),
-          sy: s,
+          roll: (hash(seed, 6) - 0.5) * 0.5,
+          sx: s * (0.9 + hash(seed, 4) * 0.5),
+          sy: s * (0.8 + hash(seed, 7) * 0.4),
           sz: s,
           color: _c.getHex(),
         });
       });
     });
   rocks.forEach((g, k) => rockItems[k].length && instanced(group, g, rockItems[k], "boulders"));
+
+  // Rock faces: a cliff jumbled from three courses of big angular blocks —
+  // the bottom course largest and most forward, the courses above set back
+  // and tinted by strata, the top course sparse and pale (weathered), so
+  // the skyline breaks up instead of running level like a wall.
+  const cliffItems = [[], [], [], []];
+  for (const side of [0, 1])
+    eachSample(track, side, "rockface", (i, cell, p, sx, sz) => {
+      const st = cell.style;
+      const H = st.h || 2.5;
+      alongSegment(track, i, p, sx, sz, off + 1.3, 1.9, (x, y, z, seed) => {
+        const courses = [
+          { s: 1.8 + hash(seed, 1) * 0.8, back: 0, y: 0, col: null, keep: 1 },
+          { s: 1.2 + hash(seed, 2) * 0.6, back: 0.55, y: H * 0.5, col: st.strata, keep: 1 },
+          { s: 0.9 + hash(seed, 3) * 0.6, back: 0.95, y: H * 0.9, col: st.cap, keep: hash(seed, 4) > 0.35 ? 1 : 0 },
+        ];
+        courses.forEach((c, k) => {
+          if (!c.keep) return;
+          _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 5 + k));
+          if (c.col) _c.lerp(_c2.set(c.col), 0.5);
+          cliffItems[(seed + k) % 4].push({
+            x: x + sx * c.back,
+            y: y + c.y + c.s * 0.55,
+            z: z + sz * c.back,
+            yaw: hash(seed, 8 + k) * 6.28,
+            roll: (hash(seed, 11 + k) - 0.5) * 0.4,
+            sx: c.s * (1.0 + hash(seed, 14 + k) * 0.5),
+            sy: c.s * (0.75 + hash(seed, 17 + k) * 0.5),
+            sz: c.s * (0.9 + hash(seed, 20 + k) * 0.4),
+            color: _c.getHex(),
+          });
+        });
+      });
+    });
+  rocks.forEach((g, k) => cliffItems[k].length && instanced(group, g, cliffItems[k], "rockface"));
+
+  // Hedges: two rows of bush clumps (the back row taller) on a soil sill,
+  // with flower / leaf flecks dotted over the surface (reeds for the bank).
+  const bushes = [0, 1, 2].map((k) => tintGeo(clumpGeo(k * 23.7)));
+  const bushItems = [[], [], []];
+  const fleck = tintGeo(new THREE.IcosahedronGeometry(0.16, 0));
+  const fleckItems = [];
+  const reed = tintGeo(new THREE.CylinderGeometry(0.03, 0.05, 1, 5).translate(0, 0.5, 0));
+  const reedItems = [];
+  for (const side of [0, 1])
+    eachSample(track, side, "hedge", (i, cell, p, sx, sz, tan) => {
+      const st = cell.style;
+      alongSegment(track, i, p, sx, sz, off + 0.85, 1.25, (x, y, z, seed) => {
+        for (let r = 0; r < 2; r++) {
+          const s = (r ? 1.25 : 1.0) + hash(seed, 1 + r) * 0.4;
+          _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 3 + r));
+          const bx = x + sx * r * 0.9 + tan.x * (r ? 0.6 : 0),
+            bz = z + sz * r * 0.9 + tan.z * (r ? 0.6 : 0);
+          const by = y + s * 0.55 + (r ? 0.25 : 0);
+          bushItems[(seed + r) % 3].push({
+            x: bx,
+            y: by,
+            z: bz,
+            yaw: hash(seed, 5 + r) * 6.28,
+            sx: s * 1.15,
+            sy: s,
+            sz: s,
+            color: _c.getHex(),
+          });
+          if (st.reeds) {
+            for (let k = 0; k < 4; k++)
+              reedItems.push({
+                x: bx + (hash(seed, 30 + k + r * 4) - 0.5) * s * 1.2,
+                y: y + 0.1,
+                z: bz + (hash(seed, 40 + k + r * 4) - 0.5) * s * 1.2,
+                roll: (hash(seed, 50 + k) - 0.5) * 0.3,
+                pitch: (hash(seed, 60 + k) - 0.5) * 0.3,
+                sy: 1.6 + hash(seed, 70 + k) * 1.2,
+                color: hash(seed, 80 + k) > 0.5 ? st.hi : st.fleck,
+              });
+          } else if (st.fleckRate && hash(seed, 7 + r) < st.fleckRate) {
+            const n = 2 + Math.floor(hash(seed, 9 + r) * 4);
+            for (let k = 0; k < n; k++) {
+              const a = hash(seed, 12 + k + r * 7) * 6.28,
+                e = 0.3 + hash(seed, 19 + k + r * 7) * 0.9;
+              fleckItems.push({
+                x: bx + Math.cos(a) * s * 1.05 * Math.sin(e),
+                y: by + s * Math.cos(e) * 0.95,
+                z: bz + Math.sin(a) * s * 0.95 * Math.sin(e),
+                s: 0.8 + hash(seed, 26 + k) * 0.6,
+                color: st.fleck,
+              });
+            }
+          }
+        }
+      });
+    });
+  bushes.forEach((g, k) => bushItems[k].length && instanced(group, g, bushItems[k], "hedge"));
+  if (fleckItems.length) instanced(group, fleck, fleckItems, "hedge-flecks");
+  if (reedItems.length) instanced(group, reed, reedItems, "reeds");
+
+  // Snow bank: overlapping soft mounds, wider than tall, a blue shadow tint on
+  // the front ones so the drift reads as depth rather than one white strip.
+  const mound = tintGeo(clumpGeo(41.2, 0.6));
+  const moundItems = [];
+  for (const side of [0, 1])
+    eachSample(track, side, "snowbank", (i, cell, p, sx, sz, tan) => {
+      const st = cell.style;
+      alongSegment(track, i, p, sx, sz, off + 1.2, 1.5, (x, y, z, seed) => {
+        for (let r = 0; r < 2; r++) {
+          const s = (r ? 1.7 : 1.3) + hash(seed, 1 + r) * 0.6;
+          _c.set(st.hi).lerp(_c2.set(st.lo), r ? 0.08 : 0.3 + hash(seed, 3) * 0.2);
+          moundItems.push({
+            x: x + sx * r * 1.1 + tan.x * (r ? 0.75 : 0),
+            y: y + s * 0.3 + (r ? 0.35 : 0),
+            z: z + sz * r * 1.1 + tan.z * (r ? 0.75 : 0),
+            yaw: hash(seed, 5 + r) * 6.28,
+            sx: s * 1.3,
+            sy: s * (0.75 + hash(seed, 7 + r) * 0.3),
+            sz: s,
+            color: _c.getHex(),
+          });
+        }
+      });
+    });
+  if (moundItems.length) instanced(group, mound, moundItems, "snowbank");
+
+  // Concrete: jersey blocks laid end to end with a 0.2u gap, each tinted a
+  // touch differently; the striped variant alternates yellow / black blocks.
+  const block = jerseyGeo(); // carries its own shading tint
+  const blockItems = [];
+  for (const side of [0, 1])
+    eachSample(track, side, "jersey", (i, cell, p, sx, sz, tan) => {
+      const st = cell.style;
+      alongSegment(track, i, p, sx, sz, off + 0.7, 4.1, (x, y, z, seed) => {
+        const n = Math.floor(hash(seed, 1) * 1000);
+        let col;
+        if (st.stripeA) col = n % 2 ? st.stripeA : st.stripeB;
+        else col = _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 2)).getHex();
+        // A degree or two of yaw per block, and the odd one nudged out of
+        // line: a row of blocks dropped by a crew, not one extruded ribbon.
+        blockItems.push({
+          x: x + sx * (hash(seed, 3) - 0.5) * 0.14,
+          y,
+          z: z + sz * (hash(seed, 3) - 0.5) * 0.14,
+          yaw: Math.atan2(tan.x, tan.z) + (hash(seed, 4) - 0.5) * 0.05,
+          color: col,
+        });
+      });
+    });
+  if (blockItems.length) instanced(group, block, blockItems, "jersey");
 
   // Tyres: flat stacks two or three high, every ~7th painted.
   const tyre = tintGeo(new THREE.TorusGeometry(0.58, 0.26, 6, 10).rotateX(Math.PI / 2));
@@ -506,19 +724,9 @@ export function buildEdgeExtras(track) {
     });
   if (logItems.length) instanced(group, log, logItems, "logs");
 
-  // Sandbags: four staggered courses of rounded bags.
-  const bag = tintGeo(new THREE.BoxGeometry(0.95, 0.34, 0.55, 2, 1, 2));
-  {
-    const bp = bag.attributes.position;
-    for (let k = 0; k < bp.count; k++) {
-      // Pillow the bag: pull the mid-edge vertices out a touch.
-      const x = bp.getX(k),
-        y = bp.getY(k),
-        z = bp.getZ(k);
-      if (Math.abs(x) < 0.3 && Math.abs(z) < 0.2) bp.setY(k, y * 1.25);
-    }
-    bag.computeVertexNormals();
-  }
+  // Sandbags: four staggered courses of fat pillow-shaped bags (a squashed
+  // sphere, smooth shaded), each slumped a little differently.
+  const bag = tintGeo(new THREE.IcosahedronGeometry(1, 2).scale(0.52, 0.2, 0.32));
   const bagItems = [];
   for (const side of [0, 1])
     eachSample(track, side, "sandbags", (i, cell, p, sx, sz, tan) => {
@@ -528,10 +736,14 @@ export function buildEdgeExtras(track) {
           _c.set(st.lo).lerp(_c2.set(st.hi), hash(seed, 1 + r));
           const shift = (r % 2) * 0.5;
           bagItems.push({
-            x: x + tan.x * shift,
-            y: y + 0.17 + r * 0.33,
-            z: z + tan.z * shift,
-            yaw: Math.atan2(tan.x, tan.z) + Math.PI / 2 + (hash(seed, 5 + r) - 0.5) * 0.2,
+            x: x + tan.x * shift + sx * (hash(seed, 9 + r) - 0.5) * 0.12,
+            y: y + 0.19 + r * 0.34,
+            z: z + tan.z * shift + sz * (hash(seed, 9 + r) - 0.5) * 0.12,
+            yaw: Math.atan2(tan.x, tan.z) + Math.PI / 2 + (hash(seed, 5 + r) - 0.5) * 0.3,
+            roll: (hash(seed, 13 + r) - 0.5) * 0.25,
+            sx: 1 + hash(seed, 17 + r) * 0.25,
+            sy: 1 + hash(seed, 21 + r) * 0.3,
+            sz: 1,
             color: _c.getHex(),
           });
         }

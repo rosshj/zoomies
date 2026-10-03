@@ -235,7 +235,21 @@ await run(() => window.__playground.freeze(true));
   const t = r.tags;
   check(
     "every discrete barrier kind built something",
-    ["boulders", "tyres", "hay", "logs", "sandbags", "lava", "beams"].every((k) => t[k] > 0) && t.verge === 1,
+    [
+      "boulders",
+      "rockface",
+      "hedge",
+      "hedge-flecks",
+      "reeds",
+      "snowbank",
+      "jersey",
+      "tyres",
+      "hay",
+      "logs",
+      "sandbags",
+      "lava",
+      "beams",
+    ].every((k) => t[k] > 0) && t.verge === 1,
     JSON.stringify(t),
   );
   check(
