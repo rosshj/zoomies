@@ -211,17 +211,6 @@
       <div id="steer-bar"><div id="steer-dot"></div></div>
     </div>
 
-    <!-- Item pickup toast (bottom center, above the steering bar): a solid
-         rounded pill (icon + item name) that springs up when the player grabs
-         a power-up box. Kept off the centre of the screen on purpose — the
-         big #toast is for the countdown, laps and FINISH; a pickup should be
-         noticed, not block the road. Lives inside #hud so the split-screen
-         layouts can re-anchor it into P1's view. -->
-    <div id="pickup-toast" data-tone="catnip" aria-live="polite">
-      <span class="pt-ico">🌿</span>
-      <b class="pt-title"></b>
-    </div>
-
     <!-- Split screen (Versus 2P): a divider line between the two views and a
          status chip per player (lap · place · held items). The solo HUD's
          #info block keeps serving P1 (it sits in the top half); P2 gets the
@@ -268,8 +257,19 @@
 
   <!-- Toasts live OUTSIDE #hud: menus hide the HUD, and a toast fired from a
        menu surface ("Extra world detail on the next launch") was invisible
-       there. Above menus/sheets, still under the race veil. -->
+       there. Above menus/sheets, still under the race veil.
+       #toast is the big centre banner — countdown, GO!, FINISH!, race over —
+       the handful of moments that should stop the eye. Everything else
+       (pickups, laps, spills, saves, settings notes) goes through
+       #pickup-toast: a solid rounded pill (icon + one line) that springs up
+       at the bottom centre, noticed without blocking the road. It sits
+       right after #hud so the split layouts can re-anchor it into P1's view
+       (#hud.split ~ #pickup-toast). -->
   <div id="toast"></div>
+  <div id="pickup-toast" data-tone="catnip" aria-live="polite">
+    <span class="pt-ico">🌿</span>
+    <b class="pt-title"></b>
+  </div>
 
   <!-- Persistent menu chrome: the treats balance and the settings gear ride
        above every menu sub-screen (garage, Cat-alog, mode, track, start line…),

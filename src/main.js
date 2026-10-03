@@ -837,7 +837,7 @@ function grantItem(kart) {
       ) {
         // A rival close behind just armed the comeback item — a heads-up so
         // the green blur past your shoulder isn't a mystery.
-        hud.showPickup({ icon: "🌿", title: `${kart.name} has catnip!`, tone: "rival" });
+        hud.showPickup({ icon: "🌿", title: `${kart.name} has catnip!`, tone: "gold" });
       }
       break;
   }
@@ -1126,7 +1126,11 @@ function setupSplitInputs() {
   // A seat past both the pads and the keyboard has no controls — say so
   // rather than leaving a mysteriously parked kart.
   if (splitCount - pads.length > 1) {
-    hud.showToast?.(`🎮 Need ${splitCount - 1} controllers — P${Math.min(splitCount, pads.length + 2)}+ has none`);
+    hud.showPickup?.({
+      icon: "🎮",
+      title: `Need ${splitCount - 1} controllers — P${Math.min(splitCount, pads.length + 2)}+ has none`,
+      tone: "warn",
+    });
   }
 }
 // Positional-SFX anchor: a HUMAN's own sounds play flat at full volume (null
@@ -2313,7 +2317,7 @@ function perfWatchdog(dt) {
       // dressing (grass, motes) as the last resort.
       const down = { high: "medium", medium: "balanced", balanced: "low" };
       applyQuality(down[quality] || "low", false);
-      hud.showToast?.("Graphics lowered for a smoother race");
+      hud.showPickup?.({ icon: "⚙️", title: "Graphics lowered for a smoother race", tone: "info" });
     }
   } else {
     _wdAccum = Math.max(0, _wdAccum - dt * 0.6); // recover slowly from brief spikes
@@ -2501,7 +2505,11 @@ function applyQuality(q, persist = true) {
   // Build-time density (grass verges, critter budget) is baked per launch —
   // tell the player when their switch lands.
   if (persist && high !== _worldDetail > 1) {
-    hud.showToast?.(high ? "🌿 Extra world detail on the next launch" : "World detail returns to standard next launch");
+    hud.showPickup?.({
+      icon: "🌿",
+      title: high ? "Extra world detail on the next launch" : "World detail returns to standard next launch",
+      tone: "info",
+    });
   }
   // Marquee glow on every tier; Low runs the bloom pyramid at quarter res and
   // takes the plain composite (no aberration branch), see the post-stack setup.
@@ -6613,6 +6621,7 @@ let _racePrepPending = false;
 // both from the local START click and from a network-triggered synchronized start.
 function prepareRace() {
   _raceParked = false; // starting fresh; nothing parked to resume
+  hud.hidePickup(); // a pill still fading out from the last race (the mood note below is this race's first)
   _raceStats = { driftBoosts: 0, slipSeconds: 0, milkTrips: 0, heartSaves: 0, boxes: 0, propsKnocked: 0 };
   _racePaid = false;
   document.getElementById("results-earnings")?.classList.add("hidden");
@@ -6640,7 +6649,11 @@ function prepareRace() {
   moodExposure = mood.exposure;
   godrayPass.uniforms.uColor.value.set(mood.sunColor);
   godrayPass.uniforms.uWeight.value = mood.rayWeight ?? 1.05;
-  hud.showToast(mood.name);
+  hud.showPickup({
+    icon: { Midday: "☀️", Sunset: "🌇", Night: "🌙" }[mood.name] || "🌤️",
+    title: mood.name,
+    tone: "info",
+  });
 
   // Versus (2-4P): scope the inputs BEFORE buildKarts so every seat's kart
   // exists to drive, wire the per-view cameras, and put the HUD in its split
@@ -6709,7 +6722,6 @@ function prepareRace() {
   yarnWarnEl?.classList.add("hidden");
   _furballsArmed = false;
   hud.setShootLock(0); // clear any leftover charge banner from a previous race
-  hud.hidePickup(); // and any pickup pill still fading out
   track.raceTime = 0;
   prevPlayerLap = -1; // so the time-trial lap-start crossing is detected cleanly
   ttLapStart = -1;
@@ -7211,7 +7223,7 @@ function applyHumanControls(kart, inp, dt) {
     kart.milkBottles = 0;
     items.dropMilk(kart);
     const _seatIdx = splitActive ? splitPlayers.indexOf(kart) : kart === player ? 0 : -1;
-    hud.showToast(_seatIdx > 0 ? `🥛 P${_seatIdx + 1} spilled!` : "🥛 Spilled!");
+    hud.showPickup({ icon: "🥛", title: _seatIdx > 0 ? `P${_seatIdx + 1} spilled!` : "Spilled!", tone: "milk" });
   }
   if (inp.consumeBoost() && kart.boostMeter >= 1) {
     const _over = kart.boostMeter > 1.02; // fired with overcharge → beefier burst
@@ -8650,7 +8662,7 @@ function loopBody(now) {
         effects.tootBurst(k, 1, false);
         audio.boost(sfxPos(k));
         if (k === player) {
-          hud.showToast("😻 Saved by a life!");
+          hud.showPickup({ icon: "😻", title: "Saved by a life!", tone: "life" });
           if (_raceStats) _raceStats.heartSaves++;
         }
       }
@@ -8784,7 +8796,7 @@ function loopBody(now) {
     if (!timeTrial && player.lap !== prevPlayerLap && player.lap >= 1 && !player.finished) {
       const lapNum = player.displayLap(laps);
       if (lapNum >= 2) {
-        hud.showToast(`Lap ${lapNum}/${laps}`);
+        hud.showPickup({ icon: "🏁", title: lapNum === laps ? "Final lap!" : `Lap ${lapNum}/${laps}`, tone: "gold" });
         audio.lap();
       }
     }
@@ -8821,7 +8833,7 @@ function loopBody(now) {
     hud.setShootLock(shootLockLeft);
     if (!timeTrial && !_furballsArmed && shootLockLeft <= 0) {
       _furballsArmed = true;
-      hud.showToast("🐾 Furballs armed!");
+      hud.showPickup({ icon: "🐾", title: "Furballs armed!", tone: "tri" });
     }
 
     // Time-trial: race the clock against your personal best. While the timed lap
@@ -8863,12 +8875,12 @@ function loopBody(now) {
             .map((k, i) => (k.finished ? null : `P${i + 1}`))
             .filter(Boolean)
             .join("+");
-          hud.showToast(`⏱ ${out}: ${SPLIT_FINISH_GRACE}s to finish!`);
+          hud.showPickup({ icon: "⏱", title: `${out}: ${SPLIT_FINISH_GRACE}s to finish!`, tone: "warn" });
         }
         _splitGrace -= dt;
         if (_splitGrace <= 10 && !_splitGrace10) {
           _splitGrace10 = true;
-          hud.showToast("⏱ 10 seconds!");
+          hud.showPickup({ icon: "⏱", title: "10 seconds!", tone: "warn" });
         }
       }
     } else {

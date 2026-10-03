@@ -89,10 +89,12 @@ export class HUD {
     this.toast.classList.add("show");
   }
 
-  // Item pickup toast (bottom centre): a solid rounded pill that springs up
-  // with the item's icon and name, coloured by `tone` (the item name — see the
-  // data-tone rules in styles.css). Unlike showToast there is no dedupe:
-  // grabbing two shields in a row should pop twice.
+  // Pickup / notice toast (bottom centre): a solid rounded pill that springs
+  // up with an icon and one line, coloured by `tone` (an item name, or gold /
+  // warn / info — see the data-tone rules in styles.css). Everything that is
+  // not a countdown / GO! / FINISH! banner goes through here, so the big
+  // centre showToast never covers the road mid-race. Unlike showToast there
+  // is no dedupe: grabbing two shields in a row should pop twice.
   showPickup({ icon, title, tone = "catnip" }) {
     const el = this.pickup;
     if (!el) return;

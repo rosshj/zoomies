@@ -1800,15 +1800,20 @@ button.small {
   100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
 }
 
-/* Item pickup toast — bottom centre, just above the steering bar. A solid
-   rounded pill (icon + item name) in the item's colour that springs up from
-   below, settles, holds, then drops away. Deliberately NOT the big centre
-   #toast: a power-up grab should register without blocking the road ahead.
-   Per-item colour via data-tone (same hues as the #powerups pill borders
-   top-left, so the toast and the pill it announces read as the same item). */
+/* Pickup / notice toast — bottom centre, just above the steering bar. A solid
+   rounded pill (icon + one line) that springs up from below, settles, holds,
+   then drops away. Deliberately NOT the big centre #toast, which is kept for
+   the countdown / GO! / FINISH! moments: a power-up grab, a lap, a spill or
+   a settings note should register without blocking the road ahead. Colour
+   via data-tone — the item tones match the #powerups pill borders top-left
+   (so the toast and the pill it announces read as the same item); gold is
+   for race notes (laps, a rival's catnip), warn for clocks and spills, info
+   for settings/system notes. Lives at body level like #toast so it also
+   shows over the menus (the HUD is hidden there). */
 #pickup-toast {
   --pt-c: 120, 224, 90; /* catnip green by default */
   position: absolute;
+  z-index: 59;
   bottom: calc(max(12px, var(--safe-bottom, 0px)) + 34px);
   left: 50%;
   transform: translate(-50%, 60px) scale(0.7);
@@ -1828,7 +1833,6 @@ button.small {
   max-width: calc(100vw - 32px);
   opacity: 0;
   pointer-events: none;
-  z-index: 7;
 }
 #pickup-toast .pt-ico {
   display: grid;
@@ -1847,7 +1851,9 @@ button.small {
 #pickup-toast[data-tone="yarn"] { --pt-c: 236, 128, 255; }
 #pickup-toast[data-tone="milk"] { --pt-c: 240, 236, 220; }
 #pickup-toast[data-tone="life"] { --pt-c: 255, 120, 150; }
-#pickup-toast[data-tone="rival"] { --pt-c: 255, 179, 0; }
+#pickup-toast[data-tone="gold"] { --pt-c: 255, 179, 0; }
+#pickup-toast[data-tone="warn"] { --pt-c: 255, 122, 110; }
+#pickup-toast[data-tone="info"] { --pt-c: 226, 232, 244; }
 
 #pickup-toast.show {
   animation: pt-spring 2.4s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -3037,14 +3043,14 @@ button:focus-visible, input:focus-visible, [tabindex]:focus-visible {
 #split-panel2 { top: calc(50% + 10px); }
 /* Pickup toast follows P1's view: bottom of the top half in 2P, bottom of the
    top-left quadrant (smaller) in 3-4P — never over the divider or P2's road. */
-#hud.split #pickup-toast { bottom: calc(50% + 14px); }
-#hud.split-3 #pickup-toast, #hud.split-4 #pickup-toast {
+#hud.split ~ #pickup-toast { bottom: calc(50% + 14px); }
+#hud.split-3 ~ #pickup-toast, #hud.split-4 ~ #pickup-toast {
   left: 25%;
   gap: 7px;
   padding: 5px 14px 5px 6px;
   font-size: 14px;
 }
-#hud.split-3 #pickup-toast .pt-ico, #hud.split-4 #pickup-toast .pt-ico { width: 28px; height: 28px; font-size: 16px; }
+#hud.split-3 ~ #pickup-toast .pt-ico, #hud.split-4 ~ #pickup-toast .pt-ico { width: 28px; height: 28px; font-size: 16px; }
 /* Quadrant layouts (3-4 players): a vertical divider joins the horizontal
    one, and the panels move to the four quadrant corners — P1 TL, P2 TR,
    P3 BL, P4 BR. Panels 3/4 and the spectator corner only exist here. */
