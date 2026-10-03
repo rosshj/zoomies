@@ -2191,9 +2191,14 @@ function drawMinimap() {
   _miniNext = now + 50; // ~20 Hz
   const { ctx, toX, toY, W, H, path } = minimap;
   ctx.clearRect(0, 0, W, H);
-  ctx.strokeStyle = "rgba(255,255,255,0.5)";
-  ctx.lineWidth = 3;
+  // No panel behind the map any more: a dark halo under the cream outline
+  // keeps it readable over bright road and grass.
   ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(10,6,20,0.5)";
+  ctx.lineWidth = 6;
+  ctx.stroke(path);
+  ctx.strokeStyle = "rgba(255,246,229,0.85)";
+  ctx.lineWidth = 3;
   ctx.stroke(path);
   // Set-piece markers so you can see the bridge/tunnel/canyon coming up.
   ctx.font = "11px system-ui, sans-serif";

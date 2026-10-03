@@ -316,9 +316,11 @@ export class Input {
       v = Math.max(-1, Math.min(1, v));
       this.throttle = v;
       thumb.style.top = `${50 - v * 42}%`;
-      if (v > 0.05) thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #4caf50)";
-      else if (v < -0.05) thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #f44336)";
-      else thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #ffb300)";
+      // The thumb is the menus' cream sticker at rest and tints green / red as
+      // it is pushed (the only gas/brake cue — the track carries no labels).
+      if (v > 0.05) thumb.style.background = "linear-gradient(180deg, #b9f0c0, #7ed48a)";
+      else if (v < -0.05) thumb.style.background = "linear-gradient(180deg, #ffc1b5, #ff8a7a)";
+      else thumb.style.background = "linear-gradient(180deg, #fff6e5, #ffeccc)";
     };
 
     const springBack = () => {
@@ -326,7 +328,7 @@ export class Input {
       if (Math.abs(this.throttle) < 0.02) {
         this.throttle = 0;
         thumb.style.top = "50%";
-        thumb.style.background = "radial-gradient(circle at 35% 30%, #fff, #ffb300)";
+        thumb.style.background = "linear-gradient(180deg, #fff6e5, #ffeccc)";
         raf = null;
         return;
       }

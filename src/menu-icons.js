@@ -42,7 +42,12 @@ const paths = {
     "M7 2h10a6 6 0 0 1 6 6v8a6 6 0 0 1-6 6H7a6 6 0 0 1-6-6V8a6 6 0 0 1 6-6zm0 5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z",
   time: "M9 1h6v3H9zm3 4a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm-1 3h2v5l4 3-2 2-4-4z",
   arrow: "M2 10h13l-5-5 3-3 10 10-10 10-3-3 5-5H2z",
-  milk: "M5 2h14l-2 20H7zm2.3 4 .3 3h8.8l.3-3z",
+  // A one-litre jug: cap, short neck, shoulders, squared body (the HUD's milk
+  // button paints the same silhouette in two tones — see index.html).
+  milk: "M9 1h6a1 1 0 0 1 1 1v1.5h-1.5V6l4 3v11a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2V9l4-3V3.5H8V2a1 1 0 0 1 1-1z",
+  paw: "M12 12c-3.5 0-6.5 2.6-6.5 5.6 0 2 1.8 3.4 6.5 3.4s6.5-1.4 6.5-3.4C18.5 14.6 15.5 12 12 12zM3.5 9a2 2.6 0 1 0 4 0a2 2.6 0 1 0-4 0zm13 0a2 2.6 0 1 0 4 0a2 2.6 0 1 0-4 0zM6.9 4.6a2.1 2.8 0 1 0 4.2 0a2.1 2.8 0 1 0-4.2 0zm6 0a2.1 2.8 0 1 0 4.2 0a2.1 2.8 0 1 0-4.2 0z",
+  gauge: "M3 14a9 9 0 0 1 18 0h-3a6 6 0 0 0-12 0zm8.3-.7 4.2-5.6-2 6.6a1.6 1.6 0 1 1-2.2-1zM4 16h16v3H4z",
+  leaf: "M21 3C9 3 3 9 3 19c0 1 0 2 1 2 1-8 5-12 11-14C9 10 6 14 5 20c10 1 16-6 16-17z",
   yarn: "M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM4.6 7.2 14 14.8l-1.2 1.4L3.6 8.8zm2.4-2.8 9.4 7.6-1.2 1.4L5.8 5.8zM15 18c3 .6 5.2 1.4 7 3l-1.4 1.6c-1.6-1.4-3.6-2.2-6.2-2.6z",
   wind: "M2 6h12a3 3 0 1 0-3-3h2a1 1 0 1 1 1 1H2zm0 5h17a3 3 0 1 0-3-3h2a1 1 0 1 1 1 1H2zm0 5h12a3 3 0 1 1-3 3h2a1 1 0 1 0 1-1H2z",
 };
@@ -57,7 +62,7 @@ const names = {
   "⏸": "pause",
   "🐱": "cat",
   "😻": "cat",
-  "🐾": "cat",
+  "🐾": "paw",
   "🏎": "kart",
   "⌨": "keyboard",
   "🕹": "pad",
@@ -104,7 +109,7 @@ const names = {
   "💧": "world",
   "🌊": "world",
   "🌧": "world",
-  "🌿": "world",
+  "🌿": "leaf",
   "🎖": "trophy",
   "🎁": "collection",
   "↩": "back",
@@ -147,7 +152,10 @@ const names = {
 };
 const symbols = /(?:\p{Extended_Pictographic}\uFE0F?(?:\u200D\p{Extended_Pictographic}\uFE0F?)*|[▶⏻✓✦])/gu;
 export function installMenuIcons() {
-  const roots = [...document.querySelectorAll("#menu,.overlay,#menu-chrome")];
+  // The HUD and the pickup pill take the same pictograms as the menus (the
+  // action fan's paw, hop, shield, boost; the power-up pills; the pause
+  // button), so the race never shows a platform emoji either.
+  const roots = [...document.querySelectorAll("#menu,.overlay,#menu-chrome,#hud,#pickup-toast")];
   const decorate = (root) => {
     const walk = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const texts = [];

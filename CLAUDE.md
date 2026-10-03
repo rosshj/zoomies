@@ -322,3 +322,31 @@ warnings stay over the view). The camera widens (`stageState.fovScale`,
   home-screen app to pass the install gate) asserts the frame, the panel
   layout, pause/resume, rotation both ways and the setting; it screenshots
   to `/tmp/portrait-*.png` — look at them.
+
+## The HUD wears the menus' clothes
+
+The race HUD (`#hud` in `index.html`, the HUD block of `styles.css`) uses the
+home screen's surface — `--hud-surface` (the dark plum at ~72% + backdrop
+blur), soft corners, NO borders — cream text, lilac pictograms, gold for the
+lap. The action fan keeps a colour per action (hop blue, shoot orange,
+shield sky, boost green, milk blue) so the thumb finds them at a glance;
+they are flat translucent discs with a top highlight, no rim. The throttle
+is a plain pill with a cream thumb that input.js tints green / red as it is
+pushed — no labels, no arrows. The minimap has no panel: `drawMinimap`
+strokes a dark halo under the cream outline instead.
+
+- Pictograms come from `src/menu-icons.js` like everywhere else:
+  `installMenuIcons` decorates `#hud` and `#pickup-toast` too, so an emoji
+  in HUD markup (🐾 ⬆ 🛡 💨 🌿 🧶 ❤ ⏸) becomes its icon (`paw`, `up`,
+  `shield`, `wind`, `leaf`, `yarn`, `heart`, `pause`), and a `data-menu-icon`
+  span gets one inserted (the `#info` rows). Never style the emoji glyph.
+  The milk jug is two-tone (milk below, headspace above) and is inlined as
+  `.jug` SVG markup where it appears; the single-tone `milk` path is the
+  same silhouette for the menus.
+- Power-up pills are a WRAPPING ROW top-left (six stacked would reach the
+  throttle, which starts at 24% in landscape); the handheld frame stacks a
+  held jug above the fan (`#stage.handheld #btn-milk`) because its
+  landscape slot sits on the minimap there.
+- The design canvas the user signed off is the reference:
+  https://claude.ai/artifact/EvyUi27iELGrFaLJxK8AdP (landscape, upright, and
+  every control state).

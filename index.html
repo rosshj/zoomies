@@ -142,20 +142,21 @@
 
   <!-- ===== HUD ===== -->
   <div id="hud" class="hidden">
-    <!-- Pause (top-left) -->
-    <button id="btn-pause">⏸</button>
+    <!-- Pause (top right, under the race info) -->
+    <button id="btn-pause" aria-label="Pause">⏸</button>
 
     <!-- FPS counter (opt-in via Settings) -->
     <div id="fps-counter" class="hidden">– FPS</div>
     <!-- Tilt debug readout (opt-in via Settings) -->
     <div id="tilt-counter" class="hidden">tilt –</div>
 
-    <!-- Top-right race info -->
+    <!-- Top-right race info: lap · place / speed · clock, each with a menu
+         pictogram (installMenuIcons fills the data-menu-icon spans). -->
     <div id="info">
-      <div id="lap">Lap 1/3</div>
-      <div id="place">1st / 6</div>
-      <div id="speed">0 km/h</div>
-      <div id="timer">0:00.0</div>
+      <div class="info-row"><span class="info-ico" data-menu-icon="race"></span><div id="lap">Lap 1/3</div></div>
+      <div class="info-row"><span class="info-ico" data-menu-icon="trophy"></span><div id="place">1st / 6</div></div>
+      <div class="info-row"><span class="info-ico" data-menu-icon="gauge"></span><div id="speed">0 km/h</div></div>
+      <div class="info-row"><span class="info-ico" data-menu-icon="time"></span><div id="timer">0:00.0</div></div>
       <!-- Time-trial only: personal-best target + live delta vs that PB -->
       <div id="tt-best" class="hidden">PB —</div>
       <div id="tt-delta" class="hidden"></div>
@@ -164,20 +165,19 @@
     <!-- Left throttle slider (touch anywhere in this strip) -->
     <div id="throttle">
       <div id="throttle-track">
-        <span class="throttle-label throttle-up">▲ GAS</span>
         <div id="throttle-thumb"></div>
-        <span class="throttle-label throttle-down">▼ BRAKE / REV</span>
       </div>
     </div>
 
     <!-- Bottom-right action buttons -->
     <div id="action-buttons">
-      <button id="btn-shield" class="action-btn">🛡️</button>
-      <button id="btn-boost" class="action-btn"><span id="boost-fill"></span><span class="btn-emoji">💨</span></button>
-      <button id="btn-shoot" class="action-btn">🐾</button>
-      <button id="btn-jump" class="action-btn">⬆</button>
-      <!-- Appears only while holding a milk bottle: tap to spill it behind you. -->
-      <button id="btn-milk" class="action-btn hidden">🥛</button>
+      <button id="btn-shield" class="action-btn" aria-label="Shield">🛡️</button>
+      <button id="btn-boost" class="action-btn" aria-label="Boost"><span id="boost-fill"></span><span class="btn-emoji">💨</span></button>
+      <button id="btn-shoot" class="action-btn" aria-label="Shoot hairball">🐾</button>
+      <button id="btn-jump" class="action-btn" aria-label="Hop and drift">⬆</button>
+      <!-- Appears only while holding a milk jug: tap to spill it behind you.
+           The jug is painted in two tones (milk below, headspace above). -->
+      <button id="btn-milk" class="action-btn hidden" aria-label="Spill milk"><svg class="ui-icon jug" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="jug-top" d="M9 1h6a1 1 0 0 1 1 1v1.5h-1.5V6l4 3v11a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2V9l4-3V3.5H8V2a1 1 0 0 1 1-1z"/><path class="jug-milk" d="M5.5 10.5h13V20a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2z"/></svg></button>
     </div>
 
     <!-- Active power-ups (top-left): a pill per live item-box power-up, with its
@@ -187,7 +187,7 @@
       <div id="pu-tri" class="powerup hidden"><span class="pu-ico">🐾</span><span class="pu-val"></span></div>
       <div id="pu-catnip" class="powerup hidden"><span class="pu-ico">🌿</span><span class="pu-val"></span></div>
       <div id="pu-yarn" class="powerup hidden"><span class="pu-ico">🧶</span><span class="pu-val"></span></div>
-      <div id="pu-milk" class="powerup hidden"><span class="pu-ico">🥛</span><span class="pu-val"></span></div>
+      <div id="pu-milk" class="powerup hidden"><span class="pu-ico"><svg class="ui-icon jug" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path class="jug-top" d="M9 1h6a1 1 0 0 1 1 1v1.5h-1.5V6l4 3v11a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2V9l4-3V3.5H8V2a1 1 0 0 1 1-1z"/><path class="jug-milk" d="M5.5 10.5h13V20a2 2 0 0 1-2 2H7.5a2 2 0 0 1-2-2z"/></svg></span><span class="pu-val"></span></div>
       <!-- Nine Lives: banked hearts — the next wipeout is downgraded to a wobble. -->
       <div id="pu-lives" class="powerup hidden"><span class="pu-ico">❤️</span><span class="pu-val"></span></div>
     </div>
