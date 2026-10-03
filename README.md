@@ -80,9 +80,11 @@ data — accept it, and hold the phone level to set the neutral steering point.
 Held sideways, the game is a landscape stage. Held upright it is a handheld:
 the road fills the top of the screen and the HUD and touch controls sit on a
 panel below (tilt still steers — the lean is read on the upright axis). The
-hold is read from the phone's own sensors and latched for the race, so a hard
-steering lean never flips the layout mid-corner, and **Settings → Controls →
-Portrait racing** turns the upright frame off for a landscape-only game.
+hold is read from the phone's own sensors: only a real turn of the phone (not
+a steering lean, however hard) switches the frame, mid-race included, and the
+tilt re-centres on the new grip once your hand holds still. **Settings →
+Controls → Portrait racing** turns the upright frame off for a landscape-only
+game.
 
 Tilting hard to steer is the same motion the OS uses to decide orientation, and
 iOS gives web pages no reliable way to lock it. So instead of fighting it, the

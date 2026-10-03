@@ -13,6 +13,18 @@
 // Seconds a steering KEY takes to ramp from 0 to full lock (see update()).
 const KB_STEER_RAMP = 0.12;
 
+// Hold detection (see _onMotion): a TURN is the other axis within ~22° of
+// straight down (tan 68° ≈ 2.5) for this many consecutive samples (~0.35s at
+// the 60Hz devicemotion rate).
+const TURN_RATIO = 2.5;
+const TURN_N = 20;
+// Re-centring waits for a steady grip: |Δgravity| under STEADY_DG (m/s², per
+// sample — hand tremor is ~0.1, a deliberate turn far more) for STEADY_N
+// samples (~a third of a second), or SETTLE_MAX samples (~1.5s) at most.
+const STEADY_DG = 0.3;
+const STEADY_N = 20;
+const SETTLE_MAX = 90;
+
 export class Input {
   constructor(opts = {}) {
     this._keyboard = opts.keyboard !== false; // read WASD/arrows/etc.
@@ -42,12 +54,20 @@ export class Input {
     // while steering is off, so menus can follow the hand rather than a
     // viewport that iOS leaves in portrait under the system rotation lock.
     this.heldLandscape = null;
+    this._turnN = 0; // consecutive samples saying the phone has TURNED (see _onMotion)
     // Which device axis is the steering roll. false = the landscape grip (the
     // phone's long edge is the wheel's axle, roll shows up on device y); true =
     // the handheld / portrait frame (upright phone, roll shows up on device x).
-    // Set by the stage layout, not guessed from the sensors: the hold is
-    // latched for the race so a hard lean never flips the axis mid-corner.
+    // Set by the stage layout (setTiltFrame) together with the steering sign
+    // for the frame it draws, so the two can never disagree.
     this.tiltPortrait = false;
+    this._frameSign = null; // steering sign from the stage; null = derive from the screen angle
+    // Steady-grip gate for re-centring: after calibrate() the neutral is only
+    // captured once the gravity vector has held still for STEADY_N samples
+    // (or SETTLE_MAX samples have passed — a moving bus never settles).
+    this._gPrev = null;
+    this._steadyN = 0;
+    this._settleN = 0;
     this._motionBound = false; // devicemotion listener attached (idempotent guard)
     this._keys = {};
     this._keyboardSteering = false;
@@ -136,25 +156,37 @@ export class Input {
 
   calibrate() {
     this._steerTarget = this.steer = 0;
-    this._neutralRoll = null; // next motion events re-capture neutral
+    this._neutralRoll = null; // next motion events re-capture neutral — once the grip is steady
     this._neutralSamples = 0;
     this._calNeutral = 0; // re-anchored once the new neutral settles
+    this._gPrev = null;
+    this._steadyN = 0;
+    this._settleN = 0;
+    if (this._frameSign !== null) {
+      this._sign = this._frameSign;
+      return;
+    }
+    // No stage frame given (the node harness): derive the sign from the screen
+    // angle. Upright (portrait frame): screen-left is device -x, so a left
+    // lean drops g.x; the sign makes that steer +, and flips when the phone is
+    // held upside down. Landscape: the long edge decides (90 vs 270).
     const angle = (screen.orientation && screen.orientation.angle) ?? window.orientation ?? 90;
-    // Upright (portrait frame): screen-left is device -x, so a left lean drops
-    // g.x; the sign below makes that steer +, and flips when the phone is held
-    // upside down. Landscape: the long edge decides (90 vs 270).
     if (this.tiltPortrait) this._sign = angle === 180 ? -1 : 1;
     else this._sign = angle === 270 || angle === -90 ? 1 : -1;
   }
 
-  // The stage layout tells the tilt which way the phone is held. Switching
-  // while steering is live re-centres on the new axis right away (a race
-  // re-laid out under a rotation lock change), otherwise the next calibrate
-  // (race start / resume) picks it up.
-  setTiltPortrait(portrait) {
+  // The stage layout tells the tilt which axis the lean is on (upright =
+  // device x) and which way is left for the frame it draws — the stage knows
+  // its own rotation, which is more reliable than reading the screen angle
+  // mid-rotation. A change while steering is live re-centres on the new axis
+  // right away (the grip settles first — see _onMotion); otherwise the next
+  // calibrate (race start / resume) picks it up.
+  setTiltFrame(portrait, sign) {
     portrait = !!portrait;
-    if (this.tiltPortrait === portrait) return;
+    sign = sign === undefined || sign === null ? null : sign < 0 ? -1 : 1;
+    if (this.tiltPortrait === portrait && this._frameSign === sign) return;
     this.tiltPortrait = portrait;
+    this._frameSign = sign;
     if (this._motionActive) this.calibrate();
   }
 
@@ -163,14 +195,32 @@ export class Input {
     if (!g || g.x === null || g.y === null) return;
     // Device axes don't rotate with the screen, so the larger in-plane gravity
     // component says which way the phone is held. A flat phone keeps the last
-    // answer; the 1.3× margin stops the answer flapping around 45°.
+    // answer; the 1.3× margin stops the answer flapping around 45°. Once a
+    // hold is known, CHANGING it takes a TURN, not a lean: the other axis has
+    // to dominate by TURN_RATIO (within ~22° of straight down) for TURN_N
+    // samples in a row (~a third of a second). Steering leans top out around
+    // 25°, so a hard corner can never flip the frame; turning the phone
+    // sideways or upright does, after a beat.
     const ax = Math.abs(g.x),
       ay = Math.abs(g.y);
-    if (ax > ay * 1.3 && ax > 2.5) this.heldLandscape = true;
-    else if (ay > ax * 1.3 && ay > 2.5) this.heldLandscape = false;
+    const soft = ax > ay * 1.3 && ax > 2.5 ? true : ay > ax * 1.3 && ay > 2.5 ? false : null;
+    if (this.heldLandscape === null) {
+      if (soft !== null) this.heldLandscape = soft;
+    } else if (soft !== null && soft !== this.heldLandscape) {
+      const turned = soft ? ax > ay * TURN_RATIO : ay > ax * TURN_RATIO;
+      this._turnN = turned ? this._turnN + 1 : 0;
+      if (this._turnN >= TURN_N) {
+        this.heldLandscape = soft;
+        this._turnN = 0;
+      }
+    } else this._turnN = 0;
     if (!this._motionActive) return;
     this._haveMotion = true;
     this._g = { x: g.x, y: g.y, z: g.z ?? 0 };
+    // Grip steadiness: how much the gravity vector moved since the last sample.
+    const gp = this._gPrev;
+    const dg = gp ? Math.hypot(g.x - gp.x, g.y - gp.y, (g.z ?? 0) - gp.z) : Infinity;
+    this._gPrev = this._g;
 
     // True left/right roll of the phone, measured against the FULL down vector
     // (hypot of the two non-lateral axes), so it's the actual tilt angle in
@@ -196,6 +246,14 @@ export class Input {
     };
 
     if (this._neutralRoll === null) {
+      // Re-centring: wait for the hand to hold still (the phone was just
+      // turned, or the thumb is coming back from Resume) before taking the
+      // grip as "level" — the old immediate capture froze whatever tilt the
+      // phone had in that first tenth of a second into the whole race. Steering
+      // stays neutral meanwhile. SETTLE_MAX caps the wait for a jolting ride.
+      this._steadyN = dg < STEADY_DG ? this._steadyN + 1 : 0;
+      this._settleN++;
+      if (this._steadyN < STEADY_N && this._settleN < SETTLE_MAX) return;
       this._neutralRoll = roll;
       this._neutralSamples = 1;
       return;

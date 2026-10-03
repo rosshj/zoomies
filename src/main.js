@@ -1572,23 +1572,13 @@ try {
 
 // How the phone is held, as the stage sees it: the sensors where they have
 // spoken (input.heldLandscape — with the system rotation lock on, iOS keeps the
-// viewport portrait however the phone is turned), else the viewport. During a
-// race the answer is LATCHED: tilt steering leans the phone through the very
-// angles the hold detector reads, and a frame that flipped mid-corner would
-// re-size the renderer (a hitch) and swap the tilt axis under the player. On a
-// touch device the latch waits for the sensors' first word (motion permission
-// is asked for at START, so the first race would otherwise latch the viewport's
-// guess — wrong under a rotation lock); the first reading lands in the
-// countdown, before any steering lean. Pause, finish and the menus read live.
-let _raceHold = null;
+// viewport portrait however the phone is turned), else the viewport. The
+// sensor reading only changes on a TURN of the phone, never a steering lean
+// (input.js holds it through anything short of ~68° sustained), so the stage
+// can follow it live, mid-race included: turn the phone upright and the race
+// becomes the handheld frame, with the tilt re-centred on the new grip.
 function heldLandscapeNow(portraitViewport) {
-  const live = input.heldLandscape ?? !portraitViewport;
-  if (state === State.COUNTDOWN || state === State.RACING) {
-    if (_raceHold === null && (input.heldLandscape !== null || !isTouch)) _raceHold = live;
-    return _raceHold ?? live;
-  }
-  _raceHold = null;
-  return live;
+  return input.heldLandscape ?? !portraitViewport;
 }
 // The handheld frame applies to a race (and its pause) held upright, solo only:
 // the split layouts are rows/quadrants of a landscape stage.
@@ -1634,7 +1624,13 @@ function layoutStage() {
   stage.classList.toggle("menu-narrow", W <= 480);
   stage.classList.toggle("handheld", handheld);
   gameEl.style.height = handheld ? `${VH}px` : "";
-  input.setTiltPortrait(handheld);
+  // The tilt axis and the steering sign for the frame as DRAWN: a counter-
+  // rotated stage reads like the matching landscape angle (rot 90 ≙ angle 90),
+  // an unrotated landscape viewport goes by the screen angle (270 is the
+  // other long edge down), upright is + unless the phone is upside down.
+  const tiltSign = rot === 90 ? -1 : rot === 270 ? 1 : handheld ? (a === 180 ? -1 : 1) : a === 270 ? 1 : -1;
+  input.setTiltFrame(handheld, tiltSign);
+  window.__zoomies.tiltFrame = () => `${handheld ? "portrait" : "landscape"}:${tiltSign > 0 ? "+" : "-"}`; // checks
 
   stage.style.width = W + "px";
   stage.style.height = H + "px";
@@ -1678,8 +1674,6 @@ function layoutStage() {
 // viewport.
 function stageFrameKey() {
   const menuLayout = state === State.MENU || state === State.PAUSED || state === State.FINISHED;
-  // The hold as the stage would read it now (latched through a race, so a
-  // steering lean never re-lays the stage out — see heldLandscapeNow).
   const held = heldLandscapeNow(window.innerHeight > window.innerWidth);
   return `${menuLayout}|${state === State.PAUSED}|${held}|${portraitRace}|${splitActive}`;
 }

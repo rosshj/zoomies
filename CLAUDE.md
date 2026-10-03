@@ -297,14 +297,22 @@ steer bar bottom; pause button, power-up pills and the rear-threat/yarn
 warnings stay over the view). The camera widens (`stageState.fovScale`,
 ~75° across whatever the aspect) so the view is not a keyhole.
 
-- The hold is LATCHED through COUNTDOWN/RACING (`heldLandscapeNow`): tilt
-  steering leans the phone through the angles the hold detector reads, and
-  a frame flip mid-corner re-sizes the renderer (a hitch) and swaps the tilt
-  axis. Pause/finish/menus read it live; the OS rotating the viewport still
-  re-lays the stage out mid-race (resize listener).
-- Tilt steering in the handheld frame reads device X (`input.tiltPortrait`,
-  set by `layoutStage`), same gain and polarity as the landscape grip —
-  `check:tilt-menus` asserts both.
+- The hold follows the sensors LIVE, mid-race included — never latch it (a
+  latch ignored a real turn of the phone: the race stayed sideways reading
+  the sideways tilt axis while the player held it upright, which read as
+  the centre gone haywire). What keeps a steering lean from flipping the
+  frame is the detector in `input.js`: a change needs the other axis near
+  straight down (`TURN_RATIO` 2.5 ≈ 68°) for `TURN_N` samples in a row.
+- Re-centring (`calibrate`, on start / "1" / resume / a frame change) waits
+  for a STEADY grip (`STEADY_N` samples with |Δg| < `STEADY_DG`, capped at
+  `SETTLE_MAX`) before taking the neutral; steering stays neutral until
+  then. An immediate capture froze whatever tilt the hand had in that first
+  tenth of a second into the whole race.
+- `layoutStage` hands `input.setTiltFrame(portrait, sign)` the tilt axis AND
+  the steering sign for the frame as drawn (rot 90 ≙ angle 90); input.js
+  never reads the screen angle while the stage is around (it lags a
+  rotation on iOS). `check:tilt-menus` asserts the gain, the sign, the
+  lean-vs-turn hold and the steady centring.
 - Sizes on the panel come off the stage WIDTH (`--stage-vw`), never a `%` in
   `height` (that reads the stage height — the minimap came out 90×124).
 - Nothing locks the orientation any more (manifest `any`, no native lock at
