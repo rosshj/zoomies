@@ -66,6 +66,13 @@ try {
   await race();
   assert.ok(await p.evaluate(() => window.__zoomies.debugFinishSequence()), "finish sequence did not start");
   await p.waitForFunction(() => !!window.__zoomies.podium, null, { timeout: 30000 });
+  // The banner runs on the wall clock, so read it the moment the podium is up.
+  const bannerUp = await p.evaluate(() => ({
+    cls: document.getElementById("celebrate-banner").className,
+    text: document.querySelector("#celebrate-banner .celebrate-banner-title").textContent,
+  }));
+  assert.match(bannerUp.cls, /is-in/, "Champion banner did not slam in");
+  assert.equal(bannerUp.text, "Champion!");
   // Sim time runs behind wall time under a software renderer (frame deltas are
   // clamped), so wait on the ceremony's own state, never a fixed sleep.
   await p.waitForFunction(() => window.__zoomies.podium?.confetti.active, null, { timeout: 90000 });
@@ -73,15 +80,11 @@ try {
     const P = window.__zoomies.podium;
     return {
       parked: P.parked.size,
-      banner: document.getElementById("celebrate-banner").className,
-      bannerText: document.querySelector("#celebrate-banner .celebrate-banner-title").textContent,
       confetti: P.confetti.active,
       results: document.getElementById("results").classList.contains("hidden"),
     };
   });
   assert.equal(podium.parked, 3, "Three karts should stand on the podium");
-  assert.match(podium.banner, /is-in/, "Champion banner did not slam in");
-  assert.equal(podium.bannerText, "Champion!");
   assert.ok(podium.confetti, "Cannons did not fire");
   assert.ok(podium.results, "Results came up before the ceremony");
   await shot("podium-ceremony");
