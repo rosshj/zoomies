@@ -337,11 +337,11 @@ export function planBays(track, config) {
         b.kind || "stall",
       );
   } else if (config?.bays === "tour") {
-    // The biome tour: a bay every 72u, sides alternating, a little deeper
+    // The biome tour: a bay every 78u, sides alternating, a little deeper
     // every third one so the larger scenes get a spot.
     let k = 0;
-    for (let u = 30; u < track.length - 76; u += 72, k++)
-      add(Math.round(u * perU), k % 2, 66, k % 3 === 2 ? 6.5 : 5, "stall", 2);
+    for (let u = 30; u < track.length - 82; u += 78, k++)
+      add(Math.round(u * perU), k % 2, 72, k % 3 === 2 ? 6.5 : 5, "stall", 2);
   } else if (config?.bays !== false) {
     // A race: the roadside's town zones are where the buildings are (six
     // angular zones, every other one a town) — one bay in each, placed in the
@@ -362,7 +362,7 @@ export function planBays(track, config) {
       for (const [lo, hi] of halves)
         for (let attempt = 0; attempt < 5; attempt++) {
           const t = (z + lo + rng() * (hi - lo)) / zones;
-          if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 66 + rng() * 24, rng() < 0.4 ? 6.5 : 5, "town")) break;
+          if (add(Math.round(t * N), rng() < 0.5 ? 0 : 1, 72 + rng() * 24, rng() < 0.4 ? 6.5 : 5, "town")) break;
         }
     if (rng() < 0.5)
       for (let attempt = 0; attempt < 4; attempt++) {

@@ -353,7 +353,7 @@ function tourStations(track, layout, targets, biome) {
   targets.push({ label: `🏞 ${biome}`, t: 0.01, lateral: 0, biome, header: true });
   const recipes = BIOME_SCENES[biome] || [];
   const props = ROAD_PROP_BIOMES[biome] || [];
-  // Scenes sit in the BAYS the track widened (every 72u, sides alternating):
+  // Scenes sit in the BAYS the track widened (every 78u, sides alternating):
   // on the apron, out of the lane, like a stall on a real road. The recipes
   // cycle; the deeper bay (every third) is offered the large size. props.js
   // fits each one to its bay (`sceneInBay`), shrinking it if it has to, so
@@ -368,15 +368,27 @@ function tourStations(track, layout, targets, biome) {
     targets.push({ label: `${biome} · ${BREAKABLES[kind].name} (≤${SIZE_LABELS[size]})`, t: bay.t, lateral, biome });
     n++;
   }
-  // Road props in the gaps between scenes, a pair per gap hugging BOTH kerbs
-  // (10-12u out: the middle of the road stays clear).
+  // Road props in small GROUPS at the kerb, one group in each gap between
+  // bays on the opposite side to the bay ahead (a tyre, a cone and a box
+  // left together, not one object every few metres): three props a group,
+  // 10.5-12.5u out so the middle of the road stays clear.
   let k = 0;
-  for (let u = 10; u < L - 20; u += 40) {
+  const bays = track.bays || [];
+  const gaps = bays.length
+    ? bays.map((b, i) => {
+        const next = bays[(i + 1) % bays.length];
+        const u0 = b.t * L,
+          u1 = next.t * L + (i + 1 === bays.length ? L : 0);
+        return { u: (u0 + u1) / 2, side: next.side === 0 ? -1 : 1 };
+      })
+    : Array.from({ length: Math.floor(L / 72) }, (_, i) => ({ u: 36 + i * 72, side: i % 2 ? 1 : -1 }));
+  for (const g of gaps) {
+    const u = g.u % L;
     if (blocked(u) || !props.length) continue;
-    for (const side of [-1, 1]) {
+    for (let j = 0; j < 3; j++) {
       const kind = props[k % props.length];
-      const lateral = side * (10 + ((k * 13) % 5) * 0.5);
-      const w = world(u + (side > 0 ? 6 : -6), lateral);
+      const lateral = g.side * (10.5 + ((k * 13) % 5) * 0.5);
+      const w = world(u + (j - 1) * 2.6 + ((k * 7) % 3) * 0.4, lateral);
       layout.props.push({ kind, x: w.x, z: w.z, yaw: (k * 1.7) % 6.28 });
       k++;
     }

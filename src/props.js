@@ -11,7 +11,7 @@ import { makeRng } from "./rng.js";
 import { mergeMeshes } from "./models.js";
 import { ROAD_PROPS, ROAD_PROP_BIOMES, makeRoadProp, roadPropArt } from "./road-prop-assets.js";
 import { PropDebris } from "./prop-debris.js";
-import { makeBreakable, BIOME_SCENES } from "./breakables.js";
+import { makeBreakable, BIOME_SCENES, BREAKABLES } from "./breakables.js";
 import { windStrengthAt, uWindDir } from "./wind.js";
 import { shadowTexture } from "./kart.js"; // same blob the karts project, so shadows match
 
@@ -543,7 +543,7 @@ function build(scene, track, opts) {
   // back a step off the widened edge, the way a stall backs onto the wall.
   function sceneInBay(kind, bay, size, rnd) {
     const plateau = bay.plateau ?? Math.max(8, bay.len - 2 * Math.max(24, bay.len * 0.4));
-    const fits = (b) => b.across <= bay.depth + 1.6 && b.along <= plateau + 4;
+    const fits = (b) => b.across <= bay.depth + 2.0 && b.along <= plateau + 4;
     let sz = Math.max(0, Math.min(2, size | 0));
     let built = makeBreakable(kind, rnd, sz);
     while (sz > 0 && !fits(built)) built = makeBreakable(kind, rnd, --sz);
@@ -555,15 +555,17 @@ function build(scene, track, opts) {
     const sign = bay.side === 0 ? 1 : -1;
     const lat = Math.max(
       track.halfWidth + bay.depth - 0.7 - built.across / 2, // back to the widened edge
-      track.halfWidth - 1.6 + built.across / 2, // never more than a kerb into the lane
+      track.halfWidth - 2.0 + built.across / 2, // never more than a kerb's worth into the lane
     );
+    // Scene +z is its BACK: on side 1 the yaw turns the scene round so the
+    // chalkboards and counters face the road there too.
     return {
       built,
       size: sz,
       x: p.x + side.x * lat * sign,
       z: p.z + side.z * lat * sign,
       y: p.y,
-      yaw: Math.atan2(-t.z, t.x),
+      yaw: Math.atan2(-t.z, t.x) + (sign < 0 ? Math.PI : 0),
     };
   }
 
@@ -737,9 +739,11 @@ function build(scene, track, opts) {
       if (sceneAt.some((j) => loopDist(i, j) < Math.round((60 * N) / track.length))) continue;
       const p = track._pts[i];
       const biome = biomeAt(p.x, p.z, p.y);
-      const recipes = (BIOME_SCENES[biome] || BIOME_SCENES.city).filter((r) =>
-        /Stand|Stall|Barrow|stack|Pile/i.test(r),
-      );
+      // Only the places that make sense alone in the country (a stand, a
+      // barrow); a stub track with no bays takes any of the biome's places.
+      const all = BIOME_SCENES[biome] || BIOME_SCENES.city;
+      const rural = all.filter((r) => BREAKABLES[r]?.rural || /Stand|Stall|Barrow|stack|Pile/i.test(r));
+      const recipes = rural.length || planned ? rural : all;
       if (!recipes.length) continue;
       const built = makeBreakable(recipes[Math.floor(rand() * recipes.length) % recipes.length], rand, 0);
       const lat = track.halfWidth - built.radius - 1.4;
@@ -936,22 +940,20 @@ function build(scene, track, opts) {
       _kRel.z += Math.sign(lz) * 0.35;
       _kRel.normalize();
     }
-    // The nose and tail are wedges too: a piece the kart is driving INTO gets
-    // shed to the side instead of being carried along in front like a bow
-    // wave (it would be re-hit every frame, spinning, until the kart turned).
+    // The nose is a BUMPER, not a flat wall: its contact normal leans to the
+    // side the piece is on (more the further off-centre), and a little up
+    // (the bonnet slope). A piece the kart drives into is then deflected the
+    // way a real bumper deflects it — and a piece being bulldozed ahead at
+    // the kart's own pace slides off the nose on its own, because the drag
+    // that keeps pressing it into the bumper has a sideways share every
+    // frame. No timer, no kick: the earlier "shed after 0.35s" read as the
+    // piece jumping out sideways for no visible reason.
     const ahead = _kRel.z * Math.sign(k.speed || 1) > 0.6;
     if (ahead && Math.abs(k.speed) > 3) {
-      _kRel.x += sideSign * 0.8;
+      _kRel.x += Math.max(-1, Math.min(1, lx / KART_HX)) * 0.55 + sideSign * 0.2;
+      if (ly < KART_H * 0.8) _kRel.y += 0.3;
       _kRel.normalize();
     }
-    // Contact timer: a piece that has stayed against the kart for 0.35s
-    // (rolling along the flank, bobbing ahead of the bonnet — that contact is
-    // intermittent, a bounce ahead and a catch-up, so gaps up to half a second
-    // still count as the same hold) is kicked clear sideways, with a little
-    // lift so it clears the wheels.
-    if (clock - (pr.kartTouch || -1) > 0.5) pr.kartSince = clock;
-    pr.kartTouch = clock;
-    const held = clock - pr.kartSince;
     // Back to world: n = right*x + up*y + fwd*z.
     _kN.set(_kRight.x * _kRel.x + _kFwd.x * _kRel.z, _kRel.y, _kRight.z * _kRel.x + _kFwd.z * _kRel.z);
     const push = er + depth - (d < 1e-4 ? 0 : d);
@@ -959,16 +961,6 @@ function build(scene, track, opts) {
     _kVel.copy(_kFwd).multiplyScalar(k.speed);
     _kVel.y = k.vy || 0;
     _kVr.copy(pr.vel).sub(_kVel);
-    // A piece in the kart's path leaves it SIDEWAYS: whatever the bounce
-    // gives, it is moving outward relative to the kart at 4u/s or more, so
-    // it clears the nose instead of bobbing ahead of it as a bow wave.
-    if (ahead) {
-      const vl = _kVr.dot(_kRight) * sideSign;
-      if (vl < 4) {
-        pr.vel.addScaledVector(_kRight, sideSign * (4 - vl));
-        _kVr.copy(pr.vel).sub(_kVel);
-      }
-    }
     const vn = _kVr.dot(_kN);
     if (vn < 0) {
       const rest = pr.profile?.restitution ?? 0.26;
@@ -988,14 +980,6 @@ function build(scene, track, opts) {
       if (-vn > 3) impact(pr, -vn * 2.5);
     }
     if (onTop) pr.vel.addScaledVector(_kN, 1.5 * dt * 60); // a steady nudge off the roof
-    if (held > 0.35) {
-      // Kick clear: sideways relative to the kart, carrying the kart's own
-      // speed along its heading so it comes off the flank, not back into it.
-      pr.vel.set(_kFwd.x * k.speed * 0.6, Math.max(pr.vel.y, 2.5), _kFwd.z * k.speed * 0.6);
-      pr.vel.addScaledVector(_kRight, sideSign * (6 + er * 3));
-      pr.angVel.multiplyScalar(0.3);
-      pr.kartSince = clock; // restart the timer: one kick per hold
-    }
     pr.asleep = false;
     pr.settle = false;
     pr.quiet = 0; // never settle while touching a kart (a piece on the roof would snap to the road)
@@ -1115,31 +1099,15 @@ function build(scene, track, opts) {
         const launch = (16 + Math.min(mk.speed, 150) * 0.95) * (pr.profile?.launch ?? 1);
         const lift = (7 + Math.min(mk.speed, 120) * 0.06) * (pr.profile?.lift ?? 1);
         const sm = 11 + Math.random() * 10; // tumble end-over-end about the across axis
-        if (pr.asleep) {
-          pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
-          pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
-        } else {
-          // Already tumbling (a piece coming down beside the kart, a crate it
-          // is pushing along): a SHOVE on top of its motion, not a re-launch —
-          // replacing the velocity flipped falling pieces straight back up.
-          // The shove goes OUT OF THE KART'S PATH, forward and to whichever
-          // side the piece already lies on: shoved straight ahead it travelled
-          // slower than the kart, got caught again 0.4s later, and was hopped
-          // down the road in front of the bonnet for as long as the throttle
-          // was held (the "stuck riding along" crate). A piece already
-          // outrunning the kart is left alone.
-          const along = pr.vel.x * mk.dx + pr.vel.z * mk.dz;
-          if (along > mk.speed) continue;
-          const side =
-            Math.sign((pr.pos.x - mk.bx) * mk.dz - (pr.pos.z - mk.bz) * mk.dx) || (Math.random() < 0.5 ? -1 : 1);
-          const ox = mk.dx * 0.45 + mk.dz * side * 0.9,
-            oz = mk.dz * 0.45 - mk.dx * side * 0.9;
-          pr.vel.x = pr.vel.x * 0.35 + ox * launch * 0.55;
-          pr.vel.z = pr.vel.z * 0.35 + oz * launch * 0.55;
-          pr.vel.y = Math.max(pr.vel.y * 0.35, 0) + lift * 0.3;
-          pr.angVel.x = pr.angVel.x * 0.5 - oz * sm * 0.5;
-          pr.angVel.z = pr.angVel.z * 0.5 + ox * sm * 0.5;
-        }
+        // The sweep is the arcade "hit" for a piece AT REST (asleep, or
+        // tumbling so slowly it has as good as stopped). A piece already in
+        // motion is not swept at all: the kart's body (`collideKart`) handles
+        // it as a real contact, so a crate the kart catches up with is
+        // bumped, deflected and left behind — never shoved ahead again by an
+        // invisible second strike (that read as it suddenly jumping sideways).
+        if (!pr.asleep && pr.vel.lengthSq() > 9) continue;
+        pr.vel.set(mk.dx * launch + (Math.random() - 0.5) * 3, lift, mk.dz * launch + (Math.random() - 0.5) * 3);
+        pr.angVel.set(-mk.dz * sm, (Math.random() - 0.5) * 8, mk.dx * sm);
         pr.asleep = false;
         pr.settle = false;
         pr.quiet = 0;

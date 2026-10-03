@@ -212,16 +212,31 @@ bays. Bays are planned in the roadside builder's TOWN zones (every other of
 six angular zones — where the houses are) plus the odd rural one, on their
 own rng stream.
 
+- A bay hosts a PLACE, not an object: `BIOME_SCENES` lists `cluster`
+  recipes (`PLACE(...)` in breakables.js — a greengrocer's front, a café
+  terrace, a fish dock, a garage yard) that compose the single recipes with
+  DRESSING (chalkboard out front, barrel at the back, planter, bench, sacks,
+  a wagon wheel LEANING on the end — never standing dead on edge). Parts lie
+  along the kerb in order with a hand's gap and a little stagger; `at:
+  frontLeft/frontRight/sideRight` hangs a part off the lead. Scene +z is the
+  BACK (barrier side); props.js turns side-1 scenes round so counters face
+  the road on both sides. Stacks are never perfect: pyramids sit skew with
+  one rolled off, columns lean a touch per course with the last one fallen
+  beside them. The single recipes stay in `BREAKABLES` for the viewer and as
+  parts.
 - Scenes are fitted to a bay by FOOTPRINT (`sceneInBay` in props.js):
-  `makeBreakable` reports `along` (scene x, down the road) and `across`
-  (scene z); the size shrinks until `across <= depth + 1.6` and `along <=
-  plateau + 4`, and the scene stands with its back a step off the widened
-  edge, never more than a kerb (1.6u) proud of the old kerb line. The
-  playground's layout hands props.js the BAY (`{ kind, bay, size }`), not a
-  spot, so the tour tests the same rule a race uses.
-- The tour plans a bay every 72u (`bays: "tour"`); the other playground
+  `makeBreakable` centres the scene on its real bounds and reports `along`
+  (scene x, down the road) and `across` (scene z); the size shrinks until
+  `across <= depth + 2` and `along <= plateau + 4`, and the scene stands with
+  its back a step off the widened edge, never more than 2u proud of the old
+  kerb line. The playground's layout hands props.js the BAY (`{ kind, bay,
+  size }`), not a spot, so the tour tests the same rule a race uses. Tour
+  road props come in GROUPS of three at the kerb between bays, not one every
+  few metres.
+- The tour plans a bay every 78u (`bays: "tour"`); the other playground
   areas pass `bays: false`. A stub track (the node fixtures) has no `bays`:
-  props.js falls back to kerb scenes so `check:biome-props` still sees one.
+  props.js falls back to kerb scenes (any of the biome's places when none is
+  `rural`) so `check:biome-props` still sees one.
 
 ## Loose props never ride along with the kart
 
@@ -229,14 +244,17 @@ Two things carried a piece: the swept hit's re-shove (after its 0.4s
 cooldown a tumbling crate within 4u was shoved straight AHEAD at less than
 kart speed, caught again, and hopped down the road for as long as the
 throttle was held) and `collideKart` pushing a piece whose centre was inside
-the kart's box out by only a radius a frame. Now the re-shove goes forward
-AND to the side the piece already lies on (and skips a piece outrunning the
-kart), the box pushes all the way to its face, front contacts lean the
-normal sideways and guarantee 4u/s of outward slip, the roof sheds, the
-contact spin is capped (9 rad/s), and a hold longer than 0.35s (gaps under
-0.5s count as the same hold) kicks the piece clear sideways with a little
-lift. `check:playground` drops a piece on a moving kart and wedges one
-into its nose; both must be off it within a second.
+the kart's box out by only a radius a frame. Now the SWEEP only hits pieces
+at rest (asleep or all but stopped); anything in motion is the body's
+problem: `collideKart` pushes an inside centre all the way out to the face,
+and the nose is a BUMPER whose normal leans to the side the piece is on
+(more the further off-centre) and a little up, so a piece being bulldozed
+slides off continuously — the drag pressing it into the bumper has a
+sideways share every frame. Never add a timer-and-kick: shedding a piece
+"after 0.35s" read as it jumping out sideways for no visible reason. The
+roof sheds, the contact spin is capped (9 rad/s). `check:playground` drops
+a piece on a moving kart and wedges one into its nose; both must be off it
+within a second with no sudden impulse.
 
 - Piles are CLOSE-PACKED (`closePack` in breakables.js): a triangular lattice
   base and the rest nestled in the hollows at r·(1+√(8/3)); beach balls and

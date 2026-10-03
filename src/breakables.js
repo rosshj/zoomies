@@ -208,6 +208,12 @@ const C = {
   fridge: 0xdfe3e6,
   stone: 0x7d7a74,
   lava: 0x4a3a38,
+  slate: 0x2f3a36,
+  clay: 0xc27a4a,
+  clayDark: 0x9a5a34,
+  leaf: 0x6fae4f,
+  burlap: 0xc8ad7a,
+  burlapDark: 0xa88d5c,
 };
 const pick = (rand, list) => list[Math.floor(rand() * list.length) % list.length];
 const jit = (rand, k) => (rand() - 0.5) * k;
@@ -452,23 +458,31 @@ function stack(p, rand, size) {
   };
   if (pattern === "pyramid") {
     // Lying cylinders, axis across the scene's X (so they roll off down the
-    // road when a kart hits the stack side-on). Rows of n-k, nested.
-    let left = n,
+    // road when a kart hits the stack side-on). Rows of n-k, nested — and
+    // never a PERFECT pyramid: the courses sit a little skew, and from four
+    // up one has usually rolled off and lies beside the stack.
+    const dropped = n >= 4 && rand() < 0.65 ? 1 : 0;
+    let left = n - dropped,
       row = 0;
-    const per = Math.ceil((Math.sqrt(8 * n + 1) - 1) / 2);
+    const per = Math.ceil((Math.sqrt(8 * left + 1) - 1) / 2);
     for (let k = per; k >= 1 && left > 0; k--) {
       const m = Math.min(k, left);
       for (let i = 0; i < m; i++)
         // Axis ACROSS the scene (pitch only), rows side by side along the
         // scene's X: a real pyramid, not bales end to end that read as one
         // column; each course sits in the hollows of the one below.
-        put((i - (m - 1) / 2) * r * 2.02 + jit(rand, 0.06), r + row * r * 1.74, jit(rand, 0.15), {
-          yaw: jit(rand, 0.08),
+        put((i - (m - 1) / 2) * r * 2.02 + jit(rand, 0.12), r + row * r * 1.74, jit(rand, 0.3), {
+          yaw: jit(rand, 0.16),
           pitch: Math.PI / 2,
         });
       left -= m;
       row++;
     }
+    if (dropped)
+      put((rand() < 0.5 ? -1 : 1) * (per * r * 1.01 + r * 1.3), r, jit(rand, 1.0), {
+        yaw: jit(rand, 0.7),
+        pitch: Math.PI / 2,
+      });
   } else if (pattern === "pile") {
     // Spheres, close packed like fruit on a market floor: the base is a
     // triangular lattice (each ball touching its neighbours), and the few on
@@ -476,21 +490,37 @@ function stack(p, rand, size) {
     // `single` (beach balls, floats: too light to stack) keeps one layer.
     for (const spot of closePack(n, r, !!p.single, rand)) put(spot.x, spot.y, spot.z, { yaw: rand() * 6 });
   } else {
-    // Columns of upright things, side by side, heights varied.
+    // Columns of upright things, side by side, heights varied — each column
+    // leaning a touch more with every course (a stack of tyres is never
+    // plumb), and from four up the last one has fallen off and lies beside
+    // the columns: flat if it is a tyre, on its side if it is a cone or pot.
     const h = d.lying ? d.cross * 2 : d.half * 2; // tyres etc. stacked FLAT
     const cols = size === 0 ? 1 : size === 1 ? 2 : 3;
-    let left = n;
+    const fallen = n >= 4 && rand() < 0.7 ? 1 : 0;
+    let left = n - fallen;
+    const total = left;
+    let lastX = 0,
+      lastZ = 0;
     for (let c = 0; c < cols && left > 0; c++) {
-      const m = Math.min(left, Math.ceil(n / cols) + (c === 0 ? 1 : 0));
+      const m = Math.min(left, Math.ceil(total / cols) + (c === 0 ? 1 : 0));
       const cx = (c - (cols - 1) / 2) * (r * 2.3),
         cz = (c % 2) * r * 0.9;
+      const lx = jit(rand, 0.09),
+        lz = jit(rand, 0.09);
       for (let k = 0; k < m; k++)
-        put(cx + jit(rand, 0.06), (d.lying ? d.cross : d.half) + k * h * 1.02, cz + jit(rand, 0.06), {
+        put(cx + jit(rand, 0.05) + k * lx, (d.lying ? d.cross : d.half) + k * h * 1.02, cz + jit(rand, 0.05) + k * lz, {
           yaw: rand() * 6,
           pitch: 0,
         });
+      lastX = cx;
+      lastZ = cz;
       left -= m;
     }
+    if (fallen)
+      put(lastX + r * 2.3 + jit(rand, 0.3), d.lying ? d.half : d.cross, lastZ + jit(rand, 1.2), {
+        yaw: rand() * 6,
+        pitch: d.lying ? 0 : Math.PI / 2,
+      });
   }
   const hitPoints = [[0, 0]];
   if (radius > 1.6) hitPoints.push([-radius * 0.55, 0], [radius * 0.55, 0]);
@@ -1071,7 +1101,248 @@ function rack(p, rand, size) {
   return { pieces, hitPoints, height: 2.0, radius: racks === 2 ? 3.6 : size >= 1 ? 2.4 : 1.4 };
 }
 
-const GEN = { stall, stack, seating, cart, heap, pallets, rack };
+// ---- Dressing: the small things a place is dressed with ---------------------
+// A chalkboard out front, a barrel by the wall, a planter, a bench, a few
+// sacks, a wheel leaning on the end of the counter. Authored at 1u ≈ 1m like
+// the stalls and scaled the same (DRESS_SCALE) so they sit against them.
+const DRESS_SCALE = 1.3;
+const POT = P("pot", { launch: 0.45, lift: 0.8, restitution: 0.14, friction: 7, angularDrag: 7 });
+const SACK = P("hay", { launch: 0.7, lift: 1.0, restitution: 0.06, friction: 9, angularDrag: 9 });
+const DRESSING = {
+  // A-frame chalkboard: two boards hinged at the top, a few chalk lines.
+  chalkboard: (rand, size) => {
+    const b = new Parts();
+    for (const s of [-1, 1]) {
+      b.box(0.62, 0.95, 0.04, C.woodDark, 0, 0.5, s * 0.17, 0, 0, s * 0.3);
+      b.box(0.5, 0.74, 0.05, C.slate, 0, 0.52, s * 0.17, 0, 0, s * 0.3);
+      for (let k = 0; k < 3; k++)
+        b.box(
+          0.26 + (k % 2) * 0.1,
+          0.03,
+          0.06,
+          C.white,
+          (k % 2) * 0.05 - 0.03,
+          0.72 - k * 0.14,
+          s * 0.17,
+          0,
+          0,
+          s * 0.3,
+        );
+    }
+    return [
+      piece(
+        "chalkboard",
+        b.finish(),
+        PLANK,
+        { x: 0, y: 0, z: 0, yaw: jit(rand, 0.3) },
+        { scatter: { up: 1.6, out: 1.1, spin: 1.8 } },
+      ),
+    ];
+  },
+  // Wooden barrel(s), upright; two at the large size, one on its side.
+  barrel: (rand, size) => {
+    const barrel = () =>
+      new Parts()
+        .cyl(0.36, 0.3, 0.26, C.wood, 0, 0.13, 0, 12)
+        .cyl(0.4, 0.36, 0.5, C.woodPale, 0, 0.5, 0, 12)
+        .cyl(0.3, 0.36, 0.26, C.wood, 0, 0.87, 0, 12)
+        .cyl(0.41, 0.41, 0.06, C.steelDark, 0, 0.24, 0, 12)
+        .cyl(0.41, 0.41, 0.06, C.steelDark, 0, 0.76, 0, 12)
+        .finish();
+    const out = [piece("barrel", barrel(), BARREL, { x: 0, y: 0, z: 0, yaw: rand() * 6 }, { hull: "radial" })];
+    if (size >= 2)
+      out.push(
+        piece(
+          "barrel",
+          barrel(),
+          BARREL,
+          { x: 0.95, y: 0.41, z: 0.2, yaw: jit(rand, 0.4), roll: Math.PI / 2 },
+          { hull: "radial" },
+        ),
+      );
+    return out;
+  },
+  // Terracotta planter with a round bush.
+  planter: (rand, size) => {
+    const planter = (tint) =>
+      new Parts()
+        .cyl(0.34, 0.26, 0.5, C.clay, 0, 0.25, 0, 10)
+        .cyl(0.36, 0.36, 0.08, C.clayDark, 0, 0.5, 0, 10)
+        .ball(0.38, tint, 0, 0.78, 0, 1, 0.8, 1)
+        .ball(0.22, tint, 0.2, 0.9, 0.12)
+        .finish();
+    const out = [
+      piece(
+        "planter",
+        planter(C.green),
+        POT,
+        { x: 0, y: 0, z: 0 },
+        { hull: "radial", scatter: { up: 0.9, out: 0.9, spin: 0.6 } },
+      ),
+    ];
+    if (size >= 2) out.push(piece("planter", planter(C.leaf), POT, { x: 0.9, y: 0, z: 0.1 }, { hull: "radial" }));
+    return out;
+  },
+  // A bench to sit on.
+  bench: (rand) => [
+    piece(
+      "bench",
+      new Parts()
+        .box(1.7, 0.07, 0.5, C.woodPale, 0, 0.47, 0)
+        .box(1.7, 0.07, 0.14, C.woodPale, 0, 0.78, -0.26, 0, 0, -0.18)
+        .box(0.08, 0.47, 0.46, C.steelDark, -0.72, 0.235, 0)
+        .box(0.08, 0.47, 0.46, C.steelDark, 0.72, 0.235, 0)
+        .finish(),
+      HEAVY_WOOD,
+      { x: 0, y: 0, z: 0, yaw: jit(rand, 0.25) },
+      { scatter: { up: 0.8, out: 0.8, spin: 0.7 } },
+    ),
+  ],
+  // Grain sacks slumped against each other, one on top.
+  sacks: (rand, size) => {
+    const n = [2, 3, 4][size];
+    const spots = [
+      [0, 0.3, 0],
+      [0.62, 0.3, 0.2],
+      [0.3, 0.78, 0.1],
+      [-0.6, 0.3, 0.25],
+    ];
+    return spots
+      .slice(0, n)
+      .map(([x, y, z], i) =>
+        piece(
+          "sack",
+          new Parts().ball(0.42, i % 2 ? C.burlap : C.burlapDark, 0, 0, 0, 1, 0.74, 0.9).finish(),
+          SACK,
+          { x, y, z, yaw: rand() * 6, roll: jit(rand, 0.3) },
+          { hull: "radial", scatter: { up: 0.9, out: 0.8, spin: 0.5 } },
+        ),
+      );
+  },
+  // A wagon wheel LEANING (never standing dead on edge) — propped against
+  // whatever it is attached to, which is why it comes last in a cluster.
+  leanWheel: (rand) => {
+    const d = propDims("wagonWheel");
+    return [
+      roadPiece(
+        "wagonWheel",
+        { x: 0, y: d.cross * 0.93, z: 0.22, yaw: jit(rand, 0.3), pitch: Math.PI / 2 - 0.36 },
+        { scatter: { up: 0.9, out: 1.1, spin: 1.5 } },
+      ),
+    ];
+  },
+};
+
+// Along/across bounds of a set of pieces in their rest poses (hull vertices
+// through the piece's local pose), in the scene's units.
+const _ev = new THREE.Vector3();
+function extents(pieces) {
+  const e = { xMin: Infinity, xMax: -Infinity, zMin: Infinity, zMax: -Infinity };
+  for (const pc of pieces)
+    for (const h of pc.hull) {
+      _ev.copy(h).applyQuaternion(pc.local.quat).add(pc.local.pos);
+      e.xMin = Math.min(e.xMin, _ev.x);
+      e.xMax = Math.max(e.xMax, _ev.x);
+      e.zMin = Math.min(e.zMin, _ev.z);
+      e.zMax = Math.max(e.zMax, _ev.z);
+    }
+  if (!Number.isFinite(e.xMin)) e.xMin = e.xMax = e.zMin = e.zMax = 0;
+  return e;
+}
+
+// ---- A PLACE: several scenes composed into one ----------------------------
+// A greengrocer's front (the stand, a crate stack beside it, a chalkboard out
+// front, a barrel at the back, a planter, a wheel leaning on the end), a café
+// terrace, a fish dock: the way things gather where people stop, instead of
+// one object alone in a lay-by. `parts` are sub-recipes (`r`) or dressing
+// (`d`), laid along the kerb (scene x) in order with a hand's gap and a
+// little stagger, each keeping its own scale, physics and goods; a part with
+// `at` hangs off the LEAD part instead (frontLeft / frontRight: out front by
+// the road; sideRight: propped on its end). Scene +z is the BACK (the
+// barrier side), −z the road. `take` says how many parts each size takes
+// (default the first two, the first four, all); `sizes` on a part gives its
+// own size per cluster size (lead defaults to 0/1/2, the rest to 0/0/1).
+function cluster(p, rand, size) {
+  const outer = _scale;
+  const take = Math.min(p.parts.length, (p.take || [2, 4, p.parts.length])[size]);
+  const built = [];
+  for (let i = 0; i < take; i++) {
+    const part = p.parts[i];
+    const sz = (part.sizes || (i === 0 ? [0, 1, 2] : [0, 0, 1]))[size];
+    let pieces, hitPoints, s;
+    if (part.d) {
+      _scale = DRESS_SCALE;
+      pieces = DRESSING[part.d](rand, sz);
+      s = _scale;
+      hitPoints = [];
+    } else {
+      const spec = BREAKABLES[part.r];
+      _scale = spec.scale || 1;
+      const b = GEN[spec.gen](spec.params, rand, sz);
+      s = _scale;
+      pieces = b.pieces;
+      hitPoints = b.hitPoints.map(([x, z]) => [x * s, z * s]);
+    }
+    _scale = outer;
+    built.push({ part, pieces, hitPoints, e: extents(pieces) });
+  }
+  // Lay the inline parts along x, attachments off the lead.
+  const lead = built[0];
+  let cursor = 0;
+  const sideRoom = built.some((b) => b.part.at === "sideRight") ? 1.1 : 0;
+  for (const b of built) {
+    if (b.part.at) continue;
+    const gap = b === lead ? 0 : 0.7 + rand() * 0.9 + (built.indexOf(b) === 1 ? sideRoom : 0);
+    b.x = cursor + gap - b.e.xMin;
+    b.z = (b.part.back ? 0.9 : b.part.front ? -0.8 : 0) + jit(rand, 0.5);
+    b.yaw = jit(rand, 0.16);
+    cursor = b.x + b.e.xMax;
+  }
+  const shift = -cursor / 2;
+  for (const b of built) if (!b.part.at) b.x += shift;
+  for (const b of built) {
+    if (b.part.at) {
+      const lx = lead.x;
+      if (b.part.at === "sideRight") {
+        b.x = lx + lead.e.xMax + 0.5 - b.e.xMin;
+        b.z = 0.1 + jit(rand, 0.2);
+      } else {
+        const left = b.part.at === "frontLeft";
+        b.x = lx + (left ? lead.e.xMin + 0.4 - b.e.xMin : lead.e.xMax - 0.4 - b.e.xMax);
+        b.z = lead.e.zMin - 0.55 - b.e.zMax;
+      }
+      b.yaw = jit(rand, 0.4);
+    }
+  }
+  // Apply each part's pose to its pieces and hit points.
+  const pieces = [],
+    hitPoints = [];
+  let radius = 0,
+    height = 0;
+  const q = new THREE.Quaternion();
+  for (const b of built) {
+    const c = Math.cos(b.yaw),
+      sn = Math.sin(b.yaw);
+    q.setFromAxisAngle(_up, b.yaw);
+    for (const pc of b.pieces) {
+      const { x, z } = pc.local.pos;
+      pc.local.pos.x = x * c + z * sn + b.x;
+      pc.local.pos.z = -x * sn + z * c + b.z;
+      pc.local.quat.premultiply(q);
+      pieces.push(pc);
+      radius = Math.max(radius, Math.hypot(pc.local.pos.x, pc.local.pos.z));
+      height = Math.max(height, pc.local.pos.y + pc.rest + 0.3);
+    }
+    if (b.hitPoints.length)
+      for (const [x, z] of b.hitPoints) hitPoints.push([x * c + z * sn + b.x, -x * sn + z * c + b.z]);
+    else hitPoints.push([b.x, b.z]);
+  }
+  for (const [x, z] of hitPoints) radius = Math.max(radius, Math.hypot(x, z));
+  return { pieces, hitPoints, height: Math.max(1.2, height), radius: radius + 0.6 };
+}
+const _up = new THREE.Vector3(0, 1, 0);
+
+const GEN = { stall, stack, seating, cart, heap, pallets, rack, cluster };
 
 // ---- Recipes ------------------------------------------------------------------
 // name/blurb for the UI; gen + params for the generator; scale; sound, debris
@@ -1353,25 +1624,279 @@ export const BREAKABLES = {
     { sound: "stone", debris: ["dust", "rust"], slow: 0.35 },
   ),
 };
+// ---- Places: the composed scenes a biome actually scatters -----------------
+// Each is a `cluster` of the recipes above plus dressing, named for what it
+// is: a greengrocer's front, a café terrace, a fish dock. Sound, debris and
+// pace come from the lead part. `rural` marks the ones that can stand alone
+// at a country kerb (someone selling from a barrow).
+const PLACE = (name, parts, extra = {}) => {
+  const lead = BREAKABLES[parts[0].r];
+  return {
+    name,
+    gen: "cluster",
+    params: { parts, take: extra.take },
+    scale: 1,
+    sound: lead.sound,
+    debris: lead.debris,
+    slow: lead.slow,
+    blurb: extra.blurb,
+    rural: !!extra.rural,
+    place: true,
+  };
+};
+const r = (r, o = {}) => ({ r, ...o });
+const d = (d, o = {}) => ({ d, ...o });
+Object.assign(BREAKABLES, {
+  greengrocer: PLACE(
+    "Greengrocer's front",
+    [
+      r("marketStall"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("basketStack"),
+      d("barrel", { back: true }),
+      d("planter", { at: "frontRight" }),
+      d("leanWheel", { at: "sideRight" }),
+    ],
+    { rural: true, blurb: "A fruit stand with its crate stack, chalkboard, barrel and a wheel leaning on the end." },
+  ),
+  farmGate: PLACE(
+    "Farm gate",
+    [r("hayStack"), r("pumpkinBarrow"), d("sacks"), d("leanWheel", { at: "sideRight" }), d("barrel", { back: true })],
+    { rural: true },
+  ),
+  villageCafe: PLACE("Village café", [
+    r("picnic"),
+    d("planter", { at: "frontRight" }),
+    d("chalkboard", { at: "frontLeft" }),
+    d("barrel", { back: true }),
+  ]),
+  woodcutters: PLACE("Woodcutter's yard", [
+    r("logPile"),
+    d("barrel"),
+    d("sacks"),
+    r("palletStack", { sizes: [0, 0, 0] }),
+    d("bench"),
+  ]),
+  campsite: PLACE("Campsite", [
+    r("campRolls"),
+    r("supplyStack"),
+    r("logPile", { sizes: [0, 0, 0] }),
+    d("sacks"),
+    d("bench"),
+  ]),
+  hutStore: PLACE("Hut store", [
+    r("supplyStack"),
+    r("iceBlocks"),
+    d("barrel"),
+    d("sacks"),
+    d("chalkboard", { at: "frontLeft" }),
+  ]),
+  harvestStand: PLACE(
+    "Harvest stand",
+    [
+      r("pumpkinStand"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("basketStack"),
+      r("hayStack", { sizes: [0, 0, 1] }),
+      d("barrel", { back: true }),
+    ],
+    { rural: true },
+  ),
+  pumpkinPatch: PLACE(
+    "Pumpkin patch",
+    [r("pumpkinBarrow"), r("hayStack"), d("sacks"), d("leanWheel", { at: "sideRight" })],
+    { rural: true },
+  ),
+  beachBar: PLACE(
+    "Beach bar",
+    [
+      r("coconutStall"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("coconutPile"),
+      d("barrel", { back: true }),
+      d("planter", { at: "frontRight" }),
+    ],
+    { rural: true },
+  ),
+  boardwalk: PLACE("Boardwalk", [r("beachChairs"), r("ballPile"), r("floatPile", { sizes: [0, 0, 0] }), d("planter")]),
+  surfShack: PLACE("Surf shack", [
+    r("floatPile"),
+    d("barrel"),
+    d("sacks"),
+    d("bench"),
+    r("coconutPile", { sizes: [0, 0, 0] }),
+  ]),
+  potteryYard: PLACE(
+    "Pottery yard",
+    [
+      r("potStall"),
+      r("potStack"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("potWagon", { sizes: [0, 0, 0] }),
+      d("planter", { at: "frontRight" }),
+    ],
+    { rural: true },
+  ),
+  trailStop: PLACE(
+    "Trail stop",
+    [r("potWagon"), r("rockPile", { sizes: [0, 0, 1] }), d("barrel"), d("leanWheel", { at: "sideRight" }), d("sacks")],
+    {
+      rural: true,
+    },
+  ),
+  tradingPost: PLACE(
+    "Trading post",
+    [r("potStack"), r("canisterStack"), d("barrel"), d("chalkboard", { at: "frontLeft" }), d("sacks")],
+    { rural: true },
+  ),
+  iceCamp: PLACE(
+    "Ice camp",
+    [
+      r("snowballStand"),
+      r("iceBlocks"),
+      r("snowballPile", { sizes: [0, 0, 1] }),
+      r("supplyStack", { sizes: [0, 0, 0] }),
+      d("sacks"),
+    ],
+    { rural: true },
+  ),
+  snowDepot: PLACE("Snow depot", [r("supplyStack"), r("iceBlocks"), d("barrel"), d("sacks"), d("bench")]),
+  newsstand: PLACE(
+    "Newsstand",
+    [
+      r("newsRack"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("palletStack", { sizes: [0, 0, 0] }),
+      r("coneRow"),
+      d("bench"),
+    ],
+    {
+      rural: true,
+    },
+  ),
+  cafeTerrace: PLACE("Café terrace", [
+    r("cafeSeating"),
+    d("planter", { at: "frontRight" }),
+    d("chalkboard", { at: "frontLeft" }),
+    d("planter"),
+    d("barrel", { back: true }),
+  ]),
+  garageYard: PLACE("Garage yard", [
+    r("tireStack"),
+    r("scrapHeap", { sizes: [0, 0, 1] }),
+    d("barrel"),
+    r("palletStack"),
+    r("coneRow", { sizes: [0, 0, 0] }),
+  ]),
+  baggageHall: PLACE("Baggage hall", [r("luggageCart"), r("palletStack"), r("coneRow"), d("sacks")]),
+  fruitMarket: PLACE(
+    "Fruit market",
+    [
+      r("mangoStand"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("coconutPile"),
+      r("bambooStack", { sizes: [0, 0, 0] }),
+      d("planter", { at: "frontRight" }),
+    ],
+    { rural: true },
+  ),
+  riverCamp: PLACE("River camp", [r("supplyStack"), r("bambooStack"), d("sacks"), d("barrel"), d("bench")]),
+  fishDock: PLACE(
+    "Fish dock",
+    [
+      r("fishStall"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("floatPile"),
+      d("barrel", { back: true }),
+      r("logPile", { sizes: [0, 0, 0] }),
+    ],
+    { rural: true },
+  ),
+  boatyard: PLACE("Boatyard", [r("bambooStack"), r("floatPile"), d("barrel"), d("sacks"), d("bench")]),
+  fuelDepot: PLACE("Fuel depot", [
+    r("canisterStack"),
+    r("palletStack"),
+    d("barrel"),
+    d("sacks"),
+    d("chalkboard", { at: "frontLeft" }),
+  ]),
+  quarryYard: PLACE("Quarry yard", [
+    r("lavaRocks"),
+    r("scrapHeap", { sizes: [0, 0, 1] }),
+    d("barrel"),
+    r("palletStack", { sizes: [0, 0, 0] }),
+  ]),
+  waterhole: PLACE(
+    "Waterhole stop",
+    [
+      r("potStack"),
+      r("potWagon"),
+      r("hayStack", { sizes: [0, 0, 1] }),
+      d("sacks"),
+      d("leanWheel", { at: "sideRight" }),
+    ],
+    {
+      rural: true,
+    },
+  ),
+  rangerPost: PLACE("Ranger post", [
+    r("logPile"),
+    r("hayStack", { sizes: [0, 0, 1] }),
+    d("barrel"),
+    d("bench"),
+    d("sacks"),
+  ]),
+  teaGarden: PLACE("Tea garden", [
+    r("teaHouse"),
+    d("planter", { at: "frontRight" }),
+    r("lanternStall", { sizes: [0, 0, 1] }),
+    d("planter"),
+    d("chalkboard", { at: "frontLeft" }),
+  ]),
+  flowerMarket: PLACE(
+    "Flower market",
+    [
+      r("flowerStand"),
+      d("chalkboard", { at: "frontLeft" }),
+      r("basketStack"),
+      d("planter", { at: "frontRight" }),
+      d("barrel", { back: true }),
+    ],
+    { rural: true },
+  ),
+  lavenderFarm: PLACE(
+    "Lavender farm stand",
+    [
+      r("flowerStand"),
+      r("hayStack", { sizes: [0, 0, 1] }),
+      r("marketBarrow", { sizes: [0, 0, 0] }),
+      d("sacks"),
+      d("chalkboard", { at: "frontLeft" }),
+    ],
+    {
+      rural: true,
+    },
+  ),
+});
 export const BREAKABLE_KINDS = Object.keys(BREAKABLES);
 
-// Which recipes a biome scatters along its road (props.js picks per slot).
+// Which PLACES a biome scatters along its road (props.js picks per bay).
 export const BIOME_SCENES = {
-  meadow: ["marketStall", "hayStack", "picnic", "marketBarrow"],
-  forest: ["logPile", "campRolls", "picnic", "supplyStack"],
-  alpine: ["supplyStack", "iceBlocks", "logPile", "campRolls"],
-  autumn: ["pumpkinStand", "basketStack", "pumpkinBarrow", "hayStack"],
-  beach: ["coconutStall", "beachChairs", "ballPile", "coconutPile"],
-  desert: ["potStack", "potWagon", "potStall", "rockPile"],
-  mesa: ["potStack", "potWagon", "rockPile", "canisterStack"],
-  tundra: ["snowballPile", "supplyStack", "iceBlocks", "snowballStand"],
-  city: ["newsRack", "cafeSeating", "luggageCart", "tireStack", "scrapHeap", "palletStack", "coneRow"],
-  jungle: ["bambooStack", "mangoStand", "supplyStack", "coconutPile"],
-  wetlands: ["fishStall", "floatPile", "bambooStack", "logPile"],
-  volcanic: ["canisterStack", "scrapHeap", "lavaRocks", "palletStack"],
-  savanna: ["potStack", "potWagon", "logPile", "hayStack"],
-  blossom: ["teaHouse", "lanternStall", "basketStack", "flowerStand"],
-  lavender: ["flowerStand", "hayStack", "picnic", "marketBarrow"],
+  meadow: ["greengrocer", "farmGate", "villageCafe"],
+  forest: ["campsite", "woodcutters", "hutStore"],
+  alpine: ["campsite", "hutStore", "woodcutters"],
+  autumn: ["harvestStand", "pumpkinPatch", "farmGate"],
+  beach: ["beachBar", "boardwalk", "surfShack"],
+  desert: ["potteryYard", "trailStop", "tradingPost"],
+  mesa: ["tradingPost", "potteryYard", "trailStop"],
+  tundra: ["iceCamp", "snowDepot", "hutStore"],
+  city: ["newsstand", "cafeTerrace", "garageYard", "baggageHall"],
+  jungle: ["fruitMarket", "riverCamp", "campsite"],
+  wetlands: ["fishDock", "boatyard", "riverCamp"],
+  volcanic: ["fuelDepot", "quarryYard", "garageYard"],
+  savanna: ["waterhole", "rangerPost", "trailStop"],
+  blossom: ["teaGarden", "flowerMarket", "villageCafe"],
+  lavender: ["lavenderFarm", "flowerMarket", "villageCafe"],
 };
 export const SIZE_LABELS = ["S", "M", "L"];
 
@@ -1393,19 +1918,22 @@ export function makeBreakable(kind, rand = Math.random, size = 1) {
   // piece's hull in its rest pose — a bay fits a scene by these, since a stall
   // is long along the kerb and shallow across it, and the radius alone would
   // reject it.
-  let along = 0,
-    across = 0;
-  const v = new THREE.Vector3();
+  // Centre the scene on its true footprint (a place with a chalkboard out
+  // front and a barrel behind is lopsided), so `along` / `across` are its
+  // real width and depth and props.js can fit and park it by them.
+  const e = extents(built.pieces);
+  const cx = (e.xMin + e.xMax) / 2,
+    cz = (e.zMin + e.zMax) / 2;
   for (const pc of built.pieces) {
+    pc.local.pos.x -= cx;
+    pc.local.pos.z -= cz;
     pc.mesh.position.copy(pc.local.pos);
     pc.mesh.quaternion.copy(pc.local.quat);
     group.add(pc.mesh);
-    for (const h of pc.hull) {
-      v.copy(h).applyQuaternion(pc.local.quat).add(pc.local.pos);
-      along = Math.max(along, Math.abs(v.x));
-      across = Math.max(across, Math.abs(v.z));
-    }
   }
+  built.hitPoints = built.hitPoints.map(([x, z]) => [x - cx, z - cz]);
+  const along = e.xMax - e.xMin,
+    across = e.zMax - e.zMin;
   return {
     kind,
     spec,
@@ -1415,7 +1943,7 @@ export function makeBreakable(kind, rand = Math.random, size = 1) {
     hitPoints: built.hitPoints,
     height: built.height,
     radius: built.radius,
-    along: along * 2,
-    across: across * 2,
+    along,
+    across,
   };
 }

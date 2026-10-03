@@ -372,7 +372,7 @@ await run(() => window.__playground.freeze(true));
           const pr = T.project(st.pos);
           const ex = T.extraAt(pr.lateral > 0 ? 0 : 1, pr.i);
           const lat = Math.abs(pr.lateral);
-          return ex > 4.4 && lat - st.across / 2 > T.halfWidth - 1.7 && lat + st.across / 2 < T.halfWidth + ex + 0.05;
+          return ex > 4.4 && lat - st.across / 2 > T.halfWidth - 2.1 && lat + st.across / 2 < T.halfWidth + ex + 0.05;
         }).length,
         // The widening is gentle: the steepest step between samples (≈0.8u apart)
         // stays under a 0.3 slope, and no bay is deeper than 6.5u.
@@ -389,23 +389,41 @@ await run(() => window.__playground.freeze(true));
         // Nothing of the scenery stands on an apron: the bay-aware distance
         // puts every scenery object OFF the drivable width.
         onApron: (() => {
-          let n = 0;
-          P.area.worldGroup?.traverse((o) => {
-            if (!o.isMesh && !o.isInstancedMesh && !o.isPoints) return;
-            if (o.isInstancedMesh || o.isPoints) return; // merged/instanced batches have no single spot
-            o.updateWorldMatrix(true, false);
-            const e = o.matrixWorld.elements;
-            const pr = T.project({ x: e[12], y: e[13], z: e[14] });
-            const ex = T.extraAt(pr.lateral > 0 ? 0 : 1, pr.i);
-            if (ex > 1 && Math.abs(pr.lateral) > T.halfWidth - 0.5 && Math.abs(pr.lateral) < T.halfWidth + ex) n++;
-          });
-          return n;
+          // Static things only: a bird or a butterfly crossing the bay (and
+          // its blob shadow) is not scenery standing on the paving, so count
+          // what is at the same spot half a second later.
+          const grab = () => {
+            const m = new Map();
+            P.area.worldGroup?.traverse((o) => {
+              if (!o.isMesh || o.isInstancedMesh || o.isPoints) return;
+              o.updateWorldMatrix(true, false);
+              const e = o.matrixWorld.elements;
+              const pr = T.project({ x: e[12], y: e[13], z: e[14] });
+              const ex = T.extraAt(pr.lateral > 0 ? 0 : 1, pr.i);
+              if (
+                ex > 1 &&
+                Math.abs(e[13] - pr.groundY) < 6 &&
+                Math.abs(pr.lateral) > T.halfWidth - 0.5 &&
+                Math.abs(pr.lateral) < T.halfWidth + ex
+              )
+                m.set(
+                  o.uuid,
+                  `${o.name || o.type}@${e[12].toFixed(1)},${e[13].toFixed(1)},${e[14].toFixed(1)}/lat${pr.lateral.toFixed(1)}`,
+                );
+            });
+            return m;
+          };
+          const first = grab();
+          P.step(1 / 60, 30);
+          const again = grab();
+          const who = [...first].filter(([id, at]) => again.get(id) === at).map(([, at]) => at);
+          return who.length ? `${who.length}: ${who.join("; ")}` : 0;
         })(),
       };
     };
     const meadow = snap();
     P.setAutoplay(true);
-    for (let i = 0; i < 600; i++) P.step(1 / 60);
+    for (let i = 0; i < 900; i++) P.step(1 / 60); // ~6 bays at the tour's 78u spacing
     const smashed = P.smashed;
     const weatherNone = P.weather.target;
     P.setAutoplay(false);
