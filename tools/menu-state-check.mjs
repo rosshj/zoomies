@@ -11,6 +11,15 @@ p.on("pageerror", (e) => {
 p.setDefaultTimeout(60000);
 p.setDefaultNavigationTimeout(180000);
 const step = async (name) => assert.equal(await p.locator("#menu").getAttribute("data-step"), name);
+// A fresh unlock pops a reveal card over the results (src/celebrate.js); tap it
+// away before driving the results buttons.
+const dismissReveals = async () => {
+  for (let i = 0; i < 8 && (await p.locator("#celebrate-reveal:not(.hidden)").count()); i++) {
+    await p.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
+    await p.locator("#celebrate-continue").click();
+    await p.waitForTimeout(400);
+  }
+};
 const click = async (selector) => {
   await p.locator(selector).click();
   await p.waitForTimeout(500);
@@ -42,6 +51,8 @@ try {
   assert.equal(await p.evaluate(() => window.__zoomies.state()), 2);
   await p.evaluate(() => window.__zoomies.debugFinish());
   await p.locator("#results:not(.hidden)").waitFor();
+  await p.waitForTimeout(900);
+  await dismissReveals();
   const scored = await p.evaluate(() => JSON.parse(sessionStorage.getItem("zoomies-cup-v1")));
   assert.equal(scored.scored, 0);
   assert.ok(scored.points.You > 0);

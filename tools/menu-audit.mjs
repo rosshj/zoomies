@@ -362,6 +362,15 @@ try {
     await click("#resume-race-btn");
     await page.evaluate(() => window.__zoomies.debugFinish());
     await page.locator("#results:not(.hidden)").waitFor();
+    await page.waitForTimeout(900);
+    if (await page.locator("#celebrate-reveal:not(.hidden)").count()) {
+      await page.locator("#celebrate-reveal.is-open").waitFor({ timeout: 30000 });
+      await capture("reveal");
+      while (await page.locator("#celebrate-reveal:not(.hidden)").count()) {
+        await page.locator("#celebrate-continue").click();
+        await page.waitForTimeout(400);
+      }
+    }
     await capture("results");
     // The actual web shell has Get the app instead of Quit. Verify that layout,
     // not just the simulated desktop bridge used for the Versus coverage above.

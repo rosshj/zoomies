@@ -371,6 +371,14 @@ await check(
 await page.evaluate(() => window.__zoomies.debugFinish());
 await page.waitForSelector("#results:not(.hidden)", { timeout: 30000 });
 await frames(2);
+// A fresh unlock pops a reveal card over the results (src/celebrate.js); tap it
+// away so B lands on the results themselves.
+await page.waitForTimeout(900);
+for (let i = 0; i < 8 && (await page.locator("#celebrate-reveal:not(.hidden)").count()); i++) {
+  await page.locator("#celebrate-reveal.is-open #celebrate-continue").waitFor({ timeout: 30000 });
+  await page.locator("#celebrate-continue").click();
+  await frames(2);
+}
 await check(
   "badge rewards bank automatically",
   () => JSON.parse(localStorage.getItem("zoomies-profile-v1")).pendingClaims.length === 0,
