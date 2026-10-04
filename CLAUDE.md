@@ -362,3 +362,28 @@ strokes a dark halo under the cream outline instead.
 - The design canvas the user signed off is the reference:
   https://claude.ai/artifact/EvyUi27iELGrFaLJxK8AdP (landscape, upright, and
   every control state).
+
+## Difficulty is how well the rivals DRIVE, not just how fast
+
+`AI_DIFFICULTY` in `main.js` is read by `driveAI` (kart.js) and `aiActions`:
+the rivals share one brain and the tier decides how much of a player's toolkit
+it uses, then scales the rest. Steering costs no speed in this physics, so a
+player who holds the throttle flat laps at the full-pace AI's speed — a ladder
+made only of top speed (78/88/96/100%) had every tier under Expert beaten by
+anyone who found the toot button. Now: easy keeps the corner throttle lift (a
+handicap, not a necessity) and drifts only sweepers; medium drops the lift;
+hard and expert also drift every real corner for the mini-turbo. The rubber
+band is `rubberGain` per lap of gap (0.12 was all but nothing: a 10s lead gave
+~1%; 0.4 turns an 8s lead into ~4%, capped at 16%), and `lead` is how much a
+rival ahead of the player eases off (8% on easy, none on expert).
+
+- `npm run probe:ai` measures it: real Kart physics headless in node, solo
+  flying laps per tier and 3-lap races against four modelled players
+  (beginner / flat throttle / toots when full / toots + drifts), no items.
+  Target: easy ≈ the beginner, medium ≈ flat (P2-P5), hard ≈ toot (podium
+  fight), expert beats the skilled model by 10-15s. Re-run it before touching
+  the table, `driveAI`'s throttle or drift blocks, or the rubber band.
+- `driveAI` without a `diff` (victory laps, the playground dummy) keeps the
+  cautious defaults; `check:tracks` audits every preset at Expert pace, so a
+  corner only the lifting tiers get round cleanly shows up there.
+

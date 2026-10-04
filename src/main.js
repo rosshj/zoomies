@@ -467,17 +467,32 @@ audio.registerMusic("bg", MUSIC_TRACK);
 
 let TOTAL_LAPS = 3; // race length (1-5), chosen on the main menu
 
-// AI difficulty. The hand-tuned field IS "expert" (full pace); easy/medium/hard
-// dial the AI down across a few knobs: top speed, rubber-band catch-up (and how
-// much a leader eases off — `lead`), the minimum gap between shots (`shootGap`,
-// seconds), how well they shield, and how far they'll detour for catnip.
-// Persisted so it sticks. Classic-circuit flying laps (tools: AI pace probe):
-// easy ≈ 80+s, medium ≈ 73-76s, hard ≈ 70-72s, expert ≈ 67-70s.
+// AI difficulty. The rivals' BRAIN is the same at every tier (kart.js driveAI +
+// aiActions below); the tier decides how much of a player's toolkit they use,
+// then scales the rest. Steering costs no speed in this physics, so a player
+// who holds the throttle flat laps at the full-pace AI's speed: a ladder made
+// only of top speed (the first version: 78/88/96/100%) had every tier under
+// Expert beaten by anyone who found the toot button.
+//   speed      top speed as a fraction of the player's.
+//   lift       ease off for sharp corners (a handicap: easy drives cautiously).
+//   drift      "sweeper" = drift only sweeping bends; "all" = slide every real
+//              corner for the mini-turbo, as a player does.
+//   rubber     how strongly trailing rivals catch up; rubberGain = speed per
+//              lap of gap (0.12 is all but nothing: a 10s lead gave ~1%; 0.4
+//              turns an 8s lead into ~4%, capped at 16%); `lead` = how much a
+//              rival AHEAD of the player eases off.
+//   shootGap   the minimum seconds between shots; shield / catnip = how well
+//              they defend and how far they detour for boxes.
+// Persisted so it sticks. Headless probe (3 laps, no items, classic circuit):
+// easy ~99s flying lap vs a beginner's ~97; medium ~86 (a flat-throttle
+// non-booster laps ~82 and finishes P2-P5); hard ~78 (a player who toots
+// when full laps ~74 and fights for the podium); expert ~73 + the roster's
+// skill spread, a clear step above hard.
 const AI_DIFFICULTY = {
-  easy: { label: "Easy", speed: 0.78, rubber: 0.35, lead: 0.05, shootGap: 4.0, shield: 0.5, catnip: 0.4 },
-  medium: { label: "Medium", speed: 0.88, rubber: 0.7, lead: 0.05, shootGap: 2.5, shield: 0.8, catnip: 0.75 },
-  hard: { label: "Hard", speed: 0.96, rubber: 1.0, lead: 0.02, shootGap: 1.6, shield: 1.0, catnip: 1.0 },
-  expert: { label: "Expert", speed: 1.0, rubber: 1.0, lead: 0.02, shootGap: 1.2, shield: 1.0, catnip: 1.0 },
+  easy: { label: "Easy", speed: 0.78, lift: true, drift: "sweeper", rubber: 0.35, rubberGain: 0.12, lead: 0.08, shootGap: 4.0, shield: 0.5, catnip: 0.4 },
+  medium: { label: "Medium", speed: 0.88, lift: false, drift: "sweeper", rubber: 0.7, rubberGain: 0.4, lead: 0.05, shootGap: 2.0, shield: 0.8, catnip: 0.75 },
+  hard: { label: "Hard", speed: 0.95, lift: false, drift: "all", rubber: 1.0, rubberGain: 0.4, lead: 0.02, shootGap: 1.4, shield: 1.0, catnip: 1.0 },
+  expert: { label: "Expert", speed: 1.0, lift: false, drift: "all", rubber: 1.0, rubberGain: 0.4, lead: 0.0, shootGap: 1.2, shield: 1.0, catnip: 1.0 },
 };
 const DIFF_ORDER = ["easy", "medium", "hard", "expert"];
 const DIFF_KEY = "zoomies-difficulty";
@@ -1467,9 +1482,10 @@ function buildKarts() {
   const diff = AI_DIFFICULTY[DIFFICULTY] || AI_DIFFICULTY.hard;
   roster.forEach((cfg, i) => {
     const kart = new Kart({ ...cfg, rng: _simRng });
-    // Scale the AI down for the chosen difficulty (hard = no change). Slower top
+    // Scale the AI for the chosen difficulty (expert = full pace). Slower top
     // speed + weaker rubber-band, set on baseMaxSpeed so the per-frame catch-up
-    // (aiActions) scales from it; the rest of the knobs live on kart.diff.
+    // (aiActions) scales from it; the rest of the knobs (corner lift, drifting,
+    // shooting, shields) are read off kart.diff by driveAI / aiActions.
     if (!cfg.isPlayer) {
       kart.diff = diff;
       kart.baseMaxSpeed *= diff.speed;
@@ -7386,12 +7402,14 @@ function aiActions(dt) {
       (splitActive && splitPlayers.length
         ? Math.max(...splitPlayers.map((h) => h.totalProgress))
         : player.totalProgress) - k.totalProgress;
-    // Catch up strongly when behind, and ease off a LITTLE when leading (5% on
-    // easy/medium so a runaway rival waits; 2% on hard/expert, where the
-    // front-runners stay honest instead of waiting for the player).
+    // Catch up when behind (the tier's gain per lap of gap, capped at +16%),
+    // and ease off a LITTLE when leading (8% on easy so a runaway rival waits
+    // for a child; 2% on hard and none on expert, where the front-runners stay
+    // honest instead of waiting for the player).
     const _rb = k.diff ? k.diff.rubber : 1; // easier modes catch up less
+    const _gain = k.diff && k.diff.rubberGain !== undefined ? k.diff.rubberGain : 0.4;
     const _lead = k.diff ? k.diff.lead : 0.02;
-    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-_lead, Math.min(0.16, gap * 0.12)) * _rb);
+    k.maxSpeed = k.baseMaxSpeed * (1 + Math.max(-_lead, Math.min(0.16, gap * _gain)) * _rb);
 
     if (k.boosting) effects.trickle(k, k.catnipBoosting);
     if (k.finished || k.spinTimer > 0) {

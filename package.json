@@ -27,6 +27,7 @@
     "check:lives": "node tools/lives-check.mjs",
     "check:progress": "node tools/progress-check.mjs",
     "check:sim": "node tools/sim-check.mjs",
+    "probe:ai": "node tools/ai-pace-probe.mjs",
     "check:worldcfg": "node tools/worldcfg-check.mjs",
     "check:tracks": "node tools/track-audit.mjs",
     "check:tracks:random": "TRACKS=random SEEDS=6 node tools/track-audit.mjs",

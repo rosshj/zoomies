@@ -1079,9 +1079,15 @@ export class Kart {
     const diff = angleDelta(desired, this.heading);
     this.steerInput = Math.max(-1, Math.min(1, diff * 3.2));
 
-    // Carry good corner speed: brake for sharp bends but keep a healthy floor so
-    // they stay competitive instead of crawling round every turn.
-    this.throttleInput = Math.max(sharp > 0.6 ? 0.34 : 0.55, 1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45));
+    // Corner throttle. Steering costs no speed in this physics, so the lift is
+    // a HANDICAP, not a necessity: easier tiers (`diff.lift`) ease off for
+    // sharp bends like a cautious driver, keeping a healthy floor so they still
+    // get round; the sharper tiers hold it flat, as any player who has noticed
+    // does. No tier set (victory laps, the playground dummy) keeps the lift.
+    const lift = this.diff ? this.diff.lift !== false : true;
+    this.throttleInput = lift
+      ? Math.max(sharp > 0.6 ? 0.34 : 0.55, 1 - sharp * 0.82 - Math.min(0.35, Math.abs(diff) * 0.45))
+      : 1;
     // Grade compensation: a max-grade climb drags ~0.35 of full accel, which
     // eats the sharp-corner throttle floor almost exactly — the kart stalls,
     // trips stuck-recovery, reverses back down the ramp and loops forever
@@ -1092,11 +1098,17 @@ export class Kart {
       this.throttleInput = Math.max(this.throttleInput, Math.min(1, need));
     }
 
-    // Drift through sweeping corners and HOLD it well into the exit for a long
-    // charge (bigger boost). Hysteresis: start only on a real sweeper, but once
+    // Drift for the mini-turbo. The sharper tiers (`diff.drift === "all"`)
+    // slide through EVERY real corner the way a player does: hold jump whenever
+    // the wheel is turned at speed, release on the straight and take the boost.
+    // The others only drift sweeping corners, HOLDING well into the exit for a
+    // long charge, with hysteresis: start only on a real sweeper, but once
     // drifting keep holding until the road nearly straightens out.
+    const driftAll = !!this.diff && this.diff.drift === "all";
     if (this.spinTimer > 0) {
       this.driftHeld = false;
+    } else if (driftAll) {
+      this.driftHeld = !this.airborne && speed > 7 && Math.abs(this.steerInput) > 0.25;
     } else if (this.drifting) {
       this.driftHeld = speed > 8 && sharp > 0.16; // hold through the exit
     } else {
