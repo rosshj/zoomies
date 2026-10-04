@@ -2196,14 +2196,14 @@ function drawMinimap() {
   _miniNext = now + 50; // ~20 Hz
   const { ctx, toX, toY, W, H, path } = minimap;
   ctx.clearRect(0, 0, W, H);
-  // The menu's track map, small: a soft dark roadbed under a gold centreline
+  // The menu's track map, small: a soft dark roadbed under a white centreline
   // (no panel behind it, so the roadbed is what keeps it readable over bright
   // road and grass). No set-piece glyphs — just the loop and the karts.
   ctx.lineJoin = "round";
   ctx.strokeStyle = "rgba(0,0,0,0.4)";
   ctx.lineWidth = 7;
   ctx.stroke(path);
-  ctx.strokeStyle = "#ffd24a";
+  ctx.strokeStyle = "#ffffff";
   ctx.lineWidth = 2.5;
   ctx.stroke(path);
   // Rivals first, the player on top.
