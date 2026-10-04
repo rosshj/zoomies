@@ -38,7 +38,7 @@ import { installCrashGuard, watchGpu, consumeLastCrash } from "./crashguard.js";
 installCrashGuard(); // capture errors/rejections from the very start (survives a reload)
 import { Weather } from "./weather.js";
 import { Track, previewLoopPoints } from "./track.js";
-import { featureGlyphs, trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunnelCamGuide } from "./features.js";
+import { trackTitle, FEATURE_CHIP_KINDS, featureCameraClamp, tunnelCamGuide } from "./features.js";
 import { getPlatform, isNativePlatform } from "./platform/index.js";
 import { Kart, setSunShadow, KART_COLLIDE_MIN, kartBumpPower } from "./kart.js";
 import { toonify, uSunViewNode, uSunColNode } from "./toon.js";
@@ -2163,23 +2163,31 @@ function paintTrackMap(canvas, controlPoints, glyphs = null) {
 
 // The minimap redraws at ~20 Hz, not every frame — dots crawling across a
 // 150px map can't show 60 Hz motion, and each redraw is a full canvas clear +
-// stroke + per-kart arcs. Glyphs are cached per track (they never move) and each
-// kart's CSS colour string is built once, not re-formatted per draw.
+// stroke + per-kart arcs. Each kart's CSS colour string is built once, not
+// re-formatted per draw.
 let _miniNext = 0;
-let _miniGlyphs = null;
+// Rivals are plain dots in their body colour; the player's is bigger, with a
+// cream ring and a dark outer ring so it stands out from the pack.
 function _miniDot(ctx, toX, toY, k) {
   if (!k || !k.position) return;
   const isPlayer = !!k.isPlayer;
-  ctx.beginPath();
-  ctx.arc(toX(k.position.x), toY(k.position.z), isPlayer ? 5 : 3.5, 0, Math.PI * 2);
+  const x = toX(k.position.x);
+  const y = toY(k.position.z);
   if (k._miniCol === undefined) k._miniCol = "#" + ((k.color ?? 0xffffff) >>> 0).toString(16).padStart(6, "0");
+  if (isPlayer) {
+    ctx.beginPath();
+    ctx.arc(x, y, 7.5, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(10,6,20,0.55)";
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = "#fff6e5";
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.arc(x, y, isPlayer ? 4 : 3.5, 0, Math.PI * 2);
   ctx.fillStyle = k._miniCol;
   ctx.fill();
-  if (isPlayer) {
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = "#fff";
-    ctx.stroke();
-  }
 }
 function drawMinimap() {
   if (!minimap) return;
@@ -2188,22 +2196,19 @@ function drawMinimap() {
   _miniNext = now + 50; // ~20 Hz
   const { ctx, toX, toY, W, H, path } = minimap;
   ctx.clearRect(0, 0, W, H);
-  // No panel behind the map any more: a dark halo under the cream outline
-  // keeps it readable over bright road and grass.
+  // The menu's track map, small: a soft dark roadbed under a gold centreline
+  // (no panel behind it, so the roadbed is what keeps it readable over bright
+  // road and grass). No set-piece glyphs — just the loop and the karts.
   ctx.lineJoin = "round";
-  ctx.strokeStyle = "rgba(10,6,20,0.5)";
-  ctx.lineWidth = 6;
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 7;
   ctx.stroke(path);
-  ctx.strokeStyle = "rgba(255,246,229,0.85)";
-  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#ffd24a";
+  ctx.lineWidth = 2.5;
   ctx.stroke(path);
-  // Set-piece markers so you can see the bridge/tunnel/canyon coming up.
-  ctx.font = "11px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  if (!_miniGlyphs) _miniGlyphs = featureGlyphs(track.features);
-  for (const g of _miniGlyphs) ctx.fillText(g.glyph, toX(g.x), toY(g.z));
-  for (const k of karts) _miniDot(ctx, toX, toY, k);
+  // Rivals first, the player on top.
+  for (const k of karts) if (!k.isPlayer) _miniDot(ctx, toX, toY, k);
+  for (const k of karts) if (k.isPlayer) _miniDot(ctx, toX, toY, k);
   // Live yarn balls crawl the map from launch — the EARLY information channel
   // (the hard "!" ping only lands in the last second).
   if (items.yarns.length) {

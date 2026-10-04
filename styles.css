@@ -3364,12 +3364,6 @@ kbd,
   bottom: calc(100% - var(--view-h) + 28px);
 }
 #stage.handheld #steer { bottom: max(10px, var(--safe-bottom, 0px)); }
-/* Pause: the dim covers the whole stage (the panel's controls are blocked
-   too), but the card centres over the screen, where the frozen race is. */
-#stage.handheld #pause-overlay {
-  /* (a % here would be of the WIDTH — the stage height is --stage-vh × 100) */
-  padding-bottom: calc(var(--stage-vh, 1vh) * 100 - var(--view-h) + 10px);
-}
 /* The big banner sits in the view, the pickup pill just above the panel, and
    the hit flash stays on the screen, not the shell. */
 #stage.handheld #toast { top: calc(var(--view-h) * 0.42); }
