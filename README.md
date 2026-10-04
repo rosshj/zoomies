@@ -8,7 +8,7 @@ laps, and pelt your rivals with hairballs.
 
 ## Controls
 
-**On a phone (landscape required):**
+**On a phone (sideways or upright):**
 
 | Action | Control |
 | --- | --- |
@@ -75,19 +75,28 @@ mobile browsers, so for phone testing use a tunneling tool (e.g. `ngrok`,
 On the first tap of **START RACE**, iOS will ask permission to use motion
 data — accept it, and hold the phone level to set the neutral steering point.
 
-### Staying in landscape
+### Sideways or upright
+
+Held sideways, the game is a landscape stage. Held upright it is a handheld:
+the road fills the top of the screen and the HUD and touch controls sit on a
+panel below (tilt still steers — the lean is read on the upright axis). The
+hold is read from the phone's own sensors: only a real turn of the phone (not
+a steering lean, however hard) switches the frame, mid-race included, and the
+tilt re-centres on the new grip once your hand holds still. **Settings →
+Controls → Portrait racing** turns the upright frame off for a landscape-only
+game.
 
 Tilting hard to steer is the same motion the OS uses to decide orientation, and
 iOS gives web pages no reliable way to lock it. So instead of fighting it, the
-game **counter-rotates its own UI**: whatever orientation the OS picks, the game
-re-rotates so it always *appears* in landscape, and steering stays continuous
-through the change (the tilt reading is in the device frame, and the neutral
-isn't reset on rotation).
+game **counter-rotates its own UI** when the viewport and the hold disagree:
+whatever orientation the OS picks, the game re-rotates to match the hand, and
+steering stays continuous through the change (the tilt reading is in the device
+frame, and the neutral isn't reset on rotation).
 
 In addition:
 
-- **Android (Chrome):** also enters fullscreen and requests a real
-  orientation lock on START.
+- **Android (Chrome):** also enters fullscreen on START (and requests a real
+  landscape lock when Portrait racing is off).
 - **iOS (Safari):** for the most immersive (full-screen, no Safari chrome)
   experience, **Add to Home Screen** and launch from the 🐱 icon.
 

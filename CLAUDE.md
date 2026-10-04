@@ -286,3 +286,79 @@ within a second with no sudden impulse.
   one column.
 - A stub track (the node fixtures) has no `bays`: props.js falls back to kerb
   scenes so `check:biome-props` still sees one.
+
+## Held upright, a race is a HANDHELD (the stage has two frames)
+
+`layoutStage` in `main.js` decides the stage frame from the state, the
+viewport and how the phone is held (`input.heldLandscape` from gravity, the
+viewport when the sensors are silent). Sideways is the landscape stage as
+before (a portrait viewport is counter-rotated). Upright in a race
+(COUNTDOWN / RACING / PAUSED, solo, Portrait racing setting on) is
+`#stage.handheld`: the canvas covers only the top `--view-h` of the stage
+(`stageState.VH`; the renderer, composer, shaft target, camera aspect and the
+DRS pixel budget all size off VH, not H), `#handheld-shell` is a flat SHEET
+below it (one colour, rounded top corners overlapping the view by their
+radius, a shadow up — no bezel, lines or gradients: it reads as an iOS
+bottom sheet), and `styles.css`'s `#stage.handheld` block moves the HUD onto
+the sheet (status strip, throttle left, the action fan right at its full
+landscape size and spacing, steer bar bottom). The minimap, pause button,
+power-up pills and the rear-threat/yarn warnings stay over the view, the
+minimap bottom-left as in landscape. The camera widens
+(`stageState.fovScale`, ~75° across whatever the aspect) so the view is not
+a keyhole.
+
+- The hold follows the sensors LIVE, mid-race included — never latch it (a
+  latch ignored a real turn of the phone: the race stayed sideways reading
+  the sideways tilt axis while the player held it upright, which read as
+  the centre gone haywire). What keeps a steering lean from flipping the
+  frame is the detector in `input.js`: a change needs the other axis near
+  straight down (`TURN_RATIO` 2.5 ≈ 68°) for `TURN_N` samples in a row.
+- Re-centring (`calibrate`, on start / "1" / resume / a frame change) waits
+  for a STEADY grip (`STEADY_N` samples with |Δg| < `STEADY_DG`, capped at
+  `SETTLE_MAX`) before taking the neutral; steering stays neutral until
+  then. An immediate capture froze whatever tilt the hand had in that first
+  tenth of a second into the whole race.
+- `layoutStage` hands `input.setTiltFrame(portrait)` only the AXIS the lean
+  is read on. Which way is LEFT comes from gravity at each re-centre (the
+  sign of the reading on the other axis), never from the screen angle or
+  the stage frame: iOS reports the gravity vector and Android the reaction
+  to it, the orientation APIs lag a rotation, and a wrong sign reads as a
+  car that steers backwards / sits off-centre. A lean's reading flips with
+  the convention too, so the gravity rule is right on both. `check:tilt-menus`
+  asserts the gain, both edges down, upside down, the lean-vs-turn hold and
+  the steady centring.
+- Sizes on the panel come off the stage WIDTH (`--stage-vw`), never a `%` in
+  `height` (that reads the stage height — the minimap came out 90×124).
+- Nothing locks the orientation any more (manifest `any`, no native lock at
+  boot, Info.plist lists portrait too); Android's web lock on START only
+  runs with Portrait racing off.
+- `npm run check:portrait` (browser, phone viewport + touch, presents as a
+  home-screen app to pass the install gate) asserts the frame, the panel
+  layout, pause/resume, rotation both ways and the setting; it screenshots
+  to `/tmp/portrait-*.png` — look at them.
+
+## The HUD wears the menus' clothes
+
+The race HUD (`#hud` in `index.html`, the HUD block of `styles.css`) uses the
+home screen's surface — `--hud-surface` (the dark plum at ~72% + backdrop
+blur), soft corners, NO borders — cream text, lilac pictograms, gold for the
+lap. The action fan keeps a colour per action (hop blue, shoot orange,
+shield sky, boost green, milk blue) so the thumb finds them at a glance;
+they are flat translucent discs with a top highlight, no rim. The throttle
+is a plain pill with a cream thumb that input.js tints green / red as it is
+pushed — no labels, no arrows. The minimap has no panel: `drawMinimap`
+strokes a dark halo under the cream outline instead.
+
+- Pictograms come from `src/menu-icons.js` like everywhere else:
+  `installMenuIcons` decorates `#hud` and `#pickup-toast` too, so an emoji
+  in HUD markup (🐾 ⬆ 🛡 💨 🌿 🧶 ❤ ⏸) becomes its icon (`paw`, `up`,
+  `shield`, `wind`, `leaf`, `yarn`, `heart`, `pause`), and a `data-menu-icon`
+  span gets one inserted (the `#info` rows). Never style the emoji glyph.
+  The milk jug is two-tone (milk below, headspace above) and is inlined as
+  `.jug` SVG markup where it appears; the single-tone `milk` path is the
+  same silhouette for the menus.
+- Power-up pills are a WRAPPING ROW top-left (six stacked would reach the
+  throttle, which starts at 24% in landscape).
+- The design canvas the user signed off is the reference:
+  https://claude.ai/artifact/EvyUi27iELGrFaLJxK8AdP (landscape, upright, and
+  every control state).
