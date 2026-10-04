@@ -1254,11 +1254,18 @@ kbd {
   box-shadow: 0 0 0 4px rgba(170, 235, 255, 0.5), 0 0 22px rgba(79, 195, 247, 1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
 }
 
+/* Green only when the meter is full and the boost is ready to fire; while it
+   recharges (.disabled) the disc is grey and the meter fills in a lighter grey,
+   so a green disc always means "go". */
 #btn-boost {
   right: 150px;
   bottom: 108px;
   overflow: hidden;
   background: rgba(124, 179, 66, 0.86);
+  transition: background 0.25s ease, transform 0.08s ease;
+}
+#btn-boost.disabled {
+  background: rgba(96, 92, 110, 0.82);
 }
 
 /* Fill rising from the bottom shows the recharging boost meter. */
@@ -1269,7 +1276,7 @@ kbd {
   bottom: 0;
   height: 100%;
   background: rgba(174, 213, 129, 0.75);
-  transition: height 0.1s linear;
+  transition: height 0.1s linear, background 0.25s ease;
   z-index: 0;
 }
 
@@ -1279,7 +1286,7 @@ kbd {
 }
 
 #btn-boost.disabled #boost-fill {
-  background: linear-gradient(0deg, #5a6a4a, #7a8a6a);
+  background: rgba(196, 192, 210, 0.45);
 }
 
 /* Drafting: the meter is charging faster — pulse a cyan rim + brighten the fill so
